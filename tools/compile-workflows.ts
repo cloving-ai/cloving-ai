@@ -1,10 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { BaseBuilder } from "@workflow/builders";
+import { serializeManifest } from "./workflow-manifest.ts";
 
 const [sourceDirectory, outputDirectory] = process.argv.slice(2);
 if (!sourceDirectory || !outputDirectory) {
-  throw new Error("Usage: npm run build:workflows -- SOURCE_DIRECTORY OUTPUT_DIRECTORY");
+  throw new Error(
+    "Usage: npm run build:workflows -- SOURCE_DIRECTORY OUTPUT_DIRECTORY",
+  );
 }
 
 const output = resolve(outputDirectory);
@@ -19,7 +22,10 @@ class WorkflowBuilder extends BaseBuilder {
       flowOutfile: resolve(output, "flow.mjs"),
       format: "esm",
     });
-    await writeFile(resolve(output, "manifest.json"), JSON.stringify(result.manifest, null, 2));
+    await writeFile(
+      resolve(output, "manifest.json"),
+      serializeManifest(result.manifest),
+    );
     await this.createClientLibrary();
   }
 }

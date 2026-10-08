@@ -12,6 +12,11 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noUncheckedSideEffectImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "rewriteRelativeImportExtensions": true,
     "allowJs": true,
     "checkJs": true,
     "resolveJsonModule": true,
@@ -21,6 +26,12 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "tools/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "tools/**/*.ts",
+    "quality/**/*.ts",
+    "test/**/*.ts",
+    "eslint.config.mjs"
+  ],
   "exclude": ["node_modules", "dist"]
 }

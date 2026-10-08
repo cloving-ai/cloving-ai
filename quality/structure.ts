@@ -1,0 +1,173 @@
+import ts from "typescript";
+
+export interface StructureFinding {
+  readonly rule: string;
+  readonly file: string;
+  readonly line: number;
+  readonly measured: number | "unbounded";
+  readonly limit: number;
+}
+
+function isTuple(
+  checker: ts.TypeChecker,
+  type: ts.Type,
+): type is ts.TupleTypeReference {
+  return checker.isTupleType(type);
+}
+
+function finding(
+  node: ts.Node,
+  rule: string,
+  measured: number | "unbounded",
+  limit: number,
+): StructureFinding {
+  const source = node.getSourceFile();
+  return {
+    rule,
+    measured,
+    limit,
+    file: source.fileName,
+    line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+  };
+}
+
+function parameterFinding(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+): StructureFinding | undefined {
+  if (!ts.isParameter(node)) return;
+  const declared = checker.getTypeAtLocation(node);
+  const constrained = checker.getBaseConstraintOfType(declared) ?? declared;
+  const type = node.dotDotDotToken
+    ? checker.getIndexTypeOfType(constrained, ts.IndexKind.Number)
+    : constrained;
+  if (!type) return;
+  if (containsBoolean(type, checker)) {
+    return finding(node, "no-boolean-parameter", 1, 0);
+  }
+  return undefined;
+}
+
+function containsBoolean(declared: ts.Type, checker: ts.TypeChecker): boolean {
+  const type = checker.getBaseConstraintOfType(declared) ?? declared;
+  if ((type.flags & ts.TypeFlags.BooleanLike) !== 0) return true;
+  if (!type.isUnionOrIntersection()) return false;
+  return type.types.some((member) => containsBoolean(member, checker));
+}
+
+function returnFinding(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+): StructureFinding | undefined {
+  if (!ts.isFunctionLike(node)) return;
+  const signature = checker.getSignatureFromDeclaration(node);
+  if (!signature) return;
+  const declared = checker.getReturnTypeOfSignature(signature);
+  const result = checker.getAwaitedType(
+    checker.getBaseConstraintOfType(declared) ?? declared,
+  );
+  if (!result) return;
+  const alternatives = result.isUnion() ? result.types : [result];
+  const unbounded = alternatives.some(
+    (type) =>
+      isTuple(checker, type) &&
+      (type.target.combinedFlags & ts.ElementFlags.Variable) !== 0,
+  );
+  if (unbounded) return finding(node, "max-tuple-results", "unbounded", 3);
+  const count = Math.max(
+    0,
+    ...alternatives.map((type) =>
+      isTuple(checker, type) ? checker.getTypeArguments(type).length : 0,
+    ),
+  );
+  if (count > 3) return finding(node, "max-tuple-results", count, 3);
+  return undefined;
+}
+
+function typeMembers(
+  node: ts.Node,
+  symbol: ts.Symbol,
+  checker: ts.TypeChecker,
+): ts.Symbol[] {
+  const declared = checker.getDeclaredTypeOfSymbol(symbol);
+  if (
+    ts.isTypeAliasDeclaration(node) &&
+    (checker.isTupleType(declared) ||
+      checker.isArrayType(declared) ||
+      (declared.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)) ===
+        0)
+  )
+    return [];
+  const members = new Set(checker.getPropertiesOfType(declared));
+  if (ts.isClassLike(node)) {
+    for (const member of checker.getPropertiesOfType(
+      checker.getTypeOfSymbolAtLocation(symbol, node),
+    ))
+      members.add(member);
+  }
+  return [...members];
+}
+
+function memberFinding(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+  seen: Set<ts.Symbol>,
+): StructureFinding | undefined {
+  if (
+    !ts.isInterfaceDeclaration(node) &&
+    !ts.isClassLike(node) &&
+    !ts.isTypeAliasDeclaration(node)
+  )
+    return;
+  const symbol = declarationSymbol(node, checker);
+  if (!symbol || seen.has(symbol)) return;
+  seen.add(symbol);
+  const representative = symbol.declarations?.find(ts.isClassLike) ?? node;
+  const callable = typeMembers(representative, symbol, checker).filter(
+    (member) => {
+      const type = checker.getNonNullableType(
+        checker.getTypeOfSymbolAtLocation(member, node),
+      );
+      return (
+        checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0
+      );
+    },
+  );
+  const policy = ts.isInterfaceDeclaration(representative)
+    ? { rule: "max-interface-callables", limit: 10 }
+    : { rule: "max-type-callables", limit: 24 };
+  if (callable.length > policy.limit)
+    return finding(node, policy.rule, callable.length, policy.limit);
+  return undefined;
+}
+
+function declarationSymbol(
+  node:
+    ts.InterfaceDeclaration | ts.ClassLikeDeclaration | ts.TypeAliasDeclaration,
+  checker: ts.TypeChecker,
+): ts.Symbol | undefined {
+  if (node.name) return checker.getSymbolAtLocation(node.name);
+  return checker.getTypeAtLocation(node).getSymbol();
+}
+
+export function inspectStructure(program: ts.Program): StructureFinding[] {
+  const checker = program.getTypeChecker();
+  const roots = new Set(program.getRootFileNames());
+  const findings: StructureFinding[] = [];
+  const seen = new Set<ts.Symbol>();
+  function visit(node: ts.Node): void {
+    const results = [
+      parameterFinding(node, checker),
+      returnFinding(node, checker),
+      memberFinding(node, checker, seen),
+    ];
+    for (const result of results) {
+      if (result) findings.push(result);
+    }
+    ts.forEachChild(node, visit);
+  }
+  for (const source of program.getSourceFiles()) {
+    if (roots.has(source.fileName)) visit(source);
+  }
+  return findings;
+}

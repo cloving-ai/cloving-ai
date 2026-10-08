@@ -12,5 +12,7 @@ const { values } = parseArgs({
 if (values.version) {
   process.stdout.write(`${packageMetadata.version}\n`);
 } else {
-  process.stdout.write("Usage: cloving [--help] [--version]\n\nDevelopment scaffold. Workflow commands are not implemented yet.\n");
+  process.stdout.write(
+    "Usage: cloving [--help] [--version]\n\nDevelopment scaffold. Workflow commands are not implemented yet.\n",
+  );
 }

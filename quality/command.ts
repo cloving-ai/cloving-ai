@@ -1,0 +1,35 @@
+export interface CheckCommand {
+  readonly executable: string;
+  readonly arguments: readonly string[];
+  readonly directory: string;
+  readonly timeoutMilliseconds: number;
+  readonly acceptedExitCodes?: readonly number[];
+}
+
+export function runCommand(command: CheckCommand): string {
+  if (
+    !Number.isFinite(command.timeoutMilliseconds) ||
+    command.timeoutMilliseconds <= 0
+  )
+    throw new Error("Check command requires a finite positive timeout");
+  const result = spawnSync(command.executable, command.arguments, {
+    cwd: command.directory,
+    encoding: "utf8",
+    timeout: command.timeoutMilliseconds,
+    maxBuffer: 8 * 1024 * 1024,
+    env: { PATH: process.env["PATH"], TZ: "UTC", CI: "true" },
+  });
+  if (result.error)
+    throw new Error(`Check execution failed: ${command.executable}`, {
+      cause: result.error,
+    });
+  if (
+    result.status === null ||
+    !(command.acceptedExitCodes ?? [0]).includes(result.status)
+  )
+    throw new Error(
+      `Check exit ${String(result.status)}: ${command.executable}\n${result.stderr}\n${result.stdout}`,
+    );
+  return result.stdout;
+}
+import { spawnSync } from "node:child_process";
