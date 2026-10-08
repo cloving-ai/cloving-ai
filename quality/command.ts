@@ -4,6 +4,7 @@ export interface CheckCommand {
   readonly directory: string;
   readonly timeoutMilliseconds: number;
   readonly acceptedExitCodes?: readonly number[];
+  readonly coverageDirectory?: string;
 }
 
 export function runCommand(command: CheckCommand): string {
@@ -17,7 +18,15 @@ export function runCommand(command: CheckCommand): string {
     encoding: "utf8",
     timeout: command.timeoutMilliseconds,
     maxBuffer: 8 * 1024 * 1024,
-    env: { PATH: process.env["PATH"], TZ: "UTC", CI: "true" },
+    env: {
+      PATH: process.env["PATH"],
+      TZ: "UTC",
+      CI: "true",
+      NODE_DISABLE_COMPILE_CACHE: "1",
+      ...(command.coverageDirectory
+        ? { NODE_V8_COVERAGE: command.coverageDirectory }
+        : {}),
+    },
   });
   if (result.error)
     throw new Error(`Check execution failed: ${command.executable}`, {

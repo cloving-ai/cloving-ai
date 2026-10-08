@@ -1,0 +1,124 @@
+import ts from "typescript";
+import { escapedTestApi } from "./test-api-reference.ts";
+
+function callOrigin(
+  node: ts.CallExpression,
+  checker: ts.TypeChecker,
+): { file: string; name: string } | undefined {
+  const declaration = checker.getResolvedSignature(node)?.declaration;
+  if (!declaration) return;
+  const name = "name" in declaration ? declaration.name : undefined;
+  return {
+    file: declaration.getSourceFile().fileName,
+    name:
+      name && ts.isIdentifier(name)
+        ? name.text
+        : (checker.getSymbolAtLocation(node.expression)?.getName() ?? ""),
+  };
+}
+
+function selectedTest(
+  node: ts.CallExpression,
+  checker: ts.TypeChecker,
+  name: string,
+): boolean {
+  if (["only", "skip", "todo", "run"].includes(name)) return true;
+  return node.arguments.some((argument) => {
+    const type = checker.getTypeAtLocation(argument);
+    return ["only", "skip", "todo"].some(
+      (field) => type.getProperty(field) !== undefined,
+    );
+  });
+}
+
+function assertionAwaited(ancestors: readonly ts.Node[]): boolean {
+  for (const parent of [...ancestors].reverse()) {
+    if (ts.isParenthesizedExpression(parent)) continue;
+    if (ts.isAwaitExpression(parent) || ts.isReturnStatement(parent))
+      return true;
+    return ts.isArrowFunction(parent) && !ts.isBlock(parent.body);
+  }
+  return false;
+}
+
+function conditional(node: ts.Node): boolean {
+  if (
+    ts.isIfStatement(node) ||
+    ts.isConditionalExpression(node) ||
+    ts.isSwitchStatement(node) ||
+    ts.isCatchClause(node)
+  )
+    return true;
+  return (
+    ts.isBinaryExpression(node) &&
+    [
+      ts.SyntaxKind.AmpersandAmpersandToken,
+      ts.SyntaxKind.BarBarToken,
+      ts.SyntaxKind.QuestionQuestionToken,
+    ].includes(node.operatorToken.kind)
+  );
+}
+
+function callFindings(
+  node: ts.CallExpression,
+  ancestors: readonly ts.Node[],
+  checker: ts.TypeChecker,
+): readonly string[] {
+  const origin = callOrigin(node, checker);
+  if (!origin) return [];
+  const test = origin.file.endsWith("/@types/node/test.d.ts");
+  const assertion = origin.file.endsWith("/@types/node/assert.d.ts");
+  if (!test && !assertion) return [];
+  const findings: string[] = [];
+  if (ancestors.some(conditional)) findings.push("conditional-test-evidence");
+  if (test && selectedTest(node, checker, origin.name))
+    findings.push("test-selection");
+  if (
+    assertion &&
+    ["rejects", "doesNotReject"].includes(origin.name) &&
+    !assertionAwaited(ancestors)
+  )
+    findings.push("unawaited-assertion");
+  return findings;
+}
+
+function conditionalExit(
+  node: ts.Node,
+  ancestors: readonly ts.Node[],
+  checker: ts.TypeChecker,
+): boolean {
+  if (!ts.isReturnStatement(node) || !ancestors.some(conditional)) return false;
+  return ancestors.some(
+    (ancestor) =>
+      ts.isCallExpression(ancestor) &&
+      callOrigin(ancestor, checker)?.file.endsWith("/@types/node/test.d.ts"),
+  );
+}
+
+export function inspectTestIntegrity(program: ts.Program): readonly string[] {
+  const checker = program.getTypeChecker();
+  const findings: string[] = [];
+  for (const file of program.getRootFileNames()) {
+    const source = program.getSourceFile(file);
+    if (!source) throw new Error(`missing-test-integrity-source: ${file}`);
+    const visit = (node: ts.Node, ancestors: readonly ts.Node[]): void => {
+      const location = `${file}:${String(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1)}`;
+      if (escapedTestApi(node, ancestors, checker))
+        findings.push(`test-api-escape: ${location}`);
+      if (conditionalExit(node, ancestors, checker))
+        findings.push(`conditional-test-exit: ${location}`);
+      if (ts.isCallExpression(node)) {
+        findings.push(
+          ...callFindings(node, ancestors, checker).map(
+            (rule) => `${rule}: ${location}`,
+          ),
+        );
+      }
+      ts.forEachChild(node, (child) => {
+        visit(child, [...ancestors, node]);
+      });
+    };
+    visit(source, []);
+  }
+  return findings;
+}

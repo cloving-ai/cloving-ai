@@ -1,8 +1,9 @@
-import { ESLint } from "eslint";
+import { ESLint, type Linter } from "eslint";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { check } from "prettier";
 import configuration from "../eslint.config.mjs";
+import type { SuppressionApproval } from "./suppression-approval.ts";
 
 export async function checkFormatting(files: readonly string[]): Promise<void> {
   const invalid: string[] = [];
@@ -17,6 +18,7 @@ export async function checkFormatting(files: readonly string[]): Promise<void> {
 export async function checkLint(
   directory: string,
   files: readonly string[],
+  approvals: readonly SuppressionApproval[] = [],
 ): Promise<void> {
   const linter = new ESLint({
     cwd: directory,
@@ -24,6 +26,20 @@ export async function checkLint(
     overrideConfig: [
       ...configuration,
       { languageOptions: { parserOptions: { tsconfigRootDir: directory } } },
+      ...approvals.map((approval): Linter.Config => ({
+        files: [relative(directory, approval.file)],
+        rules: {
+          "@typescript-eslint/ban-ts-comment": [
+            "error",
+            {
+              "ts-ignore": true,
+              "ts-nocheck": true,
+              "ts-expect-error": false,
+              "ts-check": false,
+            },
+          ],
+        },
+      })),
     ],
   });
   const results = await linter.lintFiles([...files]);

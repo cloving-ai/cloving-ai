@@ -40,12 +40,13 @@ for (const [name, declaration] of [
       const findings = await inspectFixture({
         "fixture.ts": declaration.replace("MEMBERS", additional),
       });
-      if (count === 14) {
-        assert.deepEqual(findings, []);
-        continue;
-      }
-      assert.equal(findings[0]?.rule, "max-type-callables");
-      assert.equal(findings[0].measured, 25);
+      assert.deepEqual(
+        findings.map((finding) => ({
+          rule: finding.rule,
+          measured: finding.measured,
+        })),
+        count === 14 ? [] : [{ rule: "max-type-callables", measured: 25 }],
+      );
     }
   });
 }

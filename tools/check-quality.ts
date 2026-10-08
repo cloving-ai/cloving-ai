@@ -1,4 +1,13 @@
 import { checkProject } from "../quality/project.ts";
+import { inspectGenerated } from "../quality/generated-output.ts";
+import { proposedModulePolicy } from "../quality/module-policy.ts";
+import { checkNpmInputs } from "../quality/npm-inputs.ts";
 
-const result = await checkProject(process.cwd());
+await checkNpmInputs(process.cwd());
+const generated = await inspectGenerated(process.cwd());
+const result = await checkProject(process.cwd(), {
+  generated: generated.outputs,
+  architecture: proposedModulePolicy(process.cwd()),
+  stepExports: {},
+});
 process.stdout.write(JSON.stringify(result, null, 2) + "\n");

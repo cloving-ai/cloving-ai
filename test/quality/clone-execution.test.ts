@@ -22,7 +22,7 @@ for (const extension of ["ts", "mts", "cts", "js", "mjs", "cjs"]) {
             join(directory, `second.${extension}`),
           ]);
           assert.equal(findings.length, count === 150 ? 1 : 0);
-          if (count === 150) assert.equal(findings[0]?.tokens, 150);
+          assert.equal(findings[0]?.tokens, count === 150 ? 150 : undefined);
         },
       );
     }

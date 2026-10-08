@@ -1,12 +1,9 @@
 import ts from "typescript";
 import { join, resolve } from "node:path";
 
-export function compilerProgram(
-  directory: string,
-  files: readonly string[],
-): ts.Program {
+export function compilerConfiguration(file: string): ts.ParsedCommandLine {
   const parsed = ts.getParsedCommandLineOfConfigFile(
-    join(directory, "tsconfig.json"),
+    file,
     {},
     {
       ...ts.sys,
@@ -21,6 +18,14 @@ export function compilerProgram(
     throw new Error(
       `Compiler configuration: ${parsed?.errors.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")).join("\n") ?? "missing"}`,
     );
+  return parsed;
+}
+
+export function compilerProgram(
+  directory: string,
+  files: readonly string[],
+): ts.Program {
+  const parsed = compilerConfiguration(join(directory, "tsconfig.json"));
   const configured = [...parsed.fileNames].map((file) => resolve(file)).sort();
   const expected = [...files].map((file) => resolve(file)).sort();
   if (
