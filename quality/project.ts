@@ -12,6 +12,7 @@ export const requiredChecks = [
 ] as const;
 
 export interface ProjectOptions extends SourceOptions {
+  readonly trustedCompilerConfiguration?: string;
   readonly architecture: DependencyPolicy;
   readonly stepExports: Readonly<Record<string, readonly string[]>>;
   readonly suppressionApprovals?: readonly SuppressionApproval[];
@@ -27,10 +28,32 @@ export async function checkProject(
   directory: string,
   options: ProjectOptions,
 ): Promise<{ files: string[]; completed: string[] }> {
+  const { program, files, completed } = await checkProjectSources(
+    directory,
+    options,
+  );
+  checkProjectTests(program, files, directory, options);
+  completed.push("tests");
+  assertCheckCoverage(completed);
+  return { files, completed };
+}
+
+export async function checkProjectSources(
+  directory: string,
+  options: ProjectOptions,
+): Promise<{
+  files: string[];
+  completed: string[];
+  program: ReturnType<typeof compilerProgram>;
+}> {
   const completed: string[] = [];
   const files = await sourceFiles(directory, options);
   completed.push("inventory");
-  const program = compilerProgram(directory, files);
+  const program = compilerProgram(directory, files, {
+    ...(options.trustedCompilerConfiguration
+      ? { trustedConfiguration: options.trustedCompilerConfiguration }
+      : {}),
+  });
   completed.push("compiler");
   checkArchitecture(program, options.architecture);
   const boundaries = inspectWorkflowBoundaries(program, {
@@ -51,7 +74,12 @@ export async function checkProject(
   completed.push("test-integrity");
   await checkFormatting(files);
   completed.push("format");
-  await checkLint(directory, files, options.suppressionApprovals ?? []);
+  await checkLint(
+    directory,
+    files,
+    options.suppressionApprovals ?? [],
+    program,
+  );
   completed.push("lint");
   const structural = inspectStructure(program);
   if (structural.length > 0)
@@ -65,10 +93,7 @@ export async function checkProject(
       `Clone threshold exceeded:\n${JSON.stringify(clones, null, 2)}`,
     );
   completed.push("clones");
-  checkProjectTests(program, files, directory, options);
-  completed.push("tests");
-  assertCheckCoverage(completed);
-  return { files, completed };
+  return { program, files, completed };
 }
 
 function checkProjectTests(

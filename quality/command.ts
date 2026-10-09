@@ -5,6 +5,7 @@ export interface CheckCommand {
   readonly timeoutMilliseconds: number;
   readonly acceptedExitCodes?: readonly number[];
   readonly coverageDirectory?: string;
+  readonly homeDirectory?: string;
 }
 
 export function runCommand(command: CheckCommand): string {
@@ -23,6 +24,7 @@ export function runCommand(command: CheckCommand): string {
       TZ: "UTC",
       CI: "true",
       NODE_DISABLE_COMPILE_CACHE: "1",
+      ...(command.homeDirectory ? { HOME: command.homeDirectory } : {}),
       ...(command.coverageDirectory
         ? { NODE_V8_COVERAGE: command.coverageDirectory }
         : {}),

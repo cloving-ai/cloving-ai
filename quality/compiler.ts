@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export function compilerConfiguration(file: string): ts.ParsedCommandLine {
   const parsed = ts.getParsedCommandLineOfConfigFile(
@@ -24,17 +24,31 @@ export function compilerConfiguration(file: string): ts.ParsedCommandLine {
 export function compilerProgram(
   directory: string,
   files: readonly string[],
+  options: { readonly trustedConfiguration?: string } = {},
 ): ts.Program {
-  const parsed = compilerConfiguration(join(directory, "tsconfig.json"));
-  const configured = [...parsed.fileNames].map((file) => resolve(file)).sort();
+  const configuration =
+    options.trustedConfiguration ?? join(directory, "tsconfig.json");
+  const parsed = compilerConfiguration(configuration);
+  const configured = [
+    ...(options.trustedConfiguration ? files : parsed.fileNames),
+  ]
+    .map((file) => resolve(file))
+    .sort();
   const expected = [...files].map((file) => resolve(file)).sort();
   if (
     expected.length === 0 ||
     JSON.stringify(configured) !== JSON.stringify(expected)
   )
     throw new Error("Compiler inventory does not match discovered sources");
-  const program = ts.createProgram(parsed.fileNames, {
+  const program = ts.createProgram(configured, {
     ...parsed.options,
+    ...(options.trustedConfiguration
+      ? {
+          rootDir: directory,
+          outDir: join(directory, "dist"),
+          typeRoots: [join(dirname(configuration), "node_modules/@types")],
+        }
+      : {}),
     noEmit: true,
   });
   const diagnostics = ts.getPreEmitDiagnostics(program);

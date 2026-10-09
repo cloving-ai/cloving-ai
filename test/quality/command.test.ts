@@ -1,12 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runCommand } from "../../quality/command.ts";
+import { withFiles } from "./files-fixture.ts";
 
 const command = {
   executable: process.execPath,
   directory: process.cwd(),
   timeoutMilliseconds: 1000,
 };
+
+await test("QG-10 gives a check its explicit isolated home directory", async () => {
+  await withFiles({}, (directory) => {
+    const options = {
+      ...command,
+      homeDirectory: directory,
+      arguments: ["-e", "process.stdout.write(require('node:os').homedir())"],
+    };
+    assert.equal(runCommand(options), directory);
+  });
+});
 
 await test("QG-10 reports actual successful command output", () => {
   assert.equal(

@@ -4,6 +4,7 @@ import { relative, resolve } from "node:path";
 import { check } from "prettier";
 import configuration from "../eslint.config.mjs";
 import type { SuppressionApproval } from "./suppression-approval.ts";
+import type ts from "typescript";
 
 export async function checkFormatting(files: readonly string[]): Promise<void> {
   const invalid: string[] = [];
@@ -19,13 +20,23 @@ export async function checkLint(
   directory: string,
   files: readonly string[],
   approvals: readonly SuppressionApproval[] = [],
+  program?: ts.Program,
 ): Promise<void> {
   const linter = new ESLint({
     cwd: directory,
     overrideConfigFile: true,
     overrideConfig: [
       ...configuration,
-      { languageOptions: { parserOptions: { tsconfigRootDir: directory } } },
+      {
+        languageOptions: {
+          parserOptions: {
+            tsconfigRootDir: directory,
+            ...(program
+              ? { programs: [program], projectService: false, project: false }
+              : {}),
+          },
+        },
+      },
       ...approvals.map((approval): Linter.Config => ({
         files: [relative(directory, approval.file)],
         rules: {

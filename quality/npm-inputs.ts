@@ -96,6 +96,7 @@ async function checkInstalledTree(directory: string): Promise<void> {
       ],
       directory,
       timeoutMilliseconds: 60000,
+      homeDirectory: cache,
     });
   } finally {
     await rm(cache, { recursive: true });
