@@ -1,8 +1,9 @@
 import type { WorkflowArtifactContract } from "./workflow-artifacts.ts";
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
+import { productStepIdentities } from "./product-steps.ts";
 import { snapshotTree } from "./tree-snapshot.ts";
 import { inspectWorkflowArtifacts } from "./workflow-artifacts.ts";
 
@@ -85,25 +86,17 @@ async function bindHandlers(
 ): Promise<void> {
   if (!artifact.regenerated || !artifact.contract)
     throw new Error("missing-workflow-regeneration");
-  if (await hasProductDirectives(join(candidate, "src")))
-    throw new Error("unqualified-product-workflows");
+  const required = await productStepIdentities(candidate);
+  const missing = required.find(
+    (identity) => !artifact.contract?.steps.includes(identity),
+  );
+  if (missing !== undefined)
+    throw new Error(`unbound-product-step: ${missing}`);
   await inspectWorkflowArtifacts(
     artifact.path,
     artifact.regenerated,
     artifact.contract,
   );
-}
-
-async function hasProductDirectives(directory: string): Promise<boolean> {
-  for (const entry of await readdir(directory, {
-    recursive: true,
-    withFileTypes: true,
-  })) {
-    if (!entry.isFile()) continue;
-    const content = await readFile(join(entry.parentPath, entry.name), "utf8");
-    if (/["']use (?:workflow|step)["']/.test(content)) return true;
-  }
-  return false;
 }
 
 function packedEntries(archive: Buffer): Array<[string, Buffer]> {

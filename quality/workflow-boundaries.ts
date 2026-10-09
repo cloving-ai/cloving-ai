@@ -96,7 +96,7 @@ function stepCall(
     checker.getResolvedSignature(node)?.declaration,
     policy,
   );
-  if (!target) return;
+  if (!target || policy.roles[file] === "test") return;
   if (policy.roles[file] === "step") return "nested-durable-step";
   if (policy.roles[file] !== "workflow" || !target.admitted)
     return "unadmitted-step-call";

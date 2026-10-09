@@ -130,3 +130,40 @@ for (const [name, source, rule] of [
     );
   });
 }
+
+await test("QG-06 tests may call a step helper directly while other roles may not", async () => {
+  const roles: Readonly<Record<string, string>> = {
+    "step.ts": "step",
+    "unit.test.ts": "test",
+    "helper.ts": "pure",
+  };
+  const result = await withProgram(
+    {
+      "step.ts": step,
+      "unit.test.ts":
+        'import { execute } from "./step.js"; export async function check() { return await execute({ id: "one" }); }',
+      "helper.ts":
+        'import { execute } from "./step.js"; export async function other() { return await execute({ id: "two" }); }',
+    },
+    (program) =>
+      inspectWorkflowBoundaries(program, {
+        roles: Object.fromEntries(
+          program
+            .getRootFileNames()
+            .map((file) => [file, roles[basename(file)] ?? "workflow"]),
+        ),
+        stepExports: {},
+      }),
+  );
+  assert.equal(
+    result.some((finding) => finding.includes("unit.test.ts")),
+    false,
+  );
+  assert.ok(
+    result.some(
+      (finding) =>
+        finding.startsWith("unadmitted-step-call") &&
+        finding.includes("helper.ts"),
+    ),
+  );
+});

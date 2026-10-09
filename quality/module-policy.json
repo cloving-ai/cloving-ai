@@ -166,7 +166,25 @@
     "test/quality/verifier-activation.test.ts": "test",
     "quality/acceptance-diagnostics.ts": "quality",
     "quality/acceptance-artifacts.ts": "quality",
-    "node:zlib": "stdlib"
+    "node:zlib": "stdlib",
+    "test/quality/admitted-policy.test.ts": "test",
+    "src/workflow-admission.ts": "pure",
+    "test/workflow-admission.test.ts": "test",
+    "src/workflow-contracts.ts": "pure",
+    "src/operation-identity.ts": "pure",
+    "test/workflow-contracts.test.ts": "test",
+    "test/operation-identity.test.ts": "test",
+    "test/quality/verification-process-group.test.ts": "test",
+    "src/execution-pin.ts": "pure",
+    "test/execution-pin.test.ts": "test",
+    "src/steps/load-cycle.ts": "step",
+    "test/load-cycle.test.ts": "test",
+    "src/resource-files.ts": "broker",
+    "src/workflow-resources.ts": "pure",
+    "test/resource-files.test.ts": "test",
+    "src/effect-authorization.ts": "pure",
+    "test/effect-authorization.test.ts": "test",
+    "quality/product-steps.ts": "quality"
   },
   "allowed": {
     "quality": ["quality", "configuration", "stdlib", "tooling", "metadata"],
@@ -177,7 +195,10 @@
       "configuration",
       "stdlib",
       "tooling",
-      "workflow"
+      "workflow",
+      "pure",
+      "step",
+      "broker"
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata"],
     "configuration": ["tooling", "quality"],
@@ -199,5 +220,10 @@
       "tooling",
       "sdk-build"
     ]
+  },
+  "automaticPaths": {
+    "pure": "src/",
+    "test": "test/",
+    "step": "src/steps/"
   }
 }

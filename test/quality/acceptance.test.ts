@@ -245,3 +245,49 @@ await test("QG-12 consumption requires the active verifier outside the candidate
     );
   });
 });
+
+const productStep =
+  'export async function loadCycle(input: { cycleId: string }) {\n  "use step";\n  return input;\n}\n';
+const productStepId =
+  "step//fixture/workflows/steps/load-cycle@1.0.0//loadCycle";
+const productPackage = (exports: unknown): string =>
+  JSON.stringify({
+    name: "fixture",
+    version: "1.0.0",
+    type: "module",
+    exports,
+  });
+const stepExport = {
+  "./workflows/steps/load-cycle": {
+    types: "./dist/src/steps/load-cycle.d.ts",
+    import: "./dist/src/steps/load-cycle.js",
+  },
+};
+
+await test("QG-11 product step helpers bind to the regenerated handler manifest by their versioned export identity", async () => {
+  const product = {
+    files: { "src/steps/load-cycle.ts": productStep },
+    packageJson: productPackage(stepExport),
+    manifestSteps: { loadCycle: productStepId },
+  };
+  await withAcceptance(product, async (fixture) => {
+    const verdict = await consumeAcceptance(
+      fixture.state,
+      fixture.candidate,
+      fixture.evidence,
+    );
+    assert.equal(verdict.verdict, "accepted");
+  });
+  for (const changed of [
+    { ...product, contractSteps: [] },
+    { ...product, packageJson: productPackage({}) },
+    { ...product, files: { "src/helper.ts": productStep } },
+    { ...product, files: { "src/steps/nested/load-cycle.ts": productStep } },
+  ])
+    await withAcceptance(changed, async (fixture) => {
+      await assert.rejects(
+        consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+        /unbound-acceptance-artifact: workflow-handlers/,
+      );
+    });
+});

@@ -36,10 +36,28 @@ const handlerFiles = [
   "steps.mjs",
   "steps.mjs.debug.json",
 ];
-const manifest = JSON.stringify({
-  workflows: { "flow.ts": { run: { workflowId: "workflow-run" } } },
-  steps: { "steps.ts": { effect: { stepId: "step-effect" } } },
-});
+function handlerManifest(steps: Readonly<Record<string, string>>): string {
+  return JSON.stringify({
+    workflows: { "flow.ts": { run: { workflowId: "workflow-run" } } },
+    steps: {
+      "steps.ts": {
+        effect: { stepId: "step-effect" },
+        ...Object.fromEntries(
+          Object.entries(steps).map(([name, stepId]) => [name, { stepId }]),
+        ),
+      },
+    },
+  });
+}
+
+export interface AcceptanceOptions {
+  readonly tests?: string;
+  readonly source?: string;
+  readonly files?: Readonly<Record<string, string>>;
+  readonly packageJson?: string;
+  readonly manifestSteps?: Readonly<Record<string, string>>;
+  readonly contractSteps?: readonly string[];
+}
 
 export interface AcceptanceFixture {
   readonly root: string;
@@ -52,60 +70,47 @@ export interface AcceptanceFixture {
 }
 
 export async function withAcceptance(
-  options: { readonly tests?: string; readonly source?: string },
+  options: AcceptanceOptions,
   inspect: (fixture: AcceptanceFixture) => Promise<void>,
 ): Promise<void> {
-  await withFiles(
-    {
-      "proposal/tools/check-protected-quality.ts": "export {};",
-      "proposal/quality/test-reporter.ts": await readFile(
-        join(import.meta.dirname, "../../quality/test-reporter.ts"),
-        "utf8",
-      ),
-      "candidate/package.json": '{"name":"fixture","type":"module"}',
-      "candidate/src/index.ts": options.source ?? "export const value = 1;",
-      "candidate/test/sample.test.ts": options.tests ?? passingTests,
-      "candidate/dist/index.js": "export const value = 1;",
-      ...Object.fromEntries(
-        handlerFiles.flatMap((name) => [
-          [`artifacts/handlers/${name}`, name],
-          [`artifacts/regenerated/${name}`, name],
-        ]),
-      ),
-      "artifacts/handlers/manifest.json": manifest,
-      "artifacts/regenerated/manifest.json": manifest,
-    },
-    async (root) => {
-      const installed = await activateFixture(root);
-      const candidate = await realpath(join(root, "candidate"));
-      const command = diagnosticCommand(installed, candidate);
-      const inventory = diagnosticInventory(installed, candidate);
-      const tree = (await snapshotTree(candidate)).identity;
-      await inspect({
-        root,
-        state: join(root, "state"),
-        candidate,
-        installed,
-        command,
-        inventory,
-        evidence: {
+  await withFiles(await fixtureFiles(options), async (root) => {
+    const installed = await activateFixture(root);
+    const candidate = await realpath(join(root, "candidate"));
+    const command = diagnosticCommand(installed, candidate);
+    const inventory = diagnosticInventory(
+      installed,
+      candidate,
+      Object.keys(options.files ?? {}),
+    );
+    const tree = (await snapshotTree(candidate)).identity;
+    await inspect({
+      root,
+      state: join(root, "state"),
+      candidate,
+      installed,
+      command,
+      inventory,
+      evidence: {
+        candidate: tree,
+        static: await staticFixture(installed, candidate, tree),
+        diagnostics: await executeVerification(
+          { requiredChecks: ["diagnostics"], commands: [command] },
+          inventory,
+        ),
+        scenarios: acceptancePlan.scenarios.map((id) => ({
+          id,
+          outcome: "passed",
+          verifier: installed.identity,
           candidate: tree,
-          static: await staticFixture(installed, candidate, tree),
-          diagnostics: await executeVerification(
-            { requiredChecks: ["diagnostics"], commands: [command] },
-            inventory,
-          ),
-          scenarios: acceptancePlan.scenarios.map((id) => ({
-            id,
-            outcome: "passed",
-            verifier: installed.identity,
-            candidate: tree,
-          })),
-          artifacts: await artifactFixture(root, candidate),
-        },
-      });
-    },
-  );
+        })),
+        artifacts: await artifactFixture(
+          root,
+          candidate,
+          options.contractSteps ?? Object.values(options.manifestSteps ?? {}),
+        ),
+      },
+    });
+  });
 }
 
 export async function packArchive(
@@ -172,9 +177,13 @@ function diagnosticCommand(
 function diagnosticInventory(
   installed: VerifierInstallation,
   candidate: string,
+  files: readonly string[],
 ): VerificationInputs {
   return {
-    source: [join(candidate, "src/index.ts")],
+    source: [
+      join(candidate, "src/index.ts"),
+      ...files.map((file) => join(candidate, file)),
+    ],
     tests: [join(candidate, "test/sample.test.ts")],
     dependencies: [join(candidate, "package.json")],
     tools: [
@@ -223,6 +232,7 @@ async function staticFixture(
 async function artifactFixture(
   root: string,
   candidate: string,
+  contractSteps: readonly string[],
 ): Promise<readonly AcceptanceArtifact[]> {
   const tarball = join(root, "artifacts/package.tgz");
   return [
@@ -247,7 +257,45 @@ async function artifactFixture(
       path: join(root, "artifacts/handlers"),
       digest: (await snapshotTree(join(root, "artifacts/handlers"))).identity,
       regenerated: join(root, "artifacts/regenerated"),
-      contract: { workflows: ["workflow-run"], steps: ["step-effect"] },
+      contract: {
+        workflows: ["workflow-run"],
+        steps: ["step-effect", ...contractSteps],
+      },
     },
   ];
+}
+
+async function fixtureFiles(
+  options: AcceptanceOptions,
+): Promise<Readonly<Record<string, string>>> {
+  return {
+    "proposal/tools/check-protected-quality.ts": "export {};",
+    "proposal/quality/test-reporter.ts": await readFile(
+      join(import.meta.dirname, "../../quality/test-reporter.ts"),
+      "utf8",
+    ),
+    "candidate/package.json":
+      options.packageJson ?? '{"name":"fixture","type":"module"}',
+    ...Object.fromEntries(
+      Object.entries(options.files ?? {}).map(([path, content]) => [
+        `candidate/${path}`,
+        content,
+      ]),
+    ),
+    "candidate/src/index.ts": options.source ?? "export const value = 1;",
+    "candidate/test/sample.test.ts": options.tests ?? passingTests,
+    "candidate/dist/index.js": "export const value = 1;",
+    ...Object.fromEntries(
+      handlerFiles.flatMap((name) => [
+        [`artifacts/handlers/${name}`, name],
+        [`artifacts/regenerated/${name}`, name],
+      ]),
+    ),
+    "artifacts/handlers/manifest.json": handlerManifest(
+      options.manifestSteps ?? {},
+    ),
+    "artifacts/regenerated/manifest.json": handlerManifest(
+      options.manifestSteps ?? {},
+    ),
+  };
 }

@@ -15,6 +15,10 @@
     "./workflows": {
       "types": "./dist/src/workflows.d.ts",
       "import": "./dist/src/workflows.js"
+    },
+    "./workflows/steps/load-cycle": {
+      "types": "./dist/src/steps/load-cycle.d.ts",
+      "import": "./dist/src/steps/load-cycle.js"
     }
   },
   "files": [

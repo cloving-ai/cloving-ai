@@ -45,3 +45,44 @@ await test("QG-09 fixed source checker applies installed policy despite candidat
     },
   );
 });
+
+await test("QG-19 fixed source checker binds candidate product files only under automatic roles", async () => {
+  const proposal = (role: string): string =>
+    JSON.stringify({
+      roles: { "src/admission.ts": role, "test/admission.test.ts": "test" },
+    });
+  await withFiles(
+    {
+      "src/workflows.ts": "export const value = 1;\n",
+      "src/admission.ts": await format(
+        "export function admitted(value: number): number { return value + 1; }",
+        { parser: "typescript" },
+      ),
+      "test/admission.test.ts": await format(
+        'import assert from "node:assert/strict"; import { test } from "node:test"; import { admitted } from "../src/admission.ts"; await test("QG-19 admitted adds one", () => { assert.equal(admitted(1), 2); });',
+        { parser: "typescript" },
+      ),
+      "quality/module-policy.json": proposal("pure"),
+      "tsconfig.json": await readFile("tsconfig.json", "utf8"),
+      "tsconfig.build.json": await readFile("tsconfig.build.json", "utf8"),
+      "package.json": '{"type":"module"}',
+    },
+    async (directory) => {
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [resolve("tools/check-protected-quality.ts"), directory],
+          { encoding: "utf8", timeout: 15000 },
+        );
+      const valid = run();
+      assert.equal(valid.status, 0, valid.stderr);
+      await writeFile(
+        join(directory, "quality/module-policy.json"),
+        proposal("quality"),
+      );
+      const reviewed = run();
+      assert.equal(reviewed.status, 1);
+      assert.match(reviewed.stderr, /mapping-requires-review/);
+    },
+  );
+});
