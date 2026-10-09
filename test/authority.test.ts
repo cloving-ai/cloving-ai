@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  emptyAuthority,
+  execute,
+  rebuild,
+  type AuthorityState,
+} from "../src/authority/reducer.ts";
+
+import { recorded } from "./authority-fixture.ts";
+const startIntent = {
+  kind: "start-run",
+  runId: "run-1",
+  operationId:
+    '["cloving-operation",0,"run-1","admission","start-run",null,null]',
+};
+
+await test("CLV-006 an admitted run command records the run and one unsent start intent", () => {
+  assert.deepEqual(
+    execute(
+      emptyAuthority,
+      {
+        kind: "admit-run",
+        commandId: "command-1",
+        runId: "run-1",
+        workflow: "pin-1",
+      },
+      recorded,
+    ),
+    {
+      kind: "accepted",
+      events: [
+        {
+          sequence: 1,
+          type: "run.created",
+          runId: "run-1",
+          commandId: "command-1",
+          recordedAt: "2026-10-09T00:00:00Z",
+          request:
+            '{"commandId":"command-1","kind":"admit-run","runId":"run-1","workflow":"pin-1"}',
+          payload: { workflow: "pin-1" },
+        },
+      ],
+      state: {
+        sequence: 1,
+        runs: {
+          "run-1": {
+            runId: "run-1",
+            status: "queued",
+            revision: 1,
+            workflow: "pin-1",
+            pausedFrom: null,
+            gates: [],
+          },
+        },
+        commands: {
+          "command-1": {
+            request:
+              '{"commandId":"command-1","kind":"admit-run","runId":"run-1","workflow":"pin-1"}',
+            sequence: 1,
+          },
+        },
+        intents: [startIntent],
+      },
+      intents: [startIntent],
+    },
+  );
+});
+
+function admitted(
+  state: AuthorityState,
+  commandId: string,
+  runId: string,
+): ReturnType<typeof execute> {
+  return execute(
+    state,
+    { kind: "admit-run", commandId, runId, workflow: "pin-1" },
+    recorded,
+  );
+}
+
+await test("CLV-006 replaying committed events into an empty projection yields identical state", () => {
+  const first = admitted(emptyAuthority, "command-1", "run-1");
+  assert.equal(first.kind, "accepted");
+  const second = admitted(first.state, "command-2", "run-2");
+  assert.equal(second.kind, "accepted");
+  const events = [...first.events, ...second.events];
+  const rebuilt = rebuild(events);
+  assert.deepEqual(rebuilt, second.state);
+  assert.equal(JSON.stringify(rebuilt), JSON.stringify(second.state));
+  assert.equal(JSON.stringify(rebuild(events)), JSON.stringify(rebuilt));
+});
+
+await test("CLV-006 a repeated command returns its receipt once and conflicting reuse is rejected", () => {
+  const first = admitted(emptyAuthority, "command-1", "run-1");
+  assert.equal(first.kind, "accepted");
+  assert.deepEqual(admitted(first.state, "command-1", "run-1"), {
+    kind: "duplicate",
+    sequence: 1,
+  });
+  assert.deepEqual(admitted(first.state, "command-1", "run-2"), {
+    kind: "rejected",
+    reason: "conflicting-command",
+  });
+  assert.deepEqual(admitted(first.state, "command-2", "run-1"), {
+    kind: "rejected",
+    reason: "existing-run",
+  });
+});

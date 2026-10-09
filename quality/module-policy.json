@@ -184,7 +184,20 @@
     "test/resource-files.test.ts": "test",
     "src/effect-authorization.ts": "pure",
     "test/effect-authorization.test.ts": "test",
-    "quality/product-steps.ts": "quality"
+    "quality/product-steps.ts": "quality",
+    "src/authority/reducer.ts": "pure",
+    "test/authority.test.ts": "test",
+    "src/authority/commands.ts": "pure",
+    "src/authority/transitions.ts": "pure",
+    "test/authority-fixture.ts": "test",
+    "test/authority-transitions.test.ts": "test",
+    "test/cli-fixture.ts": "test",
+    "test/cli.test.ts": "test",
+    "src/cli/validate.ts": "cli",
+    "src/cli/toolchain.ts": "cli",
+    "test/cli-invocation.test.ts": "test",
+    "src/cli/arguments.ts": "cli",
+    "src/authority/events.ts": "pure"
   },
   "allowed": {
     "quality": ["quality", "configuration", "stdlib", "tooling", "metadata"],
@@ -202,11 +215,11 @@
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata"],
     "configuration": ["tooling", "quality"],
-    "cli": ["stdlib", "metadata"],
+    "cli": ["cli", "stdlib", "metadata", "pure", "broker"],
     "pure": ["pure"],
     "workflow": ["workflow", "pure", "step"],
     "step": ["pure", "broker"],
-    "broker": ["storage", "harness", "stdlib"],
+    "broker": ["storage", "harness", "stdlib", "pure"],
     "storage": ["stdlib"],
     "harness": ["stdlib"]
   },
@@ -219,7 +232,8 @@
       "stdlib",
       "tooling",
       "sdk-build"
-    ]
+    ],
+    "cli": ["storage", "harness", "step", "workflow"]
   },
   "automaticPaths": {
     "pure": "src/",

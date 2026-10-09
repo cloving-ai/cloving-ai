@@ -233,6 +233,7 @@ await test("CLV-005 admission rejects layout-dependent and unversioned step iden
   for (const unversioned of [
     "step//./node_modules/cloving/dist/src/steps/load-cycle//loadCycle",
     "step//cloving/workflows/steps/load-cycle//loadCycle",
+    "step//../x@1//f",
   ]) {
     const valid = packedConsumer({ loadCycle: { stepId: unversioned } });
     assert.deepEqual(

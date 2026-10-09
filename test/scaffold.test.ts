@@ -34,7 +34,7 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
     [resolve("src/cli.ts"), "--unknown"],
     { encoding: "utf8", timeout: 5000 },
   );
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /ERR_PARSE_ARGS_UNKNOWN_OPTION/);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /unknown-option/);
   assert.deepEqual(Object.keys(workflows), ["loadCycle"]);
 });

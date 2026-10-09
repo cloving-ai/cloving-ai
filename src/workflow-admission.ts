@@ -1,6 +1,6 @@
 import { resolveResources } from "./workflow-resources.ts";
 
-const versionedStep = /^step\/\/(?!\.\/)(?:@[^/@]+\/)?[^@]+@[^/@]+\/\/.+$/;
+const versionedStep = /^step\/\/(?!\.)(?:@[^/@]+\/)?[^@]+@[^/@]+\/\/.+$/;
 
 export interface ToolchainIdentity {
   readonly sdk: string;

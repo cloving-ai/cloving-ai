@@ -91,3 +91,23 @@ await test("QG-19 new step modules bind automatically only under src/steps", () 
     /mapping-requires-review/,
   );
 });
+
+await test("QG-19 the command line and broker may call pure modules and the command line may use broker discovery", () => {
+  const policy = admittedModulePolicy(directory, files, {
+    "src/admission.ts": "pure",
+    "test/admission.test.ts": "test",
+  });
+  assert.deepEqual(
+    [policy.allowed["cli"], policy.allowed["broker"]].map((roles) =>
+      ["cli", "pure", "broker"].filter((role) => roles?.includes(role)),
+    ),
+    [["cli", "pure", "broker"], ["pure"]],
+  );
+  assert.ok(!policy.forbiddenReachability["pure"]?.includes("pure"));
+  assert.deepEqual(
+    ["storage", "harness", "step", "workflow"].filter((role) =>
+      policy.forbiddenReachability["cli"]?.includes(role),
+    ),
+    ["storage", "harness", "step", "workflow"],
+  );
+});
