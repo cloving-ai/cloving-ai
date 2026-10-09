@@ -17,7 +17,7 @@ export interface RunState {
 }
 
 export interface EffectIntent {
-  readonly kind: "start-run";
+  readonly kind: "start-run" | "continue-run";
   readonly runId: string;
   readonly operationId: string;
 }
@@ -40,7 +40,8 @@ export type EventType =
   | "run.resumed"
   | "run.completed"
   | "run.failed"
-  | "run.cancelled";
+  | "run.cancelled"
+  | "step.dispatched";
 
 export interface AuthorityEvent {
   readonly sequence: number;
@@ -60,9 +61,11 @@ export type AuthorityCommand = {
   readonly workflow?: string;
   readonly gateId?: string;
   readonly decision?: string;
+  readonly operationId?: string;
+  readonly receipt?: string;
 };
 
-type Move = Exclude<EventType, "run.created">;
+type Move = Exclude<EventType, "run.created" | "step.dispatched">;
 type Change = Pick<RunState, "status"> & Partial<RunState>;
 
 const terminal: readonly RunStatus[] = ["completed", "failed", "cancelled"];

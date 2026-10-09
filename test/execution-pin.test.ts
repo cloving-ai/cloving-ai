@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pinnedIdentity, resumePinned } from "../src/execution-pin.ts";
+import {
+  pinnedIdentity,
+  readExecutionManifest,
+  resumePinned,
+} from "../src/execution-pin.ts";
 
 const pinned = {
   name: "probe",
@@ -80,4 +84,36 @@ await test("CLV-005 pinned identities order artifact names by code unit on every
     artifacts: { "a.mjs": "a".repeat(64), "B.mjs": "b".repeat(64) },
   });
   assert.ok(identity.indexOf("B.mjs") < identity.indexOf("a.mjs"));
+});
+
+await test("CLV-007 a stored manifest reads back to the same pinned identity and malformed fields read as empty", () => {
+  const stored: unknown = JSON.parse(JSON.stringify(pinned));
+  assert.deepEqual(readExecutionManifest(stored), pinned);
+  const empty = {
+    name: "",
+    workflowId: "",
+    steps: [],
+    capabilities: [],
+    artifacts: {},
+    resources: {},
+    toolchain: { sdk: "", world: "", builder: "", node: "", dependencies: "" },
+  };
+  for (const value of [null, [], "manifest", { toolchain: [] }])
+    assert.deepEqual(readExecutionManifest(value), empty);
+  assert.deepEqual(
+    readExecutionManifest({
+      ...pinned,
+      name: 5,
+      steps: "step",
+      capabilities: [1],
+      artifacts: { "flow.mjs": 2 },
+    }),
+    {
+      ...pinned,
+      name: "",
+      steps: [],
+      capabilities: [""],
+      artifacts: { "flow.mjs": "" },
+    },
+  );
 });

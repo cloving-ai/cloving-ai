@@ -11,6 +11,7 @@ const types: readonly EventType[] = [
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "step.dispatched",
 ];
 
 export function parseEvent(value: unknown): AuthorityEvent | null {

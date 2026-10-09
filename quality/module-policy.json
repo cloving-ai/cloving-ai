@@ -197,7 +197,30 @@
     "src/cli/toolchain.ts": "cli",
     "test/cli-invocation.test.ts": "test",
     "src/cli/arguments.ts": "cli",
-    "src/authority/events.ts": "pure"
+    "src/authority/events.ts": "pure",
+    "test/authority-replay.test.ts": "test",
+    "node:sqlite": "stdlib",
+    "src/storage/authority-database.ts": "storage",
+    "src/broker/authority-store.ts": "broker",
+    "test/authority-store.test.ts": "test",
+    "test/authority-store-fixture.ts": "test",
+    "test/authority-crash-child.ts": "test",
+    "test/authority-store-failures.test.ts": "test",
+    "test/authority-schema.test.ts": "test",
+    "test/authority-recovery.test.ts": "test",
+    "src/broker/authority-restore.ts": "broker",
+    "src/broker/workflow-pin.ts": "broker",
+    "test/authority-pin.test.ts": "test",
+    "src/storage/authority-rows.ts": "storage",
+    "test/authority-rows.test.ts": "test",
+    "src/authority/reconciliation.ts": "pure",
+    "test/reconciliation.test.ts": "test",
+    "src/broker/authority-admission.ts": "broker",
+    "src/broker/operation-digest.ts": "broker",
+    "test/operation-digest.test.ts": "test",
+    "src/storage/authority-schema.ts": "storage",
+    "src/authority/history.ts": "pure",
+    "test/authority-open-child.ts": "test"
   },
   "allowed": {
     "quality": ["quality", "configuration", "stdlib", "tooling", "metadata"],
@@ -211,7 +234,8 @@
       "workflow",
       "pure",
       "step",
-      "broker"
+      "broker",
+      "storage"
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata"],
     "configuration": ["tooling", "quality"],
@@ -219,8 +243,8 @@
     "pure": ["pure"],
     "workflow": ["workflow", "pure", "step"],
     "step": ["pure", "broker"],
-    "broker": ["storage", "harness", "stdlib", "pure"],
-    "storage": ["stdlib"],
+    "broker": ["broker", "storage", "harness", "stdlib", "pure"],
+    "storage": ["storage", "stdlib"],
     "harness": ["stdlib"]
   },
   "forbiddenReachability": {

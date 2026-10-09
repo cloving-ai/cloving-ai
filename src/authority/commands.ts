@@ -12,12 +12,14 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "complete-run": "run.completed",
   "fail-run": "run.failed",
   "cancel-run": "run.cancelled",
+  "record-dispatch": "step.dispatched",
 };
 
 const required: Readonly<Record<string, readonly string[]>> = {
   "admit-run": ["workflow"],
   "open-gate": ["gateId", "expectedRevision"],
   "decide-gate": ["gateId", "decision", "expectedRevision"],
+  "record-dispatch": ["operationId", "receipt"],
 };
 
 export function parseCommand(value: unknown): AuthorityCommand | null {
@@ -49,21 +51,27 @@ function completeFields(
 function optionalFields(
   fields: Readonly<Record<string, unknown>>,
 ): Omit<AuthorityCommand, "kind" | "commandId" | "runId"> {
-  const { expectedRevision, workflow, gateId, decision } = fields;
+  const { expectedRevision, workflow, gateId, decision, operationId, receipt } =
+    fields;
   return {
     ...(typeof expectedRevision === "number" ? { expectedRevision } : {}),
     ...(typeof workflow === "string" ? { workflow } : {}),
     ...(typeof gateId === "string" ? { gateId } : {}),
     ...(typeof decision === "string" ? { decision } : {}),
+    ...(typeof operationId === "string" ? { operationId } : {}),
+    ...(typeof receipt === "string" ? { receipt } : {}),
   };
 }
 
+const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
+  expectedRevision: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value > 0,
+  operationId: (value) =>
+    typeof value === "string" && value.length > 0 && value.length <= 512,
+};
+
 function validField(key: string, value: unknown): boolean {
-  if (key === "expectedRevision")
-    return (
-      typeof value === "number" && Number.isSafeInteger(value) && value > 0
-    );
-  return isIdentifier(value);
+  return (validators[key] ?? isIdentifier)(value);
 }
 
 function isIdentifier(value: unknown): value is string {

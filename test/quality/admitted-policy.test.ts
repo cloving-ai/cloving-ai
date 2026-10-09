@@ -101,7 +101,10 @@ await test("QG-19 the command line and broker may call pure modules and the comm
     [policy.allowed["cli"], policy.allowed["broker"]].map((roles) =>
       ["cli", "pure", "broker"].filter((role) => roles?.includes(role)),
     ),
-    [["cli", "pure", "broker"], ["pure"]],
+    [
+      ["cli", "pure", "broker"],
+      ["pure", "broker"],
+    ],
   );
   assert.ok(!policy.forbiddenReachability["pure"]?.includes("pure"));
   assert.deepEqual(
@@ -110,4 +113,22 @@ await test("QG-19 the command line and broker may call pure modules and the comm
     ),
     ["storage", "harness", "step", "workflow"],
   );
+});
+
+await test("CLV-007 brokers compose brokers, storage composes storage, tests reach storage and the SQLite driver is a standard module", () => {
+  const policy = admittedModulePolicy(directory, files, {
+    "src/admission.ts": "pure",
+    "test/admission.test.ts": "test",
+  });
+  assert.deepEqual(policy.allowed["broker"], [
+    "broker",
+    "storage",
+    "harness",
+    "stdlib",
+    "pure",
+  ]);
+  assert.deepEqual(policy.allowed["storage"], ["storage", "stdlib"]);
+  assert.ok(policy.allowed["test"]?.includes("storage"));
+  assert.equal(policy.roles["node:sqlite"], "stdlib");
+  assert.ok(policy.forbiddenReachability["cli"]?.includes("storage"));
 });

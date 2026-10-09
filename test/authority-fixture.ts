@@ -35,3 +35,43 @@ export const admit = {
   runId: "run-1",
   workflow: "pin-1",
 };
+
+export const answeredGate = [
+  admit,
+  {
+    kind: "mark-started",
+    commandId: "c-2",
+    runId: "run-1",
+    expectedRevision: 1,
+  },
+  {
+    kind: "open-gate",
+    commandId: "c-3",
+    runId: "run-1",
+    gateId: "gate-1",
+    expectedRevision: 2,
+  },
+  {
+    kind: "decide-gate",
+    commandId: "c-4",
+    runId: "run-1",
+    gateId: "gate-1",
+    decision: "approved",
+    expectedRevision: 3,
+  },
+];
+
+export const continuation = {
+  kind: "continue-run",
+  runId: "run-1",
+  operationId:
+    '["cloving-operation",4,"run-1","gate","continue-run",null,"gate-1"]',
+};
+
+export const dispatch = {
+  kind: "record-dispatch",
+  commandId: "c-5",
+  runId: "run-1",
+  operationId: continuation.operationId,
+  receipt: "wrun-1",
+};

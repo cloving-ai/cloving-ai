@@ -59,3 +59,42 @@ export function resumePinned(
     };
   return { kind: "admitted", manifest: pinned };
 }
+
+export function readExecutionManifest(value: unknown): ExecutionManifest {
+  const fields = record(value);
+  const toolchain = record(fields["toolchain"]);
+  return {
+    name: text(fields["name"]),
+    workflowId: text(fields["workflowId"]),
+    steps: texts(fields["steps"]),
+    capabilities: texts(fields["capabilities"]),
+    artifacts: textRecord(fields["artifacts"]),
+    resources: textRecord(fields["resources"]),
+    toolchain: {
+      sdk: text(toolchain["sdk"]),
+      world: text(toolchain["world"]),
+      builder: text(toolchain["builder"]),
+      node: text(toolchain["node"]),
+      dependencies: text(toolchain["dependencies"]),
+    },
+  };
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value));
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function texts(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.map(text) : [];
+}
+
+function textRecord(value: unknown): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(record(value)).map(([key, item]) => [key, text(item)]),
+  );
+}
