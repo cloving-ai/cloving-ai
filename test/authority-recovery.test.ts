@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { openAuthorityStore } from "../src/broker/authority-store.ts";
+import { openAuthority } from "../src/broker/actor/authority.ts";
 import { rebuild } from "../src/authority/reducer.ts";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
 import { continuation, dispatch, recorded } from "./authority-fixture.ts";
+import {
+  deliverUntil,
+  externalService,
+  openedAuthority,
+} from "./authority-actor-fixture.ts";
 import {
   alterDatabase,
   executeStored,
@@ -17,25 +22,31 @@ import {
 
 async function answered(): Promise<string> {
   const directory = await temporaryDirectory();
-  const { store } = opened(directory);
+  const { store } = await opened(directory);
   for (const command of storedGate)
-    assert.equal(executeStored(store, command).kind, "accepted");
-  store.close();
+    assert.equal((await executeStored(store, command)).kind, "accepted");
+  await store.close();
   return directory;
 }
 
 await test("CLV-007 reopening matches the projection rebuilt from committed events and keeps released intents released", async () => {
   const directory = await temporaryDirectory();
-  const first = opened(directory).store;
+  const first = (await opened(directory)).store;
   for (const command of storedGate)
-    assert.equal(executeStored(first, command).kind, "accepted");
-  const committed = { state: first.state(), events: first.events() };
-  first.close();
+    assert.equal((await executeStored(first, command)).kind, "accepted");
+  const committed = {
+    state: await first.state(),
+    events: await first.events(),
+  };
+  await first.close();
   assert.deepEqual(rebuild(committed.events), committed.state);
-  const { store } = opened(directory);
-  assert.deepEqual({ state: store.state(), events: store.events() }, committed);
-  assert.deepEqual(store.eligibleIntents(), [continuation]);
-  store.close();
+  const { store } = await opened(directory);
+  assert.deepEqual(
+    { state: await store.state(), events: await store.events() },
+    committed,
+  );
+  assert.deepEqual(await store.eligibleIntents(), [continuation]);
+  await store.close();
   assert.deepEqual(
     queryDatabase(
       directory,
@@ -112,7 +123,7 @@ for (const change of tampered)
   await test(`CLV-007 a projection with ${change.name} is refused instead of resending or losing work`, async () => {
     const directory = await answered();
     alterDatabase(directory, `PRAGMA foreign_keys = OFF; ${change.sql}`);
-    assert.deepEqual(openAuthorityStore(directory), {
+    assert.deepEqual(await openAuthority(directory), {
       kind: "refused",
       reason: "projection-mismatch",
       detail: change.detail,
@@ -141,7 +152,7 @@ for (const history of histories)
   await test(`CLV-007 a committed history with ${history.name} is refused`, async () => {
     const directory = await answered();
     alterDatabase(directory, history.sql);
-    assert.deepEqual(openAuthorityStore(directory), {
+    assert.deepEqual(await openAuthority(directory), {
       kind: "refused",
       reason: "invalid-history",
       detail: history.detail,
@@ -150,7 +161,7 @@ for (const history of histories)
 
 await test("CLV-007 a paused run reopens paused with the state that it paused from", async () => {
   const directory = await temporaryDirectory();
-  const first = opened(directory).store;
+  const first = (await opened(directory)).store;
   for (const command of [
     ...storedGate.slice(0, 2),
     {
@@ -160,36 +171,40 @@ await test("CLV-007 a paused run reopens paused with the state that it paused fr
       expectedRevision: 2,
     },
   ])
-    assert.equal(executeStored(first, command).kind, "accepted");
-  const committed = first.state();
-  first.close();
-  const { store } = opened(directory);
-  assert.equal(store.state().runs["run-1"]?.status, "paused");
-  assert.equal(store.state().runs["run-1"]?.pausedFrom, "running");
-  assert.deepEqual(store.state(), committed);
-  store.close();
+    assert.equal((await executeStored(first, command)).kind, "accepted");
+  const committed = await first.state();
+  await first.close();
+  const { store } = await opened(directory);
+  assert.equal((await store.state()).runs["run-1"]?.status, "paused");
+  assert.equal((await store.state()).runs["run-1"]?.pausedFrom, "running");
+  assert.deepEqual(await store.state(), committed);
+  await store.close();
 });
 
 await test("CLV-007 a committed dispatch receipt survives reopening and its continuation is never eligible again", async () => {
   const directory = await answered();
-  const first = opened(directory).store;
-  assert.deepEqual(first.execute(dispatch, recorded), {
-    kind: "accepted",
-    sequence: 5,
-    intents: [],
-  });
-  first.close();
-  const { store } = opened(directory);
-  assert.deepEqual(store.eligibleIntents(), []);
-  assert.deepEqual(store.events().at(-1)?.payload, {
+  const service = externalService();
+  const first = await openedAuthority(directory, service.options);
+  await deliverUntil(
+    first,
+    async () => (await first.eligibleIntents()).length === 0,
+  );
+  assert.deepEqual(
+    service.sent.map((intent) => intent.operationId),
+    [continuation.operationId],
+  );
+  await first.close();
+  const { store } = await opened(directory);
+  assert.deepEqual(await store.eligibleIntents(), []);
+  assert.deepEqual((await store.events()).at(-1)?.payload, {
     operationId: continuation.operationId,
-    receipt: "wrun-1",
+    receipt: "receipt-1",
   });
-  assert.deepEqual(store.execute(dispatch, recorded), {
-    kind: "duplicate",
-    sequence: 5,
+  assert.deepEqual(await store.execute(dispatch, recorded), {
+    kind: "rejected",
+    reason: "delivery-owned-command",
   });
-  store.close();
+  await store.close();
   assert.deepEqual(
     queryDatabase(
       directory,
@@ -201,7 +216,7 @@ await test("CLV-007 a committed dispatch receipt survives reopening and its cont
 
 await test("CLV-007 a reopened gate's second decision commits and both continuations survive reopening", async () => {
   const directory = await answered();
-  const first = opened(directory).store;
+  const first = (await opened(directory)).store;
   for (const command of [
     {
       kind: "open-gate",
@@ -219,17 +234,17 @@ await test("CLV-007 a reopened gate's second decision commits and both continuat
       expectedRevision: 5,
     },
   ])
-    assert.equal(executeStored(first, command).kind, "accepted");
-  first.close();
-  const { store } = opened(directory);
+    assert.equal((await executeStored(first, command)).kind, "accepted");
+  await first.close();
+  const { store } = await opened(directory);
   assert.deepEqual(
-    store.eligibleIntents().map((intent) => intent.operationId),
+    (await store.eligibleIntents()).map((intent) => intent.operationId),
     [
       continuation.operationId,
       '["cloving-operation",6,"run-1","gate","continue-run",null,"gate-1"]',
     ],
   );
-  store.close();
+  await store.close();
 });
 
 after(removeTemporaryDirectories);

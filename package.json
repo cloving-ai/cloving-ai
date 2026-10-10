@@ -66,5 +66,8 @@
       "devalue": "5.9.4",
       "nanoid": "5.1.16"
     }
+  },
+  "dependencies": {
+    "solid-objects": "0.17.4"
   }
 }

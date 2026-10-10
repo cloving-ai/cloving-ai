@@ -6,12 +6,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
-  openAuthorityStore,
-  type AuthorityStore,
+  authorityTiming,
+  openAuthority,
+  type Authority,
+  type AuthorityTiming,
   type StoreReceipt,
-} from "../src/broker/authority-store.ts";
+} from "../src/broker/actor/authority.ts";
 import { pinnedIdentity } from "../src/execution-pin.ts";
 import { answeredGate, recorded } from "./authority-fixture.ts";
+
+export const quickCleanupTiming: AuthorityTiming = {
+  ...authorityTiming,
+  heartbeatMilliseconds: 100,
+  aliveThresholdMilliseconds: 300,
+  cleanupIntervalMilliseconds: 100,
+};
+
+export const fastTiming: AuthorityTiming = {
+  ...quickCleanupTiming,
+  leaseMilliseconds: 200,
+  renewalMilliseconds: 50,
+  callTimeoutMilliseconds: 2_000,
+};
 
 export const manifest = {
   name: "develop",
@@ -37,9 +53,9 @@ export const storedGate: readonly Readonly<Record<string, unknown>>[] =
   );
 
 export function executeStored(
-  store: AuthorityStore,
+  store: Authority,
   command: Readonly<Record<string, unknown>>,
-): StoreReceipt {
+): Promise<StoreReceipt> {
   const pinned = ["admit-run", "decide-gate", "resume-run"].includes(
     String(command["kind"]),
   );
@@ -78,12 +94,14 @@ export function queryDatabase(
   return rows.map((row) => ({ ...row }));
 }
 
-export function opened(
+export async function opened(
   directory: string,
-): Extract<ReturnType<typeof openAuthorityStore>, { kind: "opened" }> {
-  const opening = openAuthorityStore(directory);
+): Promise<{ readonly store: Authority }> {
+  const opening = await openAuthority(directory, {
+    timing: quickCleanupTiming,
+  });
   assert.equal(opening.kind, "opened", JSON.stringify(opening));
-  return opening;
+  return { store: opening.authority };
 }
 
 export interface ChildProcess {
@@ -91,6 +109,10 @@ export interface ChildProcess {
   readonly waitFor: (line: string) => Promise<void>;
   readonly waitForLines: (count: number) => Promise<readonly string[]>;
   readonly send: (text: string) => void;
+  readonly exited: Promise<{
+    readonly code: number | null;
+    readonly signal: string | null;
+  }>;
   readonly kill: () => Promise<{
     readonly code: number | null;
     readonly signal: string | null;
@@ -192,6 +214,7 @@ function startChild(
     send: (text) => {
       child.stdin.write(text);
     },
+    exited,
     kill: () => {
       child.kill("SIGKILL");
       return exited;

@@ -34,35 +34,16 @@ const running = lastState(
   ]),
 );
 
-await test("CLV-007 an eligible start without a world run is sent and nothing is recorded", () => {
-  assert.deepEqual(reconcile(admitted, [], digest), {
-    send: [{ kind: "start-run", runId: "run-1", operationId: startOperation }],
-    commands: [],
-    conflicts: [],
-  });
+await test("CLV-042 an eligible start without a world run produces nothing, because native delivery owns the send", () => {
+  assert.deepEqual(reconcile(admitted, []), { commands: [], conflicts: [] });
 });
 
-await test("CLV-007 a world run found for an unrecorded start records its receipt instead of sending again", () => {
-  assert.deepEqual(
-    reconcile(
-      admitted,
-      [{ runId: "run-1", receipt: "wrun-1", status: "pending" }],
-      digest,
-    ),
-    {
-      send: [],
-      commands: [
-        {
-          kind: "record-dispatch",
-          commandId: dispatchCommand,
-          runId: "run-1",
-          operationId: startOperation,
-          receipt: "wrun-1",
-        },
-      ],
-      conflicts: [],
-    },
-  );
+await test("CLV-042 a world run found for an unrecorded start produces no command until its delivery records the dispatch", () => {
+  for (const status of ["pending", "running", "completed", "failed"])
+    assert.deepEqual(
+      reconcile(admitted, [{ runId: "run-1", receipt: "wrun-1", status }]),
+      { commands: [], conflicts: [] },
+    );
 });
 
 await test("CLV-007 world progress after a recorded dispatch becomes the next run transition", () => {
@@ -120,22 +101,18 @@ await test("CLV-007 world progress after a recorded dispatch becomes the next ru
   ] as const;
   for (const [state, status, commands] of steps)
     assert.deepEqual(
-      reconcile(state, [{ runId: "run-1", receipt: "wrun-1", status }], digest),
-      { send: [], commands, conflicts: [] },
+      reconcile(state, [{ runId: "run-1", receipt: "wrun-1", status }]),
+      { commands, conflicts: [] },
     );
 });
 
 await test("CLV-007 two world runs for one Cloving run are reported and never reconciled", () => {
   assert.deepEqual(
-    reconcile(
-      admitted,
-      [
-        { runId: "run-1", receipt: "wrun-1", status: "pending" },
-        { runId: "run-1", receipt: "wrun-2", status: "running" },
-        { runId: "run-9", receipt: "wrun-9", status: "running" },
-      ],
-      digest,
-    ),
-    { send: [], commands: [], conflicts: ["run-1"] },
+    reconcile(admitted, [
+      { runId: "run-1", receipt: "wrun-1", status: "pending" },
+      { runId: "run-1", receipt: "wrun-2", status: "running" },
+      { runId: "run-9", receipt: "wrun-9", status: "running" },
+    ]),
+    { commands: [], conflicts: ["run-1"] },
   );
 });

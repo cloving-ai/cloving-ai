@@ -9,7 +9,11 @@ import type {
   RunStatus,
 } from "../authority/reducer.ts";
 import { readExecutionManifest } from "../execution-pin.ts";
-import type { AuthoritySnapshot } from "../storage/authority-database.ts";
+import type {
+  AuthoritySnapshot,
+  EventRow,
+  ProjectionSnapshot,
+} from "../storage/domain-rows.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
 import { workflowPin } from "./workflow-pin.ts";
 
@@ -40,14 +44,17 @@ export function restore(snapshot: AuthoritySnapshot): Restoration {
   let events: readonly AuthorityEvent[];
   let history: History;
   try {
-    events = snapshot.events.map(storedEvent);
+    events = storedEvents(snapshot.events);
     history = rebuildHistory(events);
   } catch (error) {
     return { kind: "refused", reason: "invalid-history", detail: text(error) };
   }
   let stored: AuthorityState;
   try {
-    stored = projection(snapshot);
+    stored = projectedState({
+      ...snapshot,
+      sequence: snapshot.events.at(-1)?.sequence ?? 0,
+    });
   } catch (error) {
     return {
       kind: "refused",
@@ -83,8 +90,8 @@ export function restore(snapshot: AuthoritySnapshot): Restoration {
   return { kind: "restored", state, events, definitions };
 }
 
-function storedDefinitions(
-  snapshot: AuthoritySnapshot,
+export function storedDefinitions(
+  snapshot: Pick<ProjectionSnapshot, "definitions">,
 ): ReadonlyMap<string, ExecutionManifest> {
   return new Map(
     snapshot.definitions.map((row) => [
@@ -112,9 +119,14 @@ function text(error: unknown): string {
   return String(Reflect.get(Object(error), "message"));
 }
 
-function projection(snapshot: AuthoritySnapshot): AuthorityState {
+export function projectedState(
+  snapshot: Pick<
+    ProjectionSnapshot,
+    "runs" | "commands" | "outbox" | "sequence"
+  >,
+): AuthorityState {
   return {
-    sequence: snapshot.events.at(-1)?.sequence ?? 0,
+    sequence: snapshot.sequence,
     runs: Object.fromEntries(
       snapshot.runs.map((row) => [row.runId, storedRun(row)]),
     ),
@@ -139,13 +151,13 @@ const intentKinds: readonly EffectIntent["kind"][] = [
   "continue-run",
 ];
 
-function intentKind(value: string): EffectIntent["kind"] {
+export function intentKind(value: string): EffectIntent["kind"] {
   const kind = intentKinds.find((candidate) => candidate === value);
   if (!kind) throw new Error("invalid-outbox-row");
   return kind;
 }
 
-function storedRun(row: AuthoritySnapshot["runs"][number]): RunState {
+export function storedRun(row: AuthoritySnapshot["runs"][number]): RunState {
   const status = statuses.find((candidate) => candidate === row.status);
   const pausedFrom = statuses.find((candidate) => candidate === row.pausedFrom);
   const gates: unknown = JSON.parse(row.gates);
@@ -162,7 +174,13 @@ function storedRun(row: AuthoritySnapshot["runs"][number]): RunState {
   };
 }
 
-function storedEvent(row: AuthoritySnapshot["events"][number]): AuthorityEvent {
+export function storedEvents(
+  rows: readonly EventRow[],
+): readonly AuthorityEvent[] {
+  return rows.map(storedEvent);
+}
+
+function storedEvent(row: EventRow): AuthorityEvent {
   const event = parseEvent({ ...row, payload: parsed(row.payload) });
   if (!event) throw new Error(`invalid-event-row: ${String(row.sequence)}`);
   return event;

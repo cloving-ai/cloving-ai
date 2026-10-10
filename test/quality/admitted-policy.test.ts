@@ -115,7 +115,7 @@ await test("QG-19 the command line and broker may call pure modules and the comm
   );
 });
 
-await test("CLV-007 brokers compose brokers, storage composes storage, tests reach storage and the SQLite driver is a standard module", () => {
+await test("CLV-007 brokers compose brokers, storage composes storage, tests reach storage and the SQLite driver is a storage module", () => {
   const policy = admittedModulePolicy(directory, files, {
     "src/admission.ts": "pure",
     "test/admission.test.ts": "test",
@@ -126,9 +126,40 @@ await test("CLV-007 brokers compose brokers, storage composes storage, tests rea
     "harness",
     "stdlib",
     "pure",
+    "actor-runtime",
   ]);
   assert.deepEqual(policy.allowed["storage"], ["storage", "stdlib"]);
   assert.ok(policy.allowed["test"]?.includes("storage"));
-  assert.equal(policy.roles["node:sqlite"], "stdlib");
+  assert.equal(policy.roles["node:sqlite"], "storage");
   assert.ok(policy.forbiddenReachability["cli"]?.includes("storage"));
+});
+
+await test("CLV-042 only brokers and tests reach the actor runtime, and pure, command line, workflow and step code cannot reach it", () => {
+  const policy = admittedModulePolicy(directory, files, {
+    "src/admission.ts": "pure",
+    "test/admission.test.ts": "test",
+  });
+  assert.deepEqual(
+    [
+      policy.roles["/candidate/node_modules/solid-objects/dist/index.d.ts"],
+      policy.roles[
+        "/candidate/node_modules/solid-objects/dist/database/sqlite.d.ts"
+      ],
+    ],
+    ["actor-runtime", "actor-runtime"],
+  );
+  assert.deepEqual(
+    Object.entries(policy.allowed)
+      .filter(([, targets]) => targets.includes("actor-runtime"))
+      .map(([role]) => role)
+      .sort(),
+    ["broker", "test"],
+  );
+  assert.deepEqual(policy.allowed["actor-runtime"], []);
+  assert.deepEqual(
+    ["pure", "cli", "workflow", "step"].filter((role) =>
+      policy.forbiddenReachability[role]?.includes("actor-runtime"),
+    ),
+    ["pure", "cli", "workflow", "step"],
+  );
 });

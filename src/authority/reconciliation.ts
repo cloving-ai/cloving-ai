@@ -1,10 +1,4 @@
-import { eligibleIntents } from "./reducer.ts";
-import type {
-  AuthorityState,
-  EffectIntent,
-  RunState,
-  RunStatus,
-} from "./transitions.ts";
+import type { AuthorityState, RunState, RunStatus } from "./transitions.ts";
 
 export interface WorldRun {
   readonly runId: string;
@@ -13,7 +7,6 @@ export interface WorldRun {
 }
 
 export interface Reconciliation {
-  readonly send: readonly EffectIntent[];
   readonly commands: readonly Readonly<Record<string, unknown>>[];
   readonly conflicts: readonly string[];
 }
@@ -32,20 +25,16 @@ const progress: Readonly<
 export function reconcile(
   state: AuthorityState,
   worldRuns: readonly WorldRun[],
-  digest: (operationId: string) => string,
 ): Reconciliation {
   const observed = Map.groupBy(worldRuns, (world) => world.runId);
   const conflicts = [...observed]
     .filter(([, runs]) => runs.length > 1)
     .map(([runId]) => runId);
   return {
-    send: eligibleIntents(state).filter(
-      (intent) => intent.kind === "start-run" && !observed.has(intent.runId),
-    ),
     commands: Object.values(state.runs).flatMap((run) => {
       const [world, ...others] = observed.get(run.runId) ?? [];
       if (!world || others.length > 0) return [];
-      return next(state, run, world, digest);
+      return next(state, { run, world });
     }),
     conflicts,
   };
@@ -53,25 +42,14 @@ export function reconcile(
 
 function next(
   state: AuthorityState,
-  run: RunState,
-  world: WorldRun,
-  digest: (operationId: string) => string,
+  observed: { readonly run: RunState; readonly world: WorldRun },
 ): readonly Readonly<Record<string, unknown>>[] {
-  const start = state.intents.find(
+  const { run, world } = observed;
+  const starting = state.intents.some(
     (intent) => intent.runId === run.runId && intent.kind === "start-run",
   );
-  if (start)
-    return [
-      {
-        kind: "record-dispatch",
-        commandId: `dispatch:${digest(start.operationId)}`,
-        runId: run.runId,
-        operationId: start.operationId,
-        receipt: world.receipt,
-      },
-    ];
   const kind = progress[run.status]?.[world.status];
-  if (kind === undefined) return [];
+  if (starting || kind === undefined) return [];
   return [
     {
       kind,

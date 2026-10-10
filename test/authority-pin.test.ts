@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { openAuthorityStore } from "../src/broker/authority-store.ts";
+import { openAuthority } from "../src/broker/actor/authority.ts";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
-import { recorded } from "./authority-fixture.ts";
+import { continuation, recorded } from "./authority-fixture.ts";
 import {
   alterDatabase,
   executeStored,
@@ -20,12 +20,12 @@ const started = storedGate[1];
 
 await test("CLV-007 an admitted run commits its pinned manifest and resumes only through that pin", async () => {
   const directory = await temporaryDirectory();
-  const first = opened(directory).store;
+  const first = (await opened(directory)).store;
   assert.equal(
-    first.execute(admission, { ...recorded, manifest }).kind,
+    (await first.execute(admission, { ...recorded, manifest })).kind,
     "accepted",
   );
-  first.close();
+  await first.close();
   assert.deepEqual(queryDatabase(directory, "SELECT pin FROM definitions"), [
     { pin },
   ]);
@@ -33,17 +33,17 @@ await test("CLV-007 an admitted run commits its pinned manifest and resumes only
     { workflow: pin },
   ]);
 
-  const { store } = opened(directory);
+  const { store } = await opened(directory);
   const regenerated = {
     ...manifest,
     artifacts: { "steps.mjs": "b".repeat(64), "flow.mjs": "a".repeat(64) },
   };
-  assert.deepEqual(store.resumePinned("run-1", regenerated), {
+  assert.deepEqual(await store.resumePinned("run-1", regenerated), {
     kind: "admitted",
     manifest,
   });
   assert.deepEqual(
-    store.resumePinned("run-1", {
+    await store.resumePinned("run-1", {
       ...manifest,
       artifacts: { ...manifest.artifacts, "steps.mjs": "d".repeat(64) },
     }),
@@ -53,17 +53,17 @@ await test("CLV-007 an admitted run commits its pinned manifest and resumes only
       detail: "artifacts",
     },
   );
-  assert.deepEqual(store.resumePinned("run-9", manifest), {
+  assert.deepEqual(await store.resumePinned("run-9", manifest), {
     kind: "rejected",
     reason: "unknown-run",
     detail: "run-9",
   });
-  store.close();
+  await store.close();
 });
 
 await test("CLV-007 admission without its matching manifest is rejected without a run", async () => {
   const directory = await temporaryDirectory();
-  const { store } = opened(directory);
+  const { store } = await opened(directory);
   for (const [command, context, reason] of [
     [admission, recorded, "missing-manifest"],
     [
@@ -73,12 +73,12 @@ await test("CLV-007 admission without its matching manifest is rejected without 
     ],
     [started, { ...recorded, manifest }, "unexpected-manifest"],
   ] as const)
-    assert.deepEqual(store.execute(command, context), {
+    assert.deepEqual(await store.execute(command, context), {
       kind: "rejected",
       reason,
     });
-  assert.equal(store.state().sequence, 0);
-  store.close();
+  assert.equal((await store.state()).sequence, 0);
+  await store.close();
   assert.deepEqual(
     queryDatabase(directory, "SELECT count(*) AS count FROM definitions"),
     [{ count: 0 }],
@@ -91,11 +91,11 @@ await test("CLV-007 a stored manifest that no longer matches its pin is refused"
     "{",
   ]) {
     const directory = await temporaryDirectory();
-    const first = opened(directory).store;
-    first.execute(admission, { ...recorded, manifest });
-    first.close();
+    const first = (await opened(directory)).store;
+    await first.execute(admission, { ...recorded, manifest });
+    await first.close();
     alterDatabase(directory, `UPDATE definitions SET manifest = '${stored}'`);
-    assert.deepEqual(openAuthorityStore(directory), {
+    assert.deepEqual(await openAuthority(directory), {
       kind: "refused",
       reason: "projection-mismatch",
       detail: "definitions",
@@ -114,31 +114,33 @@ const regenerated = {
 
 await test("CLV-007 a waiting run continues or resumes only with a manifest that matches its stored pin", async () => {
   const directory = await temporaryDirectory();
-  const { store } = opened(directory);
+  const { store } = await opened(directory);
   for (const command of storedGate.slice(0, 3))
-    assert.equal(executeStored(store, command).kind, "accepted");
+    assert.equal((await executeStored(store, command)).kind, "accepted");
   const decision = storedGate[3];
   const mismatch = {
     kind: "rejected",
     reason: "pinned-manifest-mismatch",
     detail: "artifacts",
   };
-  assert.deepEqual(store.execute(decision, recorded), {
+  assert.deepEqual(await store.execute(decision, recorded), {
     kind: "rejected",
     reason: "missing-manifest",
   });
   assert.deepEqual(
-    store.execute(decision, { ...recorded, manifest: changed }),
+    await store.execute(decision, { ...recorded, manifest: changed }),
     mismatch,
   );
-  assert.equal(store.state().sequence, 3);
+  assert.equal((await store.state()).sequence, 3);
   assert.equal(
-    store.execute(decision, { ...recorded, manifest: regenerated }).kind,
+    (await store.execute(decision, { ...recorded, manifest: regenerated }))
+      .kind,
     "accepted",
   );
-  assert.deepEqual(store.execute(decision, recorded), {
+  assert.deepEqual(await store.execute(decision, recorded), {
     kind: "duplicate",
     sequence: 4,
+    intents: [continuation],
   });
   const pause = {
     kind: "pause-run",
@@ -146,78 +148,82 @@ await test("CLV-007 a waiting run continues or resumes only with a manifest that
     runId: "run-1",
     expectedRevision: 4,
   };
-  assert.equal(store.execute(pause, recorded).kind, "accepted");
+  assert.equal((await store.execute(pause, recorded)).kind, "accepted");
   const resume = {
     kind: "resume-run",
     commandId: "c-6",
     runId: "run-1",
     expectedRevision: 5,
   };
-  assert.deepEqual(store.execute(resume, recorded), {
+  assert.deepEqual(await store.execute(resume, recorded), {
     kind: "rejected",
     reason: "missing-manifest",
   });
   assert.deepEqual(
-    store.execute(resume, { ...recorded, manifest: changed }),
+    await store.execute(resume, { ...recorded, manifest: changed }),
     mismatch,
   );
-  assert.equal(store.state().runs["run-1"]?.status, "paused");
+  assert.equal((await store.state()).runs["run-1"]?.status, "paused");
   assert.equal(
-    store.execute(resume, { ...recorded, manifest: regenerated }).kind,
+    (await store.execute(resume, { ...recorded, manifest: regenerated })).kind,
     "accepted",
   );
-  store.close();
+  await store.close();
 });
 
 await test("CLV-007 a terminal run cannot resume through its pin", async () => {
   const directory = await temporaryDirectory();
-  const { store } = opened(directory);
+  const { store } = await opened(directory);
   assert.equal(
-    store.execute(admission, { ...recorded, manifest }).kind,
+    (await store.execute(admission, { ...recorded, manifest })).kind,
     "accepted",
   );
   assert.equal(
-    store.execute(
-      {
-        kind: "cancel-run",
-        commandId: "c-2",
-        runId: "run-1",
-        expectedRevision: 1,
-      },
-      recorded,
+    (
+      await store.execute(
+        {
+          kind: "cancel-run",
+          commandId: "c-2",
+          runId: "run-1",
+          expectedRevision: 1,
+        },
+        recorded,
+      )
     ).kind,
     "accepted",
   );
-  assert.deepEqual(store.resumePinned("run-1", manifest), {
+  assert.deepEqual(await store.resumePinned("run-1", manifest), {
     kind: "rejected",
     reason: "terminal-run",
     detail: "run-1",
   });
-  store.close();
+  await store.close();
 });
 
 await test("CLV-007 a second admission with the same pin keeps the first stored manifest in memory and after reopening", async () => {
   const directory = await temporaryDirectory();
   const ordered = { ...manifest, capabilities: ["fake-harness", "tracker"] };
   const reversed = { ...manifest, capabilities: ["tracker", "fake-harness"] };
-  const first = opened(directory).store;
+  const first = (await opened(directory)).store;
   const workflow = workflowPin(ordered);
   for (const [runId, variant] of [
     ["run-1", ordered],
     ["run-2", reversed],
   ] as const)
     assert.equal(
-      first.execute(
-        { ...admission, commandId: `admit-${runId}`, runId, workflow },
-        { ...recorded, manifest: variant },
+      (
+        await first.execute(
+          { ...admission, commandId: `admit-${runId}`, runId, workflow },
+          { ...recorded, manifest: variant },
+        )
       ).kind,
       "accepted",
     );
-  const before = first.resumePinned("run-2", reversed);
-  first.close();
-  const { store } = opened(directory);
-  const after = store.resumePinned("run-2", reversed);
-  store.close();
+  const before = await first.resumePinned("run-2", reversed);
+  await first.close();
+  const { store } = await opened(directory);
+  const after = await store.resumePinned("run-2", reversed);
+  await store.close();
   assert.deepEqual(before, { kind: "admitted", manifest: ordered });
   assert.deepEqual(after, before);
 });

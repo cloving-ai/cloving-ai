@@ -74,6 +74,6 @@ function validField(key: string, value: unknown): boolean {
   return (validators[key] ?? isIdentifier)(value);
 }
 
-function isIdentifier(value: unknown): value is string {
+export function isIdentifier(value: unknown): value is string {
   return typeof value === "string" && identifier.test(value);
 }

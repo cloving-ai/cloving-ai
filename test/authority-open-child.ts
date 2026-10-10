@@ -1,10 +1,9 @@
-import { openAuthorityStore } from "../src/broker/authority-store.ts";
+import { openAuthority } from "../src/broker/actor/authority.ts";
 
 process.stdout.write("ready\n");
-process.stdin.once("data", () => {
-  const opening = openAuthorityStore(process.argv[2] ?? "");
-  const outcome =
-    opening.kind === "opened" ? "opened" : `refused ${opening.reason}`;
-  process.stdout.write(`${outcome}\n`);
-  setInterval(() => undefined, 60000);
-});
+await new Promise((resolve) => process.stdin.once("data", resolve));
+const opening = await openAuthority(process.argv[2] ?? "");
+const outcome =
+  opening.kind === "opened" ? "opened" : `refused ${opening.reason}`;
+process.stdout.write(`${outcome}\n`);
+setInterval(() => undefined, 60000);
