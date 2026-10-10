@@ -35,6 +35,11 @@ type Reduction =
     }
   | { readonly kind: "invalid"; readonly reason: string };
 
+interface RecordedEvent {
+  readonly event: AuthorityEvent;
+  readonly commands: AuthorityState["commands"];
+}
+
 export const emptyAuthority: AuthorityState = {
   sequence: 0,
   runs: {},
@@ -44,10 +49,9 @@ export const emptyAuthority: AuthorityState = {
 
 export function execute(
   state: AuthorityState,
-  proposed: unknown,
-  recorded: { readonly recordedAt: string },
+  proposed: { readonly command: unknown; readonly recordedAt: string },
 ): CommandResult {
-  const command = parseCommand(proposed);
+  const command = parseCommand(proposed.command);
   if (!command) return { kind: "rejected", reason: "invalid-command" };
   const request = canonical(command);
   const existing = state.commands[command.commandId];
@@ -62,12 +66,11 @@ export function execute(
     command.expectedRevision !== run.revision
   )
     return { kind: "rejected", reason: "stale-revision" };
-  const event = commandEvent(
-    state.sequence + 1,
-    command,
+  const event = commandEvent(command, {
+    sequence: state.sequence + 1,
     request,
-    recorded.recordedAt,
-  );
+    recordedAt: proposed.recordedAt,
+  });
   const reduction = reduce(state, event);
   if (reduction.kind === "invalid")
     return { kind: "rejected", reason: reduction.reason };
@@ -82,15 +85,15 @@ export function execute(
 export function rebuild(events: readonly unknown[]): AuthorityState {
   let state = emptyAuthority;
   for (const [index, value] of events.entries())
-    state = applyEvent(state, value, index).state;
+    state = applyEvent(state, { value, index }).state;
   return state;
 }
 
 export function applyEvent(
   state: AuthorityState,
-  value: unknown,
-  index: number,
+  entry: { readonly value: unknown; readonly index: number },
 ): { readonly state: AuthorityState; readonly event: AuthorityEvent } {
+  const { value, index } = entry;
   const event = parseEvent(value);
   if (!event)
     throw new Error(`invalid-event: ${String(index + 1)} malformed-event`);
@@ -105,11 +108,14 @@ export function applyEvent(
 }
 
 function commandEvent(
-  sequence: number,
   command: AuthorityCommand,
-  request: string,
-  recordedAt: string,
+  record: {
+    readonly sequence: number;
+    readonly request: string;
+    readonly recordedAt: string;
+  },
 ): AuthorityEvent {
+  const { sequence, request, recordedAt } = record;
   const payload: Record<string, string> = {};
   if (command.workflow !== undefined) payload["workflow"] = command.workflow;
   if (command.gateId !== undefined) payload["gateId"] = command.gateId;
@@ -137,22 +143,17 @@ function reduce(state: AuthorityState, event: AuthorityEvent): Reduction {
     ...state.commands,
     [event.commandId]: { request: event.request, sequence: event.sequence },
   };
-  if (event.type === "run.created") return created(state, event, commands);
+  if (event.type === "run.created") return created(state, { event, commands });
   const run = state.runs[event.runId];
   if (!run) return { kind: "invalid", reason: "unknown-run" };
   if (event.type === "step.dispatched")
-    return dispatched(state, event, commands);
-  const moved = transition(run, event.type, event.payload["gateId"] ?? "");
+    return dispatched(state, { event, commands });
+  const gateId = event.payload["gateId"] ?? "";
+  const moved = transition(run, { type: event.type, gateId });
   if (moved.kind === "invalid") return moved;
   const added =
     event.type === "gate.decided"
-      ? [
-          continueIntent(
-            event.runId,
-            event.payload["gateId"] ?? "",
-            event.sequence,
-          ),
-        ]
+      ? [continueIntent(event.runId, { gateId, decision: event.sequence })]
       : [];
   return {
     kind: "applied",
@@ -166,11 +167,8 @@ function reduce(state: AuthorityState, event: AuthorityEvent): Reduction {
   };
 }
 
-function dispatched(
-  state: AuthorityState,
-  event: AuthorityEvent,
-  commands: AuthorityState["commands"],
-): Reduction {
+function dispatched(state: AuthorityState, recorded: RecordedEvent): Reduction {
+  const { event, commands } = recorded;
   const operationId = event.payload["operationId"];
   const pending = state.intents.some(
     (intent) =>
@@ -206,9 +204,9 @@ function retained(
 
 function continueIntent(
   runId: string,
-  gateId: string,
-  decision: number,
+  gate: { readonly gateId: string; readonly decision: number },
 ): EffectIntent {
+  const { gateId, decision } = gate;
   return {
     kind: "continue-run",
     runId,
@@ -222,11 +220,8 @@ function continueIntent(
   };
 }
 
-function created(
-  state: AuthorityState,
-  event: AuthorityEvent,
-  commands: AuthorityState["commands"],
-): Reduction {
+function created(state: AuthorityState, recorded: RecordedEvent): Reduction {
+  const { event, commands } = recorded;
   if (state.runs[event.runId])
     return { kind: "invalid", reason: "existing-run" };
   const intent: EffectIntent = {
@@ -296,12 +291,7 @@ function requestMatches(event: AuthorityEvent): boolean {
   }
   const command = parseCommand(value);
   if (!command || canonical(command) !== event.request) return false;
-  const expected = commandEvent(
-    event.sequence,
-    command,
-    event.request,
-    event.recordedAt,
-  );
+  const expected = commandEvent(command, event);
   return JSON.stringify(sorted(expected)) === JSON.stringify(sorted(event));
 }
 

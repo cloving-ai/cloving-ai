@@ -19,9 +19,9 @@ function callOrigin(
 
 function selectedTest(
   node: ts.CallExpression,
-  checker: ts.TypeChecker,
-  name: string,
+  selection: { readonly checker: ts.TypeChecker; readonly name: string },
 ): boolean {
+  const { checker, name } = selection;
   if (["only", "skip", "todo", "run"].includes(name)) return true;
   return node.arguments.some((argument) => {
     const type = checker.getTypeAtLocation(argument);
@@ -59,11 +59,16 @@ function conditional(node: ts.Node): boolean {
   );
 }
 
+interface VisitContext {
+  readonly ancestors: readonly ts.Node[];
+  readonly checker: ts.TypeChecker;
+}
+
 function callFindings(
   node: ts.CallExpression,
-  ancestors: readonly ts.Node[],
-  checker: ts.TypeChecker,
+  context: VisitContext,
 ): readonly string[] {
+  const { ancestors, checker } = context;
   const origin = callOrigin(node, checker);
   if (!origin) return [];
   const test = origin.file.endsWith("/@types/node/test.d.ts");
@@ -71,7 +76,7 @@ function callFindings(
   if (!test && !assertion) return [];
   const findings: string[] = [];
   if (ancestors.some(conditional)) findings.push("conditional-test-evidence");
-  if (test && selectedTest(node, checker, origin.name))
+  if (test && selectedTest(node, { checker, name: origin.name }))
     findings.push("test-selection");
   if (
     assertion &&
@@ -82,11 +87,8 @@ function callFindings(
   return findings;
 }
 
-function conditionalExit(
-  node: ts.Node,
-  ancestors: readonly ts.Node[],
-  checker: ts.TypeChecker,
-): boolean {
+function conditionalExit(node: ts.Node, context: VisitContext): boolean {
+  const { ancestors, checker } = context;
   if (!ts.isReturnStatement(node) || !ancestors.some(conditional)) return false;
   return ancestors.some(
     (ancestor) =>
@@ -103,15 +105,14 @@ export function inspectTestIntegrity(program: ts.Program): readonly string[] {
     if (!source) throw new Error(`missing-test-integrity-source: ${file}`);
     const visit = (node: ts.Node, ancestors: readonly ts.Node[]): void => {
       const location = `${file}:${String(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1)}`;
-      if (escapedTestApi(node, ancestors, checker))
+      const context = { ancestors, checker };
+      if (escapedTestApi(node, context))
         findings.push(`test-api-escape: ${location}`);
-      if (conditionalExit(node, ancestors, checker))
+      if (conditionalExit(node, context))
         findings.push(`conditional-test-exit: ${location}`);
       if (ts.isCallExpression(node)) {
         findings.push(
-          ...callFindings(node, ancestors, checker).map(
-            (rule) => `${rule}: ${location}`,
-          ),
+          ...callFindings(node, context).map((rule) => `${rule}: ${location}`),
         );
       }
       ts.forEachChild(node, (child) => {

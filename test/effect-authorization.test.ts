@@ -6,11 +6,10 @@ const manifest = { capabilities: ["fake-harness", "tracker"] };
 
 await test("CLV-005 an admitted capability within the persisted budget is authorized", () => {
   assert.deepEqual(
-    authorizeEffect(
-      manifest,
-      { limit: 5, spent: 2 },
-      { capability: "tracker", units: 3 },
-    ),
+    authorizeEffect(manifest, {
+      budget: { limit: 5, spent: 2 },
+      request: { capability: "tracker", units: 3 },
+    }),
     { kind: "authorized", spent: 5 },
   );
 });
@@ -58,7 +57,7 @@ await test("CLV-005 effects outside the pinned capabilities or the persisted bud
       "invalid-effect-request",
     ],
   ] as const)
-    assert.deepEqual(authorizeEffect(manifest, budget, request), {
+    assert.deepEqual(authorizeEffect(manifest, { budget, request }), {
       kind: "rejected",
       reason,
     });

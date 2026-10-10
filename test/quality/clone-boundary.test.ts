@@ -24,7 +24,10 @@ for (const [extension, count] of [
       await writeFile(join(directory, `second.${extension}`), source);
       const result = spawnSync(
         process.execPath,
-        cloneArguments([directory], join(directory, "report"), 4096),
+        cloneArguments([directory], {
+          report: join(directory, "report"),
+          maximumBytes: 4096,
+        }),
         { encoding: "utf8", timeout: 10000 },
       );
       assert.equal(result.status, count === 150 ? 1 : 0, result.stderr);

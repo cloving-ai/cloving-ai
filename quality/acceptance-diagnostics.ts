@@ -11,23 +11,23 @@ import { captureVerificationInputs } from "./verification-inputs.ts";
 
 export async function checkDiagnosticEvidence(
   receipt: VerificationReceipt,
-  activation: VerifierActivation,
-  candidate: {
+  trusted: {
+    readonly activation: VerifierActivation;
     readonly directory: string;
     readonly snapshot: TreeSnapshot;
     readonly executable: string;
   },
 ): Promise<void> {
-  const { plan } = activation;
+  const { plan } = trusted.activation;
   const inventory = recordedInventory(receipt);
   validateVerificationReceipt(receipt, {
     identity: receipt.identity,
     inputs: await captureVerificationInputs(inventory),
     requiredChecks: plan.diagnosticChecks,
   });
-  const files = firstPartyFiles(candidate.directory, candidate.snapshot);
-  checkDiagnosticCommands(receipt, activation, { ...candidate, files });
-  checkInventoryCoverage(inventory, candidate.directory, files);
+  const files = firstPartyFiles(trusted.directory, trusted.snapshot);
+  checkDiagnosticCommands(receipt, { ...trusted, files });
+  checkInventoryCoverage(inventory, { directory: trusted.directory, files });
   const completed = receipt.executions
     .map((execution) => reportedTests(execution.stdout))
     .reduce((total, count) => total + count, 0);
@@ -37,23 +37,24 @@ export async function checkDiagnosticEvidence(
 
 function checkDiagnosticCommands(
   receipt: VerificationReceipt,
-  activation: VerifierActivation,
-  candidate: {
+  trusted: {
+    readonly activation: VerifierActivation;
     readonly directory: string;
     readonly executable: string;
     readonly files: readonly string[];
   },
 ): void {
-  const tests = candidate.files
+  const { activation } = trusted;
+  const tests = trusted.files
     .filter(
       (file) =>
-        file.startsWith(join(candidate.directory, "test") + sep) &&
+        file.startsWith(join(trusted.directory, "test") + sep) &&
         file.endsWith(".test.ts"),
     )
     .sort();
   const expected = JSON.stringify([
     ...activation.plan.confinement,
-    candidate.executable,
+    trusted.executable,
     "--test",
     "--test-concurrency=2",
     `--test-reporter=${join(activation.verifier.directory, "quality/test-reporter.ts")}`,
@@ -61,7 +62,7 @@ function checkDiagnosticCommands(
   ]);
   for (const command of receipt.plan.commands) {
     if (
-      command.directory !== candidate.directory ||
+      command.directory !== trusted.directory ||
       JSON.stringify([command.executable, ...command.arguments]) !== expected
     )
       throw new Error("untrusted-diagnostic-command");
@@ -70,9 +71,9 @@ function checkDiagnosticCommands(
 
 function checkInventoryCoverage(
   inventory: VerificationInputs,
-  directory: string,
-  files: readonly string[],
+  candidate: { readonly directory: string; readonly files: readonly string[] },
 ): void {
+  const { directory, files } = candidate;
   const covered = new Set([
     ...inventory.source,
     ...inventory.tests,

@@ -14,9 +14,9 @@ export type EffectAuthorization =
 
 export function authorizeEffect(
   manifest: { readonly capabilities: readonly string[] },
-  budget: EffectBudget,
-  request: EffectRequest,
+  effect: { readonly budget: EffectBudget; readonly request: EffectRequest },
 ): EffectAuthorization {
+  const { budget, request } = effect;
   if (
     ![budget.limit, budget.spent].every(
       (value) => Number.isSafeInteger(value) && value >= 0,

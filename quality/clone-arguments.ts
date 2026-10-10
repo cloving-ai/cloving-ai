@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 
 export function cloneArguments(
   targets: readonly string[],
-  report: string,
-  maximumBytes: number,
+  output: { readonly report: string; readonly maximumBytes: number },
 ): string[] {
+  const { report, maximumBytes } = output;
   return [
     resolve(import.meta.dirname, "../node_modules/jscpd/run-jscpd.js"),
     "--min-tokens",

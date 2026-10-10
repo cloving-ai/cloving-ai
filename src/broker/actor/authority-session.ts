@@ -139,12 +139,11 @@ export function authoritySession(parts: SessionParts): Authority {
     operations: async () => operationRecords(await projected(session)),
     resumePinned: async (runId, manifest) => {
       const snapshot = await projected(session);
-      return pinnedResumption(
-        projectedState(snapshot),
-        storedDefinitions(snapshot),
+      return pinnedResumption(projectedState(snapshot), {
+        definitions: storedDefinitions(snapshot),
         runId,
-        manifest,
-      );
+        available: manifest,
+      });
     },
     settings: async () => {
       available(session);

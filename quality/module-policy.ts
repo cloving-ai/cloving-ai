@@ -20,31 +20,34 @@ export function proposedModulePolicy(directory: string): DependencyPolicy {
 
 export function admittedModulePolicy(
   directory: string,
-  files: readonly string[],
-  candidate: Readonly<Record<string, string>>,
+  candidate: {
+    readonly files: readonly string[];
+    readonly roles: Readonly<Record<string, string>>;
+  },
 ): DependencyPolicy {
   const installed = proposedModulePolicy(directory);
-  const inventory = files.map((file) => relative(directory, file));
+  const inventory = candidate.files.map((file) => relative(directory, file));
   const roles: Readonly<Record<string, string>> = proposal.roles;
   const paths: Readonly<Record<string, string>> = proposal.automaticPaths;
-  for (const [file, role] of Object.entries(candidate)) {
+  for (const [file, role] of Object.entries(candidate.roles)) {
     if (!inventory.includes(file) && roles[file] !== role)
       throw new Error(`mapping-policy-change: ${file}`);
     if (roles[file] === undefined && !file.startsWith(paths[role] ?? "/"))
       throw new Error(`mapping-requires-review: ${file}`);
   }
-  const mapped = mapModules(
-    inventory,
-    Object.fromEntries(
-      Object.entries(candidate).filter(([file]) => inventory.includes(file)),
+  const mapped = mapModules(inventory, {
+    proposal: Object.fromEntries(
+      Object.entries(candidate.roles).filter(([file]) =>
+        inventory.includes(file),
+      ),
     ),
-    {
+    policy: {
       accepted: Object.fromEntries(
         Object.entries(roles).filter(([file]) => inventory.includes(file)),
       ),
       automaticRoles: Object.keys(paths),
     },
-  );
+  });
   return {
     ...installed,
     roles: {

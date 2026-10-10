@@ -77,11 +77,10 @@ export async function withAcceptance(
     const installed = await activateFixture(root);
     const candidate = await realpath(join(root, "candidate"));
     const command = diagnosticCommand(installed, candidate);
-    const inventory = diagnosticInventory(
-      installed,
-      candidate,
-      Object.keys(options.files ?? {}),
-    );
+    const inventory = diagnosticInventory(installed, {
+      directory: candidate,
+      files: Object.keys(options.files ?? {}),
+    });
     const tree = (await snapshotTree(candidate)).identity;
     await inspect({
       root,
@@ -92,7 +91,7 @@ export async function withAcceptance(
       inventory,
       evidence: {
         candidate: tree,
-        static: await staticFixture(installed, candidate, tree),
+        static: await staticFixture(installed, { directory: candidate, tree }),
         diagnostics: await executeVerification(
           { requiredChecks: ["diagnostics"], commands: [command] },
           inventory,
@@ -103,11 +102,11 @@ export async function withAcceptance(
           verifier: installed.identity,
           candidate: tree,
         })),
-        artifacts: await artifactFixture(
-          root,
+        artifacts: await artifactFixture(root, {
           candidate,
-          options.contractSteps ?? Object.values(options.manifestSteps ?? {}),
-        ),
+          contractSteps:
+            options.contractSteps ?? Object.values(options.manifestSteps ?? {}),
+        }),
       },
     });
   });
@@ -136,11 +135,10 @@ export async function packArchive(
 
 async function activateFixture(root: string): Promise<VerifierInstallation> {
   const proposal = join(root, "proposal");
-  const installed = await installVerifier(
-    proposal,
-    join(root, "installed"),
-    (await snapshotTree(proposal)).identity,
-  );
+  const installed = await installVerifier(proposal, {
+    directory: join(root, "installed"),
+    identity: (await snapshotTree(proposal)).identity,
+  });
   const state = join(root, "state");
   await mkdir(state);
   await writeFile(
@@ -152,7 +150,10 @@ async function activateFixture(root: string): Promise<VerifierInstallation> {
       directory: installed.directory,
     }),
   );
-  await activateVerifier(state, installed, acceptancePlan);
+  await activateVerifier(state, {
+    installation: installed,
+    plan: acceptancePlan,
+  });
   return installed;
 }
 
@@ -176,16 +177,16 @@ function diagnosticCommand(
 
 function diagnosticInventory(
   installed: VerifierInstallation,
-  candidate: string,
-  files: readonly string[],
+  candidate: { readonly directory: string; readonly files: readonly string[] },
 ): VerificationInputs {
+  const { directory, files } = candidate;
   return {
     source: [
-      join(candidate, "src/index.ts"),
-      ...files.map((file) => join(candidate, file)),
+      join(directory, "src/index.ts"),
+      ...files.map((file) => join(directory, file)),
     ],
-    tests: [join(candidate, "test/sample.test.ts")],
-    dependencies: [join(candidate, "package.json")],
+    tests: [join(directory, "test/sample.test.ts")],
+    dependencies: [join(directory, "package.json")],
     tools: [
       process.execPath,
       join(installed.directory, "quality/test-reporter.ts"),
@@ -197,9 +198,9 @@ function diagnosticInventory(
 
 async function staticFixture(
   installed: VerifierInstallation,
-  candidate: string,
-  tree: string,
+  candidate: { readonly directory: string; readonly tree: string },
 ): Promise<StaticEvidence> {
+  const { directory, tree } = candidate;
   return {
     verifier: installed.identity,
     candidate: tree,
@@ -209,7 +210,7 @@ async function staticFixture(
       executable: await realpath(process.execPath),
       arguments: [
         join(installed.directory, "tools/check-protected-quality.ts"),
-        candidate,
+        directory,
       ],
       directory: installed.directory,
       timeoutMilliseconds: 1000,
@@ -231,9 +232,12 @@ async function staticFixture(
 
 async function artifactFixture(
   root: string,
-  candidate: string,
-  contractSteps: readonly string[],
+  contract: {
+    readonly candidate: string;
+    readonly contractSteps: readonly string[];
+  },
 ): Promise<readonly AcceptanceArtifact[]> {
+  const { candidate, contractSteps } = contract;
   const tarball = join(root, "artifacts/package.tgz");
   return [
     {

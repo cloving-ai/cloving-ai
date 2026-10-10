@@ -10,7 +10,7 @@ export interface TreeSnapshot {
 export async function snapshotTree(directory: string): Promise<TreeSnapshot> {
   const root = await realpath(directory);
   const entries: Record<string, string> = {};
-  await captureTree(root, "", entries);
+  await captureTree("", { root, entries });
   if (Object.keys(entries).length === 0) throw new Error("empty-staging-tree");
   const sorted = Object.fromEntries(
     Object.entries(entries).sort(([left], [right]) =>
@@ -24,10 +24,10 @@ export async function snapshotTree(directory: string): Promise<TreeSnapshot> {
 }
 
 async function captureTree(
-  root: string,
   prefix: string,
-  entries: Record<string, string>,
+  tree: { readonly root: string; readonly entries: Record<string, string> },
 ): Promise<void> {
+  const { root, entries } = tree;
   for (const entry of await readdir(join(root, prefix), {
     withFileTypes: true,
   })) {
@@ -38,7 +38,7 @@ async function captureTree(
     const mode = status.mode & 0o777;
     if (status.isDirectory()) {
       entries[name] = JSON.stringify({ kind: "directory", mode });
-      await captureTree(root, name, entries);
+      await captureTree(name, tree);
       continue;
     }
     if (status.isSymbolicLink()) {

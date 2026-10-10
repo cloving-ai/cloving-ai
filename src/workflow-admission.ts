@@ -50,9 +50,9 @@ export type AdmissionResult =
 
 export function admitWorkflow(
   proposedRegistration: unknown,
-  proposedCompiled: unknown,
-  policy: AdmissionPolicy,
+  admission: { readonly compiled: unknown; readonly policy: AdmissionPolicy },
 ): AdmissionResult {
+  const { compiled: proposedCompiled, policy } = admission;
   const registration = readRegistration(proposedRegistration);
   if (!registration) return rejected("invalid-registration", "registration");
   const compiled = record(proposedCompiled) ?? {};

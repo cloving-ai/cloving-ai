@@ -25,7 +25,7 @@ export function baselineDatabase(
   let state = emptyAuthority;
   const events: AuthorityEvent[] = [];
   for (const command of commands) {
-    const result = execute(state, command, recorded);
+    const result = execute(state, { command, ...recorded });
     assert.equal(result.kind, "accepted", JSON.stringify(result));
     state = result.state;
     events.push(...result.events);

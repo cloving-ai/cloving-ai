@@ -209,8 +209,10 @@ await test("CLV-042 a delivery that throws is attempted once, closed as failed, 
 await test("CLV-042 a delivery callback for a delivery that is already closed is rejected as stale, and the operation is delivered once through reconciliation", async () => {
   const directory = await temporaryDirectory();
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "complete-then-stop"],
+    {
+      script: "authority-actor-child.ts",
+      parameters: [directory, "complete-then-stop"],
+    },
     async (child) => {
       assert.deepEqual(await child.exited, { code: null, signal: "SIGKILL" });
     },

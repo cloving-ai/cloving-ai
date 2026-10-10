@@ -13,17 +13,13 @@ import {
 
 await test("QG-11 consumption accepts current evidence and rejects a file added after the pass", async () => {
   await withAcceptance({}, async (fixture) => {
-    const verdict = await consumeAcceptance(
-      fixture.state,
-      fixture.candidate,
-      fixture.evidence,
-    );
+    const verdict = await consumeAcceptance(fixture.state, fixture);
     assert.equal(verdict.verdict, "accepted");
     assert.equal(verdict.plan, acceptancePlan.identity);
     assert.equal(verdict.candidate, fixture.evidence.candidate);
     await writeFile(join(fixture.candidate, "src/added.ts"), "export {};");
     await assert.rejects(
-      consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+      consumeAcceptance(fixture.state, fixture),
       /stale-acceptance-candidate/,
     );
   });
@@ -66,9 +62,9 @@ await test("QG-10 skipped static checks, failed exits and candidate entries cann
       [{ verifier: "candidate-verifier" }, /untrusted-static-command/],
     ] as const)
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, {
-          ...fixture.evidence,
-          static: { ...checked, ...changed },
+        consumeAcceptance(fixture.state, {
+          candidate: fixture.candidate,
+          evidence: { ...fixture.evidence, static: { ...checked, ...changed } },
         }),
         expected,
       );
@@ -91,17 +87,17 @@ await test("QG-11 diagnostics need an intact passing receipt above the independe
     ],
   ] as const)
     await withAcceptance({ tests }, async (fixture) => {
-      await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
-        expected,
-      );
+      await assert.rejects(consumeAcceptance(fixture.state, fixture), expected);
     });
   await withAcceptance({}, async (fixture) => {
     const { diagnostics } = fixture.evidence;
     await assert.rejects(
-      consumeAcceptance(fixture.state, fixture.candidate, {
-        ...fixture.evidence,
-        diagnostics: { ...diagnostics, executions: [] },
+      consumeAcceptance(fixture.state, {
+        candidate: fixture.candidate,
+        evidence: {
+          ...fixture.evidence,
+          diagnostics: { ...diagnostics, executions: [] },
+        },
       }),
       /invalid-verification-receipt/,
     );
@@ -119,9 +115,9 @@ await test("QG-11 diagnostics must run the fixed command over the complete curre
         fixture.inventory,
       );
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, {
-          ...fixture.evidence,
-          diagnostics,
+        consumeAcceptance(fixture.state, {
+          candidate: fixture.candidate,
+          evidence: { ...fixture.evidence, diagnostics },
         }),
         /untrusted-diagnostic-command/,
       );
@@ -133,14 +129,17 @@ await test("QG-11 diagnostics must run the fixed command over the complete curre
       await writeFile(join(fixture.candidate, file), "export {};");
       const tree = (await snapshotTree(fixture.candidate)).identity;
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, {
-          ...fixture.evidence,
-          candidate: tree,
-          static: { ...fixture.evidence.static, candidate: tree },
-          scenarios: fixture.evidence.scenarios.map((scenario) => ({
-            ...scenario,
+        consumeAcceptance(fixture.state, {
+          candidate: fixture.candidate,
+          evidence: {
+            ...fixture.evidence,
             candidate: tree,
-          })),
+            static: { ...fixture.evidence.static, candidate: tree },
+            scenarios: fixture.evidence.scenarios.map((scenario) => ({
+              ...scenario,
+              candidate: tree,
+            })),
+          },
         }),
         expected,
       );
@@ -166,9 +165,9 @@ await test("QG-10 each controller scenario must pass once for the active verifie
       [[first, { ...second, candidate: "older" }], /stale-controller-scenario/],
     ] as const)
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, {
-          ...fixture.evidence,
-          scenarios,
+        consumeAcceptance(fixture.state, {
+          candidate: fixture.candidate,
+          evidence: { ...fixture.evidence, scenarios },
         }),
         expected,
       );
@@ -199,22 +198,22 @@ await test("QG-11 artifacts must be current and bound to the candidate and their
       ],
     ] as const)
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, {
-          ...fixture.evidence,
-          artifacts,
+        consumeAcceptance(fixture.state, {
+          candidate: fixture.candidate,
+          evidence: { ...fixture.evidence, artifacts },
         }),
         expected,
       );
     await writeFile(join(fixture.root, "artifacts/handlers/steps.mjs"), "");
     await assert.rejects(
-      consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+      consumeAcceptance(fixture.state, fixture),
       /stale-acceptance-artifact: workflow-handlers/,
     );
   });
   await withAcceptance({}, async (fixture) => {
     await writeFile(join(fixture.root, "artifacts/package.tgz"), "changed");
     await assert.rejects(
-      consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+      consumeAcceptance(fixture.state, fixture),
       /stale-acceptance-artifact: package-tarball/,
     );
   });
@@ -222,7 +221,7 @@ await test("QG-11 artifacts must be current and bound to the candidate and their
     { source: '"use workflow";\nexport const value = 1;' },
     async (fixture) => {
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+        consumeAcceptance(fixture.state, fixture),
         /unbound-acceptance-artifact: workflow-handlers/,
       );
     },
@@ -232,7 +231,7 @@ await test("QG-11 artifacts must be current and bound to the candidate and their
 await test("QG-12 consumption requires the active verifier outside the candidate", async () => {
   await withAcceptance({}, async (fixture) => {
     await assert.rejects(
-      consumeAcceptance(fixture.root, fixture.candidate, fixture.evidence),
+      consumeAcceptance(fixture.root, fixture),
       /overlapping-acceptance-state/,
     );
     await writeFile(
@@ -240,7 +239,7 @@ await test("QG-12 consumption requires the active verifier outside the candidate
       "process.exit(0);",
     );
     await assert.rejects(
-      consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+      consumeAcceptance(fixture.state, fixture),
       /verifier-installation-changed/,
     );
   });
@@ -271,11 +270,7 @@ await test("QG-11 product step helpers bind to the regenerated handler manifest 
     manifestSteps: { loadCycle: productStepId },
   };
   await withAcceptance(product, async (fixture) => {
-    const verdict = await consumeAcceptance(
-      fixture.state,
-      fixture.candidate,
-      fixture.evidence,
-    );
+    const verdict = await consumeAcceptance(fixture.state, fixture);
     assert.equal(verdict.verdict, "accepted");
   });
   for (const changed of [
@@ -286,7 +281,7 @@ await test("QG-11 product step helpers bind to the regenerated handler manifest 
   ])
     await withAcceptance(changed, async (fixture) => {
       await assert.rejects(
-        consumeAcceptance(fixture.state, fixture.candidate, fixture.evidence),
+        consumeAcceptance(fixture.state, fixture),
         /unbound-acceptance-artifact: workflow-handlers/,
       );
     });

@@ -2,9 +2,12 @@ import type ts from "typescript";
 
 export function productionInventory(
   program: ts.Program,
-  files: readonly string[],
-  roles: Readonly<Record<string, string>>,
+  mapping: {
+    readonly files: readonly string[];
+    readonly roles: Readonly<Record<string, string>>;
+  },
 ): string[] {
+  const { files, roles } = mapping;
   const production = new Set([
     "cli",
     "workflow",

@@ -50,8 +50,7 @@ async function settled(directory: string): Promise<readonly unknown[]> {
 await test("CLV-042 a command whose reply is lost returns its original receipt, pinned manifest and operation identity after a restart, and one delivery follows", async () => {
   const directory = await temporaryDirectory();
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "commit"],
+    { script: "authority-actor-child.ts", parameters: [directory, "commit"] },
     async (child) => {
       await child.waitFor("awaiting-dispatch");
       assert.deepEqual(await child.kill(), { code: null, signal: "SIGKILL" });
@@ -86,8 +85,10 @@ await test("CLV-042 a command whose reply is lost returns its original receipt, 
 await test("CLV-042 an effect interrupted after external acceptance reconciles after a restart and records the original receipt without a second send", async () => {
   const directory = await temporaryDirectory();
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "send-then-hang"],
+    {
+      script: "authority-actor-child.ts",
+      parameters: [directory, "send-then-hang"],
+    },
     async (child) => {
       await child.waitFor("externally-accepted receipt-1");
       assert.deepEqual(await child.kill(), { code: null, signal: "SIGKILL" });
@@ -107,8 +108,10 @@ await test("CLV-042 an effect interrupted after external acceptance reconciles a
 await test("CLV-042 a delivery callback left by a process that stops before its turn is applied once after a restart without a second send", async () => {
   const directory = await temporaryDirectory();
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "complete-then-stop"],
+    {
+      script: "authority-actor-child.ts",
+      parameters: [directory, "complete-then-stop"],
+    },
     async (child) => {
       assert.deepEqual(await child.exited, { code: null, signal: "SIGKILL" });
     },

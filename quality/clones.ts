@@ -34,7 +34,7 @@ export async function inspectClones(
     runCommand({
       executable: process.execPath,
       arguments: [
-        ...cloneArguments(inputs, directory, maximumBytes),
+        ...cloneArguments(inputs, { report: directory, maximumBytes }),
         "--config",
         config,
       ],

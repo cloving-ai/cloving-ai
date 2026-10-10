@@ -31,9 +31,12 @@ export interface AcceptanceVerdict {
 
 export async function consumeAcceptance(
   state: string,
-  candidate: string,
-  evidence: AcceptanceEvidence,
+  submission: {
+    readonly candidate: string;
+    readonly evidence: AcceptanceEvidence;
+  },
 ): Promise<AcceptanceVerdict> {
+  const { candidate, evidence } = submission;
   const directory = await realpath(candidate);
   const protectedState = await realpath(state);
   for (const path of [
@@ -49,24 +52,26 @@ export async function consumeAcceptance(
   if (current !== evidence.candidate || current !== evidence.static.candidate)
     throw new Error("stale-acceptance-candidate");
   const executable = await realpath(process.execPath);
-  checkStaticEvidence(evidence.static, activation, {
+  checkStaticEvidence(evidence.static, {
+    activation,
     candidate: directory,
     executable,
   });
-  await checkDiagnosticEvidence(evidence.diagnostics, activation, {
+  await checkDiagnosticEvidence(evidence.diagnostics, {
+    activation,
     directory,
     snapshot,
     executable,
   });
-  checkScenarios(evidence.scenarios, activation.plan, {
+  checkScenarios(evidence.scenarios, {
+    plan: activation.plan,
     verifier: activation.verifier.identity,
     candidate: current,
   });
-  await checkArtifacts(
-    evidence.artifacts,
-    activation.plan.artifacts,
-    directory,
-  );
+  await checkArtifacts(evidence.artifacts, {
+    required: activation.plan.artifacts,
+    candidate: directory,
+  });
   const record = {
     verdict: "accepted" as const,
     activation: activation.identity,

@@ -25,19 +25,14 @@ export function dependencyGraph(program: ts.Program): DependencyGraph {
     const source = program.getSourceFile(file);
     if (!source) throw new Error(`missing-graph-source: ${file}`);
     const visit = (node: ts.Node, parent?: ts.Node): void => {
-      rejectLoading(node, file, parent);
+      rejectLoading(node, { file, parent });
       const reference = moduleReference(node);
       if (reference)
         edges.push({
           from: file,
           specifier: reference.specifier.text,
           kind: reference.kind,
-          target: resolveTarget(
-            program,
-            source,
-            reference.specifier,
-            reference.kind,
-          ),
+          target: resolveTarget(program, { source, ...reference }),
         });
       ts.forEachChild(node, (child) => {
         visit(child, node);
@@ -48,7 +43,11 @@ export function dependencyGraph(program: ts.Program): DependencyGraph {
   return { files, edges };
 }
 
-function rejectLoading(node: ts.Node, file: string, parent?: ts.Node): void {
+function rejectLoading(
+  node: ts.Node,
+  location: { readonly file: string; readonly parent: ts.Node | undefined },
+): void {
+  const { file, parent } = location;
   if (parent && ts.isPropertyAssignment(parent) && parent.name === node) return;
   if (
     [
@@ -83,10 +82,13 @@ function typeReference(
 
 function resolveTarget(
   program: ts.Program,
-  source: ts.SourceFile,
-  specifier: ts.StringLiteralLike,
-  kind: "type" | "value",
+  reference: {
+    readonly source: ts.SourceFile;
+    readonly specifier: ts.StringLiteralLike;
+    readonly kind: "type" | "value";
+  },
 ): string {
+  const { source, specifier, kind } = reference;
   if (isBuiltin(specifier.text))
     return `node:${specifier.text.replace(/^node:/, "")}`;
   const resolution = ts.resolveModuleName(

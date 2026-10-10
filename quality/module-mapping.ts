@@ -3,27 +3,26 @@ export interface MappingPolicy {
   readonly automaticRoles: readonly string[];
 }
 
+export interface ModuleMapping {
+  readonly proposal: Readonly<Record<string, string>>;
+  readonly policy: MappingPolicy;
+}
+
 export function mapModules(
   files: readonly string[],
-  proposal: Readonly<Record<string, string>>,
-  policy: MappingPolicy,
+  mapping: ModuleMapping,
 ): Readonly<Record<string, string>> {
   if (files.length === 0) throw new Error("empty-module-inventory");
-  for (const file of Object.keys(proposal)) {
+  for (const file of Object.keys(mapping.proposal)) {
     if (!files.includes(file)) throw new Error(`unused-mapping: ${file}`);
   }
   return Object.fromEntries(
-    [...files]
-      .sort()
-      .map((file) => [file, admittedRole(file, proposal, policy)]),
+    [...files].sort().map((file) => [file, admittedRole(file, mapping)]),
   );
 }
 
-function admittedRole(
-  file: string,
-  proposal: Readonly<Record<string, string>>,
-  policy: MappingPolicy,
-): string {
+function admittedRole(file: string, mapping: ModuleMapping): string {
+  const { proposal, policy } = mapping;
   const accepted = policy.accepted[file];
   const role = proposal[file] ?? accepted;
   if (!role) throw new Error(`unmapped-module: ${file}`);

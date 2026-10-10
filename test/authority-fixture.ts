@@ -13,7 +13,7 @@ export function run(
   let state = emptyAuthority;
   const results: ReturnType<typeof execute>[] = [];
   for (const command of commands) {
-    const result = execute(state, command, recorded);
+    const result = execute(state, { command, ...recorded });
     results.push(result);
     if (result.kind === "accepted") state = result.state;
   }

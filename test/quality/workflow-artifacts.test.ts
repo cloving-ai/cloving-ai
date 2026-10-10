@@ -43,11 +43,10 @@ async function inspect(
     ]),
   ]);
   return withFiles(files, (directory) =>
-    inspectWorkflowArtifacts(
-      join(directory, "candidate"),
-      join(directory, "regenerated"),
-      expected,
-    ),
+    inspectWorkflowArtifacts(join(directory, "candidate"), {
+      regenerated: join(directory, "regenerated"),
+      contract: expected,
+    }),
   );
 }
 
@@ -92,7 +91,10 @@ await test("QG-07 rejects a packed helper or workflow missing from the SDK regis
 await test("QG-07 rejects comparing a generated directory to an alias of itself", async () => {
   await withFiles(artifacts, async (directory) => {
     await assert.rejects(
-      inspectWorkflowArtifacts(directory, `${directory}/.`, contract),
+      inspectWorkflowArtifacts(directory, {
+        regenerated: `${directory}/.`,
+        contract,
+      }),
       /workflow-regeneration-not-independent/,
     );
   });

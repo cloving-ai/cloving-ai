@@ -28,9 +28,9 @@ const binders: Readonly<
 
 export async function checkArtifacts(
   artifacts: readonly AcceptanceArtifact[],
-  required: readonly string[],
-  candidate: string,
+  scope: { readonly required: readonly string[]; readonly candidate: string },
 ): Promise<void> {
+  const { required, candidate } = scope;
   for (const name of required) {
     const artifact = artifacts.find((item) => item.name === name);
     if (!artifact) throw new Error(`missing-acceptance-artifact: ${name}`);
@@ -92,11 +92,10 @@ async function bindHandlers(
   );
   if (missing !== undefined)
     throw new Error(`unbound-product-step: ${missing}`);
-  await inspectWorkflowArtifacts(
-    artifact.path,
-    artifact.regenerated,
-    artifact.contract,
-  );
+  await inspectWorkflowArtifacts(artifact.path, {
+    regenerated: artifact.regenerated,
+    contract: artifact.contract,
+  });
 }
 
 function packedEntries(archive: Buffer): Array<[string, Buffer]> {
@@ -104,12 +103,15 @@ function packedEntries(archive: Buffer): Array<[string, Buffer]> {
   let offset = 0;
   while (offset + 512 <= archive.length && archive[offset] !== 0) {
     const header = archive.subarray(offset, offset + 512);
-    const size = Number.parseInt(field(header, 124, 12) || "0", 8);
+    const size = Number.parseInt(
+      field(header, { start: 124, length: 12 }) || "0",
+      8,
+    );
     if (!Number.isSafeInteger(size)) throw new Error("invalid-package-entry");
     const start = offset + 512;
-    if (["0", ""].includes(field(header, 156, 1))) {
-      const prefix = field(header, 345, 155);
-      const name = field(header, 0, 100);
+    if (["0", ""].includes(field(header, { start: 156, length: 1 }))) {
+      const prefix = field(header, { start: 345, length: 155 });
+      const name = field(header, { start: 0, length: 100 });
       entries.push([
         prefix ? `${prefix}/${name}` : name,
         archive.subarray(start, start + size),
@@ -120,7 +122,11 @@ function packedEntries(archive: Buffer): Array<[string, Buffer]> {
   return entries;
 }
 
-function field(header: Buffer, start: number, length: number): string {
+function field(
+  header: Buffer,
+  range: { readonly start: number; readonly length: number },
+): string {
+  const { start, length } = range;
   const value = header.subarray(start, start + length).toString("utf8");
   const end = value.indexOf("\0");
   return (end === -1 ? value : value.slice(0, end)).trim();

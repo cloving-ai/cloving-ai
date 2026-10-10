@@ -48,9 +48,9 @@ type Admission =
 
 export async function validateWorkflow(
   directory: string,
-  manifest: string,
-  input: string | null,
+  files: { readonly manifest: string; readonly input: string | null },
 ): Promise<ValidationReport> {
+  const { manifest, input } = files;
   const errors =
     input === null ? [] : await inputErrors(resolve(directory, input), input);
   const admission = await admit(resolve(directory, manifest), manifest);
@@ -87,22 +87,26 @@ async function admit(path: string, file: string): Promise<Admission> {
   const registration = fields(await readJson(path));
   const artifacts = registration["artifacts"];
   if (registration["schemaVersion"] !== 1 || typeof artifacts !== "string")
-    return rejected("invalid-manifest", file, "schemaVersion or artifacts");
+    return rejected({
+      code: "invalid-manifest",
+      file,
+      detail: "schemaVersion or artifacts",
+    });
   const root = dirname(path);
   const directory = resolve(root, artifacts);
   const digests: Record<string, string> = {};
   const contents: Record<string, Buffer> = {};
   for (const name of artifactNames) {
     const bytes = await readFile(resolve(directory, name)).catch(() => null);
-    if (bytes === null) return rejected("missing-artifact", file, name);
+    if (bytes === null)
+      return rejected({ code: "missing-artifact", file, detail: name });
     digests[name] = createHash("sha256").update(bytes).digest("hex");
     contents[name] = bytes;
   }
   const declared = registration["resources"];
   const toolchain = await observedToolchain(directory);
-  const result = admitWorkflow(
-    registration,
-    {
+  const result = admitWorkflow(registration, {
+    compiled: {
       manifest: parseJson(contents["manifest.json"]?.toString("utf8") ?? ""),
       artifacts: digests,
       resources: await collectResources(
@@ -113,13 +117,13 @@ async function admit(path: string, file: string): Promise<Admission> {
       ),
       toolchain,
     },
-    {
+    policy: {
       toolchain: await qualifiedToolchain(toolchain, directory),
       capabilities: [],
     },
-  );
+  });
   if (result.kind === "rejected")
-    return rejected(result.reason, file, result.detail);
+    return rejected({ code: result.reason, file, detail: result.detail });
   return {
     kind: "admitted",
     workflow: {
@@ -132,8 +136,8 @@ async function admit(path: string, file: string): Promise<Admission> {
   };
 }
 
-function rejected(code: string, file: string, detail: string): Admission {
-  return { kind: "rejected", error: { code, file, detail } };
+function rejected(error: ValidationError): Admission {
+  return { kind: "rejected", error };
 }
 
 async function readJson(path: string): Promise<unknown> {

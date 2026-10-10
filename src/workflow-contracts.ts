@@ -41,8 +41,14 @@ const outcomes: Readonly<
   waiting_for_decision: {
     keys: ["cycleId", "decisionId", "kind"],
     parse: (fields) => {
-      const cycleId = textField(fields, "cycleId", identifier);
-      const decisionId = textField(fields, "decisionId", identifier);
+      const cycleId = textField(fields, {
+        key: "cycleId",
+        pattern: identifier,
+      });
+      const decisionId = textField(fields, {
+        key: "decisionId",
+        pattern: identifier,
+      });
       if (cycleId === null || decisionId === null) return null;
       return { kind: "waiting_for_decision", cycleId, decisionId };
     },
@@ -50,9 +56,15 @@ const outcomes: Readonly<
   blocked: {
     keys: ["cycleId", "evidenceId", "kind", "reason"],
     parse: (fields) => {
-      const cycleId = textField(fields, "cycleId", identifier);
-      const evidenceId = textField(fields, "evidenceId", identifier);
-      const blocker = textField(fields, "reason", reason);
+      const cycleId = textField(fields, {
+        key: "cycleId",
+        pattern: identifier,
+      });
+      const evidenceId = textField(fields, {
+        key: "evidenceId",
+        pattern: identifier,
+      });
+      const blocker = textField(fields, { key: "reason", pattern: reason });
       if (cycleId === null || evidenceId === null || blocker === null)
         return null;
       return { kind: "blocked", cycleId, reason: blocker, evidenceId };
@@ -61,8 +73,14 @@ const outcomes: Readonly<
   handoff_requested: {
     keys: ["cycleId", "kind", "promotionId"],
     parse: (fields) => {
-      const cycleId = textField(fields, "cycleId", identifier);
-      const promotionId = textField(fields, "promotionId", identifier);
+      const cycleId = textField(fields, {
+        key: "cycleId",
+        pattern: identifier,
+      });
+      const promotionId = textField(fields, {
+        key: "promotionId",
+        pattern: identifier,
+      });
       if (cycleId === null || promotionId === null) return null;
       return { kind: "handoff_requested", cycleId, promotionId };
     },
@@ -73,7 +91,8 @@ export function validateDevelopmentInput(
   value: unknown,
 ): Validation<DevelopmentInput> {
   const fields = exactFields(value, ["cycleId"]);
-  const cycleId = fields && textField(fields, "cycleId", identifier);
+  const cycleId =
+    fields && textField(fields, { key: "cycleId", pattern: identifier });
   if (!cycleId) return { kind: "invalid", reason: "invalid-development-input" };
   return { kind: "valid", value: { cycleId } };
 }
@@ -110,9 +129,9 @@ function exactFields(
 
 function textField(
   fields: Readonly<Record<string, unknown>>,
-  key: string,
-  pattern: RegExp,
+  field: { readonly key: string; readonly pattern: RegExp },
 ): string | null {
+  const { key, pattern } = field;
   const value = fields[key];
   return typeof value === "string" && pattern.test(value) ? value : null;
 }

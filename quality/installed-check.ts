@@ -11,8 +11,7 @@ import { captureExecution } from "./verification-process.ts";
 
 export async function executeInstalledCheck(
   installation: VerifierInstallation,
-  candidate: string,
-  timeoutMilliseconds: number,
+  check: { readonly candidate: string; readonly timeoutMilliseconds: number },
 ): Promise<{
   verifier: string;
   candidate: string;
@@ -20,6 +19,7 @@ export async function executeInstalledCheck(
   command: VerificationCommand;
   execution: CapturedExecution;
 }> {
+  const { candidate, timeoutMilliseconds } = check;
   if (!Number.isFinite(timeoutMilliseconds) || timeoutMilliseconds <= 0)
     throw new Error("invalid-installed-check-timeout");
   const pinned = structuredClone(installation);

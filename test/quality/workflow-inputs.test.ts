@@ -33,7 +33,10 @@ for (const fixture of [
     await withFiles(fixture.files, async (directory) => {
       const root = join(directory, "consumer");
       await assert.rejects(
-        inspectWorkflowInputs(root, [join(root, "main.ts")], []),
+        inspectWorkflowInputs(root, {
+          sources: [join(root, "main.ts")],
+          dependencies: [],
+        }),
         fixture.diagnostic,
       );
     });
@@ -45,11 +48,10 @@ await test("QG-07 records local SDK source and fixed configuration inputs", asyn
     { "consumer/main.ts": source, "consumer/tsconfig.json": "{}" },
     async (directory) => {
       const root = await realpath(join(directory, "consumer"));
-      const record = await inspectWorkflowInputs(
-        root,
-        [join(root, "main.ts")],
-        [],
-      );
+      const record = await inspectWorkflowInputs(root, {
+        sources: [join(root, "main.ts")],
+        dependencies: [],
+      });
       assert.match(record[join(root, "main.ts")] ?? "", /^[a-f0-9]{64}$/);
       assert.match(record[join(root, "tsconfig.json")] ?? "", /^[a-f0-9]{64}$/);
       assert.equal(
@@ -66,11 +68,10 @@ for (const name of ["tsconfig.json", "jsconfig.json"]) {
       { [name]: "{}", "consumer/main.ts": source },
       async (directory) => {
         await assert.rejects(
-          inspectWorkflowInputs(
-            join(directory, "consumer"),
-            [join(directory, "consumer/main.ts")],
-            [],
-          ),
+          inspectWorkflowInputs(join(directory, "consumer"), {
+            sources: [join(directory, "consumer/main.ts")],
+            dependencies: [],
+          }),
           /unadmitted-ancestor-configuration/,
         );
       },
@@ -90,11 +91,10 @@ for (const configuration of [
       },
       async (directory) => {
         await assert.rejects(
-          inspectWorkflowInputs(
-            join(directory, "consumer"),
-            [join(directory, "consumer/main.ts")],
-            [],
-          ),
+          inspectWorkflowInputs(join(directory, "consumer"), {
+            sources: [join(directory, "consumer/main.ts")],
+            dependencies: [],
+          }),
           /unqualified-workflow-configuration/,
         );
       },
@@ -112,12 +112,18 @@ await test("QG-07 rejects SDK imports and source links outside admitted roots", 
     async (directory) => {
       const root = join(directory, "consumer");
       await assert.rejects(
-        inspectWorkflowInputs(root, [join(root, "main.ts")], []),
+        inspectWorkflowInputs(root, {
+          sources: [join(root, "main.ts")],
+          dependencies: [],
+        }),
         /outside-workflow-input/,
       );
       await symlink(join(directory, "outside.ts"), join(root, "link.ts"));
       await assert.rejects(
-        inspectWorkflowInputs(root, [join(root, "link.ts")], []),
+        inspectWorkflowInputs(root, {
+          sources: [join(root, "link.ts")],
+          dependencies: [],
+        }),
         /outside-workflow-input/,
       );
     },

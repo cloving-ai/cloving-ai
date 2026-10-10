@@ -21,7 +21,11 @@ export async function dependencySurface(
       throw new Error(`invalid-artifact-path: ${file}`);
   }
   const files: Record<string, string> = {};
-  await capture(await realpath(directory), "", artifacts, files);
+  await capture("", {
+    directory: await realpath(directory),
+    artifacts,
+    files,
+  });
   if (!files["metadata:package.json"] || !files["metadata:package-lock.json"])
     throw new Error("missing-npm-dependency-inputs");
   for (const file of artifacts) {
@@ -65,18 +69,21 @@ function categories(file: string, artifacts: readonly string[]): string[] {
 }
 
 async function capture(
-  directory: string,
   prefix: string,
-  artifacts: readonly string[],
-  files: Record<string, string>,
+  walk: {
+    readonly directory: string;
+    readonly artifacts: readonly string[];
+    readonly files: Record<string, string>;
+  },
 ): Promise<void> {
+  const { directory, artifacts, files } = walk;
   for (const entry of await readdir(join(directory, prefix), {
     withFileTypes: true,
   })) {
     const file = join(prefix, entry.name);
     if (file === ".git") continue;
     if (entry.isDirectory()) {
-      await capture(directory, file, artifacts, files);
+      await capture(file, walk);
       continue;
     }
     if (!entry.isFile() && !entry.isSymbolicLink())

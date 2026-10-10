@@ -11,7 +11,7 @@ export function lintFixture(
   return linter.verify(
     source,
     {
-      files: ["**/*.{ts,js}"],
+      files: ["**/*.{ts,js,mjs}"],
       languageOptions: { parser: typescript.parser },
       plugins: { sonarjs, "@typescript-eslint": typescript.plugin },
       rules: structuralRules,

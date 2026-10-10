@@ -2,9 +2,12 @@ import ts from "typescript";
 
 export function referencedSymbol(
   node: ts.Node,
-  parent: ts.Node | undefined,
-  checker: ts.TypeChecker,
+  context: {
+    readonly parent: ts.Node | undefined;
+    readonly checker: ts.TypeChecker;
+  },
 ): ts.Symbol | undefined {
+  const { parent, checker } = context;
   const symbol =
     parent && ts.isShorthandPropertyAssignment(parent)
       ? checker.getShorthandAssignmentValueSymbol(parent)

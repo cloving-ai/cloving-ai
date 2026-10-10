@@ -39,7 +39,7 @@ export async function inspectGenerated(
     throw new Error("generator-compiler-diagnostics");
   const outputs = regeneratedOutputs(program, directory);
   return {
-    inputs: await generatorInputs(directory, program, outputs),
+    inputs: await generatorInputs(directory, { program, outputs }),
     outputs,
     generator,
   };
@@ -47,9 +47,12 @@ export async function inspectGenerated(
 
 async function generatorInputs(
   directory: string,
-  program: ts.Program,
-  outputs: Readonly<Record<string, string>>,
+  generated: {
+    readonly program: ts.Program;
+    readonly outputs: Readonly<Record<string, string>>;
+  },
 ): Promise<Record<string, string>> {
+  const { program, outputs } = generated;
   const inputs = configurationInputs(directory);
   for (const source of program.getSourceFiles()) {
     const name = relative(directory, source.fileName);
@@ -70,7 +73,7 @@ function regeneratedOutputs(
 ): Record<string, string> {
   const outputs: Record<string, string> = {};
   const result = program.emit(undefined, (file, content) => {
-    verifyOutput(directory, file, content);
+    verifyOutput(directory, { file, content });
     outputs[relative(directory, file)] = digest(content);
   });
   if (
@@ -82,7 +85,11 @@ function regeneratedOutputs(
   return outputs;
 }
 
-function verifyOutput(directory: string, file: string, content: string): void {
+function verifyOutput(
+  directory: string,
+  output: { readonly file: string; readonly content: string },
+): void {
+  const { file, content } = output;
   if (!resolve(file).startsWith(resolve(directory, "dist") + sep))
     throw new Error(`unadmitted-generator-output: ${file}`);
   if (!existsSync(file)) throw new Error(`missing-generated-output: ${file}`);

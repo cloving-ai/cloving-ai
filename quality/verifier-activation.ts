@@ -15,14 +15,16 @@ export interface VerifierActivation {
 
 export async function activateVerifier(
   state: string,
-  installation: VerifierInstallation,
-  proposedPlan: AcceptancePlan,
+  proposal: {
+    readonly installation: VerifierInstallation;
+    readonly plan: AcceptancePlan;
+  },
 ): Promise<VerifierActivation> {
   const directory = await realpath(state);
-  const verifier = structuredClone(installation);
+  const verifier = structuredClone(proposal.installation);
   await assertVerifierInstallation(verifier);
-  const plan = currentPlan(proposedPlan);
-  const review = await approvedReview(directory, verifier, plan);
+  const plan = currentPlan(proposal.plan);
+  const review = await approvedReview(directory, { verifier, plan });
   const record = { verifier, plan, review: review.digest };
   const activation = { identity: digest(JSON.stringify(record)), ...record };
   try {
@@ -46,7 +48,10 @@ export async function readVerifierActivation(
   );
   const { identity, ...record } = activation;
   const plan = currentPlan(activation.plan);
-  const review = await approvedReview(directory, activation.verifier, plan);
+  const review = await approvedReview(directory, {
+    verifier: activation.verifier,
+    plan,
+  });
   if (
     identity !== digest(JSON.stringify(record)) ||
     review.digest !== activation.review
@@ -88,9 +93,12 @@ function currentPlan(plan: AcceptancePlan): AcceptancePlan {
 
 async function approvedReview(
   directory: string,
-  verifier: VerifierInstallation,
-  plan: AcceptancePlan,
+  expected: {
+    readonly verifier: VerifierInstallation;
+    readonly plan: AcceptancePlan;
+  },
 ): Promise<{ digest: string }> {
+  const { verifier, plan } = expected;
   const review = await readReview(directory);
   if (
     review.value["decision"] !== "approved" ||

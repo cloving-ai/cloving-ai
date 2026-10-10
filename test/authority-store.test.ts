@@ -15,17 +15,20 @@ import {
 
 await test("CLV-007 a process killed after committing an answer reopens with the answer and exactly one eligible continuation", async () => {
   const directory = await temporaryDirectory();
-  await withChild("authority-crash-child.ts", [directory], async (child) => {
-    await child.waitFor("awaiting-dispatch");
-    assert.deepEqual(await child.kill(), { code: null, signal: "SIGKILL" });
-    assert.deepEqual(child.lines, [
-      'receipt {"kind":"accepted","sequence":1,"intents":[{"kind":"start-run","runId":"run-1","operationId":"[\\"cloving-operation\\",0,\\"run-1\\",\\"admission\\",\\"start-run\\",null,null]"}]}',
-      'receipt {"kind":"accepted","sequence":2,"intents":[]}',
-      'receipt {"kind":"accepted","sequence":3,"intents":[]}',
-      `receipt ${JSON.stringify({ kind: "accepted", sequence: 4, intents: [continuation] })}`,
-      "awaiting-dispatch",
-    ]);
-  });
+  await withChild(
+    { script: "authority-crash-child.ts", parameters: [directory] },
+    async (child) => {
+      await child.waitFor("awaiting-dispatch");
+      assert.deepEqual(await child.kill(), { code: null, signal: "SIGKILL" });
+      assert.deepEqual(child.lines, [
+        'receipt {"kind":"accepted","sequence":1,"intents":[{"kind":"start-run","runId":"run-1","operationId":"[\\"cloving-operation\\",0,\\"run-1\\",\\"admission\\",\\"start-run\\",null,null]"}]}',
+        'receipt {"kind":"accepted","sequence":2,"intents":[]}',
+        'receipt {"kind":"accepted","sequence":3,"intents":[]}',
+        `receipt ${JSON.stringify({ kind: "accepted", sequence: 4, intents: [continuation] })}`,
+        "awaiting-dispatch",
+      ]);
+    },
+  );
   const wal = await readFile(join(directory, "authority.sqlite-wal"));
   assert.ok(wal.length > 32);
   assert.ok([0x377f0682, 0x377f0683].includes(wal.readUInt32BE(0)));
@@ -58,21 +61,24 @@ await test("CLV-007 a process killed after committing an answer reopens with the
 
 await test("CLV-007 a second authority process for the same state directory is refused within the contention bound", async () => {
   const directory = await temporaryDirectory();
-  await withChild("authority-crash-child.ts", [directory], async (holder) => {
-    await holder.waitFor("awaiting-dispatch");
-    const started = performance.now();
-    assert.deepEqual(await openAuthority(directory), {
-      kind: "refused",
-      reason: "authority-held",
-      detail: "database is locked",
-    });
-    const waited = performance.now() - started;
-    assert.ok(
-      waited >= contentionMilliseconds && waited < 1500,
-      String(waited),
-    );
-    assert.deepEqual(await holder.kill(), { code: null, signal: "SIGKILL" });
-  });
+  await withChild(
+    { script: "authority-crash-child.ts", parameters: [directory] },
+    async (holder) => {
+      await holder.waitFor("awaiting-dispatch");
+      const started = performance.now();
+      assert.deepEqual(await openAuthority(directory), {
+        kind: "refused",
+        reason: "authority-held",
+        detail: "database is locked",
+      });
+      const waited = performance.now() - started;
+      assert.ok(
+        waited >= contentionMilliseconds && waited < 1500,
+        String(waited),
+      );
+      assert.deepEqual(await holder.kill(), { code: null, signal: "SIGKILL" });
+    },
+  );
   const { store } = await opened(directory);
   assert.equal((await store.state()).sequence, 4);
   await store.close();
@@ -81,9 +87,7 @@ await test("CLV-007 a second authority process for the same state directory is r
 await test("CLV-007 concurrent first opens of a new state directory admit exactly one authority", async () => {
   const directory = await temporaryDirectory();
   await withChildren(
-    "authority-open-child.ts",
-    [directory],
-    3,
+    { script: "authority-open-child.ts", parameters: [directory], count: 3 },
     async (children) => {
       await Promise.all(children.map((child) => child.waitFor("ready")));
       for (const child of children) child.send("go\n");

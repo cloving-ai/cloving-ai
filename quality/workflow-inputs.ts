@@ -1,8 +1,11 @@
 export async function inspectWorkflowInputs(
   directory: string,
-  sources: readonly string[],
-  dependencies: readonly string[],
+  declared: {
+    readonly sources: readonly string[];
+    readonly dependencies: readonly string[];
+  },
 ): Promise<Readonly<Record<string, string | null>>> {
+  const { sources, dependencies } = declared;
   if (sources.length === 0) throw new Error("empty-workflow-inputs");
   const root = await realpath(directory);
   const admitted = await Promise.all(
@@ -22,7 +25,12 @@ export async function inspectWorkflowInputs(
     const text = await readFile(canonical, "utf8");
     inputs[canonical] = createHash("sha256").update(text).digest("hex");
     files.push(canonical);
-    pending.push(...(await localImports(canonical, text, root, admitted)));
+    pending.push(
+      ...(await localImports(
+        { file: canonical, text },
+        { root, dependencies: admitted },
+      )),
+    );
   }
   dependencyGraph(
     ts.createProgram(files, {
@@ -84,11 +92,11 @@ async function rejectNestedConfigurations(
 }
 
 async function localImports(
-  file: string,
-  text: string,
-  root: string,
-  dependencies: readonly string[],
+  source: { readonly file: string; readonly text: string },
+  scope: { readonly root: string; readonly dependencies: readonly string[] },
 ): Promise<string[]> {
+  const { file, text } = source;
+  const { root, dependencies } = scope;
   const result: string[] = [];
   for (const reference of ts.preProcessFile(text).importedFiles) {
     if (isBuiltin(reference.fileName)) continue;

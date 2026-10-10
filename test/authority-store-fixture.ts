@@ -120,22 +120,24 @@ export interface ChildProcess {
 }
 
 export async function withChild(
-  script: string,
-  parameters: readonly string[],
+  program: { readonly script: string; readonly parameters: readonly string[] },
   body: (child: ChildProcess) => Promise<void>,
 ): Promise<void> {
-  await withChildren(script, parameters, 1, async ([child]) => {
+  await withChildren({ ...program, count: 1 }, async ([child]) => {
     assert.ok(child);
     await body(child);
   });
 }
 
 export async function withChildren(
-  script: string,
-  parameters: readonly string[],
-  count: number,
+  programs: {
+    readonly script: string;
+    readonly parameters: readonly string[];
+    readonly count: number;
+  },
   body: (children: readonly ChildProcess[]) => Promise<void>,
 ): Promise<void> {
+  const { script, parameters, count } = programs;
   const children = Array.from({ length: count }, () =>
     startChild(script, parameters),
   );

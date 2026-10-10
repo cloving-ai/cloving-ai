@@ -90,16 +90,15 @@ await test("CLV-006 pause and resume return the run to the state it paused from"
   assert.ok(paused);
   assert.equal(paused.status, "paused");
   assert.equal(paused.pausedFrom, "waiting_gate");
-  const resumed = execute(
-    state,
-    {
+  const resumed = execute(state, {
+    command: {
       kind: "resume-run",
       commandId: "c-5",
       runId: "run-1",
       expectedRevision: 4,
     },
-    recorded,
-  );
+    ...recorded,
+  });
   assert.equal(resumed.kind, "accepted");
   const waiting = resumed.state.runs["run-1"];
   assert.ok(waiting);
@@ -326,16 +325,15 @@ await test("CLV-006 a paused run keeps its intents but none is eligible until it
   );
   assert.equal(paused.intents.length, 1);
   assert.deepEqual(eligibleIntents(paused), []);
-  const resumed = execute(
-    paused,
-    {
+  const resumed = execute(paused, {
+    command: {
       kind: "resume-run",
       commandId: "c-3",
       runId: "run-1",
       expectedRevision: 2,
     },
-    recorded,
-  );
+    ...recorded,
+  });
   assert.equal(resumed.kind, "accepted");
   assert.deepEqual(eligibleIntents(resumed.state), resumed.state.intents);
   assert.equal(resumed.state.intents.length, 1);

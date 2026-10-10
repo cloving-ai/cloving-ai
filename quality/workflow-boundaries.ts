@@ -47,10 +47,13 @@ function topLevelDurable(
 
 function durableDefinition(
   node: ts.Node,
-  parent: ts.Node | undefined,
-  policy: WorkflowPolicy,
-  checker: ts.TypeChecker,
+  context: {
+    readonly parent: ts.Node | undefined;
+    readonly policy: WorkflowPolicy;
+    readonly checker: ts.TypeChecker;
+  },
 ): string | undefined {
+  const { parent, policy, checker } = context;
   const marker = directive(node);
   if (!marker) return;
   if (!topLevelDurable(node, parent)) return "invalid-durable-definition";
@@ -88,10 +91,13 @@ function stepTarget(
 
 function stepCall(
   node: ts.CallExpression,
-  file: string,
-  checker: ts.TypeChecker,
-  policy: WorkflowPolicy,
+  context: {
+    readonly file: string;
+    readonly checker: ts.TypeChecker;
+    readonly policy: WorkflowPolicy;
+  },
 ): string | undefined {
+  const { file, checker, policy } = context;
   const target = stepTarget(
     checker.getResolvedSignature(node)?.declaration,
     policy,
@@ -129,10 +135,13 @@ function directCallReference(
 
 function stepReference(
   node: ts.Node,
-  ancestors: readonly ts.Node[],
-  checker: ts.TypeChecker,
-  policy: WorkflowPolicy,
+  context: {
+    readonly ancestors: readonly ts.Node[];
+    readonly checker: ts.TypeChecker;
+    readonly policy: WorkflowPolicy;
+  },
 ): boolean {
+  const { ancestors, checker, policy } = context;
   if (!ts.isIdentifier(node)) return false;
   const parent = ancestors.at(-1);
   if (
@@ -142,7 +151,7 @@ function stepReference(
     ts.isFunctionDeclaration(parent)
   )
     return false;
-  const symbol = referencedSymbol(node, parent, checker);
+  const symbol = referencedSymbol(node, { parent, checker });
   const declarations = symbol?.declarations ?? [];
   return declarations.some((declaration) => stepTarget(declaration, policy));
 }
@@ -158,14 +167,14 @@ export function inspectWorkflowBoundaries(
     if (!source) throw new Error(`missing-workflow-source: ${file}`);
     const visit = (node: ts.Node, ancestors: readonly ts.Node[]): void => {
       const issues = [
-        durableDefinition(node, ancestors.at(-1), policy, checker),
-        stepReference(node, ancestors, checker, policy) &&
+        durableDefinition(node, { parent: ancestors.at(-1), policy, checker }),
+        stepReference(node, { ancestors, checker, policy }) &&
         !directCallReference(node, ancestors)
           ? "step-value-escape"
           : undefined,
       ];
       if (ts.isCallExpression(node))
-        issues.push(stepCall(node, file, checker, policy));
+        issues.push(stepCall(node, { file, checker, policy }));
       for (const issue of issues) {
         if (issue)
           findings.push(

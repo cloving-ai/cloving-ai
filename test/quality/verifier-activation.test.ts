@@ -31,11 +31,10 @@ async function withInstalledVerifier(
     { "proposal/check.ts": "export const limit = 400;" },
     async (root) => {
       const proposal = join(root, "proposal");
-      const installed = await installVerifier(
-        proposal,
-        join(root, "installed"),
-        (await snapshotTree(proposal)).identity,
-      );
+      const installed = await installVerifier(proposal, {
+        directory: join(root, "installed"),
+        identity: (await snapshotTree(proposal)).identity,
+      });
       await mkdir(join(root, "state"));
       await inspect(root, installed);
     },
@@ -59,11 +58,10 @@ await test("QG-12 activation binds the installed verifier, plan and protected re
       plan: plan.identity,
       directory: installed.directory,
     });
-    const activation = await activateVerifier(
-      join(root, "state"),
-      installed,
+    const activation = await activateVerifier(join(root, "state"), {
+      installation: installed,
       plan,
-    );
+    });
     assert.equal(activation.verifier.identity, installed.identity);
     assert.equal(activation.plan.identity, plan.identity);
     assert.deepEqual(
@@ -77,7 +75,7 @@ await test("QG-12 repository proposals and caller digests cannot activate themse
   await withInstalledVerifier(async (root, installed) => {
     const state = join(root, "state");
     await assert.rejects(
-      activateVerifier(state, installed, plan),
+      activateVerifier(state, { installation: installed, plan }),
       /unreviewed-verifier-activation/,
     );
     await writeFile(join(root, "proposal/check.ts"), "export const limit = 0;");
@@ -88,11 +86,14 @@ await test("QG-12 repository proposals and caller digests cannot activate themse
       directory: installed.directory,
     });
     await assert.rejects(
-      activateVerifier(state, installed, plan),
+      activateVerifier(state, { installation: installed, plan }),
       /unreviewed-verifier-activation/,
     );
     await assert.rejects(
-      activateVerifier(state, { ...installed, identity: proposal }, plan),
+      activateVerifier(state, {
+        installation: { ...installed, identity: proposal },
+        plan,
+      }),
       /verifier-installation-changed/,
     );
     await review(root, {
@@ -101,7 +102,7 @@ await test("QG-12 repository proposals and caller digests cannot activate themse
       directory: installed.directory,
     });
     await assert.rejects(
-      activateVerifier(state, installed, plan),
+      activateVerifier(state, { installation: installed, plan }),
       /unreviewed-verifier-activation/,
     );
     await review(root, {
@@ -110,7 +111,10 @@ await test("QG-12 repository proposals and caller digests cannot activate themse
       directory: installed.directory,
     });
     await assert.rejects(
-      activateVerifier(state, installed, { ...plan, minimumTests: 0 }),
+      activateVerifier(state, {
+        installation: installed,
+        plan: { ...plan, minimumTests: 0 },
+      }),
       /invalid-acceptance-plan/,
     );
     await review(root, {
@@ -119,7 +123,7 @@ await test("QG-12 repository proposals and caller digests cannot activate themse
       directory: join(root, "proposal"),
     });
     await assert.rejects(
-      activateVerifier(state, installed, plan),
+      activateVerifier(state, { installation: installed, plan }),
       /unreviewed-verifier-activation/,
     );
     await assert.rejects(access(join(state, "activation.json")), /ENOENT/);
@@ -134,9 +138,9 @@ await test("QG-12 activation is never overwritten and later changes invalidate i
       plan: plan.identity,
       directory: installed.directory,
     });
-    await activateVerifier(state, installed, plan);
+    await activateVerifier(state, { installation: installed, plan });
     await assert.rejects(
-      activateVerifier(state, installed, plan),
+      activateVerifier(state, { installation: installed, plan }),
       /verifier-activation-exists/,
     );
     await writeFile(join(state, "review.json"), "{}");
@@ -168,7 +172,7 @@ await test("QG-12 a malformed activation record is not active", async () => {
       plan: plan.identity,
       directory: installed.directory,
     });
-    await activateVerifier(state, installed, plan);
+    await activateVerifier(state, { installation: installed, plan });
     for (const record of [
       "[]",
       JSON.stringify({ identity: "x", review: "y", verifier: {}, plan }),
@@ -197,7 +201,10 @@ await test("QG-12 a rewritten activation must still match its review", async () 
       plan: plan.identity,
       directory: installed.directory,
     });
-    const activation = await activateVerifier(state, installed, plan);
+    const activation = await activateVerifier(state, {
+      installation: installed,
+      plan,
+    });
     const weakened = assembleAcceptancePlan({
       ...plan,
       minimumTests: 1,

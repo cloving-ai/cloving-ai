@@ -1,4 +1,4 @@
-import { runCommand } from "./command.ts";
+import { runCommand, type CheckCommand } from "./command.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -8,6 +8,10 @@ import { checkCoverage } from "./coverage.ts";
 export interface TestExecutionOptions {
   readonly coverageFiles?: readonly string[];
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface TestExecution extends TestExecutionOptions {
+  readonly files: readonly string[];
 }
 
 function validateReport(report: object, tests: readonly string[]): void {
@@ -49,11 +53,8 @@ function validateRequiredTests(
     throw new Error("mandatory-test-inventory-mismatch");
 }
 
-export function checkTests(
-  directory: string,
-  files: readonly string[],
-  options: TestExecutionOptions = {},
-): void {
+export function checkTests(directory: string, execution: TestExecution): void {
+  const { files, ...options } = execution;
   const tests = files
     .filter((file) => /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/.test(file))
     .map((file) => realpathSync(file))
@@ -66,7 +67,7 @@ export function checkTests(
   ].sort();
   const before = sourceSnapshot(checked);
   try {
-    executeTests(directory, tests, temporary, options);
+    executeTests(directory, { tests, temporary, options });
     if (before !== sourceSnapshot(checked))
       throw new Error("test-source-changed");
   } finally {
@@ -83,24 +84,44 @@ function sourceSnapshot(files: readonly string[]): string {
   );
 }
 
-function executeTests(
+export function testCommand(
   directory: string,
-  tests: readonly string[],
-  temporary: string,
-  options: TestExecutionOptions,
-): void {
-  const output = runCommand({
+  run: {
+    readonly tests: readonly string[];
+    readonly coverageDirectory?: string;
+  },
+): CheckCommand {
+  return {
     executable: process.execPath,
     arguments: [
       "--test",
       `--test-reporter=${resolve(import.meta.dirname, "test-reporter.ts")}`,
       "--test-concurrency=2",
-      ...tests,
+      ...run.tests,
     ],
     directory,
-    timeoutMilliseconds: 120000,
-    ...(options.coverageFiles ? { coverageDirectory: temporary } : {}),
-  });
+    timeoutMilliseconds: 300000,
+    ...(run.coverageDirectory === undefined
+      ? {}
+      : { coverageDirectory: run.coverageDirectory }),
+  };
+}
+
+function executeTests(
+  directory: string,
+  run: {
+    readonly tests: readonly string[];
+    readonly temporary: string;
+    readonly options: TestExecutionOptions;
+  },
+): void {
+  const { tests, temporary, options } = run;
+  const output = runCommand(
+    testCommand(directory, {
+      tests,
+      ...(options.coverageFiles ? { coverageDirectory: temporary } : {}),
+    }),
+  );
   const report: unknown = JSON.parse(output);
   if (!report || typeof report !== "object")
     throw new Error("Invalid test report");

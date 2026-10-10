@@ -82,14 +82,13 @@ export function planCommand(planning: CommandPlanning): TurnPlan {
   const { turn, request } = planning;
   const refusal = freshRefusal(planning);
   if (refusal !== undefined) return answer(refusal);
-  const admission = admitted(
-    turn.state,
-    turn.definitions,
-    request.command,
-    request.manifest,
-  );
+  const admission = admitted(turn.state, {
+    definitions: turn.definitions,
+    command: request.command,
+    manifest: request.manifest,
+  });
   if (admission.kind === "rejected") return answer(admission);
-  const result = execute(turn.state, request.command, request);
+  const result = execute(turn.state, request);
   if (result.kind === "duplicate")
     return answer({ ...result, intents: turn.created });
   if (result.kind === "rejected") return answer(result);
@@ -174,17 +173,16 @@ function dispatched(
   state: AuthorityState,
   delivery: DeliveryResult,
 ): Accepted | undefined {
-  const result = execute(
-    state,
-    {
+  const result = execute(state, {
+    command: {
       kind: "record-dispatch",
       commandId: `dispatch:${operationDigest(delivery.operationId)}`,
       runId: delivery.runId,
       operationId: delivery.operationId,
       receipt: delivery.receipt,
     },
-    delivery,
-  );
+    recordedAt: delivery.recordedAt,
+  });
   return result.kind === "accepted" ? result : undefined;
 }
 

@@ -5,12 +5,17 @@ import { join } from "node:path";
 
 export type StaticEvidence = Awaited<ReturnType<typeof executeInstalledCheck>>;
 
+export interface TrustedStaticCheck {
+  readonly activation: VerifierActivation;
+  readonly candidate: string;
+  readonly executable: string;
+}
+
 export function checkStaticEvidence(
   checked: StaticEvidence,
-  activation: VerifierActivation,
-  trusted: { readonly candidate: string; readonly executable: string },
+  trusted: TrustedStaticCheck,
 ): void {
-  checkStaticCommand(checked, activation, trusted);
+  checkStaticCommand(checked, trusted);
   const { execution } = checked;
   if (
     execution.exit !== 0 ||
@@ -22,17 +27,16 @@ export function checkStaticEvidence(
   if (
     report?.["kind"] !== "static-analysis" ||
     JSON.stringify(report["completed"]) !==
-      JSON.stringify(activation.plan.staticChecks)
+      JSON.stringify(trusted.activation.plan.staticChecks)
   )
     throw new Error("missing-required-static-check");
 }
 
 function checkStaticCommand(
   checked: StaticEvidence,
-  activation: VerifierActivation,
-  trusted: { readonly candidate: string; readonly executable: string },
+  trusted: TrustedStaticCheck,
 ): void {
-  const { directory, identity } = activation.verifier;
+  const { directory, identity } = trusted.activation.verifier;
   if (
     checked.verifier !== identity ||
     checked.command.executable !== trusted.executable ||
@@ -55,10 +59,13 @@ export interface ScenarioObservation {
 
 export function checkScenarios(
   observations: readonly ScenarioObservation[],
-  plan: AcceptancePlan,
-  bound: { readonly verifier: string; readonly candidate: string },
+  bound: {
+    readonly plan: AcceptancePlan;
+    readonly verifier: string;
+    readonly candidate: string;
+  },
 ): void {
-  for (const id of plan.scenarios) {
+  for (const id of bound.plan.scenarios) {
     const matches = observations.filter((observation) => observation.id === id);
     const [observation] = matches;
     if (matches.length !== 1 || observation?.outcome !== "passed")

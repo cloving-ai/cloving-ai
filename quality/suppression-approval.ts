@@ -20,7 +20,7 @@ export function checkSuppressions(
   const findings = sources.flatMap(inspectSuppressions);
   const remaining = new Set(findings);
   for (const approval of approvals) {
-    const finding = approvedFinding(sources, findings, approval);
+    const finding = approvedFinding(approval, { sources, findings });
     if (!remaining.delete(finding))
       throw new Error("duplicate-suppression-approval");
   }
@@ -31,10 +31,13 @@ export function checkSuppressions(
 }
 
 function approvedFinding(
-  sources: readonly ts.SourceFile[],
-  findings: readonly SuppressionFinding[],
   approval: SuppressionApproval,
+  inspected: {
+    readonly sources: readonly ts.SourceFile[];
+    readonly findings: readonly SuppressionFinding[];
+  },
 ): SuppressionFinding {
+  const { sources, findings } = inspected;
   if (
     approval.rule !== "negative-type-test" ||
     [approval.justification, approval.decision, approval.removalCondition].some(

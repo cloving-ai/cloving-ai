@@ -21,7 +21,7 @@ await test("QG-01 compiler checks exactly the supplied source inventory", async 
     (directory) => {
       const files = [join(directory, "main.ts")];
       assert.deepEqual(
-        compilerProgram(directory, files).getRootFileNames(),
+        compilerProgram(directory, { files }).getRootFileNames(),
         files,
       );
     },
@@ -57,7 +57,8 @@ for (const [name, source, configuration, message] of [
       },
       (directory) => {
         assert.throws(
-          () => compilerProgram(directory, [join(directory, "main.ts")]),
+          () =>
+            compilerProgram(directory, { files: [join(directory, "main.ts")] }),
           message,
         );
       },

@@ -24,7 +24,7 @@ export function checkDependencies(
         .map((edge) => edge.target),
     ]),
   );
-  for (const file of graph.files) checkPaths(file, outgoing, policy);
+  for (const file of graph.files) checkPaths(file, { outgoing, policy });
 }
 
 function checkEdge(edge: DependencyEdge, policy: DependencyPolicy): void {
@@ -38,9 +38,12 @@ function checkEdge(edge: DependencyEdge, policy: DependencyPolicy): void {
 
 function checkPaths(
   origin: string,
-  outgoing: ReadonlyMap<string, readonly string[]>,
-  policy: DependencyPolicy,
+  graph: {
+    readonly outgoing: ReadonlyMap<string, readonly string[]>;
+    readonly policy: DependencyPolicy;
+  },
 ): void {
+  const { outgoing, policy } = graph;
   const visited = new Set<string>();
   const forbidden =
     policy.forbiddenReachability[policy.roles[origin] ?? ""] ?? [];

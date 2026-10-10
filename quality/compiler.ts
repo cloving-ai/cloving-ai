@@ -23,15 +23,16 @@ export function compilerConfiguration(file: string): ts.ParsedCommandLine {
 
 export function compilerProgram(
   directory: string,
-  files: readonly string[],
-  options: { readonly trustedConfiguration?: string } = {},
+  inventory: {
+    readonly files: readonly string[];
+    readonly trustedConfiguration?: string;
+  },
 ): ts.Program {
+  const { files, trustedConfiguration } = inventory;
   const configuration =
-    options.trustedConfiguration ?? join(directory, "tsconfig.json");
+    trustedConfiguration ?? join(directory, "tsconfig.json");
   const parsed = compilerConfiguration(configuration);
-  const configured = [
-    ...(options.trustedConfiguration ? files : parsed.fileNames),
-  ]
+  const configured = [...(trustedConfiguration ? files : parsed.fileNames)]
     .map((file) => resolve(file))
     .sort();
   const expected = [...files].map((file) => resolve(file)).sort();
@@ -42,7 +43,7 @@ export function compilerProgram(
     throw new Error("Compiler inventory does not match discovered sources");
   const program = ts.createProgram(configured, {
     ...parsed.options,
-    ...(options.trustedConfiguration
+    ...(trustedConfiguration
       ? {
           rootDir: directory,
           outDir: join(directory, "dist"),

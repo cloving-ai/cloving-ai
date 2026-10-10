@@ -22,7 +22,8 @@ await test("QG-18 rejects missed same-line statements despite passing native cov
     },
     (directory) => {
       assert.throws(() => {
-        checkTests(directory, [join(directory, "main.test.ts")], {
+        checkTests(directory, {
+          files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });
       }, /insufficient-production-coverage/);
@@ -41,15 +42,12 @@ await test("QG-18 merges complementary coverage from isolated test processes", a
     },
     (directory) => {
       assert.doesNotThrow(() => {
-        checkTests(
-          directory,
-          ["main.test.ts", "additional.test.ts"].map((file) =>
+        checkTests(directory, {
+          files: ["main.test.ts", "additional.test.ts"].map((file) =>
             join(directory, file),
           ),
-          {
-            coverageFiles: [join(directory, "main.ts")],
-          },
-        );
+          coverageFiles: [join(directory, "main.ts")],
+        });
       });
     },
   );
@@ -65,7 +63,8 @@ await test("QG-18 rejects production source rewritten during the test run", asyn
     },
     (directory) => {
       assert.throws(() => {
-        checkTests(directory, [join(directory, "main.test.ts")], {
+        checkTests(directory, {
+          files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });
       }, /test-source-changed/);
@@ -87,7 +86,8 @@ for (const extension of ["ts", "mts", "cts", "js", "mjs", "cjs"]) {
       },
       (directory) => {
         assert.doesNotThrow(() => {
-          checkTests(directory, [join(directory, "main.test.ts")], {
+          checkTests(directory, {
+            files: [join(directory, "main.test.ts")],
             coverageFiles: [join(directory, name)],
           });
         });
@@ -111,7 +111,8 @@ for (const [comment, diagnostic] of [
       },
       (directory) => {
         assert.throws(() => {
-          checkTests(directory, [join(directory, "main.test.ts")], {
+          checkTests(directory, {
+            files: [join(directory, "main.test.ts")],
             coverageFiles: [join(directory, "main.ts")],
           });
         }, diagnostic);
@@ -130,7 +131,8 @@ await test("QG-18 ignores unrelated virtual scripts without treating them as mis
     },
     (directory) => {
       assert.doesNotThrow(() => {
-        checkTests(directory, [join(directory, "main.test.ts")], {
+        checkTests(directory, {
+          files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });
       });

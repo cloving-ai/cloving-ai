@@ -19,13 +19,13 @@ await test("QG-18 production coverage follows admitted roles across renamed dire
         ]),
       );
       assert.deepEqual(
-        productionInventory(program, files, roles).map((file) =>
+        productionInventory(program, { files, roles }).map((file) =>
           basename(file),
         ),
         ["main.ts"],
       );
       assert.throws(
-        () => productionInventory(program, files, {}),
+        () => productionInventory(program, { files, roles: {} }),
         /unmapped-coverage-source/,
       );
     },
@@ -39,20 +39,18 @@ await test("QG-18 declarations and unknown source roles require explicit qualifi
       const files = program.getRootFileNames();
       assert.throws(
         () =>
-          productionInventory(
-            program,
+          productionInventory(program, {
             files,
-            Object.fromEntries(files.map((file) => [file, "pure"])),
-          ),
+            roles: Object.fromEntries(files.map((file) => [file, "pure"])),
+          }),
         /unadmitted-coverage-declaration/,
       );
       assert.throws(
         () =>
-          productionInventory(
-            program,
+          productionInventory(program, {
             files,
-            Object.fromEntries(files.map((file) => [file, "hidden"])),
-          ),
+            roles: Object.fromEntries(files.map((file) => [file, "hidden"])),
+          }),
         /unqualified-coverage-role/,
       );
     },

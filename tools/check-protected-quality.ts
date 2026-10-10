@@ -29,11 +29,10 @@ const inventory = await sourceFiles(directory, {
 const { files, completed } = await checkProjectSources(directory, {
   trustedCompilerConfiguration: resolve(installed, "tsconfig.json"),
   generated: generated.outputs,
-  architecture: admittedModulePolicy(
-    directory,
-    inventory.filter((file) => !outputs.includes(file)),
-    await readProposedRoles(directory),
-  ),
+  architecture: admittedModulePolicy(directory, {
+    files: inventory.filter((file) => !outputs.includes(file)),
+    roles: await readProposedRoles(directory),
+  }),
   stepExports: {},
 });
 process.stdout.write(

@@ -32,7 +32,7 @@ export async function checkProject(
     directory,
     options,
   );
-  checkProjectTests(program, files, directory, options);
+  checkProjectTests(directory, { program, files, options });
   completed.push("tests");
   assertCheckCoverage(completed);
   return { files, completed };
@@ -49,7 +49,8 @@ export async function checkProjectSources(
   const completed: string[] = [];
   const files = await sourceFiles(directory, options);
   completed.push("inventory");
-  const program = compilerProgram(directory, files, {
+  const program = compilerProgram(directory, {
+    files,
     ...(options.trustedCompilerConfiguration
       ? { trustedConfiguration: options.trustedCompilerConfiguration }
       : {}),
@@ -74,12 +75,11 @@ export async function checkProjectSources(
   completed.push("test-integrity");
   await checkFormatting(files);
   completed.push("format");
-  await checkLint(
-    directory,
+  await checkLint(directory, {
     files,
-    options.suppressionApprovals ?? [],
+    approvals: options.suppressionApprovals ?? [],
     program,
-  );
+  });
   completed.push("lint");
   const structural = inspectStructure(program);
   if (structural.length > 0)
@@ -97,17 +97,20 @@ export async function checkProjectSources(
 }
 
 function checkProjectTests(
-  program: ReturnType<typeof compilerProgram>,
-  files: readonly string[],
   directory: string,
-  options: ProjectOptions,
+  checked: {
+    readonly program: ReturnType<typeof compilerProgram>;
+    readonly files: readonly string[];
+    readonly options: ProjectOptions;
+  },
 ): void {
-  const production = productionInventory(
-    program,
+  const { program, files, options } = checked;
+  const production = productionInventory(program, {
     files,
-    options.architecture.roles,
-  );
-  checkTests(directory, files, {
+    roles: options.architecture.roles,
+  });
+  checkTests(directory, {
+    files,
     ...(production.length > 0 ? { coverageFiles: production } : {}),
     ...(options.requiredTests ? { requiredTests: options.requiredTests } : {}),
   });

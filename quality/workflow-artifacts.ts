@@ -5,9 +5,12 @@ export interface WorkflowArtifactContract {
 
 export async function inspectWorkflowArtifacts(
   directory: string,
-  regenerated: string,
-  contract: WorkflowArtifactContract,
+  reference: {
+    readonly regenerated: string;
+    readonly contract: WorkflowArtifactContract;
+  },
 ): Promise<Readonly<Record<string, string>>> {
+  const { regenerated, contract } = reference;
   if ((await realpath(directory)) === (await realpath(regenerated)))
     throw new Error("workflow-regeneration-not-independent");
   if (contract.workflows.length === 0)
@@ -19,8 +22,16 @@ export async function inspectWorkflowArtifacts(
   const manifest: unknown = JSON.parse(
     await readFile(join(directory, "manifest.json"), "utf8"),
   );
-  checkRegistrations(manifest, "workflows", "workflowId", contract.workflows);
-  checkRegistrations(manifest, "steps", "stepId", contract.steps);
+  checkRegistrations(manifest, {
+    category: "workflows",
+    identifier: "workflowId",
+    required: contract.workflows,
+  });
+  checkRegistrations(manifest, {
+    category: "steps",
+    identifier: "stepId",
+    required: contract.steps,
+  });
   return actual;
 }
 
@@ -56,10 +67,13 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function checkRegistrations(
   manifest: unknown,
-  category: string,
-  identifier: string,
-  required: readonly string[],
+  registration: {
+    readonly category: string;
+    readonly identifier: string;
+    readonly required: readonly string[];
+  },
 ): void {
+  const { category, identifier, required } = registration;
   if (!record(manifest) || !record(manifest[category]))
     throw new Error("invalid-workflow-manifest");
   const identifiers: string[] = [];

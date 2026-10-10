@@ -29,8 +29,7 @@ await test("CLV-042 a second process and a directory alias are refused within th
   const alias = join(await temporaryDirectory(), "alias");
   await symlink(directory, alias);
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "commit"],
+    { script: "authority-actor-child.ts", parameters: [directory, "commit"] },
     async (holder) => {
       await holder.waitFor("awaiting-dispatch");
       for (const path of [directory, alias]) {
@@ -59,9 +58,11 @@ await test("CLV-042 a second process and a directory alias are refused within th
 await test("CLV-042 concurrent first openings of a new state directory admit exactly one authority", async () => {
   const directory = await temporaryDirectory();
   await withChildren(
-    "authority-actor-child.ts",
-    [directory, "open"],
-    3,
+    {
+      script: "authority-actor-child.ts",
+      parameters: [directory, "open"],
+      count: 3,
+    },
     async (children) => {
       await Promise.all(children.map((child) => child.waitFor("ready")));
       for (const child of children) child.send("go\n");

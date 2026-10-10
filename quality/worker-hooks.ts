@@ -49,10 +49,11 @@ export async function evaluateWorkerHook(
     const files = policy.sourceFiles.map((file) =>
       resolve(policy.workspace, file),
     );
-    const program = compilerProgram(policy.workspace, files, {
+    const program = compilerProgram(policy.workspace, {
+      files,
       trustedConfiguration: policy.compilerConfiguration,
     });
-    await checkLint(policy.workspace, files, [], program);
+    await checkLint(policy.workspace, { files, approvals: [], program });
     const findings = inspectStructure(program);
     if (findings.length > 0) throw new Error(JSON.stringify(findings));
     return { exit: 0, diagnostic: "" };

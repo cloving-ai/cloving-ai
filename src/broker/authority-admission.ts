@@ -20,21 +20,24 @@ export type Admission =
 
 type Rule = (
   command: AuthorityCommand,
-  manifest: ExecutionManifest | undefined,
-  state: AuthorityState,
-  definitions: Definitions,
+  context: {
+    readonly manifest: ExecutionManifest | undefined;
+    readonly state: AuthorityState;
+    readonly definitions: Definitions;
+  },
 ) => Admission;
 
 const admissible: Admission = { kind: "admissible", definitions: new Map() };
 
 const terminal = ["completed", "failed", "cancelled"];
 
-const unpinned: Rule = (_command, manifest) =>
-  manifest === undefined
+const unpinned: Rule = (_command, context) =>
+  context.manifest === undefined
     ? admissible
     : { kind: "rejected", reason: "unexpected-manifest" };
 
-const admission: Rule = (command, manifest) => {
+const admission: Rule = (command, context) => {
+  const { manifest } = context;
   if (manifest === undefined)
     return { kind: "rejected", reason: "missing-manifest" };
   const stored = readExecutionManifest(manifest);
@@ -44,10 +47,15 @@ const admission: Rule = (command, manifest) => {
   return { kind: "admissible", definitions: new Map([[pin, stored]]) };
 };
 
-const resumption: Rule = (command, manifest, state, definitions) => {
+const resumption: Rule = (command, context) => {
+  const { manifest, state, definitions } = context;
   if (manifest === undefined)
     return { kind: "rejected", reason: "missing-manifest" };
-  const resumed = pinnedResumption(state, definitions, command.runId, manifest);
+  const resumed = pinnedResumption(state, {
+    definitions,
+    runId: command.runId,
+    available: manifest,
+  });
   return resumed.kind === "rejected" && resumed.reason !== "unknown-run"
     ? resumed
     : admissible;
@@ -61,21 +69,28 @@ const rules: Readonly<Record<string, Rule>> = {
 
 export function admitted(
   state: AuthorityState,
-  definitions: Definitions,
-  command: unknown,
-  manifest: ExecutionManifest | undefined,
+  request: {
+    readonly definitions: Definitions;
+    readonly command: unknown;
+    readonly manifest: ExecutionManifest | undefined;
+  },
 ): Admission {
+  const { definitions, command, manifest } = request;
   const parsed = parseCommand(command);
   if (!parsed || state.commands[parsed.commandId]) return admissible;
-  return (rules[parsed.kind] ?? unpinned)(parsed, manifest, state, definitions);
+  const rule = rules[parsed.kind] ?? unpinned;
+  return rule(parsed, { manifest, state, definitions });
 }
 
 export function pinnedResumption(
   state: AuthorityState,
-  definitions: Definitions,
-  runId: string,
-  available: ExecutionManifest,
+  request: {
+    readonly definitions: Definitions;
+    readonly runId: string;
+    readonly available: ExecutionManifest;
+  },
 ): AdmissionResult {
+  const { definitions, runId, available } = request;
   const status = state.runs[runId]?.status ?? "";
   const pinned = definitions.get(state.runs[runId]?.workflow ?? "");
   if (!pinned)

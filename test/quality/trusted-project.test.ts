@@ -16,7 +16,8 @@ await test("QG-09 trusted compiler options ignore candidate weakening", async ()
         '{"compilerOptions":{"strict":false},"include":["main.ts"]}',
     },
     (directory) => {
-      const program = compilerProgram(directory, [join(directory, "main.ts")], {
+      const program = compilerProgram(directory, {
+        files: [join(directory, "main.ts")],
         trustedConfiguration: resolve("tsconfig.json"),
       });
       assert.equal(program.getCompilerOptions().strict, true);

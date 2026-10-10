@@ -49,17 +49,15 @@ function packedConsumer(helperSteps: Readonly<Record<string, unknown>>): {
 }
 
 await test("CLV-005 admission rejects a packed consumer whose imported helper step was not transformed", () => {
-  const admitted = admitWorkflow(
-    registration,
-    packedConsumer({ recordEffect: { stepId: helper } }),
+  const admitted = admitWorkflow(registration, {
+    compiled: packedConsumer({ recordEffect: { stepId: helper } }),
     policy,
-  );
-  assert.equal(admitted.kind, "admitted");
-  assert.deepEqual(admitWorkflow(registration, packedConsumer({}), policy), {
-    kind: "rejected",
-    reason: "unresolved-step",
-    detail: helper,
   });
+  assert.equal(admitted.kind, "admitted");
+  assert.deepEqual(
+    admitWorkflow(registration, { compiled: packedConsumer({}), policy }),
+    { kind: "rejected", reason: "unresolved-step", detail: helper },
+  );
 });
 
 await test("CLV-005 admission rejects unresolved workflows, duplicate identities and malformed manifests", () => {
@@ -85,11 +83,10 @@ await test("CLV-005 admission rejects unresolved workflows, duplicate identities
     ],
     [null, "invalid-manifest"],
   ] as const) {
-    const result = admitWorkflow(
-      registration,
-      { ...valid, manifest: changed },
+    const result = admitWorkflow(registration, {
+      compiled: { ...valid, manifest: changed },
       policy,
-    );
+    });
     assert.equal(
       result.kind === "rejected" ? result.reason : result.kind,
       reason,
@@ -121,16 +118,14 @@ await test("CLV-005 admission rejects incompatible toolchains, unsupported capab
       "node",
     ],
   ] as const)
-    assert.deepEqual(admitWorkflow(registration, changed, policy), {
-      kind: "rejected",
-      reason,
-      detail,
-    });
+    assert.deepEqual(
+      admitWorkflow(registration, { compiled: changed, policy }),
+      { kind: "rejected", reason, detail },
+    );
   assert.deepEqual(
     admitWorkflow(
       { ...registration, capabilities: ["network"] },
-      valid,
-      policy,
+      { compiled: valid, policy },
     ),
     { kind: "rejected", reason: "unsupported-capability", detail: "network" },
   );
@@ -139,7 +134,7 @@ await test("CLV-005 admission rejects incompatible toolchains, unsupported capab
     { ...registration, steps: [helper, helper] },
     { ...registration, capabilities: ["fake-harness", "fake-harness"] },
   ])
-    assert.deepEqual(admitWorkflow(changed, valid, policy), {
+    assert.deepEqual(admitWorkflow(changed, { compiled: valid, policy }), {
       kind: "rejected",
       reason: "invalid-registration",
       detail: "registration",
@@ -151,7 +146,10 @@ await test("CLV-005 the admitted manifest is an immutable copy with code digests
   const artifacts = { ...compiled.artifacts };
   const steps = [...registration.steps];
   const extended = { ...registration, steps, extra: "ignored" };
-  const result = admitWorkflow(extended, { ...compiled, artifacts }, policy);
+  const result = admitWorkflow(extended, {
+    compiled: { ...compiled, artifacts },
+    policy,
+  });
   assert.equal(result.kind, "admitted");
   artifacts["flow.mjs"] = "c".repeat(64);
   steps.push("step//other");
@@ -161,7 +159,10 @@ await test("CLV-005 the admitted manifest is an immutable copy with code digests
   assert.ok(Object.isFrozen(result.manifest));
   assert.ok(Object.isFrozen(result.manifest.artifacts));
   assert.deepEqual(
-    admitWorkflow(registration, { ...compiled, artifacts: {} }, policy),
+    admitWorkflow(registration, {
+      compiled: { ...compiled, artifacts: {} },
+      policy,
+    }),
     { kind: "rejected", reason: "invalid-artifacts", detail: "artifacts" },
   );
 });
@@ -202,16 +203,15 @@ await test("CLV-005 admission tags untrusted registration, artifact and toolchai
       "artifacts",
     ],
   ] as const)
-    assert.deepEqual(admitWorkflow(candidate, compiled, policy), {
+    assert.deepEqual(admitWorkflow(candidate, { compiled, policy }), {
       kind: "rejected",
       reason,
       detail,
     });
-  const result = admitWorkflow(
-    registration,
-    { ...valid, toolchain: { ...toolchain, extra: "ignored" } },
+  const result = admitWorkflow(registration, {
+    compiled: { ...valid, toolchain: { ...toolchain, extra: "ignored" } },
     policy,
-  );
+  });
   assert.equal(result.kind, "admitted");
   assert.deepEqual(result.manifest.toolchain, toolchain);
 });
@@ -221,7 +221,10 @@ await test("CLV-005 every artifact digest survives admission, including inherite
   const artifacts: unknown = JSON.parse(
     `{"__proto__":"${"a".repeat(64)}","flow.mjs":"${"b".repeat(64)}"}`,
   );
-  const result = admitWorkflow(registration, { ...valid, artifacts }, policy);
+  const result = admitWorkflow(registration, {
+    compiled: { ...valid, artifacts },
+    policy,
+  });
   assert.equal(result.kind, "admitted");
   assert.deepEqual(Object.keys(result.manifest.artifacts), [
     "__proto__",
@@ -237,7 +240,10 @@ await test("CLV-005 admission rejects layout-dependent and unversioned step iden
   ]) {
     const valid = packedConsumer({ loadCycle: { stepId: unversioned } });
     assert.deepEqual(
-      admitWorkflow({ ...registration, steps: [unversioned] }, valid, policy),
+      admitWorkflow(
+        { ...registration, steps: [unversioned] },
+        { compiled: valid, policy },
+      ),
       { kind: "rejected", reason: "unversioned-step", detail: unversioned },
     );
   }
@@ -245,12 +251,15 @@ await test("CLV-005 admission rejects layout-dependent and unversioned step iden
 
 await test("CLV-005 admission rejects declared resources that discovery could not read", () => {
   const valid = packedConsumer({ recordEffect: { stepId: helper } });
-  const result = admitWorkflow(registration, valid, policy);
+  const result = admitWorkflow(registration, { compiled: valid, policy });
   assert.equal(result.kind, "admitted");
   assert.deepEqual(result.manifest.resources, valid.resources);
   for (const resources of [{}, { "prompts/implement.md": "missing" }, null])
     assert.deepEqual(
-      admitWorkflow(registration, { ...valid, resources }, policy),
+      admitWorkflow(registration, {
+        compiled: { ...valid, resources },
+        policy,
+      }),
       {
         kind: "rejected",
         reason: "inaccessible-resource",
@@ -258,7 +267,10 @@ await test("CLV-005 admission rejects declared resources that discovery could no
       },
     );
   assert.deepEqual(
-    admitWorkflow({ ...registration, resources: "prompts" }, valid, policy),
+    admitWorkflow(
+      { ...registration, resources: "prompts" },
+      { compiled: valid, policy },
+    ),
     {
       kind: "rejected",
       reason: "invalid-registration",

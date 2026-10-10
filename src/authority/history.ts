@@ -22,7 +22,7 @@ export function rebuildHistory(events: readonly unknown[]): History {
   const released = new Map<string, number>();
   const runSequences: Record<string, number> = {};
   for (const [index, value] of events.entries()) {
-    const applied = applyEvent(state, value, index);
+    const applied = applyEvent(state, { value, index });
     const before = new Set(state.intents.map((intent) => intent.operationId));
     const after = new Set(
       applied.state.intents.map((intent) => intent.operationId),

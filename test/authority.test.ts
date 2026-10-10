@@ -17,16 +17,15 @@ const startIntent = {
 
 await test("CLV-006 an admitted run command records the run and one unsent start intent", () => {
   assert.deepEqual(
-    execute(
-      emptyAuthority,
-      {
+    execute(emptyAuthority, {
+      command: {
         kind: "admit-run",
         commandId: "command-1",
         runId: "run-1",
         workflow: "pin-1",
       },
-      recorded,
-    ),
+      ...recorded,
+    }),
     {
       kind: "accepted",
       events: [
@@ -69,20 +68,24 @@ await test("CLV-006 an admitted run command records the run and one unsent start
 
 function admitted(
   state: AuthorityState,
-  commandId: string,
-  runId: string,
+  identity: { readonly commandId: string; readonly runId: string },
 ): ReturnType<typeof execute> {
-  return execute(
-    state,
-    { kind: "admit-run", commandId, runId, workflow: "pin-1" },
-    recorded,
-  );
+  return execute(state, {
+    command: { kind: "admit-run", ...identity, workflow: "pin-1" },
+    ...recorded,
+  });
 }
 
 await test("CLV-006 replaying committed events into an empty projection yields identical state", () => {
-  const first = admitted(emptyAuthority, "command-1", "run-1");
+  const first = admitted(emptyAuthority, {
+    commandId: "command-1",
+    runId: "run-1",
+  });
   assert.equal(first.kind, "accepted");
-  const second = admitted(first.state, "command-2", "run-2");
+  const second = admitted(first.state, {
+    commandId: "command-2",
+    runId: "run-2",
+  });
   assert.equal(second.kind, "accepted");
   const events = [...first.events, ...second.events];
   const rebuilt = rebuild(events);
@@ -92,18 +95,30 @@ await test("CLV-006 replaying committed events into an empty projection yields i
 });
 
 await test("CLV-006 a repeated command returns its receipt once and conflicting reuse is rejected", () => {
-  const first = admitted(emptyAuthority, "command-1", "run-1");
+  const first = admitted(emptyAuthority, {
+    commandId: "command-1",
+    runId: "run-1",
+  });
   assert.equal(first.kind, "accepted");
-  assert.deepEqual(admitted(first.state, "command-1", "run-1"), {
-    kind: "duplicate",
-    sequence: 1,
-  });
-  assert.deepEqual(admitted(first.state, "command-1", "run-2"), {
-    kind: "rejected",
-    reason: "conflicting-command",
-  });
-  assert.deepEqual(admitted(first.state, "command-2", "run-1"), {
-    kind: "rejected",
-    reason: "existing-run",
-  });
+  assert.deepEqual(
+    admitted(first.state, { commandId: "command-1", runId: "run-1" }),
+    {
+      kind: "duplicate",
+      sequence: 1,
+    },
+  );
+  assert.deepEqual(
+    admitted(first.state, { commandId: "command-1", runId: "run-2" }),
+    {
+      kind: "rejected",
+      reason: "conflicting-command",
+    },
+  );
+  assert.deepEqual(
+    admitted(first.state, { commandId: "command-2", runId: "run-1" }),
+    {
+      kind: "rejected",
+      reason: "existing-run",
+    },
+  );
 });

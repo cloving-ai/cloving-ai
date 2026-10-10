@@ -37,11 +37,7 @@ if (invocation.kind === "usage-error") {
     process.stderr.write(`${invocation.code}: run cloving --help for usage.\n`);
   process.exitCode = 2;
 } else if (invocation.kind === "validate") {
-  const report = await validateWorkflow(
-    process.cwd(),
-    invocation.manifest,
-    invocation.input,
-  );
+  const report = await validateWorkflow(process.cwd(), invocation);
   present(report, invocation.json ? "json" : "human");
   process.exitCode = report.status === "valid" ? 0 : 1;
 } else if (invocation.kind === "version") {

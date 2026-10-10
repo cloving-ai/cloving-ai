@@ -125,8 +125,7 @@ await test("CLV-042 a delivery callback that loses its activation and stays clai
 await test("CLV-042 a command stranded by a process that then dies is committed exactly once by the next opening in a new process", async () => {
   const directory = await temporaryDirectory();
   await withChild(
-    "authority-actor-child.ts",
-    [directory, "strand"],
+    { script: "authority-actor-child.ts", parameters: [directory, "strand"] },
     async (child) => {
       await child.waitFor("activation-lost");
       assert.deepEqual(await child.kill(), { code: null, signal: "SIGKILL" });

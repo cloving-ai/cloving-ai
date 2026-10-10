@@ -16,9 +16,9 @@ const files = [
 ];
 
 await test("QG-19 the installed policy binds new product and test files proposed under automatic roles", () => {
-  const policy = admittedModulePolicy(directory, files, {
-    "src/admission.ts": "pure",
-    "test/admission.test.ts": "test",
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
   });
   assert.equal(policy.roles["/candidate/src/admission.ts"], "pure");
   assert.equal(policy.roles["/candidate/src/workflows.ts"], "workflow");
@@ -51,7 +51,7 @@ await test("QG-19 candidate proposals cannot add reviewed roles or change accept
     ],
   ] as const)
     assert.throws(
-      () => admittedModulePolicy(directory, files, proposal),
+      () => admittedModulePolicy(directory, { files, roles: proposal }),
       expected,
     );
 });
@@ -76,26 +76,26 @@ await test("QG-19 new step modules bind automatically only under src/steps", () 
     "src/admission.ts": "pure",
     "test/admission.test.ts": "test",
   };
-  const policy = admittedModulePolicy(directory, stepFiles, {
-    ...proposal,
-    "src/steps/load-cycle.ts": "step",
+  const policy = admittedModulePolicy(directory, {
+    files: stepFiles,
+    roles: { ...proposal, "src/steps/load-cycle.ts": "step" },
   });
   assert.equal(policy.roles["/candidate/src/steps/load-cycle.ts"], "step");
   assert.ok(policy.allowed["test"]?.includes("step"));
   assert.throws(
     () =>
-      admittedModulePolicy(directory, files, {
-        ...proposal,
-        "src/admission.ts": "step",
+      admittedModulePolicy(directory, {
+        files,
+        roles: { ...proposal, "src/admission.ts": "step" },
       }),
     /mapping-requires-review/,
   );
 });
 
 await test("QG-19 the command line and broker may call pure modules and the command line may use broker discovery", () => {
-  const policy = admittedModulePolicy(directory, files, {
-    "src/admission.ts": "pure",
-    "test/admission.test.ts": "test",
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
   });
   assert.deepEqual(
     [policy.allowed["cli"], policy.allowed["broker"]].map((roles) =>
@@ -116,9 +116,9 @@ await test("QG-19 the command line and broker may call pure modules and the comm
 });
 
 await test("CLV-007 brokers compose brokers, storage composes storage, tests reach storage and the SQLite driver is a storage module", () => {
-  const policy = admittedModulePolicy(directory, files, {
-    "src/admission.ts": "pure",
-    "test/admission.test.ts": "test",
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
   });
   assert.deepEqual(policy.allowed["broker"], [
     "broker",
@@ -135,9 +135,9 @@ await test("CLV-007 brokers compose brokers, storage composes storage, tests rea
 });
 
 await test("CLV-042 only brokers and tests reach the actor runtime, and pure, command line, workflow and step code cannot reach it", () => {
-  const policy = admittedModulePolicy(directory, files, {
-    "src/admission.ts": "pure",
-    "test/admission.test.ts": "test",
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
   });
   assert.deepEqual(
     [

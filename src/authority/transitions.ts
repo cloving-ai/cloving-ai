@@ -106,9 +106,9 @@ export type Transition =
 
 export function transition(
   run: RunState,
-  type: Move,
-  gateId: string,
+  event: { readonly type: Move; readonly gateId: string },
 ): Transition {
+  const { type, gateId } = event;
   if (terminal.includes(run.status)) return invalid("terminal-run");
   if (type === "run.resumed")
     return run.pausedFrom

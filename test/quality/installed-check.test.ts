@@ -24,17 +24,19 @@ await test("QG-09 installed check ignores candidate and proposal replacement com
     },
     async (root) => {
       const proposal = join(root, "proposal");
-      const installed = await installVerifier(
-        proposal,
-        join(root, "installed"),
-        (await snapshotTree(proposal)).identity,
-      );
+      const installed = await installVerifier(proposal, {
+        directory: join(root, "installed"),
+        identity: (await snapshotTree(proposal)).identity,
+      });
       await writeFile(
         join(proposal, "tools/check-protected-quality.ts"),
         'console.log("passed");',
       );
       const candidate = join(root, "candidate");
-      const rejected = await executeInstalledCheck(installed, candidate, 5000);
+      const rejected = await executeInstalledCheck(installed, {
+        candidate,
+        timeoutMilliseconds: 5000,
+      });
       assert.equal(rejected.role, "static-analysis");
       assert.deepEqual(rejected.command, {
         id: "protected-quality",
@@ -49,7 +51,10 @@ await test("QG-09 installed check ignores candidate and proposal replacement com
       assert.equal(rejected.execution.exit, 1);
       assert.match(rejected.execution.stderr, /fixed-rule/);
       await writeFile(join(candidate, "main.ts"), "valid");
-      const accepted = await executeInstalledCheck(installed, candidate, 5000);
+      const accepted = await executeInstalledCheck(installed, {
+        candidate,
+        timeoutMilliseconds: 5000,
+      });
       assert.equal(accepted.execution.exit, 0);
       assert.equal(accepted.execution.stdout, "fixed-check-completed\n");
       assert.notEqual(accepted.candidate, rejected.candidate);
@@ -63,22 +68,27 @@ await test("QG-10 missing installed entry and invalid deadlines fail before exec
     { "proposal/other.ts": "export {};", "candidate/main.ts": "valid" },
     async (root) => {
       const proposal = join(root, "proposal");
-      const installed = await installVerifier(
-        proposal,
-        join(root, "installed"),
-        (await snapshotTree(proposal)).identity,
-      );
+      const installed = await installVerifier(proposal, {
+        directory: join(root, "installed"),
+        identity: (await snapshotTree(proposal)).identity,
+      });
       const candidate = join(root, "candidate");
       await assert.rejects(
-        executeInstalledCheck(installed, candidate, 5000),
+        executeInstalledCheck(installed, {
+          candidate,
+          timeoutMilliseconds: 5000,
+        }),
         /ENOENT/,
       );
       await assert.rejects(
-        executeInstalledCheck(installed, candidate, 0),
+        executeInstalledCheck(installed, { candidate, timeoutMilliseconds: 0 }),
         /invalid-installed-check-timeout/,
       );
       await assert.rejects(
-        executeInstalledCheck(installed, candidate, Infinity),
+        executeInstalledCheck(installed, {
+          candidate,
+          timeoutMilliseconds: Infinity,
+        }),
         /invalid-installed-check-timeout/,
       );
     },

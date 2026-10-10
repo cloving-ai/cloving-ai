@@ -143,8 +143,10 @@ for (const barrier of [
   await test(`CLV-042 conversion interrupted at ${barrier} resumes to the same converted authority without a send`, async () => {
     const { directory, records: expected } = await baseline();
     await withChild(
-      "authority-conversion-child.ts",
-      [directory, barrier],
+      {
+        script: "authority-conversion-child.ts",
+        parameters: [directory, barrier],
+      },
       async (child) => {
         assert.deepEqual(await child.exited, { code: null, signal: "SIGKILL" });
       },

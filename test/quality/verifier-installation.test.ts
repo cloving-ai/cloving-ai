@@ -17,7 +17,10 @@ await test("QG-09 installation requires the controller's reviewed tree identity"
       const accepted = await snapshotTree(proposal);
       await writeFile(join(proposal, "check.ts"), "export const limit = 1000;");
       await assert.rejects(
-        installVerifier(proposal, join(root, "installed"), accepted.identity),
+        installVerifier(proposal, {
+          directory: join(root, "installed"),
+          identity: accepted.identity,
+        }),
         /unreviewed-verifier-inputs/,
       );
       await assert.rejects(access(join(root, "installed")), /ENOENT/);
@@ -31,11 +34,10 @@ await test("QG-09 installed verifier bytes remain separate from later proposal c
     async (root) => {
       const proposal = join(root, "proposal");
       const accepted = await snapshotTree(proposal);
-      const installed = await installVerifier(
-        proposal,
-        join(root, "installed"),
-        accepted.identity,
-      );
+      const installed = await installVerifier(proposal, {
+        directory: join(root, "installed"),
+        identity: accepted.identity,
+      });
       await writeFile(join(proposal, "check.ts"), "export const limit = 1000;");
       assert.equal(
         await readFile(join(installed.directory, "check.ts"), "utf8"),
@@ -64,15 +66,17 @@ await test("QG-09 installation preserves existing destinations and rejects candi
       const proposal = join(root, "proposal");
       const accepted = await snapshotTree(proposal);
       await assert.rejects(
-        installVerifier(
-          proposal,
-          join(proposal, "installed"),
-          accepted.identity,
-        ),
+        installVerifier(proposal, {
+          directory: join(proposal, "installed"),
+          identity: accepted.identity,
+        }),
         /overlapping-staging-paths/,
       );
       await assert.rejects(
-        installVerifier(proposal, join(root, "existing"), accepted.identity),
+        installVerifier(proposal, {
+          directory: join(root, "existing"),
+          identity: accepted.identity,
+        }),
         /EEXIST/,
       );
       assert.equal(

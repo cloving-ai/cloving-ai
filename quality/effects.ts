@@ -44,11 +44,16 @@ function localBinding(symbol: ts.Symbol): boolean {
   );
 }
 
+interface ReferenceContext {
+  readonly parent: ts.Node | undefined;
+  readonly checker: ts.TypeChecker;
+}
+
 function referenceSymbol(
   node: ts.Identifier,
-  parent: ts.Node | undefined,
-  checker: ts.TypeChecker,
+  context: ReferenceContext,
 ): ts.Symbol | undefined {
+  const { parent, checker } = context;
   if (
     parent &&
     (ts.isPropertyAccessExpression(parent) ||
@@ -61,14 +66,11 @@ function referenceSymbol(
   return checker.getSymbolAtLocation(node);
 }
 
-function ambientReference(
-  node: ts.Node,
-  parent: ts.Node | undefined,
-  checker: ts.TypeChecker,
-): boolean {
+function ambientReference(node: ts.Node, context: ReferenceContext): boolean {
+  const { parent } = context;
   if (!ts.isIdentifier(node)) return false;
   if (!ambientNames.has(node.text) && node.text !== "Math") return false;
-  const symbol = referenceSymbol(node, parent, checker);
+  const symbol = referenceSymbol(node, context);
   if (!symbol || localBinding(symbol)) return false;
   if (node.text !== "Math") return true;
   return (
@@ -115,7 +117,7 @@ export function inspectEffects(
       )
         return;
       if (
-        ambientReference(node, parent, checker) ||
+        ambientReference(node, { parent, checker }) ||
         dynamicCapability(node, checker)
       )
         findings.push({

@@ -23,7 +23,7 @@ export default defineConfig(globalIgnores(["node_modules/**", "dist/**"]), {
   plugins: { sonarjs },
   rules: {
     ...structuralRules,
-    "max-params": "off",
+    "@typescript-eslint/max-params": "off",
     "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/no-unsafe-type-assertion": "error",
     "@typescript-eslint/ban-ts-comment": [

@@ -9,11 +9,10 @@ const policy = {
 
 await test("QG-19 automatically maps a pure extraction within the accepted catalog", () => {
   assert.deepEqual(
-    mapModules(
-      ["src/main.ts", "src/helper.ts", "src/broker.ts"],
-      { "src/helper.ts": "pure" },
+    mapModules(["src/main.ts", "src/helper.ts", "src/broker.ts"], {
+      proposal: { "src/helper.ts": "pure" },
       policy,
-    ),
+    }),
     {
       "src/broker.ts": "broker",
       "src/helper.ts": "pure",
@@ -24,20 +23,35 @@ await test("QG-19 automatically maps a pure extraction within the accepted catal
 
 await test("QG-19 rejects missing mappings, privilege changes and unused proposals", () => {
   assert.throws(
-    () => mapModules(["src/new.ts"], {}, policy),
+    () => mapModules(["src/new.ts"], { proposal: {}, policy }),
     /unmapped-module/,
   );
   assert.throws(
-    () => mapModules(["src/main.ts"], { "src/main.ts": "broker" }, policy),
+    () =>
+      mapModules(["src/main.ts"], {
+        proposal: { "src/main.ts": "broker" },
+        policy,
+      }),
     /mapping-policy-change/,
   );
   assert.throws(
-    () => mapModules(["src/new.ts"], { "src/new.ts": "broker" }, policy),
+    () =>
+      mapModules(["src/new.ts"], {
+        proposal: { "src/new.ts": "broker" },
+        policy,
+      }),
     /mapping-requires-review/,
   );
   assert.throws(
-    () => mapModules(["src/main.ts"], { "src/missing.ts": "pure" }, policy),
+    () =>
+      mapModules(["src/main.ts"], {
+        proposal: { "src/missing.ts": "pure" },
+        policy,
+      }),
     /unused-mapping/,
   );
-  assert.throws(() => mapModules([], {}, policy), /empty-module-inventory/);
+  assert.throws(
+    () => mapModules([], { proposal: {}, policy }),
+    /empty-module-inventory/,
+  );
 });

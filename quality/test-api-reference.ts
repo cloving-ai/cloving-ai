@@ -28,15 +28,18 @@ function protectedCallable(type: ts.Type): boolean {
 
 export function escapedTestApi(
   node: ts.Node,
-  ancestors: readonly ts.Node[],
-  checker: ts.TypeChecker,
+  context: {
+    readonly ancestors: readonly ts.Node[];
+    readonly checker: ts.TypeChecker;
+  },
 ): boolean {
+  const { ancestors, checker } = context;
   const parent = ancestors.at(-1);
   if (!valueReference(node, parent) || ancestors.some(ts.isTypeNode))
     return false;
   if (parent && ts.isCallExpression(parent) && parent.expression === node)
     return false;
-  const symbol = referencedSymbol(node, parent, checker);
+  const symbol = referencedSymbol(node, { parent, checker });
   const type = symbol
     ? checker.getTypeOfSymbolAtLocation(symbol, node)
     : checker.getTypeAtLocation(node);

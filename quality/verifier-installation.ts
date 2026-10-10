@@ -5,9 +5,9 @@ export interface VerifierInstallation {
 
 export async function installVerifier(
   source: string,
-  directory: string,
-  identity: string,
+  expected: VerifierInstallation,
 ): Promise<VerifierInstallation> {
+  const { directory, identity } = expected;
   if ((await snapshotTree(source)).identity !== identity)
     throw new Error("unreviewed-verifier-inputs");
   const installed = await stageCandidate(source, directory);

@@ -18,10 +18,13 @@ export async function checkFormatting(files: readonly string[]): Promise<void> {
 
 export async function checkLint(
   directory: string,
-  files: readonly string[],
-  approvals: readonly SuppressionApproval[] = [],
-  program?: ts.Program,
+  inventory: {
+    readonly files: readonly string[];
+    readonly approvals?: readonly SuppressionApproval[];
+    readonly program?: ts.Program;
+  },
 ): Promise<void> {
+  const { files, approvals = [], program } = inventory;
   const linter = new ESLint({
     cwd: directory,
     overrideConfigFile: true,
