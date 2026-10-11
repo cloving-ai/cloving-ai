@@ -2,6 +2,7 @@ import type { Linter } from "eslint";
 
 export const structuralRules: Linter.RulesRecord = {
   "max-params": ["error", { max: 2, countThis: "never" }],
+  "prefer-rest-params": "error",
   "max-lines": [
     "error",
     { max: 400, skipBlankLines: false, skipComments: false },

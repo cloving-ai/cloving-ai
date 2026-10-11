@@ -51,7 +51,7 @@ function stalledTurn(
   };
 }
 
-await test("CLV-042 a command whose turn loses its activation and stays claimed fails the authority closed, and a restart commits it exactly once", async () => {
+await test("CLV-008 a command whose turn loses its activation is reported as a stranded message after the call timeout, and a restart commits it exactly once", async () => {
   const directory = await temporaryDirectory();
   const authority = await openedAuthority(directory, {
     timing,
@@ -64,14 +64,15 @@ await test("CLV-042 a command whose turn loses its activation and stays claimed 
     receipt.detail,
     /^SyncTimeout: .* status=claimed waitingOn=messageClaimed$/,
   );
+  await delay(timing.callTimeoutMilliseconds);
   const after = await executePinned(authority, admission);
   assert.equal(after.kind, "failed");
   assert.equal(after.reason, "storage-unavailable");
-  assert.match(
-    after.detail,
-    /^closed after (authority failure|stranded message [0-9a-f-]{36})$/,
+  assert.match(after.detail, /^closed after stranded message [0-9a-f-]{36}$/);
+  await assert.rejects(
+    authority.state(),
+    /^Error: authority-unavailable: stranded message [0-9a-f-]{36}$/,
   );
-  await assert.rejects(authority.state(), /authority-unavailable/);
   await authority.close();
   const restarted = await openedAuthority(directory);
   assert.deepEqual(

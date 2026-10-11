@@ -1,3 +1,6 @@
+import type { RunDetails } from "./details.ts";
+import type { GateState } from "./gates.ts";
+
 export type RunStatus =
   | "queued"
   | "running"
@@ -29,19 +32,28 @@ export interface AuthorityState {
     Record<string, { readonly request: string; readonly sequence: number }>
   >;
   readonly intents: readonly EffectIntent[];
+  readonly gates: Readonly<Record<string, GateState>>;
+  readonly details: Readonly<Record<string, RunDetails>>;
+  readonly questions: number;
 }
 
-export type EventType =
-  | "run.created"
-  | "run.started"
-  | "gate.opened"
-  | "gate.decided"
-  | "run.paused"
-  | "run.resumed"
-  | "run.completed"
-  | "run.failed"
-  | "run.cancelled"
-  | "step.dispatched";
+export const eventTypes = [
+  "run.created",
+  "run.started",
+  "gate.opened",
+  "gate.wait-registered",
+  "gate.decided",
+  "gate.expired",
+  "run.paused",
+  "run.resumed",
+  "run.completed",
+  "run.failed",
+  "run.cancelled",
+  "run.observed",
+  "step.dispatched",
+] as const;
+
+export type EventType = (typeof eventTypes)[number];
 
 export interface AuthorityEvent {
   readonly sequence: number;
@@ -53,22 +65,54 @@ export interface AuthorityEvent {
   readonly payload: Readonly<Record<string, string>>;
 }
 
+export const numberFields = [
+  "expectedRevision",
+  "generation",
+  "attempt",
+  "limit",
+] as const;
+
+export const textFields = [
+  "workflow",
+  "submission",
+  "input",
+  "resolver",
+  "gateId",
+  "gateKind",
+  "subject",
+  "prompt",
+  "expiresAt",
+  "decision",
+  "answer",
+  "condition",
+  "reason",
+  "evidence",
+  "retryAt",
+  "operationId",
+  "receipt",
+] as const;
+
+export type NumberField = (typeof numberFields)[number];
+export type TextField = (typeof textFields)[number];
+
 export type AuthorityCommand = {
   readonly kind: string;
   readonly commandId: string;
   readonly runId: string;
-  readonly expectedRevision?: number;
-  readonly workflow?: string;
-  readonly gateId?: string;
-  readonly decision?: string;
-  readonly operationId?: string;
-  readonly receipt?: string;
-};
+} & Readonly<Partial<Record<NumberField, number>>> &
+  Readonly<Partial<Record<TextField, string>>>;
 
-type Move = Exclude<EventType, "run.created" | "step.dispatched">;
+export type Move = Exclude<
+  EventType,
+  "run.created" | "step.dispatched" | "gate.wait-registered" | "run.observed"
+>;
 type Change = Pick<RunState, "status"> & Partial<RunState>;
 
-const terminal: readonly RunStatus[] = ["completed", "failed", "cancelled"];
+export const terminal: readonly RunStatus[] = [
+  "completed",
+  "failed",
+  "cancelled",
+];
 const active: readonly RunStatus[] = ["queued", "running", "waiting_gate"];
 
 const sources: Readonly<
@@ -77,6 +121,7 @@ const sources: Readonly<
   "run.started": ["queued"],
   "gate.opened": ["running", "waiting_gate"],
   "gate.decided": ["waiting_gate"],
+  "gate.expired": ["waiting_gate"],
   "run.paused": active,
   "run.completed": ["running"],
   "run.failed": active,
@@ -85,7 +130,7 @@ const sources: Readonly<
 
 const changes: Readonly<
   Record<
-    Exclude<Move, "run.resumed" | "gate.decided">,
+    Exclude<Move, "run.resumed" | "gate.decided" | "gate.expired">,
     (run: RunState, gateId: string) => Change
   >
 > = {
@@ -117,7 +162,7 @@ export function transition(
   if (!sources[type].includes(run.status)) return invalid("invalid-transition");
   if (type === "gate.opened" && run.gates.includes(gateId))
     return invalid("existing-gate");
-  if (type === "gate.decided")
+  if (type === "gate.decided" || type === "gate.expired")
     return run.gates.includes(gateId)
       ? moved(run, decided(run, gateId))
       : invalid("unknown-gate");

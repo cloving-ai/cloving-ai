@@ -9,13 +9,19 @@ import type {
   RunStatus,
 } from "../authority/reducer.ts";
 import { readExecutionManifest } from "../execution-pin.ts";
-import type {
-  AuthoritySnapshot,
-  EventRow,
-  ProjectionSnapshot,
-} from "../storage/domain-rows.ts";
+import type { DecisionRows, DocumentRow } from "../storage/decision-rows.ts";
+import type { ProjectionSnapshot } from "../storage/decision-snapshots.ts";
+import type { AuthoritySnapshot, EventRow } from "../storage/domain-rows.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
+import {
+  decisionRows,
+  decisionState,
+  documentsIntact,
+} from "./decision-restore.ts";
 import { workflowPin } from "./workflow-pin.ts";
+
+export type RestoredSnapshot = AuthoritySnapshot &
+  Partial<DecisionRows> & { readonly documents?: readonly DocumentRow[] };
 
 const statuses: readonly RunStatus[] = [
   "queued",
@@ -40,7 +46,7 @@ export type Restoration =
       readonly detail: string;
     };
 
-export function restore(snapshot: AuthoritySnapshot): Restoration {
+export function restore(snapshot: RestoredSnapshot): Restoration {
   let events: readonly AuthorityEvent[];
   let history: History;
   try {
@@ -51,10 +57,13 @@ export function restore(snapshot: AuthoritySnapshot): Restoration {
   }
   let stored: AuthorityState;
   try {
-    stored = projectedState({
-      ...snapshot,
-      sequence: snapshot.events.at(-1)?.sequence ?? 0,
-    });
+    stored = {
+      ...history.state,
+      ...projectedState({
+        ...snapshot,
+        sequence: snapshot.events.at(-1)?.sequence ?? 0,
+      }),
+    };
   } catch (error) {
     return {
       kind: "refused",
@@ -79,6 +88,7 @@ export function restore(snapshot: AuthoritySnapshot): Restoration {
       ),
     ],
     ["definitions", definitionsIntact(definitions, state)],
+    ...decisionChecks(snapshot, state),
   ];
   const failed = checks.find(([, holds]) => !holds);
   if (failed)
@@ -88,6 +98,21 @@ export function restore(snapshot: AuthoritySnapshot): Restoration {
       detail: failed[0],
     };
   return { kind: "restored", state, events, definitions };
+}
+
+function decisionChecks(
+  snapshot: RestoredSnapshot,
+  state: AuthorityState,
+): readonly (readonly [string, boolean])[] {
+  const { gates, details, documents } = snapshot;
+  if (gates === undefined || details === undefined || documents === undefined)
+    return [];
+  const expected = decisionRows(state);
+  return [
+    ["gates", isDeepStrictEqual(gates, expected.gates)],
+    ["details", isDeepStrictEqual(details, expected.details)],
+    ["documents", documentsIntact(documents, state)],
+  ];
 }
 
 export function storedDefinitions(
@@ -119,12 +144,21 @@ function text(error: unknown): string {
   return String(Reflect.get(Object(error), "message"));
 }
 
+type BaseState = Pick<
+  AuthorityState,
+  "sequence" | "runs" | "commands" | "intents"
+>;
+
+export function currentState(snapshot: ProjectionSnapshot): AuthorityState {
+  return { ...projectedState(snapshot), ...decisionState(snapshot) };
+}
+
 export function projectedState(
   snapshot: Pick<
     ProjectionSnapshot,
     "runs" | "commands" | "outbox" | "sequence"
   >,
-): AuthorityState {
+): BaseState {
   return {
     sequence: snapshot.sequence,
     runs: Object.fromEntries(

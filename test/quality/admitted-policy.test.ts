@@ -163,3 +163,34 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
     ["pure", "cli", "workflow", "step"],
   );
 });
+
+await test("CLV-008 only service, command line and test code can open a socket, only quality, build and test code can start a process, and only tests reach the service", () => {
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
+  });
+  const importers = (role: string): string[] =>
+    Object.entries(policy.allowed)
+      .filter(([, targets]) => targets.includes(role))
+      .map(([name]) => name)
+      .sort();
+  assert.deepEqual(
+    [policy.roles["node:net"], policy.roles["node:child_process"]],
+    ["network", "process"],
+  );
+  assert.deepEqual(importers("network"), ["cli", "service", "test"]);
+  assert.deepEqual(importers("process"), ["build", "quality", "test"]);
+  assert.deepEqual(importers("service"), ["service", "test"]);
+  assert.deepEqual(
+    [policy.allowed["network"], policy.allowed["process"]],
+    [[], []],
+  );
+  for (const role of ["pure", "workflow", "step"])
+    for (const target of ["service", "network", "process"])
+      assert.ok(
+        policy.forbiddenReachability[role]?.includes(target),
+        `${role} ${target}`,
+      );
+  assert.ok(policy.forbiddenReachability["cli"]?.includes("service"));
+  assert.ok(policy.forbiddenReachability["cli"]?.includes("process"));
+});

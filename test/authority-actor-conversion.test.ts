@@ -58,7 +58,7 @@ async function assertConverted(
   const authority = await openedAuthority(directory, service.options);
   assert.deepEqual(await authority.state(), expected.state);
   assert.deepEqual(await authority.events(), expected.events);
-  assert.equal((await authority.settings()).schemaVersion, 2);
+  assert.equal((await authority.settings()).schemaVersion, 3);
   assert.deepEqual(await authority.resumePinned("run-1", manifest), {
     kind: "admitted",
     manifest,
@@ -136,6 +136,7 @@ await test("CLV-042 conversion refuses a CLV-007 database whose projections diff
 for (const barrier of [
   "baseline-validated",
   "schema-adopted",
+  "schema-upgraded",
   "library-installed",
   "adoption-commit",
   "adoption-stranded",

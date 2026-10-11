@@ -1,21 +1,30 @@
-import { createHash } from "node:crypto";
 import { parseCommand } from "../../authority/commands.ts";
 import {
-  eligibleIntents,
   execute,
   type AuthorityState,
   type CommandResult,
   type EffectIntent,
 } from "../../authority/reducer.ts";
+import type { AuthorityCommand } from "../../authority/transitions.ts";
 import type { ExecutionManifest } from "../../workflow-admission.ts";
 import { admitted, type Definitions } from "../authority-admission.ts";
+import { detailRecord, gateRecord } from "../decision-restore.ts";
 import { operationDigest } from "../operation-digest.ts";
+import { stageable, type DeliveryIntent } from "./delivery-intents.ts";
+
+export type { DeliveryIntent } from "./delivery-intents.ts";
 
 export interface TurnState {
   readonly state: AuthorityState;
   readonly definitions: Definitions;
-  readonly open: ReadonlySet<string>;
+  readonly held: ReadonlySet<string>;
   readonly created: readonly EffectIntent[];
+  readonly documents: ReadonlySet<string>;
+}
+
+export interface Document {
+  readonly digest: string;
+  readonly body: string;
 }
 
 export interface TurnRequest {
@@ -23,11 +32,7 @@ export interface TurnRequest {
   readonly recordedAt: string;
   readonly manifest?: ExecutionManifest;
   readonly epoch?: number;
-}
-
-export interface DeliveryIntent extends EffectIntent {
-  readonly workflow: string;
-  readonly inputDigest: string;
+  readonly documents?: readonly Document[];
 }
 
 export type Row = Readonly<Record<string, unknown>>;
@@ -42,6 +47,9 @@ export interface ChangeDraft {
   readonly added: readonly Row[];
   readonly released: readonly Row[];
   readonly closed: readonly Row[];
+  readonly gates: readonly Row[];
+  readonly details: readonly Row[];
+  readonly documents: readonly Row[];
   readonly completes_adoption?: true;
 }
 
@@ -58,7 +66,7 @@ export interface DeliveryResult {
   readonly effectId: string;
   readonly operationId: string;
   readonly runId: string;
-  readonly outcome: "sent" | "withheld" | "failed";
+  readonly outcome: "sent" | "withheld" | "blocked" | "failed";
   readonly receipt: string | null;
   readonly epoch: number;
   readonly recordedAt: string;
@@ -88,6 +96,13 @@ export function planCommand(planning: CommandPlanning): TurnPlan {
     manifest: request.manifest,
   });
   if (admission.kind === "rejected") return answer(admission);
+  const missing = missingDocument(planning);
+  if (missing !== undefined)
+    return answer({
+      kind: "rejected",
+      reason: "missing-document",
+      detail: missing,
+    });
   const result = execute(turn.state, request);
   if (result.kind === "duplicate")
     return answer({ ...result, intents: turn.created });
@@ -106,9 +121,41 @@ export function planCommand(planning: CommandPlanning): TurnPlan {
         manifest: JSON.stringify(manifest),
       })),
       closed: [],
+      documents: referencedDocuments(request),
     }),
-    stage: stageable(result.state, turn.open),
+    stage: stageable(result.state, turn.held),
   };
+}
+
+const documentFields = ["submission", "input", "prompt", "answer"] as const;
+
+export function documentReferences(
+  command: AuthorityCommand | null,
+): readonly string[] {
+  if (command === null) return [];
+  return documentFields
+    .map((name) => command[name])
+    .filter((digest) => digest !== undefined);
+}
+
+function referencedDocuments(request: TurnRequest): readonly Row[] {
+  const references = documentReferences(parseCommand(request.command));
+  return (request.documents ?? [])
+    .filter((document) => references.includes(document.digest))
+    .map((document) => ({ digest: document.digest, body: document.body }));
+}
+
+function missingDocument(planning: CommandPlanning): string | undefined {
+  const { turn, request } = planning;
+  const command = parseCommand(request.command);
+  if (command === null || turn.state.commands[command.commandId] !== undefined)
+    return undefined;
+  const given = new Set(
+    (request.documents ?? []).map((document) => document.digest),
+  );
+  return documentReferences(command).find(
+    (digest) => !given.has(digest) && !turn.documents.has(digest),
+  );
 }
 
 function freshRefusal(planning: CommandPlanning): Row | undefined {
@@ -129,8 +176,8 @@ export function planDelivery(planning: DeliveryPlanning): TurnPlan {
   const closed = [
     { effect_id: delivery.effectId, outcome, receipt: delivery.receipt },
   ];
-  const open = new Set(
-    [...turn.open].filter((operation) => operation !== delivery.operationId),
+  const held = new Set(
+    [...turn.held].filter((operation) => operation !== delivery.operationId),
   );
   const result =
     outcome === "sent" ? dispatched(turn.state, delivery) : undefined;
@@ -139,9 +186,16 @@ export function planDelivery(planning: DeliveryPlanning): TurnPlan {
     kind: "commit",
     receipt: { kind: outcome },
     change: result
-      ? draft(result, { before: turn.state, definitions: [], closed })
+      ? draft(result, {
+          before: turn.state,
+          definitions: [],
+          closed,
+          documents: [],
+        })
       : unchanged(turn.state, closed),
-    stage: outcome === "failed" ? [] : stageable(after, open),
+    stage: ["failed", "blocked"].includes(outcome)
+      ? []
+      : stageable(after, held),
   };
 }
 
@@ -186,37 +240,6 @@ function dispatched(
   return result.kind === "accepted" ? result : undefined;
 }
 
-export function deliveryIntent(
-  intent: EffectIntent,
-  workflow: string,
-): DeliveryIntent {
-  return {
-    ...intent,
-    workflow,
-    inputDigest: createHash("sha256")
-      .update(
-        JSON.stringify([
-          intent.kind,
-          intent.runId,
-          intent.operationId,
-          workflow,
-        ]),
-      )
-      .digest("hex"),
-  };
-}
-
-function stageable(
-  state: AuthorityState,
-  open: ReadonlySet<string>,
-): readonly DeliveryIntent[] {
-  return eligibleIntents(state)
-    .filter((intent) => !open.has(intent.operationId))
-    .map((intent) =>
-      deliveryIntent(intent, state.runs[intent.runId]?.workflow ?? ""),
-    );
-}
-
 function answer(receipt: Row): TurnPlan {
   return { kind: "answer", receipt };
 }
@@ -236,22 +259,50 @@ function unchangedAt(sequence: number, closed: readonly Row[]): ChangeDraft {
     added: [],
     released: [],
     closed,
+    gates: [],
+    details: [],
+    documents: [],
   };
+}
+
+function columns(row: object): Row {
+  return Object.fromEntries(
+    Object.entries(row).map(([name, value]) => [
+      name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+      value,
+    ]),
+  );
+}
+
+function changed<Value>(
+  after: Readonly<Record<string, Value>>,
+  before: Readonly<Record<string, Value>>,
+): readonly Value[] {
+  return Object.entries(after)
+    .filter(([key, value]) => before[key] !== value)
+    .map(([, value]) => value);
 }
 
 function draft(
   result: Accepted,
-  extra: Pick<ChangeDraft, "definitions" | "closed"> & {
+  extra: Pick<ChangeDraft, "definitions" | "closed" | "documents"> & {
     readonly before: AuthorityState;
   },
 ): ChangeDraft {
   const { state, events, intents } = result;
-  const { before, definitions, closed } = extra;
+  const { before, definitions, closed, documents } = extra;
   const touched = new Set(events.map((event) => event.runId));
   const retained = new Set(state.intents.map((intent) => intent.operationId));
   return {
     definitions,
     closed,
+    documents,
+    gates: changed(state.gates, before.gates).map((gate) =>
+      columns(gateRecord(gate)),
+    ),
+    details: changed(state.details, before.details).map((details) =>
+      columns(detailRecord(details)),
+    ),
     previous: before.sequence,
     sequence: state.sequence,
     events: events.map((event) => ({

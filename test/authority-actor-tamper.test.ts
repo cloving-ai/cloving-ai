@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type { Authority } from "../src/broker/actor/authority.ts";
-import { deliveryIntent } from "../src/broker/actor/turn-plan.ts";
+import { deliveryIntent } from "../src/broker/actor/delivery-intents.ts";
 import {
   deliverUntil,
   executePinned,
@@ -73,7 +73,7 @@ await test("CLV-042 a staged delivery whose workflow differs from the run's pin 
   const directory = await temporaryDirectory();
   await admitted(directory);
   const other = `${pin.slice(0, -1)}0`;
-  const digest = deliveryIntent(intent, other).inputDigest;
+  const digest = deliveryIntent({ ...intent, workflow: other }).inputDigest;
   alterDatabase(
     directory,
     `UPDATE solid_effects SET arguments = json_set(arguments, '$.workflow', '${other}', '$.inputDigest', '${digest}'); UPDATE deliveries SET input_digest = '${digest}';`,

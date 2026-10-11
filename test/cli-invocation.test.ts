@@ -3,14 +3,18 @@ import { readdir } from "node:fs/promises";
 import { test } from "node:test";
 import { withProject } from "./cli-fixture.ts";
 
-await test("CLV-006 help lists only the implemented commands", async () => {
+await test("CLV-008 help lists only the implemented commands", async () => {
   await withProject({}, (cli) => {
     for (const argumentsList of [[], ["--help"]]) {
       const result = cli(argumentsList);
       assert.equal(result.status, 0);
       assert.match(result.stdout, /cloving workflows validate <manifest-path>/);
       assert.doesNotMatch(result.stdout, /not implemented/);
-      assert.doesNotMatch(result.stdout, /\brun\b|\bstatus\b|\banswer\b/);
+      assert.match(result.stdout, /^ {2}run {2,}Submit one run/m);
+      assert.doesNotMatch(
+        result.stdout,
+        /\battach\b|\bdoctor\b|\binit\b|\bmcp\b|develop-ticket/,
+      );
       assert.equal(result.stderr, "");
     }
     const help = cli(["workflows", "validate", "--help"]);

@@ -2,6 +2,12 @@ import { parseCommand } from "../../authority/commands.ts";
 import type { EffectIntent } from "../../authority/reducer.ts";
 import { readExecutionManifest } from "../../execution-pin.ts";
 import {
+  gateColumns,
+  gateRow,
+  runDecisions,
+  storedDigests,
+} from "../../storage/decision-rows.ts";
+import {
   deliveryRow,
   integer,
   latestSequence,
@@ -13,11 +19,13 @@ import {
 } from "../../storage/domain-rows.ts";
 import { authorityIdentity } from "../../storage/domain-schema.ts";
 import { intentKind, storedRun } from "../authority-restore.ts";
+import { decisionState, storedGate } from "../decision-restore.ts";
 import {
   deliveryIntent,
+  gateDecision,
   type DeliveryIntent,
-  type TurnState,
-} from "./turn-plan.ts";
+} from "./delivery-intents.ts";
+import { documentReferences, type TurnState } from "./turn-plan.ts";
 
 export async function commandTurn(
   connection: SqlConnection,
@@ -29,6 +37,7 @@ export async function commandTurn(
     runId: parsed?.runId ?? "",
     commandId: parsed?.commandId ?? "",
     sequence,
+    references: documentReferences(parsed),
   });
 }
 
@@ -49,16 +58,26 @@ export async function recoverableIntents(
     "SELECT o.operation_id, o.kind, o.run_id, r.workflow FROM outbox o JOIN runs r ON r.run_id = o.run_id WHERE o.released_sequence IS NULL AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = o.operation_id AND d.outcome IS NULL) AND ((o.kind = 'start-run' AND r.status = 'queued') OR (o.kind = 'continue-run' AND r.status = 'running')) ORDER BY o.created_sequence, o.rowid LIMIT ?",
     [recoveryBatch],
   );
-  return rows.map((row) =>
-    deliveryIntent(
-      {
+  const intents: DeliveryIntent[] = [];
+  for (const row of rows) {
+    const operationId = text(row, "operation_id");
+    const gate = await connection.get(
+      `SELECT ${gateColumns} FROM gates WHERE continuation = ?`,
+      [operationId],
+    );
+    intents.push(
+      deliveryIntent({
         kind: intentKind(text(row, "kind")),
         runId: text(row, "run_id"),
-        operationId: text(row, "operation_id"),
-      },
-      text(row, "workflow"),
-    ),
-  );
+        operationId,
+        workflow: text(row, "workflow"),
+        ...gateDecision(
+          gate === undefined ? undefined : storedGate(gateRow(gate)),
+        ),
+      }),
+    );
+  }
+  return intents;
 }
 
 export interface DeliveryTurn {
@@ -81,7 +100,12 @@ export async function deliveryTurn(
   return {
     delivery: deliveryRow(found),
     runId,
-    turn: await turnState(connection, { runId, commandId: "", sequence }),
+    turn: await turnState(connection, {
+      runId,
+      commandId: "",
+      sequence,
+      references: [],
+    }),
   };
 }
 
@@ -89,6 +113,7 @@ interface Scope {
   readonly runId: string;
   readonly commandId: string;
   readonly sequence: number;
+  readonly references: readonly string[];
 }
 
 async function turnState(
@@ -121,12 +146,14 @@ async function turnState(
         sql: "SELECT operation_id, kind, run_id, created_sequence, released_sequence FROM outbox WHERE run_id = ? AND released_sequence IS NULL ORDER BY created_sequence, rowid",
         parameters: [runId],
       }),
+      ...decisionState(await runDecisions(connection, runId)),
     },
+    documents: new Set(await storedDigests(connection, scope.references)),
     definitions: await definitions(connection, stored?.workflow),
-    open: new Set(
+    held: new Set(
       (
         await connection.all(
-          "SELECT d.operation_id FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id WHERE o.run_id = ? AND d.outcome IS NULL",
+          "SELECT d.operation_id FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id WHERE o.run_id = ? AND (d.outcome IS NULL OR (d.outcome = 'blocked' AND d.rowid = (SELECT max(rowid) FROM deliveries WHERE operation_id = d.operation_id)))",
           [runId],
         )
       ).map((row) => text(row, "operation_id")),

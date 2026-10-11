@@ -1,13 +1,15 @@
-import type {
-  AuthorityCommand,
-  AuthorityEvent,
-  AuthorityState,
-  EffectIntent,
+import {
+  numberFields,
+  textFields,
+  type AuthorityCommand,
+  type AuthorityEvent,
+  type AuthorityState,
+  type EffectIntent,
 } from "./transitions.ts";
-import { operationIdentity } from "../operation-identity.ts";
 import { commandEvents, parseCommand } from "./commands.ts";
 import { parseEvent } from "./events.ts";
-import { transition } from "./transitions.ts";
+import { gateKey } from "./gates.ts";
+import { reduce } from "./reduction.ts";
 
 export type {
   AuthorityEvent,
@@ -27,24 +29,14 @@ export type CommandResult =
   | { readonly kind: "duplicate"; readonly sequence: number }
   | { readonly kind: "rejected"; readonly reason: string };
 
-type Reduction =
-  | {
-      readonly kind: "applied";
-      readonly state: AuthorityState;
-      readonly intents: readonly EffectIntent[];
-    }
-  | { readonly kind: "invalid"; readonly reason: string };
-
-interface RecordedEvent {
-  readonly event: AuthorityEvent;
-  readonly commands: AuthorityState["commands"];
-}
-
 export const emptyAuthority: AuthorityState = {
   sequence: 0,
   runs: {},
   commands: {},
   intents: [],
+  gates: {},
+  details: {},
+  questions: 0,
 };
 
 export function execute(
@@ -59,12 +51,7 @@ export function execute(
     return existing.request === request
       ? { kind: "duplicate", sequence: existing.sequence }
       : { kind: "rejected", reason: "conflicting-command" };
-  const run = state.runs[command.runId];
-  if (
-    run &&
-    command.expectedRevision !== undefined &&
-    command.expectedRevision !== run.revision
-  )
+  if (staleRevision(state, command))
     return { kind: "rejected", reason: "stale-revision" };
   const event = commandEvent(command, {
     sequence: state.sequence + 1,
@@ -117,12 +104,10 @@ function commandEvent(
 ): AuthorityEvent {
   const { sequence, request, recordedAt } = record;
   const payload: Record<string, string> = {};
-  if (command.workflow !== undefined) payload["workflow"] = command.workflow;
-  if (command.gateId !== undefined) payload["gateId"] = command.gateId;
-  if (command.decision !== undefined) payload["decision"] = command.decision;
-  if (command.operationId !== undefined)
-    payload["operationId"] = command.operationId;
-  if (command.receipt !== undefined) payload["receipt"] = command.receipt;
+  for (const name of payloadFields) {
+    const value = command[name];
+    if (value !== undefined) payload[name] = String(value);
+  }
   return {
     sequence,
     type: commandEvents[command.kind] ?? "run.created",
@@ -134,132 +119,25 @@ function commandEvent(
   };
 }
 
-function reduce(state: AuthorityState, event: AuthorityEvent): Reduction {
-  if (event.sequence !== state.sequence + 1)
-    return { kind: "invalid", reason: "sequence-gap" };
-  if (state.commands[event.commandId])
-    return { kind: "invalid", reason: "duplicate-command" };
-  const commands = {
-    ...state.commands,
-    [event.commandId]: { request: event.request, sequence: event.sequence },
-  };
-  if (event.type === "run.created") return created(state, { event, commands });
-  const run = state.runs[event.runId];
-  if (!run) return { kind: "invalid", reason: "unknown-run" };
-  if (event.type === "step.dispatched")
-    return dispatched(state, { event, commands });
-  const gateId = event.payload["gateId"] ?? "";
-  const moved = transition(run, { type: event.type, gateId });
-  if (moved.kind === "invalid") return moved;
-  const added =
-    event.type === "gate.decided"
-      ? [continueIntent(event.runId, { gateId, decision: event.sequence })]
-      : [];
-  return {
-    kind: "applied",
-    state: {
-      sequence: event.sequence,
-      runs: { ...state.runs, [event.runId]: moved.run },
-      commands,
-      intents: [...retained(state.intents, event), ...added],
-    },
-    intents: added,
-  };
+function staleRevision(
+  state: AuthorityState,
+  command: AuthorityCommand,
+): boolean {
+  const run = state.runs[command.runId];
+  if (!run || command.expectedRevision === undefined) return false;
+  const gate =
+    command.kind === "decide-gate"
+      ? state.gates[gateKey(command.runId, command.gateId ?? "")]
+      : undefined;
+  if (gate === undefined || gate.kind === "untyped")
+    return command.expectedRevision !== run.revision;
+  return gate.outcome === null && command.expectedRevision !== gate.revision;
 }
 
-function dispatched(state: AuthorityState, recorded: RecordedEvent): Reduction {
-  const { event, commands } = recorded;
-  const operationId = event.payload["operationId"];
-  const pending = state.intents.some(
-    (intent) =>
-      intent.runId === event.runId && intent.operationId === operationId,
-  );
-  if (!pending) return { kind: "invalid", reason: "unknown-intent" };
-  return {
-    kind: "applied",
-    state: {
-      sequence: event.sequence,
-      runs: state.runs,
-      commands,
-      intents: state.intents.filter(
-        (intent) => intent.operationId !== operationId,
-      ),
-    },
-    intents: [],
-  };
-}
-
-function retained(
-  intents: readonly EffectIntent[],
-  event: AuthorityEvent,
-): readonly EffectIntent[] {
-  if (["run.cancelled", "run.failed", "run.completed"].includes(event.type))
-    return intents.filter((intent) => intent.runId !== event.runId);
-  if (event.type === "run.started")
-    return intents.filter(
-      (intent) => intent.runId !== event.runId || intent.kind !== "start-run",
-    );
-  return intents;
-}
-
-function continueIntent(
-  runId: string,
-  gate: { readonly gateId: string; readonly decision: number },
-): EffectIntent {
-  const { gateId, decision } = gate;
-  return {
-    kind: "continue-run",
-    runId,
-    operationId: identity({
-      run: runId,
-      phase: "gate",
-      round: decision,
-      operation: "continue-run",
-      key: gateId,
-    }),
-  };
-}
-
-function created(state: AuthorityState, recorded: RecordedEvent): Reduction {
-  const { event, commands } = recorded;
-  if (state.runs[event.runId])
-    return { kind: "invalid", reason: "existing-run" };
-  const intent: EffectIntent = {
-    kind: "start-run",
-    runId: event.runId,
-    operationId: identity({
-      run: event.runId,
-      phase: "admission",
-      round: 0,
-      operation: "start-run",
-    }),
-  };
-  return {
-    kind: "applied",
-    state: {
-      sequence: event.sequence,
-      runs: {
-        ...state.runs,
-        [event.runId]: {
-          runId: event.runId,
-          status: "queued",
-          revision: 1,
-          workflow: event.payload["workflow"] ?? "",
-          pausedFrom: null,
-          gates: [],
-        },
-      },
-      commands,
-      intents: [...state.intents, intent],
-    },
-    intents: [intent],
-  };
-}
-
-function identity(scope: Readonly<Record<string, unknown>>): string {
-  const result = operationIdentity(scope);
-  return result.kind === "valid" ? result.value : "";
-}
+const payloadFields = [
+  ...textFields,
+  ...numberFields.filter((name) => name !== "expectedRevision"),
+];
 
 function canonical(value: AuthorityCommand): string {
   const fields: Readonly<Record<string, unknown>> = value;

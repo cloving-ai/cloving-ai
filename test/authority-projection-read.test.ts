@@ -3,17 +3,16 @@ import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { after, test } from "node:test";
 import {
-  projectedState,
+  currentState,
   restore,
   storedDefinitions,
   storedEvents,
 } from "../src/broker/authority-restore.ts";
 import {
-  loadEvents,
+  loadCurrent,
   loadProjections,
-  loadSnapshot,
-  type SqlConnection,
-} from "../src/storage/domain-rows.ts";
+} from "../src/storage/decision-snapshots.ts";
+import { loadEvents, type SqlConnection } from "../src/storage/domain-rows.ts";
 import {
   deliverUntil,
   executePinned,
@@ -82,14 +81,14 @@ await test("CLV-042 a projection read gives the replayed state, events and defin
   });
   try {
     const replayed = restore(
-      await loadSnapshot(recordingConnection({ database, statements: [] })),
+      await loadCurrent(recordingConnection({ database, statements: [] })),
     );
     assert.equal(replayed.kind, "restored");
     const statements: string[] = [];
     const projections = await loadProjections(
       recordingConnection({ database, statements }),
     );
-    assert.deepEqual(projectedState(projections), replayed.state);
+    assert.deepEqual(currentState(projections), replayed.state);
     assert.deepEqual(storedDefinitions(projections), replayed.definitions);
     assert.deepEqual(
       statements.filter((sql) => /\bevents\b/.test(sql)),

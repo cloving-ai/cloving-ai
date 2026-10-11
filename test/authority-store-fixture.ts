@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { rmSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,6 +64,11 @@ export function executeStored(
 }
 
 const temporaryDirectories: string[] = [];
+
+process.once("exit", () => {
+  for (const directory of temporaryDirectories)
+    rmSync(directory, { recursive: true, force: true });
+});
 
 export async function temporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "cloving-authority-"));

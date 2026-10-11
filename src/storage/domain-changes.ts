@@ -1,4 +1,14 @@
 import {
+  detailColumns,
+  detailRow,
+  documentRow,
+  gateColumns,
+  gateRow,
+  type DetailRow,
+  type DocumentRow,
+  type GateRow,
+} from "./decision-rows.ts";
+import {
   commandRow,
   definitionRow,
   eventRow,
@@ -43,6 +53,9 @@ export interface DomainChange {
   readonly released: readonly string[];
   readonly staged: readonly StagedDelivery[];
   readonly closed: readonly ClosedDelivery[];
+  readonly gates: readonly GateRow[];
+  readonly details: readonly DetailRow[];
+  readonly documents: readonly DocumentRow[];
   readonly completesAdoption: boolean;
 }
 
@@ -57,7 +70,7 @@ export async function persistChange(
     await connection.run(statement.sql, statement.parameters);
 }
 
-interface Statement {
+export interface Statement {
   readonly sql: string;
   readonly parameters: readonly unknown[];
 }
@@ -98,6 +111,7 @@ function statements(change: DomainChange): readonly Statement[] {
     })),
     ...intentStatements(change),
     ...deliveryStatements(change),
+    ...decisionStatements(change),
     ...(change.completesAdoption
       ? [
           {
@@ -140,6 +154,95 @@ function deliveryStatements(change: DomainChange): readonly Statement[] {
   ];
 }
 
+const gateNames = gateColumns.split(", ");
+const detailNames = detailColumns.split(", ");
+
+function upsert(target: {
+  readonly table: string;
+  readonly names: readonly string[];
+  readonly key: number;
+}): string {
+  const { table, names, key } = target;
+  const updates = names
+    .slice(key)
+    .map((name) => `${name} = excluded.${name}`)
+    .join(", ");
+  return `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")}) ON CONFLICT (${names.slice(0, key).join(", ")}) DO UPDATE SET ${updates}`;
+}
+
+const gateUpsert = upsert({ table: "gates", names: gateNames, key: 2 });
+const detailUpsert = upsert({
+  table: "run_details",
+  names: detailNames,
+  key: 1,
+});
+
+export function gateParameters(row: GateRow): readonly unknown[] {
+  return [
+    row.runId,
+    row.gateId,
+    row.kind,
+    row.label,
+    row.subject,
+    row.prompt,
+    row.expiresAt,
+    row.generation,
+    row.revision,
+    row.wait,
+    row.decision,
+    row.answer,
+    row.decidedSequence,
+    row.openedSequence,
+    row.continuation,
+  ];
+}
+
+export function detailParameters(row: DetailRow): readonly unknown[] {
+  return [
+    row.runId,
+    row.generation,
+    row.submission,
+    row.input,
+    row.resolver,
+    row.condition,
+    row.reason,
+    row.evidence,
+    row.retryAt,
+    row.attempt,
+    row.attemptLimit,
+    row.observedSequence,
+    row.observedAt,
+    row.observedOperation,
+  ];
+}
+
+export function decisionStatements(
+  change: Pick<DomainChange, "gates" | "details" | "documents">,
+): readonly Statement[] {
+  return [
+    ...change.gates.map((row) => ({
+      sql: gateUpsert,
+      parameters: gateParameters(row),
+    })),
+    ...change.details.map((row) => ({
+      sql: detailUpsert,
+      parameters: detailParameters(row),
+    })),
+    ...change.documents.map((row) => ({
+      sql: "INSERT INTO documents (digest, body) VALUES (?, ?) ON CONFLICT (digest) DO NOTHING",
+      parameters: [row.digest, row.body],
+    })),
+  ];
+}
+
+export async function persistDecisions(
+  connection: SqlConnection,
+  rows: Pick<DomainChange, "gates" | "details" | "documents">,
+): Promise<void> {
+  for (const statement of decisionStatements(rows))
+    await connection.run(statement.sql, statement.parameters);
+}
+
 function parseChange(value: unknown): DomainChange {
   return {
     previous: integer(value, "previous"),
@@ -164,6 +267,9 @@ function parseChange(value: unknown): DomainChange {
       outcome: text(row, "outcome"),
       receipt: optionalText(row, "receipt"),
     })),
+    gates: list(value, "gates").map(gateRow),
+    details: list(value, "details").map(detailRow),
+    documents: list(value, "documents").map(documentRow),
     completesAdoption:
       Reflect.get(Object(value), "completes_adoption") === true,
   };

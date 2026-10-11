@@ -78,11 +78,6 @@ export interface DomainSnapshot extends AuthoritySnapshot {
 
 export type ProjectionRows = Omit<AuthoritySnapshot, "events">;
 
-export interface ProjectionSnapshot extends ProjectionRows {
-  readonly deliveries: readonly DeliveryRow[];
-  readonly sequence: number;
-}
-
 export async function loadSnapshot(
   connection: SqlConnection,
 ): Promise<DomainSnapshot> {
@@ -101,16 +96,6 @@ export async function loadBaseline(
   };
 }
 
-export async function loadProjections(
-  connection: SqlConnection,
-): Promise<ProjectionSnapshot> {
-  return {
-    ...(await projectionRows(connection)),
-    deliveries: await loadDeliveries(connection),
-    sequence: await latestSequence(connection),
-  };
-}
-
 export async function loadEvents(
   connection: SqlConnection,
 ): Promise<readonly EventRow[]> {
@@ -121,7 +106,7 @@ export async function loadEvents(
   ).map(eventRow);
 }
 
-async function loadDeliveries(
+export async function loadDeliveries(
   connection: SqlConnection,
 ): Promise<readonly DeliveryRow[]> {
   return (
@@ -131,7 +116,7 @@ async function loadDeliveries(
   ).map(deliveryRow);
 }
 
-async function projectionRows(
+export async function projectionRows(
   connection: SqlConnection,
 ): Promise<ProjectionRows> {
   const rows = (sql: string): Promise<readonly unknown[]> =>

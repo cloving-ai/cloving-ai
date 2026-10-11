@@ -6,52 +6,50 @@ import {
   type EffectIntent,
 } from "../../authority/reducer.ts";
 import {
-  integer,
-  loadEvents,
   loadProjections,
-  text,
   type ProjectionSnapshot,
-} from "../../storage/domain-rows.ts";
+} from "../../storage/decision-snapshots.ts";
+import { loadEvents } from "../../storage/domain-rows.ts";
 import type {
   AdmissionResult,
   ExecutionManifest,
 } from "../../workflow-admission.ts";
 import { pinnedResumption } from "../authority-admission.ts";
 import {
+  currentState,
   intentKind,
-  projectedState,
   storedDefinitions,
   storedEvents,
 } from "../authority-restore.ts";
+import { checkedRequest } from "./authority-actor.ts";
+import {
+  authorityQueries,
+  type AuthorityQueries,
+} from "./authority-queries.ts";
 import { backupInto } from "../../storage/domain-schema.ts";
 import {
   observeSettings,
   type ConnectionSettings,
 } from "./authority-connection.ts";
+import {
+  failed,
+  serializable,
+  storeReceipt,
+  invalidCommand,
+  oversized,
+  tooLarge,
+  unserializable,
+  type StoreReceipt,
+} from "./authority-receipts.ts";
+
+export type { StoreReceipt } from "./authority-receipts.ts";
 
 export interface CommandContext {
   readonly recordedAt: string;
   readonly manifest?: ExecutionManifest;
   readonly epoch?: number;
+  readonly documents?: readonly string[];
 }
-
-export type StoreReceipt =
-  | {
-      readonly kind: "accepted" | "duplicate";
-      readonly sequence: number;
-      readonly intents: readonly EffectIntent[];
-    }
-  | {
-      readonly kind: "rejected";
-      readonly reason: string;
-      readonly detail?: string;
-    }
-  | {
-      readonly kind: "failed";
-      readonly reason:
-        "storage-failure" | "storage-unavailable" | "authority-unavailable";
-      readonly detail: string;
-    };
 
 export interface OperationRecord {
   readonly operationId: string;
@@ -81,6 +79,7 @@ export interface Authority {
   ) => Promise<AdmissionResult>;
   readonly settings: () => Promise<ConnectionSettings>;
   readonly epoch: number;
+  readonly queries: AuthorityQueries;
   readonly deliver: (signal: AbortSignal) => Promise<void>;
   readonly backup: (target: string) => Promise<void>;
   readonly close: () => Promise<void>;
@@ -129,27 +128,36 @@ export function authoritySession(parts: SessionParts): Authority {
   return {
     execute: (command, context) =>
       executeCommand(session, { command, context }),
-    state: async () => projectedState(await projected(session)),
+    state: async () => currentState(await projected(session)),
     events: async () => {
+      await refreshed(session);
       available(session);
       return storedEvents(await parts.reader.connection(loadEvents));
     },
     eligibleIntents: async () =>
-      eligibleIntents(projectedState(await projected(session))),
+      eligibleIntents(currentState(await projected(session))),
     operations: async () => operationRecords(await projected(session)),
     resumePinned: async (runId, manifest) => {
       const snapshot = await projected(session);
-      return pinnedResumption(projectedState(snapshot), {
+      return pinnedResumption(currentState(snapshot), {
         definitions: storedDefinitions(snapshot),
         runId,
         available: manifest,
       });
     },
     settings: async () => {
+      await refreshed(session);
       available(session);
       return observeSettings(parts.database);
     },
     epoch: parts.epoch,
+    queries: authorityQueries({
+      reader: parts.reader,
+      ready: async () => {
+        await refreshed(session);
+        available(session);
+      },
+    }),
     deliver: (signal) => deliver(session, signal),
     backup: (target) => backup(session, target),
     close: () => close(session),
@@ -173,11 +181,23 @@ async function stopped(session: Session): Promise<void> {
   }
 }
 
+async function refreshed(session: Session): Promise<void> {
+  if (session.parts.unhealthy() === undefined) return;
+  await failClosed(session, "authority failure");
+}
+
 async function failClosed(session: Session, failure: string): Promise<void> {
   session.failure ??= failure;
-  session.describing ??= described(session);
-  await session.describing;
+  await conditionRead(session);
   close(session).catch(() => undefined);
+}
+
+async function conditionRead(session: Session): Promise<void> {
+  if (session.condition !== null && session.describing === null) return;
+  session.describing ??= described(session).finally(() => {
+    session.describing = null;
+  });
+  await session.describing;
 }
 
 async function described(session: Session): Promise<void> {
@@ -188,6 +208,7 @@ async function described(session: Session): Promise<void> {
 }
 
 async function backup(session: Session, target: string): Promise<void> {
+  await refreshed(session);
   available(session);
   try {
     await session.parts.database.connection((connection) =>
@@ -221,6 +242,7 @@ function unavailableReceipt(session: Session): StoreReceipt | undefined {
 }
 
 async function projected(session: Session): Promise<ProjectionSnapshot> {
+  await refreshed(session);
   available(session);
   return session.parts.reader.connection(loadProjections);
 }
@@ -246,8 +268,7 @@ async function deliver(session: Session, signal: AbortSignal): Promise<void> {
     clearInterval(timer);
     session.delivering = false;
   }
-  if (session.parts.unhealthy() !== undefined)
-    await failClosed(session, "authority failure");
+  await refreshed(session);
   const failure = session.condition ?? session.failure;
   if (failure !== null) throw new Error(`authority-unavailable: ${failure}`);
 }
@@ -257,23 +278,22 @@ async function executeCommand(
   input: { readonly command: unknown; readonly context: CommandContext },
 ): Promise<StoreReceipt> {
   const { command, context } = input;
-  if (session.parts.unhealthy() !== undefined)
-    await failClosed(session, "authority failure");
+  await refreshed(session);
   const unavailable = unavailableReceipt(session);
   if (unavailable !== undefined) return unavailable;
+  const given = serializable({
+    command,
+    recordedAt: context.recordedAt,
+    manifest: context.manifest ?? null,
+    epoch: context.epoch ?? null,
+    documents: context.documents ?? [],
+  });
+  if (given === undefined) return unserializable;
+  const request = checkedRequest(given);
+  if (request === undefined) return invalidCommand;
+  if (oversized(request)) return tooLarge;
   try {
-    return await healthyReceipt(
-      session,
-      await invoked(
-        session,
-        json({
-          command,
-          recordedAt: context.recordedAt,
-          manifest: context.manifest ?? null,
-          epoch: context.epoch ?? null,
-        }),
-      ),
-    );
+    return await healthyReceipt(session, await invoked(session, request));
   } catch (error) {
     const receipt = failed(error);
     await failClosed(
@@ -304,8 +324,7 @@ async function healthyReceipt(
   value: unknown,
 ): Promise<StoreReceipt> {
   const receipt = storeReceipt(value);
-  if (session.parts.unhealthy() !== undefined)
-    await failClosed(session, "authority failure");
+  await refreshed(session);
   return receipt;
 }
 
@@ -326,56 +345,4 @@ function operationRecords(
         receipt,
       })),
   }));
-}
-
-function failed(error: unknown): Extract<StoreReceipt, { kind: "failed" }> {
-  const name = String(Reflect.get(Object(error), "name"));
-  if (name === "MessageFailed")
-    return {
-      kind: "failed",
-      reason: "storage-failure",
-      detail: String(
-        Reflect.get(Object(Reflect.get(Object(error), "details")), "message"),
-      ),
-    };
-  return {
-    kind: "failed",
-    reason: "authority-unavailable",
-    detail: `${name}: ${String(Reflect.get(Object(error), "message"))}`,
-  };
-}
-
-export function storeReceipt(value: unknown): StoreReceipt {
-  const kind = text(value, "kind");
-  if (kind === "rejected") {
-    const detail: unknown = Reflect.get(Object(value), "detail");
-    return {
-      kind,
-      reason: text(value, "reason"),
-      ...(typeof detail === "string" ? { detail } : {}),
-    };
-  }
-  if (kind !== "accepted" && kind !== "duplicate")
-    throw new Error(`invalid-receipt: ${kind}`);
-  const intents: unknown = Reflect.get(Object(value), "intents");
-  if (!Array.isArray(intents)) throw new Error("invalid-receipt: intents");
-  return {
-    kind,
-    sequence: integer(value, "sequence"),
-    intents: intents.map((intent: unknown) => ({
-      kind: intentKind(text(intent, "kind")),
-      runId: text(intent, "runId"),
-      operationId: text(intent, "operationId"),
-    })),
-  };
-}
-
-export function json(value: unknown): JsonObject {
-  const copy: unknown = JSON.parse(JSON.stringify(value));
-  if (!isJsonObject(copy)) throw new Error("invalid-json-object");
-  return copy;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

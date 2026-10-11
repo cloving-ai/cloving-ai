@@ -11,8 +11,10 @@ import { manifest, storedGate } from "./authority-store-fixture.ts";
 const [directory = "", scenario = ""] = process.argv.slice(2);
 const service = join(directory, "external.log");
 
+const held: unknown[] = [];
+
 function hang(): Promise<void> {
-  setInterval(() => undefined, 60_000);
+  setInterval(() => held, 60_000);
   return new Promise(() => undefined);
 }
 
@@ -66,6 +68,7 @@ if (scenario === "open") {
   process.stdout.write("ready\n");
   await new Promise((resolve) => process.stdin.once("data", resolve));
   const attempt = await openAuthority(directory);
+  held.push(attempt);
   process.stdout.write(
     attempt.kind === "opened" ? "opened\n" : `refused ${attempt.reason}\n`,
   );
@@ -73,6 +76,7 @@ if (scenario === "open") {
 }
 
 const opening = await openAuthority(directory, scenarios[scenario] ?? {});
+held.push(opening);
 if (opening.kind !== "opened") {
   process.stdout.write(`refused ${opening.reason}\n`);
   process.exit(3);

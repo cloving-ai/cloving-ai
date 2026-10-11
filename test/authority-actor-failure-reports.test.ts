@@ -28,7 +28,12 @@ interface GatedRun {
   readonly release: () => void;
 }
 
-function gatedRun(runId: string): GatedRun {
+interface DeliveryCall {
+  readonly runId: string;
+  readonly count: number;
+}
+
+function gatedDelivery(stuck: (call: DeliveryCall) => boolean): GatedRun {
   const sent: string[] = [];
   const entry = Promise.withResolvers<undefined>();
   const gate = Promise.withResolvers<undefined>();
@@ -40,7 +45,7 @@ function gatedRun(runId: string): GatedRun {
     delivery: {
       deliver: async (intent) => {
         sent.push(intent.operationId);
-        if (intent.runId === runId) {
+        if (stuck({ runId: intent.runId, count: sent.length })) {
           entry.resolve(undefined);
           await gate.promise;
         }
@@ -84,7 +89,7 @@ await test("CLV-042 a storage failure while a delivery handler outlasts the shut
     directory,
     "CREATE TRIGGER inject BEFORE INSERT ON commands WHEN NEW.command_id = 'admit-run-2' BEGIN SELECT RAISE(ABORT, 'injected-command-failure'); END;",
   );
-  const run = gatedRun("run-1");
+  const run = gatedDelivery((call) => call.runId === "run-1");
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
     timing: { ...fastTiming, shutdownMilliseconds: 150 },
@@ -121,7 +126,7 @@ await test("CLV-042 a dead-lettered callback found while another delivery handle
     directory,
     "CREATE TRIGGER inject BEFORE UPDATE ON deliveries BEGIN SELECT RAISE(ABORT, 'injected-callback-failure'); END;",
   );
-  const run = gatedRun("run-2");
+  const run = gatedDelivery((call) => call.count === 2);
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
     timing: { ...fastTiming, shutdownMilliseconds: 150 },
@@ -158,7 +163,7 @@ await test("CLV-042 a dead-lettered callback found by the watchdog stops admissi
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1"]);
   alterDatabase(directory, callbackFailure);
-  const run = gatedRun("none");
+  const run = gatedDelivery(() => false);
   const dead = Promise.withResolvers<undefined>();
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
@@ -234,7 +239,7 @@ await test("CLV-042 a failed read of the dead-letter cause still fails the autho
     directory,
     "CREATE TRIGGER unreadable AFTER INSERT ON solid_dead_letters BEGIN UPDATE solid_dead_letters SET error = 'not-json' WHERE id = NEW.id; END;",
   );
-  const run = gatedRun("none");
+  const run = gatedDelivery(() => false);
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
     timing: fastTiming,
@@ -292,7 +297,7 @@ async function deadLetteredWhileStuck(directory: string): Promise<{
 }> {
   await admittedRuns(directory, ["run-1", "run-2"]);
   alterDatabase(directory, callbackFailure);
-  const run = gatedRun("run-2");
+  const run = gatedDelivery((call) => call.count === 2);
   const dead = Promise.withResolvers<undefined>();
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
@@ -357,7 +362,7 @@ await test("CLV-042 a read in the same step as the command that finds a conditio
 await test("CLV-042 after a close that reports the shutdown timeout, the session refuses commands and reads, and a later close resolves when the authority is released", async () => {
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1"]);
-  const run = gatedRun("run-1");
+  const run = gatedDelivery((call) => call.runId === "run-1");
   const timing = { ...fastTiming, shutdownMilliseconds: 150 };
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,

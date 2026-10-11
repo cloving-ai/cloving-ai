@@ -5,6 +5,7 @@ import {
 } from "../../storage/domain-rows.ts";
 import { adoptSchema, authorityIdentity } from "../../storage/domain-schema.ts";
 import { restore } from "../authority-restore.ts";
+import { upgradeDecisions } from "../decision-upgrade.ts";
 import {
   ownedRuntime,
   recoverDeliveries,
@@ -69,6 +70,10 @@ async function converted(
       adoptSchema(connection, restored.state.sequence),
     );
     progress("schema-adopted");
+  }
+  if (schema.kind !== "current") {
+    await upgradeDecisions(database, restored.state);
+    progress("schema-upgraded");
   }
   const identity = await database.connection(authorityIdentity);
   if (identity.pendingAdoption === null)

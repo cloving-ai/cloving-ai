@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { admittedDetails } from "../src/authority/details.ts";
 import { test } from "node:test";
 import {
   emptyAuthority,
@@ -60,6 +61,9 @@ await test("CLV-006 an admitted run command records the run and one unsent start
           },
         },
         intents: [startIntent],
+        gates: {},
+        details: { "run-1": admittedDetails("run-1", {}) },
+        questions: 0,
       },
       intents: [startIntent],
     },

@@ -56,3 +56,19 @@ await test("QG-18 declarations and unknown source roles require explicit qualifi
     },
   );
 });
+
+await test("CLV-008 a service module is production code for the coverage inventory", async () => {
+  await withProgram(
+    { "service/main.ts": "export const value = 1;" },
+    (program) => {
+      const files = program.getRootFileNames();
+      assert.deepEqual(
+        productionInventory(program, {
+          files,
+          roles: Object.fromEntries(files.map((file) => [file, "service"])),
+        }).map((file) => basename(file)),
+        ["main.ts"],
+      );
+    },
+  );
+});

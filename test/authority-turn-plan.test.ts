@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { deliveryIntent } from "../src/broker/actor/delivery-intents.ts";
 import {
-  deliveryIntent,
   planCommand,
   planDelivery,
   type DeliveryResult,
@@ -16,13 +16,14 @@ const start = { kind: "start-run", runId: "run-1", operationId } as const;
 
 function turn(
   commands: readonly Readonly<Record<string, unknown>>[],
-  open: readonly string[],
+  held: readonly string[],
 ): TurnState {
   return {
     state: lastState(run(commands)),
     definitions: new Map(),
-    open: new Set(open),
+    held: new Set(held),
     created: [],
+    documents: new Set(),
   };
 }
 
@@ -62,7 +63,9 @@ await test("CLV-042 a withheld delivery whose run is eligible again at the callb
       epoch: 3,
     }),
   );
-  assert.deepEqual(plan.stage, [deliveryIntent(start, "pin-1")]);
+  assert.deepEqual(plan.stage, [
+    deliveryIntent({ ...start, workflow: "pin-1" }),
+  ]);
   assert.deepEqual(plan.change.closed, [
     { effect_id: "effect-1", outcome: "withheld", receipt: null },
   ]);
@@ -91,7 +94,9 @@ await test("CLV-042 a delivery result from an older epoch records no dispatch an
   assert.deepEqual(plan.change.closed, [
     { effect_id: "effect-1", outcome: "stale-epoch", receipt: "receipt-1" },
   ]);
-  assert.deepEqual(plan.stage, [deliveryIntent(start, "pin-1")]);
+  assert.deepEqual(plan.stage, [
+    deliveryIntent({ ...start, workflow: "pin-1" }),
+  ]);
 });
 
 await test("CLV-042 a sent delivery records its dispatch with a digest command identity and stages nothing", () => {
@@ -216,4 +221,38 @@ await test("CLV-042 a recorded dispatch retried as a command returns its stored 
       receipt: { kind: "duplicate", sequence: 2, intents: [] },
     },
   );
+});
+
+await test("CLV-008 a dispatch record for a pending intent of a run that is not eligible is recorded as a fact and stages nothing", () => {
+  const plan = committed(
+    planDelivery({
+      turn: turn([admit, paused], [operationId]),
+      delivery: result("sent"),
+      epoch: 3,
+    }),
+  );
+  assert.deepEqual(
+    plan.change.events.map((event) => [event["type"], event["run_id"]]),
+    [["step.dispatched", "run-1"]],
+  );
+  assert.deepEqual(plan.change.released, [{ operation_id: operationId }]);
+  assert.deepEqual(plan.change.closed, [
+    { effect_id: "effect-1", outcome: "sent", receipt: "receipt-1" },
+  ]);
+  assert.deepEqual(plan.stage, []);
+});
+
+await test("CLV-008 a blocked delivery closes with its outcome and is not staged again in the same opening", () => {
+  const plan = committed(
+    planDelivery({
+      turn: turn([admit], [operationId]),
+      delivery: result("blocked"),
+      epoch: 3,
+    }),
+  );
+  assert.deepEqual(plan.change.events, []);
+  assert.deepEqual(plan.change.closed, [
+    { effect_id: "effect-1", outcome: "blocked", receipt: null },
+  ]);
+  assert.deepEqual(plan.stage, []);
 });

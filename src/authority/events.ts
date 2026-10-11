@@ -1,31 +1,18 @@
-import type { AuthorityEvent, EventType } from "./transitions.ts";
-
-const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
-const types: readonly EventType[] = [
-  "run.created",
-  "run.started",
-  "gate.opened",
-  "gate.decided",
-  "run.paused",
-  "run.resumed",
-  "run.completed",
-  "run.failed",
-  "run.cancelled",
-  "step.dispatched",
-];
+import { isRecordKey } from "./commands.ts";
+import { eventTypes, type AuthorityEvent } from "./transitions.ts";
 
 export function parseEvent(value: unknown): AuthorityEvent | null {
   const fields = record(value);
   if (!fields) return null;
   const { sequence, type, runId, commandId, recordedAt, request } = fields;
   const payload = textRecord(fields["payload"]);
-  const eventType = types.find((item) => item === type);
+  const eventType = eventTypes.find((item) => item === type);
   if (
     typeof sequence !== "number" ||
     !Number.isSafeInteger(sequence) ||
     eventType === undefined ||
-    !isIdentifier(runId) ||
-    !isIdentifier(commandId) ||
+    !isRecordKey(runId) ||
+    !isRecordKey(commandId) ||
     typeof recordedAt !== "string" ||
     typeof request !== "string" ||
     !payload
@@ -56,8 +43,4 @@ function textRecord(value: unknown): Readonly<Record<string, string>> | null {
 function record(value: unknown): Readonly<Record<string, unknown>> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return Object.fromEntries(Object.entries(value));
-}
-
-function isIdentifier(value: unknown): value is string {
-  return typeof value === "string" && identifier.test(value);
 }

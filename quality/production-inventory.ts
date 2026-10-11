@@ -16,6 +16,7 @@ export function productionInventory(
     "broker",
     "storage",
     "harness",
+    "service",
   ]);
   const development = new Set(["quality", "test", "build", "configuration"]);
   const result: string[] = [];

@@ -6,4 +6,4 @@ const opening = await openAuthority(process.argv[2] ?? "");
 const outcome =
   opening.kind === "opened" ? "opened" : `refused ${opening.reason}`;
 process.stdout.write(`${outcome}\n`);
-setInterval(() => undefined, 60000);
+setInterval(() => opening, 60000);

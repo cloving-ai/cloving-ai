@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deliveryHandler } from "../src/broker/actor/authority-delivery.ts";
-import { json, storeReceipt } from "../src/broker/actor/authority-session.ts";
+import { json, storeReceipt } from "../src/broker/actor/authority-receipts.ts";
 import { adoptionTurn, deliveryTurn } from "../src/broker/actor/turn-state.ts";
 import { persistChange } from "../src/storage/domain-changes.ts";
 import type { SqlConnection } from "../src/storage/domain-rows.ts";
@@ -28,6 +28,9 @@ const change = {
   released: [],
   staged: [],
   closed: [],
+  gates: [],
+  details: [],
+  documents: [],
 };
 
 await test("CLV-042 a domain change that does not continue the stored sequence or has a malformed list is refused", async () => {
@@ -65,6 +68,7 @@ await test("CLV-042 a delivery handler without a delivery adapter refuses to sen
     },
     delivery: undefined,
     epoch: () => 1,
+    available: undefined,
   });
   await assert.rejects(
     handler(

@@ -10,6 +10,7 @@ import {
 
 export const baselineVersion = 1;
 export const adoptedVersion = 2;
+export const currentVersion = 3;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -69,7 +70,50 @@ CREATE TABLE deliveries (
 CREATE UNIQUE INDEX deliveries_open ON deliveries (operation_id) WHERE outcome IS NULL;
 `;
 
-const checksums = [baselineSchema, adoption].map((schema) =>
+const decisions = `
+CREATE TABLE gates (
+  run_id TEXT NOT NULL REFERENCES runs (run_id) DEFERRABLE INITIALLY DEFERRED,
+  gate_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  label INTEGER,
+  subject TEXT,
+  prompt TEXT,
+  expires_at TEXT,
+  generation INTEGER NOT NULL,
+  revision INTEGER NOT NULL,
+  wait TEXT NOT NULL,
+  decision TEXT,
+  answer TEXT,
+  decided_sequence INTEGER REFERENCES events (sequence) DEFERRABLE INITIALLY DEFERRED,
+  opened_sequence INTEGER NOT NULL REFERENCES events (sequence) DEFERRABLE INITIALLY DEFERRED,
+  continuation TEXT,
+  PRIMARY KEY (run_id, gate_id)
+) STRICT;
+CREATE TABLE run_details (
+  run_id TEXT PRIMARY KEY REFERENCES runs (run_id) DEFERRABLE INITIALLY DEFERRED,
+  generation INTEGER NOT NULL,
+  submission TEXT,
+  input TEXT,
+  resolver TEXT,
+  condition TEXT,
+  reason TEXT,
+  evidence TEXT,
+  retry_at TEXT,
+  attempt INTEGER,
+  attempt_limit INTEGER,
+  observed_sequence INTEGER REFERENCES events (sequence) DEFERRABLE INITIALLY DEFERRED,
+  observed_at TEXT,
+  observed_operation TEXT
+) STRICT;
+CREATE TABLE documents (
+  digest TEXT PRIMARY KEY,
+  body TEXT NOT NULL
+) STRICT;
+`;
+
+const schemas = [baselineSchema, adoption, decisions];
+
+const checksums = schemas.map((schema) =>
   createHash("sha256").update(schema).digest("hex"),
 );
 
@@ -84,7 +128,10 @@ export type SchemaState =
   | { readonly kind: "new" }
   | { readonly kind: "baseline" }
   | { readonly kind: "adopted" }
+  | { readonly kind: "current" }
   | SchemaRefusal;
+
+const versionKinds = ["baseline", "adopted", "current"] as const;
 
 export async function inspectSchema(
   connection: SqlConnection,
@@ -95,15 +142,16 @@ export async function inspectSchema(
   );
   const detail = String(version);
   if (version === 0) return emptyDatabase(connection, detail);
-  if (version < 0 || version > adoptedVersion)
+  const kind = versionKinds[version - 1];
+  if (kind === undefined)
     return { kind: "refused", reason: "unsupported-schema", detail };
   const intact =
     (await structure(connection)) ===
-      expectedStructure([baselineSchema, adoption].slice(0, version)) &&
+      expectedStructure(schemas.slice(0, version)) &&
     (await recordedChecksums(connection)) ===
       JSON.stringify(checksums.slice(0, version));
   if (!intact) return { kind: "refused", reason: "schema-mismatch", detail };
-  return { kind: version === adoptedVersion ? "adopted" : "baseline" };
+  return { kind };
 }
 
 async function emptyDatabase(
@@ -123,6 +171,13 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await execute(connection, baselineSchema);
   await recordVersion(connection, baselineVersion);
   await adoptSchema(connection, null);
+  await upgradeSchema(connection);
+}
+
+export async function upgradeSchema(connection: SqlConnection): Promise<void> {
+  await execute(connection, decisions);
+  await recordVersion(connection, currentVersion);
+  await connection.run(`PRAGMA user_version = ${String(currentVersion)}`);
 }
 
 export async function adoptSchema(

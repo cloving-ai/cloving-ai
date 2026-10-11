@@ -1,10 +1,12 @@
 import type { JsonObject } from "solid-objects";
+import { loadCurrent } from "../../storage/decision-snapshots.ts";
 import { integer, loadSnapshot } from "../../storage/domain-rows.ts";
 import {
   authorityIdentity,
   createSchema,
 } from "../../storage/domain-schema.ts";
 import { restore } from "../authority-restore.ts";
+import { upgradeDecisions } from "../decision-upgrade.ts";
 import {
   ownedRuntime,
   recoverDeliveries,
@@ -14,7 +16,8 @@ import {
   type OwnedRuntime,
   type Refusal,
 } from "./authority-runtime.ts";
-import { authoritySession, json, type Authority } from "./authority-session.ts";
+import { json } from "./authority-receipts.ts";
+import { authoritySession, type Authority } from "./authority-session.ts";
 
 export type {
   Delivery,
@@ -27,6 +30,12 @@ export type {
   Refusal,
 } from "./authority-runtime.ts";
 export { authorityTiming } from "./authority-runtime.ts";
+export type {
+  AuthorityQueries,
+  CommandRecord,
+  EventPage,
+  PublishedEvent,
+} from "./authority-queries.ts";
 export type {
   Authority,
   CommandContext,
@@ -60,12 +69,25 @@ async function validated(owned: Owned): Promise<string | Refusal> {
   const { database, schema } = owned;
   if (schema.kind === "new") await database.transaction(createSchema);
   if (schema.kind === "baseline") return conversionRequired("schema version 1");
-  const restored = restore(await database.connection(loadSnapshot));
+  const upgrade = schema.kind === "adopted" ? await upgraded(owned) : undefined;
+  if (upgrade !== undefined) return upgrade;
+  const restored = restore(await database.connection(loadCurrent));
   if (restored.kind === "refused") return restored;
   const identity = await database.connection(authorityIdentity);
   if (identity.pendingAdoption !== null)
     return conversionRequired("adoption pending");
   return identity.actorId;
+}
+
+async function upgraded(owned: Owned): Promise<Refusal | undefined> {
+  const { database } = owned;
+  const restored = restore(await database.connection(loadSnapshot));
+  if (restored.kind === "refused") return restored;
+  const identity = await database.connection(authorityIdentity);
+  if (identity.pendingAdoption !== null)
+    return conversionRequired("adoption pending");
+  await upgradeDecisions(database, restored.state);
+  return undefined;
 }
 
 function conversionRequired(detail: string): Refusal {

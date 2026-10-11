@@ -10,4 +10,4 @@ for (const command of storedGate) {
   process.stdout.write(`receipt ${JSON.stringify(receipt)}\n`);
 }
 process.stdout.write("awaiting-dispatch\n");
-setInterval(() => undefined, 60000);
+setInterval(() => store, 60000);

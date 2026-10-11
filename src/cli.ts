@@ -1,30 +1,11 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation } from "./cli/arguments.ts";
+import { runtimeCommand } from "./cli/commands.ts";
+import { runtimeDirectory } from "./cli/runtime-directory.ts";
+import { usage, validateUsage } from "./cli/usage.ts";
 import { validateWorkflow, type ValidationReport } from "./cli/validate.ts";
-
-const usage = `Usage: cloving [--help] [--version]
-       cloving workflows validate <manifest-path> [--input <json-file>] [--json]
-
-Commands:
-  workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
-
-Use npm exec -- cloving ... for a project-local installation.
-`;
-
-const validateUsage = `Usage: cloving workflows validate <manifest-path> [--input <json-file>] [--json]
-
-Checks a Cloving workflow manifest, its compiled SDK artifacts, declared resources and toolchain, and an optional runtime input file. Relative paths resolve against the current directory.
-
-Options:
-  --input <json-file>  Validate this runtime input file.
-  --json               Print one versioned JSON result on stdout.
-
-Validation does not admit a run, dispatch effects, import workflow code or call a model.
-
-Example:
-  cloving workflows validate cloving.workflow.json --input input.json
-`;
 
 const invocation = parseInvocation(process.argv.slice(2));
 
@@ -42,8 +23,27 @@ if (invocation.kind === "usage-error") {
   process.exitCode = report.status === "valid" ? 0 : 1;
 } else if (invocation.kind === "version") {
   process.stdout.write(`${packageMetadata.version}\n`);
+} else if (invocation.kind === "help") {
+  process.stdout.write(usage);
+} else if (invocation.kind === "validate-help") {
+  process.stdout.write(validateUsage);
 } else {
-  process.stdout.write(invocation.kind === "help" ? usage : validateUsage);
+  process.exitCode = await runtimeCommand(invocation, {
+    runtimeDirectory: runtimeDirectory(process.env),
+    workingDirectory: process.cwd(),
+    terminal: {
+      out: (text) => process.stdout.write(text),
+      error: (text) => process.stderr.write(text),
+    },
+    identifier: randomUUID,
+    interrupted: () =>
+      new Promise((settle) => {
+        for (const signal of ["SIGINT", "SIGTERM"] as const)
+          process.once(signal, () => {
+            settle();
+          });
+      }),
+  });
 }
 
 function present(report: ValidationReport, format: "json" | "human"): void {

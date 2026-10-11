@@ -29,7 +29,12 @@ import {
   inspectSchema,
   type SchemaState,
 } from "../../storage/domain-schema.ts";
-import { deliveryHandler, type Delivery } from "./authority-delivery.ts";
+import {
+  deliveryHandler,
+  type AvailableManifest,
+  type Delivery,
+} from "./authority-delivery.ts";
+import { lineLogger } from "./authority-logger.ts";
 import { brokerAuthorization } from "./authority-policy.ts";
 import {
   strandingWatchdog,
@@ -64,6 +69,8 @@ export interface AuthorityOptions {
   readonly delivery?: Delivery;
   readonly timing?: AuthorityTiming;
   readonly instrumentation?: (event: InstrumentationEvent) => void;
+  readonly log?: (line: string) => void;
+  readonly available?: AvailableManifest;
 }
 
 export interface Refusal {
@@ -287,10 +294,18 @@ async function deadLetterCause(lookup: {
   }
 }
 
+function standardError(line: string): void {
+  process.stderr.write(line);
+}
+
 function librarySettings(
   timing: AuthorityTiming,
+  log: ((line: string) => void) | undefined,
 ): Partial<SolidObjectsConfiguration> {
   return {
+    tableNamePrefix: "solid_",
+    maxAttempts: 1,
+    logger: lineLogger(log ?? standardError),
     leaseDurationMilliseconds: timing.leaseMilliseconds,
     leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,
     processHeartbeatIntervalMilliseconds: timing.heartbeatMilliseconds,
@@ -316,9 +331,7 @@ export function authorityRuntime(
   const ClovingAuthority = authorityActor(reader);
   const runtime = createRuntime({
     database,
-    tableNamePrefix: "solid_",
-    maxAttempts: 1,
-    ...librarySettings(timing),
+    ...librarySettings(timing, options.log),
     ...brokerAuthorization(broker),
     instrumentation: (event) => {
       watchdog.observe(event, Date.now());
@@ -337,6 +350,7 @@ export function authorityRuntime(
       reader,
       delivery: options.delivery,
       epoch: () => epoch,
+      available: options.available,
     }),
   });
   return {

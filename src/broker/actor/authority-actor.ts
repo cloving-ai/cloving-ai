@@ -10,7 +10,9 @@ import {
   optionalText,
   text,
 } from "../../storage/domain-rows.ts";
+import { parseCommand } from "../../authority/commands.ts";
 import { readExecutionManifest } from "../../execution-pin.ts";
+import { documentDigest } from "../decision-restore.ts";
 import {
   planAdoption,
   planCommand,
@@ -20,7 +22,7 @@ import {
   type TurnPlan,
   type TurnRequest,
 } from "./turn-plan.ts";
-import { json } from "./authority-session.ts";
+import { json, textList } from "./authority-receipts.ts";
 import {
   adoptionTurn,
   commandTurn,
@@ -177,10 +179,12 @@ function completed(payload: JsonObject): Outcome {
   };
 }
 
-function resultKind(kind: string): "sent" | "withheld" {
-  if (kind !== "sent" && kind !== "withheld")
-    throw new Error(`invalid-delivery-result: ${kind}`);
-  return kind;
+const resultKinds = ["sent", "withheld", "blocked"] as const;
+
+function resultKind(kind: string): (typeof resultKinds)[number] {
+  const known = resultKinds.find((candidate) => candidate === kind);
+  if (known === undefined) throw new Error(`invalid-delivery-result: ${kind}`);
+  return known;
 }
 
 function callback(
@@ -194,12 +198,39 @@ function callback(
   };
 }
 
+export function checkedRequest(given: JsonObject): JsonObject | undefined {
+  const bodies = textList(given["documents"]);
+  if (bodies === undefined || parseCommand(given["command"]) === null)
+    return undefined;
+  const documents = bodies.map((body) => ({
+    digest: documentDigest(body),
+    body,
+  }));
+  try {
+    const request = turnRequest({ ...given, documents });
+    return json({
+      ...request,
+      manifest: request.manifest ?? null,
+      epoch: request.epoch ?? null,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 function turnRequest(request: JsonObject): TurnRequest {
   const manifest = request["manifest"];
   const epoch = optionalInteger(request, "epoch");
+  const documents: unknown = request["documents"];
   return {
     command: request["command"],
     recordedAt: text(request, "recordedAt"),
+    documents: (Array.isArray(documents) ? documents : []).map(
+      (document: unknown) => ({
+        digest: text(document, "digest"),
+        body: text(document, "body"),
+      }),
+    ),
     ...(manifest === undefined || manifest === null
       ? {}
       : { manifest: readExecutionManifest(manifest) }),
