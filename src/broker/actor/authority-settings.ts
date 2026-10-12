@@ -89,6 +89,7 @@ export function librarySettings(
   return {
     tableNamePrefix: "solid_",
     maxAttempts: 1,
+    maxMessagesPerActivationPass: 1,
     logger: lineLogger(log ?? standardError),
     leaseDurationMilliseconds: timing.leaseMilliseconds,
     leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,

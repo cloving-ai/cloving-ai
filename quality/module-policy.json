@@ -373,6 +373,8 @@
     "test/stop-opening-fixture.ts": "test",
     "test/stop-opening-batch.test.ts": "test",
     "test/effect-stop-expiry.test.ts": "test",
+    "test/delivery-burst.test.ts": "test",
+    "test/activation-lease.test.ts": "test",
     "test/effect-stop-rules.test.ts": "test",
     "test/adapter-forms.test.ts": "test",
     "test/effect-launch-fixture.ts": "test",
