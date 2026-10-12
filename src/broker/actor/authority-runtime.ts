@@ -171,6 +171,7 @@ export interface AuthorityRuntime {
   readonly handlersSettled: () => Promise<boolean>;
   readonly setEpoch: (epoch: number) => void;
   readonly unhealthy: () => string | undefined;
+  readonly halted: AbortSignal;
   readonly watchMilliseconds: number;
   readonly limits: SessionLimits;
   readonly releaseEarlierOwners: () => Promise<void>;
@@ -184,7 +185,7 @@ export interface AuthorityRuntime {
 function unhealthy(watchdog: StrandingWatchdog): string | undefined {
   const dead = watchdog.deadLettered();
   if (dead !== undefined) return `dead-lettered message ${dead}`;
-  const stranded = watchdog.stranded(Date.now());
+  const stranded = watchdog.stranded();
   return stranded === undefined ? undefined : `stranded message ${stranded}`;
 }
 
@@ -296,8 +297,10 @@ export function authorityRuntime(
   const reader = guardApplicationDatabase(database);
   const broker = {};
   let epoch = 0;
+  const halt = new AbortController();
   const watchdog = strandingWatchdog({
     boundMilliseconds: timing.callTimeoutMilliseconds,
+    whenStranded: halt.abort.bind(halt),
   });
   const effects = effectConfiguration(options);
   const shared = { reader, effects, clock: options.clock ?? wallClock };
@@ -335,6 +338,7 @@ export function authorityRuntime(
       epoch = value;
     },
     unhealthy: () => unhealthy(watchdog),
+    halted: halt.signal,
     watchMilliseconds: timing.leaseMilliseconds,
     limits: effects,
     releaseEarlierOwners: () =>

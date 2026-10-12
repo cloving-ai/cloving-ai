@@ -21,13 +21,11 @@ function hang(): Promise<void> {
 function strandFirstCommand(): NonNullable<
   AuthorityOptions["instrumentation"]
 > {
-  let stranded = false;
   return (event) => {
     if (event.name === "solid_objects.activation.lost")
       process.stdout.write("activation-lost\n");
     if (event.name !== "solid_objects.message.started") return;
-    if (stranded || event.attributes["operation"] !== "execute") return;
-    stranded = true;
+    if (event.attributes["operation"] !== "execute") return;
     const until = performance.now() + 400;
     while (performance.now() < until);
   };

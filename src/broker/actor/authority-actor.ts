@@ -40,7 +40,10 @@ export interface ActorParts {
   readonly reader: Database;
   readonly effects: PlanSettings;
   readonly clock: () => string;
-  readonly failed: (operationId: string) => number;
+  readonly failed: (delivery: {
+    readonly operationId: string;
+    readonly effectId: string;
+  }) => number;
 }
 
 export function authorityActor(parts: ActorParts): AuthorityActorClass {
@@ -177,7 +180,7 @@ async function settleDelivery(
 }
 
 function failures(parts: ActorParts, outcome: Outcome): number {
-  return outcome.outcome === "thrown" ? parts.failed(outcome.operationId) : 0;
+  return outcome.outcome === "thrown" ? parts.failed(outcome) : 0;
 }
 
 function applyPlan(actor: AuthorityInstance, plan: TurnPlan): JsonObject {

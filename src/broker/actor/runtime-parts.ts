@@ -12,12 +12,17 @@ import { brokerAuthorization } from "./authority-policy.ts";
 import { librarySettings, type AuthorityTiming } from "./authority-settings.ts";
 import type { StrandingWatchdog } from "./authority-watchdog.ts";
 
-export function failureCounter(): (operationId: string) => number {
-  const counts = new Map<string, number>();
-  return (operationId) => {
-    const count = (counts.get(operationId) ?? 0) + 1;
-    counts.set(operationId, count);
-    return count;
+export interface FailedDelivery {
+  readonly operationId: string;
+  readonly effectId: string;
+}
+
+export function failureCounter(): (delivery: FailedDelivery) => number {
+  const failed = new Map<string, Set<string>>();
+  return ({ operationId, effectId }) => {
+    const effects = failed.get(operationId) ?? new Set<string>();
+    failed.set(operationId, effects.add(effectId));
+    return effects.size;
   };
 }
 
@@ -39,7 +44,7 @@ export function runtimeSettings(parts: {
     ...librarySettings(timing, options.log),
     ...brokerAuthorization(broker),
     instrumentation: (event) => {
-      watchdog.observe(event, Date.now());
+      watchdog.observe(event);
       options.instrumentation?.(event);
     },
   };

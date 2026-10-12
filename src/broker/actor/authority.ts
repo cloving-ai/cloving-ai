@@ -156,6 +156,7 @@ async function start(opening: {
       epoch,
       ...parts.limits,
       unhealthy: parts.unhealthy,
+      halted: parts.halted,
       condition: parts.condition,
       watchMilliseconds: parts.watchMilliseconds,
     }),

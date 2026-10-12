@@ -33,29 +33,134 @@ const timing = {
   heartbeatMilliseconds: 50,
   aliveThresholdMilliseconds: 300,
   cleanupIntervalMilliseconds: 100,
-  callTimeoutMilliseconds: 600,
+  callTimeoutMilliseconds: 1_000,
 };
+const lost = "solid_objects.activation.lost";
 
-function stalledTurn(
-  operation: string,
-): Pick<AuthorityOptions, "instrumentation"> {
-  let stalled = false;
+function count(events: readonly string[], name: string): number {
+  return events.filter((event) => event === name).length;
+}
+
+function firstTurnsStalled(stall: {
+  readonly operation: string;
+  readonly events: string[];
+  readonly turns: number;
+}): Pick<AuthorityOptions, "instrumentation"> {
+  let remaining = stall.turns;
   return {
     instrumentation: (event) => {
+      stall.events.push(event.name);
       if (event.name !== "solid_objects.message.started") return;
-      if (stalled || event.attributes["operation"] !== operation) return;
-      stalled = true;
+      if (event.attributes["operation"] !== stall.operation) return;
+      if (remaining === 0) return;
+      remaining -= 1;
       const until = performance.now() + 400;
       while (performance.now() < until);
     },
   };
 }
 
-await test("CLV-008 a command whose turn loses its activation is reported as a stranded message after the call timeout, and a restart commits it exactly once", async () => {
+function eachTurnStalled(
+  operation: string,
+): Pick<AuthorityOptions, "instrumentation"> {
+  let end: number | undefined;
+  return {
+    instrumentation: (event) => {
+      if (event.name !== "solid_objects.message.started") return;
+      if (event.attributes["operation"] !== operation) return;
+      end ??= performance.now() + 3_000;
+      const until = Math.min(performance.now() + 400, end);
+      while (performance.now() < until);
+    },
+  };
+}
+
+await test("CLV-052 a command whose turn is longer than the lease is accepted and applied one time, and the authority stays available with no restart", async () => {
+  const events: string[] = [];
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    timing,
+    ...firstTurnsStalled({ operation: "execute", events, turns: 1 }),
+  });
+  const receipt = await executePinned(authority, admission);
+  assert.equal(receipt.kind, "accepted");
+  assert.equal(count(events, lost), 1);
+  await delay(timing.callTimeoutMilliseconds + 100);
+  assert.equal((await authority.state()).sequence, 1);
+  assert.deepEqual(await executePinned(authority, admission), {
+    kind: "duplicate",
+    sequence: 1,
+    intents: [start],
+  });
+  const later = { ...admission, runId: "run-2", commandId: "c-2" };
+  assert.equal((await executePinned(authority, later)).kind, "accepted");
+  assert.deepEqual(
+    (await authority.events()).map((event) => event.commandId),
+    ["c-1", "c-2"],
+  );
+  await authority.close();
+});
+
+await test("CLV-052 a delivery callback whose turn is longer than the lease is applied one time with one send, and the authority stays available with no restart", async () => {
+  const events: string[] = [];
+  const service = externalService();
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    ...service.options,
+    timing,
+    ...firstTurnsStalled({
+      operation: "deliveryCompleted",
+      events,
+      turns: 1,
+    }),
+  });
+  assert.equal((await executePinned(authority, admission)).kind, "accepted");
+  await deliverUntil(
+    authority,
+    async () => (await authority.eligibleIntents()).length === 0,
+  );
+  assert.equal(count(events, lost), 1);
+  assert.equal(service.sent.length, 1);
+  assert.deepEqual(
+    (await authority.events()).map((event) => event.type),
+    ["run.created", "step.dispatched"],
+  );
+  await delay(timing.callTimeoutMilliseconds + 100);
+  assert.equal((await authority.state()).sequence, 2);
+  await authority.close();
+});
+
+await test("CLV-052 a delivery callback whose turn is longer than the lease in two attempts and then short is applied one time with one send, and the authority stays available with no restart", async () => {
+  const events: string[] = [];
+  const service = externalService();
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    ...service.options,
+    timing,
+    ...firstTurnsStalled({
+      operation: "deliveryCompleted",
+      events,
+      turns: 2,
+    }),
+  });
+  assert.equal((await executePinned(authority, admission)).kind, "accepted");
+  await deliverUntil(
+    authority,
+    async () => (await authority.eligibleIntents()).length === 0,
+  );
+  assert.equal(count(events, lost), 2);
+  assert.equal(service.sent.length, 1);
+  assert.deepEqual(
+    (await authority.events()).map((event) => event.type),
+    ["run.created", "step.dispatched"],
+  );
+  await delay(timing.callTimeoutMilliseconds + 100);
+  assert.equal((await authority.state()).sequence, 2);
+  await authority.close();
+});
+
+await test("CLV-052 a command whose turn is longer than the lease in each attempt is reported as a stranded message after the call timeout, and a restart commits it exactly once", async () => {
   const directory = await temporaryDirectory();
   const authority = await openedAuthority(directory, {
     timing,
-    ...stalledTurn("execute"),
+    ...eachTurnStalled("execute"),
   });
   const receipt = await executePinned(authority, admission);
   assert.equal(receipt.kind, "failed");
@@ -87,13 +192,13 @@ await test("CLV-008 a command whose turn loses its activation is reported as a s
   await restarted.close();
 });
 
-await test("CLV-042 a delivery callback that loses its activation and stays claimed fails the authority closed within the bound, and a restart applies it exactly once", async () => {
+await test("CLV-052 a delivery callback whose turn is longer than the lease in each attempt fails the authority closed within the bound, and a restart applies it exactly once", async () => {
   const directory = await temporaryDirectory();
   const service = externalService();
   const authority = await openedAuthority(directory, {
     ...service.options,
     timing,
-    ...stalledTurn("deliveryCompleted"),
+    ...eachTurnStalled("deliveryCompleted"),
   });
   assert.equal((await executePinned(authority, admission)).kind, "accepted");
   const started = performance.now();
@@ -107,7 +212,7 @@ await test("CLV-042 a delivery callback that loses its activation and stays clai
   ]);
   controller.abort();
   assert.match(outcome, /authority-unavailable: stranded message /);
-  assert.ok(performance.now() - started < 4_000);
+  assert.ok(performance.now() - started < 2_500);
   await assert.rejects(authority.state(), /authority-unavailable/);
   await authority.close();
   const restarted = await openedAuthority(directory, service.options);
@@ -121,6 +226,33 @@ await test("CLV-042 a delivery callback that loses its activation and stays clai
     ["run.created", "step.dispatched"],
   );
   await restarted.close();
+});
+
+await test("CLV-052 a command whose turn is longer than the lease in each attempt, while the delivery waits for work, gets a failed receipt, and the delivery run fails closed within the bound", async () => {
+  const service = externalService();
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    ...service.options,
+    timing,
+    ...eachTurnStalled("execute"),
+  });
+  const controller = new AbortController();
+  const started = performance.now();
+  const running = authority.deliver(controller.signal).then(
+    () => "stopped",
+    (error: unknown) => String(error),
+  );
+  await delay(400);
+  const receipt = await executePinned(authority, admission);
+  const outcome = await Promise.race([
+    running,
+    delay(5_000, "not detected", { ref: false }),
+  ]);
+  controller.abort();
+  assert.equal(receipt.kind, "failed");
+  assert.equal(receipt.reason, "authority-unavailable");
+  assert.match(outcome, /authority-unavailable: stranded message /);
+  assert.ok(performance.now() - started < 2_900);
+  await authority.close();
 });
 
 await test("CLV-042 a command stranded by a process that then dies is committed exactly once by the next opening in a new process", async () => {

@@ -104,6 +104,7 @@ export interface SessionParts {
   readonly stopLimit: number;
   readonly recoveryLimit: number;
   readonly unhealthy: () => string | undefined;
+  readonly halted: AbortSignal;
   readonly condition: () => Promise<string | undefined>;
   readonly watchMilliseconds: number;
 }
@@ -284,7 +285,12 @@ async function delivered(session: Session, signal: AbortSignal): Promise<void> {
   }, session.parts.watchMilliseconds);
   try {
     session.running = session.parts.run(
-      AbortSignal.any([signal, session.stopping.signal, watch.signal]),
+      AbortSignal.any([
+        signal,
+        session.stopping.signal,
+        watch.signal,
+        session.parts.halted,
+      ]),
     );
     await session.running;
   } finally {

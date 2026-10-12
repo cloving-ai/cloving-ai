@@ -46,6 +46,7 @@ const parts = {
   deliveryConfigured: true,
   epoch: 1,
   unhealthy: (): string | undefined => undefined,
+  halted: new AbortController().signal,
   condition: (): Promise<string | undefined> => Promise.resolve(undefined),
   watchMilliseconds: 1_000,
   stopLimit: 3,

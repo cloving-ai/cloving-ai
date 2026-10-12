@@ -5,8 +5,8 @@ export interface WatchedEvent {
 }
 
 export interface StrandingWatchdog {
-  readonly observe: (event: WatchedEvent, at: number) => void;
-  readonly stranded: (now: number) => string | undefined;
+  readonly observe: (event: WatchedEvent) => void;
+  readonly stranded: () => string | undefined;
   readonly deadLettered: () => string | undefined;
 }
 
@@ -20,11 +20,17 @@ const finished = [
 
 export function strandingWatchdog(bound: {
   readonly boundMilliseconds: number;
+  readonly whenStranded?: () => void;
+  readonly clock?: () => number;
 }): StrandingWatchdog {
+  const clock = bound.clock ?? monotonic;
   const lost = new Map<string, number>();
   const dead: string[] = [];
+  let halted: string | undefined;
+  const stranded = (): string | undefined =>
+    halted ?? overdue(lost, clock() - bound.boundMilliseconds);
   return {
-    observe: (event, at) => {
+    observe: (event) => {
       const { messageId } = event;
       if (messageId === null) return;
       if (deadCallback(event)) dead.push(messageId);
@@ -32,13 +38,25 @@ export function strandingWatchdog(bound: {
         event.name === "solid_objects.activation.lost" &&
         !lost.has(messageId)
       )
-        lost.set(messageId, at);
+        lost.set(messageId, clock());
       if (finished.includes(event.name)) lost.delete(messageId);
+      halted ??= stranded();
+      if (halted !== undefined) bound.whenStranded?.();
     },
-    stranded: (now) =>
-      [...lost].find(([, at]) => now - at > bound.boundMilliseconds)?.[0],
+    stranded,
     deadLettered: () => dead[0],
   };
+}
+
+function monotonic(): number {
+  return performance.now();
+}
+
+function overdue(
+  lost: ReadonlyMap<string, number>,
+  limit: number,
+): string | undefined {
+  return [...lost].find(([, at]) => at < limit)?.[0];
 }
 
 function deadCallback(event: WatchedEvent): boolean {

@@ -5,6 +5,7 @@ import { after, test } from "node:test";
 import {
   authorityTiming,
   openAuthority,
+  type AuthorityOptions,
 } from "../src/broker/actor/authority.ts";
 import { convertAuthority } from "../src/broker/actor/authority-conversion.ts";
 import { executePinned, openedAuthority } from "./authority-actor-fixture.ts";
@@ -19,6 +20,27 @@ import {
 } from "./authority-store-fixture.ts";
 
 const admission = storedGate[0] ?? {};
+
+const stalledTiming = {
+  ...authorityTiming,
+  leaseMilliseconds: 100,
+  renewalMilliseconds: 30,
+  heartbeatMilliseconds: 50,
+  aliveThresholdMilliseconds: 300,
+  cleanupIntervalMilliseconds: 100,
+  callTimeoutMilliseconds: 1_000,
+};
+
+function eachEpochTurnStalled(): NonNullable<
+  AuthorityOptions["instrumentation"]
+> {
+  return (event) => {
+    if (event.name !== "solid_objects.message.started") return;
+    if (event.attributes["operation"] !== "beginEpoch") return;
+    const until = performance.now() + 400;
+    while (performance.now() < until);
+  };
+}
 
 function stalledFirstTurn(): (event: { readonly name: string }) => void {
   let started = 0;
@@ -97,20 +119,12 @@ await test("CLV-042 an actor sequence that differs from the event history is ref
   );
 });
 
-await test("CLV-042 an opening whose epoch turn loses its activation is refused and releases the authority, and the next opening applies the stranded turn once and leaves no message", async () => {
+await test("CLV-052 an opening whose epoch turn is longer than the lease in each attempt is refused and releases the authority, and the next opening applies the stranded turn once and leaves no message", async () => {
   const directory = await temporaryDirectory();
   await (await openedAuthority(directory)).close();
   const opening = await openAuthority(directory, {
-    timing: {
-      ...authorityTiming,
-      leaseMilliseconds: 100,
-      renewalMilliseconds: 30,
-      heartbeatMilliseconds: 50,
-      aliveThresholdMilliseconds: 300,
-      cleanupIntervalMilliseconds: 100,
-      callTimeoutMilliseconds: 600,
-    },
-    instrumentation: stalledFirstTurn(),
+    timing: stalledTiming,
+    instrumentation: eachEpochTurnStalled(),
   });
   assert.equal(opening.kind, "refused");
   assert.equal(opening.reason, "authority-unavailable");
@@ -119,6 +133,34 @@ await test("CLV-042 an opening whose epoch turn loses its activation is refused 
   assert.equal((await reopened.state()).sequence, 0);
   assert.equal(reopened.epoch, 3);
   await reopened.close();
+  assert.deepEqual(
+    queryDatabase(
+      directory,
+      "SELECT operation FROM solid_messages WHERE completed_at_ms IS NULL",
+    ),
+    [],
+  );
+});
+
+await test("CLV-052 an opening whose epoch turn is longer than the lease opens the authority with the next epoch and leaves no message", async () => {
+  const directory = await temporaryDirectory();
+  await (await openedAuthority(directory)).close();
+  const events: string[] = [];
+  const stall = stalledFirstTurn();
+  const authority = await openedAuthority(directory, {
+    timing: stalledTiming,
+    instrumentation: (event) => {
+      events.push(event.name);
+      stall(event);
+    },
+  });
+  assert.equal(
+    events.filter((name) => name === "solid_objects.activation.lost").length,
+    1,
+  );
+  assert.equal(authority.epoch, 2);
+  assert.equal((await authority.state()).sequence, 0);
+  await authority.close();
   assert.deepEqual(
     queryDatabase(
       directory,
