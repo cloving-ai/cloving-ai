@@ -1,103 +1,195 @@
 import type { Database, EffectContext, JsonObject } from "solid-objects";
 import { isIdentifier } from "../../authority/commands.ts";
-import { readExecutionManifest, resumePinned } from "../../execution-pin.ts";
 import {
   optionalInteger,
   optionalText,
   text,
-  type SqlConnection,
 } from "../../storage/domain-rows.ts";
-import type { ExecutionManifest } from "../../workflow-admission.ts";
 import { intentKind } from "../authority-restore.ts";
-import { intentDigest, type DeliveryIntent } from "./delivery-intents.ts";
+import {
+  intentDigest,
+  type AvailableManifest,
+  type Delivery,
+  type DeliveryIntent,
+  type Purpose,
+} from "./delivery-intents.ts";
+import {
+  adapterCalls,
+  type AdapterCalls,
+  type CallResult,
+} from "./adapter-calls.ts";
+import type { EffectSettings } from "./authority-settings.ts";
+import { deliverEffect, protectedArguments } from "./effect-delivery.ts";
+import { pinned } from "./pin-check.ts";
 
-export type { DeliveryIntent } from "./delivery-intents.ts";
-
-export type Reconciliation =
-  | { readonly kind: "accepted"; readonly receipt: string }
-  | { readonly kind: "absent" };
-
-export interface Delivery {
-  readonly deliver: (
-    intent: DeliveryIntent,
-  ) => Promise<{ readonly receipt: string }>;
-  readonly reconcile: (intent: DeliveryIntent) => Promise<Reconciliation>;
-}
-
-export type AvailableManifest = (
-  pinned: ExecutionManifest,
-) => ExecutionManifest | undefined;
+export type {
+  AdapterOutcome,
+  AvailableManifest,
+  Delivery,
+  DeliveryIntent,
+  Reconciliation,
+} from "./delivery-intents.ts";
 
 export interface DeliveryParts {
   readonly reader: Database;
   readonly delivery: Delivery | undefined;
   readonly epoch: () => number;
+  readonly clock: () => string;
   readonly available: AvailableManifest | undefined;
+  readonly effects: EffectSettings;
 }
 
-async function pinned(
-  connection: SqlConnection,
-  check: {
-    readonly intent: DeliveryIntent;
-    readonly available: AvailableManifest | undefined;
-  },
-): Promise<boolean> {
-  const { intent, available } = check;
-  if (intent.kind !== "continue-run" || available === undefined) return true;
-  const stored = readExecutionManifest(
-    JSON.parse(
-      text(
-        await connection.get("SELECT manifest FROM definitions WHERE pin = ?", [
-          intent.workflow,
-        ]),
-        "manifest",
-      ),
-    ),
-  );
-  const current = available(stored);
-  return (
-    current !== undefined && resumePinned(stored, current).kind === "admitted"
-  );
-}
-
-const eligibleStatus: Readonly<Record<DeliveryIntent["kind"], string>> = {
+const eligibleStatus: Readonly<Record<string, string>> = {
   "start-run": "queued",
   "continue-run": "running",
 };
 
+interface RunAttempt {
+  readonly intent: DeliveryIntent;
+  readonly effectId: string;
+  readonly delivery: Delivery;
+  readonly calls: AdapterCalls;
+}
+
+type Admission = "stale" | "withheld" | "blocked" | "sent";
+
+function admission(
+  parts: DeliveryParts,
+  attempt: RunAttempt,
+): Promise<Admission> {
+  const { intent, effectId } = attempt;
+  return parts.reader.connection(async (connection) => {
+    const row = await connection.get(
+      "SELECT d.outcome, d.input_digest, o.released_sequence, r.status, r.workflow FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id JOIN runs r ON r.run_id = o.run_id WHERE d.effect_id = ? AND d.operation_id = ?",
+      [effectId, intent.operationId],
+    );
+    if (!current(row, intent)) return "stale";
+    if (!eligible(row, intent)) return "withheld";
+    const admitted = await pinned(connection, {
+      workflow: intent.workflow,
+      available: parts.available,
+    });
+    return admitted ? "sent" : "blocked";
+  });
+}
+
+async function called(
+  attempt: RunAttempt,
+  name: "reconcile" | "deliver",
+): Promise<unknown> {
+  const { intent, delivery, calls } = attempt;
+  const result = await calls.call(intent.operationId, (signal) =>
+    delivery[name](intent, signal),
+  );
+  if (result.kind === "replied") return result.reply;
+  throw new Error(
+    result.kind === "thrown" ? result.message : "adapter-time-limit",
+  );
+}
+
+type Observation =
+  | { readonly kind: "stopped" | "absent" | "unknown" }
+  | { readonly kind: "sent"; readonly receipt: string };
+
+const confirmations = ["stopped", "completed", "failed"];
+
+function observation(result: CallResult<unknown>): Observation {
+  if (result.kind !== "replied") return { kind: "unknown" };
+  const kind: unknown = Reflect.get(Object(result.reply), "kind");
+  const receipt: unknown = Reflect.get(Object(result.reply), "receipt");
+  if (typeof kind === "string" && confirmations.includes(kind))
+    return { kind: "stopped" };
+  if (kind === "absent") return { kind: "absent" };
+  return kind === "accepted" && isIdentifier(receipt)
+    ? { kind: "sent", receipt }
+    : { kind: "unknown" };
+}
+
+async function observed(
+  attempt: RunAttempt,
+  name: "reconcile" | "stop",
+): Promise<Observation> {
+  const { intent, delivery, calls } = attempt;
+  const call = delivery[name]?.bind(delivery);
+  if (call === undefined) return { kind: "unknown" };
+  return observation(
+    await calls.call(intent.operationId, (signal) => call(intent, signal)),
+  );
+}
+
+async function observeRun(
+  parts: DeliveryParts,
+  attempt: RunAttempt,
+): Promise<JsonObject> {
+  const { intent, effectId } = attempt;
+  const open = await parts.reader.connection(async (connection) =>
+    current(
+      await connection.get(
+        "SELECT d.outcome, d.input_digest, r.workflow FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id JOIN runs r ON r.run_id = o.run_id WHERE d.effect_id = ? AND d.operation_id = ?",
+        [effectId, intent.operationId],
+      ),
+      intent,
+    ),
+  );
+  const result = open ? await requested(attempt) : { kind: "withheld" };
+  return {
+    receipt: null,
+    ...result,
+    epoch: parts.epoch(),
+    recordedAt: parts.clock(),
+  };
+}
+
+async function requested(attempt: RunAttempt): Promise<Observation> {
+  if (attempt.intent.purpose !== "stop") return observed(attempt, "reconcile");
+  const stopped = await observed(attempt, "stop");
+  return stopped.kind === "stopped" ? stopped : observed(attempt, "reconcile");
+}
+
+async function deliverRun(
+  parts: DeliveryParts,
+  attempt: RunAttempt,
+): Promise<JsonObject> {
+  if (attempt.intent.purpose !== "dispatch") return observeRun(parts, attempt);
+  const first = await admission(parts, attempt);
+  const settled = { epoch: parts.epoch(), recordedAt: parts.clock() };
+  const unsent = (kind: Admission): JsonObject => ({
+    kind: kind === "stale" ? "withheld" : kind,
+    receipt: null,
+    ...settled,
+  });
+  if (first === "stale") return unsent(first);
+  const known = acceptedReceipt(await called(attempt, "reconcile"));
+  if (known !== undefined) return { kind: "sent", receipt: known, ...settled };
+  if (first !== "sent") return unsent(first);
+  const second = await admission(parts, attempt);
+  if (second !== "sent") return unsent(second);
+  const receipt = sentReceipt(await called(attempt, "deliver"));
+  return { kind: "sent", receipt, ...settled };
+}
+
 export function deliveryHandler(
   parts: DeliveryParts,
 ): (argumentsValue: JsonObject, context: EffectContext) => Promise<JsonObject> {
+  const calls = adapterCalls(parts.effects.adapterMilliseconds);
   return async (argumentsValue, context) => {
     const { delivery } = parts;
     if (delivery === undefined) throw new Error("delivery-unconfigured");
     const intent = argumentsIntent(argumentsValue);
-    const admission = await parts.reader.connection(async (connection) => {
-      const row = await connection.get(
-        "SELECT d.outcome, d.input_digest, o.released_sequence, r.status, r.workflow FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id JOIN runs r ON r.run_id = o.run_id WHERE d.effect_id = ? AND d.operation_id = ?",
-        [context.id, intent.operationId],
-      );
-      if (!current(row, intent)) return "stale";
-      if (!eligible(row, intent)) return "withheld";
-      const admitted = await pinned(connection, {
+    if (intent.kind !== "protected-effect")
+      return deliverRun(parts, {
         intent,
-        available: parts.available,
+        effectId: context.id,
+        delivery,
+        calls,
       });
-      return admitted ? "sent" : "blocked";
-    });
-    const settled = {
-      epoch: parts.epoch(),
-      recordedAt: new Date().toISOString(),
-    };
-    if (admission === "stale")
-      return { kind: "withheld", receipt: null, ...settled };
-    const known = acceptedReceipt(await delivery.reconcile(intent));
-    if (known !== undefined)
-      return { kind: "sent", receipt: known, ...settled };
-    if (admission !== "sent")
-      return { kind: admission, receipt: null, ...settled };
-    const receipt = sentReceipt(await delivery.deliver(intent));
-    return { kind: "sent", receipt, ...settled };
+    return deliverEffect(
+      { ...parts, delivery, calls },
+      {
+        intent: { ...intent, ...protectedArguments(argumentsValue) },
+        effectId: context.id,
+      },
+    );
   };
 }
 
@@ -133,6 +225,12 @@ function eligible(row: unknown, intent: DeliveryIntent): boolean {
   );
 }
 
+const purposes = ["reconcile", "stop"] as const;
+
+function purposeOf(value: unknown): Purpose {
+  return purposes.find((purpose) => purpose === value) ?? "dispatch";
+}
+
 function argumentsIntent(value: JsonObject): DeliveryIntent {
   const base = {
     kind: intentKind(text(value, "kind")),
@@ -140,6 +238,7 @@ function argumentsIntent(value: JsonObject): DeliveryIntent {
     operationId: text(value, "operationId"),
     workflow: text(value, "workflow"),
     inputDigest: text(value, "inputDigest"),
+    purpose: purposeOf(value["purpose"]),
   };
   if (value["gateId"] === undefined) return base;
   return {

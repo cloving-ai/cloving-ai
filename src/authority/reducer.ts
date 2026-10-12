@@ -9,6 +9,12 @@ import {
 import { commandEvents, parseCommand } from "./commands.ts";
 import { parseEvent } from "./events.ts";
 import { gateKey } from "./gates.ts";
+import {
+  emptyEffects,
+  evidenceOf,
+  type Disposition,
+  type Evidence,
+} from "./operations.ts";
 import { reduce } from "./reduction.ts";
 
 export type {
@@ -25,6 +31,7 @@ export type CommandResult =
       readonly events: readonly AuthorityEvent[];
       readonly state: AuthorityState;
       readonly intents: readonly EffectIntent[];
+      readonly disposition?: Disposition;
     }
   | { readonly kind: "duplicate"; readonly sequence: number }
   | { readonly kind: "rejected"; readonly reason: string };
@@ -37,6 +44,7 @@ export const emptyAuthority: AuthorityState = {
   gates: {},
   details: {},
   questions: 0,
+  effects: emptyEffects,
 };
 
 export function execute(
@@ -66,6 +74,9 @@ export function execute(
     events: [event],
     state: reduction.state,
     intents: reduction.intents,
+    ...(reduction.disposition === undefined
+      ? {}
+      : { disposition: reduction.disposition }),
   };
 }
 
@@ -79,7 +90,11 @@ export function rebuild(events: readonly unknown[]): AuthorityState {
 export function applyEvent(
   state: AuthorityState,
   entry: { readonly value: unknown; readonly index: number },
-): { readonly state: AuthorityState; readonly event: AuthorityEvent } {
+): {
+  readonly state: AuthorityState;
+  readonly event: AuthorityEvent;
+  readonly evidence: readonly Evidence[];
+} {
   const { value, index } = entry;
   const event = parseEvent(value);
   if (!event)
@@ -91,7 +106,11 @@ export function applyEvent(
     throw new Error(
       `invalid-event: ${String(event.sequence)} ${reduction.reason}`,
     );
-  return { state: reduction.state, event };
+  return {
+    state: reduction.state,
+    event,
+    evidence: evidenceOf(event, reduction.disposition),
+  };
 }
 
 function commandEvent(
@@ -150,13 +169,27 @@ function canonical(value: AuthorityCommand): string {
   );
 }
 
-export function eligibleIntents(
-  state: AuthorityState,
-): readonly EffectIntent[] {
-  return state.intents.filter(
-    (intent) =>
-      state.runs[intent.runId]?.status ===
-      (intent.kind === "start-run" ? "queued" : "running"),
+type Statuses = Readonly<Record<string, { readonly status: string }>>;
+
+export interface Eligibility {
+  readonly intents: readonly EffectIntent[];
+  readonly runs: Statuses;
+  readonly effects: { readonly operations: Statuses };
+}
+
+export function eligibleIntents(state: Eligibility): readonly EffectIntent[] {
+  return state.intents.filter((intent) => eligible(state, intent));
+}
+
+function eligible(state: Eligibility, intent: EffectIntent): boolean {
+  if (intent.kind === "protected-effect")
+    return (
+      state.effects.operations[intent.operationId]?.status ===
+      "dispatch-pending"
+    );
+  return (
+    state.runs[intent.runId]?.status ===
+    (intent.kind === "start-run" ? "queued" : "running")
   );
 }
 

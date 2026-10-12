@@ -6,6 +6,7 @@ import {
   type Authority,
   type AuthorityTiming,
   type Delivery,
+  type EffectSettings,
   type Refusal,
 } from "../broker/actor/authority.ts";
 import { socketAddress } from "../broker/socket-address.ts";
@@ -13,7 +14,7 @@ import type { Reply, ServiceRequest } from "../protocol.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { expiryScan } from "./expiry.ts";
-import { commandGateway } from "./gateway.ts";
+import { commandGateway, workerCommandBound } from "./gateway.ts";
 import {
   workflowRegistry,
   type Registry,
@@ -26,7 +27,12 @@ import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
 
 export type { WorkflowRegistration } from "./registry.ts";
-export type { WorkerPort } from "./worker-port.ts";
+export type {
+  EffectReply,
+  EffectReport,
+  EffectRequest,
+  WorkerPort,
+} from "./worker-port.ts";
 
 export interface ServiceTiming {
   readonly authority: AuthorityTiming;
@@ -49,11 +55,13 @@ export const serviceTiming: ServiceTiming = {
 export interface ServiceLimits {
   readonly textBytes: number;
   readonly documentBytes: number;
+  readonly pendingWorkerCommands: number;
 }
 
 export const serviceLimits: ServiceLimits = {
   textBytes: 65_536,
   documentBytes: 262_144,
+  pendingWorkerCommands: workerCommandBound,
 };
 
 export interface ServiceOptions {
@@ -63,11 +71,13 @@ export interface ServiceOptions {
   readonly delivery: Delivery;
   readonly timing?: ServiceTiming;
   readonly limits?: ServiceLimits;
+  readonly effects?: Partial<EffectSettings>;
   readonly clock?: () => string;
 }
 
 export interface Service {
   readonly socket: string;
+  readonly epoch: number;
   readonly worker: WorkerPort;
   readonly close: () => Promise<void>;
 }
@@ -156,8 +166,15 @@ async function started(
 ): Promise<Service> {
   const { options, path, timing, registry } = setup;
   const clock = options.clock ?? wallClock;
-  const { textBytes, documentBytes } = options.limits ?? serviceLimits;
-  const gateway = commandGateway({ authority, registry, clock, textBytes });
+  const limits = options.limits ?? serviceLimits;
+  const { textBytes, documentBytes } = limits;
+  const gateway = commandGateway({
+    authority,
+    registry,
+    clock,
+    textBytes,
+    pendingWorkerCommands: limits.pendingWorkerCommands,
+  });
   await rm(path, { force: true });
   const listener = await listen({
     path,
@@ -184,7 +201,8 @@ async function started(
   });
   return {
     socket: path,
-    worker: workerPort(gateway),
+    epoch: authority.epoch,
+    worker: workerPort({ gateway, authority }),
     close: async () => {
       await expiry.stop();
       await listener.close();
@@ -206,6 +224,8 @@ export async function startService(
     delivery: options.delivery,
     timing: timing.authority,
     available: registry.available,
+    ...(options.effects === undefined ? {} : { effects: options.effects }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   if (opening.kind === "refused") return opening;
   try {

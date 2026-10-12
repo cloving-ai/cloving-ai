@@ -19,6 +19,7 @@ import {
   externalService,
   openedAuthority,
 } from "./authority-actor-fixture.ts";
+import { storedParts } from "./authority-fixture.ts";
 import {
   removeTemporaryDirectories,
   storedGate,
@@ -88,7 +89,7 @@ await test("CLV-042 a projection read gives the replayed state, events and defin
     const projections = await loadProjections(
       recordingConnection({ database, statements }),
     );
-    assert.deepEqual(currentState(projections), replayed.state);
+    assert.deepEqual(currentState(projections), storedParts(replayed.state));
     assert.deepEqual(storedDefinitions(projections), replayed.definitions);
     assert.deepEqual(
       statements.filter((sql) => /\bevents\b/.test(sql)),

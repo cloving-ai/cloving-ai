@@ -2,7 +2,6 @@ import type { Database, JsonObject } from "solid-objects";
 import {
   eligibleIntents,
   type AuthorityEvent,
-  type AuthorityState,
   type EffectIntent,
 } from "../../authority/reducer.ts";
 import {
@@ -20,12 +19,15 @@ import {
   intentKind,
   storedDefinitions,
   storedEvents,
+  type StoredState,
 } from "../authority-restore.ts";
 import { checkedRequest } from "./authority-actor.ts";
 import {
   authorityQueries,
+  guardedRead,
   type AuthorityQueries,
 } from "./authority-queries.ts";
+import { effectQueries, type EffectQueries } from "./effect-queries.ts";
 import { backupInto } from "../../storage/domain-schema.ts";
 import {
   observeSettings,
@@ -43,6 +45,7 @@ import {
 } from "./authority-receipts.ts";
 
 export type { StoreReceipt } from "./authority-receipts.ts";
+export type { StoredState } from "../authority-restore.ts";
 
 export interface CommandContext {
   readonly recordedAt: string;
@@ -61,6 +64,8 @@ export interface OperationRecord {
     readonly effectId: string;
     readonly outcome: string | null;
     readonly receipt: string | null;
+    readonly purpose: string;
+    readonly epoch: number | null;
   }[];
 }
 
@@ -69,7 +74,7 @@ export interface Authority {
     command: unknown,
     context: CommandContext,
   ) => Promise<StoreReceipt>;
-  readonly state: () => Promise<AuthorityState>;
+  readonly state: () => Promise<StoredState>;
   readonly events: () => Promise<readonly AuthorityEvent[]>;
   readonly eligibleIntents: () => Promise<readonly EffectIntent[]>;
   readonly operations: () => Promise<readonly OperationRecord[]>;
@@ -79,7 +84,9 @@ export interface Authority {
   ) => Promise<AdmissionResult>;
   readonly settings: () => Promise<ConnectionSettings>;
   readonly epoch: number;
+  readonly recoveryLimit: number;
   readonly queries: AuthorityQueries;
+  readonly effects: EffectQueries;
   readonly deliver: (signal: AbortSignal) => Promise<void>;
   readonly backup: (target: string) => Promise<void>;
   readonly close: () => Promise<void>;
@@ -91,9 +98,11 @@ export interface SessionParts {
   readonly execute: (request: JsonObject) => Promise<unknown>;
   readonly run: (signal: AbortSignal) => Promise<void>;
   readonly stop: () => Promise<void>;
-  readonly deliveriesInFlight: () => number;
+  readonly handlersSettled: () => Promise<boolean>;
   readonly deliveryConfigured: boolean;
   readonly epoch: number;
+  readonly stopLimit: number;
+  readonly recoveryLimit: number;
   readonly unhealthy: () => string | undefined;
   readonly condition: () => Promise<string | undefined>;
   readonly watchMilliseconds: number;
@@ -125,6 +134,13 @@ export function authoritySession(parts: SessionParts): Authority {
     invocations: new Set(),
     closing: null,
   };
+  const read = guardedRead({
+    reader: parts.reader,
+    ready: async () => {
+      await refreshed(session);
+      available(session);
+    },
+  });
   return {
     execute: (command, context) =>
       executeCommand(session, { command, context }),
@@ -134,8 +150,7 @@ export function authoritySession(parts: SessionParts): Authority {
       available(session);
       return storedEvents(await parts.reader.connection(loadEvents));
     },
-    eligibleIntents: async () =>
-      eligibleIntents(currentState(await projected(session))),
+    eligibleIntents: async () => eligible(await projected(session)),
     operations: async () => operationRecords(await projected(session)),
     resumePinned: async (runId, manifest) => {
       const snapshot = await projected(session);
@@ -151,13 +166,9 @@ export function authoritySession(parts: SessionParts): Authority {
       return observeSettings(parts.database);
     },
     epoch: parts.epoch,
-    queries: authorityQueries({
-      reader: parts.reader,
-      ready: async () => {
-        await refreshed(session);
-        available(session);
-      },
-    }),
+    recoveryLimit: parts.recoveryLimit,
+    queries: authorityQueries(read),
+    effects: effectQueries(read, { stopLimit: parts.stopLimit }),
     deliver: (signal) => deliver(session, signal),
     backup: (target) => backup(session, target),
     close: () => close(session),
@@ -252,9 +263,21 @@ async function deliver(session: Session, signal: AbortSignal): Promise<void> {
     throw new Error("delivery-unconfigured");
   if (session.delivering) throw new Error("delivery-already-running");
   available(session);
-  if (session.parts.deliveriesInFlight() > 0)
-    throw new Error("delivery-handler-in-flight");
   session.delivering = true;
+  try {
+    await delivered(session, signal);
+  } finally {
+    session.delivering = false;
+  }
+  await refreshed(session);
+  const failure = session.condition ?? session.failure;
+  if (failure !== null) throw new Error(`authority-unavailable: ${failure}`);
+}
+
+async function delivered(session: Session, signal: AbortSignal): Promise<void> {
+  if (!(await session.parts.handlersSettled()))
+    throw new Error("delivery-handler-in-flight");
+  available(session);
   const watch = new AbortController();
   const timer = setInterval(() => {
     if (session.parts.unhealthy() !== undefined) watch.abort();
@@ -266,11 +289,7 @@ async function deliver(session: Session, signal: AbortSignal): Promise<void> {
     await session.running;
   } finally {
     clearInterval(timer);
-    session.delivering = false;
   }
-  await refreshed(session);
-  const failure = session.condition ?? session.failure;
-  if (failure !== null) throw new Error(`authority-unavailable: ${failure}`);
 }
 
 async function executeCommand(
@@ -339,10 +358,26 @@ function operationRecords(
     releasedSequence: row.releasedSequence,
     deliveries: snapshot.deliveries
       .filter((delivery) => delivery.operationId === row.operationId)
-      .map(({ effectId, outcome, receipt }) => ({
+      .map(({ effectId, outcome, receipt, purpose, epoch }) => ({
         effectId,
         outcome,
         receipt,
+        purpose,
+        epoch,
       })),
   }));
+}
+
+function eligible(snapshot: ProjectionSnapshot): readonly EffectIntent[] {
+  return eligibleIntents({
+    ...currentState(snapshot),
+    effects: {
+      operations: Object.fromEntries(
+        snapshot.pending.map((operationId) => [
+          operationId,
+          { status: "dispatch-pending" },
+        ]),
+      ),
+    },
+  });
 }

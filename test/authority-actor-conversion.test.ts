@@ -13,7 +13,7 @@ import {
   baselineDatabase,
   type Baseline,
 } from "./authority-baseline-fixture.ts";
-import { continuation } from "./authority-fixture.ts";
+import { continuation, storedParts } from "./authority-fixture.ts";
 import {
   alterDatabase,
   manifest,
@@ -56,9 +56,9 @@ async function assertConverted(
 ): Promise<void> {
   const service = externalService();
   const authority = await openedAuthority(directory, service.options);
-  assert.deepEqual(await authority.state(), expected.state);
+  assert.deepEqual(await authority.state(), storedParts(expected.state));
   assert.deepEqual(await authority.events(), expected.events);
-  assert.equal((await authority.settings()).schemaVersion, 3);
+  assert.equal((await authority.settings()).schemaVersion, 4);
   assert.deepEqual(await authority.resumePinned("run-1", manifest), {
     kind: "admitted",
     manifest,

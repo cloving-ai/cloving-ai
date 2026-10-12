@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { effectSettings } from "../src/broker/actor/authority-settings.ts";
 import { deliveryHandler } from "../src/broker/actor/authority-delivery.ts";
 import { json, storeReceipt } from "../src/broker/actor/authority-receipts.ts";
 import { adoptionTurn, deliveryTurn } from "../src/broker/actor/turn-state.ts";
@@ -31,6 +32,11 @@ const change = {
   gates: [],
   details: [],
   documents: [],
+  budgets: [],
+  operations: [],
+  leases: [],
+  evidence: [],
+  stops: [],
 };
 
 await test("CLV-042 a domain change that does not continue the stored sequence or has a malformed list is refused", async () => {
@@ -46,7 +52,11 @@ await test("CLV-042 a domain change that does not continue the stored sequence o
 
 await test("CLV-042 the turn readers refuse an unknown delivery and an adoption that is not pending", async () => {
   assert.equal(
-    await deliveryTurn(stub({}), { effectId: "unknown", sequence: 0 }),
+    await deliveryTurn(stub({}), {
+      effectId: "unknown",
+      sequence: 0,
+      capacity: 4,
+    }),
     undefined,
   );
   await assert.rejects(
@@ -68,6 +78,8 @@ await test("CLV-042 a delivery handler without a delivery adapter refuses to sen
     },
     delivery: undefined,
     epoch: () => 1,
+    clock: () => "2026-10-09T00:00:00.000Z",
+    effects: effectSettings,
     available: undefined,
   });
   await assert.rejects(

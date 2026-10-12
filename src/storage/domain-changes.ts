@@ -14,6 +14,7 @@ import {
   eventRow,
   integer,
   latestSequence,
+  optionalInteger,
   optionalText,
   runRow,
   text,
@@ -23,11 +24,24 @@ import {
   type RunRow,
   type SqlConnection,
 } from "./domain-rows.ts";
+import { effectStatements } from "./effect-changes.ts";
+import {
+  budgetRow,
+  evidenceRow,
+  leaseRow,
+  operationRow,
+  stopRow,
+  type EffectRows,
+} from "./effect-rows.ts";
+import { upsert, type Statement } from "./statements.ts";
 
 export interface StagedDelivery {
   readonly effectId: string;
   readonly operationId: string;
   readonly inputDigest: string;
+  readonly purpose: string;
+  readonly leaseGeneration: number | null;
+  readonly authorityEpoch: number;
 }
 
 export interface ClosedDelivery {
@@ -40,9 +54,15 @@ export interface AddedIntent {
   readonly operationId: string;
   readonly kind: string;
   readonly runId: string;
+  readonly createdSequence: number;
 }
 
-export interface DomainChange {
+export interface ReleasedIntent {
+  readonly operationId: string;
+  readonly releasedSequence: number;
+}
+
+export interface DomainChange extends EffectRows {
   readonly previous: number;
   readonly sequence: number;
   readonly definitions: readonly DefinitionRow[];
@@ -50,7 +70,7 @@ export interface DomainChange {
   readonly runs: readonly RunRow[];
   readonly commands: readonly CommandRow[];
   readonly added: readonly AddedIntent[];
-  readonly released: readonly string[];
+  readonly released: readonly ReleasedIntent[];
   readonly staged: readonly StagedDelivery[];
   readonly closed: readonly ClosedDelivery[];
   readonly gates: readonly GateRow[];
@@ -68,11 +88,6 @@ export async function persistChange(
     throw new Error("stale-authority-sequence");
   for (const statement of statements(change))
     await connection.run(statement.sql, statement.parameters);
-}
-
-export interface Statement {
-  readonly sql: string;
-  readonly parameters: readonly unknown[];
 }
 
 function statements(change: DomainChange): readonly Statement[] {
@@ -112,6 +127,7 @@ function statements(change: DomainChange): readonly Statement[] {
     ...intentStatements(change),
     ...deliveryStatements(change),
     ...decisionStatements(change),
+    ...effectStatements(change),
     ...(change.completesAdoption
       ? [
           {
@@ -127,11 +143,11 @@ function intentStatements(change: DomainChange): readonly Statement[] {
   return [
     ...change.added.map((row) => ({
       sql: "INSERT INTO outbox (operation_id, kind, run_id, created_sequence) VALUES (?, ?, ?, ?)",
-      parameters: [row.operationId, row.kind, row.runId, change.sequence],
+      parameters: [row.operationId, row.kind, row.runId, row.createdSequence],
     })),
-    ...change.released.map((operationId) => ({
+    ...change.released.map((row) => ({
       sql: "UPDATE outbox SET released_sequence = ? WHERE operation_id = ? AND released_sequence IS NULL",
-      parameters: [change.sequence, operationId],
+      parameters: [row.releasedSequence, row.operationId],
     })),
   ];
 }
@@ -142,33 +158,31 @@ function deliveryStatements(change: DomainChange): readonly Statement[] {
       sql: "UPDATE deliveries SET outcome = ?, receipt = ? WHERE effect_id = ? AND outcome IS NULL",
       parameters: [row.outcome, row.receipt, row.effectId],
     })),
-    ...change.staged.map((row) => ({
-      sql: "INSERT INTO deliveries (effect_id, operation_id, input_digest, staged_sequence) VALUES (?, ?, ?, ?)",
-      parameters: [
-        row.effectId,
-        row.operationId,
-        row.inputDigest,
-        change.sequence,
-      ],
-    })),
+    ...change.staged.flatMap((row) => [
+      {
+        sql: "INSERT INTO deliveries (effect_id, operation_id, input_digest, staged_sequence) VALUES (?, ?, ?, ?)",
+        parameters: [
+          row.effectId,
+          row.operationId,
+          row.inputDigest,
+          change.sequence,
+        ],
+      },
+      {
+        sql: "INSERT INTO dispatch_attempts (effect_id, purpose, lease_generation, authority_epoch) VALUES (?, ?, ?, ?)",
+        parameters: [
+          row.effectId,
+          row.purpose,
+          row.leaseGeneration,
+          row.authorityEpoch,
+        ],
+      },
+    ]),
   ];
 }
 
 const gateNames = gateColumns.split(", ");
 const detailNames = detailColumns.split(", ");
-
-function upsert(target: {
-  readonly table: string;
-  readonly names: readonly string[];
-  readonly key: number;
-}): string {
-  const { table, names, key } = target;
-  const updates = names
-    .slice(key)
-    .map((name) => `${name} = excluded.${name}`)
-    .join(", ");
-  return `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")}) ON CONFLICT (${names.slice(0, key).join(", ")}) DO UPDATE SET ${updates}`;
-}
 
 const gateUpsert = upsert({ table: "gates", names: gateNames, key: 2 });
 const detailUpsert = upsert({
@@ -255,12 +269,19 @@ function parseChange(value: unknown): DomainChange {
       operationId: text(row, "operation_id"),
       kind: text(row, "kind"),
       runId: text(row, "run_id"),
+      createdSequence: integer(row, "created_sequence"),
     })),
-    released: list(value, "released").map((row) => text(row, "operation_id")),
+    released: list(value, "released").map((row) => ({
+      operationId: text(row, "operation_id"),
+      releasedSequence: integer(row, "released_sequence"),
+    })),
     staged: list(value, "staged").map((row) => ({
       effectId: text(row, "effect_id"),
       operationId: text(row, "operation_id"),
       inputDigest: text(row, "input_digest"),
+      purpose: text(row, "purpose"),
+      leaseGeneration: optionalInteger(row, "lease_generation"),
+      authorityEpoch: integer(row, "authority_epoch"),
     })),
     closed: list(value, "closed").map((row) => ({
       effectId: text(row, "effect_id"),
@@ -270,6 +291,11 @@ function parseChange(value: unknown): DomainChange {
     gates: list(value, "gates").map(gateRow),
     details: list(value, "details").map(detailRow),
     documents: list(value, "documents").map(documentRow),
+    budgets: list(value, "budgets").map(budgetRow),
+    operations: list(value, "operations").map(operationRow),
+    leases: list(value, "leases").map(leaseRow),
+    evidence: list(value, "evidence").map(evidenceRow),
+    stops: list(value, "stops").map(stopRow),
     completesAdoption:
       Reflect.get(Object(value), "completes_adoption") === true,
   };

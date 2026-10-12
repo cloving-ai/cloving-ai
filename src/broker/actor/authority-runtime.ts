@@ -2,21 +2,18 @@ import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  createRuntime,
   guardApplicationDatabase,
   type ActorClass,
   type Database,
   type InstrumentationEvent,
   type JsonObject,
-  type SolidObjectsConfiguration,
   type SolidObjectsRuntime,
 } from "solid-objects";
 import { sqlite } from "solid-objects/database/sqlite";
-import { persistChange } from "../../storage/domain-changes.ts";
 import { recoveryBatch } from "./turn-state.ts";
 import { integer, latestSequence, text } from "../../storage/domain-rows.ts";
 import { trackedDelivery } from "./authority-release.ts";
-import { authorityActor, persistAction } from "./authority-actor.ts";
+import { authorityActor } from "./authority-actor.ts";
 import {
   contentionMilliseconds,
   lockContention,
@@ -34,40 +31,28 @@ import {
   type AvailableManifest,
   type Delivery,
 } from "./authority-delivery.ts";
-import { lineLogger } from "./authority-logger.ts";
-import { brokerAuthorization } from "./authority-policy.ts";
+import {
+  authorityTiming,
+  effectConfiguration,
+  type AuthorityTiming,
+  type EffectSettings,
+} from "./authority-settings.ts";
+import {
+  failureCounter,
+  registeredRuntime,
+  runtimeSettings,
+  wallClock,
+} from "./runtime-parts.ts";
 import {
   strandingWatchdog,
   type StrandingWatchdog,
 } from "./authority-watchdog.ts";
 
-export interface AuthorityTiming {
-  readonly leaseMilliseconds: number;
-  readonly renewalMilliseconds: number;
-  readonly heartbeatMilliseconds: number;
-  readonly aliveThresholdMilliseconds: number;
-  readonly cleanupIntervalMilliseconds: number;
-  readonly callTimeoutMilliseconds: number;
-  readonly messageRetentionMilliseconds: number;
-  readonly retentionIntervalMilliseconds: number;
-  readonly shutdownMilliseconds: number;
-}
-
-export const authorityTiming: AuthorityTiming = {
-  leaseMilliseconds: 2_000,
-  renewalMilliseconds: 500,
-  heartbeatMilliseconds: 1_000,
-  aliveThresholdMilliseconds: 3_000,
-  cleanupIntervalMilliseconds: 1_000,
-  callTimeoutMilliseconds: 10_000,
-  messageRetentionMilliseconds: 30 * 86_400_000,
-  retentionIntervalMilliseconds: 3_600_000,
-  shutdownMilliseconds: 10_000,
-};
-
 export interface AuthorityOptions {
   readonly delivery?: Delivery;
   readonly timing?: AuthorityTiming;
+  readonly effects?: Partial<EffectSettings>;
+  readonly clock?: () => string;
   readonly instrumentation?: (event: InstrumentationEvent) => void;
   readonly log?: (line: string) => void;
   readonly available?: AvailableManifest;
@@ -78,6 +63,9 @@ export interface Refusal {
   readonly reason: string;
   readonly detail: string;
 }
+
+export { authorityTiming } from "./authority-settings.ts";
+export type { AuthorityTiming } from "./authority-settings.ts";
 
 export function refused(reason: string, error: unknown): Refusal {
   return {
@@ -167,6 +155,11 @@ export async function recoverDeliveries(
   }
 }
 
+export interface SessionLimits {
+  readonly stopLimit: number;
+  readonly recoveryLimit: number;
+}
+
 export interface AuthorityRuntime {
   readonly runtime: SolidObjectsRuntime;
   readonly reader: Database;
@@ -175,10 +168,11 @@ export interface AuthorityRuntime {
     idempotencyKey?: string,
   ) => AuthorityInvoker;
   readonly stop: () => Promise<void>;
-  readonly deliveriesInFlight: () => number;
+  readonly handlersSettled: () => Promise<boolean>;
   readonly setEpoch: (epoch: number) => void;
   readonly unhealthy: () => string | undefined;
   readonly watchMilliseconds: number;
+  readonly limits: SessionLimits;
   readonly releaseEarlierOwners: () => Promise<void>;
   readonly retryDeliveryCallbacks: () => Promise<void>;
   readonly storedActorRefusal: (
@@ -294,29 +288,6 @@ async function deadLetterCause(lookup: {
   }
 }
 
-function standardError(line: string): void {
-  process.stderr.write(line);
-}
-
-function librarySettings(
-  timing: AuthorityTiming,
-  log: ((line: string) => void) | undefined,
-): Partial<SolidObjectsConfiguration> {
-  return {
-    tableNamePrefix: "solid_",
-    maxAttempts: 1,
-    logger: lineLogger(log ?? standardError),
-    leaseDurationMilliseconds: timing.leaseMilliseconds,
-    leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,
-    processHeartbeatIntervalMilliseconds: timing.heartbeatMilliseconds,
-    processAliveThresholdMilliseconds: timing.aliveThresholdMilliseconds,
-    deadProcessCleanupIntervalMilliseconds: timing.cleanupIntervalMilliseconds,
-    messageRetentionMilliseconds: timing.messageRetentionMilliseconds,
-    retentionIntervalMilliseconds: timing.retentionIntervalMilliseconds,
-    shutdownTimeoutMilliseconds: timing.shutdownMilliseconds,
-  };
-}
-
 export function authorityRuntime(
   database: Database,
   options: AuthorityOptions,
@@ -328,26 +299,23 @@ export function authorityRuntime(
   const watchdog = strandingWatchdog({
     boundMilliseconds: timing.callTimeoutMilliseconds,
   });
-  const ClovingAuthority = authorityActor(reader);
-  const runtime = createRuntime({
-    database,
-    ...librarySettings(timing, options.log),
-    ...brokerAuthorization(broker),
-    instrumentation: (event) => {
-      watchdog.observe(event, Date.now());
-      options.instrumentation?.(event);
-    },
+  const effects = effectConfiguration(options);
+  const shared = { reader, effects, clock: options.clock ?? wallClock };
+  const ClovingAuthority = authorityActor({
+    ...shared,
+    failed: failureCounter(),
   });
-  runtime.register(ClovingAuthority);
-  runtime.registerCommitAction(persistAction, (change, context) =>
-    persistChange(change, context.connection),
-  );
+  const runtime = registeredRuntime({
+    database,
+    actor: ClovingAuthority,
+    settings: runtimeSettings({ timing, options, broker, watchdog }),
+  });
   const delivery = trackedDelivery({
     runtime,
     database,
     shutdownMilliseconds: timing.shutdownMilliseconds,
     handle: deliveryHandler({
-      reader,
+      ...shared,
       delivery: options.delivery,
       epoch: () => epoch,
       available: options.available,
@@ -368,6 +336,7 @@ export function authorityRuntime(
     },
     unhealthy: () => unhealthy(watchdog),
     watchMilliseconds: timing.leaseMilliseconds,
+    limits: effects,
     releaseEarlierOwners: () =>
       releaseEarlierOwners({ runtime, broker, timing }),
     retryDeliveryCallbacks: () => retryDeliveryCallbacks({ runtime, broker }),

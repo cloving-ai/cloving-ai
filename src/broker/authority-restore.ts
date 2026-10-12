@@ -10,6 +10,7 @@ import type {
 } from "../authority/reducer.ts";
 import { readExecutionManifest } from "../execution-pin.ts";
 import type { DecisionRows, DocumentRow } from "../storage/decision-rows.ts";
+import type { EffectRows } from "../storage/effect-rows.ts";
 import type { ProjectionSnapshot } from "../storage/decision-snapshots.ts";
 import type { AuthoritySnapshot, EventRow } from "../storage/domain-rows.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
@@ -17,11 +18,16 @@ import {
   decisionRows,
   decisionState,
   documentsIntact,
+  referencedDigests,
 } from "./decision-restore.ts";
+import { effectChecks, effectDigests } from "./effect-restore.ts";
 import { workflowPin } from "./workflow-pin.ts";
 
 export type RestoredSnapshot = AuthoritySnapshot &
-  Partial<DecisionRows> & { readonly documents?: readonly DocumentRow[] };
+  Partial<DecisionRows> & {
+    readonly documents?: readonly DocumentRow[];
+    readonly effects?: EffectRows;
+  };
 
 const statuses: readonly RunStatus[] = [
   "queued",
@@ -89,6 +95,12 @@ export function restore(snapshot: RestoredSnapshot): Restoration {
     ],
     ["definitions", definitionsIntact(definitions, state)],
     ...decisionChecks(snapshot, state),
+    ...(snapshot.effects === undefined
+      ? []
+      : effectChecks(snapshot.effects, {
+          effects: state.effects,
+          evidence: history.evidence,
+        })),
   ];
   const failed = checks.find(([, holds]) => !holds);
   if (failed)
@@ -111,7 +123,13 @@ function decisionChecks(
   return [
     ["gates", isDeepStrictEqual(gates, expected.gates)],
     ["details", isDeepStrictEqual(details, expected.details)],
-    ["documents", documentsIntact(documents, state)],
+    [
+      "documents",
+      documentsIntact(documents, [
+        ...referencedDigests(state),
+        ...effectDigests(state.effects),
+      ]),
+    ],
   ];
 }
 
@@ -149,7 +167,9 @@ type BaseState = Pick<
   "sequence" | "runs" | "commands" | "intents"
 >;
 
-export function currentState(snapshot: ProjectionSnapshot): AuthorityState {
+export type StoredState = Omit<AuthorityState, "effects">;
+
+export function currentState(snapshot: ProjectionSnapshot): StoredState {
   return { ...projectedState(snapshot), ...decisionState(snapshot) };
 }
 
@@ -183,6 +203,7 @@ export function projectedState(
 const intentKinds: readonly EffectIntent["kind"][] = [
   "start-run",
   "continue-run",
+  "protected-effect",
 ];
 
 export function intentKind(value: string): EffectIntent["kind"] {

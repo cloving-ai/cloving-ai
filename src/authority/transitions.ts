@@ -1,5 +1,6 @@
 import type { RunDetails } from "./details.ts";
 import type { GateState } from "./gates.ts";
+import type { EffectState } from "./operations.ts";
 
 export type RunStatus =
   | "queued"
@@ -20,7 +21,7 @@ export interface RunState {
 }
 
 export interface EffectIntent {
-  readonly kind: "start-run" | "continue-run";
+  readonly kind: "start-run" | "continue-run" | "protected-effect";
   readonly runId: string;
   readonly operationId: string;
 }
@@ -35,6 +36,7 @@ export interface AuthorityState {
   readonly gates: Readonly<Record<string, GateState>>;
   readonly details: Readonly<Record<string, RunDetails>>;
   readonly questions: number;
+  readonly effects: EffectState;
 }
 
 export const eventTypes = [
@@ -51,6 +53,11 @@ export const eventTypes = [
   "run.cancelled",
   "run.observed",
   "step.dispatched",
+  "effect.requested",
+  "lease.granted",
+  "lease.expired",
+  "effect.reported",
+  "operation.reconciled",
 ] as const;
 
 export type EventType = (typeof eventTypes)[number];
@@ -70,6 +77,12 @@ export const numberFields = [
   "generation",
   "attempt",
   "limit",
+  "effectLimit",
+  "units",
+  "recoveryLimit",
+  "leaseGeneration",
+  "sourceGeneration",
+  "capacity",
 ] as const;
 
 export const textFields = [
@@ -90,6 +103,18 @@ export const textFields = [
   "retryAt",
   "operationId",
   "receipt",
+  "capabilities",
+  "capability",
+  "method",
+  "target",
+  "payload",
+  "inputDigest",
+  "resource",
+  "transport",
+  "source",
+  "worker",
+  "outcome",
+  "result",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];
@@ -104,7 +129,15 @@ export type AuthorityCommand = {
 
 export type Move = Exclude<
   EventType,
-  "run.created" | "step.dispatched" | "gate.wait-registered" | "run.observed"
+  | "run.created"
+  | "step.dispatched"
+  | "gate.wait-registered"
+  | "run.observed"
+  | "effect.requested"
+  | "lease.granted"
+  | "lease.expired"
+  | "effect.reported"
+  | "operation.reconciled"
 >;
 type Change = Pick<RunState, "status"> & Partial<RunState>;
 

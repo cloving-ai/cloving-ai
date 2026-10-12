@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { effectSettings } from "../src/broker/actor/authority-settings.ts";
 import { deliveryIntent } from "../src/broker/actor/delivery-intents.ts";
 import {
   planCommand,
@@ -22,6 +23,9 @@ function turn(
     state: lastState(run(commands)),
     definitions: new Map(),
     held: new Set(held),
+    blocked: new Map(),
+    stopping: { subjects: [], cancelledSequence: null },
+    runId: "run-1",
     created: [],
     documents: new Set(),
   };
@@ -42,8 +46,15 @@ function result(
     effectId: "effect-1",
     operationId,
     runId: "run-1",
+    intent: "start-run",
+    leaseGeneration: null,
+    purpose: "dispatch",
+    attempts: 2,
     outcome,
     receipt: outcome === "sent" ? "receipt-1" : null,
+    worker: null,
+    result: null,
+    reason: null,
     epoch: 3,
     recordedAt: recorded.recordedAt,
     ...overrides,
@@ -61,6 +72,7 @@ await test("CLV-042 a withheld delivery whose run is eligible again at the callb
       turn: turn([admit], [operationId]),
       delivery: result("withheld"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(plan.stage, [
@@ -77,6 +89,7 @@ await test("CLV-042 a withheld delivery of an ineligible run closes without stag
       turn: turn([admit, paused], [operationId]),
       delivery: result("withheld"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(plan.stage, []);
@@ -88,6 +101,7 @@ await test("CLV-042 a delivery result from an older epoch records no dispatch an
       turn: turn([admit], [operationId]),
       delivery: result("sent", { epoch: 2 }),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(plan.change.events, []);
@@ -105,6 +119,7 @@ await test("CLV-042 a sent delivery records its dispatch with a digest command i
       turn: turn([admit], [operationId]),
       delivery: result("sent"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(
@@ -114,7 +129,9 @@ await test("CLV-042 a sent delivery records its dispatch with a digest command i
     ]),
     [["step.dispatched", true]],
   );
-  assert.deepEqual(plan.change.released, [{ operation_id: operationId }]);
+  assert.deepEqual(plan.change.released, [
+    { operation_id: operationId, released_sequence: 2 },
+  ]);
   assert.deepEqual(plan.stage, []);
 });
 
@@ -124,6 +141,7 @@ await test("CLV-042 a failed delivery closes without staging, and a sent deliver
       turn: turn([admit], [operationId]),
       delivery: result("failed"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(failed.stage, []);
@@ -135,6 +153,7 @@ await test("CLV-042 a failed delivery closes without staging, and a sent deliver
       ),
       delivery: result("sent"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(cancelled.change.events, []);
@@ -158,6 +177,7 @@ await test("CLV-042 a dispatch record submitted as a command is reserved for del
         recordedAt: recorded.recordedAt,
       },
       epoch: 3,
+      effects: effectSettings,
     }),
     {
       kind: "answer",
@@ -179,6 +199,7 @@ await test("CLV-042 a committed command retried with an older epoch returns its 
       turn: turnState,
       request: { command: started, recordedAt: recorded.recordedAt, epoch: 1 },
       epoch: 2,
+      effects: effectSettings,
     }),
     {
       kind: "answer",
@@ -194,6 +215,7 @@ await test("CLV-042 a committed command retried with an older epoch returns its 
         epoch: 1,
       },
       epoch: 2,
+      effects: effectSettings,
     }),
     {
       kind: "answer",
@@ -215,6 +237,7 @@ await test("CLV-042 a recorded dispatch retried as a command returns its stored 
       turn: turn([admit, dispatch], []),
       request: { command: dispatch, recordedAt: recorded.recordedAt },
       epoch: 3,
+      effects: effectSettings,
     }),
     {
       kind: "answer",
@@ -229,13 +252,16 @@ await test("CLV-008 a dispatch record for a pending intent of a run that is not 
       turn: turn([admit, paused], [operationId]),
       delivery: result("sent"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(
     plan.change.events.map((event) => [event["type"], event["run_id"]]),
     [["step.dispatched", "run-1"]],
   );
-  assert.deepEqual(plan.change.released, [{ operation_id: operationId }]);
+  assert.deepEqual(plan.change.released, [
+    { operation_id: operationId, released_sequence: 3 },
+  ]);
   assert.deepEqual(plan.change.closed, [
     { effect_id: "effect-1", outcome: "sent", receipt: "receipt-1" },
   ]);
@@ -248,6 +274,7 @@ await test("CLV-008 a blocked delivery closes with its outcome and is not staged
       turn: turn([admit], [operationId]),
       delivery: result("blocked"),
       epoch: 3,
+      effects: effectSettings,
     }),
   );
   assert.deepEqual(plan.change.events, []);

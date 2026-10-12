@@ -6,6 +6,7 @@ import type {
   AdmissionResult,
   ExecutionManifest,
 } from "../workflow-admission.ts";
+import { effectInputDigest } from "./effect-restore.ts";
 import { workflowPin } from "./workflow-pin.ts";
 
 export type Definitions = ReadonlyMap<string, ExecutionManifest>;
@@ -44,6 +45,9 @@ const admission: Rule = (command, context) => {
   const pin = workflowPin(stored);
   if (command.workflow !== pin)
     return { kind: "rejected", reason: "workflow-pin-mismatch" };
+  const capabilities = JSON.stringify([...stored.capabilities].sort());
+  if ((command.capabilities ?? capabilities) !== capabilities)
+    return { kind: "rejected", reason: "capability-pin-mismatch" };
   return { kind: "admissible", definitions: new Map([[pin, stored]]) };
 };
 
@@ -61,7 +65,20 @@ const resumption: Rule = (command, context) => {
     : admissible;
 };
 
+const effectRequest: Rule = (command, context) => {
+  const computed = effectInputDigest({
+    capability: String(command.capability),
+    method: String(command.method),
+    target: String(command.target),
+    payload: String(command.payload),
+  });
+  return computed === command.inputDigest
+    ? unpinned(command, context)
+    : { kind: "rejected", reason: "input-digest-mismatch" };
+};
+
 const rules: Readonly<Record<string, Rule>> = {
+  "request-effect": effectRequest,
   "admit-run": admission,
   "decide-gate": resumption,
   "resume-run": resumption,
@@ -83,7 +100,7 @@ export function admitted(
 }
 
 export function pinnedResumption(
-  state: AuthorityState,
+  state: Pick<AuthorityState, "runs">,
   request: {
     readonly definitions: Definitions;
     readonly runId: string;

@@ -1,5 +1,6 @@
 import { continues, gateKey, type GateState } from "../authority/gates.ts";
-import type { AuthorityState, RunState } from "../authority/reducer.ts";
+import type { RunState } from "../authority/reducer.ts";
+import type { StoredState } from "../broker/actor/authority.ts";
 import { gateContinuation } from "../authority/reduction.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
 import type { Fields, Reply } from "../protocol.ts";
@@ -34,13 +35,13 @@ function label(gate: GateState): string | null {
   return gate.label === null ? null : `Q${String(gate.label)}`;
 }
 
-function typed(state: AuthorityState): readonly GateState[] {
+function typed(state: StoredState): readonly GateState[] {
   return Object.values(state.gates)
     .filter((gate) => gate.kind !== "untyped")
     .sort((left, right) => left.openedSequence - right.openedSequence);
 }
 
-function pending(state: AuthorityState): readonly GateState[] {
+function pending(state: StoredState): readonly GateState[] {
   return typed(state).filter(
     (gate) =>
       gate.outcome === null &&
@@ -109,7 +110,7 @@ function refusedTarget(code: string, extra: Fields): Target {
 }
 
 function target(
-  state: AuthorityState,
+  state: StoredState,
   request: { readonly reference: string; readonly command: string },
 ): Target {
   const { reference, command } = request;

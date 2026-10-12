@@ -4,12 +4,7 @@ import {
   type Database,
   type JsonObject,
 } from "solid-objects";
-import {
-  integer,
-  optionalInteger,
-  optionalText,
-  text,
-} from "../../storage/domain-rows.ts";
+import { optionalInteger, text } from "../../storage/domain-rows.ts";
 import { parseCommand } from "../../authority/commands.ts";
 import { readExecutionManifest } from "../../execution-pin.ts";
 import { documentDigest } from "../decision-restore.ts";
@@ -18,27 +13,38 @@ import {
   planCommand,
   planDelivery,
   planRecovery,
-  type DeliveryResult,
   type TurnPlan,
   type TurnRequest,
 } from "./turn-plan.ts";
 import { json, textList } from "./authority-receipts.ts";
 import {
+  completedOutcome,
+  thrownOutcome,
+  type Outcome,
+  type Present,
+} from "./delivery-results.ts";
+import type { PlanSettings } from "./authority-settings.ts";
+import {
   adoptionTurn,
   commandTurn,
   deliveryTurn,
   recoverableIntents,
+  recoveryTurn,
+  stopRecoveries,
 } from "./turn-state.ts";
 
 export const deliverEffect = "cloving.deliver";
 export const persistAction = "cloving.persist";
 
-type Outcome = Pick<
-  DeliveryResult,
-  "effectId" | "outcome" | "receipt" | "epoch" | "recordedAt"
-> & { readonly operationId: string; readonly inputDigest: string };
+export interface ActorParts {
+  readonly reader: Database;
+  readonly effects: PlanSettings;
+  readonly clock: () => string;
+  readonly failed: (operationId: string) => number;
+}
 
-export function authorityActor(reader: Database): AuthorityActorClass {
+export function authorityActor(parts: ActorParts): AuthorityActorClass {
+  const { reader } = parts;
   return class ClovingAuthority extends Actor {
     static override readonly actorType = "ClovingAuthority";
     static override readonly stateVersion = 1;
@@ -52,7 +58,7 @@ export function authorityActor(reader: Database): AuthorityActorClass {
     }
 
     execute(request: JsonObject): Promise<JsonObject> {
-      return executeCommand(this, { reader, request });
+      return executeCommand(this, { parts, request });
     }
 
     async adopt(): Promise<JsonObject> {
@@ -62,30 +68,21 @@ export function authorityActor(reader: Database): AuthorityActorClass {
       );
     }
 
-    async recover(): Promise<JsonObject> {
-      return applyPlan(
-        this,
-        planRecovery({
-          sequence: this.sequence,
-          intents: await reader.connection(recoverableIntents),
-        }),
-      );
+    recover(): Promise<JsonObject> {
+      return recoverTurn(this, parts);
     }
 
     deliveryCompleted(payload: JsonObject): Promise<JsonObject> {
-      return settleDelivery(this, { reader, outcome: completed(payload) });
+      return settleDelivery(this, {
+        parts,
+        outcome: completedOutcome(payload, present(this, parts)),
+      });
     }
 
     deliveryFailed(payload: JsonObject): Promise<JsonObject> {
       return settleDelivery(this, {
-        reader,
-        outcome: {
-          ...callback(payload),
-          outcome: "failed",
-          receipt: null,
-          epoch: this.epoch,
-          recordedAt: "",
-        },
+        parts,
+        outcome: thrownOutcome(payload, present(this, parts)),
       });
     }
   };
@@ -93,32 +90,64 @@ export function authorityActor(reader: Database): AuthorityActorClass {
 
 type AuthorityInstance = InstanceType<AuthorityActorClass>;
 
+async function recoverTurn(
+  actor: AuthorityInstance,
+  parts: ActorParts,
+): Promise<JsonObject> {
+  const scope = { sequence: actor.sequence, capacity: parts.effects.capacity };
+  return applyPlan(
+    actor,
+    planRecovery({
+      ...(await parts.reader.connection(async (connection) => ({
+        intents: [
+          ...(await recoverableIntents(connection)),
+          ...(await stopRecoveries(connection, {
+            capacity: parts.effects.capacity,
+            stopLimit: parts.effects.stopLimit,
+            stopSupported: parts.effects.stopSupported,
+          })),
+        ],
+        turn: await recoveryTurn(connection, scope),
+      }))),
+      effects: parts.effects,
+      recordedAt: parts.clock(),
+    }),
+  );
+}
+
 async function executeCommand(
   actor: AuthorityInstance,
-  input: { readonly reader: Database; readonly request: JsonObject },
+  input: { readonly parts: ActorParts; readonly request: JsonObject },
 ): Promise<JsonObject> {
-  const { reader, request } = input;
-  const turn = await reader.connection((connection) =>
+  const { parts, request } = input;
+  const turn = await parts.reader.connection((connection) =>
     commandTurn(connection, {
       command: request["command"],
       sequence: actor.sequence,
+      capacity: parts.effects.capacity,
     }),
   );
   return applyPlan(
     actor,
-    planCommand({ turn, request: turnRequest(request), epoch: actor.epoch }),
+    planCommand({
+      turn,
+      request: turnRequest(request),
+      epoch: actor.epoch,
+      effects: parts.effects,
+    }),
   );
 }
 
 async function settleDelivery(
   actor: AuthorityInstance,
-  input: { readonly reader: Database; readonly outcome: Outcome },
+  input: { readonly parts: ActorParts; readonly outcome: Outcome },
 ): Promise<JsonObject> {
-  const { reader, outcome } = input;
-  const found = await reader.connection((connection) =>
+  const { parts, outcome } = input;
+  const found = await parts.reader.connection((connection) =>
     deliveryTurn(connection, {
       effectId: outcome.effectId,
       sequence: actor.sequence,
+      capacity: parts.effects.capacity,
     }),
   );
   if (
@@ -133,10 +162,22 @@ async function settleDelivery(
     actor,
     planDelivery({
       turn: found.turn,
-      delivery: { ...outcome, runId: found.runId },
+      delivery: {
+        ...outcome,
+        runId: found.runId,
+        intent: found.intent,
+        leaseGeneration: found.leaseGeneration,
+        purpose: found.purpose,
+        attempts: failures(parts, outcome),
+      },
       epoch: actor.epoch,
+      effects: parts.effects,
     }),
   );
+}
+
+function failures(parts: ActorParts, outcome: Outcome): number {
+  return outcome.outcome === "thrown" ? parts.failed(outcome.operationId) : 0;
 }
 
 function applyPlan(actor: AuthorityInstance, plan: TurnPlan): JsonObject {
@@ -149,6 +190,9 @@ function applyPlan(actor: AuthorityInstance, plan: TurnPlan): JsonObject {
     }).id,
     operation_id: intent.operationId,
     input_digest: intent.inputDigest,
+    purpose: intent.purpose,
+    lease_generation: intent.leaseGeneration ?? null,
+    authority_epoch: actor.epoch,
   }));
   actor.commitAction(persistAction, { ...plan.change, staged });
   actor.sequence = plan.change.sequence;
@@ -168,34 +212,11 @@ export type AuthorityActorClass = ActorClass<
   }
 >;
 
-function completed(payload: JsonObject): Outcome {
-  const result: unknown = payload["result"];
-  return {
-    ...callback(payload),
-    outcome: resultKind(text(result, "kind")),
-    receipt: optionalText(result, "receipt"),
-    epoch: integer(result, "epoch"),
-    recordedAt: text(result, "recordedAt"),
-  };
-}
-
-const resultKinds = ["sent", "withheld", "blocked"] as const;
-
-function resultKind(kind: string): (typeof resultKinds)[number] {
-  const known = resultKinds.find((candidate) => candidate === kind);
-  if (known === undefined) throw new Error(`invalid-delivery-result: ${kind}`);
-  return known;
-}
-
-function callback(
-  payload: JsonObject,
-): Pick<Outcome, "effectId" | "operationId" | "inputDigest"> {
-  const intent = payload["arguments"];
-  return {
-    effectId: text(payload, "effectId"),
-    operationId: text(intent, "operationId"),
-    inputDigest: text(intent, "inputDigest"),
-  };
+function present(
+  actor: { readonly epoch: number },
+  parts: ActorParts,
+): Present {
+  return { epoch: actor.epoch, recordedAt: parts.clock() };
 }
 
 export function checkedRequest(given: JsonObject): JsonObject | undefined {

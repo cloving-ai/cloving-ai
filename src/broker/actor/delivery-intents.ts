@@ -6,6 +6,7 @@ import {
   type EffectIntent,
 } from "../../authority/reducer.ts";
 import { gateContinuation } from "../../authority/reduction.ts";
+import type { ExecutionManifest } from "../../workflow-admission.ts";
 
 export interface DeliveryDecision {
   readonly gateId: string;
@@ -13,13 +14,71 @@ export interface DeliveryDecision {
   readonly answer: string | null;
 }
 
-export interface DeliveryIntent
-  extends EffectIntent, Partial<DeliveryDecision> {
-  readonly workflow: string;
-  readonly inputDigest: string;
+export type Purpose = "dispatch" | "reconcile" | "stop";
+
+export interface EffectArguments {
+  readonly leaseGeneration: number;
+  readonly capability: string;
+  readonly method: string;
+  readonly target: string;
+  readonly payload: string;
 }
 
-export type Undigested = Omit<DeliveryIntent, "inputDigest">;
+export interface DeliveryIntent
+  extends EffectIntent, Partial<DeliveryDecision>, Partial<EffectArguments> {
+  readonly workflow: string;
+  readonly inputDigest: string;
+  readonly purpose: Purpose;
+}
+
+export type ProtectedIntent = DeliveryIntent & EffectArguments;
+
+export type Undigested = Omit<DeliveryIntent, "inputDigest" | "purpose">;
+
+export type Reconciliation =
+  | {
+      readonly kind: "accepted";
+      readonly receipt: string;
+      readonly worker?: string;
+    }
+  | { readonly kind: "absent" };
+
+export type AdapterOutcome =
+  | Reconciliation
+  | {
+      readonly kind: "completed";
+      readonly receipt: string;
+      readonly worker?: string;
+      readonly result: string;
+    }
+  | {
+      readonly kind: "failed";
+      readonly receipt?: string;
+      readonly reason: string;
+    }
+  | { readonly kind: "stopped"; readonly receipt?: string }
+  | { readonly kind: "unknown"; readonly evidence?: string };
+
+export interface Delivery {
+  readonly deliver: (
+    intent: DeliveryIntent,
+    signal: AbortSignal,
+  ) => Promise<
+    { readonly receipt: string; readonly worker?: string } | AdapterOutcome
+  >;
+  readonly reconcile: (
+    intent: DeliveryIntent,
+    signal: AbortSignal,
+  ) => Promise<AdapterOutcome>;
+  readonly stop?: (
+    intent: DeliveryIntent,
+    signal: AbortSignal,
+  ) => Promise<AdapterOutcome>;
+}
+
+export type AvailableManifest = (
+  pinned: ExecutionManifest,
+) => ExecutionManifest | undefined;
 
 export function intentDigest(intent: Undigested): string {
   const base = [intent.kind, intent.runId, intent.operationId, intent.workflow];
@@ -36,7 +95,32 @@ export function intentDigest(intent: Undigested): string {
 }
 
 export function deliveryIntent(intent: Undigested): DeliveryIntent {
-  return { ...intent, inputDigest: intentDigest(intent) };
+  return { ...intent, purpose: "dispatch", inputDigest: intentDigest(intent) };
+}
+
+export function protectedIntent(
+  state: AuthorityState,
+  attempt: { readonly intent: EffectIntent; readonly purpose: Purpose },
+): readonly DeliveryIntent[] {
+  const { intent, purpose } = attempt;
+  const workflow = workflowOf(state, intent.runId);
+  return Object.values(state.effects.operations)
+    .filter((operation) => operation.operationId === intent.operationId)
+    .flatMap((operation) =>
+      Object.values(state.effects.leases)
+        .filter((lease) => lease.resourceKey === operation.leaseKey)
+        .map((lease) => ({
+          ...intent,
+          workflow,
+          purpose,
+          inputDigest: operation.inputDigest,
+          leaseGeneration: lease.generation,
+          capability: operation.capability,
+          method: operation.method,
+          target: operation.target,
+          payload: operation.payload,
+        })),
+    );
 }
 
 export function gateDecision(
@@ -49,6 +133,10 @@ export function gateDecision(
     decision: gate.outcome.decision,
     answer: gate.outcome.answer,
   };
+}
+
+function workflowOf(state: AuthorityState, runId: string): string {
+  return state.runs[runId]?.workflow ?? "";
 }
 
 function decisionOf(
@@ -65,17 +153,34 @@ function decisionOf(
   );
 }
 
+export function observingIntent(
+  state: AuthorityState,
+  attempt: { readonly intent: EffectIntent; readonly purpose: Purpose },
+): DeliveryIntent {
+  const { intent, purpose } = attempt;
+  const undigested = {
+    ...intent,
+    workflow: workflowOf(state, intent.runId),
+    ...decisionOf(state, intent),
+  };
+  return { ...undigested, purpose, inputDigest: intentDigest(undigested) };
+}
+
 export function stageable(
   state: AuthorityState,
   held: ReadonlySet<string>,
 ): readonly DeliveryIntent[] {
   return eligibleIntents(state)
     .filter((intent) => !held.has(intent.operationId))
-    .map((intent) =>
-      deliveryIntent({
-        ...intent,
-        workflow: state.runs[intent.runId]?.workflow ?? "",
-        ...decisionOf(state, intent),
-      }),
+    .flatMap((intent) =>
+      intent.kind === "protected-effect"
+        ? protectedIntent(state, { intent, purpose: "dispatch" })
+        : [
+            deliveryIntent({
+              ...intent,
+              workflow: workflowOf(state, intent.runId),
+              ...decisionOf(state, intent),
+            }),
+          ],
     );
 }

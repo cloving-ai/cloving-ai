@@ -45,7 +45,7 @@ async function uncertainStart(harness: Harness): Promise<string> {
   return runId;
 }
 
-await test("CLV-008 a dropped run with a start of unknown result never starts afterward, and its status claims no terminal cancellation", () =>
+await test("CLV-008 a dropped run with a start of unknown result never starts afterward, its status claims no terminal cancellation while the result is unknown, and a reconciliation that finds no start ends the cancellation", () =>
   withHarness(async (harness) => {
     const failing = await harness.start({
       delivery: {
@@ -81,12 +81,7 @@ await test("CLV-008 a dropped run with a start of unknown result never starts af
         field(field(after, "reason"), "code"),
         field(after, "nextAction"),
       ],
-      [
-        "cancelled",
-        "cancelling",
-        "delivery-outcome-unknown",
-        "reconcile-effect",
-      ],
+      ["cancelled", "cancelled", "run-cancelled", null],
     );
     assert.equal(
       field(

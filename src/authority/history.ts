@@ -1,3 +1,4 @@
+import type { Evidence } from "./operations.ts";
 import {
   applyEvent,
   emptyAuthority,
@@ -14,6 +15,7 @@ export interface History {
   readonly state: AuthorityState;
   readonly outbox: readonly OutboxEntry[];
   readonly runSequences: Readonly<Record<string, number>>;
+  readonly evidence: readonly Evidence[];
 }
 
 export function rebuildHistory(events: readonly unknown[]): History {
@@ -21,6 +23,7 @@ export function rebuildHistory(events: readonly unknown[]): History {
   const created: OutboxEntry[] = [];
   const released = new Map<string, number>();
   const runSequences: Record<string, number> = {};
+  const evidence: Evidence[] = [];
   for (const [index, value] of events.entries()) {
     const applied = applyEvent(state, { value, index });
     const before = new Set(state.intents.map((intent) => intent.operationId));
@@ -38,6 +41,7 @@ export function rebuildHistory(events: readonly unknown[]): History {
       if (!after.has(operationId))
         released.set(operationId, applied.event.sequence);
     runSequences[applied.event.runId] = applied.event.sequence;
+    evidence.push(...applied.evidence);
     state = applied.state;
   }
   return {
@@ -47,5 +51,6 @@ export function rebuildHistory(events: readonly unknown[]): History {
       releasedSequence: released.get(entry.operationId) ?? null,
     })),
     runSequences,
+    evidence,
   };
 }

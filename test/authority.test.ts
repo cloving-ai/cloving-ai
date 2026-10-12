@@ -64,6 +64,13 @@ await test("CLV-006 an admitted run command records the run and one unsent start
         gates: {},
         details: { "run-1": admittedDetails("run-1", {}) },
         questions: 0,
+        effects: {
+          budgets: {},
+          operations: {},
+          leases: {},
+          holding: 0,
+          stops: {},
+        },
       },
       intents: [startIntent],
     },

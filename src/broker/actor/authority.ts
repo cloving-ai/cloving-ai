@@ -1,12 +1,11 @@
 import type { JsonObject } from "solid-objects";
 import { loadCurrent } from "../../storage/decision-snapshots.ts";
-import { integer, loadSnapshot } from "../../storage/domain-rows.ts";
+import { integer } from "../../storage/domain-rows.ts";
 import {
   authorityIdentity,
   createSchema,
 } from "../../storage/domain-schema.ts";
 import { restore } from "../authority-restore.ts";
-import { upgradeDecisions } from "../decision-upgrade.ts";
 import {
   ownedRuntime,
   recoverDeliveries,
@@ -17,9 +16,11 @@ import {
   type Refusal,
 } from "./authority-runtime.ts";
 import { json } from "./authority-receipts.ts";
+import { upgradeSteps } from "./authority-upgrades.ts";
 import { authoritySession, type Authority } from "./authority-session.ts";
 
 export type {
+  AdapterOutcome,
   Delivery,
   DeliveryIntent,
   Reconciliation,
@@ -29,6 +30,8 @@ export type {
   AuthorityTiming,
   Refusal,
 } from "./authority-runtime.ts";
+export type { EffectSettings } from "./authority-settings.ts";
+export type { OperationView, StoredDisposition } from "./effect-queries.ts";
 export { authorityTiming } from "./authority-runtime.ts";
 export type {
   AuthorityQueries,
@@ -41,6 +44,7 @@ export type {
   CommandContext,
   OperationRecord,
   StoreReceipt,
+  StoredState,
 } from "./authority-session.ts";
 
 export type AuthorityOpening =
@@ -69,7 +73,7 @@ async function validated(owned: Owned): Promise<string | Refusal> {
   const { database, schema } = owned;
   if (schema.kind === "new") await database.transaction(createSchema);
   if (schema.kind === "baseline") return conversionRequired("schema version 1");
-  const upgrade = schema.kind === "adopted" ? await upgraded(owned) : undefined;
+  const upgrade = await upgraded(owned);
   if (upgrade !== undefined) return upgrade;
   const restored = restore(await database.connection(loadCurrent));
   if (restored.kind === "refused") return restored;
@@ -80,13 +84,15 @@ async function validated(owned: Owned): Promise<string | Refusal> {
 }
 
 async function upgraded(owned: Owned): Promise<Refusal | undefined> {
-  const { database } = owned;
-  const restored = restore(await database.connection(loadSnapshot));
-  if (restored.kind === "refused") return restored;
-  const identity = await database.connection(authorityIdentity);
-  if (identity.pendingAdoption !== null)
-    return conversionRequired("adoption pending");
-  await upgradeDecisions(database, restored.state);
+  const { database, schema } = owned;
+  for (const step of upgradeSteps(schema.kind)) {
+    const restored = restore(await database.connection(step.load));
+    if (restored.kind === "refused") return restored;
+    const identity = await database.connection(authorityIdentity);
+    if (identity.pendingAdoption !== null)
+      return conversionRequired("adoption pending");
+    await step.apply(database, restored.state);
+  }
   return undefined;
 }
 
@@ -145,9 +151,10 @@ async function start(opening: {
       execute: (request: JsonObject) => authority.execute(json(request)),
       run: (signal) => parts.runtime.run(signal),
       stop: parts.stop,
-      deliveriesInFlight: parts.deliveriesInFlight,
+      handlersSettled: parts.handlersSettled,
       deliveryConfigured: options.delivery !== undefined,
       epoch,
+      ...parts.limits,
       unhealthy: parts.unhealthy,
       condition: parts.condition,
       watchMilliseconds: parts.watchMilliseconds,

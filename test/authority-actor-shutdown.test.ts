@@ -192,4 +192,21 @@ await test("CLV-042 a delivery run is refused while a handler from an earlier ru
   await deliveredOnce(authority, service);
 });
 
+await test("CLV-049 a delivery run waits, with a bound, until the delivery handlers of an earlier run settle, and then it starts", async () => {
+  const directory = await temporaryDirectory();
+  await admitted(directory);
+  const service = gatedService();
+  const authority = await openedAuthority(directory, {
+    delivery: service.delivery,
+    timing: { ...fastTiming, shutdownMilliseconds: 300 },
+  });
+  const first = new AbortController();
+  const firstRun = authority.deliver(first.signal);
+  await service.entered;
+  first.abort();
+  await firstRun;
+  service.release();
+  await deliveredOnce(authority, service);
+});
+
 after(removeTemporaryDirectories);

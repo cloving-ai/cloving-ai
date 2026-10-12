@@ -81,7 +81,7 @@ await test("CLV-042 concurrent first openings of a new state directory admit exa
 await test("CLV-042 the adapter connection runs with WAL, full synchronization, foreign keys, an exclusive lock and the contention bound", async () => {
   const authority = await openedAuthority(await temporaryDirectory());
   assert.deepEqual(await authority.settings(), {
-    schemaVersion: 3,
+    schemaVersion: 4,
     journalMode: "wal",
     synchronous: 2,
     foreignKeys: 1,

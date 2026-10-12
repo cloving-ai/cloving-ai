@@ -1,31 +1,33 @@
-import type { Observation, RunDetails } from "./details.ts";
-import type { GateState } from "./gates.ts";
-import type { RunState, RunStatus } from "./transitions.ts";
+import type { Observation } from "./details.ts";
+import { cancelled } from "./status-closure.ts";
+import {
+  effectEvidence,
+  effectRecovery,
+  effectViews,
+  uncertainEffect,
+  type EffectView,
+  type Recovery,
+} from "./status-effects.ts";
+import {
+  assessed,
+  inFlight,
+  last,
+  type Assessment,
+  type BudgetSummary,
+  type OperationSummary,
+  type StatusInput,
+} from "./status-input.ts";
+import type { RunStatus } from "./transitions.ts";
 
-export interface OperationSummary {
-  readonly operationId: string;
-  readonly kind: "start-run" | "continue-run";
-  readonly releasedSequence: number | null;
-  readonly outcomes: readonly (string | null)[];
-}
-
-export interface StatusInput {
-  readonly run: RunState;
-  readonly details: RunDetails | undefined;
-  readonly gates: readonly GateState[];
-  readonly operations: readonly OperationSummary[];
-  readonly latestSequence: number;
-  readonly silent: boolean;
-}
-
-export interface Assessment {
-  readonly condition: string;
-  readonly code: string;
-  readonly nextAction: string | null;
-  readonly nextActionAt?: string | null;
-  readonly detail?: string;
-  readonly humanInputCanHelp: boolean;
-}
+export { unresolved, unresolvedEffects } from "./status-closure.ts";
+export type { EffectView } from "./status-effects.ts";
+export type {
+  Assessment,
+  BudgetSummary,
+  EffectSummary,
+  OperationSummary,
+  StatusInput,
+} from "./status-input.ts";
 
 export interface RunView {
   readonly runId: string;
@@ -42,10 +44,9 @@ export interface RunView {
     readonly sequence: number;
     readonly source: string;
   } | null;
-  readonly recovery: {
-    readonly attempts: number;
-    readonly limit: number | null;
-  };
+  readonly recovery: Recovery;
+  readonly budget: BudgetSummary | null;
+  readonly effects: readonly EffectView[];
   readonly nextAction: string | null;
   readonly nextActionAt: string | null;
   readonly humanInputCanHelp: boolean;
@@ -65,7 +66,15 @@ const details = new Map<string, string>([
   ],
   [
     "delivery-outcome-unknown",
-    "A dispatch has no known result. The service reconciles it and tries it again at the next command of the run or at its next start.",
+    "A dispatch has no known result. The service reconciles it and tries it again a limited count of times in the same opening, and again at its next start.",
+  ],
+  [
+    "effect-recovering",
+    "A protected effect has no known result. The service reconciles it before a new send.",
+  ],
+  [
+    "effect-blocked",
+    "A protected effect has no known result and its recovery bound is reached. A person must examine the effect.",
   ],
   [
     "pinned-workflow-unavailable",
@@ -83,18 +92,14 @@ const details = new Map<string, string>([
     "stop-not-observed",
     "The run is dropped. The stop of its dispatched work is not observed yet.",
   ],
+  [
+    "stop-unconfirmed",
+    "The run is dropped. The service asked for the stop of its work and got no confirmation. A person can confirm that the worker stopped.",
+  ],
   ["run-cancelled", "The run is dropped and has no work in progress."],
   ["run-completed", "The run completed."],
   ["run-failed", "The run failed."],
 ]);
-
-function last(operation: OperationSummary): string | null | undefined {
-  return operation.outcomes.at(-1);
-}
-
-function inFlight(operations: readonly OperationSummary[]): boolean {
-  return operations.some((operation) => last(operation) === null);
-}
 
 function uncertain(operations: readonly OperationSummary[]): boolean {
   return operations.some(
@@ -111,66 +116,12 @@ function blocked(operations: readonly OperationSummary[]): boolean {
   );
 }
 
-const unknownResults: readonly (string | null)[] = [
-  null,
-  "failed",
-  "stale-epoch",
-];
-
-export function unresolved(
-  operations: readonly OperationSummary[],
-): readonly string[] {
-  return operations
-    .filter(
-      (operation) =>
-        !operation.outcomes.includes("sent") &&
-        operation.outcomes.some((outcome) => unknownResults.includes(outcome)),
-    )
-    .map((operation) => operation.operationId);
-}
-
-function stoppedOperation(input: StatusInput): string | null {
-  const observation = input.details?.observation ?? null;
-  return observation?.condition === "stopped" ? observation.operationId : null;
-}
-
-function lastDispatched(
-  operations: readonly OperationSummary[],
-): OperationSummary | undefined {
-  return operations
-    .filter((operation) => operation.outcomes.includes("sent"))
-    .sort(
-      (left, right) =>
-        (left.releasedSequence ?? 0) - (right.releasedSequence ?? 0),
-    )
-    .at(-1);
-}
-
-function stopPending(input: StatusInput): boolean {
-  const last = lastDispatched(input.operations);
-  return last !== undefined && stoppedOperation(input) !== last.operationId;
-}
-
-export function unresolvedEffects(input: StatusInput): readonly string[] {
-  const stopped = stoppedOperation(input);
-  return unresolved(input.operations).filter(
-    (operationId) => operationId !== stopped,
-  );
-}
-
 function exhausted(observation: Observation): boolean {
   return (
     observation.attempt !== null &&
     observation.limit !== null &&
     observation.attempt >= observation.limit
   );
-}
-
-function assessed(
-  condition: string,
-  rest: Omit<Assessment, "condition">,
-): Assessment {
-  return { condition, ...rest };
 }
 
 const unknownEffect = assessed("uncertain-effect", {
@@ -183,8 +134,15 @@ function dispatched(operations: readonly OperationSummary[]): boolean {
   return operations.some((operation) => operation.outcomes.includes("sent"));
 }
 
+const unavailablePin = assessed("infrastructure-failure", {
+  code: "pinned-workflow-unavailable",
+  nextAction: "restore-pinned-workflow",
+  humanInputCanHelp: true,
+});
+
 function queued(input: StatusInput): Assessment {
   if (uncertain(input.operations)) return unknownEffect;
+  if (blocked(input.operations)) return unavailablePin;
   if (dispatched(input.operations))
     return assessed("queued", {
       code: "start-not-reported",
@@ -218,12 +176,13 @@ function observedWork(observation: Observation): Assessment {
 
 function running(input: StatusInput): Assessment {
   if (uncertain(input.operations)) return unknownEffect;
-  if (blocked(input.operations))
-    return assessed("infrastructure-failure", {
-      code: "pinned-workflow-unavailable",
-      nextAction: "restore-pinned-workflow",
-      humanInputCanHelp: true,
-    });
+  const effect = uncertainEffect(input.effects);
+  if (effect !== undefined) return effect;
+  if (blocked(input.operations)) return unavailablePin;
+  return observed(input);
+}
+
+function observed(input: StatusInput): Assessment {
   const observation = input.details?.observation ?? null;
   if (
     observation !== null &&
@@ -257,34 +216,6 @@ function waiting(input: StatusInput): Assessment {
     code: question ? "design-question" : "policy-approval",
     nextAction: question ? "answer" : "approve-or-deny",
     humanInputCanHelp: true,
-  });
-}
-
-function cancelled(input: StatusInput): Assessment {
-  if (inFlight(input.operations))
-    return assessed("cancelling", {
-      code: "delivery-in-flight",
-      nextAction: "reconcile-effect",
-      humanInputCanHelp: false,
-    });
-  if (unresolvedEffects(input).length > 0)
-    return assessed("cancelling", {
-      code: "delivery-outcome-unknown",
-      detail:
-        "The run is dropped. A dispatch has no known result. A stop report of that operation or a later reconciliation resolves it.",
-      nextAction: "reconcile-effect",
-      humanInputCanHelp: false,
-    });
-  if (stopPending(input))
-    return assessed("cancelling", {
-      code: "stop-not-observed",
-      nextAction: "observe-worker-stop",
-      humanInputCanHelp: false,
-    });
-  return assessed("cancelled", {
-    code: "run-cancelled",
-    nextAction: null,
-    humanInputCanHelp: false,
   });
 }
 
@@ -346,7 +277,10 @@ export function runView(input: StatusInput): RunView {
       .filter((gate) => gate.outcome === null)
       .map((gate) => `${gate.runId}/${gate.gateId}`),
     reason: reasonOf(assessment),
-    evidence: evidence(observation),
+    evidence: [
+      ...evidence(observation),
+      ...effectEvidence(input.effectEvidence),
+    ],
     lastConfirmedObservation:
       observation === null
         ? null
@@ -355,10 +289,12 @@ export function runView(input: StatusInput): RunView {
             sequence: observation.sequence,
             source: "worker",
           },
-    recovery: {
+    recovery: effectRecovery(input.effects) ?? {
       attempts: observation?.attempt ?? 0,
       limit: observation?.limit ?? null,
     },
+    budget: input.budget,
+    effects: effectViews(input.effects),
     nextAction: assessment.nextAction,
     nextActionAt: assessment.nextActionAt ?? null,
     humanInputCanHelp: assessment.humanInputCanHelp,

@@ -5,7 +5,7 @@ import {
 } from "../../storage/domain-rows.ts";
 import { adoptSchema, authorityIdentity } from "../../storage/domain-schema.ts";
 import { restore } from "../authority-restore.ts";
-import { upgradeDecisions } from "../decision-upgrade.ts";
+import { upgradeSteps } from "./authority-upgrades.ts";
 import {
   ownedRuntime,
   recoverDeliveries,
@@ -71,10 +71,13 @@ async function converted(
     );
     progress("schema-adopted");
   }
-  if (schema.kind !== "current") {
-    await upgradeDecisions(database, restored.state);
-    progress("schema-upgraded");
+  const from = schema.kind === "baseline" ? "adopted" : schema.kind;
+  for (const step of upgradeSteps(from)) {
+    const stored = restore(await database.connection(step.load));
+    if (stored.kind === "refused") return stored;
+    await step.apply(database, stored.state);
   }
+  if (schema.kind !== "current") progress("schema-upgraded");
   const identity = await database.connection(authorityIdentity);
   if (identity.pendingAdoption === null)
     return {

@@ -164,7 +164,7 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
   );
 });
 
-await test("CLV-008 only service, command line and test code can open a socket, only quality, build and test code can start a process, and only tests reach the service", () => {
+await test("CLV-008 only service, command line and test code can import the socket module, only quality, build and test code can import the process module, and only tests reach the service", () => {
   const policy = admittedModulePolicy(directory, {
     files,
     roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
@@ -193,4 +193,44 @@ await test("CLV-008 only service, command line and test code can open a socket, 
       );
   assert.ok(policy.forbiddenReachability["cli"]?.includes("service"));
   assert.ok(policy.forbiddenReachability["cli"]?.includes("process"));
+});
+
+await test("CLV-049 only quality code can import the inspector module, and service code cannot import package metadata", () => {
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
+  });
+  const importers = (role: string): string[] =>
+    Object.entries(policy.allowed)
+      .filter(([, targets]) => targets.includes(role))
+      .map(([name]) => name)
+      .sort();
+  assert.equal(policy.roles["node:inspector"], "inspector");
+  assert.deepEqual(importers("inspector"), ["quality"]);
+  assert.deepEqual(policy.allowed["inspector"], []);
+  assert.deepEqual(importers("metadata"), ["build", "cli", "quality"]);
+});
+
+await test("CLV-049 each role with a reachability list cannot reach the inspector role: these are the roles that cannot reach the process role or the network role", () => {
+  const policy = admittedModulePolicy(directory, {
+    files,
+    roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
+  });
+  const lists = Object.entries(policy.forbiddenReachability);
+  assert.deepEqual(
+    lists
+      .filter(
+        ([, targets]) =>
+          targets.includes("process") || targets.includes("network"),
+      )
+      .map(([role]) => role)
+      .sort(),
+    ["cli", "pure", "service", "step", "workflow"],
+  );
+  assert.deepEqual(
+    lists
+      .filter(([, targets]) => !targets.includes("inspector"))
+      .map(([role]) => role),
+    [],
+  );
 });

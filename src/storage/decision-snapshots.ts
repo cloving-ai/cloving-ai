@@ -6,22 +6,29 @@ import {
 } from "./decision-rows.ts";
 import {
   latestSequence,
-  loadDeliveries,
+  loadAttempts,
   loadSnapshot,
   projectionRows,
-  type DeliveryRow,
+  text,
+  type AttemptRow,
   type DomainSnapshot,
   type ProjectionRows,
   type SqlConnection,
 } from "./domain-rows.ts";
+import { loadEffects, type EffectRows } from "./effect-rows.ts";
 
 export interface ProjectionSnapshot extends ProjectionRows, DecisionRows {
-  readonly deliveries: readonly DeliveryRow[];
+  readonly deliveries: readonly AttemptRow[];
+  readonly pending: readonly string[];
   readonly sequence: number;
 }
 
-export interface CurrentSnapshot extends DomainSnapshot, DecisionRows {
+export interface DecidedSnapshot extends DomainSnapshot, DecisionRows {
   readonly documents: readonly DocumentRow[];
+}
+
+export interface CurrentSnapshot extends DecidedSnapshot {
+  readonly effects: EffectRows;
 }
 
 export async function loadProjections(
@@ -30,8 +37,23 @@ export async function loadProjections(
   return {
     ...(await projectionRows(connection)),
     ...(await loadDecisions(connection)),
-    deliveries: await loadDeliveries(connection),
+    deliveries: await loadAttempts(connection),
+    pending: (
+      await connection.all(
+        "SELECT operation_id FROM operations WHERE status = 'dispatch-pending' ORDER BY operation_id",
+      )
+    ).map((row) => text(row, "operation_id")),
     sequence: await latestSequence(connection),
+  };
+}
+
+export async function loadDecided(
+  connection: SqlConnection,
+): Promise<DecidedSnapshot> {
+  return {
+    ...(await loadSnapshot(connection)),
+    ...(await loadDecisions(connection)),
+    documents: await loadDocuments(connection),
   };
 }
 
@@ -39,8 +61,7 @@ export async function loadCurrent(
   connection: SqlConnection,
 ): Promise<CurrentSnapshot> {
   return {
-    ...(await loadSnapshot(connection)),
-    ...(await loadDecisions(connection)),
-    documents: await loadDocuments(connection),
+    ...(await loadDecided(connection)),
+    effects: await loadEffects(connection),
   };
 }

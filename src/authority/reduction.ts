@@ -1,132 +1,30 @@
-import { operationIdentity } from "../operation-identity.ts";
+import { admittedDetails, observed } from "./details.ts";
+import { settled } from "./gates.ts";
+import { admittedBudgets } from "./budgets.ts";
+import { requested } from "./effect-requests.ts";
+import { reconciled, reported, stopReported } from "./effect-results.ts";
+import { decided, expired, opened, registered } from "./gate-reduction.ts";
+import { expired as leaseExpired, granted } from "./leases.ts";
+import type { EffectContext, EffectResult, EffectState } from "./operations.ts";
 import {
-  admittedDetails,
-  continued,
-  observed,
-  type RunDetails,
-} from "./details.ts";
+  applied,
+  identity,
+  invalid,
+  text,
+  type Handler,
+  type Recorded,
+  type Reduction,
+} from "./reduction-state.ts";
 import {
-  continues,
-  decisionRefusal,
-  expiryRefusal,
-  gateKey,
-  openedGate,
-  reusable,
-  settled,
-  type GateOutcome,
-  type GateState,
-  type SettledGate,
-} from "./gates.ts";
-import {
-  terminal,
   transition,
   type AuthorityEvent,
   type AuthorityState,
   type EffectIntent,
   type Move,
-  type RunState,
 } from "./transitions.ts";
 
-interface Applied {
-  readonly kind: "applied";
-  readonly state: AuthorityState;
-  readonly intents: readonly EffectIntent[];
-}
-
-export type Reduction =
-  Applied | { readonly kind: "invalid"; readonly reason: string };
-
-interface Recorded {
-  readonly event: AuthorityEvent;
-  readonly commands: AuthorityState["commands"];
-  readonly run: RunState;
-  readonly details: RunDetails;
-}
-
-interface Change extends Recorded {
-  readonly moved?: RunState;
-  readonly gates?: readonly GateState[];
-  readonly added?: readonly EffectIntent[];
-  readonly questions?: number;
-  readonly observed?: RunDetails;
-}
-
-type Handler = (state: AuthorityState, recorded: Recorded) => Reduction;
-
-function invalid(reason: string): Reduction {
-  return { kind: "invalid", reason };
-}
-
-function text(event: AuthorityEvent, name: string): string {
-  return event.payload[name] ?? "";
-}
-
-function identity(scope: Readonly<Record<string, unknown>>): string {
-  const result = operationIdentity(scope);
-  return result.kind === "valid" ? result.value : "";
-}
-
-export function gateContinuation(gate: SettledGate): EffectIntent {
-  return {
-    kind: "continue-run",
-    runId: gate.runId,
-    operationId: identity({
-      run: gate.runId,
-      phase: "gate",
-      round: gate.outcome.sequence,
-      operation: "continue-run",
-      key: gate.gateId,
-    }),
-  };
-}
-
-function continuations(gate: GateState): readonly EffectIntent[] {
-  return continues(gate) ? [gateContinuation(gate)] : [];
-}
-
-function retained(
-  intents: readonly EffectIntent[],
-  event: AuthorityEvent,
-): readonly EffectIntent[] {
-  if (["run.cancelled", "run.failed", "run.completed"].includes(event.type))
-    return intents.filter((intent) => intent.runId !== event.runId);
-  if (event.type === "run.started")
-    return intents.filter(
-      (intent) => intent.runId !== event.runId || intent.kind !== "start-run",
-    );
-  return intents;
-}
-
-function applied(state: AuthorityState, change: Change): Applied {
-  const { event, added = [] } = change;
-  const details = change.observed ?? change.details;
-  return {
-    kind: "applied",
-    state: {
-      sequence: event.sequence,
-      runs: change.moved
-        ? { ...state.runs, [event.runId]: change.moved }
-        : state.runs,
-      commands: change.commands,
-      intents: [...retained(state.intents, event), ...added],
-      gates: {
-        ...state.gates,
-        ...Object.fromEntries(
-          (change.gates ?? []).map((gate) => [
-            gateKey(gate.runId, gate.gateId),
-            gate,
-          ]),
-        ),
-      },
-      details: {
-        ...state.details,
-        [event.runId]: added.length > 0 ? continued(details) : details,
-      },
-      questions: change.questions ?? state.questions,
-    },
-    intents: added,
-  };
-}
+export { gateContinuation } from "./gate-reduction.ts";
+export type { Reduction } from "./reduction-state.ts";
 
 function moved(type: Move): Handler {
   return (state, recorded) => {
@@ -137,101 +35,6 @@ function moved(type: Move): Handler {
     if (result.kind === "invalid") return result;
     return applied(state, { ...recorded, moved: result.run });
   };
-}
-
-function opened(state: AuthorityState, recorded: Recorded): Reduction {
-  const { event, run } = recorded;
-  const result = transition(run, {
-    type: "gate.opened",
-    gateId: text(event, "gateId"),
-  });
-  if (result.kind === "invalid") return result;
-  const question = event.payload["gateKind"] === "question";
-  const questions = state.questions + (question ? 1 : 0);
-  const gate = openedGate({
-    runId: event.runId,
-    sequence: event.sequence,
-    payload: event.payload,
-    generation: recorded.details.generation,
-    label: question ? questions : null,
-  });
-  if (!reusable(gateOf(state, event), gate)) return invalid("existing-gate");
-  return applied(state, {
-    ...recorded,
-    moved: result.run,
-    questions,
-    gates: [gate],
-  });
-}
-
-function concluded(
-  state: AuthorityState,
-  conclusion: Recorded & {
-    readonly gate: GateState;
-    readonly outcome: GateOutcome;
-  },
-): Reduction {
-  const { run, gate, outcome } = conclusion;
-  const result = transition(run, { type: "gate.decided", gateId: gate.gateId });
-  if (result.kind === "invalid") return result;
-  const next = settled(gate, outcome);
-  return applied(state, {
-    ...conclusion,
-    moved: result.run,
-    gates: [next],
-    added: continuations(next),
-  });
-}
-
-function gateOf(
-  state: AuthorityState,
-  event: AuthorityEvent,
-): GateState | undefined {
-  return state.gates[gateKey(event.runId, text(event, "gateId"))];
-}
-
-function decided(state: AuthorityState, recorded: Recorded): Reduction {
-  const { event } = recorded;
-  const gate = gateOf(state, event);
-  if (gate === undefined) return invalid("unknown-gate");
-  const refusal = decisionRefusal(gate, event);
-  if (refusal !== undefined) return invalid(refusal);
-  return concluded(state, {
-    ...recorded,
-    gate,
-    outcome: {
-      decision: text(event, "decision"),
-      answer: event.payload["answer"] ?? null,
-      sequence: event.sequence,
-    },
-  });
-}
-
-function expired(state: AuthorityState, recorded: Recorded): Reduction {
-  const { event } = recorded;
-  const gate = gateOf(state, event);
-  if (gate === undefined) return invalid("unknown-gate");
-  const refusal = expiryRefusal(gate, event.recordedAt);
-  if (refusal !== undefined) return invalid(refusal);
-  return concluded(state, {
-    ...recorded,
-    gate,
-    outcome: { decision: "expired", answer: null, sequence: event.sequence },
-  });
-}
-
-function registered(state: AuthorityState, recorded: Recorded): Reduction {
-  const { event, run } = recorded;
-  if (terminal.includes(run.status)) return invalid("terminal-run");
-  const gate = gateOf(state, event);
-  if (gate === undefined) return invalid("unknown-gate");
-  if (gate.wait === "registered") return invalid("wait-already-registered");
-  const next: GateState = { ...gate, wait: "registered" };
-  return applied(state, {
-    ...recorded,
-    gates: [next],
-    added: continuations(next),
-  });
 }
 
 function closed(type: "run.cancelled" | "run.failed"): Handler {
@@ -254,6 +57,7 @@ function observation(state: AuthorityState, recorded: Recorded): Reduction {
   return applied(state, {
     ...recorded,
     observed: observed(recorded.details, recorded.event),
+    effects: stopReported(state.effects, recorded.event),
   });
 }
 
@@ -269,7 +73,41 @@ function dispatched(state: AuthorityState, recorded: Recorded): Reduction {
   return applied({ ...state, intents: remaining }, recorded);
 }
 
+type EffectRule = (
+  effects: EffectState,
+  context: EffectContext,
+) => EffectResult;
+
+function effect(rule: EffectRule): Handler {
+  return (state, recorded) => {
+    const { event, run } = recorded;
+    const result = rule(state.effects, { event, runStatus: run.status });
+    if (result.kind === "invalid") return result;
+    const present = new Set(state.intents.map((intent) => intent.operationId));
+    return applied(state, {
+      ...recorded,
+      effects: result.effects,
+      ...(result.released === undefined ? {} : { released: result.released }),
+      ...(result.disposition === undefined
+        ? {}
+        : { disposition: result.disposition }),
+      added: (result.added ?? [])
+        .filter((operationId) => !present.has(operationId))
+        .map((operationId) => ({
+          kind: "protected-effect",
+          runId: event.runId,
+          operationId,
+        })),
+    });
+  };
+}
+
 const handlers: Readonly<Record<string, Handler>> = {
+  "effect.requested": effect(requested),
+  "lease.granted": effect(granted),
+  "lease.expired": effect(leaseExpired),
+  "effect.reported": effect(reported),
+  "operation.reconciled": effect(reconciled),
   "run.started": moved("run.started"),
   "run.paused": moved("run.paused"),
   "run.resumed": moved("run.resumed"),
@@ -321,6 +159,10 @@ function created(
       details: {
         ...state.details,
         [event.runId]: admittedDetails(event.runId, event.payload),
+      },
+      effects: {
+        ...state.effects,
+        budgets: admittedBudgets(state.effects.budgets, event),
       },
     },
     intents: [intent],

@@ -29,6 +29,7 @@ export interface WorkflowRegistration {
   readonly availability: "available" | "unavailable";
   readonly submission: SubmissionContract;
   readonly resolver: Resolver;
+  readonly effectLimit?: number;
 }
 
 export interface Registered extends WorkflowRegistration {

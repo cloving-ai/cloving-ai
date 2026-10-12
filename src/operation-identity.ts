@@ -46,3 +46,24 @@ function fields(value: unknown): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value));
 }
+
+export interface OperationScope {
+  readonly run: string;
+  readonly operation: string;
+}
+
+export function operationScope(operationId: string): OperationScope | null {
+  const [marker, , run, , operation] = parsedList(operationId);
+  if (marker !== "cloving-operation") return null;
+  if (!isComponent(run) || !isComponent(operation)) return null;
+  return { run, operation };
+}
+
+function parsedList(text: string): readonly unknown[] {
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}

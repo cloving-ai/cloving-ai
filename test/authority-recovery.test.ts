@@ -3,7 +3,12 @@ import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
 import { rebuild } from "../src/authority/reducer.ts";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
-import { continuation, dispatch, recorded } from "./authority-fixture.ts";
+import {
+  continuation,
+  dispatch,
+  recorded,
+  storedParts,
+} from "./authority-fixture.ts";
 import {
   deliverUntil,
   externalService,
@@ -39,7 +44,7 @@ await test("CLV-007 reopening matches the projection rebuilt from committed even
     events: await first.events(),
   };
   await first.close();
-  assert.deepEqual(rebuild(committed.events), committed.state);
+  assert.deepEqual(storedParts(rebuild(committed.events)), committed.state);
   const { store } = await opened(directory);
   assert.deepEqual(
     { state: await store.state(), events: await store.events() },

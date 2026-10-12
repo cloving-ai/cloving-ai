@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { notBefore } from "../authority/instants.ts";
 import type { Authority } from "../broker/actor/authority.ts";
+import { operationDigest } from "../broker/operation-digest.ts";
 import type { Gateway } from "./gateway.ts";
 
 export interface ExpiryScan {
@@ -35,6 +36,17 @@ async function scanned(parts: {
         commandId: expiryIdentity(gate.runId, gate.gateId),
         runId: gate.runId,
         gateId: gate.gateId,
+      },
+    });
+  for (const lease of await authority.effects.dueLeases(now))
+    await gateway.execute({
+      principal: "controller",
+      command: {
+        kind: "expire-lease",
+        commandId: `expire-lease:${operationDigest(lease.operationId)}:${String(lease.generation)}`,
+        runId: lease.runId,
+        operationId: lease.operationId,
+        leaseGeneration: lease.generation,
       },
     });
 }

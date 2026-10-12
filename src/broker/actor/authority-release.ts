@@ -1,17 +1,18 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type { Database, SolidObjectsRuntime } from "solid-objects";
 import { deliverEffect } from "./authority-actor.ts";
 import type { deliveryHandler } from "./authority-delivery.ts";
 
 export interface DeliveryRegistration {
-  readonly runtime: SolidObjectsRuntime;
-  readonly database: Database;
+  readonly runtime: Pick<SolidObjectsRuntime, "registerEffect" | "close">;
+  readonly database: Pick<Database, "close">;
   readonly handle: ReturnType<typeof deliveryHandler>;
   readonly shutdownMilliseconds: number;
 }
 
 export interface TrackedDelivery {
   readonly stop: () => Promise<void>;
-  readonly deliveriesInFlight: () => number;
+  readonly handlersSettled: () => Promise<boolean>;
 }
 
 export function trackedDelivery(
@@ -24,13 +25,15 @@ export function trackedDelivery(
   );
   let released: Promise<void> | undefined;
   return {
-    deliveriesInFlight: () => handlers.size,
+    handlersSettled: async () => {
+      await settledWithin([...handlers], shutdownMilliseconds);
+      return handlers.size === 0;
+    },
     stop: () => {
       const libraryWaited = released === undefined && handlers.size > 0;
-      released ??= Promise.allSettled([...handlers]).then(async () => {
-        await runtime.close();
-        await database.close();
-      });
+      released ??= Promise.allSettled([...handlers]).then(() =>
+        closedInOrder([() => runtime.close(), () => database.close()]),
+      );
       return releasedWithin({
         released,
         handlers,
@@ -38,6 +41,36 @@ export function trackedDelivery(
       });
     },
   };
+}
+
+async function closedInOrder(
+  closers: readonly (() => Promise<void>)[],
+): Promise<void> {
+  const attempts: Promise<void>[] = [];
+  for (const close of closers) {
+    const attempt = close();
+    attempts.push(attempt);
+    await attempt.catch(() => undefined);
+  }
+  await Promise.all(attempts);
+}
+
+async function settledWithin(
+  handlers: readonly Promise<unknown>[],
+  milliseconds: number,
+): Promise<void> {
+  if (handlers.length === 0) return;
+  const limit = new AbortController();
+  try {
+    await Promise.race([
+      Promise.allSettled(handlers),
+      delay(milliseconds, undefined, { signal: limit.signal }).catch(
+        () => undefined,
+      ),
+    ]);
+  } finally {
+    limit.abort();
+  }
 }
 
 function tracked<T>(

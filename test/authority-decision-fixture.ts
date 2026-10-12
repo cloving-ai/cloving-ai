@@ -1,6 +1,7 @@
 import type { Authority, StoreReceipt } from "../src/broker/actor/authority.ts";
 import { manifest, storedGate } from "./authority-store-fixture.ts";
 import { digestOf } from "./digest-fixture.ts";
+import { versionThree } from "./effect-fixture.ts";
 
 export interface TypedStep {
   readonly command: Readonly<Record<string, unknown>>;
@@ -78,7 +79,7 @@ export async function executeAll(
   return receipts;
 }
 
-export const downgrade = `
+export const downgrade = `${versionThree}
 DROP TABLE gates;
 DROP TABLE run_details;
 DROP TABLE documents;

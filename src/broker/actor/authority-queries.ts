@@ -48,6 +48,7 @@ export interface AuthorityQueries {
   readonly receipt: (commandId: string) => Promise<CommandRecord | undefined>;
   readonly eventsAfter: (cursor: EventCursor) => Promise<EventPage>;
   readonly sequences: () => Promise<Sequences>;
+  readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
 }
 
 async function receipt(
@@ -129,17 +130,33 @@ async function sequences(connection: SqlConnection): Promise<Sequences> {
   };
 }
 
-export function authorityQueries(access: {
+async function workflowIds(
+  connection: SqlConnection,
+): Promise<Readonly<Record<string, string>>> {
+  const rows = await connection.all(
+    "SELECT d.run_id, json_extract(s.body, '$.workflowId') AS workflow_id FROM run_details d JOIN documents s ON s.digest = d.submission WHERE json_valid(s.body) AND json_type(s.body, '$.workflowId') = 'text'",
+  );
+  return Object.fromEntries(
+    rows.map((row) => [text(row, "run_id"), text(row, "workflow_id")]),
+  );
+}
+
+export type Read = <Value>(
+  query: (connection: SqlConnection) => Promise<Value>,
+) => Promise<Value>;
+
+export function guardedRead(access: {
   readonly reader: Database;
   readonly ready: () => Promise<void>;
-}): AuthorityQueries {
+}): Read {
   const { reader, ready } = access;
-  async function read<Value>(
-    query: (connection: SqlConnection) => Promise<Value>,
-  ): Promise<Value> {
+  return async (query) => {
     await ready();
     return reader.connection(query);
-  }
+  };
+}
+
+export function authorityQueries(read: Read): AuthorityQueries {
   return {
     document: (digest) =>
       read((connection) => documentBody(connection, digest)),
@@ -148,5 +165,6 @@ export function authorityQueries(access: {
     eventsAfter: (cursor) =>
       read((connection) => eventsAfter(connection, cursor)),
     sequences: () => read(sequences),
+    workflowIds: () => read(workflowIds),
   };
 }

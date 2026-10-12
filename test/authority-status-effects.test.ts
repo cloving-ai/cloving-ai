@@ -45,10 +45,10 @@ for (const outcome of ["failed", "stale-epoch"])
     assert.equal(view.humanInputCanHelp, false);
   });
 
-await test("CLV-008 only a stop report of the last dispatched operation ends the cancellation", () => {
+await test("CLV-049 a stop report of the last dispatched operation alone does not end the cancellation: each dispatched operation needs a confirmed stop", () => {
   const stopped = { condition: "stopped", reason: "worker-exit", sequence: 9 };
   const pending = ["cancelling", "stop-not-observed", "observe-worker-stop"];
-  for (const operationId of [start, null, "other"])
+  for (const operationId of [start, continuation, null, "other"])
     assert.deepEqual(
       reason(
         runView(
@@ -66,6 +66,7 @@ await test("CLV-008 only a stop report of the last dispatched operation ends the
     input({
       status: "cancelled",
       observed: { ...stopped, operationId: continuation },
+      stops: [start],
       operations: [sent, later],
     }),
   );
@@ -186,4 +187,16 @@ await test("CLV-008 the unresolved effects of a dropped run agree with its statu
       [],
       status,
     );
+});
+
+await test("CLV-049 the unresolved effects of a dropped run are the operations that its closure names", () => {
+  const given = {
+    ...input({ status: "cancelled" }),
+    closure: {
+      closure: "stop-not-observed",
+      unresolved: ["operation-9"],
+      open: false,
+    } as const,
+  };
+  assert.deepEqual(unresolvedEffects(given), ["operation-9"]);
 });

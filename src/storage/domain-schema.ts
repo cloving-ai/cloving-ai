@@ -7,10 +7,12 @@ import {
   text,
   type SqlConnection,
 } from "./domain-rows.ts";
+import { effectSchema } from "./effect-schema.ts";
 
 export const baselineVersion = 1;
 export const adoptedVersion = 2;
-export const currentVersion = 3;
+export const decidedVersion = 3;
+export const currentVersion = 4;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -111,7 +113,7 @@ CREATE TABLE documents (
 ) STRICT;
 `;
 
-const schemas = [baselineSchema, adoption, decisions];
+const schemas = [baselineSchema, adoption, decisions, effectSchema];
 
 const checksums = schemas.map((schema) =>
   createHash("sha256").update(schema).digest("hex"),
@@ -128,10 +130,11 @@ export type SchemaState =
   | { readonly kind: "new" }
   | { readonly kind: "baseline" }
   | { readonly kind: "adopted" }
+  | { readonly kind: "decided" }
   | { readonly kind: "current" }
   | SchemaRefusal;
 
-const versionKinds = ["baseline", "adopted", "current"] as const;
+const versionKinds = ["baseline", "adopted", "decided", "current"] as const;
 
 export async function inspectSchema(
   connection: SqlConnection,
@@ -171,13 +174,17 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await execute(connection, baselineSchema);
   await recordVersion(connection, baselineVersion);
   await adoptSchema(connection, null);
-  await upgradeSchema(connection);
+  await upgradeSchema(connection, decidedVersion);
+  await upgradeSchema(connection, currentVersion);
 }
 
-export async function upgradeSchema(connection: SqlConnection): Promise<void> {
-  await execute(connection, decisions);
-  await recordVersion(connection, currentVersion);
-  await connection.run(`PRAGMA user_version = ${String(currentVersion)}`);
+export async function upgradeSchema(
+  connection: SqlConnection,
+  version: number,
+): Promise<void> {
+  await execute(connection, schemas[version - 1] ?? "");
+  await recordVersion(connection, version);
+  await connection.run(`PRAGMA user_version = ${String(version)}`);
 }
 
 export async function adoptSchema(

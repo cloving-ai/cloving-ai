@@ -72,6 +72,14 @@ function replayed(
     : conflict(existing.commandId);
 }
 
+function effectBudget(workflow: Registered): Fields {
+  if (workflow.effectLimit === undefined) return {};
+  return {
+    effectLimit: workflow.effectLimit,
+    capabilities: JSON.stringify([...workflow.manifest.capabilities].sort()),
+  };
+}
+
 type Usable =
   | { readonly kind: "usable"; readonly workflow: Registered }
   | { readonly kind: "unusable"; readonly reply: Reply };
@@ -168,6 +176,7 @@ async function admit(
       submission: documentDigest(normalized),
       input: documentDigest(input),
       resolver: `${workflow.resolver.id}:${workflow.resolver.version}`,
+      ...effectBudget(workflow),
     },
     documents: [normalized, input],
   });

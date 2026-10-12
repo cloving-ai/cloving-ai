@@ -7,6 +7,14 @@ import {
 
 export const recorded = { recordedAt: "2026-10-09T00:00:00Z" };
 
+export function storedParts(
+  state: AuthorityState,
+): Omit<AuthorityState, "effects"> {
+  const { sequence, runs, commands, intents, gates, details, questions } =
+    state;
+  return { sequence, runs, commands, intents, gates, details, questions };
+}
+
 export function run(
   commands: readonly Readonly<Record<string, unknown>>[],
 ): ReturnType<typeof execute>[] {

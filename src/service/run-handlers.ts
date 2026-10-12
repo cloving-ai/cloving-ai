@@ -1,11 +1,14 @@
-import type { AuthorityState } from "../authority/reducer.ts";
 import {
   runView,
   unresolvedEffects,
   type OperationSummary,
   type RunView,
+  type StatusInput,
 } from "../authority/status.ts";
-import type { OperationRecord } from "../broker/actor/authority.ts";
+import type {
+  OperationRecord,
+  StoredState,
+} from "../broker/actor/authority.ts";
 import type { Fields, Reply } from "../protocol.ts";
 import {
   committed,
@@ -20,10 +23,11 @@ import {
 } from "./replies.ts";
 
 interface Snapshot {
-  readonly state: AuthorityState;
+  readonly state: StoredState;
   readonly operations: readonly OperationRecord[];
   readonly sequences: Readonly<Record<string, number>>;
   readonly times: Readonly<Record<string, string>>;
+  readonly workflowIds: Readonly<Record<string, string>>;
 }
 
 async function snapshot(context: ServiceContext): Promise<Snapshot> {
@@ -34,6 +38,7 @@ async function snapshot(context: ServiceContext): Promise<Snapshot> {
     operations: await authority.operations(),
     sequences: sequences.runs,
     times: sequences.times,
+    workflowIds: await authority.queries.workflowIds(),
   };
 }
 
@@ -63,20 +68,49 @@ function summaries(
     }));
 }
 
+async function effectInput(
+  context: ServiceContext,
+  runId: string,
+): Promise<Pick<StatusInput, "budget" | "effects" | "effectEvidence">> {
+  const { effects } = context.authority;
+  const budget = await effects.budget(runId);
+  const stored = await effects.operations(runId);
+  return {
+    budget:
+      budget === undefined
+        ? null
+        : { limit: budget.limit, spent: budget.spent },
+    effects: stored.map((operation) => ({
+      operationId: operation.operationId,
+      status: operation.status,
+      reason: operation.waitCause ?? operation.reason,
+      leaseGeneration: operation.leaseGeneration,
+      attempts: operation.attempts,
+      limit: operation.recoveryLimit,
+    })),
+    effectEvidence: await effects.evidence(runId),
+  };
+}
+
 type ShownRun = RunView & {
   readonly workflowId: string;
   readonly unresolvedEffects: readonly string[];
 };
 
-function viewOf(
+async function viewOf(
   context: ServiceContext,
   scope: { readonly snapshot: Snapshot; readonly runId: string },
-): ShownRun | undefined {
+): Promise<ShownRun | undefined> {
   const { state, sequences, times } = scope.snapshot;
   const run = isIdentifier(scope.runId) ? state.runs[scope.runId] : undefined;
   if (run === undefined) return undefined;
   const details = state.details[run.runId];
   const input = {
+    ...(await effectInput(context, run.runId)),
+    closure:
+      run.status === "cancelled"
+        ? await context.authority.effects.closure(run.runId)
+        : null,
     run,
     details,
     gates: Object.values(state.gates)
@@ -91,8 +125,7 @@ function viewOf(
   };
   return {
     ...runView(input),
-    workflowId:
-      context.registry.byPin(run.workflow)?.workflowId ?? run.workflow,
+    workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
     unresolvedEffects: unresolvedEffects(input),
   };
 }
@@ -116,28 +149,30 @@ function full(view: ShownRun): Fields {
     evidence: view.evidence,
     lastConfirmedObservation: view.lastConfirmedObservation,
     recovery: view.recovery,
+    budget: view.budget,
+    effects: view.effects,
     nextAction: view.nextAction,
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
   };
 }
 
-function listed(
+async function listed(
   context: ServiceContext,
   page: {
     readonly snapshot: Snapshot;
     readonly after: string;
     readonly limit: number;
   },
-): Reply {
+): Promise<Reply> {
   const identifiers = Object.keys(page.snapshot.state.runs)
     .sort()
     .filter((runId) => runId > page.after);
   const shown = identifiers.slice(0, page.limit);
-  const runs = shown
-    .map((runId) => viewOf(context, { snapshot: page.snapshot, runId }))
-    .filter((view) => view !== undefined)
-    .map(summary);
+  const views = [];
+  for (const runId of shown)
+    views.push(await viewOf(context, { snapshot: page.snapshot, runId }));
+  const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
@@ -157,7 +192,7 @@ export async function status(
   if (runId === undefined)
     return listed(context, { snapshot: current, after, limit });
   const named = typeof runId === "string" ? runId : "";
-  const view = viewOf(context, { snapshot: current, runId: named });
+  const view = await viewOf(context, { snapshot: current, runId: named });
   if (view === undefined)
     return failed("unknown-run", { detail: `No run has the ID ${named}.` });
   return result("run-status", { run: full(view) });
@@ -181,7 +216,7 @@ async function reported(
   const { command, commandId, runId } = outcome;
   const stored = await context.authority.queries.receipt(commandId);
   const current = await snapshot(context);
-  const view = viewOf(context, { snapshot: current, runId });
+  const view = await viewOf(context, { snapshot: current, runId });
   if (stored === undefined || view === undefined)
     return failed("authority-unavailable", { commandId, runId });
   const operations = current.operations.filter(

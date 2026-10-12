@@ -44,3 +44,7 @@ export function notBefore(value: string, bound: string): boolean {
     milliseconds(value) >= milliseconds(bound)
   );
 }
+
+export function isAfter(value: string, bound: string): boolean {
+  return notBefore(value, bound) && !notBefore(bound, value);
+}

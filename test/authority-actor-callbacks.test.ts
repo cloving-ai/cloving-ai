@@ -131,6 +131,7 @@ await test("CLV-042 an adapter receipt that is not an identifier fails the effec
         : { kind: "absent" },
     );
   const malformed = await openedAuthority(directory, {
+    effects: { deliveryAttempts: 1 },
     delivery: {
       deliver: (intent) => {
         sent.push(intent.operationId);
@@ -169,16 +170,16 @@ await test("CLV-042 an adapter receipt that is not an identifier fails the effec
   await recovered.close();
 });
 
-await test("CLV-042 a delivery that throws is attempted once, closed as failed, and staged again by the next opening", async () => {
+await test("CLV-042 a delivery that throws is tried one more time in the same opening, closed as failed at that bound, and staged again by the next opening", async () => {
   const directory = await temporaryDirectory();
   await admitted(directory);
   let calls = 0;
   const delivery: Delivery = {
     deliver: () => {
       calls += 1;
-      return calls === 1
+      return calls < 3
         ? Promise.reject(new Error("transient adapter failure"))
-        : Promise.resolve({ receipt: "receipt-2" });
+        : Promise.resolve({ receipt: "receipt-3" });
     },
     reconcile: () => Promise.resolve({ kind: "absent" }),
   };
@@ -187,20 +188,26 @@ await test("CLV-042 a delivery that throws is attempted once, closed as failed, 
     first,
     async () =>
       JSON.stringify(await outcomes(first)) ===
-      JSON.stringify([[["failed", null]]]),
+      JSON.stringify([
+        [
+          ["failed", null],
+          ["failed", null],
+        ],
+      ]),
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   await first.close();
   const second = await openedAuthority(directory, { delivery });
   await deliverUntil(
     second,
     async () => (await second.eligibleIntents()).length === 0,
   );
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.deepEqual(await outcomes(second), [
     [
       ["failed", null],
-      ["sent", "receipt-2"],
+      ["failed", null],
+      ["sent", "receipt-3"],
     ],
   ]);
   await second.close();

@@ -207,11 +207,11 @@ export function referencedDigests(state: DecisionState): readonly string[] {
 
 export function documentsIntact(
   documents: readonly DocumentRow[],
-  state: DecisionState,
+  referenced: readonly string[],
 ): boolean {
   const stored = new Set(documents.map((row) => row.digest));
   return (
     documents.every((row) => documentDigest(row.body) === row.digest) &&
-    referencedDigests(state).every((digest) => stored.has(digest))
+    referenced.every((digest) => stored.has(digest))
   );
 }

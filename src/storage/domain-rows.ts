@@ -64,6 +64,12 @@ export interface DeliveryRow {
   readonly receipt: string | null;
 }
 
+export interface AttemptRow extends DeliveryRow {
+  readonly purpose: string;
+  readonly leaseGeneration: number | null;
+  readonly epoch: number | null;
+}
+
 export interface AuthoritySnapshot {
   readonly definitions: readonly DefinitionRow[];
   readonly events: readonly EventRow[];
@@ -74,6 +80,31 @@ export interface AuthoritySnapshot {
 
 export interface DomainSnapshot extends AuthoritySnapshot {
   readonly deliveries: readonly DeliveryRow[];
+}
+
+export const attemptColumns =
+  "d.effect_id, d.operation_id, d.input_digest, d.staged_sequence, d.outcome, d.receipt, coalesce(a.purpose, 'dispatch') AS purpose, a.lease_generation, a.authority_epoch";
+
+export const attemptSource =
+  "deliveries d LEFT JOIN dispatch_attempts a ON a.effect_id = d.effect_id";
+
+export async function loadAttempts(
+  connection: SqlConnection,
+): Promise<readonly AttemptRow[]> {
+  return (
+    await connection.all(
+      `SELECT ${attemptColumns} FROM ${attemptSource} ORDER BY d.staged_sequence, d.rowid`,
+    )
+  ).map(attemptRow);
+}
+
+export function attemptRow(row: unknown): AttemptRow {
+  return {
+    ...deliveryRow(row),
+    purpose: text(row, "purpose"),
+    leaseGeneration: optionalInteger(row, "lease_generation"),
+    epoch: optionalInteger(row, "authority_epoch"),
+  };
 }
 
 export type ProjectionRows = Omit<AuthoritySnapshot, "events">;

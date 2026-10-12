@@ -1,7 +1,12 @@
 import type { Observation } from "../src/authority/details.ts";
 import type { GateState } from "../src/authority/gates.ts";
 import type { RunState, RunStatus } from "../src/authority/reducer.ts";
-import type { OperationSummary, StatusInput } from "../src/authority/status.ts";
+import type {
+  EffectSummary,
+  OperationSummary,
+  StatusInput,
+} from "../src/authority/status.ts";
+import { runClosure, type RunClosure } from "../src/authority/stop-sequence.ts";
 
 function run(status: RunStatus): RunState {
   return {
@@ -52,6 +57,10 @@ export function input(fields: {
   readonly gates?: readonly GateState[];
   readonly operations?: readonly OperationSummary[];
   readonly silent?: boolean;
+  readonly stops?: readonly string[];
+  readonly effects?: readonly EffectSummary[];
+  readonly budget?: StatusInput["budget"];
+  readonly effectEvidence?: readonly number[];
 }): StatusInput {
   return {
     run: run(fields.status),
@@ -67,7 +76,51 @@ export function input(fields: {
     operations: fields.operations ?? [],
     latestSequence: 9,
     silent: fields.silent ?? false,
+    closure: fields.status === "cancelled" ? closureOf(fields) : null,
+    effects: fields.effects ?? [],
+    budget: fields.budget ?? null,
+    effectEvidence: fields.effectEvidence ?? [],
   };
+}
+
+export function effect(fields: Partial<EffectSummary>): EffectSummary {
+  return {
+    operationId: '["cloving-operation",1,"run-1","work","effect",null,null]',
+    status: "running",
+    reason: null,
+    leaseGeneration: 1,
+    attempts: 1,
+    limit: 3,
+    ...fields,
+  };
+}
+
+function closureOf(fields: {
+  readonly observed?: Partial<Observation>;
+  readonly operations?: readonly OperationSummary[];
+  readonly stops?: readonly string[];
+}): RunClosure {
+  const reported =
+    fields.observed?.condition === "stopped"
+      ? (fields.observed.operationId ?? null)
+      : null;
+  const stopped = [reported, ...(fields.stops ?? [])];
+  return runClosure(
+    (fields.operations ?? []).map((operation) => ({
+      operationId: operation.operationId,
+      kind: operation.kind,
+      attempts: operation.outcomes.map((outcome, index) => ({
+        effectId: `effect-${String(index)}`,
+        purpose: "dispatch",
+        outcome,
+        stagedSequence: index,
+      })),
+      status: null,
+      receipt: null,
+      stopped: stopped.includes(operation.operationId),
+    })),
+    { cancelledSequence: 0, stopLimit: 3 },
+  );
 }
 
 export const start =

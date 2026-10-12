@@ -26,6 +26,11 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "cancel-run": "run.cancelled",
   "report-observation": "run.observed",
   "record-dispatch": "step.dispatched",
+  "request-effect": "effect.requested",
+  "grant-lease": "lease.granted",
+  "expire-lease": "lease.expired",
+  "report-effect": "effect.reported",
+  "record-outcome": "operation.reconciled",
 };
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -42,8 +47,17 @@ const revised: Shape = { required: ["expectedRevision"] };
 const shapes: Readonly<Record<string, Shape>> = {
   "admit-run": {
     required: ["workflow"],
-    optional: ["submission", "input", "resolver"],
-    groups: [["submission", "input", "resolver"]],
+    optional: [
+      "submission",
+      "input",
+      "resolver",
+      "effectLimit",
+      "capabilities",
+    ],
+    groups: [
+      ["submission", "input", "resolver"],
+      ["effectLimit", "capabilities"],
+    ],
   },
   "mark-started": revised,
   "open-gate": {
@@ -74,7 +88,54 @@ const shapes: Readonly<Record<string, Shape>> = {
     groups: [["attempt", "limit"]],
   },
   "record-dispatch": { required: ["operationId", "receipt"] },
+  "request-effect": {
+    required: [
+      "operationId",
+      "capability",
+      "method",
+      "target",
+      "payload",
+      "inputDigest",
+      "units",
+      "recoveryLimit",
+    ],
+    optional: ["resource", "transport", "source", "sourceGeneration"],
+    groups: [["source", "sourceGeneration"]],
+  },
+  "grant-lease": {
+    required: ["operationId", "leaseGeneration", "expiresAt", "capacity"],
+  },
+  "expire-lease": { required: ["operationId", "leaseGeneration"] },
+  "report-effect": {
+    required: [
+      "operationId",
+      "inputDigest",
+      "leaseGeneration",
+      "worker",
+      "outcome",
+    ],
+    optional: ["result", "reason", "evidence"],
+    consistent: (fields) =>
+      reportedOutcomes.includes(String(fields["outcome"])) &&
+      (fields["result"] !== undefined) ===
+        (fields["outcome"] === "completed") &&
+      (fields["reason"] !== undefined) === (fields["outcome"] === "failed"),
+  },
+  "record-outcome": {
+    required: ["operationId", "outcome"],
+    optional: [
+      "leaseGeneration",
+      "receipt",
+      "worker",
+      "result",
+      "reason",
+      "evidence",
+    ],
+  },
 };
+
+const reportedOutcomes = ["completed", "failed", "stopped"];
+const outcomes = [...reportedOutcomes, "accepted", "not-started", "unknown"];
 
 const conditions = [
   "working",
@@ -122,12 +183,12 @@ function completeFields(kind: string, fields: Fields): boolean {
     [...shape.required, ...present].every((key) =>
       validField(key, fields[key]),
     ) &&
-    (shape.groups ?? []).every((group) => whole(group, fields)) &&
+    (shape.groups ?? []).every((group) => complete(group, fields)) &&
     (shape.consistent?.(fields) ?? true)
   );
 }
 
-function whole(group: readonly string[], fields: Fields): boolean {
+function complete(group: readonly string[], fields: Fields): boolean {
   const present = group.filter((key) => fields[key] !== undefined).length;
   return present === 0 || present === group.length;
 }
@@ -150,8 +211,49 @@ function texts(fields: Fields): Partial<Record<TextField, string>> {
   return result;
 }
 
+function whole(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+export const recoveryBound = 10;
+
 function positive(value: unknown): boolean {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  return whole(value) && value > 0;
+}
+
+function atMost(value: unknown, limit: number): boolean {
+  return whole(value) && value <= limit;
+}
+
+function printable(value: unknown): boolean {
+  return typeof value === "string" && operation.test(value);
+}
+
+function isDigest(value: unknown): boolean {
+  return typeof value === "string" && digest.test(value);
+}
+
+function parsedList(text: string): readonly unknown[] | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isCapabilityList(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const list = parsedList(value);
+  return (
+    list !== null &&
+    list.length <= 64 &&
+    list.every(isIdentifier) &&
+    list.every(
+      (item, index) => index === 0 || String(list[index - 1]) < item,
+    ) &&
+    JSON.stringify(list) === value
+  );
 }
 
 const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
@@ -159,9 +261,24 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   generation: positive,
   attempt: positive,
   limit: positive,
-  operationId: (value) => typeof value === "string" && operation.test(value),
+  operationId: printable,
   gateKind: (value) => value === "question" || value === "approval",
-  subject: (value) => typeof value === "string" && digest.test(value),
+  subject: isDigest,
+  effectLimit: whole,
+  units: whole,
+  recoveryLimit: (value) => positive(value) && atMost(value, recoveryBound),
+  leaseGeneration: positive,
+  sourceGeneration: positive,
+  capacity: positive,
+  capabilities: isCapabilityList,
+  target: printable,
+  transport: printable,
+  source: printable,
+  payload: isDigest,
+  inputDigest: isDigest,
+  result: isDigest,
+  resource: isRecordKey,
+  outcome: (value) => typeof value === "string" && outcomes.includes(value),
   condition: (value) => typeof value === "string" && conditions.includes(value),
   expiresAt: isInstant,
   retryAt: isInstant,

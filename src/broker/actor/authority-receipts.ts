@@ -8,6 +8,7 @@ export type StoreReceipt =
       readonly kind: "accepted" | "duplicate";
       readonly sequence: number;
       readonly intents: readonly EffectIntent[];
+      readonly disposition?: string;
     }
   | {
       readonly kind: "rejected";
@@ -77,6 +78,7 @@ export function storeReceipt(value: unknown): StoreReceipt {
     throw new Error(`invalid-receipt: ${kind}`);
   const intents: unknown = Reflect.get(Object(value), "intents");
   if (!Array.isArray(intents)) throw new Error("invalid-receipt: intents");
+  const disposition: unknown = Reflect.get(Object(value), "disposition");
   return {
     kind,
     sequence: integer(value, "sequence"),
@@ -85,6 +87,7 @@ export function storeReceipt(value: unknown): StoreReceipt {
       runId: text(intent, "runId"),
       operationId: text(intent, "operationId"),
     })),
+    ...(typeof disposition === "string" ? { disposition } : {}),
   };
 }
 

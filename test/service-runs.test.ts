@@ -23,6 +23,8 @@ function status(
   return call(harness, { operation: "status", parameters: { runId } });
 }
 
+const noEffects = { budget: null, effects: [] };
+
 await test("CLV-008 status gives the state, the revision, the pending decision and the latest sequence of a run as one object", () =>
   withHarness(async (harness) => {
     const service = await harness.start();
@@ -49,6 +51,7 @@ await test("CLV-008 status gives the state, the revision, the pending decision a
         evidence: [],
         lastConfirmedObservation: null,
         recovery: { attempts: 0, limit: null },
+        ...noEffects,
         nextAction: "answer",
         nextActionAt: null,
         humanInputCanHelp: true,

@@ -42,6 +42,7 @@ function unreachableContinuations(sent: DeliveryIntent[]): Delivery {
 async function failedContinuation(harness: Harness): Promise<string> {
   const first = await harness.start({
     delivery: unreachableContinuations(harness.sent),
+    effects: { deliveryAttempts: 1 },
   });
   const waiting = await waitingGate(harness, {
     service: first,
@@ -73,7 +74,7 @@ async function blockedView(
   });
   const run = field(status, "run");
   return [
-    text(run, "workflowId").startsWith("sha256:"),
+    text(run, "workflowId"),
     field(run, "condition"),
     field(field(run, "reason"), "code"),
     field(run, "nextAction"),
@@ -93,7 +94,7 @@ await test("CLV-008 the delivery does not send a continuation whose available ma
       ["start-run"],
     );
     assert.deepEqual(await blockedView(harness, runId), [
-      true,
+      "develop",
       "infrastructure-failure",
       "pinned-workflow-unavailable",
       "restore-pinned-workflow",
