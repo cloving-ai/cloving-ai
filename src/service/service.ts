@@ -220,10 +220,20 @@ async function started(
       await listener.close();
       stopping.abort();
       await delivering;
-      await host?.close();
-      await authority.close();
+      await released(authority, host);
     },
   };
+}
+
+async function released(
+  authority: Authority,
+  host: ServiceHost | undefined,
+): Promise<void> {
+  try {
+    await host?.close();
+  } finally {
+    await authority.close();
+  }
 }
 
 export async function startService(
@@ -263,9 +273,11 @@ export async function startService(
       }),
     };
   } catch (error) {
-    await host.host?.close();
-    await authority.close();
-    return refused("transport-failure", message(error));
+    const unclosed = await released(authority, host.host).then(
+      () => "",
+      (failure: unknown) => `; the close failed: ${message(failure)}`,
+    );
+    return refused("transport-failure", `${message(error)}${unclosed}`);
   }
 }
 

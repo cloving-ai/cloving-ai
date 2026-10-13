@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -11,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const productRoot = join(import.meta.dirname, "..");
@@ -42,7 +43,7 @@ export const servicePrelude = `
 import { mkdirSync } from "node:fs";
 import { startService } from ${product("src/service/service.ts")};
 import { startDelivery } from ${product("src/host/start-delivery.ts")};
-import { cancelled, outcomeKind, taggedRuns } from ${product("src/host/world-runs.ts")};
+import { cancelled, outcomeKind, taggedRun, taggedRuns } from ${product("src/host/world-runs.ts")};
 import { worldLoop } from ${product("src/host/world-reconciliation.ts")};
 import { registerStepBridge, sdkStepCall, stepBridge } from ${product("src/host/step-bridge-host.ts")};
 import { call, digestOf, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
@@ -113,9 +114,13 @@ const hosted = async (overrides = {}) => {
       ports = given;
       const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
       if (host.kind !== "started") throw new Error(host.reason);
+      globalThis.released = host.host.released;
       const loop = worldLoop({ ...given, runs: taggedRuns, outcome: outcomeKind, intervalMilliseconds: 20, ...overrides.loop });
       const requestEffect = async (request) => {
-        const reply = await given.requestEffect(request);
+        const closes = existsSync("close-at-request");
+        const pending = given.requestEffect(request);
+        if (closes) { rmSync("close-at-request"); globalThis.closing = opening.service.close(); }
+        const reply = await pending;
         const lost = existsSync("fail-first-reply");
         appendFileSync("requests.log", JSON.stringify([reply.operation?.operationId ?? null, reply.operation?.inputDigest ?? null, request.commandId, lost ? "failed" : reply.receipt.kind]) + "\\n");
         if (!lost) return reply;
@@ -123,13 +128,17 @@ const hosted = async (overrides = {}) => {
         if (existsSync("halt-after-failed")) setTimeout(() => halt("halted-after-failed-receipt"), 0);
         return { receipt: { kind: "failed", reason: "storage-failure" }, disposition: null, operation: null };
       };
-      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, runs: taggedRuns, call: sdkStepCall }));
-      return { close: async () => { remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
+      const stopping = new AbortController();
+      const timing = { lookupTries: 250, pollMilliseconds: 20, retryMilliseconds: 100 };
+      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
+      return { close: async () => { stopping.abort(); remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
     },
   });
   if (opening.kind !== "started") { print(opening); process.exit(3); }
   globalThis.clovingGate = async (worldRunId) => {
-    const runId = (await taggedRuns()).find((run) => run.receipt === worldRunId).runId;
+    let found;
+    await until(async () => (found = await taggedRun(worldRunId)) !== undefined);
+    const runId = found.runId;
     const opened = Object.values((await ports.state()).gates).some((gate) => gate.runId === runId && gate.gateId === "design-1");
     if (opened) return runId + "/design-1";
     await until(async () => (await ports.state()).runs[runId].status === "running");
@@ -182,7 +191,11 @@ function child(
   return new Promise((resolve, reject) => {
     const started = spawn(process.execPath, argumentsList, {
       cwd: options.directory,
-      env: { ...process.env, ...options.environment },
+      env: {
+        ...process.env,
+        PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+        ...options.environment,
+      },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 45_000,
     });
@@ -260,6 +273,38 @@ async function compiledConsumer(
     throw new Error(`The fixture workflow did not compile: ${compiled.stderr}`);
 }
 
+const templates = new Map<string, Promise<string>>();
+
+function template(workflow: string): Promise<string> {
+  const known = templates.get(workflow);
+  if (known !== undefined) return known;
+  const made = mkdtemp(join(tmpdir(), "cloving-template-")).then(
+    async (created) => {
+      const directory = await realpath(created);
+      process.on("exit", () => {
+        rmSync(directory, { recursive: true, force: true });
+      });
+      await compiledConsumer(directory, workflow);
+      return directory;
+    },
+  );
+  templates.set(workflow, made);
+  return made;
+}
+
+async function linkedConsumer(
+  directory: string,
+  workflow: string,
+): Promise<void> {
+  const source = await template(workflow);
+  await writeFile(
+    join(directory, "package.json"),
+    '{"name":"host-consumer","private":true,"type":"module"}',
+  );
+  for (const name of ["artifacts", "node_modules", "workflows"])
+    await symlink(join(source, name), join(directory, name));
+}
+
 export async function withConsumer<Result>(
   workflow: string,
   use: (consumer: Consumer) => Promise<Result>,
@@ -269,7 +314,7 @@ export async function withConsumer<Result>(
   );
   const world = join(directory, "world");
   try {
-    await compiledConsumer(directory, workflow);
+    await linkedConsumer(directory, workflow);
     const environment = {
       WORKFLOW_TARGET_WORLD: "local",
       WORKFLOW_LOCAL_DATA_DIR: world,

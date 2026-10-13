@@ -43,25 +43,32 @@ export function dependencyGraph(program: ts.Program): DependencyGraph {
   return { files, edges };
 }
 
+const loadingKinds = [
+  ts.SyntaxKind.ImportType,
+  ts.SyntaxKind.ImportEqualsDeclaration,
+  ts.SyntaxKind.ImportKeyword,
+];
+const loaderName = /^(?:require|createRequire|getBuiltinModule)$/;
+const loaderKey = /^getBuiltinModule$/;
+
+function loading(node: ts.Node): boolean {
+  if (loadingKinds.includes(node.kind)) return true;
+  if (ts.isIdentifier(node)) return loaderName.test(node.text);
+  if (ts.isStringLiteralLike(node)) return loaderKey.test(node.text);
+  return (
+    ts.isElementAccessExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "module"
+  );
+}
+
 function rejectLoading(
   node: ts.Node,
   location: { readonly file: string; readonly parent: ts.Node | undefined },
 ): void {
   const { file, parent } = location;
   if (parent && ts.isPropertyAssignment(parent) && parent.name === node) return;
-  if (
-    [
-      ts.SyntaxKind.ImportType,
-      ts.SyntaxKind.ImportEqualsDeclaration,
-      ts.SyntaxKind.ImportKeyword,
-    ].includes(node.kind) ||
-    (ts.isIdentifier(node) &&
-      ["require", "createRequire"].includes(node.text)) ||
-    (ts.isElementAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "module")
-  )
-    throw new Error(`unsupported-loading: ${file}`);
+  if (loading(node)) throw new Error(`unsupported-loading: ${file}`);
 }
 
 function moduleReference(

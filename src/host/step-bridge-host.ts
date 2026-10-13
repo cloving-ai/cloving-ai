@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { getStepMetadata, getWorkflowMetadata } from "workflow";
 import {
@@ -35,17 +36,34 @@ export interface BridgeReply {
   readonly operation: OperationRead | null;
 }
 
-export interface BridgeRequest extends ProtectedRequest {
-  readonly runId: string;
+interface BridgeIdentity {
   readonly commandId: string;
   readonly transport: string;
 }
 
+export interface BridgeRequest extends ProtectedRequest, BridgeIdentity {
+  readonly runId: string;
+}
+
+export interface BridgeTiming {
+  readonly lookupTries: number;
+  readonly pollMilliseconds: number;
+  readonly retryMilliseconds: number;
+}
+
+export const bridgeTiming: BridgeTiming = {
+  lookupTries: 250,
+  pollMilliseconds: 20,
+  retryMilliseconds: 1000,
+};
+
 export interface BridgePorts {
   readonly call: () => StepCall;
-  readonly runs: () => Promise<
-    readonly { readonly runId: string; readonly receipt: string }[]
-  >;
+  readonly run: (
+    worldRunId: string,
+  ) => Promise<{ readonly runId: string } | undefined>;
+  readonly timing?: BridgeTiming;
+  readonly stopped: AbortSignal;
   readonly state: () => Promise<{
     readonly runs: Readonly<
       Record<string, { readonly status: string } | undefined>
@@ -58,80 +76,159 @@ export interface BridgePorts {
   readonly document: (digest: string) => Promise<string | undefined>;
 }
 
+interface Hold {
+  readonly ports: BridgePorts;
+  readonly timing: BridgeTiming;
+}
+
+interface Admitted {
+  readonly kind: "admitted";
+  readonly operationId: string;
+}
+
 const committed = ["accepted", "duplicate"];
 const ended = ["failed", "stopped", "blocked", "cancelled"] as const;
 
-function refusal(reply: BridgeReply): ProtectedResult | undefined {
-  const { receipt, disposition } = reply;
-  if (receipt.kind === "failed")
-    throw new Error(
-      `command-outcome-unknown: ${receipt.reason ?? receipt.kind}`,
-    );
+async function paused(hold: Hold, milliseconds: number): Promise<void> {
+  const { stopped } = hold.ports;
+  await delay(milliseconds, undefined, { signal: stopped }).catch(
+    () => undefined,
+  );
+  if (stopped.aborted) await new Promise<never>(() => undefined);
+}
+
+function answered(reply: BridgeReply): Admitted | ProtectedResult | undefined {
+  const { receipt, disposition, operation } = reply;
+  const busy = receipt.kind === "rejected" && receipt.reason === "service-busy";
+  if (receipt.kind === "failed" || busy) return undefined;
   if (!committed.includes(receipt.kind))
     return { kind: "refused", reason: receipt.reason ?? receipt.kind };
   if (disposition?.disposition === "refused")
     return { kind: "refused", reason: disposition.reason ?? "refused" };
-  return undefined;
+  if (operation === null) return undefined;
+  return { kind: "admitted", operationId: operation.operationId };
+}
+
+async function requested(
+  hold: Hold,
+  request: BridgeRequest,
+): Promise<Admitted | ProtectedResult> {
+  for (;;) {
+    await paused(hold, 0);
+    const answer = await hold.ports
+      .requestEffect(request)
+      .then(answered, () => undefined);
+    if (answer !== undefined) return answer;
+    await paused(hold, hold.timing.retryMilliseconds);
+  }
+}
+
+async function text(hold: Hold, digest: string | null): Promise<string | null> {
+  if (digest === null) return null;
+  for (;;) {
+    const read = await hold.ports.document(digest).then(
+      (value) => ({ value: value ?? null }),
+      () => undefined,
+    );
+    if (read !== undefined) return read.value;
+    await paused(hold, hold.timing.retryMilliseconds);
+  }
+}
+
+async function outcome(
+  hold: Hold,
+  operation: OperationRead,
+): Promise<ProtectedResult | undefined> {
+  const { operationId, status, reason, receipt, result } = operation;
+  if (status === "refused")
+    return { kind: "refused", reason: reason ?? "refused" };
+  const end = ended.find((kind) => kind === status);
+  if (end !== undefined) return { kind: end, operationId, reason };
+  if (status !== "completed") return undefined;
+  return {
+    kind: "completed",
+    operationId,
+    receipt,
+    result: await text(hold, result),
+  };
 }
 
 async function settled(
-  ports: BridgePorts,
+  hold: Hold,
   operationId: string,
 ): Promise<ProtectedResult> {
   for (;;) {
-    const operation = await ports.operation(operationId);
-    if (operation === undefined || operation.status === "refused")
-      return { kind: "refused", reason: operation?.reason ?? "no-operation" };
-    const { status, reason, receipt, result } = operation;
-    const end = ended.find((kind) => kind === status);
-    if (end !== undefined) return { kind: end, operationId, reason };
-    if (status === "completed")
-      return {
-        kind: "completed",
-        operationId,
-        receipt,
-        result:
-          result === null ? null : ((await ports.document(result)) ?? null),
-      };
-    await delay(20);
+    const operation = await hold.ports
+      .operation(operationId)
+      .catch(() => undefined);
+    const result =
+      operation === undefined ? undefined : await outcome(hold, operation);
+    if (result !== undefined) return result;
+    await paused(
+      hold,
+      operation === undefined
+        ? hold.timing.retryMilliseconds
+        : hold.timing.pollMilliseconds,
+    );
   }
 }
 
-async function inWork(ports: BridgePorts, runId: string): Promise<void> {
-  for (;;) {
-    const status = (await ports.state()).runs[runId]?.status;
-    if (status !== "queued") return;
-    await delay(20);
+async function located(
+  hold: Hold,
+  worldRunId: string,
+): Promise<{ readonly runId: string } | undefined> {
+  const tries = hold.timing.lookupTries;
+  for (let attempt = 1; attempt <= tries; attempt += 1) {
+    const world = await hold.ports.run(worldRunId);
+    if (world !== undefined || attempt === tries) return world;
+    await paused(hold, hold.timing.pollMilliseconds);
   }
+  return undefined;
+}
+
+async function inWork(hold: Hold, runId: string): Promise<void> {
+  for (;;) {
+    const state = await hold.ports.state().catch(() => undefined);
+    if (state !== undefined && state.runs[runId]?.status !== "queued") return;
+    await paused(
+      hold,
+      state === undefined
+        ? hold.timing.retryMilliseconds
+        : hold.timing.pollMilliseconds,
+    );
+  }
+}
+
+function identity(call: StepCall, request: ProtectedRequest): BridgeIdentity {
+  const transport = `sdk:${call.stepId}`.replace(/[^A-Za-z0-9._:/-]/g, "-");
+  const scope = createHash("sha256")
+    .update(JSON.stringify(request.scope))
+    .digest("hex")
+    .slice(0, 16);
+  return { transport, commandId: `${transport}:${scope}` };
 }
 
 async function effect(
-  ports: BridgePorts,
+  hold: Hold,
   request: ProtectedRequest,
 ): Promise<ProtectedResult> {
-  const call = ports.call();
-  const world = (await ports.runs()).find(
-    (run) => run.receipt === call.worldRunId,
-  );
+  const call = hold.ports.call();
+  const world = await located(hold, call.worldRunId);
   if (world === undefined)
     return { kind: "unavailable", reason: "unknown-world-run" };
-  await inWork(ports, world.runId);
-  const identity = `sdk:${call.stepId}`.replace(/[^A-Za-z0-9._:/-]/g, "-");
-  const reply = await ports.requestEffect({
+  await inWork(hold, world.runId);
+  const answer = await requested(hold, {
     ...request,
+    ...identity(call, request),
     runId: world.runId,
-    commandId: identity,
-    transport: identity,
   });
-  const refused = refusal(reply);
-  if (refused !== undefined) return refused;
-  if (reply.operation === null)
-    return { kind: "refused", reason: "no-operation" };
-  return await settled(ports, reply.operation.operationId);
+  if (answer.kind !== "admitted") return answer;
+  return await settled(hold, answer.operationId);
 }
 
 export function stepBridge(ports: BridgePorts): StepBridge {
-  return { effect: (request) => effect(ports, request) };
+  const hold = { ports, timing: ports.timing ?? bridgeTiming };
+  return { effect: (request) => effect(hold, request) };
 }
 
 export function registerStepBridge(bridge: StepBridge): () => void {

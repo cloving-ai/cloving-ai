@@ -116,7 +116,7 @@ await test("CLV-007 world progress after a recorded dispatch becomes the next ru
     );
 });
 
-await test("CLV-007 two world runs for one Cloving run are reported and never reconciled", () => {
+await test("CLV-007 two world runs for one Cloving run are reported and get no run transition", () => {
   assert.deepEqual(
     reconcile(admitted, [
       { runId: "run-1", receipt: "wrun-1", status: "pending" },
@@ -124,7 +124,16 @@ await test("CLV-007 two world runs for one Cloving run are reported and never re
       { runId: "run-9", receipt: "wrun-9", status: "running" },
     ]),
     {
-      commands: [],
+      commands: [
+        {
+          kind: "report-observation",
+          commandId: "observe:world-run-conflict:wrun-1",
+          runId: "run-1",
+          condition: "infrastructure-failure",
+          reason: "world-run-conflict",
+          evidence: "world-run:wrun-1/world-run:wrun-2",
+        },
+      ],
       conflicts: ["run-1"],
       reports: [
         { kind: "unknown-world-run", runId: "run-9", receipt: "wrun-9" },

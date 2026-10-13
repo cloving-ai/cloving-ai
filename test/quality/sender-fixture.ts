@@ -11,11 +11,11 @@ const databaseLibrary = "node_modules/solid-objects/dist/database/sqlite.d.ts";
 const sender: Readonly<Record<string, readonly [string, string]>> = {
   [actorLibrary]: [
     "actor-runtime",
-    "export declare abstract class Actor { emit(name: string): { id: string }; commitAction(name: string): void; }",
+    "export declare abstract class Actor { emit(name: string): { id: string }; transmit(): { relayed(): void }; commitAction(name: string): void; }",
   ],
   [runtimeLibrary]: [
     "actor-runtime",
-    "export declare class SolidObjectsRuntime { registerEffect(name: string, handler: (value: string) => Promise<string>): void; close(): Promise<void>; }",
+    "export declare class SolidObjectsRuntime { registerEffect(name: string, handler: (value: string) => Promise<string>): void; registerCommitAction(name: string, handler: (value: string) => Promise<void>): void; registerComponent(factory: () => object): void; effectWorker(): { runOnce(): Promise<number> }; executeEffect(effect: { id: string }): Promise<void>; close(): Promise<void>; }",
   ],
   [databaseLibrary]: [
     "actor-runtime",

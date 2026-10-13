@@ -438,6 +438,11 @@
     "quality/value-nodes.ts": "quality",
     "quality/reserved-imports.ts": "quality",
     "quality/reserved-members.ts": "quality",
+    "quality/reserved-names.ts": "quality",
+    "quality/reserved-uses.ts": "quality",
+    "test/quality/builtin-loading.test.ts": "test",
+    "test/quality/reserved-names.test.ts": "test",
+    "test/quality/reserved-library.test.ts": "test",
     "test/quality/reserved-members.test.ts": "test",
     "test/quality/sender-fixture.ts": "test",
     "test/quality/boundary-roles.test.ts": "test",
@@ -450,6 +455,7 @@
     "src/steps/protected-effect.ts": "step",
     "src/host/start-delivery.ts": "host-bridge",
     "src/host/world-host.ts": "host-bridge",
+    "src/host/step-claims.ts": "host-bridge",
     "src/host/world-reconciliation.ts": "host-bridge",
     "src/host/world-runs.ts": "host-bridge",
     "test/toolchain-runtime.test.ts": "test",
@@ -465,6 +471,8 @@
     "test/world-recovery.test.ts": "test",
     "test/world-reconciliation.test.ts": "test",
     "test/world-start.test.ts": "test",
+    "test/world-claims.test.ts": "test",
+    "test/step-claims.test.ts": "test",
     "test/world-host.test.ts": "test"
   },
   "allowed": {
@@ -591,6 +599,47 @@
         "type": "SolidObjectsRuntime",
         "members": ["registerEffect"],
         "users": ["src/broker/actor/authority-release.ts"]
+      },
+      {
+        "file": "node_modules/solid-objects/dist/actor.d.ts",
+        "type": "Actor",
+        "members": ["transmit"],
+        "users": []
+      },
+      {
+        "file": "node_modules/solid-objects/dist/runtime.d.ts",
+        "type": "SolidObjectsRuntime",
+        "members": ["registerCommitAction"],
+        "users": ["src/broker/actor/runtime-parts.ts"]
+      },
+      {
+        "file": "node_modules/solid-objects/dist/runtime.d.ts",
+        "type": "SolidObjectsRuntime",
+        "members": ["registerComponent", "effectWorker", "executeEffect"],
+        "users": []
+      },
+      {
+        "file": "src/host/start-delivery.ts",
+        "type": "StartDelivery",
+        "members": [],
+        "users": []
+      }
+    ],
+    "names": [
+      {
+        "file": "node_modules/solid-objects/dist/transmit.d.ts",
+        "name": "registerTransmit",
+        "users": []
+      },
+      {
+        "file": "node_modules/solid-objects/dist/effect-worker.d.ts",
+        "name": "EffectWorker",
+        "users": []
+      },
+      {
+        "file": "node_modules/@workflow/core/dist/runtime/start.d.ts",
+        "name": "start",
+        "users": ["src/host/start-delivery.ts"]
       }
     ],
     "imports": {

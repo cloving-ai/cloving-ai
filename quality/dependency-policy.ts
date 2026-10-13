@@ -7,8 +7,15 @@ export interface ReservedMembers {
   readonly users: readonly string[];
 }
 
+export interface ReservedName {
+  readonly file: string;
+  readonly name: string;
+  readonly users: readonly string[];
+}
+
 export interface ReservedPolicy {
   readonly members: readonly ReservedMembers[];
+  readonly names: readonly ReservedName[];
   readonly imports: Readonly<Record<string, readonly string[]>>;
   readonly exempt: readonly string[];
 }

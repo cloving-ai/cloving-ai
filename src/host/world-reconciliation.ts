@@ -8,14 +8,14 @@ import type { AuthorityState } from "../authority/transitions.ts";
 
 export type ReconciledState = Pick<
   AuthorityState,
-  "runs" | "intents" | "details"
+  "runs" | "intents" | "details" | "gates" | "commands"
 >;
 
 export interface ReconciliationPorts {
   readonly state: () => Promise<ReconciledState>;
-  readonly submit: (
-    command: Readonly<Record<string, unknown>>,
-  ) => Promise<{ readonly kind: string }>;
+  readonly submit: (command: Readonly<Record<string, unknown>>) => Promise<{
+    readonly kind: "accepted" | "duplicate" | "rejected" | "failed";
+  }>;
   readonly runs: () => Promise<readonly WorldRun[]>;
   readonly outcome: (receipt: string) => Promise<string | undefined>;
 }
@@ -36,36 +36,41 @@ async function withOutcome(
     world.status === "completed" &&
     state.runs[world.runId]?.status === "running";
   if (!ended) return world;
-  const outcome = await ports.outcome(world.receipt);
-  return outcome === undefined ? world : { ...world, outcome };
+  const read = await ports.outcome(world.receipt).then(
+    (outcome) => ({ outcome }),
+    () => undefined,
+  );
+  if (read === undefined) return { ...world, status: "unreadable" };
+  return read.outcome === undefined
+    ? world
+    : { ...world, outcome: read.outcome };
 }
 
 export async function reconcileWorld(
   ports: ReconciliationPorts,
 ): Promise<Pass> {
-  const state = await ports.state();
   const listed = await ports.runs();
+  const state = await ports.state();
   const runs: WorldRun[] = [];
   for (const world of listed)
     runs.push(await withOutcome(ports, { state, world }));
-  const plan = reconcile(state, runs);
+  const { commands, reports, conflicts } = reconcile(state, runs);
   const sent: string[] = [];
-  for (const command of plan.commands) {
+  for (const command of commands) {
     const receipt = await ports.submit(command);
     sent.push(`${String(command["commandId"])} ${receipt.kind}`);
-    if (receipt.kind === "storage-failure")
-      return { sent, interrupted: true, reports: [], conflicts: [] };
+    if (receipt.kind === "failed")
+      return { sent, interrupted: true, reports, conflicts };
   }
-  return {
-    sent,
-    interrupted: false,
-    reports: plan.reports,
-    conflicts: plan.conflicts,
-  };
+  return { sent, interrupted: false, reports, conflicts };
 }
 
 export type LoopReport =
-  WorldReport | { readonly kind: "world-run-conflict"; readonly runId: string };
+  | WorldReport
+  | { readonly kind: "world-run-conflict"; readonly runId: string }
+  | { readonly kind: "world-reconciliation-failed"; readonly passes: number };
+
+export const passFailureLimit = 3;
 
 export interface WorldLoop {
   readonly stop: () => Promise<void>;
@@ -87,10 +92,12 @@ export function worldLoop(
 ): WorldLoop {
   const stopping = new AbortController();
   let reports: readonly LoopReport[] = [];
+  let failures = 0;
   const cycle = async (): Promise<void> => {
     while (!stopping.signal.aborted) {
       const pass = await reconcileWorld(parts).catch(() => undefined);
       reports = pass === undefined ? reports : reported(pass);
+      failures = pass?.interrupted === false ? 0 : failures + 1;
       await delay(parts.intervalMilliseconds, undefined, {
         signal: stopping.signal,
       }).catch(() => undefined);
@@ -102,6 +109,12 @@ export function worldLoop(
       stopping.abort();
       await running;
     },
-    reports: () => reports,
+    reports: () =>
+      failures < passFailureLimit
+        ? reports
+        : [
+            ...reports,
+            { kind: "world-reconciliation-failed", passes: failures },
+          ],
   };
 }

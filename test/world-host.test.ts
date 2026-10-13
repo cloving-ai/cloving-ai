@@ -82,6 +82,14 @@ await test("CLV-055 the product host refuses to start with no explicit concurren
         { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "1.5", BOUND: "1.5" },
         "invalid-host-bound",
       ],
+      [
+        { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "1e+21", BOUND: "1e21" },
+        "invalid-host-bound",
+      ],
+      [
+        { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "65", BOUND: "65" },
+        "invalid-host-bound",
+      ],
     ] as const) {
       const refusal = await consumer.run(threeRuns, environment);
       assert.partialDeepStrictEqual(refusal.lines, [
@@ -138,6 +146,37 @@ await opening.host.close(); print({ kind: opening.kind, registered });`,
     ]);
   }));
 
+await test("CLV-055 when the World does not start, the product host closes the World and gives a refusal", () =>
+  withConsumer(workflows, async (consumer) => {
+    const failed = await consumer.run(
+      `${counting}const calls = [];
+setWorld({ specVersion: 8, registerHandler: () => calls.push("register"), start: async () => { calls.push("start"); throw new Error("the data directory is not writable"); }, close: async () => { calls.push("close"); } });
+print({ opening: await startHost({ dataDirectory, concurrency: 1, handler: counted }), calls });`,
+    );
+    assert.deepEqual(failed.lines, [
+      {
+        opening: {
+          kind: "refused",
+          reason: "host-start-failed",
+          detail: "the data directory is not writable",
+        },
+        calls: ["register", "start", "close"],
+      },
+    ]);
+  }));
+
+await test("CLV-057 a cancel of a World run that is at an end gives the end status and throws no error", () =>
+  withConsumer(workflows, async (consumer) => {
+    const ended = await consumer.run(`${counting}${opened}
+const { cancelled } = await import(${JSON.stringify(join(import.meta.dirname, "../src/host/world-runs.ts"))});
+const run = await start(workflows.develop, [{ value: 2 }]);
+await getRun(run.runId).returnValue;
+print({ status: await cancelled(run.runId) });
+await opening.host.close();
+`);
+    assert.deepEqual(ended.lines, [{ status: "completed" }]);
+  }));
+
 await test("CLV-055 an import of the package entries and of the host module starts no World and writes no file", () =>
   withConsumer(workflows, async (consumer) => {
     const entries = (): string[] =>
@@ -164,10 +203,10 @@ const directory = process.cwd();
 const run = await start(workflows.held, [{ directory }]);
 while (!existsSync(directory + "/step-started")) await delay(10);
 await opening.host.close();
-const record = () => JSON.parse(readFileSync(dataDirectory + "/runs/" + run.runId + ".json", "utf8")).status;
-const atClose = { ended: existsSync(directory + "/step-ended"), status: record() };
+const stopped = () => ["cancelled", "failed", "completed"].includes(JSON.parse(readFileSync(dataDirectory + "/runs/" + run.runId + ".json", "utf8")).status);
+const atClose = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
 await delay(200);
-const later = { ended: existsSync(directory + "/step-ended"), status: record() };
+const later = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
 writeFileSync(directory + "/release", "");
 while (!existsSync(directory + "/step-ended")) await delay(10);
 print({ atClose, later, endedAfterRelease: true });
@@ -175,8 +214,8 @@ process.exit(0);
 `);
     assert.deepEqual(closed.lines, [
       {
-        atClose: { ended: false, status: "running" },
-        later: { ended: false, status: "running" },
+        atClose: { ended: false, stopped: false },
+        later: { ended: false, stopped: false },
         endedAfterRelease: true,
       },
     ]);

@@ -139,15 +139,12 @@ await test("CLV-056 a World cancellation in each run state gives the recorded tr
 });
 
 await test("CLV-056 the end of a segment with the outcome waiting_for_decision does not complete the run, also when the decision comes before the reconciliation of the segment end", () => {
-  for (const state of [running, atGate, decided, paused])
+  for (const state of [atGate, decided, paused])
     assert.deepEqual(
       reconcile(state, world("completed", "waiting_for_decision")).commands,
       [],
     );
   assert.equal(decided.runs["run-1"]?.status, "running");
-  const started = settled(queued, world("completed", "waiting_for_decision"));
-  assert.deepEqual(started.kinds, ["mark-started"]);
-  assert.equal(started.state.runs["run-1"]?.status, "running");
   for (const outcome of ["handoff_requested", undefined])
     assert.equal(
       settled(running, world("completed", outcome)).state.runs["run-1"]?.status,
@@ -213,10 +210,170 @@ await test("CLV-057 two World runs of one Cloving run with two operation IDs are
   ]);
 });
 
-await test("CLV-057 two World runs with one operation ID, or a second World run with no operation ID, are a conflict", () => {
+const conflictNote = {
+  kind: "report-observation",
+  commandId: "observe:world-run-conflict:wrun-1",
+  runId: "run-1",
+  condition: "infrastructure-failure",
+  reason: "world-run-conflict",
+  evidence: "world-run:wrun-1/world-run:wrun-2",
+};
+
+await test("CLV-057 two World runs with one operation ID, or a second World run with no operation ID, are a conflict with one recorded observation and no run transition", () => {
   for (const operationId of [startOperation, null])
     assert.deepEqual(
       reconcile(running, segments({ status: "running", operationId })),
-      { commands: [], conflicts: ["run-1"], reports: [] },
+      { commands: [conflictNote], conflicts: ["run-1"], reports: [] },
     );
+  const twice = segments({ status: "failed", operationId: startOperation });
+  const noted = settled(running, twice);
+  assert.deepEqual(noted.kinds, ["report-observation"]);
+  assert.equal(noted.state.runs["run-1"]?.status, "running");
+  const ended = settled(running, world("failed")).state;
+  assert.deepEqual(reconcile(ended, twice).commands, []);
+});
+
+const continued = advanced(decided, [
+  {
+    kind: "record-dispatch",
+    operationId: continueOperation,
+    receipt: "wrun-2",
+  },
+]);
+
+await test("CLV-057 the last segment of a run is the one with the latest creation time, and with the highest World run ID for one creation time", () => {
+  const [first, second] = segments({ status: "running" });
+  assert.ok(first && second);
+  const late = { ...first, receipt: "wrun-2", status: "completed" };
+  const early = { ...second, receipt: "wrun-1", status: "running" };
+  const crossed = [
+    {
+      ...late,
+      createdAt: "2026-10-13T10:00:00.000Z",
+      operationId: startOperation,
+    },
+    { ...early, createdAt: "2026-10-13T10:00:01.000Z" },
+  ];
+  for (const worlds of [crossed, crossed.toReversed()])
+    assert.deepEqual(reconcile(continued, worlds).commands, []);
+  const together = segments({
+    status: "completed",
+    createdAt: "2026-10-13T10:00:00.000Z",
+  });
+  for (const worlds of [together, together.toReversed()])
+    assert.deepEqual(reconcile(continued, worlds).commands, [
+      {
+        kind: "complete-run",
+        commandId: "complete-run:wrun-2",
+        runId: "run-1",
+        expectedRevision: continued.runs["run-1"]?.revision,
+      },
+    ]);
+});
+
+await test("CLV-057 a failed segment that is not the last segment fails the run", () => {
+  const worlds = segments({ status: "running" }).map((segment) =>
+    segment.receipt === "wrun-1" ? { ...segment, status: "failed" } : segment,
+  );
+  const result = settled(continued, worlds);
+  assert.deepEqual(result.kinds, ["report-observation", "fail-run"]);
+  assert.deepEqual(observation(result.state), [
+    "infrastructure-failure",
+    "world-run-failed",
+    "world-run:wrun-1",
+  ]);
+});
+
+await test("CLV-056 a recorded dispatch with no World run of its operation gives the report world-run-absent, and a start that waits for its delivery gives none", () => {
+  const absent = (operationId: string): unknown => ({
+    kind: "world-run-absent",
+    runId: "run-1",
+    operationId,
+  });
+  const [first] = segments({ status: "running" });
+  assert.ok(first);
+  assert.deepEqual(reconcile(queued, []).reports, [absent(startOperation)]);
+  assert.deepEqual(reconcile(running, []).reports, [absent(startOperation)]);
+  assert.deepEqual(reconcile(continued, [first]), {
+    commands: [],
+    conflicts: [],
+    reports: [absent(continueOperation)],
+  });
+  assert.deepEqual(reconcile(continued, []).reports, [
+    absent(startOperation),
+    absent(continueOperation),
+  ]);
+  const waits = advanced(emptyAuthority, [admit]);
+  const ended = settled(running, world("completed")).state;
+  for (const [state, worlds] of [
+    [waits, []],
+    [decided, [first]],
+    [queued, [first]],
+    [queued, world("running")],
+    [ended, []],
+  ] as const)
+    assert.deepEqual(reconcile(state, worlds).reports, []);
+});
+
+const strandedPlan = ["mark-started", "report-observation", "fail-run"];
+
+await test("CLV-057 a segment that ends with waiting_for_decision when the run has no open gate and no continuation fails the run with the code world-run-waits-without-gate", () => {
+  const [first, second] = segments({
+    status: "completed",
+    outcome: "waiting_for_decision",
+  });
+  assert.ok(first && second);
+  assert.deepEqual(reconcile(running, [first]).commands, [
+    {
+      kind: "report-observation",
+      commandId: "observe:world-run-waits-without-gate:wrun-1",
+      runId: "run-1",
+      condition: "infrastructure-failure",
+      reason: "world-run-waits-without-gate",
+      evidence: "world-run:wrun-1",
+    },
+    {
+      kind: "fail-run",
+      commandId: "fail-run:wrun-1",
+      runId: "run-1",
+      expectedRevision: running.runs["run-1"]?.revision,
+    },
+  ]);
+  const started = settled(queued, world("completed", "waiting_for_decision"));
+  assert.deepEqual(started.kinds, strandedPlan);
+  assert.equal(started.state.runs["run-1"]?.status, "failed");
+  const again = settled(continued, [first, second]);
+  assert.deepEqual(again.kinds, ["report-observation", "fail-run"]);
+  assert.deepEqual(observation(again.state), [
+    "infrastructure-failure",
+    "world-run-waits-without-gate",
+    "world-run:wrun-2",
+  ]);
+  for (const [state, worlds] of [
+    [atGate, [first]],
+    [decided, [first]],
+    [continued, [first]],
+    [paused, [first]],
+  ] as const)
+    assert.deepEqual(reconcile(state, worlds).commands, []);
+});
+
+await test("CLV-056 the observation of a World end is sent one time, also after a later observation of a worker, and a World run that the host cannot read gives a report and no command", () => {
+  const held = settled(paused, world("failed")).state;
+  const later = advanced(held, [
+    {
+      kind: "report-observation",
+      condition: "working",
+      reason: "tool-progress",
+    },
+  ]);
+  assert.deepEqual(observation(later), ["working", "tool-progress", null]);
+  assert.deepEqual(reconcile(later, world("failed")).commands, []);
+  assert.deepEqual(reconcile(running, world("unreadable")), {
+    commands: [],
+    conflicts: [],
+    reports: [
+      { kind: "world-run-unreadable", runId: "run-1", receipt: "wrun-1" },
+    ],
+  });
 });

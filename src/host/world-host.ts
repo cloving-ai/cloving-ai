@@ -1,4 +1,5 @@
 import { getWorld } from "workflow/runtime";
+import { releaseStepClaims } from "./step-claims.ts";
 
 export type WorkflowHandler = (request: Request) => Promise<Response>;
 
@@ -9,6 +10,7 @@ export interface HostSettings {
 }
 
 export interface WorkflowHost {
+  readonly released: readonly string[];
   readonly close: () => Promise<void>;
 }
 
@@ -22,6 +24,8 @@ export type HostOpening =
   { readonly kind: "started"; readonly host: WorkflowHost } | HostRefusal;
 
 const workflowQueue = "__wkf_workflow_";
+
+export const hostBoundLimit = 64;
 
 interface DirectWorld {
   readonly registerHandler: (
@@ -44,8 +48,11 @@ function refused(reason: string, detail: string): HostRefusal {
 
 function unsuitable(settings: HostSettings): HostRefusal | undefined {
   const { concurrency, dataDirectory } = settings;
-  if (!Number.isInteger(concurrency) || concurrency < 1)
-    return refused("invalid-host-bound", String(concurrency));
+  const bounded =
+    Number.isSafeInteger(concurrency) &&
+    concurrency >= 1 &&
+    concurrency <= hostBoundLimit;
+  if (!bounded) return refused("invalid-host-bound", String(concurrency));
   if (process.env["WORKFLOW_TARGET_WORLD"] !== "local")
     return refused("host-world", "WORKFLOW_TARGET_WORLD is not local");
   if (process.env["WORKFLOW_LOCAL_DATA_DIR"] !== dataDirectory)
@@ -64,11 +71,21 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
   const world = await getWorld();
   if (!direct(world))
     return refused("host-world", "the World takes no handler in its process");
+  const released = await releaseStepClaims(settings.dataDirectory, world);
   world.registerHandler(workflowQueue, settings.handler);
-  await world.start?.();
+  try {
+    await world.start?.();
+  } catch (error) {
+    await world.close?.();
+    return refused(
+      "host-start-failed",
+      String(Reflect.get(Object(error), "message")),
+    );
+  }
   return {
     kind: "started",
     host: {
+      released,
       close: async () => {
         await world.close?.();
       },

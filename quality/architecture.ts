@@ -6,6 +6,7 @@ import { inspectEffects } from "./effects.ts";
 import { inspectNetworkGlobals } from "./network-globals.ts";
 import { checkReservedImports } from "./reserved-imports.ts";
 import { inspectReservedMembers } from "./reserved-members.ts";
+import { inspectReservedNames } from "./reserved-names.ts";
 
 export function checkArchitecture(
   program: ts.Program,
@@ -18,13 +19,17 @@ export function checkArchitecture(
     "reserved-member",
     inspectReservedMembers(program, { files: graph.files, policy }),
   );
+  rejectFindings(
+    "reserved-name",
+    inspectReservedNames(program, { files: graph.files, policy }),
+  );
   const withRole = (roles: readonly string[]): string[] =>
     graph.files.filter((file) => roles.includes(policy.roles[file] ?? ""));
   rejectFindings(
     "network-global",
     inspectNetworkGlobals(
       program,
-      withRole(["broker", "storage", "service", "step"]),
+      withRole(["broker", "storage", "service", "step", "host-bridge"]),
     ),
   );
   rejectFindings(

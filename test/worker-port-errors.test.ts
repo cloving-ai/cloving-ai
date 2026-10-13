@@ -59,13 +59,14 @@ await test("CLV-059 the worker port gives a reply with the receipt, and no error
   assert.deepEqual(sent, ["request-effect", "report-effect"]);
 });
 
+const invalid = {
+  receipt: { kind: "rejected", reason: "invalid-command" },
+  disposition: null,
+  operation: null,
+};
+
 await test("CLV-059 the worker port rejects a payload, a result or an operation ID that is not a text with invalid-command", async () => {
   const { sent, worker } = await port();
-  const invalid = {
-    receipt: { kind: "rejected", reason: "invalid-command" },
-    disposition: null,
-    operation: null,
-  };
   const replies: unknown[] = [
     await Reflect.apply(worker.requestEffect, undefined, [
       { ...request, payload: 5 },
@@ -75,6 +76,32 @@ await test("CLV-059 the worker port rejects a payload, a result or an operation 
     ]),
     await Reflect.apply(worker.reportEffect, undefined, [
       { ...report, operationId: 5 },
+    ]),
+  ];
+  assert.deepEqual(replies, [invalid, invalid, invalid]);
+  assert.deepEqual(sent, []);
+});
+
+await test("CLV-059 the worker port rejects a result that is null with invalid-command and throws no error", async () => {
+  const { sent, worker } = await port();
+  const reply: unknown = await Reflect.apply(worker.reportEffect, undefined, [
+    { ...report, result: null },
+  ]);
+  assert.deepEqual(reply, invalid);
+  assert.deepEqual(sent, []);
+});
+
+await test("CLV-059 the worker port rejects a capability, a method or a target that is not a text with invalid-command", async () => {
+  const { sent, worker } = await port();
+  const replies: unknown[] = [
+    await Reflect.apply(worker.requestEffect, undefined, [
+      { ...request, capability: 5 },
+    ]),
+    await Reflect.apply(worker.requestEffect, undefined, [
+      { ...request, method: null },
+    ]),
+    await Reflect.apply(worker.requestEffect, undefined, [
+      { ...request, target: { path: "workspace/main" } },
     ]),
   ];
   assert.deepEqual(replies, [invalid, invalid, invalid]);

@@ -42,24 +42,38 @@ const running = advanced(queued, {
   expectedRevision: 1,
 });
 
+type ReceiptKind = Awaited<ReturnType<ReconciliationPorts["submit"]>>["kind"];
+
 function ports(scene: {
   readonly state: AuthorityState;
   readonly world: readonly WorldRun[];
-  readonly receipts: readonly string[];
+  readonly receipts: readonly ReceiptKind[];
+  readonly unreadable?: readonly string[];
 }): ReconciliationPorts & {
   readonly submitted: string[];
   readonly outcomes: string[];
+  readonly reads: string[];
 } {
   const submitted: string[] = [];
   const outcomes: string[] = [];
+  const reads: string[] = [];
   return {
     submitted,
     outcomes,
-    state: () => Promise.resolve(scene.state),
-    runs: () => Promise.resolve(scene.world),
+    reads,
+    state: () => {
+      reads.push("state");
+      return Promise.resolve(scene.state);
+    },
+    runs: () => {
+      reads.push("runs");
+      return Promise.resolve(scene.world);
+    },
     outcome: (receipt) => {
       outcomes.push(receipt);
-      return Promise.resolve("handoff_requested");
+      return scene.unreadable?.includes(receipt) === true
+        ? Promise.reject(new Error("the World record is not readable"))
+        : Promise.resolve("handoff_requested");
     },
     submit: (command) => {
       submitted.push(String(command["commandId"]));
@@ -73,17 +87,23 @@ function ports(scene: {
 const world = (status: string): WorldRun[] => [
   { runId: "run-1", receipt: "wrun-1", status },
 ];
+const unknown = { runId: "run-9", receipt: "wrun-9", status: "running" };
+const unknownReport = {
+  kind: "unknown-world-run",
+  runId: "run-9",
+  receipt: "wrun-9",
+};
 
 await test("CLV-056 after a storage-failure receipt of a reconciliation command the host sends the same command ID again after the reopen and gets the duplicate receipt", async () => {
   const failing = ports({
     state: running,
-    world: world("failed"),
-    receipts: ["storage-failure"],
+    world: [...world("failed"), unknown],
+    receipts: ["failed"],
   });
   assert.deepEqual(await reconcileWorld(failing), {
-    sent: ["observe:world-run-failed:wrun-1 storage-failure"],
+    sent: ["observe:world-run-failed:wrun-1 failed"],
     interrupted: true,
-    reports: [],
+    reports: [unknownReport],
     conflicts: [],
   });
   const reopened = ports({
@@ -191,30 +211,82 @@ await test("CLV-056 the product adapter reconciles a start with its operation ID
   );
 });
 
-await test("CLV-056 the reconciliation loop keeps the reports of its last complete pass when a pass fails, and it stops", async () => {
-  const unknown = { runId: "run-9", receipt: "wrun-9", status: "running" };
-  let passes = 0;
-  const scene = ports({ state: running, world: [unknown], receipts: [] });
+await test("CLV-056 the reconciliation loop keeps the reports of its last complete pass when a pass fails, it reports three failed passes in sequence, and it stops", async () => {
+  const worlds = [...world("running"), unknown];
+  const seen: unknown[] = [];
+  const read = { reports: (): unknown => [] };
   const loop = worldLoop({
-    ...scene,
+    ...ports({ state: running, world: worlds, receipts: [] }),
     intervalMilliseconds: 1,
     runs: () => {
-      passes += 1;
-      return passes === 2
-        ? Promise.reject(new Error("the World is not readable"))
-        : Promise.resolve([unknown]);
+      seen.push(read.reports());
+      return seen.length === 1 || seen.length > 6
+        ? Promise.resolve(worlds)
+        : Promise.reject(new Error("the World is not readable"));
     },
   });
-  assert.deepEqual(loop.reports(), []);
-  for (let waited = 0; waited < 2_000 && passes < 4; waited += 1)
+  read.reports = loop.reports;
+  for (let waited = 0; waited < 2_000 && seen.length < 8; waited += 1)
     await delay(1);
-  assert.deepEqual(loop.reports(), [
-    { kind: "unknown-world-run", runId: "run-9", receipt: "wrun-9" },
-  ]);
+  const failure = (count: number): unknown => ({
+    kind: "world-reconciliation-failed",
+    passes: count,
+  });
+  assert.deepEqual(
+    [seen[0], seen[3], seen[4], seen[6], seen[7]],
+    [
+      [],
+      [unknownReport],
+      [unknownReport, failure(3)],
+      [unknownReport, failure(5)],
+      [unknownReport],
+    ],
+  );
   await loop.stop();
-  const stopped = passes;
+  const stopped = seen.length;
   await delay(20);
-  assert.equal(passes, stopped);
+  assert.equal(seen.length, stopped);
+});
+
+const second = advanced(
+  advanced(running, { ...admit, runId: "run-2", commandId: "c-second" }),
+  {
+    kind: "record-dispatch",
+    runId: "run-2",
+    operationId:
+      '["cloving-operation",0,"run-2","admission","start-run",null,null]',
+    receipt: "wrun-2",
+  },
+);
+
+await test("CLV-056 a World run whose outcome the host cannot read gets a report, and the pass sends the commands of each other run", async () => {
+  const scene = ports({
+    state: second,
+    world: [
+      ...world("completed"),
+      { runId: "run-2", receipt: "wrun-2", status: "running" },
+    ],
+    receipts: [],
+    unreadable: ["wrun-1"],
+  });
+  assert.deepEqual(await reconcileWorld(scene), {
+    sent: ["mark-started:wrun-2 accepted"],
+    interrupted: false,
+    reports: [
+      { kind: "world-run-unreadable", runId: "run-1", receipt: "wrun-1" },
+    ],
+    conflicts: [],
+  });
+});
+
+await test("CLV-056 a pass reads the World runs before the authority state, so that its state is not older than its World read", async () => {
+  const scene = ports({
+    state: running,
+    world: world("running"),
+    receipts: [],
+  });
+  await reconcileWorld(scene);
+  assert.deepEqual(scene.reads, ["runs", "state"]);
 });
 
 await test("CLV-057 the product adapter cancels each World run of an operation that is not at an end, and it confirms the stop only when each one is at an end", async () => {

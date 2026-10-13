@@ -1,7 +1,11 @@
 import type ts from "typescript";
 import type { DependencyPolicy, ReservedMembers } from "./dependency-policy.ts";
 import { takenMembers } from "./member-uses.ts";
-import { visitValueNodes } from "./value-nodes.ts";
+import {
+  reservedUses,
+  type ReservedOwner,
+  type ReservedOwners,
+} from "./reserved-uses.ts";
 
 export interface ReservedFinding {
   readonly rule: "reserved-member";
@@ -9,13 +13,6 @@ export interface ReservedFinding {
   readonly line: number;
   readonly member: string;
 }
-
-interface Owner {
-  readonly member: string;
-  readonly users: readonly string[];
-}
-
-type Owners = ReadonlyMap<ts.Declaration, Owner>;
 
 export function inspectReservedMembers(
   program: ts.Program,
@@ -27,13 +24,22 @@ export function inspectReservedMembers(
   const { files, policy } = scope;
   const reserved = policy.reserved;
   if (!reserved) return [];
-  const owners: Owners = new Map(
+  const checker = program.getTypeChecker();
+  const owners: ReservedOwners = new Map(
     reserved.members.flatMap((entry) => entryOwners(program, { entry, files })),
   );
-  if (owners.size === 0) return [];
-  return files
-    .filter((file) => !reserved.exempt.includes(policy.roles[file] ?? ""))
-    .flatMap((file) => fileFindings(program, { file, owners }));
+  return reservedUses(program, {
+    files,
+    roles: policy.roles,
+    exempt: reserved.exempt,
+    owners,
+    taken: (node) => takenMembers(node, checker),
+  }).map((use) => ({
+    rule: "reserved-member",
+    file: use.file,
+    line: use.line,
+    member: use.label,
+  }));
 }
 
 function entryOwners(
@@ -42,7 +48,7 @@ function entryOwners(
     readonly entry: ReservedMembers;
     readonly files: readonly string[];
   },
-): [ts.Declaration, Owner][] {
+): [ts.Declaration, ReservedOwner][] {
   const { entry, files } = context;
   const source = program.getSourceFile(entry.file);
   if (!source && !entry.users.some((user) => files.includes(user))) return [];
@@ -61,9 +67,10 @@ function entryOwners(
       properties.find((property) => property.name === name)?.declarations ?? [];
     if (declarations.length === 0)
       throw new Error(`reserved-missing: ${entry.file}#${entry.type}.${name}`);
-    return declarations.map((declaration): [ts.Declaration, Owner] => [
+    const owner = { label: `${entry.type}.${name}`, users: entry.users };
+    return declarations.map((declaration): [ts.Declaration, ReservedOwner] => [
       declaration,
-      { member: `${entry.type}.${name}`, users: entry.users },
+      owner,
     ]);
   });
 }
@@ -84,33 +91,4 @@ function declaredMembers(
       .find((exported) => exported.name === declared.type);
   if (!symbol) return [];
   return checker.getPropertiesOfType(checker.getDeclaredTypeOfSymbol(symbol));
-}
-
-function fileFindings(
-  program: ts.Program,
-  inspection: { readonly file: string; readonly owners: Owners },
-): ReservedFinding[] {
-  const { file, owners } = inspection;
-  const source = program.getSourceFile(file);
-  if (!source) throw new Error(`missing-reserved-source: ${file}`);
-  if (source.isDeclarationFile) return [];
-  const checker = program.getTypeChecker();
-  const findings: ReservedFinding[] = [];
-  visitValueNodes(source, (node) => {
-    const line =
-      source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-    findings.push(
-      ...takenMembers(node, checker)
-        .flatMap((member) => member.declarations ?? [])
-        .flatMap((declaration) => owners.get(declaration) ?? [])
-        .filter((owner) => !owner.users.includes(file))
-        .map((owner) => ({
-          rule: "reserved-member" as const,
-          file,
-          line,
-          member: owner.member,
-        })),
-    );
-  });
-  return findings;
 }

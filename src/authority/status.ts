@@ -101,6 +101,14 @@ const details = new Map<string, string>([
     "world-run-cancelled",
     "The SDK run of this run was cancelled in the World. Cloving did not ask for that.",
   ],
+  [
+    "world-run-waits-without-gate",
+    "The SDK run of this run ended and waits for a decision, and the run has no open gate and no continuation.",
+  ],
+  [
+    "world-run-conflict",
+    "More than one SDK run has one operation of this run. Examine the World runs, then drop the run.",
+  ],
   ["run-cancelled", "The run is dropped and has no work in progress."],
   ["run-completed", "The run completed."],
   ["run-failed", "The run failed."],
@@ -145,9 +153,21 @@ const unavailablePin = assessed("infrastructure-failure", {
   humanInputCanHelp: true,
 });
 
+function worldConflict(input: StatusInput): Assessment | undefined {
+  const code = input.details?.observation?.reason;
+  if (code !== "world-run-conflict") return undefined;
+  return assessed("infrastructure-failure", {
+    code,
+    nextAction: null,
+    humanInputCanHelp: true,
+  });
+}
+
 function queued(input: StatusInput): Assessment {
   if (uncertain(input.operations)) return unknownEffect;
   if (blocked(input.operations)) return unavailablePin;
+  const conflict = worldConflict(input);
+  if (conflict !== undefined) return conflict;
   if (dispatched(input.operations))
     return assessed("queued", {
       code: "start-not-reported",
@@ -184,7 +204,7 @@ function running(input: StatusInput): Assessment {
   const effect = uncertainEffect(input.effects);
   if (effect !== undefined) return effect;
   if (blocked(input.operations)) return unavailablePin;
-  return observed(input);
+  return worldConflict(input) ?? observed(input);
 }
 
 function observed(input: StatusInput): Assessment {

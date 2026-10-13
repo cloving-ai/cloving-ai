@@ -64,6 +64,17 @@ export async function outcomeKind(
 
 export async function cancelled(receipt: string): Promise<string> {
   const run = getRun(receipt);
-  await run.cancel();
+  await run.cancel().catch(() => undefined);
   return await run.status;
+}
+
+export async function taggedRun(
+  receipt: string,
+): Promise<{ readonly runId: string } | undefined> {
+  const world = await getWorld();
+  const run = await world.runs
+    .get(receipt, { resolveData: "none" })
+    .catch(() => undefined);
+  const runId = tag(run?.attributes, runTag);
+  return runId === null ? undefined : { runId };
 }

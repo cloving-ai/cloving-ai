@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { protectedEffect } from "../src/steps/protected-effect.ts";
 import {
   registerStepBridge,
@@ -20,6 +22,16 @@ const request = {
 };
 const call = { worldRunId: "wrun_1", stepId: "step_01ABC", attempt: 2 };
 const spaced = { ...call, stepId: "step 01#ABC" };
+const timing = { lookupTries: 3, pollMilliseconds: 1, retryMilliseconds: 2 };
+
+function scoped(scope: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(scope))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+const commandId = `sdk:step_01ABC:${scoped(request.scope)}`;
 
 function operation(
   status: string,
@@ -39,12 +51,41 @@ const accepted: BridgeReply = {
   disposition: { disposition: "granted", reason: null },
   operation: operation("running"),
 };
+const unread: BridgeReply = {
+  receipt: { kind: "accepted" },
+  disposition: null,
+  operation: null,
+};
+const lost: BridgeReply = {
+  receipt: { kind: "failed", reason: "storage-failure" },
+  disposition: null,
+  operation: null,
+};
+const busy: BridgeReply = {
+  receipt: { kind: "rejected", reason: "service-busy" },
+  disposition: null,
+  operation: null,
+};
+
+type Fault = "fault";
+const unstored = "a fault of the document read";
+
+function taken<Value>(entries: (Value | Fault)[]): Promise<Value> {
+  const entry = entries.length > 1 ? entries.shift() : entries[0];
+  return entry === "fault" || entry === undefined
+    ? Promise.reject(new Error("the authority is closed"))
+    : Promise.resolve(entry);
+}
 
 function scene(script: {
   readonly call?: typeof call;
+  readonly absentReads?: number;
   readonly states?: readonly string[];
   readonly reply?: BridgeReply;
-  readonly operations?: readonly OperationRead[];
+  readonly replies?: readonly (BridgeReply | Fault)[];
+  readonly operations?: readonly (OperationRead | Fault | "absent")[];
+  readonly documents?: readonly string[];
+  readonly stopped?: AbortSignal;
 }): BridgePorts & {
   readonly log: string[];
   readonly requests: BridgeRequest[];
@@ -52,28 +93,44 @@ function scene(script: {
   const log: string[] = [];
   const requests: BridgeRequest[] = [];
   const states = [...(script.states ?? ["running"])];
+  const replies = [...(script.replies ?? [script.reply ?? accepted])];
   const operations = [...(script.operations ?? [operation("completed")])];
+  const documents = [...(script.documents ?? ["text of sha256:result"])];
   return {
     log,
     requests,
     call: () => script.call ?? call,
-    runs: () => Promise.resolve([{ runId: "run-1", receipt: "wrun_1" }]),
-    state: () => {
-      const status = states.length > 1 ? states.shift() : states[0];
-      log.push(`state ${String(status)}`);
-      return Promise.resolve({ runs: { "run-1": { status: String(status) } } });
+    timing,
+    stopped: script.stopped ?? new AbortController().signal,
+    run: (worldRunId) => {
+      log.push(`run ${worldRunId}`);
+      const stored = script.absentReads ?? 0;
+      const reads = log.filter((entry) => entry.startsWith("run ")).length;
+      return Promise.resolve(
+        worldRunId === "wrun_1" && reads > stored
+          ? { runId: "run-1" }
+          : undefined,
+      );
+    },
+    state: async () => {
+      const status = await taken(states);
+      log.push(`state ${status}`);
+      return { runs: { "run-1": { status } } };
     },
     requestEffect: (asked) => {
       log.push("request");
       requests.push(asked);
-      return Promise.resolve(script.reply ?? accepted);
+      return taken(replies);
     },
-    operation: () => {
-      const next = operations.length > 1 ? operations.shift() : operations[0];
-      log.push(`operation ${String(next?.status)}`);
-      return Promise.resolve(next);
+    operation: async () => {
+      const next = await taken(operations);
+      log.push(`operation ${next === "absent" ? next : next.status}`);
+      return next === "absent" ? undefined : next;
     },
-    document: (digest) => Promise.resolve(`text of ${digest}`),
+    document: async () => {
+      const read = await taken(documents);
+      return read === unstored ? taken<string>([]) : read;
+    },
   };
 }
 
@@ -93,6 +150,7 @@ await test("CLV-058 the bridge requests the effect only when the authority shows
     result: "text of sha256:result",
   });
   assert.deepEqual(ports.log, [
+    "run wrun_1",
     "state queued",
     "state queued",
     "state running",
@@ -105,7 +163,7 @@ await test("CLV-058 the bridge requests the effect only when the authority shows
     {
       ...request,
       runId: "run-1",
-      commandId: "sdk:step_01ABC",
+      commandId,
       transport: "sdk:step_01ABC",
     },
   ]);
@@ -118,10 +176,10 @@ await test("CLV-058 the bridge gives a typed result for a request that the autho
     await result({
       reply: {
         ...accepted,
-        receipt: { kind: "rejected", reason: "service-busy" },
+        receipt: { kind: "rejected", reason: "run-not-running" },
       },
     }),
-    { kind: "refused", reason: "service-busy" },
+    { kind: "refused", reason: "run-not-running" },
   );
   assert.deepEqual(
     await result({
@@ -132,10 +190,10 @@ await test("CLV-058 the bridge gives a typed result for a request that the autho
     }),
     { kind: "refused", reason: "budget-exhausted" },
   );
-  assert.deepEqual(await result({ reply: { ...accepted, operation: null } }), {
-    kind: "refused",
-    reason: "no-operation",
-  });
+  assert.deepEqual(
+    await result({ reply: { ...accepted, receipt: { kind: "rejected" } } }),
+    { kind: "refused", reason: "rejected" },
+  );
   for (const kind of ["failed", "stopped", "blocked", "cancelled"])
     assert.deepEqual(
       await result({ operations: [operation(kind, "outcome-unknown")] }),
@@ -154,8 +212,8 @@ await test("CLV-058 the bridge gives a typed result for a request that the autho
   const odd = scene({ call: spaced });
   await stepBridge(odd).effect(request);
   assert.deepEqual(
-    odd.requests.map((asked) => asked.commandId),
-    ["sdk:step-01-ABC"],
+    odd.requests.map((asked) => [asked.commandId, asked.transport]),
+    [[`sdk:step-01-ABC:${scoped(request.scope)}`, "sdk:step-01-ABC"]],
   );
   assert.deepEqual(await result({ states: ["completed"] }), {
     kind: "completed",
@@ -183,42 +241,116 @@ await test("CLV-058 the step helper gives its request to the bridge of its proce
   assert.equal(ports.requests.length, 1);
 });
 
-await test("CLV-059 the bridge gives no result for a receipt of the kind failed, and each try of a step sends the same command ID", async () => {
-  const unknown = scene({
-    reply: {
-      receipt: { kind: "failed", reason: "storage-failure" },
-      disposition: null,
-      operation: null,
-    },
+await test("CLV-059 the bridge keeps a request whose outcome it does not know, and it sends the same command ID again until the authority gives the stored reply", async () => {
+  const held = scene({
+    replies: [
+      lost,
+      "fault",
+      unread,
+      busy,
+      { ...accepted, receipt: { kind: "duplicate" } },
+    ],
+    operations: [
+      "fault",
+      "absent",
+      operation("running"),
+      operation("completed"),
+    ],
+    documents: [unstored, "the stored result"],
   });
-  await assert.rejects(
-    stepBridge(unknown).effect(request),
-    /command-outcome-unknown: storage-failure/,
-  );
-  await assert.rejects(
-    stepBridge(
-      scene({ reply: { ...accepted, receipt: { kind: "failed" } } }),
-    ).effect(request),
-    /command-outcome-unknown: failed/,
+  assert.deepEqual(await stepBridge(held).effect(request), {
+    kind: "completed",
+    operationId: "operation-1",
+    receipt: "receipt-1",
+    result: "the stored result",
+  });
+  assert.deepEqual(
+    held.requests.map((asked) => asked.commandId),
+    [commandId, commandId, commandId, commandId, commandId],
   );
   assert.deepEqual(
-    await stepBridge(
-      scene({ reply: { ...accepted, receipt: { kind: "rejected" } } }),
-    ).effect(request),
-    { kind: "refused", reason: "rejected" },
+    held.log.filter((entry) => entry.startsWith("operation ")),
+    ["operation absent", "operation running", "operation completed"],
   );
-  const again = scene({
-    call: { ...call, attempt: 3 },
-    reply: { ...accepted, receipt: { kind: "duplicate" } },
+});
+
+await test("CLV-059 the bridge waits for a state read that fails, and an operation with no stored result gives a null result text", async () => {
+  const closed = scene({ states: ["fault", "fault", "queued", "running"] });
+  await stepBridge(closed).effect(request);
+  assert.deepEqual(closed.log.slice(0, 4), [
+    "run wrun_1",
+    "state queued",
+    "state running",
+    "request",
+  ]);
+  const bare = scene({
+    operations: [{ ...operation("completed"), result: null }],
   });
-  assert.deepEqual(await stepBridge(again).effect(request), {
+  assert.deepEqual(await stepBridge(bare).effect(request), {
+    kind: "completed",
+    operationId: "operation-1",
+    receipt: "receipt-1",
+    result: null,
+  });
+});
+
+await test("CLV-059 after the host stops the bridge, a request in work gets no result and the bridge sends no more command", async () => {
+  const stopping = new AbortController();
+  const held = scene({ replies: [lost], stopped: stopping.signal });
+  const outcome = { settled: "no" };
+  const settle = (): void => {
+    outcome.settled = "yes";
+  };
+  void stepBridge(held).effect(request).then(settle, settle);
+  while (held.requests.length < 3) await delay(1);
+  stopping.abort();
+  await delay(10);
+  const sent = held.requests.length;
+  await delay(30);
+  assert.deepEqual([outcome.settled, held.requests.length], ["no", sent]);
+  const late = scene({ stopped: stopping.signal });
+  void stepBridge(late).effect(request).then(settle, settle);
+  await delay(20);
+  assert.deepEqual([outcome.settled, late.requests], ["no", []]);
+});
+
+await test("CLV-059 two requests of one step with two scopes have two command IDs, and a second try of one scope has the same command ID", async () => {
+  const ports = scene({});
+  const bridge = stepBridge(ports);
+  const second = { ...request, scope: { ...request.scope, round: 2 } };
+  await bridge.effect(request);
+  await bridge.effect(second);
+  await bridge.effect(request);
+  assert.deepEqual(
+    ports.requests.map((asked) => [asked.commandId, asked.transport]),
+    [
+      [commandId, "sdk:step_01ABC"],
+      [`sdk:step_01ABC:${scoped(second.scope)}`, "sdk:step_01ABC"],
+      [commandId, "sdk:step_01ABC"],
+    ],
+  );
+  assert.notEqual(scoped(second.scope), scoped(request.scope));
+});
+
+await test("CLV-058 the bridge reads the record of its SDK run again, with a bound, when the record is not stored at the first instant of the step", async () => {
+  const late = scene({ absentReads: 2 });
+  assert.deepEqual(await stepBridge(late).effect(request), {
     kind: "completed",
     operationId: "operation-1",
     receipt: "receipt-1",
     result: "text of sha256:result",
   });
-  assert.deepEqual(
-    [...unknown.requests, ...again.requests].map((asked) => asked.commandId),
-    ["sdk:step_01ABC", "sdk:step_01ABC"],
-  );
+  assert.deepEqual(late.log.slice(0, 4), [
+    "run wrun_1",
+    "run wrun_1",
+    "run wrun_1",
+    "state running",
+  ]);
+  const never = scene({ absentReads: 9 });
+  assert.deepEqual(await stepBridge(never).effect(request), {
+    kind: "unavailable",
+    reason: "unknown-world-run",
+  });
+  assert.deepEqual(never.log, ["run wrun_1", "run wrun_1", "run wrun_1"]);
+  assert.deepEqual(never.requests, []);
 });

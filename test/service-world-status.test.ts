@@ -127,38 +127,99 @@ await test("CLV-056 status shows the reason, the evidence and the next action of
     await service.close();
   }));
 
+async function pausedEnd(
+  harness: Harness,
+  end: {
+    readonly status: string;
+    readonly code: string;
+    readonly detail: string;
+  },
+): Promise<void> {
+  const { service, world, pass } = await scene(harness);
+  const paused = await startedRun(harness, { service, commandId: "c-b" });
+  const command = (name: string, revision: number): Promise<unknown> =>
+    call(harness, {
+      operation: "run-command",
+      parameters: {
+        command: name,
+        runId: paused,
+        expectedRevision: revision,
+        commandId: `c-b-${name}`,
+      },
+    });
+  await command("pause", 2);
+  world.push({ runId: paused, receipt: "wrun-1", status: end.status });
+  await pass();
+  await pass();
+  const reason = {
+    code: end.code,
+    detail: end.detail,
+    evidence: ["event:5", "world-run:wrun-1"],
+  };
+  assert.deepEqual(
+    await shown(harness, paused),
+    ended({ ...reason, state: "paused", nextAction: "resume" }),
+  );
+  await command("resume", 3);
+  await pass();
+  assert.deepEqual(
+    await shown(harness, paused),
+    ended({ ...reason, state: "failed", nextAction: null }),
+  );
+  await service.close();
+}
+
 await test("CLV-056 status shows a World cancellation of a paused run as a recovery state with the next action resume, and as a failure after the resume", () =>
-  withHarness(async (harness) => {
-    const { service, world, pass } = await scene(harness);
-    const paused = await startedRun(harness, { service, commandId: "c-b" });
-    const command = (name: string, revision: number): Promise<unknown> =>
-      call(harness, {
-        operation: "run-command",
-        parameters: {
-          command: name,
-          runId: paused,
-          expectedRevision: revision,
-          commandId: `c-b-${name}`,
-        },
-      });
-    await command("pause", 2);
-    world.push({ runId: paused, receipt: "wrun-1", status: "cancelled" });
-    await pass();
-    await pass();
-    const cancelled = {
+  withHarness((harness) =>
+    pausedEnd(harness, {
+      status: "cancelled",
       code: "world-run-cancelled",
       detail: cancelledDetail,
-      evidence: ["event:5", "world-run:wrun-1"],
-    };
-    assert.deepEqual(
-      await shown(harness, paused),
-      ended({ ...cancelled, state: "paused", nextAction: "resume" }),
-    );
-    await command("resume", 3);
+    }),
+  ));
+
+await test("CLV-056 status shows a World failure of a paused run as a recovery state with the next action resume, and as a failure after the resume", () =>
+  withHarness((harness) =>
+    pausedEnd(harness, {
+      status: "failed",
+      code: "world-run-failed",
+      detail: failedDetail,
+    }),
+  ));
+
+await test("CLV-057 status shows a segment that waits with no gate as a failed run with its code, and a conflict of World runs as a held run with its code", () =>
+  withHarness(async (harness) => {
+    const { service, world, pass } = await scene(harness);
+    const stranded = await startedRun(harness, { service, commandId: "c-d" });
+    world.push({ runId: stranded, receipt: "wrun-1", status: "completed" });
     await pass();
     assert.deepEqual(
-      await shown(harness, paused),
-      ended({ ...cancelled, state: "failed", nextAction: null }),
+      await shown(harness, stranded),
+      ended({
+        state: "failed",
+        code: "world-run-waits-without-gate",
+        detail:
+          "The SDK run of this run ended and waits for a decision, and the run has no open gate and no continuation.",
+        evidence: ["event:4", "world-run:wrun-1"],
+        nextAction: null,
+      }),
     );
+    const doubled = await startedRun(harness, { service, commandId: "c-e" });
+    world.push({ runId: doubled, receipt: "wrun-2", status: "running" });
+    world.push({ runId: doubled, receipt: "wrun-3", status: "running" });
+    await pass();
+    await pass();
+    assert.deepEqual(await shown(harness, doubled), {
+      state: "running",
+      condition: "infrastructure-failure",
+      reason: {
+        code: "world-run-conflict",
+        detail:
+          "More than one SDK run has one operation of this run. Examine the World runs, then drop the run.",
+      },
+      evidence: ["event:9", "world-run:wrun-2/world-run:wrun-3"],
+      nextAction: null,
+      humanInputCanHelp: true,
+    });
     await service.close();
   }));

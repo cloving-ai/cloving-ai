@@ -38,7 +38,8 @@ await test("CLV-059 a host of an older epoch cannot commit a result or request a
     const stale = stepBridge({
       ...ports,
       call: () => ({ worldRunId: "wrun-1", stepId: "step-1", attempt: 1 }),
-      runs: () => Promise.resolve([{ runId, receipt: "wrun-1" }]),
+      run: () => Promise.resolve({ runId }),
+      stopped: new AbortController().signal,
       requestEffect: (asked) => ports.requestEffect({ ...asked, epoch: older }),
     });
     assert.deepEqual(await stale.effect(request), {

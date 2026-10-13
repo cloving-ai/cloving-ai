@@ -128,7 +128,7 @@ ${finished}`,
     unknownOutcome(second.lines[0]);
   }));
 
-await test("CLV-059 after a storage-failure receipt with no process stop, the SDK tries the step again and the bridge sends the same command ID", () =>
+await test("CLV-059 after a storage-failure receipt with no process stop, the bridge keeps the request and sends the same command ID again", () =>
   withConsumer(direct, async (consumer) => {
     const result = await consumer.run(`${servicePrelude}${effects}
 writeFileSync("fail-first-reply", "");
@@ -136,6 +136,53 @@ const service = await hosted();
 const runId = await submitted("c-1");
 ${finished}`);
     unknownOutcome(result.lines[0]);
+  }));
+
+await test("CLV-059 a close of the service while a protected request is in work gives the step no result, and after the reopen the workflow gets the stored result of one send", () =>
+  withConsumer(direct, async (consumer) => {
+    const first = await consumer.run(`${servicePrelude}${effects}
+writeFileSync("close-at-request", "");
+const service = await hosted();
+void submitted("c-1").catch(() => undefined);
+await until(() => globalThis.closing !== undefined);
+await globalThis.closing;
+await delay(300);
+const world = await tagged();
+print({ runId: world[0].run, world: world.map((run) => run.status) });
+process.exit(0);
+`);
+    const runId = String(field(first.lines[0], "runId"));
+    assert.deepEqual(field(first.lines[0], "world"), ["running"]);
+    const second = await consumer.run(
+      `${servicePrelude}${effects}
+const service = await hosted();
+const runId = process.env.RUN_ID;
+await until(async () => (await stateOf(runId)) === "completed");
+print({ ...(await summary(runId)), output: (await segments())[0].output.effect.kind });
+await service.close();
+`,
+      { RUN_ID: runId },
+    );
+    const [line] = second.lines;
+    const asked = items(field(line, "requests")).map(items);
+    assert.deepEqual(
+      [
+        field(line, "output"),
+        field(line, "sends"),
+        field(line, "budget"),
+        field(line, "effects"),
+        new Set(asked.map((entry) => entry[2])).size,
+        asked.at(-1)?.[3],
+      ],
+      [
+        "completed",
+        [operationOf(runId)],
+        { limit: 5, spent: 1 },
+        [[operationOf(runId), "completed"]],
+        1,
+        "duplicate",
+      ],
+    );
   }));
 
 await test("CLV-059 a protected effect after an SDK timer keeps its identity across a restart during the timer", () =>

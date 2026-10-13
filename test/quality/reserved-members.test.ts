@@ -192,7 +192,7 @@ await test("CLV-054 the protected check accepts a form that takes no reserved me
       "node_modules/solid-objects/dist/actor.d.ts": {
         role: "actor-runtime",
         source:
-          "export declare abstract class Actor { emit(name: string): { id: string }; commitAction(name: string): void; } export declare function staged({ emit }: Actor): void;",
+          "export declare abstract class Actor { emit(name: string): { id: string }; transmit(): { relayed(): void }; commitAction(name: string): void; } export declare function staged({ emit }: Actor): void;",
       },
     },
     (program, policy) => {
@@ -261,34 +261,60 @@ await test("CLV-054 the protected check does not examine a module with a develop
   );
 });
 
+const actorDirectory = "/candidate/src/broker/actor/";
+const library = "/candidate/node_modules/solid-objects/dist/";
+const reservedMembers = [
+  {
+    file: `${actorDirectory}delivery-intents.ts`,
+    type: "Delivery",
+    members: [],
+    users: [
+      `${actorDirectory}authority-delivery.ts`,
+      `${actorDirectory}effect-delivery.ts`,
+    ],
+  },
+  {
+    file: `${library}actor.d.ts`,
+    type: "Actor",
+    members: ["emit"],
+    users: [`${actorDirectory}authority-actor.ts`],
+  },
+  {
+    file: `${library}runtime.d.ts`,
+    type: "SolidObjectsRuntime",
+    members: ["registerEffect"],
+    users: [`${actorDirectory}authority-release.ts`],
+  },
+  {
+    file: `${library}actor.d.ts`,
+    type: "Actor",
+    members: ["transmit"],
+    users: [],
+  },
+  {
+    file: `${library}runtime.d.ts`,
+    type: "SolidObjectsRuntime",
+    members: ["registerCommitAction"],
+    users: [`${actorDirectory}runtime-parts.ts`],
+  },
+  {
+    file: `${library}runtime.d.ts`,
+    type: "SolidObjectsRuntime",
+    members: ["registerComponent", "effectWorker", "executeEffect"],
+    users: [],
+  },
+  {
+    file: "/candidate/src/host/start-delivery.ts",
+    type: "StartDelivery",
+    members: [],
+    users: [],
+  },
+];
+
 await test("CLV-054 the protected check of the product tree has the reserved members and imports of the one sender", () => {
-  const actorDirectory = "/candidate/src/broker/actor/";
-  const library = "/candidate/node_modules/solid-objects/dist/";
   const reserved = proposedModulePolicy("/candidate").reserved;
   assert.ok(reserved);
-  assert.deepEqual(reserved.members, [
-    {
-      file: `${actorDirectory}delivery-intents.ts`,
-      type: "Delivery",
-      members: [],
-      users: [
-        `${actorDirectory}authority-delivery.ts`,
-        `${actorDirectory}effect-delivery.ts`,
-      ],
-    },
-    {
-      file: `${library}actor.d.ts`,
-      type: "Actor",
-      members: ["emit"],
-      users: [`${actorDirectory}authority-actor.ts`],
-    },
-    {
-      file: `${library}runtime.d.ts`,
-      type: "SolidObjectsRuntime",
-      members: ["registerEffect"],
-      users: [`${actorDirectory}authority-release.ts`],
-    },
-  ]);
+  assert.deepEqual(reserved.members, reservedMembers);
   assert.deepEqual(reserved.imports, {
     [`${actorDirectory}authority-delivery.ts`]: [
       `${actorDirectory}authority-runtime.ts`,

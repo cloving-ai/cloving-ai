@@ -122,6 +122,15 @@ const handlers: Readonly<Record<string, Handler>> = {
   "step.dispatched": dispatched,
 };
 
+export function startOperation(runId: string): string {
+  return identity({
+    run: runId,
+    phase: "admission",
+    round: 0,
+    operation: "start-run",
+  });
+}
+
 function created(
   state: AuthorityState,
   recorded: Pick<Recorded, "event" | "commands">,
@@ -131,12 +140,7 @@ function created(
   const intent: EffectIntent = {
     kind: "start-run",
     runId: event.runId,
-    operationId: identity({
-      run: event.runId,
-      phase: "admission",
-      round: 0,
-      operation: "start-run",
-    }),
+    operationId: startOperation(event.runId),
   };
   return {
     kind: "applied",

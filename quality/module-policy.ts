@@ -20,6 +20,11 @@ export function proposedModulePolicy(directory: string): DependencyPolicy {
         file: located(entry.file),
         users: entry.users.map(located),
       })),
+      names: proposal.reserved.names.map((entry) => ({
+        ...entry,
+        file: located(entry.file),
+        users: entry.users.map(located),
+      })),
       imports: Object.fromEntries(
         Object.entries(proposal.reserved.imports).map(([target, importers]) => [
           located(target),

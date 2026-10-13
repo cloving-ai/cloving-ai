@@ -69,3 +69,24 @@ await test("CLV-054 the protected check rejects a network global in a broker, st
     "accepted",
   );
 });
+
+await test("CLV-054 the protected check rejects a network global in a host bridge module", async () => {
+  const host = { file: "src/host/world-runs.ts", role: "host-bridge" };
+  for (const body of [
+    `return fetch(${address});`,
+    `return new WebSocket(${address});`,
+    `return globalThis["fetch"](${address});`,
+  ])
+    assert.match(
+      await checked(host, `export function posted(): unknown { ${body} }`),
+      /network-global:[^]*src\/host\/world-runs\.ts/,
+      body,
+    );
+  assert.equal(
+    await checked(
+      host,
+      "export type Handler = (request: Request) => Promise<Response>; export function answered(handler: Handler, request: Request): Promise<Response> { return handler(request); }",
+    ),
+    "accepted",
+  );
+});

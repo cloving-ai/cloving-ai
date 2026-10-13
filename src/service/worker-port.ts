@@ -158,7 +158,8 @@ function effectPort(parts: Parts): Effects {
   return {
     requestEffect: async (request) => {
       const { scope, payload, epoch, ...rest } = request;
-      if (!texts([payload])) return unanswered("invalid-command");
+      if (!texts([payload, rest.capability, rest.method, rest.target]))
+        return unanswered("invalid-command");
       const identity = operationIdentity({ ...scope, run: request.runId });
       if (identity.kind !== "valid") return unanswered(identity.reason);
       const operationId = identity.value;
@@ -185,7 +186,8 @@ function effectPort(parts: Parts): Effects {
     },
     reportEffect: async (report) => {
       const { result, epoch, ...rest } = report;
-      if (!texts([report.operationId, result ?? ""]))
+      const given = result === undefined ? [] : [result];
+      if (!texts([report.operationId, ...given]))
         return unanswered("invalid-command");
       const receipt = await gateway.execute({
         principal: "worker",
