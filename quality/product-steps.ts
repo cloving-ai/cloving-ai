@@ -6,13 +6,20 @@ const definition =
 const directive = /["']use (?:step|workflow)["']/g;
 const conditions = ["workflow", "default", "require", "import", "node"];
 
-export async function productStepIdentities(
-  candidate: string,
-): Promise<string[]> {
+interface ProductStep {
+  readonly file: string;
+  readonly subpath: string;
+  readonly names: readonly string[];
+}
+
+async function productSteps(candidate: string): Promise<{
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly steps: readonly ProductStep[];
+}> {
   const metadata = fields(
     JSON.parse(await readFile(join(candidate, "package.json"), "utf8")),
   );
-  const identities: string[] = [];
+  const steps: ProductStep[] = [];
   for (const entry of await readdir(join(candidate, "src"), {
     recursive: true,
     withFileTypes: true,
@@ -20,7 +27,9 @@ export async function productStepIdentities(
     if (!entry.isFile()) continue;
     const file = join(entry.parentPath, entry.name);
     const source = await readFile(file, "utf8");
-    const names = [...source.matchAll(definition)].map((match) => match[1]);
+    const names = [...source.matchAll(definition)].map((match) =>
+      String(match[1]),
+    );
     const total = source.match(directive)?.length ?? 0;
     if (total === 0) continue;
     const path = relative(join(candidate, "src"), file);
@@ -31,12 +40,32 @@ export async function productStepIdentities(
       metadata["exports"],
       `./dist/src/steps/${basename(path, ".ts")}.js`,
     );
-    for (const name of names)
-      identities.push(
-        `step//${String(metadata["name"])}${subpath}@${String(metadata["version"])}//${String(name)}`,
-      );
+    steps.push({ file, subpath, names });
   }
-  return identities;
+  return { metadata, steps };
+}
+
+export async function productStepIdentities(
+  candidate: string,
+): Promise<string[]> {
+  const { metadata, steps } = await productSteps(candidate);
+  return steps.flatMap((step) =>
+    step.names.map(
+      (name) =>
+        `step//${String(metadata["name"])}${step.subpath}@${String(metadata["version"])}//${name}`,
+    ),
+  );
+}
+
+export async function productStepExports(
+  candidate: string,
+): Promise<Readonly<Record<string, readonly string[]>>> {
+  const { steps } = await productSteps(candidate);
+  return Object.fromEntries(
+    steps
+      .map((step): [string, readonly string[]] => [step.file, step.names])
+      .sort(([first], [second]) => (first < second ? -1 : 1)),
+  );
 }
 
 function exportSubpath(exports: unknown, target: string): string {

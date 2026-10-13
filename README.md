@@ -32,7 +32,7 @@ SDK qualification uses a fixed logical output path and an empty root TypeScript 
 
 `npm run self:start -- HOST_DIRECTORY [REPOSITORY_DIRECTORY]` starts one Cloving daemon for one git repository. The default repository is this repository. Keep the host directory outside each repository: it holds the authority state, the Local World data, the runtime socket, the turn records and the git work trees.
 
-The command compiles one workflow and admits it under two names. `develop-ticket` takes a ticket ID and reads the ticket itself. `develop-prompt` takes the text of a task. The command starts the service with the workflow host, the reconciliation loop, the step bridge and the Claude worker, and it prints the client commands for a second terminal:
+The workflow is the file `workflows/develop-ticket.ts` of this repository. The command copies it into the host project, compiles it there and admits it under two names. `develop-ticket` takes a ticket ID and reads the ticket itself. `develop-prompt` takes the text of a task. The command starts the service with the workflow host, the reconciliation loop, the step bridge and the Claude worker, and it prints the client commands for a second terminal:
 
 ```sh
 CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts run develop-ticket --ticket TICKET_ID

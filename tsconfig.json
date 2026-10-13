@@ -32,6 +32,7 @@
     "tools/**/*.ts",
     "quality/**/*.ts",
     "test/**/*.ts",
+    "workflows/**/*.ts",
     "eslint.config.mjs"
   ],
   "exclude": ["node_modules", "dist"]

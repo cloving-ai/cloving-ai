@@ -86,13 +86,14 @@ await test("CLV-016 the ticket source gives a failure for a command that fails, 
 });
 
 await test("CLV-016 the ticket resolver gives the workflow the ticket ID, the ticket text and a cycle ID with the ticket ID, and it refuses an ID that is no identifier, a ticket that the command does not give, and a daemon with no ticket command", async () => {
-  const resolver = ticketResolver(command);
+  const resolver = ticketResolver({ command, repository: "/repository" });
   assert.deepEqual(await resolver.resolve(request({ ticket: "CLV-016" })), {
     kind: "resolved",
     input: {
       cycleId: "clv-016-a6f7ef47",
       ticketId: "CLV-016",
       ticket: "# CLV-016: Connect the board\n\nThe text of the ticket.",
+      repository: "/repository",
     },
   });
   assert.deepEqual(await resolver.resolve(request({ ticket: "CLV 016; rm" })), {
@@ -107,7 +108,10 @@ await test("CLV-016 the ticket resolver gives the workflow the ticket ID, the ti
       "The ticket command ended with the code 3: Error: no task has the key CLV-404",
   });
   assert.deepEqual(
-    await ticketResolver(undefined).resolve(request({ ticket: "CLV-016" })),
+    await ticketResolver({
+      command: undefined,
+      repository: "/repository",
+    }).resolve(request({ ticket: "CLV-016" })),
     {
       kind: "rejected",
       code: "ticket-source-not-configured",
@@ -116,17 +120,23 @@ await test("CLV-016 the ticket resolver gives the workflow the ticket ID, the ti
     },
   );
   assert.deepEqual(
-    [resolver.id, promptResolver.id],
+    [resolver.id, promptResolver("/repository").id],
     ["ticket-command", "ticket-prompt"],
   );
 });
 
 await test("CLV-016 the prompt resolver gives the workflow the prompt as the ticket text", async () => {
   assert.deepEqual(
-    await promptResolver.resolve(request({ prompt: "Add the file." })),
+    await promptResolver("/repository").resolve(
+      request({ prompt: "Add the file." }),
+    ),
     {
       kind: "resolved",
-      input: { cycleId: "task-a6f7ef47ee8d", ticket: "Add the file." },
+      input: {
+        cycleId: "task-a6f7ef47ee8d",
+        ticket: "Add the file.",
+        repository: "/repository",
+      },
     },
   );
 });

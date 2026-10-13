@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import {
+  copyFile,
   mkdir,
   readdir,
   readFile,
@@ -9,7 +10,6 @@ import {
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ticketWorkflowSource } from "./ticket-workflow.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const [directoryArgument, repositoryArgument] = process.argv.slice(2);
@@ -193,9 +193,9 @@ async function prepared(): Promise<void> {
     join(project, "package.json"),
     '{"name":"cloving-self-host","private":true,"type":"module"}',
   );
-  await writeFile(
+  await copyFile(
+    join(product, "workflows/develop-ticket.ts"),
     join(project, "workflows/develop-ticket.ts"),
-    ticketWorkflowSource(repository),
   );
   await linkedPackages();
   const compiled = await ended(

@@ -29,10 +29,16 @@ function digest(commandId: string): string {
   return createHash("sha256").update(commandId).digest("hex");
 }
 
+export interface TicketSource {
+  readonly repository: string;
+  readonly command: readonly string[] | undefined;
+}
+
 async function ticket(
-  command: readonly string[] | undefined,
+  source: TicketSource,
   request: ResolutionRequest,
 ): Promise<Resolution> {
+  const { command, repository } = source;
   const ticketId = String(request.submission["ticket"]);
   if (!ticketIdentifier.test(ticketId))
     return rejected(
@@ -54,36 +60,38 @@ async function ticket(
       cycleId: `${name}-${digest(request.commandId).slice(0, 8)}`,
       ticketId,
       ticket: read.text,
+      repository,
     },
   };
 }
 
-export function ticketResolver(
-  command: readonly string[] | undefined,
-): Resolver {
+export function ticketResolver(source: TicketSource): Resolver {
   return {
     id: "ticket-command",
     version: "1",
-    resolve: (request) => ticket(command, request),
+    resolve: (request) => ticket(source, request),
   };
 }
 
-export const promptResolver: Resolver = {
-  id: "ticket-prompt",
-  version: "1",
-  resolve: (request) =>
-    Promise.resolve({
-      kind: "resolved",
-      input: {
-        cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
-        ticket: String(request.submission["prompt"]),
-      },
-    }),
-};
+export function promptResolver(repository: string): Resolver {
+  return {
+    id: "ticket-prompt",
+    version: "1",
+    resolve: (request) =>
+      Promise.resolve({
+        kind: "resolved",
+        input: {
+          cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
+          ticket: String(request.submission["prompt"]),
+          repository,
+        },
+      }),
+  };
+}
 
 export async function ticketRegistrations(
   manifest: string,
-  command: readonly string[] | undefined,
+  source: TicketSource,
 ): Promise<TicketRegistrations> {
   const admission = await admitCompiled(manifest, {
     file: manifest,
@@ -106,13 +114,13 @@ export async function ticketRegistrations(
         ...shared,
         workflowId: ticketWorkflow,
         submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
-        resolver: ticketResolver(command),
+        resolver: ticketResolver(source),
       },
       {
         ...shared,
         workflowId: promptWorkflow,
         submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
-        resolver: promptResolver,
+        resolver: promptResolver(source.repository),
       },
     ],
   };

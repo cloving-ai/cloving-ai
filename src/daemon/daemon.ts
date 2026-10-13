@@ -128,10 +128,10 @@ export async function startDaemon(
   settings: DaemonSettings,
 ): Promise<DaemonOpening> {
   const { directory } = settings;
-  const admitted = await ticketRegistrations(
-    settings.manifest,
-    settings.ticketCommand,
-  );
+  const admitted = await ticketRegistrations(settings.manifest, {
+    repository: settings.repository,
+    command: settings.ticketCommand,
+  });
   if (admitted.kind === "rejected")
     return {
       kind: "refused",
