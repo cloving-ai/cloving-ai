@@ -1,62 +1,50 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
-import packageMetadata from "#package" with { type: "json" };
-import { parseInvocation } from "./cli/arguments.ts";
-import { runtimeCommand } from "./cli/commands.ts";
-import { runtimeDirectory } from "./cli/runtime-directory.ts";
-import { usage, validateUsage } from "./cli/usage.ts";
-import { validateWorkflow, type ValidationReport } from "./cli/validate.ts";
+import { spawn } from "node:child_process";
+import { delimiter, dirname, join } from "node:path";
+import { main } from "./cli/main.ts";
+import { clientCommand, runtimeDirectory } from "./cli/runtime-directory.ts";
+import { commandUsage } from "./cli/usage.ts";
 
-const invocation = parseInvocation(process.argv.slice(2));
+const [command, ...options] = process.argv.slice(2);
 
-if (invocation.kind === "usage-error") {
-  if (invocation.json)
-    process.stdout.write(
-      `${JSON.stringify({ schemaVersion: 1, kind: "usage-error", code: invocation.code })}\n`,
-    );
-  else
-    process.stderr.write(`${invocation.code}: run cloving --help for usage.\n`);
-  process.exitCode = 2;
-} else if (invocation.kind === "validate") {
-  const report = await validateWorkflow(process.cwd(), invocation);
-  present(report, invocation.json ? "json" : "human");
-  process.exitCode = report.status === "valid" ? 0 : 1;
-} else if (invocation.kind === "version") {
-  process.stdout.write(`${packageMetadata.version}\n`);
-} else if (invocation.kind === "help") {
-  process.stdout.write(usage);
-} else if (invocation.kind === "validate-help") {
-  process.stdout.write(validateUsage);
-} else {
-  process.exitCode = await runtimeCommand(invocation, {
-    runtimeDirectory: runtimeDirectory(process.env),
-    workingDirectory: process.cwd(),
-    terminal: {
-      out: (text) => process.stdout.write(text),
-      error: (text) => process.stderr.write(text),
+function started(runtime: string): Promise<number> {
+  const program = join(import.meta.dirname, "..", "tools", "self-host.ts");
+  const located = [
+    "--runtime",
+    runtime,
+    "--repository",
+    process.cwd(),
+    "--client",
+    clientCommand(process.env),
+  ];
+  const child = spawn(process.execPath, [program, ...located, ...options], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
     },
-    identifier: randomUUID,
-    interrupted: () =>
-      new Promise((settle) => {
-        for (const signal of ["SIGINT", "SIGTERM"] as const)
-          process.once(signal, () => {
-            settle();
-          });
-      }),
+  });
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, () => child.kill(signal));
+  return new Promise((settle) => {
+    child.once("close", (status) => {
+      settle(status === 0 ? 0 : 1);
+    });
   });
 }
 
-function present(report: ValidationReport, format: "json" | "human"): void {
-  if (format === "json") {
-    process.stdout.write(`${JSON.stringify(report)}\n`);
-    return;
+async function start(): Promise<number> {
+  if (options.includes("--help")) {
+    process.stdout.write(String(commandUsage["start"]));
+    return 0;
   }
-  if (report.status === "valid") {
-    process.stdout.write(
-      `Workflow ${report.workflow.name} is valid.\nWorkflow ID: ${report.workflow.workflowId}\nPinned identity: ${report.pinnedIdentity}\n`,
-    );
-    return;
-  }
-  for (const error of report.errors)
-    process.stderr.write(`${error.code}: ${error.file}: ${error.detail}\n`);
+  const runtime = runtimeDirectory(process.env);
+  if (runtime !== undefined) return await started(runtime);
+  process.stderr.write(
+    "runtime-directory-unknown: Set CLOVING_RUNTIME_DIR to the runtime directory of the service.\n",
+  );
+  return 1;
 }
+
+if (command === "start") process.exitCode = await start();
+else await main(process.argv.slice(2));

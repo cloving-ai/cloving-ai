@@ -31,6 +31,7 @@ await test("CLV-010 the daemon refuses to start with a workflow manifest that is
   try {
     const opening = await startDaemon({
       directory,
+      runtimeDirectory: join(directory, "run"),
       repository: directory,
       manifest: join(directory, "cloving.workflow.json"),
       workflows: {},

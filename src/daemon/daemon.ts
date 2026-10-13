@@ -30,6 +30,7 @@ import { ticketRegistrations } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
   readonly directory: string;
+  readonly runtimeDirectory: string;
   readonly repository: string;
   readonly manifest: string;
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
@@ -141,10 +142,10 @@ export async function startDaemon(
   const given = Promise.withResolvers<HostPorts>();
   const { worker, runs } = adapters(settings, given.promise);
   await mkdir(join(directory, "state"), { recursive: true });
-  await mkdir(join(directory, "runtime"), { recursive: true, mode: 0o700 });
+  await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
     stateDirectory: join(directory, "state"),
-    runtimeDirectory: join(directory, "runtime"),
+    runtimeDirectory: settings.runtimeDirectory,
     workflows: admitted.registrations,
     delivery: deliveryRouter({ runs, effects: worker }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },

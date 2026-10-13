@@ -45,7 +45,6 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "build:workflows": "node tools/compile-workflows.ts",
-    "self:start": "node tools/self-host.ts",
     "check:setup": "tsc --project tsconfig.json --noEmit",
     "check:quality": "node tools/check-quality.ts",
     "check:lint": "eslint src tools quality test eslint.config.mjs --max-warnings 0",

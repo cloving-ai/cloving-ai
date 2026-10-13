@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   copyFile,
   mkdir,
@@ -8,17 +8,35 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const product = resolve(import.meta.dirname, "..");
-const [directoryArgument, repositoryArgument] = process.argv.slice(2);
-if (!directoryArgument)
-  throw new Error(
-    "Usage: npm run self:start -- HOST_DIRECTORY [REPOSITORY_DIRECTORY]",
-  );
-const directory = resolve(directoryArgument);
-const repository = resolve(repositoryArgument ?? product);
+const flags = process.argv.slice(2);
+
+function flag(name: string): string | undefined {
+  const index = flags.lastIndexOf(name);
+  return index === -1 ? undefined : flags[index + 1];
+}
+
+function topLevel(given: string): string {
+  try {
+    return execFileSync("git", ["-C", given, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return given;
+  }
+}
+
+const runtimeArgument = flag("--runtime");
+if (runtimeArgument === undefined)
+  throw new Error("The start program needs --runtime. Use: cloving start");
+const runtime = resolve(runtimeArgument);
+const directory = dirname(runtime);
+const repository = topLevel(resolve(flag("--repository") ?? process.cwd()));
+const client = flag("--client") ?? "cloving";
 const project = join(directory, "project");
 const concurrency = Number(process.env["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = process.env["CLOVING_OWNERSHIP_LEASE_SECONDS"];
@@ -143,6 +161,7 @@ async function launchers(commands: Commands): Promise<void> {
     directory,
     repository,
     concurrency,
+    runtimeDirectory: runtime,
     manifest: join(project, "cloving.workflow.json"),
   };
   await writeFile(
@@ -171,7 +190,6 @@ process.once("SIGTERM", stop);
 }
 
 function guide(): string {
-  const client = `CLOVING_RUNTIME_DIR=${join(directory, "runtime")} node ${join(product, "src/cli.ts")}`;
   return [
     "Cloving runs. Stop it with Control-C.",
     `Repository: ${repository}`,
@@ -181,7 +199,7 @@ function guide(): string {
     `  ${client} run develop-prompt --prompt "<the text of the task>"`,
     `  ${client} status`,
     `  ${client} questions`,
-    `  ${client} approve <decision-ref> --expected-revision <n> --generation <n> --subject-digest <digest>`,
+    `  ${client} watch`,
     "",
   ].join("\n");
 }
@@ -211,4 +229,17 @@ await launchers({
   command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
   ticketCommand: listed("CLOVING_TICKET_COMMAND"),
 });
+const watchPort = process.env["CLOVING_WATCH_PORT"] ?? "3663";
+const watch =
+  watchPort === "off"
+    ? undefined
+    : spawn(
+        process.execPath,
+        [join(product, "src/cli.ts"), "watch", "--port", watchPort],
+        {
+          stdio: "inherit",
+          env: { ...process.env, CLOVING_RUNTIME_DIR: runtime },
+        },
+      );
 process.exitCode = await ended([join(project, "start.mjs")], process.env);
+watch?.kill("SIGTERM");

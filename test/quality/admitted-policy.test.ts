@@ -164,7 +164,7 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
   );
 });
 
-await test("CLV-008 only service, command line and test code can import the socket module, only quality, build, daemon and test code can import the process module, and only the daemon and tests reach the service", () => {
+await test("CLV-008 only service, command line and test code can import the socket module, only quality, build, daemon, entry and test code can import the process module, and only the daemon and tests reach the service", () => {
   const policy = admittedModulePolicy(directory, {
     files,
     roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
@@ -182,6 +182,7 @@ await test("CLV-008 only service, command line and test code can import the sock
   assert.deepEqual(importers("process"), [
     "build",
     "daemon",
+    "entry",
     "quality",
     "test",
   ]);

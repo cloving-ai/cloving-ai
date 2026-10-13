@@ -27,6 +27,8 @@ const commands = [
   "resume",
   "drop",
   "events",
+  "watch",
+  "start",
 ];
 
 await test("CLV-008 help lists each runtime command, and each command has its own help", () =>

@@ -7,8 +7,22 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { call } from "./service-fixture.ts";
+import { watchedModel } from "./watch-fixture.ts";
 
-const tool = join(import.meta.dirname, "../tools/self-host.ts");
+const entry = join(import.meta.dirname, "../src/cli.ts");
+
+async function watchedRun(directory: string): Promise<readonly unknown[]> {
+  const model = await watchedModel(join(directory, "run"));
+  const run = field(field(model, "runs"), 0);
+  const turn = field(field(run, "turns"), 0);
+  return [
+    field(model, "service"),
+    field(run, "state"),
+    String(field(field(field(run, "decisions"), 0), "prompt")).slice(0, 60),
+    field(turn, "outcome"),
+    field(turn, "activity"),
+  ];
+}
 
 const fakeClaude = `
 import { execFileSync } from "node:child_process";
@@ -20,6 +34,7 @@ execFileSync("git", ["add", "ticket-work.txt"]);
 execFileSync("git", ["-c", "user.name=Worker", "-c", "user.email=worker@example.invalid", "commit", "-q", "-m", "Add the ticket work"]);
 const line = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 line({ type: "system", subtype: "init", session_id: "session-1" });
+line({ type: "assistant", message: { content: [{ type: "text", text: "I add the file." }, { type: "tool_use", name: "Bash", input: { command: "git commit" } }] } });
 line({ type: "result", subtype: "success", is_error: false, result: "I added the file ticket-work.txt.", total_cost_usd: 0.01, session_id: "session-1", num_turns: 1 });
 `;
 
@@ -82,7 +97,7 @@ async function scene(script = fakeClaude): Promise<Scene> {
   return {
     directory,
     repository,
-    runtimeDirectory: join(directory, "runtime"),
+    runtimeDirectory: join(directory, "run"),
     start: async () => (await launched(settings, "Cloving runs")).child,
     refused: async (bound = "8") =>
       (await launched({ ...settings, bound }, "The daemon did not start"))
@@ -105,21 +120,20 @@ async function launched(
   },
   expected: string,
 ): Promise<Launch> {
-  const child = spawn(
-    process.execPath,
-    [tool, settings.directory, settings.repository],
-    {
-      env: {
-        ...process.env,
-        CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
-        CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
-        CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
-        CLOVING_HOST_BOUND: settings.bound ?? "8",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
+  const child = spawn(process.execPath, [entry, "start"], {
+    cwd: settings.repository,
+    env: {
+      ...process.env,
+      CLOVING_RUNTIME_DIR: join(settings.directory, "run"),
+      CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
+      CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
+      CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
+      CLOVING_HOST_BOUND: settings.bound ?? "8",
+      CLOVING_WATCH_PORT: "off",
     },
-  );
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
   children.push(child);
   const output = { text: "" };
   for (const stream of [child.stdout, child.stderr])
@@ -151,7 +165,7 @@ async function reached<Value>(
   throw new Error("The scene did not reach its state.");
 }
 
-function field(value: unknown, name: string): unknown {
+function field(value: unknown, name: string | number): unknown {
   return Reflect.get(Object(value), name);
 }
 
@@ -184,7 +198,11 @@ function items(value: unknown): readonly unknown[] {
 
 async function reviewed(
   asked: Asked,
-  work: { readonly runId: string; readonly repository: string },
+  work: {
+    readonly runId: string;
+    readonly repository: string;
+    readonly directory: string;
+  },
 ): Promise<unknown> {
   const { runId, repository } = work;
   const decision = await reached(
@@ -213,6 +231,20 @@ async function reviewed(
       ? listed
       : undefined;
   });
+  assert.deepEqual(await watchedRun(work.directory), [
+    "up",
+    "waiting_gate",
+    "Review the work of the Claude worker for the ticket CLV-900.",
+    "completed",
+    [
+      { kind: "say", text: "I add the file." },
+      { kind: "tool", text: "Bash: git commit" },
+      {
+        kind: "result",
+        text: "I added the file ticket-work.txt. (cost 0.01 USD)",
+      },
+    ],
+  ]);
   return decision;
 }
 
@@ -259,9 +291,13 @@ async function ticketRun(): Promise<void> {
   );
   const admitted = await asked("run", ticket("CLV-900", "c-1"));
   const runId = String(admitted["runId"]);
-  const decision = await reviewed(asked, { runId, repository });
+  const decision = await reviewed(asked, { runId, repository, directory });
   assert.equal(await ended(first), 0);
   assert.equal(existsSync(join(directory, "worktrees")), true);
+  assert.equal(
+    field(await watchedModel(join(directory, "run")), "service"),
+    "down",
+  );
   const second = await start();
   const state = await approved(asked, { runId, decision });
   assert.equal(field(field(state, "budget"), "spent"), 1);

@@ -3,6 +3,7 @@
     "eslint.config.mjs": "configuration",
     "node:assert/strict": "stdlib",
     "node:child_process": "process",
+    "node:http": "network",
     "node:crypto": "stdlib",
     "node:fs": "stdlib",
     "node:fs/promises": "stdlib",
@@ -82,7 +83,7 @@
     "quality/workflow-boundaries.ts": "quality",
     "quality/workflow-artifacts.ts": "quality",
     "quality/workflow-inputs.ts": "quality",
-    "src/cli.ts": "cli",
+    "src/cli.ts": "entry",
     "src/workflows.ts": "workflow",
     "test/quality/aggregate-members.test.ts": "test",
     "test/quality/architecture.test.ts": "test",
@@ -481,6 +482,8 @@
     "test/self-host.test.ts": "test",
     "test/ticket-source.test.ts": "test",
     "test/develop-ticket-workflow.test.ts": "test",
+    "test/watch-model.test.ts": "test",
+    "test/watch-render.test.ts": "test",
     "test/quality/product-step-exports.test.ts": "test",
     "workflows/develop-ticket.ts": "workflow",
     "test/cli-ticket.test.ts": "test",
@@ -496,7 +499,14 @@
     "src/daemon/work-tree.ts": "daemon",
     "test/claude-worker.test.ts": "test",
     "test/claude-worker-stop.test.ts": "test",
-    "test/claude-worker-fixture.ts": "test"
+    "test/claude-worker-fixture.ts": "test",
+    "src/cli/watch-model.ts": "cli",
+    "src/cli/watch-render.ts": "cli",
+    "src/cli/watch-page.ts": "cli",
+    "src/cli/watch-server.ts": "cli",
+    "src/cli/main.ts": "cli",
+    "test/cli-watch.test.ts": "test",
+    "test/watch-fixture.ts": "test"
   },
   "allowed": {
     "quality": [
@@ -526,7 +536,8 @@
       "service",
       "network",
       "host-bridge",
-      "daemon"
+      "daemon",
+      "entry"
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata", "process"],
     "configuration": ["tooling", "quality"],
@@ -560,7 +571,8 @@
     "sdk-runtime": [],
     "process": [],
     "network": [],
-    "inspector": []
+    "inspector": [],
+    "entry": ["cli", "pure", "stdlib", "process"]
   },
   "forbiddenReachability": {
     "pure": [
@@ -627,7 +639,24 @@
       "storage",
       "daemon"
     ],
-    "service": ["harness", "step", "workflow", "process", "inspector", "daemon"]
+    "service": [
+      "harness",
+      "step",
+      "workflow",
+      "process",
+      "inspector",
+      "daemon"
+    ],
+    "entry": [
+      "storage",
+      "harness",
+      "step",
+      "workflow",
+      "actor-runtime",
+      "service",
+      "inspector",
+      "daemon"
+    ]
   },
   "reserved": {
     "members": [

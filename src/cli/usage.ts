@@ -44,6 +44,19 @@ Cancels the run and its pending dispatch. It keeps the workspace and the evidenc
 
 Prints the committed events after a sequence. With --json, each line is one event.
 `,
+  watch: `Usage: cloving watch [--port <n>]
+
+Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
+the events, the work of the Claude worker and each pending decision.
+The default port is 3663. The page is read only. Stop it with Control-C.
+`,
+  start: `Usage: cloving start [--repository <directory>]
+
+Starts the Cloving service for one git repository, with the workflow host,
+the Claude worker and the watch page. The default repository is the current
+directory. This command works in a development checkout of Cloving.
+Stop it with Control-C.
+`,
 };
 
 export const usage = `Usage: cloving [--help] [--version]
@@ -62,6 +75,8 @@ Commands:
   resume     Resume a paused run.
   drop       Cancel a run and keep its files.
   events     Print the committed events.
+  watch      Serve a page that shows the runs live.
+  start      Start the service for a repository.
 
 The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
 Use npm exec -- cloving ... for a project-local installation.

@@ -56,6 +56,11 @@ export type RuntimeInvocation =
       readonly limit: number | null;
       readonly follow: boolean;
       readonly json: boolean;
+    }
+  | {
+      readonly kind: "watch";
+      readonly port: number | null;
+      readonly json: boolean;
     };
 
 export interface GivenOption {
@@ -72,7 +77,7 @@ export interface RuntimeRequest {
 type Outcome = RuntimeInvocation | string;
 
 interface Shape {
-  readonly subject: "required" | "optional";
+  readonly subject: "required" | "optional" | "none";
   readonly required: readonly string[];
   readonly allowed: (request: RuntimeRequest) => readonly string[];
   readonly build: (request: RuntimeRequest) => Outcome;
@@ -136,6 +141,15 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       build: events,
     },
   ],
+  [
+    "watch",
+    {
+      subject: "none",
+      required: [],
+      allowed: () => ["port"],
+      build: watch,
+    },
+  ],
 ]);
 
 export function isRuntimeCommand(command: string): boolean {
@@ -161,7 +175,7 @@ function shapeFailure(
   const count = request.positionals.length;
   if (names.some((name) => !allowed.includes(name))) return "unexpected-option";
   if (shape.subject === "required" && count === 0) return "missing-argument";
-  if (count > 1) return "unexpected-argument";
+  if (count > (shape.subject === "none" ? 0 : 1)) return "unexpected-argument";
   if (shape.required.some((name) => !names.includes(name)))
     return "missing-option";
   return undefined;
@@ -268,6 +282,12 @@ function status(request: RuntimeRequest): Outcome {
     return "invalid-option-value";
   const json = given(request, "json");
   return { kind: "status", runId, limit, after, json };
+}
+
+function watch(request: RuntimeRequest): Outcome {
+  const port = whole(valueOf(request, "port"), { minimum: 0, maximum: 65535 });
+  if (port === invalid) return "invalid-option-value";
+  return { kind: "watch", port, json: false };
 }
 
 function questions(request: RuntimeRequest): Outcome {

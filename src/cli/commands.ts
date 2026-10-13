@@ -11,6 +11,7 @@ import { follow, mutate, send } from "./client.ts";
 import { errorText, eventText, pendingSummary, rendered } from "./render.ts";
 import type { RuntimeInvocation } from "./runtime-arguments.ts";
 import { commandUsage } from "./usage.ts";
+import { defaultWatchPort, watchServer } from "./watch-server.ts";
 
 export interface Terminal {
   readonly out: (text: string) => void;
@@ -19,6 +20,7 @@ export interface Terminal {
 
 export interface CommandEnvironment {
   readonly runtimeDirectory: string | undefined;
+  readonly client?: string;
   readonly workingDirectory: string;
   readonly terminal: Terminal;
   readonly identifier: () => string;
@@ -330,6 +332,15 @@ function located(
   if (invocation.kind === "run-command")
     return runCommand(environment, invocation);
   if (invocation.kind === "events") return events(environment, invocation);
+  if (invocation.kind === "watch")
+    return watchServer({
+      runtimeDirectory: environment.runtimeDirectory,
+      port: invocation.port ?? defaultWatchPort,
+      client: environment.client ?? "cloving",
+      announce: environment.terminal.out,
+      complain: environment.terminal.error,
+      stopped: environment.interrupted(),
+    });
   return requested(environment, {
     format: { json: invocation.json },
     request: {

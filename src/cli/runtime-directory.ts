@@ -6,6 +6,13 @@ function given(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
+export function clientCommand(environment: Environment): string {
+  const explicit = environment["CLOVING_RUNTIME_DIR"];
+  return given(explicit)
+    ? `CLOVING_RUNTIME_DIR=${explicit} cloving`
+    : "cloving";
+}
+
 export function runtimeDirectory(environment: Environment): string | undefined {
   const explicit = environment["CLOVING_RUNTIME_DIR"];
   if (given(explicit)) return explicit;
