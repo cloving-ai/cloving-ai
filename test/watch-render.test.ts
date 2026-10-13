@@ -1,112 +1,145 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pageDocument } from "../src/cli/watch-page.ts";
-import { renderPage, type WatchModel } from "../src/cli/watch-render.ts";
+import {
+  counted,
+  elapsed,
+  groupActivity,
+  renderClock,
+  renderDecision,
+  renderEvents,
+  renderSince,
+  renderTurn,
+  type WatchItem,
+} from "../src/cli/watch-render.ts";
+import {
+  at,
+  reviewedTurn,
+  sampleDecision,
+  sampleTurn,
+} from "./watch-sample.ts";
 
-const model: WatchModel = {
-  updatedAt: "2026-10-13T21:40:00.000Z",
-  host: "/host",
-  service: "up",
-  runs: [
-    {
-      runId: "run-2",
-      workflowId: "develop-prompt",
-      state: "completed",
-      code: "run-completed",
-      detail: "The run completed.",
-      spent: 1,
-      limit: 8,
-      decisions: [],
-      events: [],
-      turns: [],
-    },
-    {
-      runId: "run-1",
-      workflowId: "develop-ticket",
-      state: "waiting_gate",
-      code: "policy-approval",
-      detail: "A person must approve.",
-      spent: 1,
-      limit: 8,
-      decisions: [
-        {
-          decisionId: "run-1/review-1",
-          type: "approval",
-          prompt: "Review <b>this</b> & that.",
-          approve: "cloving approve run-1/review-1",
-          deny: "cloving deny run-1/review-1",
-        },
-      ],
-      events: [
-        {
-          sequence: 1,
-          recordedAt: "2026-10-13T21:26:00.123Z",
-          type: "run.created",
-        },
-      ],
-      turns: [
-        {
-          key: "k1",
-          runId: "run-1",
-          target: "clv-016-a6f7ef47",
-          branch: "cloving/clv-016-a6f7ef47",
-          worktree: "/host/worktrees/clv-016-a6f7ef47",
-          startedAt: "2026-10-13T21:26:01.000Z",
-          outcome: "in work",
-          costUsd: 1.0330776000000002,
-          activity: [
-            { kind: "say", text: "I read <script>alert(1)</script>." },
-            { kind: "tool", text: "Bash: git status" },
-          ],
-        },
-      ],
-    },
-  ],
-};
+const item = (kind: string, text: string): WatchItem => ({ kind, text });
+const activity = [
+  item("say", "I read <script>alert(1)</script>."),
+  item("tool", "Bash: git status"),
+  item("tool", "Read: /a/b.ts"),
+  item("error", "exit code 1"),
+  item("tool", "Bash: npm test"),
+  item("say", "The test fails as expected."),
+  item("tool", "Edit: /a/b.ts"),
+  item("result", "Done. (cost 1.03 USD)"),
+  item("tool", "Bash: sleep 1"),
+  item("tool", "Bash: <wait>"),
+];
 
-await test("CLV-016 the watch page shows the selected run with its state, its events, the activity of its turn and its pending decision, and it escapes each text", () => {
-  const html = renderPage(model, "run-1");
-  for (const part of [
-    '<a class="run selected" href="#run-1">',
-    '<a class="run" href="#run-2">',
-    "waiting_gate",
-    "policy-approval",
-    "A person must approve.",
-    "1 of 8 effect units",
-    "21:26:00 run.created",
-    "cloving/clv-016-a6f7ef47",
-    "in work",
-    "Claude turn · in work · 1.03 USD",
+function includes(html: string, parts: readonly string[]): void {
+  for (const part of parts) assert.ok(html.includes(part), `${part}\n${html}`);
+}
+
+await test("CLV-016 the watch page shows a time span in seconds, in minutes or in hours, a live span with its start time and a clock time with its full time", () => {
+  assert.deepEqual(
+    [
+      elapsed(at("21:26:00"), at("21:26:42")),
+      elapsed(at("21:26:00"), at("21:33:38")),
+      elapsed(at("21:26:00"), at("22:30:59")),
+      elapsed(at("21:26:00"), at("21:25:00")),
+      elapsed("", at("21:25:00")),
+    ],
+    ["42 s", "7 min 38 s", "1 h 4 min", "0 s", ""],
+  );
+  assert.equal(
+    renderSince(at("21:26:00"), at("21:26:42")),
+    '<span data-since="2026-10-13T21:26:00.000Z">42 s</span>',
+  );
+  assert.equal(
+    renderClock(at("21:26:00")),
+    '<span data-clock="2026-10-13T21:26:00.000Z">21:26:00</span>',
+  );
+  assert.deepEqual(
+    [counted(0, "commit"), counted(1, "commit"), counted(2, "commit")],
+    ["0 commits", "1 commit", "2 commits"],
+  );
+});
+
+await test("CLV-016 the watch page folds the tool calls between two messages of the worker into one group with its counts, and it shows each message, each result and a single tool call as a line", () => {
+  assert.deepEqual(
+    groupActivity(activity).map((group) => group.length),
+    [1, 4, 1, 1, 1, 2],
+  );
+  assert.deepEqual(groupActivity([]), []);
+  const html = renderTurn(
+    sampleTurn({ ...reviewedTurn, activity }),
+    at("21:40:00"),
+  );
+  includes(html, [
+    "<h3>Claude turn · completed · 7 min 38 s · 1.03 USD</h3>",
+    "Branch cloving/clv-016-a6f7ef47 · work tree /host/worktrees/clv-016-a6f7ef47",
     '<div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
-    '<div class="item tool">Bash: git status</div>',
-    "Review &lt;b&gt;this&lt;/b&gt; &amp; that.",
-    "cloving approve run-1/review-1",
-    "cloving deny run-1/review-1",
-  ])
-    assert.ok(html.includes(part), part);
+    '<details class="tools" data-key="k1:1"><summary>3 tool calls · <span class="bad">1 error</span><span class="last">Bash: npm test</span></summary>',
+    '<div class="item error">exit code 1</div>',
+    '</details><div class="item say">The test fails as expected.</div><div class="item tool" title="Edit: /a/b.ts">Edit: /a/b.ts</div><div class="item result">Done. (cost 1.03 USD)</div>',
+    '<details class="tools" data-key="k1:5"><summary>2 tool calls<span class="last">Bash: &lt;wait&gt;</span></summary><div class="item tool" title="Bash: sleep 1">Bash: sleep 1</div><div class="item tool" title="Bash: &lt;wait&gt;">Bash: &lt;wait&gt;</div></details>',
+  ]);
   assert.equal(html.includes("<script>"), false);
+  assert.equal(html.includes(" open>"), false);
 });
 
-await test("CLV-016 the watch page shows the newest run when no run is selected, and plain words for no run and for a service that does not answer", () => {
-  const newest = renderPage(model, "");
-  assert.ok(newest.includes('<a class="run selected" href="#run-2">'));
-  assert.ok(newest.includes("The run completed."));
-  assert.ok(newest.includes("No Claude turn for this run."));
-  const empty = renderPage({ ...model, service: "down", runs: [] }, "");
-  assert.ok(empty.includes("The Cloving service does not answer."));
-  assert.ok(empty.includes("No run yet."));
+await test("CLV-016 the watch page keeps the last group of tool calls open while the turn is in work, with a live time span, and it shows a turn that failed with no time", () => {
+  const working = renderTurn(sampleTurn({ activity }), at("21:26:44"));
+  includes(working, [
+    '<h3>Claude turn · in work · <span data-since="2026-10-13T21:26:02.000Z">42 s</span></h3>',
+    '<details class="tools" data-key="k1:1"><summary>',
+    '<details class="tools" data-key="k1:5" open><summary>',
+  ]);
+  const failed = renderTurn(sampleTurn({ outcome: "failed" }), at("21:26:44"));
+  includes(failed, [
+    "<h3>Claude turn · failed</h3>",
+    '<div class="activity"></div>',
+  ]);
 });
 
-await test("CLV-016 the watch page document has the render functions and a loader that reads the data of the watch server each second, with no outside resource", () => {
-  const page = pageDocument();
-  assert.match(page, /^<!doctype html>/);
-  for (const part of [
-    "function renderPage(",
-    "function escapeHtml(",
-    "function clovingUpdate(",
-    'fetch("data.json", { cache: "no-store" })',
-    "setInterval(load, 1000)",
-  ])
-    assert.ok(page.includes(part), part);
-  assert.equal(/https?:\/\//.test(page), false);
+await test("CLV-016 the watch page shows a pending decision with the commits, the changed files and the report of the worker, with the full text folded and a copy control for each command", () => {
+  const html = renderDecision(sampleDecision, reviewedTurn);
+  includes(html, [
+    '<section class="decision">',
+    "<h3>Your decision · approval</h3>",
+    "Branch <code>cloving/clv-016-a6f7ef47</code> · 1 commit",
+    "<pre>9e69feb Reject a &lt;request&gt;</pre>",
+    "<pre> src/a.ts | 6 ++++++\n 1 file changed, 6 insertions(+)</pre>",
+    '<p class="good">All the work is committed.</p>',
+    '<details data-key="report" open><summary>Report of the worker</summary><div class="report">I added the check &amp; one test.</div></details>',
+    '<details data-key="prompt"><summary>Full text of the request</summary><pre>Review &lt;b&gt;this&lt;/b&gt; &amp; that.</pre></details>',
+    '<div class="command"><span class="label">Approve</span><code>cloving approve run-1/review-1 --text &quot;yes&quot;</code><button type="button" data-copy="cloving approve run-1/review-1 --text &quot;yes&quot;">Copy</button></div>',
+    '<span class="label">Deny</span><code>cloving deny run-1/review-1</code>',
+  ]);
+});
+
+await test("CLV-016 the watch page warns about work that is not committed and about a turn with no commit, and it shows a decision with no turn with its full text open", () => {
+  const loose = renderDecision(
+    sampleDecision,
+    sampleTurn({ ...reviewedTurn, commits: [], uncommitted: [" M a.ts"] }),
+  );
+  includes(loose, [
+    '<p class="bad">The worker made no commit.</p>',
+    '<p class="bad">1 file is not committed:</p><pre> M a.ts</pre>',
+  ]);
+  const many = renderDecision(
+    sampleDecision,
+    sampleTurn({ ...reviewedTurn, uncommitted: [" M a.ts", "?? b.ts"] }),
+  );
+  includes(many, ['<p class="bad">2 files are not committed:</p>']);
+  const alone = renderDecision(sampleDecision, undefined);
+  includes(alone, [
+    '<details data-key="prompt" open><summary>Full text of the request</summary>',
+  ]);
+  assert.equal(alone.includes("Report of the worker"), false);
+});
+
+await test("CLV-016 the watch page folds the events of a run and shows their count", () => {
+  assert.equal(
+    renderEvents([
+      { sequence: 1, recordedAt: at("21:26:00"), type: "run.<created>" },
+    ]),
+    '<details class="events" data-key="events"><summary>All events (1)</summary><div class="event"><span data-clock="2026-10-13T21:26:00.000Z">21:26:00</span> run.&lt;created&gt;</div></details>',
+  );
 });

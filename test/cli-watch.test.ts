@@ -98,13 +98,16 @@ await test("CLV-016 cloving watch serves the page and the run data of its servic
           `^CLOVING_RUNTIME_DIR=\\S+ cloving approve ${waiting.runId}/design-1 --expected-revision 1 `,
         ),
       );
+      const turn = field(field(run, "turns"), 0);
       assert.deepEqual(
         [
           field(field(run, "turns"), "length"),
-          field(field(field(run, "turns"), 0), "costUsd"),
+          field(turn, "costUsd"),
+          field(field(run, "phases"), "length"),
         ],
-        [1, 0.5],
+        [1, 0.5, 5],
       );
+      assert.match(String(field(turn, "activeAt")), /^\d{4}-\d\d-\d\dT/);
       assert.equal(field(field(run, "events"), "length"), 5);
       assert.equal((await fetch(`${watch.address}journal`)).status, 404);
       const posted = await fetch(`${watch.address}data.json`, {

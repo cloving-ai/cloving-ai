@@ -6,6 +6,7 @@ import type {
   WatchRun,
   WatchTurn,
 } from "./watch-render.ts";
+import { decisionOf, phasesOf } from "./watch-phases.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -28,6 +29,14 @@ function count(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
 
+function stamp(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function texts(value: unknown): readonly string[] {
+  return list(value).filter((item) => typeof item === "string");
+}
+
 function parsed(line: string): unknown {
   try {
     const value: unknown = JSON.parse(line);
@@ -48,9 +57,13 @@ function summary(input: Fields): string {
   return named ?? JSON.stringify(input);
 }
 
+function spoken(part: Fields): WatchItem[] {
+  const words = cut(text(part["text"]));
+  return words.trim() === "" ? [] : [{ kind: "say", text: words }];
+}
+
 function said(part: Fields): WatchItem[] {
-  if (part["type"] === "text")
-    return [{ kind: "say", text: cut(text(part["text"])) }];
+  if (part["type"] === "text") return spoken(part);
   if (part["type"] !== "tool_use") return [];
   const tool = `${text(part["name"])}: ${summary(record(part["input"]))}`;
   return [{ kind: "tool", text: cut(tool) }];
@@ -88,17 +101,30 @@ function costOf(lines: readonly string[]): number | null {
   return costs.at(-1) ?? null;
 }
 
+function concise(items: readonly WatchItem[]): WatchItem[] {
+  return items.map((item, index) => {
+    const before = items[index - 1];
+    if (item.kind !== "result" || before?.kind !== "say") return item;
+    if (!item.text.startsWith(before.text)) return item;
+    const cost = item.text.slice(before.text.length);
+    return { kind: "result", text: `Result of the worker${cost}` };
+  });
+}
+
 export interface TurnRecords {
   readonly key: string;
   readonly started: unknown;
   readonly result: unknown;
   readonly lines: readonly string[];
+  readonly activeAt?: string | null;
 }
 
 export function turnOf(records: TurnRecords): WatchTurn {
   const started = record(records.started);
   const operation = list(parsed(text(started["operationId"])));
-  const outcome = text(record(records.result)["outcome"]);
+  const result = record(records.result);
+  const outcome = text(result["outcome"]);
+  const report = record(parsed(text(result["result"])));
   return {
     key: records.key,
     runId: text(operation[2]),
@@ -108,7 +134,13 @@ export function turnOf(records: TurnRecords): WatchTurn {
     startedAt: text(started["startedAt"]),
     outcome: records.result === null ? "in work" : outcome,
     costUsd: costOf(records.lines),
-    activity: records.lines.flatMap(activityOf).slice(-activityLimit),
+    activity: concise(records.lines.flatMap(activityOf)).slice(-activityLimit),
+    endedAt: stamp(result["endedAt"]),
+    activeAt: records.activeAt ?? null,
+    commits: texts(report["commits"]),
+    files: texts(report["files"]),
+    uncommitted: texts(report["uncommitted"]),
+    summary: text(report["summary"]),
   };
 }
 
@@ -164,6 +196,8 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
       .map((decision) => decisionCommands(decision, inputs.client)),
     events: list(record(value)["events"]).map(eventOf),
     turns: inputs.turns.filter((turn) => turn.runId === runId),
+    phases: phasesOf(list(record(value)["events"])),
+    decision: decisionOf(list(record(value)["events"])),
   };
 }
 

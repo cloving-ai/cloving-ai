@@ -63,19 +63,31 @@ await test("CLV-016 the watch model reads the stream of a Claude turn as short a
     message: { content: [{ type: "text", text: "x".repeat(900) }] },
   });
   assert.equal(activityOf(long)[0]?.text.length, 601);
+  const silent = line({
+    type: "assistant",
+    message: { content: [{ type: "text", text: " \n" }] },
+  });
   for (const other of ["", "not json", line({ type: "system" }), line(5)])
     assert.deepEqual(activityOf(other), []);
+  assert.deepEqual(activityOf(silent), []);
 });
 
+const said = line({
+  type: "assistant",
+  message: { content: [{ type: "text", text: "a" }] },
+});
+const finished = (result: string, cost: number): string =>
+  line({ type: "result", result, total_cost_usd: cost });
+const working = {
+  key: "k1",
+  started,
+  result: null,
+  lines: [said, finished("Done.", 0.5)],
+};
+
 await test("CLV-016 the watch model gives a turn its run, its state and its cost from the journal records", () => {
-  const lines = [
-    line({
-      type: "assistant",
-      message: { content: [{ type: "text", text: "a" }] },
-    }),
-    line({ type: "result", result: "Done.", total_cost_usd: 0.5 }),
-  ];
-  assert.deepEqual(turnOf({ key: "k1", started, result: null, lines }), {
+  const activeAt = "2026-10-13T21:27:00.000Z";
+  assert.deepEqual(turnOf({ ...working, activeAt }), {
     key: "k1",
     runId: "run-1",
     target: "clv-016-a6f7ef47",
@@ -88,6 +100,12 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
       { kind: "say", text: "a" },
       { kind: "result", text: "Done. (cost 0.50 USD)" },
     ],
+    endedAt: null,
+    activeAt: "2026-10-13T21:27:00.000Z",
+    commits: [],
+    files: [],
+    uncommitted: [],
+    summary: "",
   });
   const ended = turnOf({
     key: "k1",
@@ -99,6 +117,64 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     [ended.runId, ended.outcome, ended.costUsd, ended.target],
     ["", "failed", null, ""],
   );
+});
+
+await test("CLV-016 the watch model gives a turn at its end its end time, and the commits, the files and the report of the worker result", () => {
+  const completed = turnOf({
+    key: "k1",
+    started,
+    lines: [],
+    result: {
+      outcome: "completed",
+      endedAt: "2026-10-13T21:34:39.000Z",
+      result: JSON.stringify({
+        summary: "I added the check.",
+        commits: ["9e69feb Reject a request", 5],
+        files: [" src/a.ts | 6 ++++++"],
+        uncommitted: [" M notes.txt"],
+      }),
+    },
+  });
+  assert.deepEqual(
+    [
+      completed.endedAt,
+      completed.activeAt,
+      completed.summary,
+      completed.commits,
+      completed.files,
+      completed.uncommitted,
+    ],
+    [
+      "2026-10-13T21:34:39.000Z",
+      null,
+      "I added the check.",
+      ["9e69feb Reject a request"],
+      [" src/a.ts | 6 ++++++"],
+      [" M notes.txt"],
+    ],
+  );
+});
+
+await test("CLV-016 the watch model shows a result that repeats the message before it as one short line with the cost", () => {
+  const repeated = turnOf({
+    ...working,
+    lines: [finished("Done.", 0.25), ...working.lines, finished("a", 0.5)],
+  });
+  assert.deepEqual(repeated.activity, [
+    { kind: "result", text: "Done. (cost 0.25 USD)" },
+    { kind: "say", text: "a" },
+    { kind: "result", text: "Done. (cost 0.50 USD)" },
+    { kind: "result", text: "a (cost 0.50 USD)" },
+  ]);
+  const echoed = turnOf({
+    ...working,
+    lines: [said, said, finished("a", 0.5)],
+  });
+  assert.deepEqual(echoed.activity, [
+    { kind: "say", text: "a" },
+    { kind: "say", text: "a" },
+    { kind: "result", text: "Result of the worker (cost 0.50 USD)" },
+  ]);
 });
 
 const decision = {
@@ -135,19 +211,37 @@ function run(runId: string, at: string): Record<string, unknown> {
   };
 }
 
-await test("CLV-016 the watch model orders the runs with the newest first and gives each run its decisions, its events and its turns", () => {
-  const model = watchModel({
+function modelOf(runs: readonly unknown[]): ReturnType<typeof watchModel> {
+  return watchModel({
     host: "/host",
     client: "cloving",
     updatedAt: "2026-10-13T21:40:00.000Z",
     service: "up",
-    runs: [
-      run("run-1", "2026-10-13T21:26:00Z"),
-      run("run-2", "2026-10-13T21:30:00Z"),
-    ],
+    runs,
     decisions: [decision],
     turns: [turnOf({ key: "k1", started, result: null, lines: [] })],
   });
+}
+
+await test("CLV-016 the watch model gives a run the decision of its review gate and names the review step after it", () => {
+  const events = ["gate.opened", "gate.decided"].map((type, index) => ({
+    sequence: index + 1,
+    recordedAt: `2026-10-13T21:3${String(index)}:00Z`,
+    type,
+    payload: { decision: "denied" },
+  }));
+  const [denied] = modelOf([{ ...run("run-3", ""), events }]).runs;
+  assert.deepEqual(
+    [denied?.decision, denied?.phases[3]?.name, denied?.phases[3]?.state],
+    ["denied", "Denied", "failed"],
+  );
+});
+
+await test("CLV-016 the watch model orders the runs with the newest first and gives each run its decisions, its events and its turns", () => {
+  const model = modelOf([
+    run("run-1", "2026-10-13T21:26:00Z"),
+    run("run-2", "2026-10-13T21:30:00Z"),
+  ]);
   assert.deepEqual(
     model.runs.map((item) => [
       item.runId,
@@ -178,7 +272,13 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
         },
       ],
       turns: [],
+      phases: model.runs[1]?.phases,
+      decision: "",
     },
+  );
+  assert.deepEqual(
+    model.runs[1]?.phases.map((phase) => phase.state),
+    ["done", "active", "pending", "pending", "pending"],
   );
   assert.deepEqual(
     [model.host, model.service, model.updatedAt],

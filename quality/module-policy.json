@@ -504,6 +504,12 @@
     "src/cli/watch-render.ts": "cli",
     "src/cli/watch-page.ts": "cli",
     "src/cli/watch-server.ts": "cli",
+    "src/cli/watch-phases.ts": "cli",
+    "test/watch-phases.test.ts": "test",
+    "src/cli/watch-view.ts": "cli",
+    "test/watch-view.test.ts": "test",
+    "test/watch-page.test.ts": "test",
+    "test/watch-sample.ts": "test",
     "src/cli/main.ts": "cli",
     "test/cli-watch.test.ts": "test",
     "test/watch-fixture.ts": "test"

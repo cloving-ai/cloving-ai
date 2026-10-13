@@ -27,7 +27,7 @@ interface Reply {
 interface Watch {
   readonly settings: WatchSettings;
   readonly details: Map<string, { sequence: unknown; value: unknown }>;
-  readonly streams: Map<string, { size: number; lines: string[] }>;
+  readonly streams: Map<string, { size: number; lines: readonly string[] }>;
 }
 
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
@@ -87,19 +87,23 @@ async function service(watch: Watch): Promise<{
   return { service: "up", runs, decisions: list(questions["decisions"]) };
 }
 
-async function streamed(
-  watch: Watch,
-  file: string,
-): Promise<readonly string[]> {
-  const size = await stat(file).then(
-    (found) => found.size,
-    () => 0,
-  );
+interface Stream {
+  readonly size: number;
+  readonly lines: readonly string[];
+  readonly activeAt: string | null;
+}
+
+const noStream: Stream = { size: 0, lines: [], activeAt: null };
+
+async function streamed(watch: Watch, file: string): Promise<Stream> {
+  const found = await stat(file).catch(() => null);
+  if (found === null) return noStream;
   const known = watch.streams.get(file);
-  if (known?.size === size) return known.lines;
+  const activeAt = found.mtime.toISOString();
+  if (known?.size === found.size) return { ...known, activeAt };
   const lines = (await readFile(file, "utf8").catch(() => "")).split("\n");
-  watch.streams.set(file, { size, lines });
-  return lines;
+  watch.streams.set(file, { size: found.size, lines });
+  return { size: found.size, lines, activeAt };
 }
 
 async function stored(file: string): Promise<unknown> {
@@ -112,12 +116,14 @@ async function turns(watch: Watch): Promise<WatchTurn[]> {
   for (const key of await readdir(journal).catch(() => [])) {
     const started = await stored(join(journal, key, "started.json"));
     if (started === null) continue;
+    const stream = await streamed(watch, join(journal, key, "turn.jsonl"));
     found.push(
       turnOf({
         key,
         started,
         result: await stored(join(journal, key, "result.json")),
-        lines: await streamed(watch, join(journal, key, "turn.jsonl")),
+        lines: stream.lines,
+        activeAt: stream.activeAt,
       }),
     );
   }
