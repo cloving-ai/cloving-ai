@@ -68,6 +68,6 @@
     }
   },
   "dependencies": {
-    "solid-objects": "0.17.7"
+    "solid-objects": "0.17.8"
   }
 }

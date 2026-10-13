@@ -67,6 +67,26 @@ async function burst(authority: Authority): Promise<readonly string[]> {
   return failures;
 }
 
+async function timerTurns(
+  action: () => Promise<unknown>,
+): Promise<{ readonly turns: number; readonly largestGap: number }> {
+  const ticks = [performance.now()];
+  const timer = setInterval(() => {
+    ticks.push(performance.now());
+  }, 20);
+  try {
+    await action();
+  } finally {
+    clearInterval(timer);
+  }
+  const turns = ticks.length - 1;
+  ticks.push(performance.now());
+  const largestGap = Math.max(
+    ...ticks.slice(1).map((tick, index) => tick - (ticks[index] ?? tick)),
+  );
+  return { turns, largestGap };
+}
+
 await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timing loses no activation, and the authority stays available", async () => {
   const events: string[] = [];
   const authority = await openedAuthority(await temporaryDirectory(), {
@@ -91,5 +111,23 @@ await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timi
     commandId: "c-later",
   });
   assert.equal(later.kind, "accepted");
+  await authority.close();
+});
+
+await test("CLV-053 a burst of 1 000 withheld deliveries gives a 20 ms timer of the process a turn at least each 500 ms", async () => {
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    delivery: silent,
+    clock: () => noon,
+    timing: fastTiming,
+  });
+  await droppedRuns(authority, 1_000);
+  const failures: string[] = [];
+  const timer = await timerTurns(async () => {
+    failures.push(...(await burst(authority)));
+  });
+  assert.deepEqual(failures, []);
+  assert.equal(await openRows(authority), 0);
+  assert.ok(timer.turns > 20, String(timer.turns));
+  assert.ok(timer.largestGap < 500, String(timer.largestGap));
   await authority.close();
 });

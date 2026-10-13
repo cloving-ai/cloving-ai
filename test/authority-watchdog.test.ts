@@ -23,7 +23,6 @@ function event(fields: {
 }
 
 interface Timed {
-  readonly stops: number[];
   readonly observeAt: (at: number, watched: WatchedEvent) => void;
   readonly strandedAt: (at: number) => string | undefined;
   readonly deadLettered: () => string | undefined;
@@ -31,16 +30,11 @@ interface Timed {
 
 function timed(): Timed {
   const clock = { now: 0 };
-  const stops: number[] = [];
   const watchdog = strandingWatchdog({
     boundMilliseconds: 1_000,
     clock: () => clock.now,
-    whenStranded: () => {
-      stops.push(clock.now);
-    },
   });
   return {
-    stops,
     observeAt: (at, watched) => {
       clock.now = at;
       watchdog.observe(watched);
@@ -119,34 +113,13 @@ await test("CLV-042 only a dead-lettered delivery callback is reported, because 
   assert.equal(watchdog.deadLettered(), "callback-1");
 });
 
-await test("CLV-052 the watchdog calls the stop function at the first event of a message that it observes after the bound of a lost message, and not before", () => {
-  const watchdog = timed();
-  watchdog.observeAt(100, event({ name: lost, messageId: "message-1" }));
-  watchdog.observeAt(1_100, event({ name: lost, messageId: "message-1" }));
-  assert.deepEqual(watchdog.stops, []);
-  watchdog.observeAt(
-    1_101,
-    event({ name: "solid_objects.message.started", messageId: "message-2" }),
-  );
-  assert.deepEqual(watchdog.stops, [1_101]);
-});
-
-await test("CLV-052 the watchdog does not call the stop function for a message that completed after it lost its activation", () => {
+await test("CLV-053 the watchdog reports no stranded message for a message that completed after its bound and before a read", () => {
   const watchdog = timed();
   watchdog.observeAt(0, event({ name: lost, messageId: "message-1" }));
   watchdog.observeAt(1_500, event({ name: completed, messageId: "message-1" }));
   watchdog.observeAt(1_600, event({ name: lost, messageId: "message-2" }));
-  assert.deepEqual(watchdog.stops, []);
-});
-
-await test("CLV-052 the watchdog keeps a stranded message after its stop function ran, also when the message completes later", () => {
-  const watchdog = timed();
-  watchdog.observeAt(0, event({ name: lost, messageId: "message-1" }));
-  watchdog.observeAt(1_001, event({ name: lost, messageId: "message-1" }));
-  watchdog.observeAt(1_002, event({ name: completed, messageId: "message-1" }));
-  assert.deepEqual(watchdog.stops, [1_001, 1_002]);
-  assert.equal(watchdog.strandedAt(1_003), "message-1");
-  assert.equal(watchdog.strandedAt(0), "message-1");
+  assert.equal(watchdog.strandedAt(1_700), undefined);
+  assert.equal(watchdog.strandedAt(2_601), "message-2");
 });
 
 await test("CLV-052 the watchdog with the clock of the product reports no stranded message immediately after a loss", () => {
@@ -156,19 +129,41 @@ await test("CLV-052 the watchdog with the clock of the product reports no strand
 });
 
 await test("CLV-052 the watchdog with the clock of the product reports no stranded message after a forward step of the system clock", () => {
-  const stops: string[] = [];
-  const watchdog = strandingWatchdog({
-    boundMilliseconds: 1_000,
-    whenStranded: () => {
-      stops.push("stopped");
-    },
-  });
+  const watchdog = strandingWatchdog({ boundMilliseconds: 1_000 });
   watchdog.observe(event({ name: lost, messageId: "message-1" }));
   afterClockStep(5_000, () => {
-    watchdog.observe(
-      event({ name: "solid_objects.message.started", messageId: "message-1" }),
-    );
     assert.equal(watchdog.stranded(), undefined);
   });
-  assert.deepEqual(stops, []);
+});
+
+await test("CLV-053 the watchdog keeps a stranded message after a read reported it, also when the message completes later", () => {
+  const watchdog = timed();
+  watchdog.observeAt(0, event({ name: lost, messageId: "message-1" }));
+  assert.equal(watchdog.strandedAt(1_001), "message-1");
+  watchdog.observeAt(1_002, event({ name: completed, messageId: "message-1" }));
+  assert.equal(watchdog.strandedAt(1_003), "message-1");
+});
+
+await test("CLV-053 the watchdog counts the bound from the first loss, also when the library tries the message again", () => {
+  const watchdog = timed();
+  watchdog.observeAt(0, event({ name: lost, messageId: "message-1" }));
+  watchdog.observeAt(
+    500,
+    event({ name: "solid_objects.recovery.reclaimed", messageId: "message-1" }),
+  );
+  watchdog.observeAt(
+    500,
+    event({ name: "solid_objects.message.started", messageId: "message-1" }),
+  );
+  assert.equal(watchdog.strandedAt(1_000), undefined);
+  assert.equal(watchdog.strandedAt(1_001), "message-1");
+});
+
+await test("CLV-053 the watchdog reports no stranded message for a turn that is longer than the bound and lost no activation", () => {
+  const watchdog = timed();
+  watchdog.observeAt(
+    0,
+    event({ name: "solid_objects.message.started", messageId: "message-1" }),
+  );
+  assert.equal(watchdog.strandedAt(5_000), undefined);
 });

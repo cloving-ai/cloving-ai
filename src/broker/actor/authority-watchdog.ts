@@ -20,15 +20,12 @@ const finished = [
 
 export function strandingWatchdog(bound: {
   readonly boundMilliseconds: number;
-  readonly whenStranded?: () => void;
   readonly clock?: () => number;
 }): StrandingWatchdog {
   const clock = bound.clock ?? monotonic;
   const lost = new Map<string, number>();
   const dead: string[] = [];
-  let halted: string | undefined;
-  const stranded = (): string | undefined =>
-    halted ?? overdue(lost, clock() - bound.boundMilliseconds);
+  let reported: string | undefined;
   return {
     observe: (event) => {
       const { messageId } = event;
@@ -40,10 +37,11 @@ export function strandingWatchdog(bound: {
       )
         lost.set(messageId, clock());
       if (finished.includes(event.name)) lost.delete(messageId);
-      halted ??= stranded();
-      if (halted !== undefined) bound.whenStranded?.();
     },
-    stranded,
+    stranded: () => {
+      reported ??= overdue(lost, clock() - bound.boundMilliseconds);
+      return reported;
+    },
     deadLettered: () => dead[0],
   };
 }

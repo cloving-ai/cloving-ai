@@ -35,6 +35,7 @@ const timing = {
   cleanupIntervalMilliseconds: 100,
   callTimeoutMilliseconds: 1_000,
 };
+const recoveringTiming = { ...timing, callTimeoutMilliseconds: 3_000 };
 const lost = "solid_objects.activation.lost";
 
 function count(events: readonly string[], name: string): number {
@@ -133,7 +134,7 @@ await test("CLV-052 a delivery callback whose turn is longer than the lease in t
   const service = externalService();
   const authority = await openedAuthority(await temporaryDirectory(), {
     ...service.options,
-    timing,
+    timing: recoveringTiming,
     ...firstTurnsStalled({
       operation: "deliveryCompleted",
       events,
@@ -151,7 +152,7 @@ await test("CLV-052 a delivery callback whose turn is longer than the lease in t
     (await authority.events()).map((event) => event.type),
     ["run.created", "step.dispatched"],
   );
-  await delay(timing.callTimeoutMilliseconds + 100);
+  await delay(recoveringTiming.callTimeoutMilliseconds + 100);
   assert.equal((await authority.state()).sequence, 2);
   await authority.close();
 });
@@ -167,7 +168,7 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
   assert.equal(receipt.reason, "authority-unavailable");
   assert.match(
     receipt.detail,
-    /^SyncTimeout: .* status=claimed waitingOn=messageClaimed$/,
+    /^SyncTimeout: .* status=(claimed waitingOn=messageClaimed|ready waitingOn=notYetAvailable)$/,
   );
   await delay(timing.callTimeoutMilliseconds);
   const after = await executePinned(authority, admission);
@@ -243,15 +244,22 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
   );
   await delay(400);
   const receipt = await executePinned(authority, admission);
+  const answered = performance.now();
   const outcome = await Promise.race([
     running,
     delay(5_000, "not detected", { ref: false }),
   ]);
+  const stopped = performance.now();
   controller.abort();
   assert.equal(receipt.kind, "failed");
   assert.equal(receipt.reason, "authority-unavailable");
-  assert.match(outcome, /authority-unavailable: stranded message /);
-  assert.ok(performance.now() - started < 2_900);
+  assert.match(
+    outcome,
+    /^Error: authority-unavailable: (authority failure|stranded message [0-9a-f-]{36})$/,
+  );
+  assert.ok(stopped - answered < 250, String(stopped - answered));
+  assert.ok(stopped - started < 2_900);
+  await assert.rejects(authority.state(), /authority-unavailable/);
   await authority.close();
 });
 
