@@ -432,7 +432,16 @@
     "test/service-resolver.test.ts": "test",
     "test/service-units.test.ts": "test",
     "test/service-views.ts": "test",
-    "test/quality/arguments-object.test.ts": "test"
+    "test/quality/arguments-object.test.ts": "test",
+    "quality/member-uses.ts": "quality",
+    "quality/network-globals.ts": "quality",
+    "quality/value-nodes.ts": "quality",
+    "quality/reserved-imports.ts": "quality",
+    "quality/reserved-members.ts": "quality",
+    "test/quality/reserved-members.test.ts": "test",
+    "test/quality/sender-fixture.ts": "test",
+    "test/quality/boundary-roles.test.ts": "test",
+    "test/quality/network-globals.test.ts": "test"
   },
   "allowed": {
     "quality": [
@@ -480,6 +489,8 @@
     "harness": ["stdlib"],
     "actor-runtime": [],
     "service": ["service", "broker", "pure", "stdlib", "network"],
+    "host-bridge": ["host-bridge", "sdk-runtime", "pure", "stdlib"],
+    "sdk-runtime": [],
     "process": [],
     "network": [],
     "inspector": []
@@ -498,8 +509,13 @@
       "cli",
       "process",
       "network",
-      "inspector"
+      "inspector",
+      "workflow",
+      "host-bridge",
+      "sdk-runtime"
     ],
+    "broker": ["workflow", "step", "host-bridge", "sdk-runtime", "inspector"],
+    "storage": ["workflow", "step", "host-bridge", "sdk-runtime", "inspector"],
     "cli": [
       "storage",
       "harness",
@@ -510,9 +526,64 @@
       "process",
       "inspector"
     ],
-    "workflow": ["actor-runtime", "service", "process", "network", "inspector"],
-    "step": ["actor-runtime", "service", "process", "network", "inspector"],
+    "workflow": [
+      "actor-runtime",
+      "service",
+      "process",
+      "network",
+      "inspector",
+      "storage"
+    ],
+    "step": [
+      "actor-runtime",
+      "service",
+      "process",
+      "network",
+      "inspector",
+      "storage"
+    ],
     "service": ["harness", "step", "workflow", "process", "inspector"]
+  },
+  "reserved": {
+    "members": [
+      {
+        "file": "src/broker/actor/delivery-intents.ts",
+        "type": "Delivery",
+        "members": [],
+        "users": [
+          "src/broker/actor/authority-delivery.ts",
+          "src/broker/actor/effect-delivery.ts"
+        ]
+      },
+      {
+        "file": "node_modules/solid-objects/dist/actor.d.ts",
+        "type": "Actor",
+        "members": ["emit"],
+        "users": ["src/broker/actor/authority-actor.ts"]
+      },
+      {
+        "file": "node_modules/solid-objects/dist/runtime.d.ts",
+        "type": "SolidObjectsRuntime",
+        "members": ["registerEffect"],
+        "users": ["src/broker/actor/authority-release.ts"]
+      }
+    ],
+    "imports": {
+      "src/broker/actor/authority-delivery.ts": [
+        "src/broker/actor/authority-runtime.ts"
+      ],
+      "src/broker/actor/effect-delivery.ts": [
+        "src/broker/actor/authority-delivery.ts"
+      ],
+      "src/broker/actor/authority-release.ts": [
+        "src/broker/actor/authority-runtime.ts"
+      ],
+      "node_modules/solid-objects/dist/database/sqlite.d.ts": [
+        "src/broker/actor/authority-runtime.ts"
+      ],
+      "node:sqlite": ["src/storage/domain-schema.ts"]
+    },
+    "exempt": ["test", "quality", "build", "configuration", "tooling"]
   },
   "automaticPaths": {
     "pure": "src/",

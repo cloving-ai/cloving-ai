@@ -44,12 +44,12 @@ function localBinding(symbol: ts.Symbol): boolean {
   );
 }
 
-interface ReferenceContext {
+export interface ReferenceContext {
   readonly parent: ts.Node | undefined;
   readonly checker: ts.TypeChecker;
 }
 
-function referenceSymbol(
+export function referenceSymbol(
   node: ts.Identifier,
   context: ReferenceContext,
 ): ts.Symbol | undefined {

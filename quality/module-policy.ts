@@ -5,16 +5,29 @@ import type { DependencyPolicy } from "./dependency-policy.ts";
 import { mapModules } from "./module-mapping.ts";
 
 export function proposedModulePolicy(directory: string): DependencyPolicy {
+  const located = (file: string): string =>
+    file.startsWith("node:") ? file : resolve(directory, file);
   const roles = Object.fromEntries(
-    Object.entries(proposal.roles).map(([file, role]) => [
-      file.startsWith("node:") ? file : resolve(directory, file),
-      role,
-    ]),
+    Object.entries(proposal.roles).map(([file, role]) => [located(file), role]),
   );
   return {
     roles,
     allowed: proposal.allowed,
     forbiddenReachability: proposal.forbiddenReachability,
+    reserved: {
+      members: proposal.reserved.members.map((entry) => ({
+        ...entry,
+        file: located(entry.file),
+        users: entry.users.map(located),
+      })),
+      imports: Object.fromEntries(
+        Object.entries(proposal.reserved.imports).map(([target, importers]) => [
+          located(target),
+          importers.map(located),
+        ]),
+      ),
+      exempt: proposal.reserved.exempt,
+    },
   };
 }
 

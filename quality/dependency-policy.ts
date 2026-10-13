@@ -1,9 +1,23 @@
 import type { DependencyGraph, DependencyEdge } from "./dependency-graph.ts";
 
+export interface ReservedMembers {
+  readonly file: string;
+  readonly type: string;
+  readonly members: readonly string[];
+  readonly users: readonly string[];
+}
+
+export interface ReservedPolicy {
+  readonly members: readonly ReservedMembers[];
+  readonly imports: Readonly<Record<string, readonly string[]>>;
+  readonly exempt: readonly string[];
+}
+
 export interface DependencyPolicy {
   readonly roles: Readonly<Record<string, string>>;
   readonly allowed: Readonly<Record<string, readonly string[]>>;
   readonly forbiddenReachability: Readonly<Record<string, readonly string[]>>;
+  readonly reserved?: ReservedPolicy;
 }
 
 export function checkDependencies(

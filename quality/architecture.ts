@@ -3,6 +3,9 @@ import type { DependencyPolicy } from "./dependency-policy.ts";
 import { checkDependencies } from "./dependency-policy.ts";
 import { dependencyGraph } from "./dependency-graph.ts";
 import { inspectEffects } from "./effects.ts";
+import { inspectNetworkGlobals } from "./network-globals.ts";
+import { checkReservedImports } from "./reserved-imports.ts";
+import { inspectReservedMembers } from "./reserved-members.ts";
 
 export function checkArchitecture(
   program: ts.Program,
@@ -10,10 +13,27 @@ export function checkArchitecture(
 ): void {
   const graph = dependencyGraph(program);
   checkDependencies(graph, policy);
-  const restricted = graph.files.filter((file) =>
-    ["pure", "workflow"].includes(policy.roles[file] ?? ""),
+  checkReservedImports(graph, policy);
+  rejectFindings(
+    "reserved-member",
+    inspectReservedMembers(program, { files: graph.files, policy }),
   );
-  const findings = inspectEffects(program, restricted);
+  const withRole = (roles: readonly string[]): string[] =>
+    graph.files.filter((file) => roles.includes(policy.roles[file] ?? ""));
+  rejectFindings(
+    "network-global",
+    inspectNetworkGlobals(
+      program,
+      withRole(["broker", "storage", "service", "step"]),
+    ),
+  );
+  rejectFindings(
+    "restricted-effect",
+    inspectEffects(program, withRole(["pure", "workflow"])),
+  );
+}
+
+function rejectFindings(rule: string, findings: readonly unknown[]): void {
   if (findings.length > 0)
-    throw new Error(`restricted-effect:\n${JSON.stringify(findings, null, 2)}`);
+    throw new Error(`${rule}:\n${JSON.stringify(findings, null, 2)}`);
 }

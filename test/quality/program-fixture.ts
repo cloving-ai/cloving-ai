@@ -10,7 +10,9 @@ export async function withProgram<Result>(
     { "package.json": '{"type":"module"}', ...sources },
     (directory) => {
       const program = ts.createProgram(
-        Object.keys(sources).map((name) => join(directory, name)),
+        Object.keys(sources)
+          .filter((name) => !name.endsWith(".json"))
+          .map((name) => join(directory, name)),
         {
           strict: true,
           noEmit: true,
