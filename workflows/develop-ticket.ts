@@ -42,9 +42,8 @@ function fields(text: string | null): Readonly<Record<string, unknown>> {
 function part(turn: Readonly<Record<string, unknown>>, name: string): string {
   const value = turn[name];
   if (Array.isArray(value)) return value.join("\n");
-  return typeof value === "string" || typeof value === "number"
-    ? String(value)
-    : "";
+  if (typeof value === "number") return value.toFixed(2);
+  return typeof value === "string" ? value : "";
 }
 
 function review(input: Ticket, result: string | null): string {

@@ -80,7 +80,7 @@ const turnResult = JSON.stringify({
   files: [" src/board.ts | 40 +"],
   uncommitted: [],
   worktree: "/host/worktrees/clv-016-a6f7ef47",
-  costUsd: 1.25,
+  costUsd: 1.0330776000000002,
 });
 const completed = {
   kind: "completed",
@@ -93,7 +93,7 @@ const reviewText = [
   "Review the work of the Claude worker for the ticket CLV-016.",
   "Branch: cloving/clv-016-a6f7ef47",
   "Work tree: /host/worktrees/clv-016-a6f7ef47",
-  "Cost (USD): 1.25",
+  "Cost (USD): 1.03",
   "",
   "Commits:",
   "1a2b3c4 Add the board client",

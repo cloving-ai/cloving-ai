@@ -65,7 +65,7 @@ function failed(part: Fields): WatchItem[] {
 
 function ended(line: Fields): WatchItem[] {
   const cost = count(line["total_cost_usd"]);
-  const spent = cost === null ? "" : ` (cost ${String(cost)} USD)`;
+  const spent = cost === null ? "" : ` (cost ${cost.toFixed(2)} USD)`;
   return [{ kind: "result", text: `${cut(text(line["result"]))}${spent}` }];
 }
 

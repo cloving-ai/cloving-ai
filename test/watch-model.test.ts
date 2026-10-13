@@ -53,10 +53,10 @@ await test("CLV-016 the watch model reads the stream of a Claude turn as short a
   const result = line({
     type: "result",
     result: "Done.",
-    total_cost_usd: 1.25,
+    total_cost_usd: 1.0330776000000002,
   });
   assert.deepEqual(activityOf(result), [
-    { kind: "result", text: "Done. (cost 1.25 USD)" },
+    { kind: "result", text: "Done. (cost 1.03 USD)" },
   ]);
   const long = line({
     type: "assistant",
@@ -86,7 +86,7 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     costUsd: 0.5,
     activity: [
       { kind: "say", text: "a" },
-      { kind: "result", text: "Done. (cost 0.5 USD)" },
+      { kind: "result", text: "Done. (cost 0.50 USD)" },
     ],
   });
   const ended = turnOf({

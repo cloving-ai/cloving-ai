@@ -62,7 +62,7 @@ export function renderItem(item: WatchItem): string {
 }
 
 export function renderTurn(turn: WatchTurn): string {
-  const cost = turn.costUsd === null ? "" : ` · ${String(turn.costUsd)} USD`;
+  const cost = turn.costUsd === null ? "" : ` · ${turn.costUsd.toFixed(2)} USD`;
   return [
     '<section class="turn">',
     `<h3>Claude turn · ${escapeHtml(turn.outcome)}${cost}</h3>`,

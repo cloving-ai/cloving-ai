@@ -53,7 +53,7 @@ const model: WatchModel = {
           worktree: "/host/worktrees/clv-016-a6f7ef47",
           startedAt: "2026-10-13T21:26:01.000Z",
           outcome: "in work",
-          costUsd: 0.5,
+          costUsd: 1.0330776000000002,
           activity: [
             { kind: "say", text: "I read <script>alert(1)</script>." },
             { kind: "tool", text: "Bash: git status" },
@@ -76,7 +76,7 @@ await test("CLV-016 the watch page shows the selected run with its state, its ev
     "21:26:00 run.created",
     "cloving/clv-016-a6f7ef47",
     "in work",
-    "0.5 USD",
+    "Claude turn · in work · 1.03 USD",
     '<div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
     '<div class="item tool">Bash: git status</div>',
     "Review &lt;b&gt;this&lt;/b&gt; &amp; that.",
