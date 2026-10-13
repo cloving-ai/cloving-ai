@@ -14,7 +14,7 @@ import type { Reply, ServiceRequest } from "../protocol.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { expiryScan } from "./expiry.ts";
-import { commandGateway, workerCommandBound } from "./gateway.ts";
+import { commandGateway, workerCommandBound, type Gateway } from "./gateway.ts";
 import {
   workflowRegistry,
   type Registry,
@@ -66,6 +66,14 @@ export const serviceLimits: ServiceLimits = {
 
 export interface ServiceHost {
   readonly close: () => Promise<void>;
+  readonly reports?: () => readonly unknown[];
+}
+
+export interface HostPorts {
+  readonly state: Authority["state"];
+  readonly submit: WorkerPort["submit"];
+  readonly input: (runId: string) => Promise<string | undefined>;
+  readonly workflowId: (runId: string) => Promise<string | undefined>;
 }
 
 export interface ServiceOptions {
@@ -73,7 +81,7 @@ export interface ServiceOptions {
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
   readonly delivery: Delivery;
-  readonly host?: () => Promise<ServiceHost>;
+  readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
   readonly timing?: ServiceTiming;
   readonly limits?: ServiceLimits;
   readonly effects?: Partial<EffectSettings>;
@@ -167,20 +175,14 @@ async function started(
     readonly path: string;
     readonly timing: ServiceTiming;
     readonly registry: Registry;
+    readonly gateway: Gateway;
+    readonly worker: WorkerPort;
     readonly host: ServiceHost | undefined;
   },
 ): Promise<Service> {
-  const { options, path, timing, registry, host } = setup;
+  const { options, path, timing, registry, gateway, host } = setup;
   const clock = options.clock ?? wallClock;
-  const limits = options.limits ?? serviceLimits;
-  const { textBytes, documentBytes } = limits;
-  const gateway = commandGateway({
-    authority,
-    registry,
-    clock,
-    textBytes,
-    pendingWorkerCommands: limits.pendingWorkerCommands,
-  });
+  const { textBytes, documentBytes } = options.limits ?? serviceLimits;
   await rm(path, { force: true });
   const listener = await listen({
     path,
@@ -195,6 +197,7 @@ async function started(
       resolverMilliseconds: timing.resolverMilliseconds,
       textBytes,
       documentBytes,
+      worldReports: () => host?.reports?.() ?? [],
     }),
   });
   const stopping = new AbortController();
@@ -208,7 +211,7 @@ async function started(
   return {
     socket: path,
     epoch: authority.epoch,
-    worker: workerPort({ gateway, authority }),
+    worker: setup.worker,
     close: async () => {
       await expiry.stop();
       await listener.close();
@@ -235,27 +238,60 @@ export async function startService(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   if (opening.kind === "refused") return opening;
-  const host = await hosted(options);
+  const { authority } = opening;
+  const gateway = serviceGateway(authority, { options, registry });
+  const worker = workerPort({ gateway, authority });
+  const host = await hosted(options, hostPorts(authority, worker));
   if (host.kind === "refused") {
-    await opening.authority.close();
+    await authority.close();
     return host;
   }
   try {
     return {
       kind: "started",
-      service: await started(opening.authority, {
+      service: await started(authority, {
         options,
         path,
         timing,
         registry,
+        gateway,
+        worker,
         host: host.host,
       }),
     };
   } catch (error) {
     await host.host?.close();
-    await opening.authority.close();
+    await authority.close();
     return refused("transport-failure", message(error));
   }
+}
+
+function serviceGateway(
+  authority: Authority,
+  parts: { readonly options: ServiceOptions; readonly registry: Registry },
+): Gateway {
+  const limits = parts.options.limits ?? serviceLimits;
+  return commandGateway({
+    authority,
+    registry: parts.registry,
+    clock: parts.options.clock ?? wallClock,
+    textBytes: limits.textBytes,
+    pendingWorkerCommands: limits.pendingWorkerCommands,
+  });
+}
+
+function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
+  return {
+    state: authority.state,
+    submit: worker.submit,
+    input: async (runId) => {
+      const digest = (await authority.state()).details[runId]?.input;
+      return typeof digest === "string"
+        ? await authority.queries.document(digest)
+        : undefined;
+    },
+    workflowId: async (runId) => (await authority.queries.workflowIds())[runId],
+  };
 }
 
 function message(error: unknown): string {
@@ -264,11 +300,12 @@ function message(error: unknown): string {
 
 async function hosted(
   options: ServiceOptions,
+  ports: HostPorts,
 ): Promise<
   { readonly kind: "started"; readonly host: ServiceHost | undefined } | Refusal
 > {
   try {
-    return { kind: "started", host: await options.host?.() };
+    return { kind: "started", host: await options.host?.(ports) };
   } catch (error) {
     return refused("host-unavailable", message(error));
   }

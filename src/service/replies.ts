@@ -18,6 +18,7 @@ export interface ServiceContext {
   readonly resolverMilliseconds: number;
   readonly textBytes: number;
   readonly documentBytes: number;
+  readonly worldReports?: () => readonly unknown[];
 }
 
 const codes: Readonly<Record<string, string>> = {

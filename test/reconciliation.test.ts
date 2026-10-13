@@ -35,16 +35,37 @@ const running = lastState(
 );
 
 await test("CLV-042 an eligible start without a world run produces nothing, because native delivery owns the send", () => {
-  assert.deepEqual(reconcile(admitted, []), { commands: [], conflicts: [] });
+  assert.deepEqual(reconcile(admitted, []), {
+    commands: [],
+    conflicts: [],
+    reports: [],
+  });
 });
 
 await test("CLV-042 a world run found for an unrecorded start produces no command until its delivery records the dispatch", () => {
   for (const status of ["pending", "running", "completed", "failed"])
     assert.deepEqual(
       reconcile(admitted, [{ runId: "run-1", receipt: "wrun-1", status }]),
-      { commands: [], conflicts: [] },
+      { commands: [], conflicts: [], reports: [] },
     );
 });
+
+const failedPlan = [
+  {
+    kind: "report-observation",
+    commandId: "observe:world-run-failed:wrun-1",
+    runId: "run-1",
+    condition: "infrastructure-failure",
+    reason: "world-run-failed",
+    evidence: "world-run:wrun-1",
+  },
+  {
+    kind: "fail-run",
+    commandId: "fail-run:wrun-1",
+    runId: "run-1",
+    expectedRevision: 1,
+  },
+];
 
 await test("CLV-007 world progress after a recorded dispatch becomes the next run transition", () => {
   const steps = [
@@ -73,18 +94,7 @@ await test("CLV-007 world progress after a recorded dispatch becomes the next ru
         },
       ],
     ],
-    [
-      dispatched,
-      "failed",
-      [
-        {
-          kind: "fail-run",
-          commandId: "fail-run:wrun-1",
-          runId: "run-1",
-          expectedRevision: 1,
-        },
-      ],
-    ],
+    [dispatched, "failed", failedPlan],
     [
       running,
       "completed",
@@ -102,7 +112,7 @@ await test("CLV-007 world progress after a recorded dispatch becomes the next ru
   for (const [state, status, commands] of steps)
     assert.deepEqual(
       reconcile(state, [{ runId: "run-1", receipt: "wrun-1", status }]),
-      { commands, conflicts: [] },
+      { commands, conflicts: [], reports: [] },
     );
 });
 
@@ -113,6 +123,12 @@ await test("CLV-007 two world runs for one Cloving run are reported and never re
       { runId: "run-1", receipt: "wrun-2", status: "running" },
       { runId: "run-9", receipt: "wrun-9", status: "running" },
     ]),
-    { commands: [], conflicts: ["run-1"] },
+    {
+      commands: [],
+      conflicts: ["run-1"],
+      reports: [
+        { kind: "unknown-world-run", runId: "run-9", receipt: "wrun-9" },
+      ],
+    },
   );
 });

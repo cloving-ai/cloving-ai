@@ -18,16 +18,71 @@ export const hostModule = pathToFileURL(
 ).href;
 
 export const prelude = `
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { getRun, start } from "workflow/api";
-import { setWorld } from "workflow/runtime";
+import { getWorld, setWorld } from "workflow/runtime";
 import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startHost } from ${JSON.stringify(hostModule)};
 const dataDirectory = process.env.WORKFLOW_LOCAL_DATA_DIR;
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+const halt = (boundary, detail = {}) => { print({ boundary, ...detail }); setInterval(() => undefined, 60000); return new Promise(() => undefined); };
 const worlds = () => ["cache", "stubbedCache", "cachePromise", "stubbedCachePromise"].filter((name) => globalThis[Symbol.for("@workflow/world//" + name)] !== undefined).length;
+`;
+
+const product = (file: string): string =>
+  JSON.stringify(pathToFileURL(join(productRoot, file)).href);
+
+export const servicePrelude = `
+import { mkdirSync } from "node:fs";
+import { startService } from ${product("src/service/service.ts")};
+import { startDelivery } from ${product("src/host/start-delivery.ts")};
+import { outcomeKind, taggedRuns } from ${product("src/host/world-runs.ts")};
+import { worldLoop } from ${product("src/host/world-reconciliation.ts")};
+import { call, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
+const stateDirectory = process.cwd() + "/state";
+const runtimeDirectory = process.cwd() + "/runtime";
+mkdirSync(stateDirectory, { recursive: true });
+mkdirSync(runtimeDirectory, { recursive: true, mode: 0o700 });
+const asked = (operation, parameters) => call({ runtimeDirectory }, { operation, parameters });
+const eventTypes = async (runId) => (await asked("events", { after: 0, limit: 1000, runId })).events.map((event) => event.type);
+const stateOf = async (runId) => (await asked("status", { runId })).run.state;
+const until = async (reached) => { for (let pass = 0; pass < 500; pass += 1) { if (await reached()) return; await delay(20); } throw new Error("The scenario did not reach its state."); };
+let ports;
+const calls = [];
+const recording = (product) => ({
+  reconcile: async (intent) => { const outcome = await product.reconcile(intent); calls.push("reconcile " + outcome.kind); return outcome; },
+  deliver: async (intent) => { calls.push("deliver"); return await product.deliver(intent); },
+});
+const hosted = async (overrides = {}) => {
+  const product = startDelivery({
+    runs: taggedRuns,
+    input: (runId) => ports.input(runId),
+    workflow: async (runId) => workflows[await ports.workflowId(runId)],
+  });
+  const delivery = (overrides.wrap ?? recording)(product);
+  const opening = await startService({
+    stateDirectory,
+    runtimeDirectory,
+    workflows: [fakeRegistration([])],
+    delivery,
+    timing: testTiming,
+    host: async (given) => {
+      ports = given;
+      const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+      if (host.kind !== "started") throw new Error(host.reason);
+      const loop = worldLoop({ ...given, runs: taggedRuns, outcome: outcomeKind, intervalMilliseconds: 20, ...overrides.loop });
+      return { close: async () => { await loop.stop(); await host.host.close(); }, reports: loop.reports };
+    },
+  });
+  if (opening.kind !== "started") { print(opening); process.exit(3); }
+  return opening.service;
+};
+const submitted = async (commandId) => (await asked("run", { workflowId: "develop", source: "prompt", submission: { prompt: "task of " + commandId }, commandId })).runId;
+const tagged = async () => (await taggedRuns()).map((run) => ({ run: run.runId, operation: run.operationId, receipt: run.receipt, status: run.status }));
+const stepStarts = () => (existsSync("step-starts") ? readFileSync("step-starts", "utf8").split("\\n").length - 1 : 0);
+const dispatches = async (runId) => (await asked("events", { after: 0, limit: 1000, runId })).events.filter((event) => event.type === "step.dispatched").map((event) => event.payload.receipt);
 `;
 
 export interface ChildResult {
@@ -43,6 +98,7 @@ export interface Consumer {
     script: string,
     environment?: Readonly<Record<string, string | undefined>>,
   ) => Promise<ChildResult>;
+  readonly runUntil: (boundary: string, script: string) => Promise<ChildResult>;
 }
 
 function child(
@@ -50,6 +106,7 @@ function child(
   options: {
     readonly directory: string;
     readonly environment: Readonly<Record<string, string | undefined>>;
+    readonly boundary?: string;
   },
 ): Promise<ChildResult> {
   return new Promise((resolve, reject) => {
@@ -62,6 +119,11 @@ function child(
     const output = { stdout: "", stderr: "" };
     started.stdout.on("data", (chunk: Buffer) => {
       output.stdout += chunk.toString();
+      if (
+        options.boundary !== undefined &&
+        output.stdout.includes(`{"boundary":"${options.boundary}"`)
+      )
+        started.kill("SIGKILL");
     });
     started.stderr.on("data", (chunk: Buffer) => {
       output.stderr += chunk.toString();
@@ -80,6 +142,28 @@ function child(
   });
 }
 
+async function compiledConsumer(
+  directory: string,
+  workflow: string,
+): Promise<void> {
+  await mkdir(join(directory, "workflows"));
+  await writeFile(
+    join(directory, "package.json"),
+    '{"name":"host-consumer","private":true,"type":"module"}',
+  );
+  await writeFile(join(directory, "workflows/develop.ts"), workflow);
+  await symlink(
+    join(productRoot, "node_modules"),
+    join(directory, "node_modules"),
+  );
+  const compiled = await child(
+    [join(productRoot, "tools/compile-workflows.ts"), "workflows", "artifacts"],
+    { directory, environment: {} },
+  );
+  if (compiled.status !== 0)
+    throw new Error(`The fixture workflow did not compile: ${compiled.stderr}`);
+}
+
 export async function withConsumer<Result>(
   workflow: string,
   use: (consumer: Consumer) => Promise<Result>,
@@ -89,42 +173,33 @@ export async function withConsumer<Result>(
   );
   const world = join(directory, "world");
   try {
-    await mkdir(join(directory, "workflows"));
-    await writeFile(
-      join(directory, "package.json"),
-      '{"name":"host-consumer","private":true,"type":"module"}',
-    );
-    await writeFile(join(directory, "workflows/develop.ts"), workflow);
-    await symlink(
-      join(productRoot, "node_modules"),
-      join(directory, "node_modules"),
-    );
-    const compiled = await child(
-      [
-        join(productRoot, "tools/compile-workflows.ts"),
-        "workflows",
-        "artifacts",
-      ],
-      { directory, environment: {} },
-    );
-    if (compiled.status !== 0)
-      throw new Error(
-        `The fixture workflow did not compile: ${compiled.stderr}`,
-      );
+    await compiledConsumer(directory, workflow);
+    const environment = {
+      WORKFLOW_TARGET_WORLD: "local",
+      WORKFLOW_LOCAL_DATA_DIR: world,
+      WORKFLOW_LOCAL_BASE_URL: "http://127.0.0.1:1",
+      WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "1",
+      WORKFLOW_INLINE_OWNERSHIP_LEASE_SECONDS: "2",
+    };
+    const scenario = async (script: string): Promise<void> => {
+      await writeFile(join(directory, "scenario.mjs"), prelude + script);
+    };
     return await use({
       directory,
       world,
-      run: async (script, environment = {}) => {
-        await writeFile(join(directory, "scenario.mjs"), prelude + script);
+      run: async (script, overrides = {}) => {
+        await scenario(script);
         return await child(["scenario.mjs"], {
           directory,
-          environment: {
-            WORKFLOW_TARGET_WORLD: "local",
-            WORKFLOW_LOCAL_DATA_DIR: world,
-            WORKFLOW_LOCAL_BASE_URL: "http://127.0.0.1:1",
-            WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "1",
-            ...environment,
-          },
+          environment: { ...environment, ...overrides },
+        });
+      },
+      runUntil: async (boundary, script) => {
+        await scenario(script);
+        return await child(["scenario.mjs"], {
+          directory,
+          environment,
+          boundary,
         });
       },
     });

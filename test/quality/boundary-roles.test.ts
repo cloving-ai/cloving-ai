@@ -212,5 +212,5 @@ await test("CLV-055 the protected check has the product host in the host bridge 
       .filter(([, targets]) => targets.includes(role))
       .map(([name]) => name);
   assert.deepEqual(importers("sdk-runtime"), ["host-bridge"]);
-  assert.deepEqual(importers("host-bridge"), ["host-bridge"]);
+  assert.deepEqual(importers("host-bridge"), ["test", "host-bridge"]);
 });

@@ -176,6 +176,7 @@ async function listed(
   return result("run-list", {
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
+    worldReports: context.worldReports?.() ?? [],
   });
 }
 

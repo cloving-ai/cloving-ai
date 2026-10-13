@@ -96,6 +96,11 @@ const details = new Map<string, string>([
     "stop-unconfirmed",
     "The run is dropped. The service asked for the stop of its work and got no confirmation. A person can confirm that the worker stopped.",
   ],
+  ["world-run-failed", "The SDK run of this run failed in the World."],
+  [
+    "world-run-cancelled",
+    "The SDK run of this run was cancelled in the World. Cloving did not ask for that.",
+  ],
   ["run-cancelled", "The run is dropped and has no work in progress."],
   ["run-completed", "The run completed."],
   ["run-failed", "The run failed."],
@@ -219,15 +224,22 @@ function waiting(input: StatusInput): Assessment {
   });
 }
 
+function worldEnd(input: StatusInput): string | undefined {
+  const reason = input.details?.observation?.reason ?? "";
+  return ["world-run-failed", "world-run-cancelled"].includes(reason)
+    ? reason
+    : undefined;
+}
+
 const assessments: Readonly<
   Record<RunStatus, (input: StatusInput) => Assessment>
 > = {
   queued,
   running,
   waiting_gate: waiting,
-  paused: () =>
+  paused: (input) =>
     assessed("paused", {
-      code: "operator-pause",
+      code: worldEnd(input) ?? "operator-pause",
       nextAction: "resume",
       humanInputCanHelp: true,
     }),

@@ -443,10 +443,18 @@
     "test/quality/boundary-roles.test.ts": "test",
     "test/quality/network-globals.test.ts": "test",
     "node_modules/workflow/dist/runtime.d.ts": "sdk-runtime",
+    "node_modules/workflow/dist/api.d.ts": "sdk-runtime",
+    "src/host/start-delivery.ts": "host-bridge",
     "src/host/world-host.ts": "host-bridge",
+    "src/host/world-reconciliation.ts": "host-bridge",
+    "src/host/world-runs.ts": "host-bridge",
     "test/toolchain-runtime.test.ts": "test",
     "test/service-host-start.test.ts": "test",
     "test/world-host-fixture.ts": "test",
+    "test/service-world-status.test.ts": "test",
+    "test/world-outcomes.test.ts": "test",
+    "test/world-reconciliation.test.ts": "test",
+    "test/world-start.test.ts": "test",
     "test/world-host.test.ts": "test"
   },
   "allowed": {
@@ -475,7 +483,8 @@
       "process",
       "cli",
       "service",
-      "network"
+      "network",
+      "host-bridge"
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata", "process"],
     "configuration": ["tooling", "quality"],

@@ -312,3 +312,33 @@ await test("CLV-049 a dropped run whose protected operation failed has no unreso
     ]);
     assert.deepEqual(await shown(scene), [["failed", "tool-exit"]]);
   }));
+
+await test("CLV-056 the recovery value of the status names a run with a recovering operation and no blocked operation", () =>
+  withHarness(async (harness) => {
+    const held = Promise.withResolvers<undefined>();
+    let reconciliations = 0;
+    const scene = await effectScene(harness, {
+      effectLimit: 5,
+      lostReplies: 1,
+      reconcile: () => {
+        reconciliations += 1;
+        return reconciliations === 1
+          ? Promise.resolve({ kind: "absent" })
+          : held.promise.then(() =>
+              Promise.reject(new Error("the reply is lost")),
+            );
+      },
+    });
+    await requested(scene, { commandId: "c-request", round: 1 });
+    await untilStates(scene, ["recovering"]);
+    const run = await view(harness, scene.runId);
+    assert.deepEqual(reasonOf(run), [
+      "uncertain-effect",
+      "effect-recovering",
+      "reconcile-effect",
+      false,
+    ]);
+    assert.deepEqual(field(run, "recovery"), { attempts: 1, limit: 3 });
+    assert.equal(field(run, "state"), "running");
+    held.resolve(undefined);
+  }));
