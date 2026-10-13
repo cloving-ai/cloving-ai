@@ -37,10 +37,24 @@ export type ProtectedResult =
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "unavailable"; readonly reason: string };
 
+export interface GateRequest {
+  readonly gateId: string;
+  readonly kind: "question" | "approval";
+  readonly prompt: string;
+}
+
+export type GateResult =
+  | { readonly kind: "opened"; readonly decisionId: string }
+  | { readonly kind: "refused"; readonly reason: string }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
 export interface StepBridge {
   readonly effect: (request: ProtectedRequest) => Promise<ProtectedResult>;
+  readonly gate: (request: GateRequest) => Promise<GateResult>;
 }
 
 export function isStepBridge(value: unknown): value is StepBridge {
-  return typeof Reflect.get(Object(value), "effect") === "function";
+  return ["effect", "gate"].every(
+    (member) => typeof Reflect.get(Object(value), member) === "function",
+  );
 }

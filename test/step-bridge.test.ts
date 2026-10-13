@@ -115,8 +115,10 @@ function scene(script: {
     state: async () => {
       const status = await taken(states);
       log.push(`state ${status}`);
-      return { runs: { "run-1": { status } } };
+      return { runs: { "run-1": { status, revision: 2 } }, gates: {} };
     },
+    openGate: () => Promise.resolve({ kind: "accepted" }),
+    registerWait: () => Promise.resolve({ kind: "accepted" }),
     requestEffect: (asked) => {
       log.push("request");
       requests.push(asked);

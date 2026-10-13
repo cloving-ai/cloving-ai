@@ -68,8 +68,8 @@ await test("CLV-054 the protected check rejects a second module that opens the a
 
 await test("CLV-054 the protected check rejects an authority module that reaches the workflow, a step, the host bridge or the SDK runtime", async () => {
   const lists = proposedModulePolicy("/candidate").forbiddenReachability;
-  assert.deepEqual(lists["broker"], [...control, "inspector"]);
-  assert.deepEqual(lists["storage"], [...control, "inspector"]);
+  assert.deepEqual(lists["broker"], [...control, "inspector", "daemon"]);
+  assert.deepEqual(lists["storage"], [...control, "inspector", "daemon"]);
   for (const role of ["workflow", "host-bridge", "sdk-runtime", "step"])
     assert.ok(lists["pure"]?.includes(role), role);
   for (const role of control)
@@ -212,5 +212,5 @@ await test("CLV-055 the protected check has the product host in the host bridge 
       .filter(([, targets]) => targets.includes(role))
       .map(([name]) => name);
   assert.deepEqual(importers("sdk-runtime"), ["host-bridge"]);
-  assert.deepEqual(importers("host-bridge"), ["test", "host-bridge"]);
+  assert.deepEqual(importers("host-bridge"), ["test", "host-bridge", "daemon"]);
 });

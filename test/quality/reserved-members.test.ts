@@ -271,6 +271,7 @@ const reservedMembers = [
     users: [
       `${actorDirectory}authority-delivery.ts`,
       `${actorDirectory}effect-delivery.ts`,
+      "/candidate/src/daemon/delivery-router.ts",
     ],
   },
   {
@@ -307,7 +308,7 @@ const reservedMembers = [
     file: "/candidate/src/host/start-delivery.ts",
     type: "StartDelivery",
     members: [],
-    users: [],
+    users: ["/candidate/src/daemon/delivery-router.ts"],
   },
 ];
 

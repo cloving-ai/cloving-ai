@@ -178,6 +178,7 @@
     "src/execution-pin.ts": "pure",
     "test/execution-pin.test.ts": "test",
     "src/steps/load-cycle.ts": "step",
+    "src/steps/decision-gate.ts": "step",
     "test/load-cycle.test.ts": "test",
     "src/resource-files.ts": "broker",
     "src/workflow-resources.ts": "pure",
@@ -472,8 +473,25 @@
     "test/world-reconciliation.test.ts": "test",
     "test/world-start.test.ts": "test",
     "test/world-claims.test.ts": "test",
+    "test/world-gate.test.ts": "test",
+    "test/step-gate.test.ts": "test",
     "test/step-claims.test.ts": "test",
-    "test/world-host.test.ts": "test"
+    "test/world-host.test.ts": "test",
+    "test/delivery-router.test.ts": "test",
+    "test/self-host.test.ts": "test",
+    "test/daemon.test.ts": "test",
+    "tools/self-host.ts": "build",
+    "tools/ticket-workflow.ts": "build",
+    "src/daemon/daemon.ts": "daemon",
+    "src/daemon/host-environment.ts": "daemon",
+    "src/daemon/ticket-registration.ts": "daemon",
+    "src/daemon/delivery-router.ts": "daemon",
+    "src/daemon/claude-worker.ts": "daemon",
+    "src/daemon/claude-turn.ts": "daemon",
+    "src/daemon/work-tree.ts": "daemon",
+    "test/claude-worker.test.ts": "test",
+    "test/claude-worker-stop.test.ts": "test",
+    "test/claude-worker-fixture.ts": "test"
   },
   "allowed": {
     "quality": [
@@ -502,7 +520,8 @@
       "cli",
       "service",
       "network",
-      "host-bridge"
+      "host-bridge",
+      "daemon"
     ],
     "build": ["build", "quality", "stdlib", "sdk-build", "metadata", "process"],
     "configuration": ["tooling", "quality"],
@@ -523,6 +542,16 @@
     "actor-runtime": [],
     "service": ["service", "broker", "pure", "stdlib", "network"],
     "host-bridge": ["host-bridge", "sdk-runtime", "pure", "stdlib"],
+    "daemon": [
+      "daemon",
+      "service",
+      "host-bridge",
+      "broker",
+      "cli",
+      "pure",
+      "stdlib",
+      "process"
+    ],
     "sdk-runtime": [],
     "process": [],
     "network": [],
@@ -545,10 +574,25 @@
       "inspector",
       "workflow",
       "host-bridge",
-      "sdk-runtime"
+      "sdk-runtime",
+      "daemon"
     ],
-    "broker": ["workflow", "step", "host-bridge", "sdk-runtime", "inspector"],
-    "storage": ["workflow", "step", "host-bridge", "sdk-runtime", "inspector"],
+    "broker": [
+      "workflow",
+      "step",
+      "host-bridge",
+      "sdk-runtime",
+      "inspector",
+      "daemon"
+    ],
+    "storage": [
+      "workflow",
+      "step",
+      "host-bridge",
+      "sdk-runtime",
+      "inspector",
+      "daemon"
+    ],
     "cli": [
       "storage",
       "harness",
@@ -557,7 +601,8 @@
       "actor-runtime",
       "service",
       "process",
-      "inspector"
+      "inspector",
+      "daemon"
     ],
     "workflow": [
       "actor-runtime",
@@ -565,7 +610,8 @@
       "process",
       "network",
       "inspector",
-      "storage"
+      "storage",
+      "daemon"
     ],
     "step": [
       "actor-runtime",
@@ -573,9 +619,10 @@
       "process",
       "network",
       "inspector",
-      "storage"
+      "storage",
+      "daemon"
     ],
-    "service": ["harness", "step", "workflow", "process", "inspector"]
+    "service": ["harness", "step", "workflow", "process", "inspector", "daemon"]
   },
   "reserved": {
     "members": [
@@ -585,7 +632,8 @@
         "members": [],
         "users": [
           "src/broker/actor/authority-delivery.ts",
-          "src/broker/actor/effect-delivery.ts"
+          "src/broker/actor/effect-delivery.ts",
+          "src/daemon/delivery-router.ts"
         ]
       },
       {
@@ -622,7 +670,7 @@
         "file": "src/host/start-delivery.ts",
         "type": "StartDelivery",
         "members": [],
-        "users": []
+        "users": ["src/daemon/delivery-router.ts"]
       }
     ],
     "names": [

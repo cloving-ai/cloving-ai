@@ -77,6 +77,9 @@ export interface HostPorts {
   readonly workflowId: (runId: string) => Promise<string | undefined>;
   readonly requestEffect: WorkerPort["requestEffect"];
   readonly operation: Authority["effects"]["operation"];
+  readonly reportEffect: WorkerPort["reportEffect"];
+  readonly openGate: WorkerPort["openGate"];
+  readonly registerWait: WorkerPort["registerWait"];
 }
 
 export interface ServiceOptions {
@@ -307,6 +310,9 @@ function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
     },
     document: authority.queries.document,
     requestEffect: worker.requestEffect,
+    reportEffect: worker.reportEffect,
+    openGate: worker.openGate,
+    registerWait: worker.registerWait,
     operation: authority.effects.operation,
     workflowId: async (runId) => (await authority.queries.workflowIds())[runId],
   };

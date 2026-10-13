@@ -130,7 +130,8 @@ const hosted = async (overrides = {}) => {
       };
       const stopping = new AbortController();
       const timing = { lookupTries: 250, pollMilliseconds: 20, retryMilliseconds: 100 };
-      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
+      const registerWait = async (wait) => { if (existsSync("halt-before-wait")) await halt("halted-before-wait"); return await given.registerWait(wait); };
+      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, registerWait, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
       return { close: async () => { stopping.abort(); remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
     },
   });
@@ -249,6 +250,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows": "./src/workflows.ts",
         "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",
         "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
+        "./workflows/steps/decision-gate": "./src/steps/decision-gate.ts",
       },
     }),
   );

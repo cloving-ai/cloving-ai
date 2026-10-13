@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pinnedIdentity } from "../execution-pin.ts";
 import { collectResources } from "../resource-files.ts";
-import { admitWorkflow } from "../workflow-admission.ts";
+import {
+  admitWorkflow,
+  type ExecutionManifest,
+} from "../workflow-admission.ts";
 import { validateDevelopmentInput } from "../workflow-contracts.ts";
 import { observedToolchain, qualifiedToolchain } from "./toolchain.ts";
 
@@ -38,13 +41,14 @@ export type ValidationReport =
       readonly errors: readonly ValidationError[];
     };
 
-type Admission =
-  | {
-      readonly kind: "admitted";
-      readonly workflow: { readonly name: string; readonly workflowId: string };
-      readonly pinnedIdentity: string;
-    }
+export type CompiledAdmission =
+  | { readonly kind: "admitted"; readonly manifest: ExecutionManifest }
   | { readonly kind: "rejected"; readonly error: ValidationError };
+
+export interface AdmissionRequest {
+  readonly file: string;
+  readonly capabilities: readonly string[];
+}
 
 export async function validateWorkflow(
   directory: string,
@@ -53,7 +57,10 @@ export async function validateWorkflow(
   const { manifest, input } = files;
   const errors =
     input === null ? [] : await inputErrors(resolve(directory, input), input);
-  const admission = await admit(resolve(directory, manifest), manifest);
+  const admission = await admitCompiled(resolve(directory, manifest), {
+    file: manifest,
+    capabilities: [],
+  });
   if (admission.kind === "rejected") errors.push(admission.error);
   if (admission.kind === "rejected" || errors.length > 0)
     return {
@@ -66,8 +73,13 @@ export async function validateWorkflow(
     schemaVersion: 1,
     kind: "workflow-validation",
     status: "valid",
-    workflow: admission.workflow,
-    pinnedIdentity: admission.pinnedIdentity,
+    workflow: {
+      name: admission.manifest.name,
+      workflowId: admission.manifest.workflowId,
+    },
+    pinnedIdentity: createHash("sha256")
+      .update(pinnedIdentity(admission.manifest))
+      .digest("hex"),
     errors: [],
   };
 }
@@ -83,7 +95,11 @@ async function inputErrors(
   return [{ code: "invalid-development-input", file, detail: "cycleId" }];
 }
 
-async function admit(path: string, file: string): Promise<Admission> {
+export async function admitCompiled(
+  path: string,
+  request: AdmissionRequest,
+): Promise<CompiledAdmission> {
+  const { file, capabilities } = request;
   const registration = fields(await readJson(path));
   const artifacts = registration["artifacts"];
   if (registration["schemaVersion"] !== 1 || typeof artifacts !== "string")
@@ -119,24 +135,15 @@ async function admit(path: string, file: string): Promise<Admission> {
     },
     policy: {
       toolchain: await qualifiedToolchain(toolchain, directory),
-      capabilities: [],
+      capabilities,
     },
   });
   if (result.kind === "rejected")
     return rejected({ code: result.reason, file, detail: result.detail });
-  return {
-    kind: "admitted",
-    workflow: {
-      name: result.manifest.name,
-      workflowId: result.manifest.workflowId,
-    },
-    pinnedIdentity: createHash("sha256")
-      .update(pinnedIdentity(result.manifest))
-      .digest("hex"),
-  };
+  return result;
 }
 
-function rejected(error: ValidationError): Admission {
+function rejected(error: ValidationError): CompiledAdmission {
   return { kind: "rejected", error };
 }
 

@@ -1,6 +1,9 @@
 export { loadCycle, type CycleLoad } from "./steps/load-cycle.ts";
 export { protectedEffect } from "./steps/protected-effect.ts";
+export { decisionGate } from "./steps/decision-gate.ts";
 export type {
+  GateRequest,
+  GateResult,
   ProtectedRequest,
   ProtectedResult,
   ProtectedScope,
