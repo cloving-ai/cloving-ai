@@ -196,3 +196,21 @@ await test("CLV-054 a candidate cannot give a new file the host bridge role or t
     proposedModulePolicy("/candidate").reserved,
   );
 });
+
+await test("CLV-055 the protected check has the product host in the host bridge role, and only that role can import the SDK runtime", () => {
+  const policy = proposedModulePolicy("/candidate");
+  assert.equal(
+    policy.roles["/candidate/src/host/world-host.ts"],
+    "host-bridge",
+  );
+  assert.equal(
+    policy.roles["/candidate/node_modules/workflow/dist/runtime.d.ts"],
+    "sdk-runtime",
+  );
+  const importers = (role: string): string[] =>
+    Object.entries(policy.allowed)
+      .filter(([, targets]) => targets.includes(role))
+      .map(([name]) => name);
+  assert.deepEqual(importers("sdk-runtime"), ["host-bridge"]);
+  assert.deepEqual(importers("host-bridge"), ["host-bridge"]);
+});

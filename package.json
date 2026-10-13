@@ -58,8 +58,7 @@
     "jscpd": "5.4.0",
     "prettier": "3.9.9",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.1",
-    "workflow": "5.1.0"
+    "typescript-eslint": "8.71.1"
   },
   "overrides": {
     "@workflow/core": {
@@ -68,6 +67,7 @@
     }
   },
   "dependencies": {
-    "solid-objects": "0.17.8"
+    "solid-objects": "0.17.8",
+    "workflow": "5.1.0"
   }
 }

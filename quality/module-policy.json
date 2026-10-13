@@ -441,7 +441,13 @@
     "test/quality/reserved-members.test.ts": "test",
     "test/quality/sender-fixture.ts": "test",
     "test/quality/boundary-roles.test.ts": "test",
-    "test/quality/network-globals.test.ts": "test"
+    "test/quality/network-globals.test.ts": "test",
+    "node_modules/workflow/dist/runtime.d.ts": "sdk-runtime",
+    "src/host/world-host.ts": "host-bridge",
+    "test/toolchain-runtime.test.ts": "test",
+    "test/service-host-start.test.ts": "test",
+    "test/world-host-fixture.ts": "test",
+    "test/world-host.test.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -64,11 +64,16 @@ export const serviceLimits: ServiceLimits = {
   pendingWorkerCommands: workerCommandBound,
 };
 
+export interface ServiceHost {
+  readonly close: () => Promise<void>;
+}
+
 export interface ServiceOptions {
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
   readonly delivery: Delivery;
+  readonly host?: () => Promise<ServiceHost>;
   readonly timing?: ServiceTiming;
   readonly limits?: ServiceLimits;
   readonly effects?: Partial<EffectSettings>;
@@ -162,9 +167,10 @@ async function started(
     readonly path: string;
     readonly timing: ServiceTiming;
     readonly registry: Registry;
+    readonly host: ServiceHost | undefined;
   },
 ): Promise<Service> {
-  const { options, path, timing, registry } = setup;
+  const { options, path, timing, registry, host } = setup;
   const clock = options.clock ?? wallClock;
   const limits = options.limits ?? serviceLimits;
   const { textBytes, documentBytes } = limits;
@@ -208,6 +214,7 @@ async function started(
       await listener.close();
       stopping.abort();
       await delivering;
+      await host?.close();
       await authority.close();
     },
   };
@@ -228,6 +235,11 @@ export async function startService(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   if (opening.kind === "refused") return opening;
+  const host = await hosted(options);
+  if (host.kind === "refused") {
+    await opening.authority.close();
+    return host;
+  }
   try {
     return {
       kind: "started",
@@ -236,13 +248,28 @@ export async function startService(
         path,
         timing,
         registry,
+        host: host.host,
       }),
     };
   } catch (error) {
+    await host.host?.close();
     await opening.authority.close();
-    return refused(
-      "transport-failure",
-      String(Reflect.get(Object(error), "message")),
-    );
+    return refused("transport-failure", message(error));
+  }
+}
+
+function message(error: unknown): string {
+  return String(Reflect.get(Object(error), "message"));
+}
+
+async function hosted(
+  options: ServiceOptions,
+): Promise<
+  { readonly kind: "started"; readonly host: ServiceHost | undefined } | Refusal
+> {
+  try {
+    return { kind: "started", host: await options.host?.() };
+  } catch (error) {
+    return refused("host-unavailable", message(error));
   }
 }

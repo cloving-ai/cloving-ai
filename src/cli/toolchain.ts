@@ -30,7 +30,7 @@ export async function qualifiedToolchain(
   const core = await packageFields(await projectRoot(start), "@workflow/core");
   const declared = fields(core["dependencies"])["@workflow/world-local"];
   return {
-    sdk: `workflow@${packageMetadata.devDependencies.workflow}`,
+    sdk: `workflow@${packageMetadata.dependencies.workflow}`,
     world: `@workflow/world-local@${typeof declared === "string" ? declared : "undeclared"}`,
     builder: `@workflow/builders@${packageMetadata.devDependencies["@workflow/builders"]}`,
     node: `v${packageMetadata.engines.node}`,
