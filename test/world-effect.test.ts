@@ -136,10 +136,11 @@ ${restarted}`,
     );
     assert.equal(new Set(asked.map((request) => request[1])).size, 1);
     assert.equal(Number(field(line, "reconciles")) >= 2, true);
-    assert.deepEqual(
-      asked.map((request) => String(request[2]).slice(-2)),
-      [":1", ":2"],
-    );
+    assert.equal(new Set(asked.map((request) => request[2])).size, 1);
+    assert.deepEqual(asked.map((request) => request[3]).slice(0, 2), [
+      "accepted",
+      "duplicate",
+    ]);
     assert.deepEqual(field(line, "rows"), [["completed", "receipt-1"]]);
   }));
 

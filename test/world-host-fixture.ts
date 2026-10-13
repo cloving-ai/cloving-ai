@@ -64,6 +64,7 @@ const destination = {
       await until(() => lines("requests.log").length > 0);
       await halt("halted-after-effect", { sends: lines("destination.log").length });
     }
+    while (existsSync("hold-effect")) await delay(10);
     if (existsSync("lose-reply")) throw new Error("the reply is lost");
     return effectOutcome(intent.operationId);
   },
@@ -115,8 +116,12 @@ const hosted = async (overrides = {}) => {
       const loop = worldLoop({ ...given, runs: taggedRuns, outcome: outcomeKind, intervalMilliseconds: 20, ...overrides.loop });
       const requestEffect = async (request) => {
         const reply = await given.requestEffect(request);
-        appendFileSync("requests.log", JSON.stringify([reply.operation?.operationId ?? null, reply.operation?.inputDigest ?? null, request.commandId, reply.receipt.kind]) + "\\n");
-        return reply;
+        const lost = existsSync("fail-first-reply");
+        appendFileSync("requests.log", JSON.stringify([reply.operation?.operationId ?? null, reply.operation?.inputDigest ?? null, request.commandId, lost ? "failed" : reply.receipt.kind]) + "\\n");
+        if (!lost) return reply;
+        rmSync("fail-first-reply");
+        if (existsSync("halt-after-failed")) setTimeout(() => halt("halted-after-failed-receipt"), 0);
+        return { receipt: { kind: "failed", reason: "storage-failure" }, disposition: null, operation: null };
       };
       const remove = registerStepBridge(stepBridge({ ...given, requestEffect, runs: taggedRuns, call: sdkStepCall }));
       return { close: async () => { remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };

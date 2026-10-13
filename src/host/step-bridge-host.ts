@@ -63,6 +63,10 @@ const ended = ["failed", "stopped", "blocked", "cancelled"] as const;
 
 function refusal(reply: BridgeReply): ProtectedResult | undefined {
   const { receipt, disposition } = reply;
+  if (receipt.kind === "failed")
+    throw new Error(
+      `command-outcome-unknown: ${receipt.reason ?? receipt.kind}`,
+    );
   if (!committed.includes(receipt.kind))
     return { kind: "refused", reason: receipt.reason ?? receipt.kind };
   if (disposition?.disposition === "refused")
@@ -112,10 +116,7 @@ async function effect(
   if (world === undefined)
     return { kind: "unavailable", reason: "unknown-world-run" };
   await inWork(ports, world.runId);
-  const identity = `sdk:${call.stepId}:${String(call.attempt)}`.replace(
-    /[^A-Za-z0-9._:/-]/g,
-    "-",
-  );
+  const identity = `sdk:${call.stepId}`.replace(/[^A-Za-z0-9._:/-]/g, "-");
   const reply = await ports.requestEffect({
     ...request,
     runId: world.runId,

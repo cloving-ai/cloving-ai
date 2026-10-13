@@ -126,15 +126,23 @@ async function stored(
   if (receipt.kind === "failed")
     return { receipt, disposition: null, operation: null };
   const sequence = sequenceOf(receipt);
-  const disposition =
-    sequence === undefined
-      ? undefined
-      : await authority.effects.disposition(sequence);
-  return {
-    receipt,
-    disposition: disposition ?? null,
-    operation: (await authority.effects.operation(operationId)) ?? null,
-  };
+  try {
+    const disposition =
+      sequence === undefined
+        ? undefined
+        : await authority.effects.disposition(sequence);
+    return {
+      receipt,
+      disposition: disposition ?? null,
+      operation: (await authority.effects.operation(operationId)) ?? null,
+    };
+  } catch {
+    return { receipt, disposition: null, operation: null };
+  }
+}
+
+function texts(values: readonly unknown[]): boolean {
+  return values.every((value) => typeof value === "string");
 }
 
 function unanswered(reason: string): EffectReply {
@@ -150,6 +158,7 @@ function effectPort(parts: Parts): Effects {
   return {
     requestEffect: async (request) => {
       const { scope, payload, epoch, ...rest } = request;
+      if (!texts([payload])) return unanswered("invalid-command");
       const identity = operationIdentity({ ...scope, run: request.runId });
       if (identity.kind !== "valid") return unanswered(identity.reason);
       const operationId = identity.value;
@@ -176,6 +185,8 @@ function effectPort(parts: Parts): Effects {
     },
     reportEffect: async (report) => {
       const { result, epoch, ...rest } = report;
+      if (!texts([report.operationId, result ?? ""]))
+        return unanswered("invalid-command");
       const receipt = await gateway.execute({
         principal: "worker",
         command: {

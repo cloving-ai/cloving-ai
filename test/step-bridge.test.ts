@@ -77,7 +77,7 @@ function scene(script: {
   };
 }
 
-await test("CLV-058 the bridge requests the effect only when the authority shows the run in work, with the SDK step and its attempt as the command ID and the transport, and it returns the stored result", async () => {
+await test("CLV-058 the bridge requests the effect only when the authority shows the run in work, with the SDK step as the command ID and the transport, and it returns the stored result", async () => {
   const ports = scene({
     states: ["queued", "queued", "running"],
     operations: [
@@ -105,8 +105,8 @@ await test("CLV-058 the bridge requests the effect only when the authority shows
     {
       ...request,
       runId: "run-1",
-      commandId: "sdk:step_01ABC:2",
-      transport: "sdk:step_01ABC:2",
+      commandId: "sdk:step_01ABC",
+      transport: "sdk:step_01ABC",
     },
   ]);
 });
@@ -122,10 +122,6 @@ await test("CLV-058 the bridge gives a typed result for a request that the autho
       },
     }),
     { kind: "refused", reason: "service-busy" },
-  );
-  assert.deepEqual(
-    await result({ reply: { ...accepted, receipt: { kind: "failed" } } }),
-    { kind: "refused", reason: "failed" },
   );
   assert.deepEqual(
     await result({
@@ -159,7 +155,7 @@ await test("CLV-058 the bridge gives a typed result for a request that the autho
   await stepBridge(odd).effect(request);
   assert.deepEqual(
     odd.requests.map((asked) => asked.commandId),
-    ["sdk:step-01-ABC:2"],
+    ["sdk:step-01-ABC"],
   );
   assert.deepEqual(await result({ states: ["completed"] }), {
     kind: "completed",
@@ -185,4 +181,44 @@ await test("CLV-058 the step helper gives its request to the bridge of its proce
     reason: "cloving-host-unavailable",
   });
   assert.equal(ports.requests.length, 1);
+});
+
+await test("CLV-059 the bridge gives no result for a receipt of the kind failed, and each try of a step sends the same command ID", async () => {
+  const unknown = scene({
+    reply: {
+      receipt: { kind: "failed", reason: "storage-failure" },
+      disposition: null,
+      operation: null,
+    },
+  });
+  await assert.rejects(
+    stepBridge(unknown).effect(request),
+    /command-outcome-unknown: storage-failure/,
+  );
+  await assert.rejects(
+    stepBridge(
+      scene({ reply: { ...accepted, receipt: { kind: "failed" } } }),
+    ).effect(request),
+    /command-outcome-unknown: failed/,
+  );
+  assert.deepEqual(
+    await stepBridge(
+      scene({ reply: { ...accepted, receipt: { kind: "rejected" } } }),
+    ).effect(request),
+    { kind: "refused", reason: "rejected" },
+  );
+  const again = scene({
+    call: { ...call, attempt: 3 },
+    reply: { ...accepted, receipt: { kind: "duplicate" } },
+  });
+  assert.deepEqual(await stepBridge(again).effect(request), {
+    kind: "completed",
+    operationId: "operation-1",
+    receipt: "receipt-1",
+    result: "text of sha256:result",
+  });
+  assert.deepEqual(
+    [...unknown.requests, ...again.requests].map((asked) => asked.commandId),
+    ["sdk:step_01ABC", "sdk:step_01ABC"],
+  );
 });
