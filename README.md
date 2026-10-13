@@ -32,14 +32,17 @@ SDK qualification uses a fixed logical output path and an empty root TypeScript 
 
 `npm run self:start -- HOST_DIRECTORY [REPOSITORY_DIRECTORY]` starts one Cloving daemon for one git repository. The default repository is this repository. Keep the host directory outside each repository: it holds the authority state, the Local World data, the runtime socket, the turn records and the git work trees.
 
-The command compiles one workflow, `develop-ticket`, and starts the service with the workflow host, the reconciliation loop, the step bridge and the Claude worker. The command prints the client commands for a second terminal:
+The command compiles one workflow and admits it under two names. `develop-ticket` takes a ticket ID and reads the ticket itself. `develop-prompt` takes the text of a task. The command starts the service with the workflow host, the reconciliation loop, the step bridge and the Claude worker, and it prints the client commands for a second terminal:
 
 ```sh
-CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts run develop-ticket --prompt "the text of the ticket"
+CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts run develop-ticket --ticket TICKET_ID
+CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts run develop-prompt --prompt "the text of the task"
 CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts questions
 CLOVING_RUNTIME_DIR=HOST_DIRECTORY/runtime node src/cli.ts approve DECISION_REF --expected-revision N --generation N --subject-digest DIGEST
 ```
 
-One run does one Claude Code turn in a new work tree on the branch `cloving/ticket-…`, then opens one approval. The approval text has the branch, the commits, the changed files and the report of the worker. Read the diff before you approve. An approval completes the run; it does not merge the branch. Merge the branch yourself.
+`CLOVING_TICKET_COMMAND` (a JSON list of texts) names the ticket command. The daemon runs it with the ticket ID as the last argument when it admits a run, and the printed text is the ticket. The text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop-ticket` is refused with `ticket-source-not-configured`.
+
+One run does one Claude Code turn in a new work tree on the branch `cloving/<ticket id>-…`, then opens one approval. The approval text has the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you approve. An approval completes the run; it does not merge the branch. Merge the branch yourself.
 
 The worker is not confined. It runs the `claude` command of the search path as the current user, with file edits and shell commands permitted in the work tree and a spend limit of 5 USD for each turn. `CLOVING_CLAUDE_COMMAND` (a JSON list of texts) replaces the command. A stop of the daemon stops a turn in work; submit that ticket again.

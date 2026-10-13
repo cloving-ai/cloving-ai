@@ -152,6 +152,14 @@ async function inputFile(
   }
 }
 
+function typed(
+  source: Exclude<Invoked<"run">["source"], { readonly kind: "input" }>,
+): Readonly<Record<string, string>> {
+  return source.kind === "prompt"
+    ? { prompt: source.text }
+    : { ticket: source.id };
+}
+
 async function run(
   environment: Located,
   invocation: Invoked<"run">,
@@ -160,9 +168,9 @@ async function run(
   const { commandId } = format;
   const { source } = invocation;
   const read: Submission =
-    source.kind === "prompt"
-      ? { kind: "read", submission: { prompt: source.text } }
-      : await inputFile(environment, source.file);
+    source.kind === "input"
+      ? await inputFile(environment, source.file)
+      : { kind: "read", submission: typed(source) };
   if (read.kind === "error")
     return failed(environment, { error: read.error, format });
   return mutated(environment, {

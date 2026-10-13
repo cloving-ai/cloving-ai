@@ -3,30 +3,88 @@ import { admitCompiled } from "../cli/validate.ts";
 import type {
   Resolution,
   ResolutionRequest,
+  Resolver,
   WorkflowRegistration,
 } from "../service/registry.ts";
+import { ticketText } from "./ticket-source.ts";
 
 export const ticketWorkflow = "develop-ticket";
+export const promptWorkflow = "develop-prompt";
 export const ticketCapabilities = ["claude"];
 
-export type TicketRegistration =
-  | { readonly kind: "admitted"; readonly registration: WorkflowRegistration }
+const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
+
+export type TicketRegistrations =
+  | {
+      readonly kind: "admitted";
+      readonly registrations: readonly WorkflowRegistration[];
+    }
   | { readonly kind: "rejected"; readonly detail: string };
 
-function resolved(request: ResolutionRequest): Resolution {
-  const digest = createHash("sha256").update(request.commandId).digest("hex");
+function rejected(code: string, detail: string): Resolution {
+  return { kind: "rejected", code, detail };
+}
+
+function digest(commandId: string): string {
+  return createHash("sha256").update(commandId).digest("hex");
+}
+
+async function ticket(
+  command: readonly string[] | undefined,
+  request: ResolutionRequest,
+): Promise<Resolution> {
+  const ticketId = String(request.submission["ticket"]);
+  if (!ticketIdentifier.test(ticketId))
+    return rejected(
+      "invalid-ticket-id",
+      "A ticket ID has letters, digits and the characters . _ : - only.",
+    );
+  if (command === undefined)
+    return rejected(
+      "ticket-source-not-configured",
+      "The daemon has no ticket command. Set CLOVING_TICKET_COMMAND, or use the workflow develop-prompt.",
+    );
+  const read = await ticketText(command, { ticketId, signal: request.signal });
+  if (read.kind === "failed")
+    return rejected("ticket-not-available", read.detail);
+  const name = ticketId.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   return {
     kind: "resolved",
     input: {
-      cycleId: `ticket-${digest.slice(0, 12)}`,
-      ticket: String(request.submission["prompt"]),
+      cycleId: `${name}-${digest(request.commandId).slice(0, 8)}`,
+      ticketId,
+      ticket: read.text,
     },
   };
 }
 
-export async function ticketRegistration(
+export function ticketResolver(
+  command: readonly string[] | undefined,
+): Resolver {
+  return {
+    id: "ticket-command",
+    version: "1",
+    resolve: (request) => ticket(command, request),
+  };
+}
+
+export const promptResolver: Resolver = {
+  id: "ticket-prompt",
+  version: "1",
+  resolve: (request) =>
+    Promise.resolve({
+      kind: "resolved",
+      input: {
+        cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
+        ticket: String(request.submission["prompt"]),
+      },
+    }),
+};
+
+export async function ticketRegistrations(
   manifest: string,
-): Promise<TicketRegistration> {
+  command: readonly string[] | undefined,
+): Promise<TicketRegistrations> {
   const admission = await admitCompiled(manifest, {
     file: manifest,
     capabilities: ticketCapabilities,
@@ -36,19 +94,26 @@ export async function ticketRegistration(
       kind: "rejected",
       detail: `${admission.error.code}: ${admission.error.detail}`,
     };
+  const shared = {
+    manifest: admission.manifest,
+    availability: "available" as const,
+    effectLimit: 8,
+  };
   return {
     kind: "admitted",
-    registration: {
-      workflowId: ticketWorkflow,
-      manifest: admission.manifest,
-      availability: "available",
-      submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
-      resolver: {
-        id: "ticket-prompt",
-        version: "1",
-        resolve: (request) => Promise.resolve(resolved(request)),
+    registrations: [
+      {
+        ...shared,
+        workflowId: ticketWorkflow,
+        submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
+        resolver: ticketResolver(command),
       },
-      effectLimit: 8,
-    },
+      {
+        ...shared,
+        workflowId: promptWorkflow,
+        submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
+        resolver: promptResolver,
+      },
+    ],
   };
 }

@@ -2,9 +2,10 @@ const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
 
 export const commandUsage: Readonly<Record<string, string>> = {
-  run: `Usage: cloving run <workflow-id> (--prompt <text> | --input <json-file>) [--command-id <id>] [--json]
+  run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --input <json-file>) [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
+With --ticket, the workflow gets the ticket ID and reads the ticket itself.
 Success means a committed receipt. It does not mean completed work.
 `,
   status: `Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]

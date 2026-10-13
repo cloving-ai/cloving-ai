@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   startDelivery,
+  type StartDelivery,
   type WorkflowFunction,
 } from "../host/start-delivery.ts";
 import {
@@ -22,10 +23,10 @@ import {
   type HostPorts,
   type ServiceHost,
 } from "../service/service.ts";
-import { claudeWorker } from "./claude-worker.ts";
+import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { worldDirectory } from "./host-environment.ts";
-import { ticketRegistration } from "./ticket-registration.ts";
+import { ticketRegistrations } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
   readonly directory: string;
@@ -34,6 +35,7 @@ export interface DaemonSettings {
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
+  readonly ticketCommand?: readonly string[];
   readonly concurrency: number;
 }
 
@@ -96,11 +98,40 @@ async function hosted(
   };
 }
 
+function adapters(
+  settings: DaemonSettings,
+  given: Promise<HostPorts>,
+): { readonly worker: ClaudeWorker; readonly runs: StartDelivery } {
+  const { directory, repository, command } = settings;
+  const document = async (digest: string): Promise<string | undefined> =>
+    (await given).document(digest);
+  const worker = claudeWorker({
+    repository,
+    command,
+    document,
+    worktrees: join(directory, "worktrees"),
+    journal: join(directory, "journal"),
+    report: async (report) => (await given).reportEffect(report),
+  });
+  const runs = startDelivery({
+    document,
+    runs: taggedRuns,
+    cancel: cancelled,
+    input: async (runId) => (await given).input(runId),
+    workflow: async (runId) =>
+      settings.workflows[String(await (await given).workflowId(runId))],
+  });
+  return { worker, runs };
+}
+
 export async function startDaemon(
   settings: DaemonSettings,
 ): Promise<DaemonOpening> {
-  const { directory, repository, command } = settings;
-  const admitted = await ticketRegistration(settings.manifest);
+  const { directory } = settings;
+  const admitted = await ticketRegistrations(
+    settings.manifest,
+    settings.ticketCommand,
+  );
   if (admitted.kind === "rejected")
     return {
       kind: "refused",
@@ -108,30 +139,13 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
-  const document = async (digest: string): Promise<string | undefined> =>
-    (await given.promise).document(digest);
-  const worker = claudeWorker({
-    repository,
-    command,
-    document,
-    worktrees: join(directory, "worktrees"),
-    journal: join(directory, "journal"),
-    report: async (report) => (await given.promise).reportEffect(report),
-  });
-  const runs = startDelivery({
-    document,
-    runs: taggedRuns,
-    cancel: cancelled,
-    input: async (runId) => (await given.promise).input(runId),
-    workflow: async (runId) =>
-      settings.workflows[String(await (await given.promise).workflowId(runId))],
-  });
+  const { worker, runs } = adapters(settings, given.promise);
   await mkdir(join(directory, "state"), { recursive: true });
   await mkdir(join(directory, "runtime"), { recursive: true, mode: 0o700 });
   const opening = await startService({
     stateDirectory: join(directory, "state"),
     runtimeDirectory: join(directory, "runtime"),
-    workflows: [admitted.registration],
+    workflows: admitted.registrations,
     delivery: deliveryRouter({ runs, effects: worker }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {

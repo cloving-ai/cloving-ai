@@ -45,7 +45,7 @@ const control = {
 const run = {
   subject: "develop",
   needed: ["--prompt x"],
-  taken: ["prompt", "input", ...mutation],
+  taken: ["prompt", "input", "ticket", ...mutation],
   absent: "missing-input-source",
 };
 const answer = {
@@ -68,6 +68,7 @@ const shapes: readonly (readonly [string, Shape])[] = [
 const samples: Readonly<Record<string, string>> = {
   prompt: "x",
   input: "f.json",
+  ticket: "CLV-016",
   text: "t",
   "command-id": "c-1",
   "expected-revision": "1",

@@ -29,6 +29,12 @@ for await (const chunk of process.stdin) chunk.toString();
 await delay(60000);
 `;
 
+const fakeBoard = `
+const ticket = process.argv.at(-1);
+if (ticket !== "CLV-900") { process.stderr.write("no task has the key " + ticket + "\\n"); process.exit(3); }
+process.stdout.write("# CLV-900: Add the ticket work\\n\\nthe last line of CLV-900\\n");
+`;
+
 function git(directory: string, argumentsList: readonly string[]): string {
   return execFileSync("git", ["-C", directory, ...argumentsList], {
     encoding: "utf8",
@@ -66,10 +72,12 @@ async function scene(script = fakeClaude): Promise<Scene> {
     "Start the project",
   ]);
   await writeFile(join(root, "fake-claude.mjs"), script);
+  await writeFile(join(root, "fake-board.mjs"), fakeBoard);
   const settings = {
     directory,
     repository,
     command: [process.execPath, join(root, "fake-claude.mjs")],
+    board: [process.execPath, join(root, "fake-board.mjs")],
   };
   return {
     directory,
@@ -92,6 +100,7 @@ async function launched(
     readonly directory: string;
     readonly repository: string;
     readonly command: readonly string[];
+    readonly board: readonly string[];
     readonly bound?: string;
   },
   expected: string,
@@ -103,6 +112,7 @@ async function launched(
       env: {
         ...process.env,
         CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
+        CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
         CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
         CLOVING_HOST_BOUND: settings.bound ?? "8",
       },
@@ -150,9 +160,18 @@ type Asked = (
   parameters: Readonly<Record<string, unknown>>,
 ) => Promise<Readonly<Record<string, unknown>>>;
 
-function ticket(prompt: string, commandId: string): Record<string, unknown> {
+function ticket(id: string, commandId: string): Record<string, unknown> {
   return {
     workflowId: "develop-ticket",
+    source: "ticket",
+    submission: { ticket: id },
+    commandId,
+  };
+}
+
+function prompted(prompt: string, commandId: string): Record<string, unknown> {
+  return {
+    workflowId: "develop-prompt",
     source: "prompt",
     submission: { prompt },
     commandId,
@@ -172,8 +191,12 @@ async function reviewed(
     async () => items((await asked("questions", { runId }))["decisions"])[0],
   );
   const prompt = String(field(decision, "prompt"));
-  const [branch = ""] = /cloving\/ticket-[A-Za-z0-9-]+/.exec(prompt) ?? [];
+  const [branch = ""] = /cloving\/clv-900-[a-f0-9]+/.exec(prompt) ?? [];
   assert.equal(field(decision, "type"), "approval");
+  assert.match(
+    prompt,
+    /^Review the work of the Claude worker for the ticket CLV-900\./,
+  );
   assert.match(prompt, /I added the file ticket-work\.txt\./);
   assert.match(prompt, /ticket-work\.txt \| 1 \+/);
   assert.match(
@@ -182,7 +205,7 @@ async function reviewed(
   );
   assert.equal(
     git(repository, ["show", `${branch}:ticket-work.txt`]),
-    "the last line\n",
+    "the last line of CLV-900\n",
   );
   await reached(async () => {
     const listed = await asked("events", { after: 0, limit: 100, runId });
@@ -229,10 +252,12 @@ async function ticketRun(): Promise<void> {
     ["error", "invalid-submission"],
   );
   assert.match(await refused(), /The daemon did not start: [a-z-]+: /);
-  const admitted = await asked(
-    "run",
-    ticket("Add the file ticket-work.txt.\nthe last line", "c-1"),
+  const absent = await asked("run", ticket("CLV-404", "c-404"));
+  assert.deepEqual(
+    [absent["kind"], absent["code"]],
+    ["error", "ticket-not-available"],
   );
+  const admitted = await asked("run", ticket("CLV-900", "c-1"));
   const runId = String(admitted["runId"]);
   const decision = await reviewed(asked, { runId, repository });
   assert.equal(await ended(first), 0);
@@ -255,7 +280,7 @@ async function stoppedTurn(): Promise<void> {
     ];
   };
   const first = await start();
-  const admitted = await asked("run", ticket("A long ticket.", "c-1"));
+  const admitted = await asked("run", prompted("A long ticket.", "c-1"));
   const runId = String(admitted["runId"]);
   await reached(async () =>
     (await effects(runId)).includes("running") ? runId : undefined,
@@ -281,5 +306,5 @@ function withoutChildren(scene: () => Promise<void>): Promise<void> {
 await test("CLV-010 a stop of the daemon stops a Claude turn in work and reports it, and after the next start the run has an end with the stopped effect", () =>
   withoutChildren(stoppedTurn));
 
-await test("CLV-010 the start command starts a daemon that refuses a host bound that is too large, a second daemon and an empty ticket, runs one ticket with the Claude worker in a work tree, waits for the approval of the operator across a restart, and completes the run after the approval", () =>
+await test("CLV-016 the start command starts a daemon that refuses a host bound that is too large, a second daemon, an empty ticket ID and a ticket that the board does not have, reads one ticket by its ID from the ticket command, runs it with the Claude worker in a work tree, waits for the approval of the operator across a restart, and completes the run after the approval", () =>
   withoutChildren(ticketRun));

@@ -37,6 +37,20 @@ const defaultCommand = [
   "5",
 ];
 
+interface Commands {
+  readonly command: readonly string[];
+  readonly ticketCommand: readonly string[] | undefined;
+}
+
+function listed(name: string): readonly string[] | undefined {
+  const given = process.env[name];
+  if (given === undefined) return undefined;
+  const list: unknown = JSON.parse(given);
+  if (!Array.isArray(list) || !list.every((part) => typeof part === "string"))
+    throw new Error(`${name} is not a JSON list of texts.`);
+  return list.map(String);
+}
+
 function record(value: unknown): Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null ? { ...value } : {};
 }
@@ -123,11 +137,11 @@ function source(file: string): string {
   return JSON.stringify(pathToFileURL(join(product, file)).href);
 }
 
-async function launchers(command: readonly string[]): Promise<void> {
+async function launchers(commands: Commands): Promise<void> {
   const settings = {
+    ...commands,
     directory,
     repository,
-    command,
     concurrency,
     manifest: join(project, "cloving.workflow.json"),
   };
@@ -143,7 +157,7 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
-const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows: { "develop-ticket": workflows.developTicket }, handler: POST });
+const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows: { "develop-ticket": workflows.developTicket, "develop-prompt": workflows.developTicket }, handler: POST });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -163,7 +177,8 @@ function guide(): string {
     `Repository: ${repository}`,
     `Work trees: ${join(directory, "worktrees")}`,
     "Commands for a second terminal:",
-    `  ${client} run develop-ticket --prompt "<the text of the ticket>"`,
+    `  ${client} run develop-ticket --ticket <ticket-id>`,
+    `  ${client} run develop-prompt --prompt "<the text of the task>"`,
     `  ${client} status`,
     `  ${client} questions`,
     `  ${client} approve <decision-ref> --expected-revision <n> --generation <n> --subject-digest <digest>`,
@@ -191,14 +206,9 @@ async function prepared(): Promise<void> {
   await registered();
 }
 
-const given = process.env["CLOVING_CLAUDE_COMMAND"];
-const command: unknown =
-  given === undefined ? defaultCommand : JSON.parse(given);
-if (
-  !Array.isArray(command) ||
-  !command.every((part) => typeof part === "string")
-)
-  throw new Error("CLOVING_CLAUDE_COMMAND is not a JSON list of texts.");
 await prepared();
-await launchers(command);
+await launchers({
+  command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
+  ticketCommand: listed("CLOVING_TICKET_COMMAND"),
+});
 process.exitCode = await ended([join(project, "start.mjs")], process.env);

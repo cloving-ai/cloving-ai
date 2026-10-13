@@ -8,6 +8,7 @@ import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 interface Ticket {
   readonly cycleId: string;
   readonly ticket: string;
+  readonly ticketId?: string;
 }
 
 interface Decision {
@@ -34,10 +35,14 @@ function part(turn: Record<string, unknown>, name: string): string {
   return Array.isArray(value) ? value.join("\\n") : String(value ?? "");
 }
 
-function review(result: string | null): string {
+function named(input: Ticket): string {
+  return input.ticketId === undefined ? "this ticket" : "the ticket " + input.ticketId;
+}
+
+function review(input: Ticket, result: string | null): string {
   const turn = JSON.parse(result ?? "{}") as Record<string, unknown>;
   return [
-    "Review the work of the Claude worker for this ticket.",
+    "Review the work of the Claude worker for " + named(input) + ".",
     "Branch: " + part(turn, "branch"),
     "Work tree: " + part(turn, "worktree"),
     "Cost (USD): " + part(turn, "costUsd"),
@@ -70,12 +75,12 @@ export async function developTicket(input: Ticket, decision?: Decision) {
     capability: "claude",
     method: "run-turn",
     target: cycleId,
-    payload: instructions + "\\n\\nThe ticket:\\n\\n" + input.ticket,
+    payload: instructions + "\\n\\nThe text of " + named(input) + ":\\n\\n" + input.ticket,
     units: 1,
   });
   if (turn.kind !== "completed")
     return { kind: "blocked", cycleId, reason: "The Claude turn has the result " + turn.kind + ".", evidenceId: "claude-turn" };
-  const gate = await decisionGate({ gateId: "review-1", kind: "approval", prompt: review(turn.result) });
+  const gate = await decisionGate({ gateId: "review-1", kind: "approval", prompt: review(input, turn.result) });
   if (gate.kind !== "opened")
     return { kind: "blocked", cycleId, reason: "The review gate has the result " + gate.kind + ".", evidenceId: "review-1" };
   return { kind: "waiting_for_decision", cycleId, decisionId: gate.decisionId };

@@ -2,6 +2,7 @@ import { isRecordKey } from "../authority/commands.ts";
 
 export type RunSource =
   | { readonly kind: "prompt"; readonly text: string }
+  | { readonly kind: "ticket"; readonly id: string }
   | { readonly kind: "input"; readonly file: string };
 
 type DecisionCommand = "answer" | "approve" | "deny";
@@ -98,7 +99,7 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
     {
       subject: "required",
       required: [],
-      allowed: () => ["prompt", "input", ...mutationOptions],
+      allowed: () => ["prompt", "input", "ticket", ...mutationOptions],
       build: run,
     },
   ],
@@ -236,10 +237,12 @@ function whole(
 function inputSource(request: RuntimeRequest): RunSource | string {
   const prompt = valueOf(request, "prompt");
   const input = valueOf(request, "input");
-  if (prompt !== undefined && input !== undefined)
-    return "conflicting-input-sources";
+  const ticket = valueOf(request, "ticket");
+  const given = [prompt, input, ticket].filter((value) => value !== undefined);
+  if (given.length > 1) return "conflicting-input-sources";
   if (prompt !== undefined) return { kind: "prompt", text: prompt };
   if (input !== undefined) return { kind: "input", file: input };
+  if (ticket !== undefined) return { kind: "ticket", id: ticket };
   return "missing-input-source";
 }
 
@@ -249,8 +252,10 @@ function run(request: RuntimeRequest): Outcome {
   if (blank(valueOf(request, "prompt"))) return "empty-prompt";
   const workflowId = matching(request.positionals[0], identifier);
   const commandId = key(valueOf(request, "command-id"));
-  if (typeof workflowId !== "string" || commandId === invalid)
-    return "invalid-option-value";
+  const unusable =
+    typeof workflowId !== "string" ||
+    key(valueOf(request, "ticket")) === invalid;
+  if (unusable || commandId === invalid) return "invalid-option-value";
   const json = given(request, "json");
   return { kind: "run", workflowId, source, commandId, json };
 }
