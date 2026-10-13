@@ -154,3 +154,69 @@ await test("CLV-056 the end of a segment with the outcome waiting_for_decision d
       "completed",
     );
 });
+
+const continueOperation = String(
+  decided.intents.find((intent) => intent.kind === "continue-run")?.operationId,
+);
+
+function segments(
+  second: Partial<WorldRun> & { readonly status: string },
+): WorldRun[] {
+  return [
+    {
+      runId: "run-1",
+      receipt: "wrun-1",
+      status: "completed",
+      outcome: "waiting_for_decision",
+      operationId: startOperation,
+      createdAt: "2026-10-13T10:00:00.000Z",
+    },
+    {
+      runId: "run-1",
+      receipt: "wrun-2",
+      operationId: continueOperation,
+      createdAt: "2026-10-13T10:00:01.000Z",
+      ...second,
+    },
+  ];
+}
+
+await test("CLV-057 two World runs of one Cloving run with two operation IDs are no conflict, and the last segment gives the progress", () => {
+  const continued = advanced(decided, [
+    {
+      kind: "record-dispatch",
+      operationId: continueOperation,
+      receipt: "wrun-2",
+    },
+  ]);
+  assert.deepEqual(reconcile(continued, segments({ status: "running" })), {
+    commands: [],
+    conflicts: [],
+    reports: [],
+  });
+  const ended = segments({ status: "completed", outcome: "handoff_requested" });
+  assert.deepEqual(reconcile(continued, ended.toReversed()).commands, [
+    {
+      kind: "complete-run",
+      commandId: "complete-run:wrun-2",
+      runId: "run-1",
+      expectedRevision: continued.runs["run-1"]?.revision,
+    },
+  ]);
+  assert.deepEqual(reconcile(decided, ended).commands, []);
+  const failed = settled(continued, segments({ status: "failed" }));
+  assert.deepEqual(failed.kinds, ["report-observation", "fail-run"]);
+  assert.deepEqual(observation(failed.state), [
+    "infrastructure-failure",
+    "world-run-failed",
+    "world-run:wrun-2",
+  ]);
+});
+
+await test("CLV-057 two World runs with one operation ID, or a second World run with no operation ID, are a conflict", () => {
+  for (const operationId of [startOperation, null])
+    assert.deepEqual(
+      reconcile(running, segments({ status: "running", operationId })),
+      { commands: [], conflicts: ["run-1"], reports: [] },
+    );
+});

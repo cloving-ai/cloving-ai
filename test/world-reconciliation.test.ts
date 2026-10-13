@@ -139,7 +139,7 @@ await test("CLV-056 the reconciliation caller sends the commands of the pure pla
   assert.deepEqual((await reconcileWorld(idle)).sent, []);
 });
 
-await test("CLV-056 the product adapter reconciles a start with its operation ID, and it refuses a continuation", async () => {
+await test("CLV-056 the product adapter reconciles a start with its operation ID, and it refuses an intent that is no run operation", async () => {
   const intent = {
     kind: "start-run",
     runId: "run-1",
@@ -155,7 +155,9 @@ await test("CLV-056 the product adapter reconciles a start with its operation ID
     startDelivery({
       runs: () => Promise.resolve(runs),
       input: () => Promise.resolve(undefined),
+      document: () => Promise.resolve(undefined),
       workflow: () => Promise.resolve(undefined),
+      cancel: () => Promise.resolve("cancelled"),
     });
   assert.deepEqual(await adapter([]).reconcile(intent), { kind: "absent" });
   assert.deepEqual(
@@ -180,8 +182,8 @@ await test("CLV-056 the product adapter reconciles a start with its operation ID
     { kind: "unknown", evidence: "world-run:wrun-1 world-run:wrun-4" },
   );
   await assert.rejects(
-    adapter([]).deliver({ ...intent, kind: "continue-run" }),
-    /unsupported-intent: continue-run/,
+    adapter([]).deliver({ ...intent, kind: "protected-effect" }),
+    /unsupported-intent: protected-effect/,
   );
   await assert.rejects(
     adapter([]).deliver(intent),
@@ -213,4 +215,73 @@ await test("CLV-056 the reconciliation loop keeps the reports of its last comple
   const stopped = passes;
   await delay(20);
   assert.equal(passes, stopped);
+});
+
+await test("CLV-057 the product adapter cancels each World run of an operation that is not at an end, and it confirms the stop only when each one is at an end", async () => {
+  const intent = {
+    kind: "continue-run",
+    runId: "run-1",
+    operationId: "operation-1",
+  };
+  const stopped = async (
+    statuses: readonly string[],
+    afterCancel: string,
+  ): Promise<unknown> => {
+    const cancelled: string[] = [];
+    const adapter = startDelivery({
+      runs: () =>
+        Promise.resolve(
+          statuses.map((status, index) => ({
+            receipt: `wrun-${String(index + 1)}`,
+            operationId: "operation-1",
+            status,
+          })),
+        ),
+      input: () => Promise.resolve(undefined),
+      document: () => Promise.resolve(undefined),
+      workflow: () => Promise.resolve(undefined),
+      cancel: (receipt) => {
+        cancelled.push(receipt);
+        return Promise.resolve(afterCancel);
+      },
+    });
+    return [await adapter.stop(intent), cancelled];
+  };
+  assert.deepEqual(await stopped([], "cancelled"), [{ kind: "absent" }, []]);
+  assert.deepEqual(await stopped(["running"], "cancelled"), [
+    { kind: "stopped", receipt: "wrun-1" },
+    ["wrun-1"],
+  ]);
+  for (const status of ["completed", "failed", "cancelled"])
+    assert.deepEqual(await stopped([status], "running"), [
+      { kind: "stopped", receipt: "wrun-1" },
+      [],
+    ]);
+  assert.deepEqual(await stopped(["completed", "pending"], "running"), [
+    { kind: "unknown", evidence: "world-run:wrun-2 running" },
+    ["wrun-2"],
+  ]);
+});
+
+await test("CLV-057 the reconciliation loop reports a conflict of two World runs with one operation ID", async () => {
+  const twice = ["wrun-1", "wrun-2"].map((receipt) => ({
+    runId: "run-1",
+    receipt,
+    status: "running",
+    operationId: startOperation,
+  }));
+  const loop = worldLoop({
+    ...ports({ state: running, world: twice, receipts: [] }),
+    intervalMilliseconds: 1,
+  });
+  for (
+    let waited = 0;
+    waited < 2_000 && loop.reports().length === 0;
+    waited += 1
+  )
+    await delay(1);
+  await loop.stop();
+  assert.deepEqual(loop.reports(), [
+    { kind: "world-run-conflict", runId: "run-1" },
+  ]);
 });

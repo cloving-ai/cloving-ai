@@ -10,6 +10,8 @@ export interface WorldRun {
   readonly receipt: string;
   readonly status: string;
   readonly outcome?: string;
+  readonly operationId?: string | null;
+  readonly createdAt?: string;
 }
 
 export interface WorldReport {
@@ -44,13 +46,16 @@ export function reconcile(
 ): Reconciliation {
   const observed = Map.groupBy(worldRuns, (world) => world.runId);
   const conflicts = [...observed]
-    .filter(([, runs]) => runs.length > 1)
+    .filter(([, runs]) => conflicting(runs))
     .map(([runId]) => runId);
   return {
     commands: Object.values(state.runs).flatMap((run) => {
-      const [world, ...others] = observed.get(run.runId) ?? [];
-      if (!world || others.length > 0) return [];
-      return next(state, { run, world });
+      const segments = (observed.get(run.runId) ?? []).toSorted(
+        (first, second) => (created(first) < created(second) ? -1 : 1),
+      );
+      const world = segments.at(-1);
+      if (!world || conflicting(segments)) return [];
+      return next(state, { run, world, segments });
     }),
     conflicts,
     reports: worldRuns
@@ -63,6 +68,18 @@ export function reconcile(
   };
 }
 
+function created(world: WorldRun): string {
+  return `${world.createdAt ?? ""} ${world.receipt}`;
+}
+
+function conflicting(runs: readonly WorldRun[]): boolean {
+  const operations = runs.map((world) => world.operationId ?? null);
+  return (
+    runs.length > 1 &&
+    (operations.includes(null) || new Set(operations).size < runs.length)
+  );
+}
+
 interface Observed {
   readonly run: RunState;
   readonly world: WorldRun;
@@ -70,14 +87,18 @@ interface Observed {
 
 function next(
   state: Reconciled,
-  observed: Observed,
+  observed: Observed & { readonly segments: readonly WorldRun[] },
 ): readonly Readonly<Record<string, unknown>>[] {
-  const { run, world } = observed;
-  const starting = state.intents.some(
-    (intent) => intent.runId === run.runId && intent.kind === "start-run",
+  const { run, world, segments } = observed;
+  const pending = state.intents.some(
+    (intent) =>
+      intent.runId === run.runId && intent.kind !== "protected-effect",
   );
-  if (starting || terminal.includes(run.status)) return [];
-  if (Object.hasOwn(endings, world.status)) return ended(state, observed);
+  if (pending || terminal.includes(run.status)) return [];
+  const failed = segments.find((segment) =>
+    Object.hasOwn(endings, segment.status),
+  );
+  if (failed) return ended(state, { run, world: failed });
   const kind = progress[run.status]?.[world.status];
   const waiting =
     kind === "complete-run" && world.outcome === "waiting_for_decision";

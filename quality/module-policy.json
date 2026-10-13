@@ -450,6 +450,7 @@
     "src/host/world-runs.ts": "host-bridge",
     "test/toolchain-runtime.test.ts": "test",
     "test/service-host-start.test.ts": "test",
+    "test/world-continuation.test.ts": "test",
     "test/world-host-fixture.ts": "test",
     "test/service-world-status.test.ts": "test",
     "test/world-outcomes.test.ts": "test",

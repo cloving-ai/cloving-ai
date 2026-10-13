@@ -38,9 +38,9 @@ export const servicePrelude = `
 import { mkdirSync } from "node:fs";
 import { startService } from ${product("src/service/service.ts")};
 import { startDelivery } from ${product("src/host/start-delivery.ts")};
-import { outcomeKind, taggedRuns } from ${product("src/host/world-runs.ts")};
+import { cancelled, outcomeKind, taggedRuns } from ${product("src/host/world-runs.ts")};
 import { worldLoop } from ${product("src/host/world-reconciliation.ts")};
-import { call, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
+import { call, digestOf, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
 const stateDirectory = process.cwd() + "/state";
 const runtimeDirectory = process.cwd() + "/runtime";
 mkdirSync(stateDirectory, { recursive: true });
@@ -54,12 +54,15 @@ const calls = [];
 const recording = (product) => ({
   reconcile: async (intent) => { const outcome = await product.reconcile(intent); calls.push("reconcile " + outcome.kind); return outcome; },
   deliver: async (intent) => { calls.push("deliver"); return await product.deliver(intent); },
+  stop: async (intent) => { const outcome = await product.stop(intent); calls.push("stop " + outcome.kind); return outcome; },
 });
 const hosted = async (overrides = {}) => {
   const product = startDelivery({
     runs: taggedRuns,
     input: (runId) => ports.input(runId),
+    document: (digest) => ports.document(digest),
     workflow: async (runId) => workflows[await ports.workflowId(runId)],
+    cancel: cancelled,
   });
   const delivery = (overrides.wrap ?? recording)(product);
   const opening = await startService({
@@ -77,8 +80,27 @@ const hosted = async (overrides = {}) => {
     },
   });
   if (opening.kind !== "started") { print(opening); process.exit(3); }
+  globalThis.clovingGate = async (worldRunId) => {
+    const runId = (await taggedRuns()).find((run) => run.receipt === worldRunId).runId;
+    const opened = Object.values((await ports.state()).gates).some((gate) => gate.runId === runId && gate.gateId === "design-1");
+    if (opened) return runId + "/design-1";
+    await until(async () => (await ports.state()).runs[runId].status === "running");
+    const prompt = "question of " + runId;
+    await opening.service.worker.openGate({ runId, commandId: "open:" + worldRunId, expectedRevision: (await ports.state()).runs[runId].revision, gateId: "design-1", kind: "question", prompt, subject: digestOf(prompt) });
+    while (existsSync("hold-wait")) await delay(10);
+    await opening.service.worker.registerWait({ runId, commandId: "wait:" + worldRunId, gateId: "design-1" });
+    return runId + "/design-1";
+  };
   return opening.service;
 };
+const answered = async (runId, overrides = {}) => (await asked("decision", { command: "answer", reference: runId + "/design-1", text: "Use the table parser.", subjectDigest: digestOf("question of " + runId), expectedRevision: 1, generation: 1, commandId: "c-answer", ...overrides }));
+const segments = async () => {
+  const found = (await tagged()).toSorted((first, second) => (first.receipt < second.receipt ? -1 : 1));
+  const outputs = [];
+  for (const run of found) outputs.push(run.status === "completed" ? await getRun(run.receipt).returnValue : null);
+  return found.map((run, index) => ({ kind: JSON.parse(run.operation)[4], status: run.status, output: outputs[index] }));
+};
+const sends = () => calls.filter((call) => call === "deliver").length;
 const submitted = async (commandId) => (await asked("run", { workflowId: "develop", source: "prompt", submission: { prompt: "task of " + commandId }, commandId })).runId;
 const tagged = async () => (await taggedRuns()).map((run) => ({ run: run.runId, operation: run.operationId, receipt: run.receipt, status: run.status }));
 const stepStarts = () => (existsSync("step-starts") ? readFileSync("step-starts", "utf8").split("\\n").length - 1 : 0);

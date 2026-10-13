@@ -64,20 +64,33 @@ export async function reconcileWorld(
   };
 }
 
+export type LoopReport =
+  WorldReport | { readonly kind: "world-run-conflict"; readonly runId: string };
+
 export interface WorldLoop {
   readonly stop: () => Promise<void>;
-  readonly reports: () => readonly WorldReport[];
+  readonly reports: () => readonly LoopReport[];
+}
+
+function reported(pass: Pass): readonly LoopReport[] {
+  return [
+    ...pass.reports,
+    ...pass.conflicts.map((runId) => ({
+      kind: "world-run-conflict" as const,
+      runId,
+    })),
+  ];
 }
 
 export function worldLoop(
   parts: ReconciliationPorts & { readonly intervalMilliseconds: number },
 ): WorldLoop {
   const stopping = new AbortController();
-  let reports: readonly WorldReport[] = [];
+  let reports: readonly LoopReport[] = [];
   const cycle = async (): Promise<void> => {
     while (!stopping.signal.aborted) {
       const pass = await reconcileWorld(parts).catch(() => undefined);
-      reports = pass?.reports ?? reports;
+      reports = pass === undefined ? reports : reported(pass);
       await delay(parts.intervalMilliseconds, undefined, {
         signal: stopping.signal,
       }).catch(() => undefined);

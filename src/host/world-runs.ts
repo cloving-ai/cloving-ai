@@ -7,6 +7,7 @@ export const operationTag = "cloving.operation";
 
 export interface TaggedRun extends WorldRun {
   readonly operationId: string | null;
+  readonly createdAt: string;
 }
 
 function tag(attributes: unknown, name: string): string | null {
@@ -38,6 +39,7 @@ async function collected(world: World, page: Page): Promise<TaggedRun[]> {
         operationId: tag(item.attributes, operationTag),
         receipt: item.runId,
         status: item.status,
+        createdAt: item.createdAt.toISOString(),
       },
     ];
   });
@@ -58,4 +60,10 @@ export async function outcomeKind(
   const value: unknown = await getRun(receipt).returnValue;
   const kind: unknown = Reflect.get(Object(value), "kind");
   return typeof kind === "string" ? kind : undefined;
+}
+
+export async function cancelled(receipt: string): Promise<string> {
+  const run = getRun(receipt);
+  await run.cancel();
+  return await run.status;
 }

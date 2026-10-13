@@ -73,6 +73,7 @@ export interface HostPorts {
   readonly state: Authority["state"];
   readonly submit: WorkerPort["submit"];
   readonly input: (runId: string) => Promise<string | undefined>;
+  readonly document: (digest: string) => Promise<string | undefined>;
   readonly workflowId: (runId: string) => Promise<string | undefined>;
 }
 
@@ -290,6 +291,7 @@ function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
         ? await authority.queries.document(digest)
         : undefined;
     },
+    document: authority.queries.document,
     workflowId: async (runId) => (await authority.queries.workflowIds())[runId],
   };
 }
