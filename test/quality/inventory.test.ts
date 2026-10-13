@@ -71,3 +71,23 @@ await test("QG-07 rejects unexamined extensions, empty sources and symlinks", as
     await assert.rejects(inspectInventory(directory, {}), /inventory-symlink/);
   });
 });
+
+await test("QG-07 reads a git work tree, whose root has a git file in place of the git directory, and it still rejects a git file in a nested directory", async () => {
+  await withFiles(
+    { "src/main.ts": "export {};", ".git": "gitdir: /repository/.git\n" },
+    async (directory) => {
+      const inventory = await inspectInventory(directory, {});
+      assert.deepEqual(inventory.sources, ["src/main.ts"]);
+      assert.deepEqual(inventory.metadata, []);
+    },
+  );
+  await withFiles(
+    { "src/main.ts": "export {};", "src/.git": "gitdir: /repository/.git\n" },
+    async (directory) => {
+      await assert.rejects(
+        inspectInventory(directory, {}),
+        /unsupported-inventory-file: src\/\.git/,
+      );
+    },
+  );
+});

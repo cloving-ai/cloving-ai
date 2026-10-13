@@ -25,9 +25,9 @@ async function discover(directory: string, prefix = ""): Promise<string[]> {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(prefix, entry.name);
     if (entry.isSymbolicLink()) throw new Error(`inventory-symlink: ${path}`);
+    if (path === ".git") continue;
     if (entry.isDirectory()) {
-      if (prefix === "" && [".git", "node_modules"].includes(entry.name))
-        continue;
+      if (path === "node_modules") continue;
       files.push(...(await discover(join(directory, entry.name), path)));
       continue;
     }
