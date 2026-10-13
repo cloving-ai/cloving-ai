@@ -107,3 +107,19 @@ await test("CLV-059 the worker port rejects a capability, a method or a target t
   assert.deepEqual(replies, [invalid, invalid, invalid]);
   assert.deepEqual(sent, []);
 });
+
+await test("CLV-060 the worker port rejects a request or a report that is not an object with invalid-command and throws no error", async () => {
+  const { sent, worker } = await port();
+  const values: readonly unknown[] = [null, undefined, "a text", 5];
+  const replies: unknown[] = await Promise.all(
+    values.flatMap((value): unknown[] => [
+      Reflect.apply(worker.requestEffect, undefined, [value]),
+      Reflect.apply(worker.reportEffect, undefined, [value]),
+    ]),
+  );
+  assert.deepEqual(
+    replies,
+    values.flatMap(() => [invalid, invalid]),
+  );
+  assert.deepEqual(sent, []);
+});
