@@ -75,6 +75,8 @@ export interface HostPorts {
   readonly input: (runId: string) => Promise<string | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly workflowId: (runId: string) => Promise<string | undefined>;
+  readonly requestEffect: WorkerPort["requestEffect"];
+  readonly operation: Authority["effects"]["operation"];
 }
 
 export interface ServiceOptions {
@@ -292,6 +294,8 @@ function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
         : undefined;
     },
     document: authority.queries.document,
+    requestEffect: worker.requestEffect,
+    operation: authority.effects.operation,
     workflowId: async (runId) => (await authority.queries.workflowIds())[runId],
   };
 }

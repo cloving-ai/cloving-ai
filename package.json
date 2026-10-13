@@ -19,6 +19,10 @@
     "./workflows/steps/load-cycle": {
       "types": "./dist/src/steps/load-cycle.d.ts",
       "import": "./dist/src/steps/load-cycle.js"
+    },
+    "./workflows/steps/protected-effect": {
+      "types": "./dist/src/steps/protected-effect.d.ts",
+      "import": "./dist/src/steps/protected-effect.js"
     }
   },
   "files": [

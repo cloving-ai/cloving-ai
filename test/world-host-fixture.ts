@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import {
+  cp,
   mkdir,
   mkdtemp,
+  readdir,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -18,7 +21,8 @@ export const hostModule = pathToFileURL(
 ).href;
 
 export const prelude = `
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { getRun, start } from "workflow/api";
 import { getWorld, setWorld } from "workflow/runtime";
@@ -40,6 +44,7 @@ import { startService } from ${product("src/service/service.ts")};
 import { startDelivery } from ${product("src/host/start-delivery.ts")};
 import { cancelled, outcomeKind, taggedRuns } from ${product("src/host/world-runs.ts")};
 import { worldLoop } from ${product("src/host/world-reconciliation.ts")};
+import { registerStepBridge, sdkStepCall, stepBridge } from ${product("src/host/step-bridge-host.ts")};
 import { call, digestOf, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
 const stateDirectory = process.cwd() + "/state";
 const runtimeDirectory = process.cwd() + "/runtime";
@@ -48,8 +53,38 @@ mkdirSync(runtimeDirectory, { recursive: true, mode: 0o700 });
 const asked = (operation, parameters) => call({ runtimeDirectory }, { operation, parameters });
 const eventTypes = async (runId) => (await asked("events", { after: 0, limit: 1000, runId })).events.map((event) => event.type);
 const stateOf = async (runId) => (await asked("status", { runId })).run.state;
-const until = async (reached) => { for (let pass = 0; pass < 500; pass += 1) { if (await reached()) return; await delay(20); } throw new Error("The scenario did not reach its state."); };
+const until = async (reached) => { for (let pass = 0; pass < 1500; pass += 1) { if (await reached()) return; await delay(20); } throw new Error("The scenario did not reach its state."); };
 let ports;
+const lines = (file) => (existsSync(file) ? readFileSync(file, "utf8").split("\\n").filter(Boolean) : []);
+const effectOutcome = (operationId) => ({ kind: "completed", receipt: "receipt-" + String(lines("destination.log").indexOf(operationId) + 1), result: "effect-result" });
+const destination = {
+  deliver: async (intent) => {
+    appendFileSync("destination.log", intent.operationId + "\\n");
+    if (existsSync("halt-after-effect")) {
+      await until(() => lines("requests.log").length > 0);
+      await halt("halted-after-effect", { sends: lines("destination.log").length });
+    }
+    if (existsSync("lose-reply")) throw new Error("the reply is lost");
+    return effectOutcome(intent.operationId);
+  },
+  reconcile: async (intent) => {
+    appendFileSync("reconciles.log", intent.operationId + "\\n");
+    if (!lines("destination.log").includes(intent.operationId)) return { kind: "absent" };
+    return existsSync("not-idempotent") ? { kind: "unknown" } : effectOutcome(intent.operationId);
+  },
+};
+const deliveryRows = (operationId) => {
+  const database = new DatabaseSync(process.cwd() + "/state/authority.sqlite", { readOnly: true });
+  try { return database.prepare("SELECT outcome, receipt FROM deliveries WHERE operation_id = ? ORDER BY staged_sequence").all(operationId).map((row) => [row.outcome, row.receipt]); } finally { database.close(); }
+};
+const checkpointBarrier = async () => {
+  const world = await getWorld();
+  const create = world.events.create.bind(world.events);
+  world.events.create = async (...given) => {
+    if (given[1]?.eventType === "step_completed" && existsSync("halt-at-checkpoint")) return await halt("halted-before-checkpoint", { sends: lines("destination.log").length, reconciles: lines("reconciles.log").length });
+    return await create(...given);
+  };
+};
 const calls = [];
 const recording = (product) => ({
   reconcile: async (intent) => { const outcome = await product.reconcile(intent); calls.push("reconcile " + outcome.kind); return outcome; },
@@ -64,11 +99,13 @@ const hosted = async (overrides = {}) => {
     workflow: async (runId) => workflows[await ports.workflowId(runId)],
     cancel: cancelled,
   });
-  const delivery = (overrides.wrap ?? recording)(product);
+  const runs = (overrides.wrap ?? recording)(product);
+  const routed = (name) => (intent, signal) => (intent.kind === "protected-effect" ? destination : runs)[name](intent, signal);
+  const delivery = { deliver: routed("deliver"), reconcile: routed("reconcile"), stop: runs.stop };
   const opening = await startService({
     stateDirectory,
     runtimeDirectory,
-    workflows: [fakeRegistration([])],
+    workflows: [{ ...fakeRegistration([]), effectLimit: Number(process.env.EFFECT_LIMIT ?? "5") }],
     delivery,
     timing: testTiming,
     host: async (given) => {
@@ -76,7 +113,13 @@ const hosted = async (overrides = {}) => {
       const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
       if (host.kind !== "started") throw new Error(host.reason);
       const loop = worldLoop({ ...given, runs: taggedRuns, outcome: outcomeKind, intervalMilliseconds: 20, ...overrides.loop });
-      return { close: async () => { await loop.stop(); await host.host.close(); }, reports: loop.reports };
+      const requestEffect = async (request) => {
+        const reply = await given.requestEffect(request);
+        appendFileSync("requests.log", JSON.stringify([reply.operation?.operationId ?? null, reply.operation?.inputDigest ?? null, request.commandId, reply.receipt.kind]) + "\\n");
+        return reply;
+      };
+      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, runs: taggedRuns, call: sdkStepCall }));
+      return { close: async () => { remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
     },
   });
   if (opening.kind !== "started") { print(opening); process.exit(3); }
@@ -136,7 +179,7 @@ function child(
       cwd: options.directory,
       env: { ...process.env, ...options.environment },
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: 20_000,
+      timeout: 45_000,
     });
     const output = { stdout: "", stderr: "" };
     started.stdout.on("data", (chunk: Buffer) => {
@@ -164,6 +207,35 @@ function child(
   });
 }
 
+async function linkedPackages(directory: string): Promise<void> {
+  const modules = join(directory, "node_modules");
+  await mkdir(modules);
+  for (const entry of await readdir(join(productRoot, "node_modules")))
+    await symlink(
+      join(productRoot, "node_modules", entry),
+      join(modules, entry),
+    );
+  const manifest: unknown = JSON.parse(
+    await readFile(join(productRoot, "package.json"), "utf8"),
+  );
+  const version: unknown = Reflect.get(Object(manifest), "version");
+  const product = join(modules, "cloving");
+  await cp(join(productRoot, "src"), join(product, "src"), { recursive: true });
+  await writeFile(
+    join(product, "package.json"),
+    JSON.stringify({
+      name: "cloving",
+      version,
+      type: "module",
+      exports: {
+        "./workflows": "./src/workflows.ts",
+        "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",
+        "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
+      },
+    }),
+  );
+}
+
 async function compiledConsumer(
   directory: string,
   workflow: string,
@@ -174,10 +246,7 @@ async function compiledConsumer(
     '{"name":"host-consumer","private":true,"type":"module"}',
   );
   await writeFile(join(directory, "workflows/develop.ts"), workflow);
-  await symlink(
-    join(productRoot, "node_modules"),
-    join(directory, "node_modules"),
-  );
+  await linkedPackages(directory);
   const compiled = await child(
     [join(productRoot, "tools/compile-workflows.ts"), "workflows", "artifacts"],
     { directory, environment: {} },
