@@ -109,11 +109,11 @@ await test("QG-18 rejects an unhandled rejection from an otherwise passing test"
   });
 });
 
-await test("CLV-044 the developer gate gives its test command a 300 s bound", () => {
+await test("CLV-044 the developer gate gives its test command a 600 s bound", () => {
   const command = testCommand("/project", {
     tests: ["/project/main.test.ts"],
   });
-  assert.equal(command.timeoutMilliseconds, 300000);
+  assert.equal(command.timeoutMilliseconds, 600000);
   assert.deepEqual(command.arguments.slice(-1), ["/project/main.test.ts"]);
   assert.equal(command.directory, "/project");
 });

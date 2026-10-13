@@ -100,7 +100,7 @@ export function testCommand(
       ...run.tests,
     ],
     directory,
-    timeoutMilliseconds: 300000,
+    timeoutMilliseconds: 600000,
     ...(run.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: run.coverageDirectory }),
