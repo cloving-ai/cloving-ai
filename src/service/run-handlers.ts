@@ -157,7 +157,7 @@ function full(view: ShownRun): Fields {
     nextAction: view.nextAction,
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
-    ...(view.feedback.length === 0 ? {} : { feedback: view.feedback }),
+    feedback: view.feedback,
   };
 }
 

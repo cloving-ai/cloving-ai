@@ -56,11 +56,22 @@ async function followedTurn(
     await more(seen, () => startedRun(harness, { service, commandId: "c-1" })),
     "the service commits a change",
   );
+  const unstartedLines = join(journal, "targets", "turn.jsonl");
+  mkdirSync(dirname(unstartedLines), { recursive: true });
+  writeFileSync(unstartedLines, "{}\n");
+  assert.equal(
+    await more(seen, () => {
+      appendFileSync(unstartedLines, "{}\n");
+    }),
+    false,
+    "the stream file of a folder with no start file gets a line",
+  );
   const turn = join(journal, "a1");
   const lines = join(turn, "turn.jsonl");
   assert.ok(
     await more(seen, () => {
       mkdirSync(turn, { recursive: true });
+      writeFileSync(join(turn, "started.json"), "{}");
       writeFileSync(lines, "{}\n");
     }),
     "a turn starts",
@@ -88,7 +99,7 @@ async function followedTurn(
   assert.ok(await more(seen, () => service.close()), "the service stops");
 }
 
-await test("CLV-016 the watch stream is quiet with no service and no journal, and it gives a notification when the service answers, when the service commits a change, when a turn starts, at each line of the stream file of a turn in work, when a turn ends and when the service stops", () =>
+await test("CLV-016 the watch stream is quiet with no service and no journal, and it gives a notification when the service answers, when the service commits a change, when a turn starts, at each line of the stream file of a turn in work, when a turn ends and when the service stops, and not for a folder with no start file", () =>
   withHarness(async (harness) => {
     const journal = join(dirname(harness.runtimeDirectory), "journal");
     const stream = watchStream({

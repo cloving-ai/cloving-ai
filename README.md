@@ -1,6 +1,6 @@
 # Cloving
 
-Cloving is a local durable development workflow service in TypeScript. This pre-release has one supervised slice: a service for one git repository, a workflow host, a Claude Code worker and one approval for each run. `cloving --help` lists the commands. The worker is not confined. Automatic review and autonomous development are not implemented.
+Cloving is a local durable development workflow service in TypeScript. This pre-release has one supervised slice: a service for one git repository, a workflow host, a Claude Code worker, a GitHub worker and review rounds. `cloving --help` lists the commands. The Claude worker is not confined. In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round, and a run has a maximum of three rounds. A run of `develop-issue` has no approval: Greptile reviews its pull request, and the GitHub worker merges the pull request at the confidence score 5/5.
 
 The current pilot is the Node and npm versions of `package.json` (`engines`), on macOS 27.0 on arm64. Other platforms and runtime versions are unqualified. This pre-release package is not published to npm.
 
@@ -40,6 +40,7 @@ cloving run develop-prompt --prompt "the text of the task"
 cloving watch                                  # the live page, also started by cloving start
 cloving questions
 cloving approve DECISION_REF --expected-revision N --generation N --subject-digest DIGEST
+cloving deny DECISION_REF --text "FEEDBACK" --expected-revision N --generation N --subject-digest DIGEST
 ```
 
 `cloving watch` serves a read-only page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the Claude worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
@@ -48,7 +49,11 @@ The workflow is the file `workflows/develop-ticket.ts` of this repository. `clov
 
 `CLOVING_TICKET_COMMAND` (a JSON list of texts) names the ticket command. The daemon runs it with the ticket ID as the last argument when it admits a run, and the printed text is the ticket. The text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop-ticket` is refused with `ticket-source-not-configured`.
 
-One run does one Claude Code turn in a new work tree on the branch `cloving/<ticket id>-…`, then opens one approval. The approval text has the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you approve. An approval completes the run; it does not merge the branch. Merge the branch yourself.
+A run of `develop-ticket` or `develop-prompt` has one to three review rounds. Each round does one Claude Code turn in the work tree of the run, on the branch `cloving/<ticket id>-…`, and then opens one approval. The first round makes the work tree. The approval text has the round, the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you decide. The decision has these results:
+
+- An approval completes the run. It does not merge the branch. Merge the branch yourself.
+- A denial with a feedback text (`--text`) in round 1 or 2 starts the next round. The Claude worker gets the feedback text and adds commits to the same branch.
+- A denial with no text, or a denial in round 3, ends the run.
 
 The worker is not confined. It runs the `claude` command of the search path as the current user, with file edits and shell commands permitted in the work tree and a spend limit of 5 USD for each turn. `CLOVING_CLAUDE_COMMAND` (a JSON list of texts) replaces the command. A stop of the service stops a turn in work; submit that ticket again.
 

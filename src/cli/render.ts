@@ -119,8 +119,11 @@ function binding(decision: unknown): string {
 
 function suggestion(decision: unknown, command: unknown): string {
   const reference = part(decision, "label") ?? part(decision, "decisionId");
-  const text = command === "answer" ? " --text <answer>" : "";
-  return `  cloving ${show(command)} ${show(reference)}${text} ${binding(decision)}`;
+  const head = `  cloving ${show(command)} ${show(reference)}`;
+  const tail = binding(decision);
+  if (command === "answer") return `${head} --text <answer> ${tail}`;
+  if (command === "deny") return `${head} --text "<feedback>" ${tail}`;
+  return `${head} ${tail}`;
 }
 
 function decisionLines(decision: unknown): readonly string[] {
