@@ -64,7 +64,9 @@ const world = await getWorld();
 const runs = await tagged();
 const reached = async () => (await stateOf(runs[0].run)) === "completed";
 for (let pass = 0; pass < 400 && !(await reached()); pass += 1) await delay(20);
-const listed = await world.events.list({ runId: runs[0].receipt, pagination: { limit: 200, sortOrder: "asc" }, resolveData: "none" });
+const list = () => world.events.list({ runId: runs[0].receipt, pagination: { limit: 200, sortOrder: "asc" }, resolveData: "none" });
+let listed = await list();
+for (let pass = 0; pass < 100 && listed.data.at(-1)?.eventType !== "run_completed"; pass += 1) { await delay(20); listed = await list(); }
 print({
   state: await stateOf(runs[0].run),
   released: globalThis.released,
