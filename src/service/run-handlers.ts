@@ -9,7 +9,7 @@ import type {
   OperationRecord,
   StoredState,
 } from "../broker/actor/authority.ts";
-import type { Fields, Reply } from "../protocol.ts";
+import { record, type Fields, type Reply } from "../protocol.ts";
 import {
   committed,
   failed,
@@ -145,13 +145,40 @@ function summary(view: ShownRun): Fields {
   };
 }
 
-function full(view: ShownRun): Fields {
+function costOf(text: string | undefined): number {
+  try {
+    const cost: unknown = record(JSON.parse(text ?? "null"))?.["costUsd"];
+    return typeof cost === "number" ? cost : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function claudeCost(
+  context: ServiceContext,
+  runId: string,
+): Promise<number> {
+  const { effects, queries } = context.authority;
+  const digests = (await effects.operations(runId))
+    .filter(
+      (operation) =>
+        operation.capability === "claude" && operation.status === "completed",
+    )
+    .map((operation) => operation.result)
+    .filter((digest) => digest !== null);
+  let total = 0;
+  for (const digest of digests) total += costOf(await queries.document(digest));
+  return Math.round(total * 100) / 100;
+}
+
+function full(view: ShownRun & { readonly claudeCostUsd: number }): Fields {
   return {
     ...summary(view),
     reason: view.reason,
     evidence: view.evidence,
     lastConfirmedObservation: view.lastConfirmedObservation,
     recovery: view.recovery,
+    claudeCostUsd: view.claudeCostUsd,
     budget: view.budget,
     effects: view.effects,
     nextAction: view.nextAction,
@@ -200,7 +227,8 @@ export async function status(
   const view = await viewOf(context, { snapshot: current, runId: named });
   if (view === undefined)
     return failed("unknown-run", { detail: `No run has the ID ${named}.` });
-  return result("run-status", { run: full(view) });
+  const claudeCostUsd = await claudeCost(context, view.runId);
+  return result("run-status", { run: full({ ...view, claudeCostUsd }) });
 }
 
 const kinds: Readonly<Record<string, string>> = {

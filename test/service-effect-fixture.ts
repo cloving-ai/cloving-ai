@@ -39,12 +39,23 @@ export async function effectScene(
     readonly effects?: Partial<EffectSettings>;
     readonly reconcile?: Delivery["reconcile"];
     readonly limits?: ServiceLimits;
+    readonly capabilities?: readonly string[];
   },
 ): Promise<Scene> {
   const destination = fakeDestination({ lostReplies: setup.lostReplies ?? 0 });
   const clock = { now: noon };
+  const { manifest } = harness.registration;
   const options: Partial<ServiceOptions> = {
-    workflows: [{ ...harness.registration, effectLimit: setup.effectLimit }],
+    workflows: [
+      {
+        ...harness.registration,
+        effectLimit: setup.effectLimit,
+        manifest: {
+          ...manifest,
+          capabilities: setup.capabilities ?? manifest.capabilities,
+        },
+      },
+    ],
     delivery: {
       ...destination.delivery,
       deliver: (intent, signal) => {

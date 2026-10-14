@@ -403,6 +403,7 @@
     "test/cli-text-values.test.ts": "test",
     "test/digest-fixture.ts": "test",
     "test/service-answer.test.ts": "test",
+    "test/service-claude-cost.test.ts": "test",
     "test/service-decisions.test.ts": "test",
     "test/service-connections.test.ts": "test",
     "test/service-decision-rules.test.ts": "test",
