@@ -112,11 +112,16 @@ interface Adapters {
 
 function githubOf(
   settings: DaemonSettings,
-  shared: Pick<Parameters<typeof githubWorker>[0], "document" | "report">,
+  given: Promise<HostPorts>,
 ): GithubWorker {
   const { directory, repository, checkCommand } = settings;
   return githubWorker({
-    ...shared,
+    document: async (digest) => (await given).document(digest),
+    report: async (effect) => (await given).reportEffect(effect),
+    operationStatus: async (operationId) =>
+      (await (await given).operation(operationId))?.status,
+    runStatus: async (runId) =>
+      (await (await given).state()).runs[runId]?.status,
     repository,
     gh: settings.githubCommand ?? ["gh"],
     worktrees: join(directory, "worktrees"),
@@ -144,7 +149,7 @@ function adapters(
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "journal"),
   });
-  const github = githubOf(settings, { document, report });
+  const github = githubOf(settings, given);
   const runs = startDelivery({
     document,
     runs: taggedRuns,
@@ -196,6 +201,7 @@ export async function startDaemon(
     return opening;
   }
   const { service } = opening;
+  await github.scan();
   return {
     kind: "started",
     daemon: {

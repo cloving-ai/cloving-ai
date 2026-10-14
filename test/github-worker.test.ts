@@ -270,7 +270,7 @@ await test("CLV-063 the GitHub worker reports a failed call of the gh command an
     );
   }));
 
-await test("CLV-063 the GitHub worker reports a work tree that git cannot make, and a merge with no work tree, as failures", () =>
+await test("CLV-063 the GitHub worker reports a work tree that git cannot make, and a merge of a pull request that GitHub does not have, as failures", () =>
   withGithub(async (scene) => {
     writeFileSync(scene.worktrees, "not a folder");
     const worker = scene.worker();
@@ -284,7 +284,7 @@ await test("CLV-063 the GitHub worker reports a work tree that git cannot make, 
     });
     assert.deepEqual(
       [prepared, merged].map((report) => report.reason),
-      ["work-tree-not-available", "work-tree-not-available"],
+      ["work-tree-not-available", "github-call-failed"],
     );
   }));
 

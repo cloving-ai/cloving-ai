@@ -30,6 +30,11 @@ export interface Located {
   readonly folder: string;
 }
 
+export type Reported = Pick<
+  ProtectedIntent,
+  "runId" | "operationId" | "inputDigest" | "leaseGeneration"
+>;
+
 export interface Identity {
   readonly receipt: string;
   readonly worker: string;
@@ -85,7 +90,7 @@ export function interrupted(reason: string): Recorded {
 
 export function reportOf(
   operation: {
-    readonly intent: ProtectedIntent;
+    readonly intent: Reported;
     readonly commandId: string;
     readonly worker: string;
   },

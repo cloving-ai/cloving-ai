@@ -253,38 +253,80 @@ async function waitReview(operation: Operation): Promise<unknown> {
   }
 }
 
-async function merge(operation: Operation): Promise<unknown> {
+async function knownMerge(
+  operation: Operation,
+  number: number,
+): Promise<string | undefined> {
+  const pull: unknown = JSON.parse(
+    await operation.calls.gh([
+      "api",
+      `${repositoryPath}/pulls/${String(number)}`,
+    ]),
+  );
+  return field(pull, "merged") === true
+    ? String(field(pull, "merge_commit_sha"))
+    : undefined;
+}
+
+async function mergedNow(
+  operation: Operation,
+  pull: {
+    readonly number: number;
+    readonly commit: string;
+    readonly tree: Place;
+  },
+): Promise<string> {
   const { settings, calls } = operation;
-  const number = integer(operation, "number");
-  const commit = text(operation, "commit");
-  const tree = existingTree(operation);
-  if (settings.check !== undefined) await calls.run(settings.check, tree.path);
+  if (settings.check !== undefined)
+    await calls.run(settings.check, pull.tree.path);
   const reply: unknown = JSON.parse(
     await calls.gh([
       "api",
       "-X",
       "PUT",
-      `${repositoryPath}/pulls/${String(number)}/merge`,
+      `${repositoryPath}/pulls/${String(pull.number)}/merge`,
       "-f",
       "merge_method=merge",
       "-f",
-      `sha=${commit}`,
+      `sha=${pull.commit}`,
     ]),
   );
+  return String(field(reply, "sha"));
+}
+
+async function removed(operation: Operation, place: Place): Promise<void> {
+  const { settings, calls } = operation;
   await calls
     .gh([
       "api",
       "-X",
       "DELETE",
-      `${repositoryPath}/git/refs/heads/${tree.branch}`,
+      `${repositoryPath}/git/refs/heads/${place.branch}`,
     ])
     .catch(() => undefined);
   const repository = (parts: readonly string[]): Promise<string> =>
     calls.git(settings.repository, parts);
-  await repository(["worktree", "remove", "--force", tree.path]);
-  await repository(["branch", "-D", tree.branch]);
-  await repository(["update-ref", "-d", `refs/remotes/origin/${tree.branch}`]);
-  return { number, merged: String(field(reply, "sha")) };
+  if (existsSync(join(place.path, ".git")))
+    await repository(["worktree", "remove", "--force", place.path]);
+  if ((await repository(["branch", "--list", place.branch])).trim() !== "")
+    await repository(["branch", "-D", place.branch]);
+  await repository(["update-ref", "-d", `refs/remotes/origin/${place.branch}`]);
+}
+
+async function merge(operation: Operation): Promise<unknown> {
+  const pull = {
+    number: integer(operation, "number"),
+    commit: text(operation, "commit"),
+  };
+  const place = treePlace({
+    worktrees: operation.settings.worktrees,
+    target: operation.target,
+  });
+  const merged =
+    (await knownMerge(operation, pull.number)) ??
+    (await mergedNow(operation, { ...pull, tree: existingTree(operation) }));
+  await removed(operation, place);
+  return { number: pull.number, merged };
 }
 
 export type Method = (operation: Operation) => Promise<unknown>;

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { journalKey, resultOf } from "./claude-worker-fixture.ts";
 import {
@@ -121,7 +123,7 @@ await test("CLV-063 the GitHub worker keeps the wait when the trigger comment fa
     );
   }));
 
-await test("CLV-063 the GitHub worker stops an active wait on request and at close, and reports it as stopped", () =>
+await test("CLV-067 the GitHub worker stops an active wait on request and reports it as stopped, and ends an active wait at close with no result file and no report", () =>
   withGithub(async (scene) => {
     const slow = { pollMilliseconds: 10, triggerMilliseconds: 60_000 };
     const timing = { ...slow, limitMilliseconds: 60_000 };
@@ -153,12 +155,15 @@ await test("CLV-063 the GitHub worker stops an active wait on request and at clo
     });
     await waiting.deliver(second, signal);
     await waiting.close();
-    const outcomes = scene.reports
-      .filter((item) => item.operationId.startsWith("operation-"))
-      .slice(-2)
-      .map((item) => [item.operationId, item.outcome]);
-    assert.deepEqual(outcomes, [
+    const last = scene.reports.at(-1);
+    assert.deepEqual(
+      [last?.operationId, last?.outcome],
       ["operation-wait", "stopped"],
-      ["operation-close", "stopped"],
-    ]);
+    );
+    assert.equal(
+      existsSync(
+        join(scene.journal, journalKey("operation-close"), "result.json"),
+      ),
+      false,
+    );
   }));

@@ -1,3 +1,5 @@
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   AdapterOutcome,
   Delivery,
@@ -21,6 +23,7 @@ import {
   type Identity,
   type Located,
   type Recorded,
+  type Reported,
   type WorkerReport,
 } from "./operation-journal.ts";
 
@@ -30,14 +33,25 @@ export interface GithubWorkerSettings extends MethodSettings {
   readonly journal: string;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
+  readonly operationStatus: (
+    operationId: string,
+  ) => Promise<string | undefined>;
+  readonly runStatus: (runId: string) => Promise<string | undefined>;
 }
 
 export interface GithubWorker extends Delivery {
   readonly stop: NonNullable<Delivery["stop"]>;
+  readonly scan: () => Promise<void>;
   readonly close: () => Promise<void>;
 }
 
 const worker = "github";
+const closing = "github-worker-closed";
+const endedRuns: ReadonlySet<string> = new Set([
+  "cancelled",
+  "failed",
+  "completed",
+]);
 
 interface Active {
   readonly stopping: AbortController;
@@ -47,10 +61,18 @@ interface Active {
 interface Parts {
   readonly settings: GithubWorkerSettings;
   readonly active: Map<string, Active>;
+  readonly scanned: PromiseWithResolvers<void>;
+  readonly scans: Promise<void>[];
+}
+
+interface Kept extends Reported {
+  readonly method: string;
+  readonly target: string;
+  readonly payloadText: string;
 }
 
 interface Started extends Located {
-  readonly intent: ProtectedIntent;
+  readonly intent: Reported & { readonly target: string };
   readonly method: Method;
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -104,18 +126,28 @@ async function outcome(
   }
 }
 
-function begun(parts: Parts, start: Started): void {
+async function ended(
+  parts: Parts,
+  ending: { readonly start: Started; readonly recorded: Recorded },
+): Promise<void> {
+  const { start, recorded } = ending;
   const { key, folder, intent } = start;
+  await writeRecord(folder, { name: "result.json", value: recorded });
+  await parts.settings.report(
+    reportOf({ intent, commandId: `github:${key}`, worker }, recorded),
+  );
+}
+
+function begun(parts: Parts, start: Started): void {
+  const { key } = start;
   const stopping = new AbortController();
   const concluded = (async (): Promise<void> => {
     const recorded = await outcome(parts, {
       ...start,
       signal: stopping.signal,
     });
-    await writeRecord(folder, { name: "result.json", value: recorded });
-    await parts.settings.report(
-      reportOf({ intent, commandId: `github:${key}`, worker }, recorded),
-    );
+    if (stopping.signal.reason === closing) return;
+    await ended(parts, { start, recorded });
   })()
     .catch(() => undefined)
     .finally(() => parts.active.delete(key));
@@ -170,14 +202,18 @@ async function delivered(
       method: intent.method,
       target: intent.target,
       startedAt: new Date().toISOString(),
+      runId: intent.runId,
+      inputDigest: intent.inputDigest,
+      leaseGeneration: intent.leaseGeneration,
+      payloadText: text,
     },
   });
   begun(parts, { ...place, intent, method, payload });
   return { receipt: place.key, worker };
 }
 
-async function halted(active: Active): Promise<void> {
-  active.stopping.abort();
+async function halted(active: Active, reason: string): Promise<void> {
+  active.stopping.abort(reason);
   await active.concluded;
 }
 
@@ -186,19 +222,109 @@ async function stopped(
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
   const active = parts.active.get(placed(parts, intent).key);
-  if (active !== undefined) await halted(active);
+  if (active !== undefined) await halted(active, "github-operation-stopped");
   return reconciled(parts, intent);
+}
+
+function textOf(value: unknown, name: string): string {
+  const item: unknown = Reflect.get(Object(value), name);
+  return typeof item === "string" ? item : "";
+}
+
+function keptOf(value: unknown): Kept | undefined {
+  const leaseGeneration: unknown = Reflect.get(
+    Object(value),
+    "leaseGeneration",
+  );
+  const kept = {
+    operationId: textOf(value, "operationId"),
+    runId: textOf(value, "runId"),
+    inputDigest: textOf(value, "inputDigest"),
+    method: textOf(value, "method"),
+    target: textOf(value, "target"),
+    payloadText: textOf(value, "payloadText"),
+  };
+  if (typeof leaseGeneration !== "number" || Object.values(kept).includes(""))
+    return undefined;
+  return { ...kept, leaseGeneration };
+}
+
+function startOf(parts: Parts, value: unknown): Started | undefined {
+  const kept = keptOf(value);
+  if (kept === undefined) return undefined;
+  const method = methods.get(kept.method);
+  const payload = payloadOf(kept.payloadText);
+  if (method === undefined || payload === undefined) return undefined;
+  const place = located(parts.settings.journal, kept.operationId);
+  return { ...place, intent: kept, method, payload };
+}
+
+async function live(parts: Parts, kept: Reported): Promise<boolean> {
+  const { operationStatus, runStatus } = parts.settings;
+  if ((await operationStatus(kept.operationId)) !== "running") return false;
+  const run = await runStatus(kept.runId);
+  return run !== undefined && !endedRuns.has(run);
+}
+
+async function resumed(parts: Parts, folder: string): Promise<void> {
+  if ((await readRecord(folder, "result.json")) !== undefined) return;
+  const started = await readRecord(folder, "started.json");
+  if (started === undefined) return;
+  const start = startOf(parts, started);
+  if (start === undefined) {
+    const ending = interrupted("github-call-interrupted");
+    await writeRecord(folder, { name: "result.json", value: ending });
+    return;
+  }
+  if (await live(parts, start.intent)) {
+    begun(parts, start);
+    return;
+  }
+  const recorded: Recorded = {
+    outcome: "stopped",
+    endedAt: new Date().toISOString(),
+  };
+  await ended(parts, { start, recorded });
+}
+
+async function scanned(parts: Parts): Promise<void> {
+  const { journal } = parts.settings;
+  const entries = await readdir(journal).catch(() => []);
+  await Promise.all(
+    entries.map((entry) =>
+      resumed(parts, join(journal, entry)).catch(() => undefined),
+    ),
+  );
+}
+
+function scanning(parts: Parts): Promise<void> {
+  const scan = scanned(parts).finally(() => {
+    parts.scanned.resolve();
+  });
+  parts.scans.push(scan);
+  return scan;
 }
 
 export function githubWorker(settings: GithubWorkerSettings): GithubWorker {
   if (settings.gh.length === 0) throw new Error("invalid-github-command");
-  const parts: Parts = { settings, active: new Map() };
+  const parts: Parts = {
+    settings,
+    active: new Map(),
+    scanned: Promise.withResolvers(),
+    scans: [],
+  };
+  const after = <Value>(call: () => Promise<Value>): Promise<Value> =>
+    parts.scanned.promise.then(call);
   return {
-    deliver: (intent) => delivered(parts, intent),
-    reconcile: (intent) => reconciled(parts, intent),
-    stop: (intent) => stopped(parts, intent),
+    deliver: (intent) => after(() => delivered(parts, intent)),
+    reconcile: (intent) => after(() => reconciled(parts, intent)),
+    stop: (intent) => after(() => stopped(parts, intent)),
+    scan: () => scanning(parts),
     close: async () => {
-      await Promise.all([...parts.active.values()].map(halted));
+      await Promise.all(parts.scans);
+      await Promise.all(
+        [...parts.active.values()].map((active) => halted(active, closing)),
+      );
     },
   };
 }
