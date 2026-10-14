@@ -1,4 +1,5 @@
 import { isInstant } from "./instants.ts";
+import { isBlockedReason } from "../workflow-contracts.ts";
 import {
   numberFields,
   textFields,
@@ -40,6 +41,7 @@ interface Shape {
   readonly optional?: readonly string[];
   readonly groups?: readonly (readonly string[])[];
   readonly consistent?: (fields: Fields) => boolean;
+  readonly validators?: Readonly<Record<string, (value: unknown) => boolean>>;
 }
 
 const revised: Shape = { required: ["expectedRevision"] };
@@ -84,7 +86,16 @@ const shapes: Readonly<Record<string, Shape>> = {
   "expire-gate": { required: ["gateId"] },
   "pause-run": revised,
   "resume-run": revised,
-  "complete-run": revised,
+  "complete-run": {
+    required: ["expectedRevision"],
+    optional: ["outcome", "outcomeReason"],
+    validators: {
+      outcome: (value) => value === "handoff_requested" || value === "blocked",
+      outcomeReason: isBlockedReason,
+    },
+    consistent: (fields) =>
+      fields["outcomeReason"] === undefined || fields["outcome"] === "blocked",
+  },
   "fail-run": revised,
   "cancel-run": revised,
   "report-observation": {
@@ -187,7 +198,7 @@ function completeFields(kind: string, fields: Fields): boolean {
   return (
     Object.keys(fields).every((key) => allowed.includes(key)) &&
     [...shape.required, ...present].every((key) =>
-      validField(key, fields[key]),
+      (shape.validators?.[key] ?? validators[key] ?? isIdentifier)(fields[key]),
     ) &&
     (shape.groups ?? []).every((group) => complete(group, fields)) &&
     (shape.consistent?.(fields) ?? true)
@@ -289,10 +300,6 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   expiresAt: isInstant,
   retryAt: isInstant,
 };
-
-function validField(key: string, value: unknown): boolean {
-  return (validators[key] ?? isIdentifier)(value);
-}
 
 export function isIdentifier(value: unknown): value is string {
   return typeof value === "string" && identifier.test(value);

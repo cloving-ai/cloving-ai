@@ -196,6 +196,7 @@ await test("CLV-057 two World runs of one Cloving run with two operation IDs are
     {
       kind: "complete-run",
       commandId: "complete-run:wrun-2",
+      outcome: "handoff_requested",
       runId: "run-1",
       expectedRevision: continued.runs["run-1"]?.revision,
     },

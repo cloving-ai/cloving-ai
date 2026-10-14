@@ -1,6 +1,7 @@
 import { getRun } from "workflow/api";
 import { getWorld } from "workflow/runtime";
 import type { WorldRun } from "../authority/reconciliation.ts";
+import type { WorkflowOutcome } from "./world-reconciliation.ts";
 
 export const runTag = "cloving.run";
 export const operationTag = "cloving.operation";
@@ -54,12 +55,14 @@ export async function taggedRuns(pageSize = 200): Promise<TaggedRun[]> {
   return await collected(await getWorld(), { limit: pageSize, cursor: null });
 }
 
-export async function outcomeKind(
+export async function workflowOutcome(
   receipt: string,
-): Promise<string | undefined> {
+): Promise<WorkflowOutcome | undefined> {
   const value: unknown = await getRun(receipt).returnValue;
   const kind: unknown = Reflect.get(Object(value), "kind");
-  return typeof kind === "string" ? kind : undefined;
+  if (typeof kind !== "string") return undefined;
+  const reason: unknown = Reflect.get(Object(value), "reason");
+  return { kind, ...(typeof reason === "string" ? { reason } : {}) };
 }
 
 export async function cancelled(receipt: string): Promise<string> {

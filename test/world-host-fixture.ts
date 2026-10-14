@@ -43,7 +43,7 @@ export const servicePrelude = `
 import { mkdirSync } from "node:fs";
 import { startService } from ${product("src/service/service.ts")};
 import { startDelivery } from ${product("src/host/start-delivery.ts")};
-import { cancelled, outcomeKind, taggedRun, taggedRuns } from ${product("src/host/world-runs.ts")};
+import { cancelled, workflowOutcome, taggedRun, taggedRuns } from ${product("src/host/world-runs.ts")};
 import { worldLoop } from ${product("src/host/world-reconciliation.ts")};
 import { registerStepBridge, sdkStepCall, stepBridge } from ${product("src/host/step-bridge-host.ts")};
 import { call, digestOf, fakeRegistration, testTiming } from ${product("test/service-fixture.ts")};
@@ -115,7 +115,7 @@ const hosted = async (overrides = {}) => {
       const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
       if (host.kind !== "started") throw new Error(host.reason);
       globalThis.released = host.host.released;
-      const loop = worldLoop({ ...given, runs: taggedRuns, outcome: outcomeKind, intervalMilliseconds: 20, ...overrides.loop });
+      const loop = worldLoop({ ...given, runs: taggedRuns, outcome: workflowOutcome, intervalMilliseconds: 20, ...overrides.loop });
       const requestEffect = async (request) => {
         const closes = existsSync("close-at-request");
         const pending = given.requestEffect(request);

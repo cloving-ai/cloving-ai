@@ -1,4 +1,5 @@
 import { gateContinuation } from "./gate-reduction.ts";
+import { isBlockedReason } from "../workflow-contracts.ts";
 import { continues } from "./gates.ts";
 import { startOperation } from "./reduction.ts";
 import {
@@ -13,6 +14,7 @@ export interface WorldRun {
   readonly receipt: string;
   readonly status: string;
   readonly outcome?: string;
+  readonly outcomeReason?: string;
   readonly operationId?: string | null;
   readonly createdAt?: string;
 }
@@ -183,7 +185,16 @@ function moved(
     commandId: `${kind}:${world.receipt}`,
     runId: run.runId,
     expectedRevision: run.revision,
+    ...(kind === "complete-run" ? completionOutcome(world) : {}),
   };
+}
+
+function completionOutcome(world: WorldRun): Readonly<Record<string, string>> {
+  const { outcome, outcomeReason } = world;
+  if (outcome !== "handoff_requested" && outcome !== "blocked") return {};
+  if (outcome !== "blocked" || !isBlockedReason(outcomeReason))
+    return { outcome };
+  return { outcome, outcomeReason };
 }
 
 function noted(

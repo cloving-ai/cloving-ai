@@ -15,7 +15,7 @@ import { startHost, type WorkflowHandler } from "../host/world-host.ts";
 import { worldLoop } from "../host/world-reconciliation.ts";
 import {
   cancelled,
-  outcomeKind,
+  workflowOutcome,
   taggedRun,
   taggedRuns,
 } from "../host/world-runs.ts";
@@ -80,7 +80,7 @@ async function hosted(
   const loop = worldLoop({
     ...ports,
     runs: taggedRuns,
-    outcome: outcomeKind,
+    outcome: workflowOutcome,
     intervalMilliseconds: loopMilliseconds,
   });
   const stopping = new AbortController();

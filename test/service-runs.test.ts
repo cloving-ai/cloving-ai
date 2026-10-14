@@ -23,7 +23,10 @@ function status(
   return call(harness, { operation: "status", parameters: { runId } });
 }
 
-const noEffectsCostOrFeedback = {
+const initialRunDetails = {
+  latestAt: noon,
+  outcome: null,
+  title: null,
   claudeCostUsd: 0,
   budget: null,
   effects: [],
@@ -32,7 +35,7 @@ const noEffectsCostOrFeedback = {
 
 await test("CLV-008 status gives the state, the revision, the pending decision and the latest sequence of a run as one object", () =>
   withHarness(async (harness) => {
-    const service = await harness.start();
+    const service = await harness.start({ clock: () => noon });
     const waiting = await waitingGate(harness, {
       service,
       commandId: "c-1",
@@ -56,7 +59,7 @@ await test("CLV-008 status gives the state, the revision, the pending decision a
         evidence: [],
         lastConfirmedObservation: null,
         recovery: { attempts: 0, limit: null },
-        ...noEffectsCostOrFeedback,
+        ...initialRunDetails,
         nextAction: "answer",
         nextActionAt: null,
         humanInputCanHelp: true,

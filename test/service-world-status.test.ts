@@ -80,7 +80,7 @@ async function scene(harness: Harness): Promise<Scene> {
         state: ports.state,
         submit: ports.submit,
         runs: () => Promise.resolve(world),
-        outcome: () => Promise.resolve("waiting_for_decision"),
+        outcome: () => Promise.resolve({ kind: "waiting_for_decision" }),
       });
       reports.splice(0, reports.length, ...result.reports);
     },

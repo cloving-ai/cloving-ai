@@ -114,6 +114,7 @@ export const textFields = [
   "source",
   "worker",
   "outcome",
+  "outcomeReason",
   "result",
 ] as const;
 

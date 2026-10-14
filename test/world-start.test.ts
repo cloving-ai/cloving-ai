@@ -68,7 +68,7 @@ const runId = await submitted("c-1");
 await until(async () => (await stateOf(runId)) === "completed");
 const types = await eventTypes(runId);
 const world = await tagged();
-print({ runId, types, world, dispatches: await dispatches(runId), calls, outcome: await outcomeKind(world[0].receipt) });
+print({ runId, types, world, dispatches: await dispatches(runId), calls, outcome: await workflowOutcome(world[0].receipt) });
 await service.close();
 `);
     assert.equal(result.lines.length, 1, result.stderr);
@@ -81,7 +81,7 @@ await service.close();
       world: [oneWorldRun({ runId, receipt, status: "completed" })],
       dispatches: [receipt],
       calls: ["reconcile absent", "deliver"],
-      outcome: "handoff_requested",
+      outcome: { kind: "handoff_requested" },
     });
     assert.equal(result.status, 0, result.stderr);
   }));
@@ -263,7 +263,7 @@ const paged = await taggedRuns(2);
 print({
   paged: paged.map((run) => [run.runId, run.operationId, run.status]).sort(),
   whole: (await taggedRuns()).length,
-  kinds: [await outcomeKind(started[0].runId) ?? null, await outcomeKind(untagged.runId) ?? null],
+  kinds: [await workflowOutcome(started[0].runId) ?? null, await workflowOutcome(untagged.runId) ?? null],
 });
 await opening.host.close();
 `);
@@ -278,7 +278,7 @@ await opening.host.close();
           ["run-f", null, "completed"],
         ],
         whole: 6,
-        kinds: ["handoff_requested", null],
+        kinds: [{ kind: "handoff_requested" }, null],
       },
     ]);
   }));
