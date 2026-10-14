@@ -145,6 +145,10 @@ function texts(values: readonly unknown[]): boolean {
   return values.every((value) => typeof value === "string");
 }
 
+function isObject(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
+}
+
 function unanswered(reason: string): EffectReply {
   return {
     receipt: { kind: "rejected", reason },
@@ -157,6 +161,7 @@ function effectPort(parts: Parts): Effects {
   const { gateway, authority } = parts;
   return {
     requestEffect: async (request) => {
+      if (!isObject(request)) return unanswered("invalid-command");
       const { scope, payload, epoch, ...rest } = request;
       if (!texts([payload, rest.capability, rest.method, rest.target]))
         return unanswered("invalid-command");
@@ -185,6 +190,7 @@ function effectPort(parts: Parts): Effects {
       return stored(authority, { receipt, operationId });
     },
     reportEffect: async (report) => {
+      if (!isObject(report)) return unanswered("invalid-command");
       const { result, epoch, ...rest } = report;
       const given = result === undefined ? [] : [result];
       if (!texts([report.operationId, ...given]))
