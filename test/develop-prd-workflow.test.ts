@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { Linter } from "eslint";
+import typescript from "typescript-eslint";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
 
 const input = {
@@ -13,6 +16,31 @@ const operations = [
   "github-create-issue",
   "github-discard",
 ];
+
+await test("CLV-075 issue validation uses guard clauses without nested conditions", () => {
+  const source = readFileSync(
+    new URL("../workflows/develop-prd.ts", import.meta.url),
+    "utf8",
+  );
+  const messages = new Linter().verify(
+    source,
+    {
+      files: ["**/*.ts"],
+      languageOptions: { parser: typescript.parser },
+      rules: {
+        "no-restricted-syntax": [
+          "error",
+          {
+            selector: "IfStatement IfStatement",
+            message: "Use guard clauses instead of nested conditions.",
+          },
+        ],
+      },
+    },
+    { filename: "develop-prd.ts" },
+  );
+  assert.deepEqual(messages, []);
+});
 
 function completed(result: unknown): unknown {
   return {

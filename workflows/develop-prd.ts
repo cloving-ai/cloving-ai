@@ -94,17 +94,16 @@ export async function developPrd(input: Idea): Promise<CycleOutcome> {
             : result.kind,
         evidenceId: request.scope.operation,
       };
-    if (request.method === "create-issue") {
-      const number = issueNumber(result.result);
-      if (number === undefined)
-        return {
-          kind: "blocked",
-          cycleId: input.cycleId,
-          reason: "invalid-issue-result",
-          evidenceId: request.scope.operation,
-        };
-      promotionId = `issue-${String(number)}`;
-    }
+    if (request.method !== "create-issue") continue;
+    const number = issueNumber(result.result);
+    if (number === undefined)
+      return {
+        kind: "blocked",
+        cycleId: input.cycleId,
+        reason: "invalid-issue-result",
+        evidenceId: request.scope.operation,
+      };
+    promotionId = `issue-${String(number)}`;
   }
   return { kind: "handoff_requested", cycleId: input.cycleId, promotionId };
 }
