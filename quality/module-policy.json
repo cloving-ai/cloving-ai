@@ -28,6 +28,7 @@
     "node_modules/acorn/dist/acorn.d.mts": "tooling",
     "node_modules/ast-v8-to-istanbul/dist/index.d.mts": "tooling",
     "node_modules/@types/istanbul-lib-coverage/index.d.ts": "tooling",
+    "node_modules/entities/dist/decode.d.ts": "pure",
     "package.json": "metadata",
     "quality/architecture.ts": "quality",
     "quality/clone-arguments.ts": "quality",

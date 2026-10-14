@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -43,9 +50,58 @@ await test("CLV-075 each Claude turn starts with empty gh configuration and no G
       assert.deepEqual(Reflect.get(Object(result), "tokens"), []);
       assert.deepEqual(Reflect.get(Object(result), "entries"), []);
       assert.notEqual(Reflect.get(Object(result), "folder"), config);
+      assert.equal(
+        existsSync(String(Reflect.get(Object(result), "folder"))),
+        false,
+      );
     }
+    assert.equal(existsSync(join(config, "hosts.yml")), true);
   } finally {
     process.env = saved;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-075 removes temporary gh configuration after failed and stopped turns", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-turn-cleanup-"));
+  try {
+    const commands = [
+      [join(directory, "absent-command")],
+      [process.execPath, "-e", "process.exit(1)"],
+      [process.execPath, "-e", "setInterval(() => {}, 1000)"],
+    ];
+    for (const command of commands) {
+      const running = startTurn({
+        command,
+        directory,
+        folder: directory,
+        prompt: "Research",
+      });
+      assert.equal(
+        readdirSync(directory).filter((name) => name.startsWith("gh-config-"))
+          .length,
+        1,
+      );
+      if (command === commands[2]) running.stop(0);
+      await running.ended;
+      assert.deepEqual(
+        readdirSync(directory).filter((name) => name.startsWith("gh-config-")),
+        [],
+      );
+    }
+    assert.throws(() =>
+      startTurn({
+        command: [],
+        directory,
+        folder: directory,
+        prompt: "Research",
+      }),
+    );
+    assert.deepEqual(
+      readdirSync(directory).filter((name) => name.startsWith("gh-config-")),
+      [],
+    );
+  } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });

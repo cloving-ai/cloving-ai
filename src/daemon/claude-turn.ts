@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
-import { createWriteStream, mkdtempSync } from "node:fs";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StreamResult {
@@ -70,7 +70,7 @@ function ended(stream: NodeJS.WritableStream): Promise<void> {
   });
 }
 
-function turnEnvironment(folder: string): NodeJS.ProcessEnv {
+function turnEnvironment(configuration: string): NodeJS.ProcessEnv {
   const excluded = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -80,17 +80,31 @@ function turnEnvironment(folder: string): NodeJS.ProcessEnv {
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !excluded.has(name)),
   );
-  environment["GH_CONFIG_DIR"] = mkdtempSync(join(folder, "gh-config-"));
+  environment["GH_CONFIG_DIR"] = configuration;
   return environment;
 }
 
-export function startTurn(start: TurnStart): RunningTurn {
+function spawnTurn(start: TurnStart): {
+  readonly child: ChildProcessWithoutNullStreams;
+  readonly configuration: string;
+} {
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const [executable = "", ...fixed] = start.command;
-  const child = spawn(executable, fixed, {
-    cwd: start.directory,
-    env: turnEnvironment(start.folder),
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  try {
+    const child = spawn(executable, fixed, {
+      cwd: start.directory,
+      env: turnEnvironment(configuration),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { child, configuration };
+  } catch (error) {
+    rmSync(configuration, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function startTurn(start: TurnStart): RunningTurn {
+  const { child, configuration } = spawnTurn(start);
   const output = createWriteStream(join(start.folder, "turn.jsonl"));
   const errors = createWriteStream(join(start.folder, "turn.stderr.log"));
   const stream: Stream = { pending: "", result: undefined };
@@ -105,22 +119,24 @@ export function startTurn(start: TurnStart): RunningTurn {
   child.stdin.on("error", () => undefined);
   child.stdin.end(start.prompt);
   const closed = new Promise<number | null>((settle) => {
-    child.once("error", () => {
-      settle(null);
-    });
+    child.once("error", () => undefined);
     child.once("close", settle);
   });
   const timers: NodeJS.Timeout[] = [];
   return {
     processId: child.pid ?? null,
-    ended: closed.then(async (exitCode) => {
-      timers.forEach(clearTimeout);
-      await ended(output);
-      return {
-        exitCode,
-        result: streamResult(stream.pending) ?? stream.result,
-      };
-    }),
+    ended: closed
+      .then(async (exitCode) => {
+        timers.forEach(clearTimeout);
+        await ended(output);
+        return {
+          exitCode,
+          result: streamResult(stream.pending) ?? stream.result,
+        };
+      })
+      .finally(() => {
+        rmSync(configuration, { recursive: true, force: true });
+      }),
     stop: (graceMilliseconds) => {
       child.kill("SIGTERM");
       timers.push(

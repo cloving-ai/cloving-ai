@@ -93,11 +93,51 @@ await test("CLV-075 pagination reconciles a closed issue on the second page befo
         .calls.some(
           (call) =>
             call.includes("--paginate") &&
-            call.includes("--slurp") &&
+            call.includes("--jq") &&
             call.some((part) => part.includes("state=all")),
         ),
     );
     assert.ok(scene.state().calls.every((call) => call[0] !== "issue"));
+  }));
+
+await test("CLV-075 searches histories larger than the subprocess buffer and returns only matching issue identities", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker(settings);
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    writeFileSync(join(treeOf(scene), "draft.md"), "# Draft\nPublic text");
+    const page = Array.from({ length: 100 }, (_, index) => ({
+      number: index + 1,
+      body: "x".repeat(60_000),
+    }));
+    const call = { method: "create-issue", payload: { draft: "draft.md" } };
+    for (const body of [null, `${"x".repeat(60_000)}${marker}`]) {
+      scene.plan({
+        scores: [],
+        issuePages: [
+          page,
+          page,
+          page,
+          [
+            {
+              number: 75,
+              html_url: "https://github.com/acme/demo/issues/75",
+              body,
+            },
+          ],
+        ],
+      });
+      const report = await scene.perform(worker, call);
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      const number = body === null ? 1 : 75;
+      assert.deepEqual(JSON.parse(String(report.result)), {
+        number,
+        url: `https://github.com/acme/demo/issues/${String(number)}`,
+      });
+    }
+    assert.equal(
+      scene.state().calls.filter((call) => call[0] === "issue").length,
+      1,
+    );
   }));
 
 await test("CLV-075 records the intent before even a failed post", () =>

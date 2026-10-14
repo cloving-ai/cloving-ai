@@ -116,6 +116,38 @@ await test("CLV-075 a refused post blocks the run and preserves the draft", asyn
   assert.equal(field(field(line, "requests"), "length"), 4);
 });
 
+await test("CLV-075 invalid issue results block handoff and preserve the draft", async () => {
+  const invalid = [
+    null,
+    [],
+    {},
+    "75",
+    75,
+    true,
+    ...[null, "75", 0, -1, 1.5, 9007199254740992].map((number) => ({ number })),
+  ];
+  const results = [
+    ...invalid.map(completed),
+    { kind: "completed", operationId: "operation", receipt: "receipt" },
+    {
+      kind: "completed",
+      operationId: "operation",
+      receipt: "receipt",
+      result: "not json",
+    },
+  ];
+  const lines = await ran(results.map((result) => scenario(result)));
+  for (const line of lines) {
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "blocked",
+      cycleId: input.cycleId,
+      reason: "invalid-issue-result",
+      evidenceId: "github-create-issue",
+    });
+    assert.equal(field(field(line, "requests"), "length"), 4);
+  }
+});
+
 await test("CLV-075 every incomplete step blocks the workflow without later effects", async () => {
   const created = completed({ number: 75 });
   const failed = { kind: "failed", operationId: "operation", reason: null };

@@ -1,47 +1,12 @@
 import { homedir } from "node:os";
+import { decodeHTMLStrict } from "entities/decode";
 import type { MethodSettings } from "./github-operation.ts";
 
-const entities: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  sol: "/",
-  bsol: "\\",
-  colon: ":",
-  commat: "@",
-  period: ".",
-  lowbar: "_",
-  hyphen: "-",
-  num: "#",
-  percnt: "%",
-  ast: "*",
-  lpar: "(",
-  rpar: ")",
-  lsqb: "[",
-  rsqb: "]",
-  grave: "`",
-  Tab: "\t",
-  NewLine: "\n",
-  equals: "=",
-  quest: "?",
-  semi: ";",
-};
-
 function entity(value: string): string {
-  if (!value.startsWith("#")) {
-    const known = entities[value];
-    if (known === undefined) throw new Error("private-path-in-change");
-    return known;
-  }
-  const hexadecimal = value[1]?.toLowerCase() === "x";
-  const number = Number.parseInt(
-    value.slice(hexadecimal ? 2 : 1),
-    hexadecimal ? 16 : 10,
-  );
-  return number > 0 && number <= 0x10ffff ? String.fromCodePoint(number) : "";
+  const encoded = `&${value};`;
+  const decoded = decodeHTMLStrict(encoded);
+  if (decoded === encoded) throw new Error("private-path-in-change");
+  return decoded.replace(/\u00a0/g, " ");
 }
 
 function decoded(text: string): string {

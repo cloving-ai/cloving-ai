@@ -4,7 +4,6 @@ import { basename, join } from "node:path";
 import {
   existingTree,
   removeWorktree,
-  field,
   repositoryPath,
   text,
   type Operation,
@@ -14,6 +13,49 @@ import {
 import { writeRecord } from "./operation-journal.ts";
 import { treePlace } from "./work-tree.ts";
 import { issuePrivacy, operatorPrivateTexts } from "./github-issue-privacy.ts";
+
+function issueFromUrl(url: string): Pull {
+  const number = Number(
+    /^https?:\/\/[^/\s]+\/[\w.-]+\/[\w.-]+\/issues\/([1-9]\d*)$/.exec(url)?.[1],
+  );
+  if (!Number.isSafeInteger(number) || number < 1)
+    throw new Error("github-call-failed");
+  return { number, url };
+}
+
+function issueOf(issue: unknown): Pull {
+  if (
+    typeof issue !== "object" ||
+    issue === null ||
+    !("number" in issue) ||
+    typeof issue.number !== "number" ||
+    !("html_url" in issue) ||
+    typeof issue.html_url !== "string"
+  )
+    throw new Error("github-call-failed");
+  const parsed = issueFromUrl(issue.html_url);
+  if (issue.number !== parsed.number) throw new Error("github-call-failed");
+  return parsed;
+}
+
+function issuePage(line: string): readonly Pull[] {
+  const page: unknown = JSON.parse(line);
+  if (!Array.isArray(page)) throw new Error("github-call-failed");
+  return page.map((issue: unknown) => issueOf(issue));
+}
+
+function repositoryName(reply: string): string {
+  const repository: unknown = JSON.parse(reply);
+  if (
+    typeof repository !== "object" ||
+    repository === null ||
+    !("nameWithOwner" in repository) ||
+    typeof repository.nameWithOwner !== "string" ||
+    !/^[\w.-]+\/[\w.-]+$/.test(repository.nameWithOwner)
+  )
+    throw new Error("github-call-failed");
+  return repository.nameWithOwner;
+}
 
 async function draftOf(operation: Operation): Promise<string> {
   const name = text(operation, "draft");
@@ -30,23 +72,14 @@ async function knownIssue(
   operation: Operation,
   marker: string,
 ): Promise<Pull | undefined> {
-  const pages: unknown = JSON.parse(
-    await operation.calls.gh([
-      "api",
-      "--paginate",
-      "--slurp",
-      `${repositoryPath}/issues?state=all&per_page=100`,
-    ]),
-  );
-  if (!Array.isArray(pages)) throw new Error("github-call-failed");
-  const issue: unknown = pages
-    .flat()
-    .find((entry: unknown) => String(field(entry, "body")).includes(marker));
-  if (issue === undefined) return undefined;
-  return {
-    number: Number(field(issue, "number")),
-    url: String(field(issue, "html_url")),
-  };
+  const output = await operation.calls.gh([
+    "api",
+    "--paginate",
+    `${repositoryPath}/issues?state=all&per_page=100`,
+    "--jq",
+    `[.[] | select((.body // "") | contains(${JSON.stringify(marker)})) | {number, html_url}] | @json`,
+  ]);
+  return output.trim().split("\n").flatMap(issuePage)[0];
 }
 
 export async function createIssue(operation: Operation): Promise<unknown> {
@@ -55,12 +88,12 @@ export async function createIssue(operation: Operation): Promise<unknown> {
   const [heading = "", ...lines] = draft.split("\n");
   if (!heading.startsWith("# ") || heading.slice(2).trim() === "")
     throw new Error("invalid-draft");
-  const repository: unknown = JSON.parse(
+  const repository = repositoryName(
     await operation.calls.gh(["repo", "view", "--json", "nameWithOwner"]),
   );
   issuePrivacy(draft, {
     settings: operation.settings,
-    repository: String(field(repository, "nameWithOwner")),
+    repository,
   });
   const marker = `<!-- cloving-prd:${operation.target} -->`;
   const known = await knownIssue(operation, marker);
@@ -77,9 +110,7 @@ export async function createIssue(operation: Operation): Promise<unknown> {
     `${lines.join("\n")}\n${marker}`,
   ]);
   const url = printed.trim().split("\n").at(-1) ?? "";
-  const number = Number(/\/issues\/(\d+)$/.exec(url)?.[1]);
-  if (!Number.isInteger(number)) throw new Error("github-call-failed");
-  return { number, url };
+  return issueFromUrl(url);
 }
 
 export async function discard(operation: Operation): Promise<unknown> {

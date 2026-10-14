@@ -28,6 +28,11 @@ const examples = [
   "Private **Organization**",
   "Private [Organization](https://example.com)",
   "Private&#32;Organization",
+  "Private&nbsp;Organization",
+  "Private&ThickSpace;Organization",
+  "&commat;private-user",
+  "ghp&lowbar;secret",
+  "&sol;opt&sol;private",
   "/opt/private",
   "C:\\private\\file",
   "C:/private/file",
@@ -60,7 +65,11 @@ const examples = [
 await test("CLV-075 refuses private text in raw, decoded and visible draft text", () =>
   withGithub(async (scene) => {
     const worker = scene.worker({
-      privateTexts: ["Private Organization", "Private_Organization"],
+      privateTexts: [
+        "Private Organization",
+        "Private_Organization",
+        "Private\u205f\u200aOrganization",
+      ],
     });
     await scene.perform(worker, { method: "prepare", payload: {} });
     const forbidden = [
@@ -83,6 +92,25 @@ await test("CLV-075 refuses private text in raw, decoded and visible draft text"
       forbidden.map(() => "private-path-in-change"),
     );
     assert.ok(scene.state().calls.every((call) => call[0] !== "issue"));
+  }));
+
+await test("CLV-075 permits public drafts containing ordinary HTML named entities", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker({ privateTexts: ["private"] });
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    const body =
+      "Cost &mdash; user&rsquo;s display &copy; 2026. &Aacute; &NotEqualTilde; &CounterClockwiseContourIntegral; &amp; public.";
+    writeFileSync(join(treeOf(scene), "draft.md"), `# Draft\n${body}`);
+    const report = await scene.perform(worker, {
+      method: "create-issue",
+      payload: { draft: "draft.md" },
+    });
+    assert.equal(report.outcome, "completed", JSON.stringify(report));
+    const created = scene.state().calls.find((call) => call[0] === "issue");
+    assert.equal(
+      created?.[created.indexOf("--body") + 1],
+      `${body}\n<!-- cloving-prd:ticket/one -->`,
+    );
   }));
 
 await test("CLV-075 permits npm scopes, one-part routes, public sources and local issue references", () =>

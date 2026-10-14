@@ -55,6 +55,11 @@ const actions = {
   "repo view": () => out({ nameWithOwner: "acme/demo" }),
   "api GET issues": () => {
     const pages = state.issuePages ?? [state.issues];
+    if (option("--jq")) {
+      const marker = JSON.parse(option("--jq").match(/contains\\((".*")\\)/)[1]);
+      for (const page of pages) out(JSON.stringify(page.filter((issue) => issue.body?.includes(marker)).map(({ number, html_url }) => ({ number, html_url }))));
+      return;
+    }
     out(args.includes("--slurp") ? pages : pages[0]);
   },
   "pr list": () => out(state.prs.filter((pr) => pr.head === option("--head") && (option("--state") !== "open" || pr.state === "OPEN")).map(view)),
@@ -97,6 +102,7 @@ if (state.fail === name) {
   process.stderr.write("the fake gh refused " + name);
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");
+else if (state.replies && Object.hasOwn(state.replies, name)) out(state.replies[name]);
 else actions[name]();
 const staged = file + "." + process.pid;
 writeFileSync(staged, JSON.stringify(state));
@@ -115,6 +121,7 @@ export interface Plan {
   readonly waitForTrigger?: boolean;
   readonly fail?: string;
   readonly garble?: string;
+  readonly replies?: Readonly<Record<string, unknown>>;
 }
 
 export interface GithubScene {
