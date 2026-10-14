@@ -149,7 +149,7 @@ await test("CLV-008 the human form of the decisions gives the complete command l
         },
       ],
     }),
-    "approval run-1/design-1\n  Prompt: Which parser?\n  cloving approve run-1/design-1 --expected-revision 1 --generation 1 --subject-digest sha256:bb\n  cloving deny run-1/design-1 --expected-revision 1 --generation 1 --subject-digest sha256:bb\n",
+    'approval run-1/design-1\n  Prompt: Which parser?\n  cloving approve run-1/design-1 --expected-revision 1 --generation 1 --subject-digest sha256:bb\n  cloving deny run-1/design-1 --text "<feedback>" --expected-revision 1 --generation 1 --subject-digest sha256:bb\n',
   );
   assert.equal(
     pendingSummary({

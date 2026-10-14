@@ -75,14 +75,19 @@ async function serviceFollowed(stream: Stream): Promise<void> {
   }
 }
 
+function present(file: string): Promise<boolean> {
+  return stat(file).then(
+    () => true,
+    () => false,
+  );
+}
+
 async function openTurns(journal: string): Promise<string[]> {
   const files: string[] = [];
   for (const folder of await readdir(journal).catch(() => [])) {
-    const ended = await stat(join(journal, folder, "result.json")).then(
-      () => "ended",
-      () => "open",
-    );
-    if (ended === "open") files.push(join(journal, folder, "turn.jsonl"));
+    const started = await present(join(journal, folder, "started.json"));
+    const ended = await present(join(journal, folder, "result.json"));
+    if (started && !ended) files.push(join(journal, folder, "turn.jsonl"));
   }
   return files;
 }

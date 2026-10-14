@@ -117,9 +117,14 @@ function binding(decision: unknown): string {
   return `--expected-revision ${show(part(decision, "revision"))} --generation ${show(part(decision, "generation"))} --subject-digest ${show(part(decision, "subjectDigest"))}`;
 }
 
+const textOptions: ReadonlyMap<unknown, string> = new Map([
+  ["answer", " --text <answer>"],
+  ["deny", ' --text "<feedback>"'],
+]);
+
 function suggestion(decision: unknown, command: unknown): string {
   const reference = part(decision, "label") ?? part(decision, "decisionId");
-  const text = command === "answer" ? " --text <answer>" : "";
+  const text = textOptions.get(command) ?? "";
   return `  cloving ${show(command)} ${show(reference)}${text} ${binding(decision)}`;
 }
 

@@ -38,6 +38,19 @@ await test("CLV-016 a burst of changes of the watch stream gives one notificatio
   assert.equal(calls.length, 3);
 });
 
+function unstartedFolderGrows(
+  seen: Counter,
+  journal: string,
+): Promise<boolean> {
+  const targets = join(journal, "targets");
+  const lines = join(targets, "turn.jsonl");
+  mkdirSync(targets, { recursive: true });
+  writeFileSync(lines, "{}\n");
+  return more(seen, () => {
+    appendFileSync(lines, "{}\n");
+  });
+}
+
 async function followedTurn(
   harness: Harness,
   watched: { readonly seen: Counter; readonly journal: string },
@@ -56,11 +69,17 @@ async function followedTurn(
     await more(seen, () => startedRun(harness, { service, commandId: "c-1" })),
     "the service commits a change",
   );
+  assert.equal(
+    await unstartedFolderGrows(seen, journal),
+    false,
+    "the stream file of a folder with no start file gets a line",
+  );
   const turn = join(journal, "a1");
   const lines = join(turn, "turn.jsonl");
   assert.ok(
     await more(seen, () => {
       mkdirSync(turn, { recursive: true });
+      writeFileSync(join(turn, "started.json"), "{}");
       writeFileSync(lines, "{}\n");
     }),
     "a turn starts",
@@ -88,7 +107,7 @@ async function followedTurn(
   assert.ok(await more(seen, () => service.close()), "the service stops");
 }
 
-await test("CLV-016 the watch stream is quiet with no service and no journal, and it gives a notification when the service answers, when the service commits a change, when a turn starts, at each line of the stream file of a turn in work, when a turn ends and when the service stops", () =>
+await test("CLV-016 the watch stream is quiet with no service and no journal, and it gives a notification when the service answers, when the service commits a change, when a turn starts, at each line of the stream file of a turn in work, when a turn ends and when the service stops, and not for a folder with no start file", () =>
   withHarness(async (harness) => {
     const journal = join(dirname(harness.runtimeDirectory), "journal");
     const stream = watchStream({
