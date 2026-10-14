@@ -9,6 +9,12 @@ import type {
   WatchRun,
   WatchTurn,
 } from "./watch-render.ts";
+import {
+  boardsOf,
+  currentStepOf,
+  roundOf,
+  startWorkflowOf,
+} from "./watch-board.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -164,6 +170,8 @@ export function decisionCommands(
 }
 
 export interface WatchInputs {
+  readonly workflows: readonly string[];
+  readonly summaries?: readonly unknown[];
   readonly host: string;
   readonly client: string;
   readonly updatedAt: string;
@@ -267,6 +275,12 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
+    title: stamp(status["title"]),
+    outcome: stamp(record(status["outcome"])["kind"]),
+    latestAt: stamp(status["latestAt"]),
+    claudeCostUsd: count(status["claudeCostUsd"]) ?? 0,
+    currentStep: currentStepOf(list(record(value)["events"]), workflowId),
+    round: roundOf(list(record(value)["events"])),
     state: text(status["state"]),
     code: text(record(status["reason"])["code"]),
     detail: text(record(status["reason"])["detail"]),
@@ -289,12 +303,16 @@ function began(run: WatchRun): string {
 }
 
 export function watchModel(inputs: WatchInputs): WatchModel {
+  const runs = inputs.runs.map((value) => runOf(inputs, value));
+  const workflows = boardsOf(inputs, runs);
   return {
+    workflows,
+    startWorkflowId: startWorkflowOf(workflows),
     updatedAt: inputs.updatedAt,
     host: inputs.host,
     service: inputs.service,
-    runs: inputs.runs
-      .map((value) => runOf(inputs, value))
-      .toSorted((first, second) => (began(first) < began(second) ? 1 : -1)),
+    runs: runs.toSorted((first, second) =>
+      began(first) < began(second) ? 1 : -1,
+    ),
   };
 }

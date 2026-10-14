@@ -80,6 +80,12 @@ export function phases(
 
 export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
   return {
+    title: null,
+    outcome: null,
+    latestAt: null,
+    claudeCostUsd: 0,
+    round: 1,
+    currentStep: { name: "Your review", startedAt: at("21:33:41") },
     runId: "run-1",
     workflowId: "develop-ticket",
     state: "waiting_gate",
@@ -108,6 +114,8 @@ export function sampleModel(runs: readonly WatchRun[]): WatchModel {
     updatedAt: at("21:34:41"),
     host: "/host",
     service: "up",
+    workflows: [],
+    startWorkflowId: null,
     runs,
   };
 }

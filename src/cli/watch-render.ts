@@ -58,7 +58,43 @@ export interface WatchReview {
   readonly score: number;
 }
 
+export interface WatchStep {
+  readonly name: string;
+  readonly startedAt: string | null;
+}
+
+export interface WatchCard {
+  readonly runId: string;
+  readonly title: string | null;
+  readonly claudeCostUsd: number;
+  readonly currentStep: WatchStep | null;
+  readonly endedAt: string | null;
+  readonly decisionWaiting: boolean;
+  readonly round: number | null;
+  readonly greptileScore: number | null;
+  readonly pullRequestNumber: number | null;
+}
+
+export interface WatchColumn {
+  readonly name: string;
+  readonly cards: readonly WatchCard[];
+}
+
+export interface WatchWorkflow {
+  readonly workflowId: string;
+  readonly activeCount: number;
+  readonly waitingCount: number;
+  readonly latestAt: string | null;
+  readonly columns: readonly WatchColumn[];
+}
+
 export interface WatchRun {
+  readonly title: string | null;
+  readonly outcome: string | null;
+  readonly latestAt: string | null;
+  readonly claudeCostUsd: number;
+  readonly currentStep: WatchStep;
+  readonly round: number;
   readonly runId: string;
   readonly workflowId: string;
   readonly state: string;
@@ -78,6 +114,8 @@ export interface WatchRun {
 }
 
 export interface WatchModel {
+  readonly workflows: readonly WatchWorkflow[];
+  readonly startWorkflowId: string | null;
   readonly updatedAt: string;
   readonly host: string;
   readonly service: string;
