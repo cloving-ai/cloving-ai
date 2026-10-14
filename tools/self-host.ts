@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workflowFiles, workflowManifests } from "./self-host-workflows.ts";
+import { isWorkflowManifest } from "./workflow-manifest.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -128,6 +129,8 @@ async function registered(): Promise<Readonly<Record<string, string>>> {
   const compiled: unknown = JSON.parse(
     await readFile(join(project, "artifacts/manifest.json"), "utf8"),
   );
+  if (!isWorkflowManifest(compiled))
+    throw new Error("The compiled workflow manifest is invalid.");
   const paths: Record<string, string> = {};
   for (const [functionName, manifest] of Object.entries(
     workflowManifests(compiled),

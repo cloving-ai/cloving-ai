@@ -1,5 +1,30 @@
 import type { WorkflowManifest } from "@workflow/builders";
 
+export function isWorkflowManifest(value: unknown): value is WorkflowManifest {
+  if (!isRecord(value)) return false;
+  return (
+    (!("workflows" in value) ||
+      hasIdentities(value["workflows"], "workflowId")) &&
+    (!("steps" in value) || hasIdentities(value["steps"], "stepId")) &&
+    (!("classes" in value) || hasIdentities(value["classes"], "classId"))
+  );
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasIdentities(value: unknown, identifier: string): boolean {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every(
+    (entries) =>
+      isRecord(entries) &&
+      Object.values(entries).every(
+        (entry) => isRecord(entry) && typeof entry[identifier] === "string",
+      ),
+  );
+}
+
 export function serializeManifest(manifest: WorkflowManifest): string {
   const categories = orderedEntries(manifest).map(([kind, files]) => [
     kind,
