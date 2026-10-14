@@ -85,7 +85,7 @@ await test("CLV-016 the title of the watch page shows the state of the selected 
     [
       "(1) ! Needs your decision · clv-016-a6f7ef47 · Cloving",
       "(1) ✓ Completed · run-2 · Cloving",
-      "✓ Completed · run-2 · Cloving",
+      "Cloving",
       "✕ Denied · run-2 · Cloving",
       "Cloving",
     ],

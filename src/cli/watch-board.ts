@@ -37,11 +37,10 @@ function operationOf(event: unknown): readonly unknown[] {
 
 function stepName(event: unknown, workflowId: string): string | undefined {
   const type = record(event)?.["type"];
-  if (workflowId !== "develop-issue") {
-    if (type === "gate.opened") return "Your review";
-    return type === "effect.requested" ? "Claude turn" : undefined;
-  }
+  if (workflowId !== "develop-issue" && type === "gate.opened")
+    return "Your review";
   if (type !== "effect.requested") return undefined;
+  if (workflowId !== "develop-issue") return "Claude turn";
   return issueSteps.find((step) => step.operation === operationOf(event)[4])
     ?.name;
 }

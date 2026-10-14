@@ -2,11 +2,27 @@ import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { activeRun, recentRun } from "./watch-board.ts";
 
+interface ReadStatus extends Fields {
+  readonly runId: string;
+  readonly latestSequence: number;
+  readonly state: string;
+  readonly latestAt: string | null;
+}
+
+interface ReadEvent extends Fields {
+  readonly sequence: number;
+}
+
+interface ReadRun {
+  readonly status: ReadStatus;
+  readonly events: readonly ReadEvent[];
+}
+
 export interface WatchRead {
   readonly service: string;
   readonly workflows: readonly string[];
-  readonly summaries: readonly unknown[];
-  readonly runs: readonly unknown[];
+  readonly summaries: readonly ReadStatus[];
+  readonly runs: readonly ReadRun[];
   readonly decisions: readonly unknown[];
 }
 
@@ -19,7 +35,7 @@ interface Reader {
   readonly runtimeDirectory: string;
   readonly details: Map<
     string,
-    { readonly sequence: unknown; readonly value: unknown }
+    { readonly sequence: number; readonly value: ReadRun }
   >;
 }
 
@@ -35,6 +51,34 @@ function list(value: unknown): readonly unknown[] {
   return Array.isArray(value) ? value.map((item: unknown) => item) : [];
 }
 
+function statusOf(value: unknown): ReadStatus {
+  const fields = record(value);
+  const runId = fields?.["runId"];
+  const latestSequence = fields?.["latestSequence"];
+  const state = fields?.["state"];
+  const latestAt = fields?.["latestAt"];
+  if (
+    typeof runId !== "string" ||
+    typeof latestSequence !== "number" ||
+    typeof state !== "string"
+  )
+    throw new Error("invalid-run-status");
+  return {
+    ...fields,
+    runId,
+    latestSequence,
+    state,
+    latestAt: typeof latestAt === "string" ? latestAt : null,
+  };
+}
+
+function eventOf(value: unknown): ReadEvent {
+  const fields = record(value);
+  const sequence = fields?.["sequence"];
+  if (typeof sequence !== "number") throw new Error("invalid-event-page");
+  return { ...fields, sequence };
+}
+
 async function asked(reader: Reader, request: ServiceRequest): Promise<Fields> {
   const reply = await send(reader.runtimeDirectory, request);
   if (reply.kind === "error") throw new Error(reply.error.code);
@@ -44,41 +88,37 @@ async function asked(reader: Reader, request: ServiceRequest): Promise<Fields> {
 async function eventsOf(
   reader: Reader,
   runId: string,
-): Promise<readonly unknown[]> {
-  const events: unknown[] = [];
+): Promise<readonly ReadEvent[]> {
+  const events: ReadEvent[] = [];
   let after = 0;
   for (;;) {
     const page = await asked(reader, {
       operation: "events",
       parameters: { runId, after, limit: 1000 },
     });
-    const batch = list(page["events"]);
+    const batch = list(page["events"]).map(eventOf);
     events.push(...batch);
     if (batch.length < 1000) return events;
-    const next = record(batch.at(-1))?.["sequence"];
-    if (typeof next !== "number" || next <= after)
+    const next = batch.at(-1)?.sequence;
+    if (next === undefined || next <= after)
       throw new Error("invalid-event-page");
     after = next;
   }
 }
 
-async function detailed(reader: Reader, summary: unknown): Promise<unknown> {
-  const run = record(summary);
-  const runId = String(run?.["runId"]);
-  const sequence = run?.["latestSequence"];
+async function detailed(reader: Reader, summary: ReadStatus): Promise<ReadRun> {
+  const { runId, latestSequence: sequence } = summary;
   const known = reader.details.get(runId);
   if (known !== undefined && known.sequence === sequence) return known.value;
   const shown = await asked(reader, {
     operation: "status",
     parameters: { runId },
   });
-  return remember(reader, shown["run"]);
+  return remember(reader, statusOf(shown["run"]));
 }
 
-async function remember(reader: Reader, status: unknown): Promise<unknown> {
-  const run = record(status);
-  const runId = String(run?.["runId"]);
-  const sequence = run?.["latestSequence"];
+async function remember(reader: Reader, status: ReadStatus): Promise<ReadRun> {
+  const { runId, latestSequence: sequence } = status;
   const value = { status, events: await eventsOf(reader, runId) };
   reader.details.set(runId, { sequence, value });
   return value;
@@ -87,8 +127,8 @@ async function remember(reader: Reader, status: unknown): Promise<unknown> {
 async function allRuns(
   reader: Reader,
   first: Fields,
-): Promise<readonly unknown[]> {
-  const runs = [...list(first["runs"])];
+): Promise<readonly ReadStatus[]> {
+  const runs = list(first["runs"]).map(statusOf);
   let next = first["next"];
   const visited = new Set<string>();
   while (typeof next === "string") {
@@ -98,7 +138,7 @@ async function allRuns(
       operation: "status",
       parameters: { after: next },
     });
-    runs.push(...list(page["runs"]));
+    runs.push(...list(page["runs"]).map(statusOf));
     next = page["next"];
   }
   return runs;
@@ -119,14 +159,9 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   }).catch(() => null);
   if (status === null || !Array.isArray(status["runs"])) return unavailable;
   const summaries = await allRuns(reader, status);
-  const runs: unknown[] = [];
+  const runs: ReadRun[] = [];
   for (const summary of summaries) {
-    const run = record(summary);
-    const latestAt = run?.["latestAt"];
-    if (
-      activeRun(String(run?.["state"])) ||
-      recentRun(typeof latestAt === "string" ? latestAt : null, now)
-    )
+    if (activeRun(summary.state) || recentRun(summary.latestAt, now))
       runs.push(await detailed(reader, summary));
   }
   return {
@@ -145,14 +180,13 @@ async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
     operation: "status",
     parameters: { runId },
   });
-  if (reply.kind === "error") {
-    if (reply.error.code === "unknown-run") return unavailable;
-    throw new Error(reply.error.code);
-  }
-  const status = reply.result["run"];
+  if (reply.kind === "error" && reply.error.code === "unknown-run")
+    return unavailable;
+  if (reply.kind === "error") throw new Error(reply.error.code);
+  const status = statusOf(reply.result["run"]);
   const known = reader.details.get(runId);
   const value =
-    known !== undefined && known.sequence === record(status)?.["latestSequence"]
+    known !== undefined && known.sequence === status.latestSequence
       ? known.value
       : await remember(reader, status);
   return {

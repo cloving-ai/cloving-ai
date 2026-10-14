@@ -106,3 +106,27 @@ await test("CLV-077 a full final event page ends at an empty page and a null end
     );
   });
 });
+
+await test("CLV-077 watch rejects run identifiers and sequences with the wrong types before caching a run", async () => {
+  for (const changed of [{ runId: 12 }, { latestSequence: "1001" }]) {
+    const { answer } = watchReplies({ runs: [{ ...longRun, ...changed }] });
+    await withWatchService(answer, async (watch) => {
+      assert.equal((await fetch(`${watch.address}data.json`)).status, 500);
+      const runId = String(changed.runId ?? longRun.runId);
+      assert.equal(
+        (await fetch(`${watch.address}data.json?runId=${runId}`)).status,
+        changed.runId === undefined ? 500 : 404,
+      );
+    });
+  }
+});
+
+await test("CLV-077 watch rejects an event with a nonnumeric sequence even on a short page", async () => {
+  const { answer } = watchReplies({
+    runs: [longRun],
+    events: [{ sequence: "1", type: "run.started" }],
+  });
+  await withWatchService(answer, async (watch) => {
+    assert.equal((await fetch(`${watch.address}data.json`)).status, 500);
+  });
+});

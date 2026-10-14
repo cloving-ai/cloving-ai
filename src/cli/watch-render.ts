@@ -227,7 +227,8 @@ export function selectedRun(
   model: WatchModel,
   selected: string,
 ): WatchRun | undefined {
-  return model.runs.find((run) => run.runId === selected) ?? model.runs[0];
+  if (selected === "") return model.runs[0];
+  return model.runs.find((run) => run.runId === selected);
 }
 
 export function pageTitle(model: WatchModel, selected: string): string {
