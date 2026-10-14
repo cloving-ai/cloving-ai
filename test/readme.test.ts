@@ -29,52 +29,34 @@ function distinct(names: Iterable<string>): readonly string[] {
   return [...new Set(names)];
 }
 
-function unknownSettings(text: string): readonly string[] {
-  return distinct(text.match(/\bCLOVING_\w+/g) ?? [])
-    .filter((name) => !settings.has(name))
-    .map((name) => `unknown-setting: ${name}`);
-}
+const expected = ["# Cloving", ...sections.map((name) => `## ${name}`)];
 
-function unknownCommands(text: string): readonly string[] {
+function readmeFindings(text: string): readonly string[] {
   const named = Array.from(
     text.matchAll(/(?<![\w./@-])cloving[ \t]+([a-z][\w-]*)/g),
     (match) => String(match[1]),
   );
-  return distinct(named)
-    .filter((name) => !commands.has(name))
-    .map((name) => `unknown-command: ${name}`);
-}
-
-function homePaths(text: string): readonly string[] {
-  return distinct(
-    text.match(/(?<![\w.~/-])\/(?:Users|home)\/[\w.-]+/g) ?? [],
-  ).map((path) => `home-path: ${path}`);
-}
-
-function outsideCode(text: string): string {
-  return text
-    .split(/^[ \t]*`{3,}.*$/m)
-    .filter((_, index) => index % 2 === 0)
-    .join("\n");
-}
-
-function sectionOrder(text: string): readonly string[] {
   const headings = Array.from(
-    outsideCode(text).matchAll(/^(#{1,2}) (.+)$/gm),
+    text
+      .split(/^[ \t]*`{3,}.*$/m)
+      .filter((_, index) => index % 2 === 0)
+      .join("\n")
+      .matchAll(/^(#{1,2}) (.+)$/gm),
     (match) => `${String(match[1])} ${String(match[2]).trim()}`,
   );
-  const expected = ["# Cloving", ...sections.map((name) => `## ${name}`)];
-  return headings.join("\n") === expected.join("\n")
-    ? []
-    : [`sections: ${headings.join(", ")}`];
-}
-
-function readmeFindings(text: string): readonly string[] {
   return [
-    ...unknownSettings(text),
-    ...unknownCommands(text),
-    ...homePaths(text),
-    ...sectionOrder(text),
+    ...distinct(text.match(/\bCLOVING_\w+/g) ?? [])
+      .filter((name) => !settings.has(name))
+      .map((name) => `unknown-setting: ${name}`),
+    ...distinct(named)
+      .filter((name) => !commands.has(name))
+      .map((name) => `unknown-command: ${name}`),
+    ...distinct(
+      text.match(/(?<![\w.~/-])\/(?:Users|home)\/[\w.-]+/g) ?? [],
+    ).map((path) => `home-path: ${path}`),
+    ...(headings.join("\n") === expected.join("\n")
+      ? []
+      : [`sections: ${headings.join(", ")}`]),
   ];
 }
 

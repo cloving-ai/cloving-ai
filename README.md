@@ -210,9 +210,11 @@ The GitHub worker does not push a change that has the path of the home folder in
 In a continuous process, Cloving develops one ticket after the next with `develop-issue`. Use one terminal session for the service that stays open, for example a `tmux` session. Do these steps for each issue:
 
 1. Write a small issue: one behavior, clear criteria that a test can check, and the first tests. The prompt "Write a ticket for Cloving" helps.
-2. Run it: `cloving run develop-issue --ticket NUMBER`.
+2. Run it: `cloving run develop-issue --ticket ISSUE_NUMBER`.
 3. Follow the run on the watch page, or with `cloving status RUN_ID` and `cloving events RUN_ID --follow`.
-4. Check the merge. The run completes when the GitHub worker merges the pull request. Make sure that the pull request is merged and that the issue is closed, for example with `gh pr view NUMBER`.
+4. Check the merge. The run completes when the GitHub worker merges the pull request. The watch page shows the number of the pull request of the run (`PR_NUMBER`). It is also `pullRequest.number` of the run in `http://127.0.0.1:3663/data.json`. The pull request number and the issue number are different.
+   - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
+   - Make sure that the issue is closed: `gh issue view ISSUE_NUMBER --json state`.
 5. Update the local `main`: `git switch main`, then `git pull --ff-only`.
 6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Stop it with Control-C, then start it again with the same settings.
 7. Go to the next issue.
@@ -253,10 +255,12 @@ Run a continuous process with Cloving and develop-issue in my repository REPOSIT
 
 For each issue:
 1. Read the issue. Do not change it.
-2. Run: cloving run develop-issue --ticket NUMBER
-   Record the run ID.
+2. Run: cloving run develop-issue --ticket ISSUE_NUMBER
+   ISSUE_NUMBER is the number of the issue. Record the run ID.
 3. Follow the run with "cloving status RUN_ID" and "cloving events RUN_ID --follow".
-4. When the run completes, make sure that the pull request is merged and that the issue is closed.
+4. When the run completes, get the number of its pull request (PR_NUMBER). It is pullRequest.number of the run in http://127.0.0.1:3663/data.json, and the watch page shows it too. Then:
+   - Make sure that the pull request is merged: gh pr view PR_NUMBER --json state,mergedAt
+   - Make sure that the issue is closed: gh issue view ISSUE_NUMBER --json state
 5. Update the local main branch: git switch main, then git pull --ff-only
 6. If the repository is the Cloving checkout itself, restart the service in its terminal session, so that it runs the new code. Stop it with Control-C, then start it again with the same settings.
 7. Run the checks of the repository on the new main branch.
@@ -328,7 +332,7 @@ Steps:
 A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
-- The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. After a decision, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument.
+- The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. After a decision, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine the decision before it asks for an effect, as `decided()` in `workflows/develop-ticket.ts` does. If it does not, it does the work of round 1 again.
 - The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate` and `loadCycle` from `cloving/workflows/steps/load-cycle`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
@@ -338,11 +342,28 @@ import type { CycleOutcome } from "cloving/workflows";
 import { decisionGate } from "cloving/workflows/steps/decision-gate";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
-export async function developTicket(input: {
-  readonly cycleId: string;
-  readonly ticket: string;
-}): Promise<CycleOutcome> {
+export async function developTicket(
+  input: { readonly cycleId: string; readonly ticket: string },
+  decision?: {
+    readonly gateId: string;
+    readonly decision: string;
+    readonly answer: string | null;
+  },
+): Promise<CycleOutcome> {
   "use workflow";
+  if (decision?.decision === "approved")
+    return {
+      kind: "handoff_requested",
+      cycleId: input.cycleId,
+      promotionId: `cloving-${input.cycleId}`,
+    };
+  if (decision !== undefined)
+    return {
+      kind: "blocked",
+      cycleId: input.cycleId,
+      reason: "The operator denied the work.",
+      evidenceId: decision.gateId,
+    };
   const turn = await protectedEffect({
     scope: { phase: "implement", operation: "claude-turn", round: 1 },
     capability: "claude",
@@ -377,6 +398,8 @@ export async function developTicket(input: {
   };
 }
 ```
+
+In this example, an approval completes the run and a denial ends it. `workflows/develop-ticket.ts` also starts one more round after a denial with a feedback text.
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
