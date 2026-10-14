@@ -52,6 +52,13 @@ const endedRuns: ReadonlySet<string> = new Set([
   "failed",
   "completed",
 ]);
+const unsettledOperations: ReadonlySet<string> = new Set([
+  "dispatch-pending",
+  "running",
+  "recovering",
+  "blocked",
+]);
+const outcomes = ["completed", "failed", "stopped"] as const;
 
 interface Active {
   readonly stopping: AbortController;
@@ -126,16 +133,23 @@ async function outcome(
   }
 }
 
-async function ended(
-  parts: Parts,
-  ending: { readonly start: Started; readonly recorded: Recorded },
-): Promise<void> {
+interface Ending {
+  readonly start: Started;
+  readonly recorded: Recorded;
+}
+
+async function reported(parts: Parts, ending: Ending): Promise<void> {
   const { start, recorded } = ending;
-  const { key, folder, intent } = start;
-  await writeRecord(folder, { name: "result.json", value: recorded });
+  const { key, intent } = start;
   await parts.settings.report(
     reportOf({ intent, commandId: `github:${key}`, worker }, recorded),
   );
+}
+
+async function ended(parts: Parts, ending: Ending): Promise<void> {
+  const { start, recorded } = ending;
+  await writeRecord(start.folder, { name: "result.json", value: recorded });
+  await reported(parts, ending);
 }
 
 function begun(parts: Parts, start: Started): void {
@@ -259,23 +273,41 @@ function startOf(parts: Parts, value: unknown): Started | undefined {
   return { ...place, intent: kept, method, payload };
 }
 
+function recordOf(value: unknown): Recorded | undefined {
+  const outcome = outcomes.find((item) => item === textOf(value, "outcome"));
+  if (outcome === undefined) return undefined;
+  const result: unknown = Reflect.get(Object(value), "result");
+  const reason: unknown = Reflect.get(Object(value), "reason");
+  return {
+    outcome,
+    endedAt: textOf(value, "endedAt"),
+    ...(typeof result === "string" ? { result } : {}),
+    ...(typeof reason === "string" ? { reason } : {}),
+  };
+}
+
+async function unsettled(parts: Parts, kept: Reported): Promise<boolean> {
+  const status = await parts.settings.operationStatus(kept.operationId);
+  return unsettledOperations.has(status ?? "");
+}
+
 async function live(parts: Parts, kept: Reported): Promise<boolean> {
-  const { operationStatus, runStatus } = parts.settings;
-  if ((await operationStatus(kept.operationId)) !== "running") return false;
-  const run = await runStatus(kept.runId);
+  if (!(await unsettled(parts, kept))) return false;
+  const run = await parts.settings.runStatus(kept.runId);
   return run !== undefined && !endedRuns.has(run);
 }
 
-async function resumed(parts: Parts, folder: string): Promise<void> {
-  if ((await readRecord(folder, "result.json")) !== undefined) return;
-  const started = await readRecord(folder, "started.json");
-  if (started === undefined) return;
-  const start = startOf(parts, started);
-  if (start === undefined) {
-    const ending = interrupted("github-call-interrupted");
-    await writeRecord(folder, { name: "result.json", value: ending });
-    return;
-  }
+async function resent(
+  parts: Parts,
+  saved: { readonly start: Started; readonly result: unknown },
+): Promise<void> {
+  const recorded = recordOf(saved.result);
+  if (recorded === undefined) return;
+  if (!(await unsettled(parts, saved.start.intent))) return;
+  await reported(parts, { start: saved.start, recorded });
+}
+
+async function continued(parts: Parts, start: Started): Promise<void> {
   if (await live(parts, start.intent)) {
     begun(parts, start);
     return;
@@ -285,6 +317,24 @@ async function resumed(parts: Parts, folder: string): Promise<void> {
     endedAt: new Date().toISOString(),
   };
   await ended(parts, { start, recorded });
+}
+
+async function resumed(parts: Parts, folder: string): Promise<void> {
+  const started = await readRecord(folder, "started.json");
+  if (started === undefined) return;
+  const result = await readRecord(folder, "result.json");
+  const start = startOf(parts, started);
+  if (start !== undefined && result !== undefined) {
+    await resent(parts, { start, result });
+    return;
+  }
+  if (start !== undefined) {
+    await continued(parts, start);
+    return;
+  }
+  if (result !== undefined) return;
+  const ending = interrupted("github-call-interrupted");
+  await writeRecord(folder, { name: "result.json", value: ending });
 }
 
 async function scanned(parts: Parts): Promise<void> {

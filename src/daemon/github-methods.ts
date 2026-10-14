@@ -55,6 +55,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "git-call-failed",
   "check-failed",
   "invalid-payload",
+  "merged-other-commit",
   "no-change",
   "private-path-in-change",
   "review-not-received",
@@ -255,17 +256,18 @@ async function waitReview(operation: Operation): Promise<unknown> {
 
 async function knownMerge(
   operation: Operation,
-  number: number,
+  expected: { readonly number: number; readonly commit: string },
 ): Promise<string | undefined> {
   const pull: unknown = JSON.parse(
     await operation.calls.gh([
       "api",
-      `${repositoryPath}/pulls/${String(number)}`,
+      `${repositoryPath}/pulls/${String(expected.number)}`,
     ]),
   );
-  return field(pull, "merged") === true
-    ? String(field(pull, "merge_commit_sha"))
-    : undefined;
+  if (field(pull, "merged") !== true) return undefined;
+  if (field(field(pull, "head"), "sha") !== expected.commit)
+    throw new Error("merged-other-commit");
+  return String(field(pull, "merge_commit_sha"));
 }
 
 async function mergedNow(
@@ -323,7 +325,7 @@ async function merge(operation: Operation): Promise<unknown> {
     target: operation.target,
   });
   const merged =
-    (await knownMerge(operation, pull.number)) ??
+    (await knownMerge(operation, pull)) ??
     (await mergedNow(operation, { ...pull, tree: existingTree(operation) }));
   await removed(operation, place);
   return { number: pull.number, merged };

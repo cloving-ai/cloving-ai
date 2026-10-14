@@ -508,6 +508,7 @@
     "test/github-worker.test.ts": "test",
     "test/github-worker-review.test.ts": "test",
     "test/github-worker-restart.test.ts": "test",
+    "test/github-worker-scan.test.ts": "test",
     "test/github-review.test.ts": "test",
     "test/github-worker-fixture.ts": "test",
     "test/develop-workflow-fixture.ts": "test",

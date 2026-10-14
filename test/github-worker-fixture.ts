@@ -20,7 +20,7 @@ import { git, until } from "./claude-worker-fixture.ts";
 
 export const fakeGh = `
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const file = process.env.FAKE_GH_STATE;
 const origin = process.env.FAKE_GH_ORIGIN;
@@ -69,7 +69,7 @@ const actions = {
       return;
     }
     const merged = pr.state === "MERGED";
-    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40) });
+    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), head: { sha: merged ? pr.mergedHead : headOf(pr.head) } });
   },
   "api PUT merge": () => {
     const pr = state.prs.find((item) => item.number === number);
@@ -87,7 +87,9 @@ if (state.fail === name) {
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");
 else actions[name]();
-writeFileSync(file, JSON.stringify(state));
+const staged = file + "." + process.pid;
+writeFileSync(staged, JSON.stringify(state));
+renameSync(staged, file);
 `;
 
 export interface GithubState {

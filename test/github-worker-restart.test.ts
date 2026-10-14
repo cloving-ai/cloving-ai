@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { DeliveryIntent } from "../src/broker/actor/delivery-intents.ts";
 import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import {
+  committed,
   githubIntent,
   opened,
   treeOf,
@@ -279,5 +280,35 @@ await test("CLV-067 a merge of a pull request that is merged already completes w
     assert.deepEqual(
       [report.outcome, resultOf(report.result)],
       ["completed", { number: 1, merged: "f".repeat(40) }],
+    );
+  }));
+
+await test("CLV-067 a merge of a pull request that GitHub merged with a different commit fails with no merge call, and keeps the work tree and the local branch", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker();
+    const commit = await opened(scene, worker);
+    const other = committed(treeOf(scene), { name: "two.ts", text: "2;\n" });
+    git(treeOf(scene), [
+      "push",
+      "--quiet",
+      "origin",
+      "HEAD:refs/heads/cloving/ticket-one",
+    ]);
+    mergedBefore(scene, other);
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.deepEqual(
+      [report.outcome, report.reason],
+      ["failed", "merged-other-commit"],
+    );
+    assert.equal(
+      scene.state().calls.filter((call) => call.includes("PUT")).length,
+      1,
+    );
+    assert.deepEqual(
+      [existsSync(treeOf(scene)), localBranch(scene) === ""],
+      [true, false],
     );
   }));
