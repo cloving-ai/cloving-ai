@@ -28,13 +28,17 @@ import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
-import { ticketRegistrations } from "./ticket-registration.ts";
+import {
+  ticketRegistrations,
+  ticketRegistrationTable,
+  type TicketRegistration,
+} from "./ticket-registration.ts";
 
 export interface DaemonSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
-  readonly manifest: string;
+  readonly manifests: Readonly<Record<string, string | undefined>>;
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
@@ -133,9 +137,16 @@ function githubOf(
 
 function adapters(
   settings: DaemonSettings,
-  given: Promise<HostPorts>,
+  options: {
+    readonly given: Promise<HostPorts>;
+    readonly table: readonly TicketRegistration[];
+  },
 ): Adapters {
   const { directory, repository, command } = settings;
+  const { given, table } = options;
+  const workflows = Object.fromEntries(
+    table.map((row) => [row.workflowId, settings.workflows[row.functionName]]),
+  );
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
   const report = async (
@@ -156,7 +167,7 @@ function adapters(
     cancel: cancelled,
     input: async (runId) => (await given).input(runId),
     workflow: async (runId) =>
-      settings.workflows[String(await (await given).workflowId(runId))],
+      workflows[String(await (await given).workflowId(runId))],
   });
   return { worker, github, runs };
 }
@@ -165,10 +176,11 @@ export async function startDaemon(
   settings: DaemonSettings,
 ): Promise<DaemonOpening> {
   const { directory } = settings;
-  const admitted = await ticketRegistrations(settings.manifest, {
+  const table = ticketRegistrationTable({
     repository: settings.repository,
     command: settings.ticketCommand,
   });
+  const admitted = await ticketRegistrations(settings.manifests, { table });
   if (admitted.kind === "rejected")
     return {
       kind: "refused",
@@ -176,7 +188,10 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
-  const { worker, github, runs } = adapters(settings, given.promise);
+  const { worker, github, runs } = adapters(settings, {
+    given: given.promise,
+    table,
+  });
   const closed = async (): Promise<void> => {
     await Promise.all([worker.close(), github.close()]);
   };

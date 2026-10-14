@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { workflowFiles, workflowManifests } from "./self-host-workflows.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -123,49 +124,36 @@ async function linkedPackages(): Promise<void> {
   );
 }
 
-function identifiers(category: unknown, key: string): string[] {
-  return Object.values(record(category)).flatMap((entries) =>
-    Object.values(record(entries)).map((entry) => String(record(entry)[key])),
+async function registered(): Promise<Readonly<Record<string, string>>> {
+  const compiled: unknown = JSON.parse(
+    await readFile(join(project, "artifacts/manifest.json"), "utf8"),
   );
-}
-
-async function registered(): Promise<void> {
-  const compiled = record(
-    JSON.parse(
-      await readFile(join(project, "artifacts/manifest.json"), "utf8"),
-    ),
-  );
-  const workflowId = identifiers(compiled["workflows"], "workflowId").find(
-    (identifier) => identifier.endsWith("//developTicket"),
-  );
-  await writeFile(
-    join(project, "cloving.workflow.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      name: "develop-ticket",
-      workflowId,
-      steps: identifiers(compiled["steps"], "stepId").filter((identifier) =>
-        identifier.startsWith("step//cloving/"),
-      ),
-      capabilities: ["claude", "github"],
-      resources: [],
-      artifacts: "artifacts",
-    }),
-  );
+  const paths: Record<string, string> = {};
+  for (const [functionName, manifest] of Object.entries(
+    workflowManifests(compiled),
+  )) {
+    const path = join(project, `${manifest.name}.workflow.json`);
+    await writeFile(path, JSON.stringify(manifest));
+    paths[functionName] = path;
+  }
+  return paths;
 }
 
 function source(file: string): string {
   return JSON.stringify(pathToFileURL(join(product, file)).href);
 }
 
-async function launchers(commands: Commands): Promise<void> {
+async function launchers(
+  commands: Commands,
+  manifests: Readonly<Record<string, string>>,
+): Promise<void> {
   const settings = {
     ...commands,
     directory,
     repository,
     concurrency,
     runtimeDirectory: runtime,
-    manifest: join(project, "cloving.workflow.json"),
+    manifests,
   };
   await writeFile(
     join(project, "start.mjs"),
@@ -179,7 +167,7 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
-const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows: { "develop-ticket": workflows.developTicket, "develop-prompt": workflows.developTicket, "develop-issue": workflows.developTicket }, handler: POST });
+const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows, handler: POST });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -208,34 +196,38 @@ function guide(): string {
   ].join("\n");
 }
 
-async function prepared(): Promise<void> {
+async function prepared(): Promise<Readonly<Record<string, string>>> {
   await rm(project, { recursive: true, force: true });
   await mkdir(join(project, "workflows"), { recursive: true });
   await writeFile(
     join(project, "package.json"),
     '{"name":"cloving-self-host","private":true,"type":"module"}',
   );
-  await copyFile(
-    join(product, "workflows/develop-ticket.ts"),
-    join(project, "workflows/develop-ticket.ts"),
-  );
+  for (const file of await workflowFiles(join(product, "workflows")))
+    await copyFile(
+      join(product, "workflows", file),
+      join(project, "workflows", file),
+    );
   await linkedPackages();
   const compiled = await ended(
     [join(product, "tools/compile-workflows.ts"), "workflows", "artifacts"],
     process.env,
   );
-  if (compiled !== 0) throw new Error("The ticket workflow did not compile.");
-  await registered();
+  if (compiled !== 0) throw new Error("The workflows did not compile.");
+  return registered();
 }
 
-await prepared();
-await launchers({
-  command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
-  ticketCommand: listed("CLOVING_TICKET_COMMAND"),
-  githubCommand: listed("CLOVING_GH_COMMAND"),
-  checkCommand: listed("CLOVING_CHECK_COMMAND"),
-  privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
-});
+const manifests = await prepared();
+await launchers(
+  {
+    command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
+    ticketCommand: listed("CLOVING_TICKET_COMMAND"),
+    githubCommand: listed("CLOVING_GH_COMMAND"),
+    checkCommand: listed("CLOVING_CHECK_COMMAND"),
+    privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
+  },
+  manifests,
+);
 const watchPort = process.env["CLOVING_WATCH_PORT"] ?? "3663";
 const watch =
   watchPort === "off"
