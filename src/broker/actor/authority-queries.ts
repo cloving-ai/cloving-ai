@@ -43,10 +43,18 @@ export interface Sequences {
   readonly times: Readonly<Record<string, string>>;
 }
 
+export interface CompletionCursor {
+  readonly runId: string;
+  readonly atOrBefore: number;
+}
+
 export interface AuthorityQueries {
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly receipt: (commandId: string) => Promise<CommandRecord | undefined>;
   readonly eventsAfter: (cursor: EventCursor) => Promise<EventPage>;
+  readonly latestCompletion: (
+    cursor: CompletionCursor,
+  ) => Promise<PublishedEvent | undefined>;
   readonly sequences: () => Promise<Sequences>;
   readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
 }
@@ -87,24 +95,7 @@ async function eventsAfter(
     parameters,
   );
   return {
-    events: storedEvents(
-      rows.map((row) => ({
-        sequence: integer(row, "sequence"),
-        type: text(row, "type"),
-        runId: text(row, "run_id"),
-        commandId: text(row, "command_id"),
-        recordedAt: text(row, "recorded_at"),
-        request: "",
-        payload: text(row, "payload"),
-      })),
-    ).map((event) => ({
-      sequence: event.sequence,
-      type: event.type,
-      runId: event.runId,
-      commandId: event.commandId,
-      recordedAt: event.recordedAt,
-      payload: event.payload,
-    })),
+    events: publishedEvents(rows),
     earliest: integer(
       await connection.get(
         "SELECT coalesce(min(sequence), 0) AS sequence FROM events",
@@ -113,6 +104,38 @@ async function eventsAfter(
     ),
     latest: await latestSequence(connection),
   };
+}
+
+function publishedEvents(rows: readonly unknown[]): readonly PublishedEvent[] {
+  return storedEvents(
+    rows.map((row) => ({
+      sequence: integer(row, "sequence"),
+      type: text(row, "type"),
+      runId: text(row, "run_id"),
+      commandId: text(row, "command_id"),
+      recordedAt: text(row, "recorded_at"),
+      request: "",
+      payload: text(row, "payload"),
+    })),
+  ).map((event) => ({
+    sequence: event.sequence,
+    type: event.type,
+    runId: event.runId,
+    commandId: event.commandId,
+    recordedAt: event.recordedAt,
+    payload: event.payload,
+  }));
+}
+
+async function latestCompletion(
+  connection: SqlConnection,
+  cursor: CompletionCursor,
+): Promise<PublishedEvent | undefined> {
+  const row = await connection.get(
+    "SELECT sequence, type, run_id, command_id, recorded_at, payload FROM events WHERE run_id = ? AND type = 'run.completed' AND sequence <= ? ORDER BY sequence DESC LIMIT 1",
+    [cursor.runId, cursor.atOrBefore],
+  );
+  return row === undefined ? undefined : publishedEvents([row])[0];
 }
 
 async function sequences(connection: SqlConnection): Promise<Sequences> {
@@ -164,6 +187,8 @@ export function authorityQueries(read: Read): AuthorityQueries {
       read((connection) => receipt(connection, commandId)),
     eventsAfter: (cursor) =>
       read((connection) => eventsAfter(connection, cursor)),
+    latestCompletion: (cursor) =>
+      read((connection) => latestCompletion(connection, cursor)),
     sequences: () => read(sequences),
     workflowIds: () => read(workflowIds),
   };

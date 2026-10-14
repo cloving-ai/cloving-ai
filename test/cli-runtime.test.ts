@@ -261,7 +261,7 @@ await test("CLV-008 status and pause print the committed state of a run", () =>
     assert.match(
       list.stdout,
       new RegExp(
-        `^  ${waiting.runId}  develop  waiting-decision  revision 3$`,
+        `^  ${waiting.runId}  develop  waiting-decision  revision 3  latest at .+$`,
         "m",
       ),
     );

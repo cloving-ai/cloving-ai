@@ -71,13 +71,17 @@ function admitted(result: Fields): readonly string[] {
 }
 
 function runLine(run: unknown): string {
-  return `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}`;
+  return `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
 }
 
 function runList(result: Fields): readonly string[] {
   const runs = result["runs"];
   const lines = Array.isArray(runs) ? runs.map(runLine) : [];
-  return ["Runs:", ...(lines.length === 0 ? ["  none"] : lines)];
+  return [
+    `Workflows: ${visible(listing(result["workflows"]))}`,
+    "Runs:",
+    ...(lines.length === 0 ? ["  none"] : lines),
+  ];
 }
 
 function observation(value: unknown): string {
@@ -92,6 +96,13 @@ function feedbackLines(value: unknown): readonly string[] {
   );
 }
 
+function outcome(value: unknown): string {
+  if (record(value) === undefined) return "none";
+  const reason = part(value, "reason");
+  const kind = visible(part(value, "kind"));
+  return typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind;
+}
+
 function runStatus(result: Fields): readonly string[] {
   const run = result["run"];
   const reason = part(run, "reason");
@@ -100,10 +111,13 @@ function runStatus(result: Fields): readonly string[] {
   const cost = part(run, "claudeCostUsd");
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
+    `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
+    `Outcome: ${outcome(part(run, "outcome"))}`,
     `Condition: ${show(part(run, "condition"))}`,
     `Reason: ${show(part(reason, "code"))}: ${show(part(reason, "detail"))}`,
     `Revision: ${show(part(run, "revision"))}, latest sequence ${show(part(run, "latestSequence"))}`,
+    `Latest at: ${show(part(run, "latestAt") ?? "none")}`,
     `Pending decisions: ${listing(part(run, "pendingDecisions"))}`,
     `Evidence: ${listing(part(run, "evidence"))}`,
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,

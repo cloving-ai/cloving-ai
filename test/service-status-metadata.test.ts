@@ -150,6 +150,50 @@ await test("CLV-072 a completion between status reads cannot show completed with
 
 after(removeTemporaryDirectories);
 
+await test("CLV-072 completed status reads its outcome without loading the event history", async () => {
+  const { store } = await opened(await temporaryDirectory());
+  try {
+    for (const command of storedGate.slice(0, 2))
+      await executeStored(store, command);
+    const outcome = {
+      outcome: "blocked",
+      outcomeReason: "Review needs repair",
+    };
+    assert.equal(
+      (
+        await store.execute(
+          {
+            kind: "complete-run",
+            commandId: "completed",
+            runId: "run-1",
+            expectedRevision: 2,
+            ...outcome,
+          },
+          recorded,
+        )
+      ).kind,
+      "accepted",
+    );
+    const context = statusContext({
+      ...store,
+      queries: {
+        ...store.queries,
+        eventsAfter: () =>
+          Promise.reject(new Error("Status must not load event history")),
+      },
+    });
+    const reply = await status(context, { runId: "run-1" });
+    const shown = field(field(reply, "result"), "run");
+    assert.equal(field(shown, "state"), "completed");
+    assert.deepEqual(field(shown, "outcome"), {
+      kind: "blocked",
+      reason: "Review needs repair",
+    });
+  } finally {
+    await store.close();
+  }
+});
+
 await test("CLV-072 status derives ticket, issue and prompt titles from the stored input", () =>
   withHarness(async (harness) => {
     const workflows = ["develop-ticket", "develop-issue", "develop-prompt"].map(

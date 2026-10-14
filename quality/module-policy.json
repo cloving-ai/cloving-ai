@@ -399,6 +399,7 @@
     "test/authority-status-fixture.ts": "test",
     "test/cli-runtime-arguments.test.ts": "test",
     "test/cli-runtime.test.ts": "test",
+    "test/cli-status.test.ts": "test",
     "test/cli-signals.test.ts": "test",
     "test/cli-text-values.test.ts": "test",
     "test/digest-fixture.ts": "test",

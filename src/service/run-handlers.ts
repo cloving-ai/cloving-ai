@@ -194,15 +194,10 @@ async function outcomeOf(
   view: ShownRun,
 ): Promise<Fields | null> {
   if (view.state !== "completed") return null;
-  const page = await context.authority.queries.eventsAfter({
+  const event = await context.authority.queries.latestCompletion({
     runId: view.runId,
-    after: 0,
-    limit: view.latestSequence,
+    atOrBefore: view.latestSequence,
   });
-  const event = page.events.findLast(
-    (event) =>
-      event.type === "run.completed" && event.sequence <= view.latestSequence,
-  );
   const kind = event?.payload["outcome"];
   if (kind === undefined) return null;
   return { kind, reason: event?.payload["outcomeReason"] ?? null };

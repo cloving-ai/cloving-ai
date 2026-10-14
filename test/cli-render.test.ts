@@ -66,10 +66,13 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
     rendered({ kind: "run-status", run }),
     [
       "Run run-1 (develop)",
+      "Title: none",
       "State: running",
+      "Outcome: none",
       "Condition: quota-wait",
       "Reason: provider-quota: A worker reported this reason.",
       "Revision: 4, latest sequence 9",
+      "Latest at: none",
       "Pending decisions: none",
       "Evidence: event:7, usage-report-1",
       "Last confirmed observation: 2026-10-10T12:00:00.000Z (sequence 7, worker)",
@@ -112,10 +115,13 @@ await test("CLV-066 the human form of a run status gives the Claude cost with tw
 });
 
 await test("CLV-008 the human form of a run list, a run command and a decision has its fixed lines", () => {
-  assert.equal(rendered({ kind: "run-list", runs: [] }), "Runs:\n  none\n");
+  assert.equal(
+    rendered({ kind: "run-list", runs: [] }),
+    "Workflows: none\nRuns:\n  none\n",
+  );
   assert.equal(
     rendered({ kind: "run-list", runs: [run] }),
-    "Runs:\n  run-1  develop  quota-wait  revision 4\n",
+    "Workflows: none\nRuns:\n  run-1  develop  quota-wait  revision 4  latest at none\n",
   );
   assert.equal(
     rendered({
