@@ -131,7 +131,7 @@ await test("CLV-013 a second deliver of one operation starts no second process: 
     assert.equal(scene.turns().length, 2);
   }));
 
-await test("CLV-013 a turn that ends with an exit code, with an error result, with no result line or with a command that does not start gets the outcome failed with the reason claude-turn-failed", () =>
+await test("CLV-013 a turn that ends with an exit code, with an error result, with no result line or with a command that does not start gets the outcome failed with the reason claude-turn-failed, and a failed turn with a result line keeps its cost in the result", () =>
   withScene(async (scene) => {
     const absent = join(scene.directory, "no-such-command");
     const commands = ["exit-code", "error-result", "no-result", absent];
@@ -146,15 +146,26 @@ await test("CLV-013 a turn that ends with an exit code, with an error result, wi
       await until(() => scene.reports.length === index + 1);
       const report = scene.reports[index];
       assert.deepEqual(
-        [report?.operationId, report?.outcome, report?.reason, report?.result],
-        [operationId, "failed", "claude-turn-failed", undefined],
+        [report?.operationId, report?.outcome, report?.reason],
+        [operationId, "failed", "claude-turn-failed"],
       );
+      const result =
+        report?.result === undefined ? {} : { result: report.result };
       assert.deepEqual(await worker.reconcile(failing, signal), {
         kind: "failed",
         ...identity(operationId),
         reason: "claude-turn-failed",
+        ...result,
       });
     }
+    assert.deepEqual(
+      scene.reports.map((report) =>
+        report.result === undefined
+          ? undefined
+          : resultOf(report.result)["costUsd"],
+      ),
+      [0.25, 0.25, undefined, undefined],
+    );
   }));
 
 await test("CLV-013 an absent payload, a capability or a method that the worker does not have, and a repository with no git data give a failed reply, start no process and leave no record", () =>

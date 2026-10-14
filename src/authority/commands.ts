@@ -122,8 +122,9 @@ const shapes: Readonly<Record<string, Shape>> = {
     optional: ["result", "reason", "evidence"],
     consistent: (fields) =>
       reportedOutcomes.includes(String(fields["outcome"])) &&
-      (fields["result"] !== undefined) ===
-        (fields["outcome"] === "completed") &&
+      (fields["outcome"] === "failed" ||
+        (fields["result"] !== undefined) ===
+          (fields["outcome"] === "completed")) &&
       (fields["reason"] !== undefined) === (fields["outcome"] === "failed"),
   },
   "record-outcome": {

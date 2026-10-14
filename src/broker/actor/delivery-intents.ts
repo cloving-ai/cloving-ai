@@ -55,6 +55,7 @@ export type AdapterOutcome =
       readonly kind: "failed";
       readonly receipt?: string;
       readonly reason: string;
+      readonly result?: string;
     }
   | { readonly kind: "stopped"; readonly receipt?: string }
   | { readonly kind: "unknown"; readonly evidence?: string };

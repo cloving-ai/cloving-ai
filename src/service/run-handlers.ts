@@ -160,10 +160,7 @@ async function claudeCost(
 ): Promise<number> {
   const { effects, queries } = context.authority;
   const digests = (await effects.operations(runId))
-    .filter(
-      (operation) =>
-        operation.capability === "claude" && operation.status === "completed",
-    )
+    .filter((operation) => operation.capability === "claude")
     .map((operation) => operation.result)
     .filter((digest) => digest !== null);
   let total = 0;

@@ -70,7 +70,13 @@ export function replied(identity: Identity, recorded: unknown): AdapterOutcome {
   if (field("outcome") === "completed")
     return { kind: "completed", ...identity, result: String(field("result")) };
   if (field("outcome") === "stopped") return { kind: "stopped", ...identity };
-  return { kind: "failed", ...identity, reason: String(field("reason")) };
+  const result = field("result");
+  return {
+    kind: "failed",
+    ...identity,
+    reason: String(field("reason")),
+    ...(typeof result === "string" ? { result } : {}),
+  };
 }
 
 export function interrupted(reason: string): Recorded {

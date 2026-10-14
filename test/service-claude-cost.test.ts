@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { operationOf } from "./effect-fixture.ts";
 import {
   effectScene,
+  effectStates,
   requested,
   shownEffects,
   untilStates,
@@ -23,21 +24,23 @@ function claudeScene(harness: Harness): Promise<Scene> {
   return effectScene(harness, { effectLimit: 10, capabilities });
 }
 
-async function completed(
+interface Turn {
+  readonly round: number;
+  readonly capability: string;
+  readonly result: string;
+}
+
+async function reported(
   scene: Scene,
-  turn: {
-    readonly round: number;
-    readonly capability: string;
-    readonly result: string;
-  },
+  turn: Turn & { readonly outcome: "completed" | "failed" },
 ): Promise<void> {
-  const { round, capability, result } = turn;
+  const { round, capability, result, outcome } = turn;
   const reply = await requested(scene, {
     commandId: `c-request-${String(round)}`,
     round,
     capability,
   });
-  const earlier = Array.from({ length: round - 1 }, () => "completed");
+  const earlier = (await effectStates(scene)).slice(0, round - 1).map(String);
   await untilStates(scene, [...earlier, "running"]);
   const running = (await shownEffects(scene)).at(-1);
   const report = await scene.service.worker.reportEffect({
@@ -47,18 +50,25 @@ async function completed(
     inputDigest: String(reply.operation?.inputDigest),
     leaseGeneration: Number(field(running, "leaseGeneration")),
     worker: "worker-1",
-    outcome: "completed",
+    outcome,
     result,
+    ...(outcome === "failed" ? { reason: "claude-turn-failed" } : {}),
   });
   assert.equal(report.disposition?.disposition, "applied");
+}
+
+function completed(scene: Scene, turn: Turn): Promise<void> {
+  return reported(scene, { ...turn, outcome: "completed" });
 }
 
 function costText(costUsd: number | null): string {
   return JSON.stringify({ summary: "the turn is done", costUsd });
 }
 
-async function claudeCost(scene: Scene): Promise<unknown> {
-  return field(await view(scene.harness, scene.runId), "claudeCostUsd");
+async function claudeCost(scene: Scene): Promise<number> {
+  const cost = field(await view(scene.harness, scene.runId), "claudeCostUsd");
+  assert(typeof cost === "number");
+  return cost;
 }
 
 await test("CLV-066 the status of a run gives the sum of the costs of its completed Claude effects", () =>
@@ -82,6 +92,23 @@ await test("CLV-066 the status of a run gives the sum of the costs of its comple
       ),
       [undefined],
     );
+  }));
+
+await test("CLV-066 the Claude cost of a run adds the cost in the result of a failed Claude effect", () =>
+  withHarness(async (harness) => {
+    const scene = await claudeScene(harness);
+    await reported(scene, {
+      round: 1,
+      capability: "claude",
+      result: costText(1.25),
+      outcome: "failed",
+    });
+    await completed(scene, {
+      round: 2,
+      capability: "claude",
+      result: costText(0.5),
+    });
+    assert.equal(await claudeCost(scene), 1.75);
   }));
 
 await test("CLV-066 a run with no completed Claude effect gives a Claude cost of 0", () =>

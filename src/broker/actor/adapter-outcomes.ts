@@ -14,7 +14,11 @@ export type Settlement =
       readonly result: string | null;
       readonly reason: string | null;
     })
-  | (Identity & { readonly kind: "failed"; readonly reason: string })
+  | (Identity & {
+      readonly kind: "failed";
+      readonly reason: string;
+      readonly result?: string;
+    })
   | (Identity & { readonly kind: "stopped" })
   | { readonly kind: "unknown"; readonly reason: string };
 
@@ -67,11 +71,14 @@ function completed(reply: unknown, resultBytes: number): Settlement {
   };
 }
 
-function failed(reply: unknown): Settlement {
+function failed(reply: unknown, resultBytes: number): Settlement {
   const reason = field(reply, "reason");
+  const result = field(reply, "result");
   const given = identity(reply);
   if (!isIdentifier(reason) || given === undefined) return malformed;
-  return { kind: "failed", ...given, reason };
+  const kept =
+    typeof result === "string" && Buffer.byteLength(result) <= resultBytes;
+  return { kind: "failed", ...given, reason, ...(kept ? { result } : {}) };
 }
 
 function stopped(reply: unknown): Settlement {
