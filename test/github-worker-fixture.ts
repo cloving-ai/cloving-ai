@@ -20,7 +20,7 @@ import { git, until } from "./claude-worker-fixture.ts";
 
 export const fakeGh = `
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const file = process.env.FAKE_GH_STATE;
 const origin = process.env.FAKE_GH_ORIGIN;
@@ -61,22 +61,35 @@ const actions = {
     out([{ user: { login: "someone" }, body: "<!-- greptile_confidence_score:1 --> not a review" }, ...greptile]);
   },
   "api GET review": () => out(state.reviewComments.filter((item) => item.pr === number)),
+  "api GET pull": () => {
+    const pr = state.prs.find((item) => item.number === number);
+    if (pr === undefined) {
+      process.stderr.write("gh: Not Found (HTTP 404)");
+      process.exitCode = 1;
+      return;
+    }
+    const merged = pr.state === "MERGED";
+    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), head: { sha: merged ? pr.mergedHead : headOf(pr.head) } });
+  },
   "api PUT merge": () => {
     const pr = state.prs.find((item) => item.number === number);
     pr.mergedHead = headOf(pr.head);
+    pr.mergeCommit = "f".repeat(40);
     pr.state = "MERGED";
-    out({ sha: "f".repeat(40), merged: true });
+    out({ sha: pr.mergeCommit, merged: true });
   },
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
-const kind = path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : path.includes("/pulls/") ? "review" : "comments";
+const kind = path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (state.fail === name) {
   process.stderr.write("the fake gh refused " + name);
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");
 else actions[name]();
-writeFileSync(file, JSON.stringify(state));
+const staged = file + "." + process.pid;
+writeFileSync(staged, JSON.stringify(state));
+renameSync(staged, file);
 `;
 
 export interface GithubState {
@@ -102,6 +115,10 @@ export interface GithubScene {
   readonly state: () => GithubState;
   readonly plan: (plan: Plan) => void;
   readonly worker: (overrides?: Partial<GithubWorkerSettings>) => GithubWorker;
+  readonly unscanned: (
+    overrides?: Partial<GithubWorkerSettings>,
+  ) => GithubWorker;
+  readonly gh: (parts: readonly string[]) => string;
   readonly perform: (
     worker: GithubWorker,
     call: { readonly method: string; readonly payload: unknown },
@@ -184,6 +201,7 @@ interface Kept {
   readonly reports: WorkerReport[];
   readonly payloads: Map<string, string>;
   readonly workers: GithubWorker[];
+  readonly scans: Promise<void>[];
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
@@ -224,6 +242,8 @@ function made(
     environment: { FAKE_GH_STATE: stateFile, FAKE_GH_ORIGIN: origin },
     timing: fastTiming,
     document: (digest) => Promise.resolve(payloads.get(digest)),
+    operationStatus: () => Promise.resolve("running"),
+    runStatus: () => Promise.resolve("running"),
     report: (report) => {
       reports.push(report);
       return Promise.resolve();
@@ -232,6 +252,22 @@ function made(
   });
   kept.workers.push(worker);
   return worker;
+}
+
+function scanned(kept: Kept, worker: GithubWorker): GithubWorker {
+  kept.scans.push(worker.scan());
+  return worker;
+}
+
+function called(kept: Kept, parts: readonly string[]): string {
+  return execFileSync(process.execPath, [kept.script, ...parts], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FAKE_GH_STATE: kept.stateFile,
+      FAKE_GH_ORIGIN: kept.origin,
+    },
+  });
 }
 
 async function performed(
@@ -269,7 +305,9 @@ function sceneOf(kept: Kept): GithubScene {
     plan: (plan) => {
       planned(kept.stateFile, plan);
     },
-    worker: (overrides = {}) => made(kept, overrides),
+    worker: (overrides = {}) => scanned(kept, made(kept, overrides)),
+    unscanned: (overrides = {}) => made(kept, overrides),
+    gh: (parts) => called(kept, parts),
     perform: (worker, call) => performed(kept, { worker, call }),
   };
 }
@@ -288,12 +326,14 @@ export async function withGithub<Result>(
     reports: [],
     payloads: new Map(),
     workers: [],
+    scans: [],
   };
   writeFileSync(kept.script, fakeGh);
   writeFileSync(kept.stateFile, ghState({ scores: [] }));
   try {
     return await use(sceneOf(kept));
   } finally {
+    await Promise.all(kept.scans);
     await Promise.all(kept.workers.map((worker) => worker.close()));
     rmSync(directory, { recursive: true, force: true });
   }
