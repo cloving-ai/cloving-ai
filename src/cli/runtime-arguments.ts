@@ -184,10 +184,11 @@ function shapeFailure(
 function decisionShape(command: DecisionCommand): Shape {
   const required =
     command === "answer" ? [...bindingOptions, "text"] : bindingOptions;
+  const optional = command === "deny" ? ["text"] : [];
   return {
     subject: "required",
     required,
-    allowed: () => [...required, ...mutationOptions],
+    allowed: () => [...required, ...optional, ...mutationOptions],
     build: (request) => decision(command, request),
   };
 }

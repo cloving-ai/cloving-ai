@@ -95,6 +95,7 @@ export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
     turns: [reviewedTurn],
     phases: phases(["done", "done", "done", "active"]),
     decision: "",
+    feedback: [],
     ...changes,
   };
 }

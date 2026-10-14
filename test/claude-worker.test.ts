@@ -243,7 +243,7 @@ await test("CLV-013 reconcile gives absent for an operation with no record, acce
     assert.equal(scene.turns().length, 1);
   }));
 
-await test("CLV-013 a second operation on the same target continues in the same work tree and on the same branch, its result has only its own commit, and a removed work tree is made again from its branch", () =>
+await test("CLV-013 a second operation on the same target continues in the same work tree and on the same branch, its result has the commits and the files since the first turn on the target, and a removed work tree is made again from its branch", () =>
   withScene(async (scene) => {
     const worker = scene.worker("complete");
     const tree = join(scene.worktrees, "ticket-one");
@@ -257,11 +257,19 @@ await test("CLV-013 a second operation on the same target continues in the same 
     const second = resultOf(scene.reports[1]?.result);
     assert.match(
       JSON.stringify([second["branch"], second["commits"]]),
-      /^\["cloving\/ticket-one",\["[0-9a-f]{7,} Add the change 2"\]\]$/,
+      /^\["cloving\/ticket-one",\["[0-9a-f]{7,} Add the change 2","[0-9a-f]{7,} Add the change 1"\]\]$/,
+    );
+    assert.match(
+      JSON.stringify(second["files"]),
+      /^\[" change-1\.txt \| 1 \+"," change-2\.txt \| 1 \+"," loose\.txt +\| 1 \+"," 3 files changed, 3 insertions\(\+\)"\]$/,
     );
     rmSync(tree, { recursive: true, force: true });
     await worker.deliver(intent({ operationId: "operation-3" }), signal);
     await until(() => scene.reports.length === 3);
+    assert.equal(
+      String(resultOf(scene.reports[2]?.result)["commits"]).split(",").length,
+      3,
+    );
     assert.deepEqual(
       scene.turns().map((turn) => turn.directory),
       [tree, tree, tree],

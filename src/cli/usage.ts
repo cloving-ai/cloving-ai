@@ -24,9 +24,10 @@ Records an answer to one design question.
 
 Approves one pending approval.
 `,
-  deny: `Usage: cloving deny <decision-ref> ${binding} [--command-id <id>] [--json]
+  deny: `Usage: cloving deny <decision-ref> [--text <feedback>] ${binding} [--command-id <id>] [--json]
 
 Denies one pending approval. The workflow continues with the denial.
+A feedback text has at most 8000 bytes. The ticket workflow sends it to the next round.
 `,
   pause: `Usage: cloving pause <run-id> --expected-revision <n> [--command-id <id>] [--json]
 

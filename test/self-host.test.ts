@@ -29,9 +29,10 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 let prompt = "";
 for await (const chunk of process.stdin) prompt += chunk;
-writeFileSync("ticket-work.txt", prompt.split("\\n").at(-1) + "\\n");
-execFileSync("git", ["add", "ticket-work.txt"]);
-execFileSync("git", ["-c", "user.name=Worker", "-c", "user.email=worker@example.invalid", "commit", "-q", "-m", "Add the ticket work"]);
+const work = prompt.includes("with this feedback:") ? "feedback" : "ticket";
+writeFileSync(work + "-work.txt", prompt.split("\\n").at(-1) + "\\n");
+execFileSync("git", ["add", work + "-work.txt"]);
+execFileSync("git", ["-c", "user.name=Worker", "-c", "user.email=worker@example.invalid", "commit", "-q", "-m", "Add the " + work + " work"]);
 const line = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 line({ type: "system", subtype: "init", session_id: "session-1" });
 line({ type: "assistant", message: { content: [{ type: "text", text: "I add the file." }, { type: "tool_use", name: "Bash", input: { command: "git commit" } }] } });
@@ -332,6 +333,56 @@ async function stoppedTurn(): Promise<void> {
   assert.equal(await ended(second), 0);
 }
 
+async function roundsRun(): Promise<void> {
+  const { directory, repository, runtimeDirectory, start } = await scene();
+  const asked: Asked = (operation, parameters) =>
+    call({ runtimeDirectory }, { operation, parameters });
+  const daemon = await start();
+  const admitted = await asked("run", ticket("CLV-900", "c-1"));
+  const runId = String(admitted["runId"]);
+  const first = await reviewed(asked, { runId, repository, directory });
+  const feedback = "Add a test for an empty list.";
+  const denied = await asked("decision", {
+    command: "deny",
+    reference: field(first, "decisionId"),
+    expectedRevision: field(first, "revision"),
+    generation: field(first, "generation"),
+    subjectDigest: field(first, "subjectDigest"),
+    commandId: "c-deny",
+    text: feedback,
+  });
+  assert.equal(denied["decision"], "denied", JSON.stringify(denied));
+  const second = await reached(async () => {
+    const [decision] = items(
+      (await asked("questions", { runId }))["decisions"],
+    );
+    return field(decision, "gateId") === "review-2" ? decision : undefined;
+  });
+  const prompt = String(field(second, "prompt"));
+  const place = /\nBranch: (.*)\nWork tree: .*\n/;
+  const [shown = "", branch = ""] = place.exec(prompt) ?? [];
+  assert.equal(shown, place.exec(String(field(first, "prompt")))?.[0]);
+  assert.match(prompt, /\nRound: 2 of 3\n/);
+  assert.match(
+    prompt,
+    /\nCommits:\n[0-9a-f]{7,} Add the feedback work\n[0-9a-f]{7,} Add the ticket work\n/,
+  );
+  assert.match(
+    prompt,
+    /\nChanged files:\n feedback-work\.txt \| 1 \+\n ticket-work\.txt +\| 1 \+\n/,
+  );
+  assert.equal(
+    git(repository, ["show", `${branch}:feedback-work.txt`]),
+    `${feedback}\n`,
+  );
+  assert.deepEqual(field(second, "feedback"), [
+    { decisionId: field(first, "decisionId"), text: feedback },
+  ]);
+  const state = await approved(asked, { runId, decision: second });
+  assert.equal(field(field(state, "budget"), "spent"), 2);
+  assert.equal(await ended(daemon), 0);
+}
+
 function withoutChildren(scene: () => Promise<void>): Promise<void> {
   return scene().finally(() => {
     for (const child of children)
@@ -344,3 +395,6 @@ await test("CLV-010 a stop of the daemon stops a Claude turn in work and reports
 
 await test("CLV-016 the start command starts a daemon that refuses a host bound that is too large, a second daemon, an empty ticket ID and a ticket that the board does not have, reads one ticket by its ID from the ticket command, runs it with the Claude worker in a work tree, waits for the approval of the operator across a restart, and completes the run after the approval", () =>
   withoutChildren(ticketRun));
+
+await test("CLV-062 a denial with a feedback text starts round 2 in the same work tree and on the same branch, its review lists the commits and the files of both rounds, and an approval completes the run", () =>
+  withoutChildren(roundsRun));

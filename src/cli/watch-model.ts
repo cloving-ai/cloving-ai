@@ -1,6 +1,7 @@
 import type {
   WatchDecision,
   WatchEvent,
+  WatchFeedback,
   WatchItem,
   WatchModel,
   WatchRun,
@@ -150,13 +151,13 @@ export function decisionCommands(
 ): WatchDecision {
   const fields = record(decision);
   const decisionId = text(fields["decisionId"]);
-  const binding = `${decisionId} --expected-revision ${String(fields["revision"])} --generation ${String(fields["generation"])} --subject-digest ${text(fields["subjectDigest"])}`;
+  const binding = `--expected-revision ${String(fields["revision"])} --generation ${String(fields["generation"])} --subject-digest ${text(fields["subjectDigest"])}`;
   return {
     decisionId,
     type: text(fields["type"]),
     prompt: text(fields["prompt"]),
-    approve: `${client} approve ${binding}`,
-    deny: `${client} deny ${binding}`,
+    approve: `${client} approve ${decisionId} ${binding}`,
+    deny: `${client} deny ${decisionId} --text "<feedback>" ${binding}`,
   };
 }
 
@@ -168,6 +169,14 @@ export interface WatchInputs {
   readonly runs: readonly unknown[];
   readonly decisions: readonly unknown[];
   readonly turns: readonly WatchTurn[];
+}
+
+function feedbackOf(value: unknown): WatchFeedback {
+  const fields = record(value);
+  return {
+    decisionId: text(fields["decisionId"]),
+    text: text(fields["text"]),
+  };
 }
 
 function eventOf(value: unknown): WatchEvent {
@@ -198,6 +207,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     turns: inputs.turns.filter((turn) => turn.runId === runId),
     phases: phasesOf(list(record(value)["events"])),
     decision: decisionOf(list(record(value)["events"])),
+    feedback: list(status["feedback"]).map(feedbackOf),
   };
 }
 

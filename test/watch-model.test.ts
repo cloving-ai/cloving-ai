@@ -194,7 +194,7 @@ await test("CLV-016 the watch model gives each pending decision its approve and 
     prompt: "Review the work.",
     approve:
       "cloving approve run-1/review-1 --expected-revision 1 --generation 2 --subject-digest sha256:abc",
-    deny: "cloving deny run-1/review-1 --expected-revision 1 --generation 2 --subject-digest sha256:abc",
+    deny: 'cloving deny run-1/review-1 --text "<feedback>" --expected-revision 1 --generation 2 --subject-digest sha256:abc',
   });
 });
 
@@ -274,6 +274,7 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       turns: [],
       phases: model.runs[1]?.phases,
       decision: "",
+      feedback: [],
     },
   );
   assert.deepEqual(
@@ -284,4 +285,14 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
     [model.host, model.service, model.updatedAt],
     ["/host", "up", "2026-10-13T21:40:00.000Z"],
   );
+});
+
+await test("CLV-062 the watch model gives a run the feedback of each denied review from its status", () => {
+  const feedback = [{ decisionId: "run-4/review-1", text: "Add a test." }];
+  const shown = run("run-4", "");
+  const [denied] = modelOf([
+    { ...shown, status: Object.assign({}, shown["status"], { feedback }) },
+  ]).runs;
+  assert.deepEqual(denied?.feedback, feedback);
+  assert.deepEqual(modelOf([run("run-5", "")]).runs[0]?.feedback, []);
 });

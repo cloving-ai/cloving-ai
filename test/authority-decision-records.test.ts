@@ -287,3 +287,47 @@ await test("CLV-008 a deadline on a day that exists is valid, also on a leap day
     "invalid-command",
   );
 });
+
+await test("CLV-062 a denial carries a feedback document that survives a rebuild from the events, and an approval with a feedback document is invalid", () => {
+  const denial = { ...approve, decision: "denied", answer: answerText };
+  const outcome = commands([
+    admit,
+    started,
+    { ...question, gateKind: "approval" },
+    wait,
+    denial,
+  ]);
+  assert.deepEqual(reasons(outcome).at(-1), "accepted");
+  assert.deepEqual(outcome.state.gates["run-1 design-1"]?.outcome, {
+    decision: "denied",
+    answer: answerText,
+    sequence: 5,
+  });
+  const events = outcome.results.flatMap((result) =>
+    result.kind === "accepted" ? result.events : [],
+  );
+  assert.deepEqual(rebuild(events), outcome.state);
+  assert.deepEqual(
+    events.map((event) => parseEvent(JSON.parse(JSON.stringify(event)))).at(-1)
+      ?.payload,
+    {
+      gateId: "design-1",
+      decision: "denied",
+      generation: "1",
+      subject,
+      answer: answerText,
+    },
+  );
+  assert.deepEqual(
+    reasons(
+      commands([
+        admit,
+        started,
+        { ...question, gateKind: "approval" },
+        wait,
+        { ...denial, decision: "approved" },
+      ]),
+    ).at(-1),
+    "invalid-command",
+  );
+});

@@ -22,6 +22,8 @@ const decisions: Readonly<Record<string, string>> = {
   deny: "denied",
 };
 
+const feedbackBytes = 8_000;
+
 const commands: Readonly<Record<string, readonly string[]>> = {
   question: ["answer"],
   approval: ["approve", "deny"],
@@ -49,10 +51,36 @@ function pending(state: StoredState): readonly GateState[] {
   );
 }
 
+export async function feedbackOf(
+  context: ServiceContext,
+  scope: { readonly state: StoredState; readonly runId: string },
+): Promise<readonly Fields[]> {
+  const denied = Object.values(scope.state.gates)
+    .filter(
+      (gate) =>
+        gate.runId === scope.runId &&
+        gate.outcome?.decision === "denied" &&
+        gate.outcome.answer !== null,
+    )
+    .sort((left, right) => left.openedSequence - right.openedSequence);
+  const shown: Fields[] = [];
+  for (const gate of denied) {
+    const text = await context.authority.queries.document(
+      gate.outcome?.answer ?? "",
+    );
+    shown.push({
+      decisionId: `${gate.runId}/${gate.gateId}`,
+      text: text ?? "",
+    });
+  }
+  return shown;
+}
+
 async function described(
   context: ServiceContext,
-  gate: GateState,
+  shown: { readonly state: StoredState; readonly gate: GateState },
 ): Promise<Fields> {
+  const { state, gate } = shown;
   const { queries } = context.authority;
   const opened = await queries.eventsAfter({
     after: gate.openedSequence - 1,
@@ -72,6 +100,7 @@ async function described(
     openedAt: opened.events[0]?.recordedAt ?? "",
     expiresAt: gate.expiresAt,
     context: [],
+    feedback: await feedbackOf(context, { state, runId: gate.runId }),
   };
 }
 
@@ -85,7 +114,8 @@ export async function questions(
     (gate) => runId === undefined || gate.runId === runId,
   );
   const views: Fields[] = [];
-  for (const gate of listed) views.push(await described(context, gate));
+  for (const gate of listed)
+    views.push(await described(context, { state, gate }));
   return result("decision-list", { decisions: views });
 }
 
@@ -149,8 +179,19 @@ interface DecisionRequest {
 }
 
 function validText(command: string, text: unknown): text is string | null {
-  if (command !== "answer") return text === undefined || text === null;
-  return typeof text === "string" && text.trim().length > 0;
+  const given = typeof text === "string" && text.trim().length > 0;
+  if (command === "answer") return given;
+  if (command === "deny") return given || text === undefined || text === null;
+  return text === undefined || text === null;
+}
+
+function textLimit(
+  context: ServiceContext,
+  command: string,
+): { readonly bytes: number; readonly name: string } {
+  return command === "deny"
+    ? { bytes: feedbackBytes, name: "A feedback text" }
+    : { bytes: context.textBytes, name: "An answer" };
 }
 
 function decisionRequest(parameters: Fields): DecisionRequest | undefined {
@@ -187,10 +228,11 @@ async function located(
   | { readonly kind: "known"; readonly runId: string; readonly gateId: string }
 > {
   const { commandId, text } = request;
-  if (text !== null && Buffer.byteLength(text) > context.textBytes)
+  const limit = textLimit(context, request.command);
+  if (text !== null && Buffer.byteLength(text) > limit.bytes)
     return refusedTarget("input-too-large", {
       commandId,
-      detail: `An answer has at most ${String(context.textBytes)} bytes.`,
+      detail: `${limit.name} has at most ${String(limit.bytes)} bytes.`,
     });
   const existing = await context.authority.queries.receipt(commandId);
   if (existing === undefined)

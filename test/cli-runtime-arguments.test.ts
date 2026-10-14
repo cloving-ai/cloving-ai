@@ -59,7 +59,7 @@ const shapes: readonly (readonly [string, Shape])[] = [
   ["questions", { ...query, taken: ["json"] }],
   ["answer", answer],
   ["approve", decision],
-  ["deny", decision],
+  ["deny", { ...decision, taken: ["text", ...decision.taken] }],
   ["pause", control],
   ["resume", control],
   ["drop", control],
@@ -197,6 +197,7 @@ const accepted: readonly Success[] = [
       decided(name, { reference: "d".repeat(256), ...identified }),
     ],
   ]),
+  [`deny run-1/gate-1 --text=t ${bound}`, decided("deny", { text: "t" })],
   ...["pause", "resume", "drop"].flatMap((name): Success[] => [
     [`${name} run-1 --expected-revision 4`, controlled(name)],
     [

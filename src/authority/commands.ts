@@ -72,9 +72,14 @@ const shapes: Readonly<Record<string, Shape>> = {
     required: ["gateId", "decision", "expectedRevision"],
     optional: ["generation", "subject", "answer"],
     groups: [["generation", "subject"]],
-    consistent: (fields) =>
-      (fields["answer"] !== undefined) ===
-      (fields["generation"] !== undefined && fields["decision"] === "answered"),
+    consistent: (fields) => {
+      const typed = fields["generation"] !== undefined;
+      if (typed && fields["decision"] === "denied") return true;
+      return (
+        (fields["answer"] !== undefined) ===
+        (typed && fields["decision"] === "answered")
+      );
+    },
   },
   "expire-gate": { required: ["gateId"] },
   "pause-run": revised,

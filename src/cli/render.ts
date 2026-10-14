@@ -85,6 +85,13 @@ function observation(value: unknown): string {
   return `${show(part(value, "at"))} (sequence ${show(part(value, "sequence"))}, ${show(part(value, "source"))})`;
 }
 
+function feedbackLines(value: unknown): readonly string[] {
+  return (Array.isArray(value) ? value : []).map(
+    (item: unknown) =>
+      `Feedback of ${show(part(item, "decisionId"))}: ${visible(part(item, "text"))}`,
+  );
+}
+
 function runStatus(result: Fields): readonly string[] {
   const run = result["run"];
   const reason = part(run, "reason");
@@ -102,6 +109,7 @@ function runStatus(result: Fields): readonly string[] {
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
+    ...feedbackLines(part(run, "feedback")),
   ];
 }
 
@@ -121,6 +129,7 @@ function decisionLines(decision: unknown): readonly string[] {
   return [
     `${label === null ? "" : `${show(label)} `}${show(part(decision, "type"))} ${show(part(decision, "decisionId"))}`,
     `  Prompt: ${visible(part(decision, "prompt"))}`,
+    ...feedbackLines(part(decision, "feedback")).map((line) => `  ${line}`),
     ...(Array.isArray(allowed) ? allowed : []).map((command: unknown) =>
       suggestion(decision, command),
     ),
