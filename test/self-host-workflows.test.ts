@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import { join } from "node:path";
+import { test } from "node:test";
+import {
+  workflowFiles,
+  workflowManifests,
+} from "../tools/self-host-workflows.ts";
+import { withFiles } from "./quality/files-fixture.ts";
+
+await test("CLV-074 start lists every TypeScript workflow file", async () => {
+  await withFiles(
+    {
+      "workflows/develop-ticket.ts": "export {};",
+      "workflows/develop-other.ts": "export {};",
+      "workflows/README.md": "Workflow documentation.",
+      "workflows/folder.ts/README.md": "A directory is not a workflow file.",
+    },
+    async (directory) => {
+      assert.deepEqual(await workflowFiles(join(directory, "workflows")), [
+        "develop-other.ts",
+        "develop-ticket.ts",
+      ]);
+    },
+  );
+});
+
+await test("CLV-074 start rejects a file with more than one workflow function", () => {
+  assert.throws(
+    () =>
+      workflowManifests({
+        workflows: {
+          "workflows/develop-ticket.ts": {
+            developTicket: {
+              workflowId: "workflow//./workflows/develop-ticket//developTicket",
+            },
+            developOther: {
+              workflowId: "workflow//./workflows/develop-ticket//developOther",
+            },
+          },
+        },
+        steps: {},
+      }),
+    /workflows\/develop-ticket\.ts.*one workflow function/,
+  );
+});
+
+await test("CLV-074 start makes a manifest per workflow function with the file name and the shared filtered steps", () => {
+  const workflowId = "workflow//./workflows/develop-ticket//developTicket";
+  const otherId = "workflow//./workflows/develop-other//developOther";
+  const stepId = "step//cloving/workflows/steps/load-cycle@0.4.0//loadCycle";
+  const manifests = workflowManifests({
+    workflows: {
+      "workflows/develop-ticket.ts": { developTicket: { workflowId } },
+      "workflows/develop-other.ts": {
+        developOther: { workflowId: otherId },
+      },
+    },
+    steps: {
+      "node_modules/cloving/steps/load-cycle.ts": { loadCycle: { stepId } },
+      "workflows/local.ts": { local: { stepId: "step//./local//local" } },
+    },
+  });
+  const shared = {
+    schemaVersion: 1,
+    steps: [stepId],
+    capabilities: ["claude", "github"],
+    resources: [],
+    artifacts: "artifacts",
+  };
+  assert.deepEqual(manifests, {
+    developTicket: { ...shared, name: "develop-ticket", workflowId },
+    developOther: {
+      ...shared,
+      name: "develop-other",
+      workflowId: otherId,
+    },
+  });
+});

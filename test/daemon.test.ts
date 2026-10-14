@@ -33,7 +33,7 @@ await test("CLV-010 the daemon refuses to start with a workflow manifest that is
       directory,
       runtimeDirectory: join(directory, "run"),
       repository: directory,
-      manifest: join(directory, "cloving.workflow.json"),
+      manifests: { developTicket: join(directory, "cloving.workflow.json") },
       workflows: {},
       handler: () => Promise.resolve(new Response("")),
       command: ["true"],
@@ -45,6 +45,31 @@ await test("CLV-010 the daemon refuses to start with a workflow manifest that is
       detail: "invalid-manifest: schemaVersion or artifacts",
     });
     assert.equal(existsSync(join(directory, "state")), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-074 the daemon refuses a registration whose function has no manifest before creating state", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-daemon-"));
+  try {
+    const opening = await startDaemon({
+      directory,
+      runtimeDirectory: join(directory, "run"),
+      repository: directory,
+      manifests: {},
+      workflows: {},
+      handler: () => Promise.resolve(new Response("")),
+      command: ["true"],
+      concurrency: 1,
+    });
+    assert.deepEqual(opening, {
+      kind: "refused",
+      reason: "workflow-rejected",
+      detail: "Missing manifest for workflow function developTicket.",
+    });
+    assert.equal(existsSync(join(directory, "state")), false);
+    assert.equal(existsSync(join(directory, "run")), false);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

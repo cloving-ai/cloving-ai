@@ -35,6 +35,14 @@ export interface TicketSource {
   readonly command: readonly string[] | undefined;
 }
 
+export interface TicketRegistration {
+  readonly workflowId: string;
+  readonly functionName: string;
+  readonly resolver: Resolver;
+  readonly submission: WorkflowRegistration["submission"];
+  readonly effectLimit: number;
+}
+
 async function ticket(
   source: TicketSource,
   request: ResolutionRequest,
@@ -105,46 +113,63 @@ export function promptResolver(repository: string): Resolver {
   };
 }
 
-export async function ticketRegistrations(
-  manifest: string,
+export function ticketRegistrationTable(
   source: TicketSource,
+): readonly TicketRegistration[] {
+  return [
+    {
+      workflowId: ticketWorkflow,
+      functionName: "developTicket",
+      effectLimit: 8,
+      submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
+      resolver: ticketResolver(source),
+    },
+    {
+      workflowId: issueWorkflow,
+      functionName: "developTicket",
+      effectLimit: 16,
+      submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
+      resolver: issueResolver(source),
+    },
+    {
+      workflowId: promptWorkflow,
+      functionName: "developTicket",
+      effectLimit: 8,
+      submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
+      resolver: promptResolver(source.repository),
+    },
+  ];
+}
+
+export async function ticketRegistrations(
+  manifests: Readonly<Record<string, string | undefined>>,
+  options: { readonly table: readonly TicketRegistration[] },
 ): Promise<TicketRegistrations> {
-  const admission = await admitCompiled(manifest, {
-    file: manifest,
-    capabilities: ticketCapabilities,
-  });
-  if (admission.kind === "rejected")
-    return {
-      kind: "rejected",
-      detail: `${admission.error.code}: ${admission.error.detail}`,
-    };
-  const shared = {
-    manifest: admission.manifest,
-    availability: "available" as const,
-    effectLimit: 8,
-  };
-  return {
-    kind: "admitted",
-    registrations: [
-      {
-        ...shared,
-        workflowId: ticketWorkflow,
-        submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
-        resolver: ticketResolver(source),
-      },
-      {
-        ...shared,
-        workflowId: issueWorkflow,
-        effectLimit: 16,
-        submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
-        resolver: issueResolver(source),
-      },
-      {
-        ...shared,
-        workflowId: promptWorkflow,
-        submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
-        resolver: promptResolver(source.repository),
-      },
-    ],
-  };
+  const registrations: WorkflowRegistration[] = [];
+  for (const row of options.table) {
+    const manifest = manifests[row.functionName];
+    if (manifest === undefined)
+      return {
+        kind: "rejected",
+        detail: `Missing manifest for workflow function ${row.functionName}.`,
+      };
+    const admission = await admitCompiled(manifest, {
+      file: manifest,
+      capabilities: ticketCapabilities,
+    });
+    if (admission.kind === "rejected")
+      return {
+        kind: "rejected",
+        detail: `${admission.error.code}: ${admission.error.detail}`,
+      };
+    registrations.push({
+      workflowId: row.workflowId,
+      manifest: admission.manifest,
+      availability: "available",
+      effectLimit: row.effectLimit,
+      submission: row.submission,
+      resolver: row.resolver,
+    });
+  }
+  return { kind: "admitted", registrations };
 }
