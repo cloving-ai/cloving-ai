@@ -56,6 +56,14 @@ Starts the Cloving service for one git repository, with the workflow host,
 the Claude worker and the watch page. The default repository is the current
 directory. This command works in a development checkout of Cloving.
 Stop it with Control-C.
+
+The command reads these settings from the environment:
+  CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set.
+  CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
+  CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
+  CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
+  CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
+  CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
 `,
 };
 
