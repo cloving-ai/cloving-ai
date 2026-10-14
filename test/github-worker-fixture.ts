@@ -1,0 +1,331 @@
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { DeliveryIntent } from "../src/broker/actor/delivery-intents.ts";
+import {
+  githubWorker,
+  type GithubWorker,
+  type GithubWorkerSettings,
+} from "../src/daemon/github-worker.ts";
+import type { WorkerReport } from "../src/daemon/operation-journal.ts";
+import { git, until } from "./claude-worker-fixture.ts";
+
+export const fakeGh = `
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+
+const file = process.env.FAKE_GH_STATE;
+const origin = process.env.FAKE_GH_ORIGIN;
+const state = JSON.parse(readFileSync(file, "utf8"));
+const args = process.argv.slice(2);
+state.calls.push(args);
+const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+const headOf = (branch) => execFileSync("git", ["-C", origin, "rev-parse", "refs/heads/" + branch], { encoding: "utf8" }).trim();
+const url = (number) => "https://github.com/acme/demo/pull/" + number;
+const view = (pr) => ({ number: pr.number, url: url(pr.number), state: pr.state, headRefOid: pr.state === "OPEN" ? headOf(pr.head) : pr.mergedHead });
+const out = (value) => process.stdout.write(typeof value === "string" ? value + "\\n" : JSON.stringify(value));
+const path = args.find((item) => item.startsWith("repos/")) ?? "";
+const number = Number(path.split("/")[4]);
+const summary = (score, head) => "<h2>Confidence Score: " + score + "/5</h2>\\n<!-- greptile_confidence_score:" + score + " -->\\n<sub>Reviews (1) · Last reviewed commit: [\\"Change\\"](https://github.com/acme/demo/commit/" + head + ")</sub>";
+const reviewedNow = (pr) => {
+  const head = headOf(pr.head);
+  if (state.reviewed[head] !== undefined) return;
+  if (state.waitForTrigger && !state.triggers.includes(pr.number)) return;
+  if (state.scores.length === 0) return;
+  const score = state.scores.shift();
+  state.reviewed[head] = score;
+  state.latest[pr.number] = head;
+  if (score < 5) state.reviewComments.push({ pr: pr.number, user: { login: "greptile-apps[bot]" }, path: "src/change.ts", line: score, original_commit_id: head, body: "Finding of the review with the score " + score + "." });
+};
+const actions = {
+  "pr list": () => out(state.prs.filter((pr) => pr.head === option("--head") && (option("--state") !== "open" || pr.state === "OPEN")).map(view)),
+  "pr create": () => {
+    const created = { number: state.prs.length + 1, head: option("--head"), base: option("--base"), title: option("--title"), body: option("--body"), state: "OPEN" };
+    state.prs.push(created);
+    out(url(created.number));
+  },
+  "pr comment": () => { state.triggers.push(Number(args[2])); },
+  "api GET comments": () => {
+    const pr = state.prs.find((item) => item.number === number);
+    reviewedNow(pr);
+    const head = state.latest[number];
+    const greptile = head === undefined ? [] : [{ user: { login: "greptile-apps[bot]" }, body: summary(state.reviewed[head], head) }];
+    out([{ user: { login: "someone" }, body: "<!-- greptile_confidence_score:1 --> not a review" }, ...greptile]);
+  },
+  "api GET review": () => out(state.reviewComments.filter((item) => item.pr === number)),
+  "api PUT merge": () => {
+    const pr = state.prs.find((item) => item.number === number);
+    pr.mergedHead = headOf(pr.head);
+    pr.state = "MERGED";
+    out({ sha: "f".repeat(40), merged: true });
+  },
+  "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
+};
+const kind = path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : path.includes("/pulls/") ? "review" : "comments";
+const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
+if (state.fail === name) {
+  process.stderr.write("the fake gh refused " + name);
+  process.exitCode = 1;
+} else if (state.garble === name) process.stdout.write("not json");
+else actions[name]();
+writeFileSync(file, JSON.stringify(state));
+`;
+
+export interface GithubState {
+  readonly prs: readonly Readonly<Record<string, unknown>>[];
+  readonly calls: readonly (readonly string[])[];
+  readonly triggers: readonly number[];
+}
+
+export interface Plan {
+  readonly scores: readonly number[];
+  readonly waitForTrigger?: boolean;
+  readonly fail?: string;
+  readonly garble?: string;
+}
+
+export interface GithubScene {
+  readonly directory: string;
+  readonly origin: string;
+  readonly repository: string;
+  readonly worktrees: string;
+  readonly journal: string;
+  readonly reports: WorkerReport[];
+  readonly state: () => GithubState;
+  readonly plan: (plan: Plan) => void;
+  readonly worker: (overrides?: Partial<GithubWorkerSettings>) => GithubWorker;
+  readonly perform: (
+    worker: GithubWorker,
+    call: { readonly method: string; readonly payload: unknown },
+  ) => Promise<WorkerReport>;
+}
+
+export function ghState(plan: Plan): string {
+  return JSON.stringify({
+    prs: [],
+    calls: [],
+    triggers: [],
+    reviewed: {},
+    latest: {},
+    reviewComments: [],
+    waitForTrigger: false,
+    ...plan,
+    scores: [...plan.scores],
+  });
+}
+
+export const fastTiming = {
+  pollMilliseconds: 10,
+  triggerMilliseconds: 150,
+  limitMilliseconds: 600,
+};
+
+export function githubIntent(
+  overrides: Partial<DeliveryIntent> = {},
+): DeliveryIntent {
+  return {
+    kind: "protected-effect",
+    runId: "run-1",
+    operationId: "operation-1",
+    workflow: "sha256:pin",
+    inputDigest: `sha256:${"a".repeat(64)}`,
+    purpose: "dispatch",
+    leaseGeneration: 1,
+    capability: "github",
+    method: "prepare",
+    target: "ticket/one",
+    payload: "sha256:payload-1",
+    ...overrides,
+  };
+}
+
+function seeded(directory: string): { origin: string; repository: string } {
+  const origin = join(directory, "origin.git");
+  execFileSync("git", [
+    "init",
+    "--quiet",
+    "--bare",
+    "--initial-branch",
+    "main",
+    origin,
+  ]);
+  const repository = join(directory, "repository");
+  execFileSync("git", ["clone", "--quiet", origin, repository], {
+    stdio: "ignore",
+  });
+  for (const [name, value] of [
+    ["user.name", "Cloving Test"],
+    ["user.email", "test@cloving.invalid"],
+    ["commit.gpgsign", "false"],
+  ] as const)
+    git(repository, ["config", name, value]);
+  writeFileSync(join(repository, "README.md"), "The fixture project.\n");
+  git(repository, ["add", "."]);
+  git(repository, ["commit", "--quiet", "-m", "Start the project"]);
+  git(repository, ["push", "--quiet", "origin", "main"]);
+  git(repository, ["remote", "set-head", "origin", "main"]);
+  return { origin, repository };
+}
+
+interface Kept {
+  readonly directory: string;
+  readonly script: string;
+  readonly stateFile: string;
+  readonly origin: string;
+  readonly repository: string;
+  readonly reports: WorkerReport[];
+  readonly payloads: Map<string, string>;
+  readonly workers: GithubWorker[];
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null ? { ...value } : {};
+}
+
+function listOf(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value.map((item: unknown) => item) : [];
+}
+
+function stateOf(file: string): GithubState {
+  const fields = record(JSON.parse(readFileSync(file, "utf8")));
+  return {
+    prs: listOf(fields["prs"]).map(record),
+    calls: listOf(fields["calls"]).map((call) => listOf(call).map(String)),
+    triggers: listOf(fields["triggers"]).map(Number),
+  };
+}
+
+function planned(file: string, plan: Plan): void {
+  const current = record(JSON.parse(readFileSync(file, "utf8")));
+  writeFileSync(
+    file,
+    JSON.stringify({ ...current, ...plan, scores: [...plan.scores] }),
+  );
+}
+
+function made(
+  kept: Kept,
+  overrides: Partial<GithubWorkerSettings>,
+): GithubWorker {
+  const { stateFile, origin, payloads, reports } = kept;
+  const worker = githubWorker({
+    repository: kept.repository,
+    worktrees: join(kept.directory, "worktrees"),
+    journal: join(kept.directory, "github"),
+    gh: [process.execPath, kept.script],
+    environment: { FAKE_GH_STATE: stateFile, FAKE_GH_ORIGIN: origin },
+    timing: fastTiming,
+    document: (digest) => Promise.resolve(payloads.get(digest)),
+    report: (report) => {
+      reports.push(report);
+      return Promise.resolve();
+    },
+    ...overrides,
+  });
+  kept.workers.push(worker);
+  return worker;
+}
+
+async function performed(
+  kept: Kept,
+  run: {
+    readonly worker: GithubWorker;
+    readonly call: Parameters<GithubScene["perform"]>[1];
+  },
+): Promise<WorkerReport> {
+  const { reports, payloads } = kept;
+  const operationId = `operation-${String(reports.length + payloads.size + 1)}`;
+  const digest = `sha256:${operationId}`;
+  payloads.set(digest, JSON.stringify(run.call.payload));
+  const given = githubIntent({
+    operationId,
+    method: run.call.method,
+    payload: digest,
+  });
+  await run.worker.deliver(given, new AbortController().signal);
+  await until(() => reports.some((item) => item.operationId === operationId));
+  const report = reports.find((item) => item.operationId === operationId);
+  if (report === undefined) throw new Error("no report");
+  return report;
+}
+
+function sceneOf(kept: Kept): GithubScene {
+  return {
+    directory: kept.directory,
+    origin: kept.origin,
+    repository: kept.repository,
+    worktrees: join(kept.directory, "worktrees"),
+    journal: join(kept.directory, "github"),
+    reports: kept.reports,
+    state: () => stateOf(kept.stateFile),
+    plan: (plan) => {
+      planned(kept.stateFile, plan);
+    },
+    worker: (overrides = {}) => made(kept, overrides),
+    perform: (worker, call) => performed(kept, { worker, call }),
+  };
+}
+
+export async function withGithub<Result>(
+  use: (scene: GithubScene) => Promise<Result>,
+): Promise<Result> {
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), "cloving-github-")),
+  );
+  const kept: Kept = {
+    directory,
+    script: join(directory, "fake-gh.mjs"),
+    stateFile: join(directory, "gh-state.json"),
+    ...seeded(directory),
+    reports: [],
+    payloads: new Map(),
+    workers: [],
+  };
+  writeFileSync(kept.script, fakeGh);
+  writeFileSync(kept.stateFile, ghState({ scores: [] }));
+  try {
+    return await use(sceneOf(kept));
+  } finally {
+    await Promise.all(kept.workers.map((worker) => worker.close()));
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+export function committed(
+  tree: string,
+  change: { readonly name: string; readonly text: string },
+): string {
+  mkdirSync(join(tree, "src"), { recursive: true });
+  writeFileSync(join(tree, "src", change.name), change.text);
+  git(tree, ["add", "."]);
+  git(tree, ["commit", "--quiet", "-m", `Change ${change.name}`]);
+  return git(tree, ["rev-parse", "HEAD"]);
+}
+
+export const pullTitle = "CLV-063: Add the change";
+export const pullBody = "Closes #63";
+
+export function treeOf(scene: GithubScene): string {
+  return join(scene.worktrees, "ticket-one");
+}
+
+export async function opened(
+  scene: GithubScene,
+  worker: ReturnType<GithubScene["worker"]>,
+): Promise<string> {
+  await scene.perform(worker, { method: "prepare", payload: {} });
+  const commit = committed(treeOf(scene), { name: "one.ts", text: "1;\n" });
+  await scene.perform(worker, {
+    method: "open-pr",
+    payload: { title: pullTitle, body: pullBody },
+  });
+  return commit;
+}

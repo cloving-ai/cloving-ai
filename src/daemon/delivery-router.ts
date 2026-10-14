@@ -1,32 +1,53 @@
 import type {
+  AdapterOutcome,
   Delivery,
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { StartDelivery } from "../host/start-delivery.ts";
 
+export type EffectDelivery = Delivery & {
+  readonly stop: NonNullable<Delivery["stop"]>;
+};
+
 export interface DeliveryRoutes {
   readonly runs: StartDelivery;
-  readonly effects: Delivery & { readonly stop: NonNullable<Delivery["stop"]> };
+  readonly effects: Readonly<Record<string, EffectDelivery>>;
 }
+
+const refused: AdapterOutcome = {
+  kind: "failed",
+  reason: "unsupported-effect",
+};
 
 function protectedEffect(intent: DeliveryIntent): boolean {
   return intent.kind === "protected-effect";
 }
 
+function workerOf(
+  routes: DeliveryRoutes,
+  intent: DeliveryIntent,
+): EffectDelivery | undefined {
+  const capability = String(intent.capability);
+  return Object.hasOwn(routes.effects, capability)
+    ? routes.effects[capability]
+    : undefined;
+}
+
 export function deliveryRouter(routes: DeliveryRoutes): Delivery {
-  const { runs, effects } = routes;
+  const { runs } = routes;
+  const refusal = (): Promise<AdapterOutcome> => Promise.resolve(refused);
   return {
-    deliver: (intent, signal) =>
-      protectedEffect(intent)
-        ? effects.deliver(intent, signal)
-        : runs.deliver(intent),
-    reconcile: (intent, signal) =>
-      protectedEffect(intent)
-        ? effects.reconcile(intent, signal)
-        : runs.reconcile(intent),
-    stop: (intent, signal) =>
-      protectedEffect(intent)
-        ? effects.stop(intent, signal)
-        : runs.stop(intent),
+    deliver: (intent, signal) => {
+      if (!protectedEffect(intent)) return runs.deliver(intent);
+      return workerOf(routes, intent)?.deliver(intent, signal) ?? refusal();
+    },
+    reconcile: (intent, signal) => {
+      if (!protectedEffect(intent)) return runs.reconcile(intent);
+      return workerOf(routes, intent)?.reconcile(intent, signal) ?? refusal();
+    },
+    stop: (intent, signal) => {
+      if (!protectedEffect(intent)) return runs.stop(intent);
+      return workerOf(routes, intent)?.stop(intent, signal) ?? refusal();
+    },
   };
 }

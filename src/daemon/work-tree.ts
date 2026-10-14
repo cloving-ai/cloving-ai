@@ -19,6 +19,7 @@ export interface TreeRequest {
   readonly worktrees: string;
   readonly target: string;
   readonly signal: AbortSignal;
+  readonly base?: string;
 }
 
 export interface Changes {
@@ -71,14 +72,27 @@ async function added(
   await call(
     known
       ? ["worktree", "add", tree.path, tree.branch]
-      : ["worktree", "add", "-b", tree.branch, tree.path, "HEAD"],
+      : [
+          "worktree",
+          "add",
+          "-b",
+          tree.branch,
+          tree.path,
+          request.base ?? "HEAD",
+        ],
   );
 }
 
-export async function workTree(request: TreeRequest): Promise<WorkTree> {
+export function treePlace(request: Pick<TreeRequest, "worktrees" | "target">): {
+  readonly path: string;
+  readonly branch: string;
+} {
   const name = treeName(request.target);
-  const path = join(request.worktrees, name);
-  const branch = `cloving/${name}`;
+  return { path: join(request.worktrees, name), branch: `cloving/${name}` };
+}
+
+export async function workTree(request: TreeRequest): Promise<WorkTree> {
+  const { path, branch } = treePlace(request);
   if (!existsSync(join(path, ".git"))) await added(request, { path, branch });
   const head = await git({
     directory: path,

@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   startDelivery,
@@ -25,6 +26,7 @@ import {
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { deliveryRouter } from "./delivery-router.ts";
+import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { ticketRegistrations } from "./ticket-registration.ts";
 
@@ -37,6 +39,9 @@ export interface DaemonSettings {
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
+  readonly githubCommand?: readonly string[];
+  readonly checkCommand?: readonly string[];
+  readonly privateTexts?: readonly string[];
   readonly concurrency: number;
 }
 
@@ -99,21 +104,47 @@ async function hosted(
   };
 }
 
+interface Adapters {
+  readonly worker: ClaudeWorker;
+  readonly github: GithubWorker;
+  readonly runs: StartDelivery;
+}
+
+function githubOf(
+  settings: DaemonSettings,
+  shared: Pick<Parameters<typeof githubWorker>[0], "document" | "report">,
+): GithubWorker {
+  const { directory, repository, checkCommand } = settings;
+  return githubWorker({
+    ...shared,
+    repository,
+    gh: settings.githubCommand ?? ["gh"],
+    worktrees: join(directory, "worktrees"),
+    journal: join(directory, "github"),
+    privateTexts: [homedir(), ...(settings.privateTexts ?? [])],
+    ...(checkCommand === undefined ? {} : { check: checkCommand }),
+  });
+}
+
 function adapters(
   settings: DaemonSettings,
   given: Promise<HostPorts>,
-): { readonly worker: ClaudeWorker; readonly runs: StartDelivery } {
+): Adapters {
   const { directory, repository, command } = settings;
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
+  const report = async (
+    effect: Parameters<HostPorts["reportEffect"]>[0],
+  ): Promise<unknown> => (await given).reportEffect(effect);
   const worker = claudeWorker({
     repository,
     command,
     document,
+    report,
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "journal"),
-    report: async (report) => (await given).reportEffect(report),
   });
+  const github = githubOf(settings, { document, report });
   const runs = startDelivery({
     document,
     runs: taggedRuns,
@@ -122,7 +153,7 @@ function adapters(
     workflow: async (runId) =>
       settings.workflows[String(await (await given).workflowId(runId))],
   });
-  return { worker, runs };
+  return { worker, github, runs };
 }
 
 export async function startDaemon(
@@ -140,14 +171,20 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
-  const { worker, runs } = adapters(settings, given.promise);
+  const { worker, github, runs } = adapters(settings, given.promise);
+  const closed = async (): Promise<void> => {
+    await Promise.all([worker.close(), github.close()]);
+  };
   await mkdir(join(directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
     stateDirectory: join(directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
     workflows: admitted.registrations,
-    delivery: deliveryRouter({ runs, effects: worker }),
+    delivery: deliveryRouter({
+      runs,
+      effects: { claude: worker, github },
+    }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {
       given.resolve(ports);
@@ -155,7 +192,7 @@ export async function startDaemon(
     },
   });
   if (opening.kind === "refused") {
-    await worker.close();
+    await closed();
     return opening;
   }
   const { service } = opening;
@@ -164,7 +201,7 @@ export async function startDaemon(
     daemon: {
       socket: service.socket,
       close: async () => {
-        await worker.close();
+        await closed();
         await service.close();
       },
     },

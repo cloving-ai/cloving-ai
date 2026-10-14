@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AdapterOutcome,
@@ -8,19 +6,19 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { startTurn, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
+import {
+  interrupted,
+  located as locatedIn,
+  operationKey,
+  readRecord as read,
+  replied as repliedWith,
+  reportOf,
+  writeRecord as written,
+  type Located,
+  type Recorded,
+  type WorkerReport,
+} from "./operation-journal.ts";
 import { changes, workTree, type WorkTree } from "./work-tree.ts";
-
-export interface TurnReport {
-  readonly runId: string;
-  readonly commandId: string;
-  readonly operationId: string;
-  readonly inputDigest: string;
-  readonly leaseGeneration: number;
-  readonly worker: string;
-  readonly outcome: "completed" | "failed" | "stopped";
-  readonly result?: string;
-  readonly reason?: string;
-}
 
 export interface ClaudeWorkerSettings {
   readonly repository: string;
@@ -28,7 +26,7 @@ export interface ClaudeWorkerSettings {
   readonly journal: string;
   readonly command: readonly string[];
   readonly document: (digest: string) => Promise<string | undefined>;
-  readonly report: (report: TurnReport) => Promise<unknown>;
+  readonly report: (report: WorkerReport) => Promise<unknown>;
   readonly stopMilliseconds?: number;
 }
 
@@ -45,13 +43,6 @@ export const claudeLimits = {
 
 const worker = "claude";
 
-interface Recorded {
-  readonly outcome: TurnReport["outcome"];
-  readonly result?: string;
-  readonly reason?: string;
-  readonly endedAt: string;
-}
-
 interface Active {
   readonly turn: RunningTurn;
   readonly concluded: Promise<void>;
@@ -63,41 +54,13 @@ interface Parts {
   readonly active: Map<string, Active>;
 }
 
-interface Located {
-  readonly key: string;
-  readonly folder: string;
-}
-
 interface Started extends Located {
   readonly intent: ProtectedIntent;
   readonly tree: WorkTree;
 }
 
-function keyOf(text: string): string {
-  return createHash("sha256").update(text).digest("hex").slice(0, 32);
-}
-
 function located(settings: ClaudeWorkerSettings, operationId: string): Located {
-  const key = keyOf(operationId);
-  return { key, folder: join(settings.journal, key) };
-}
-
-async function read(folder: string, name: string): Promise<unknown> {
-  const text = await readFile(join(folder, name), "utf8").catch(
-    () => undefined,
-  );
-  const value: unknown = text === undefined ? undefined : JSON.parse(text);
-  return value;
-}
-
-async function written(
-  folder: string,
-  record: { readonly name: string; readonly value: unknown },
-): Promise<void> {
-  const path = join(folder, record.name);
-  await mkdir(folder, { recursive: true });
-  await writeFile(`${path}.staged`, JSON.stringify(record.value, null, 2));
-  await rename(`${path}.staged`, path);
+  return locatedIn(settings.journal, operationId);
 }
 
 function alive(processId: unknown): boolean {
@@ -111,12 +74,7 @@ function alive(processId: unknown): boolean {
 }
 
 function replied(key: string, recorded: unknown): AdapterOutcome {
-  const field = (name: string): unknown => Reflect.get(Object(recorded), name);
-  const identity = { receipt: key, worker };
-  if (field("outcome") === "completed")
-    return { kind: "completed", ...identity, result: String(field("result")) };
-  if (field("outcome") === "stopped") return { kind: "stopped", ...identity };
-  return { kind: "failed", ...identity, reason: String(field("reason")) };
+  return repliedWith({ receipt: key, worker }, recorded);
 }
 
 async function reconciled(
@@ -131,13 +89,9 @@ async function reconciled(
   if (started === undefined) return { kind: "absent" };
   if (alive(Reflect.get(Object(started), "processId")))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
-  const interrupted: Recorded = {
-    outcome: "failed",
-    reason: "claude-turn-interrupted",
-    endedAt: new Date().toISOString(),
-  };
-  await written(folder, { name: "result.json", value: interrupted });
-  return replied(key, interrupted);
+  const ending = interrupted("claude-turn-interrupted");
+  await written(folder, { name: "result.json", value: ending });
+  return replied(key, ending);
 }
 
 async function resultText(
@@ -175,20 +129,12 @@ async function outcome(
   return { outcome: "failed", reason: "claude-turn-failed", endedAt };
 }
 
-function reported(started: Started, recorded: Recorded): TurnReport {
+function reported(started: Started, recorded: Recorded): WorkerReport {
   const { intent, key } = started;
-  const { outcome: ending, result, reason } = recorded;
-  return {
-    runId: intent.runId,
-    commandId: `claude-turn:${key}`,
-    operationId: intent.operationId,
-    inputDigest: intent.inputDigest,
-    leaseGeneration: intent.leaseGeneration,
-    worker,
-    outcome: ending,
-    ...(result === undefined ? {} : { result }),
-    ...(reason === undefined ? {} : { reason }),
-  };
+  return reportOf(
+    { intent, commandId: `claude-turn:${key}`, worker },
+    recorded,
+  );
 }
 
 async function concluded(
@@ -242,7 +188,7 @@ async function firstTurn(
 ): Promise<WorkTree> {
   const { tree, target } = opening;
   const folder = join(settings.journal, "targets");
-  const name = `${keyOf(target)}.json`;
+  const name = `${operationKey(target)}.json`;
   const startCommit: unknown = Reflect.get(
     Object(await read(folder, name)),
     "startCommit",

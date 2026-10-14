@@ -35,6 +35,7 @@ In a development checkout, `cloving start` starts one Cloving service for the gi
 ```sh
 cloving start                                  # terminal 1, in the repository
 cloving run develop-ticket --ticket TICKET_ID  # terminal 2
+cloving run develop-issue --ticket TICKET_ID   # the work goes through a pull request
 cloving run develop-prompt --prompt "the text of the task"
 cloving watch                                  # the live page, also started by cloving start
 cloving questions
@@ -43,12 +44,18 @@ cloving approve DECISION_REF --expected-revision N --generation N --subject-dige
 
 `cloving watch` serves a read-only page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the Claude worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
-The workflow is the file `workflows/develop-ticket.ts` of this repository. `cloving start` copies it into a host project, compiles it there and admits it under two names. `develop-ticket` takes a ticket ID and reads the ticket itself. `develop-prompt` takes the text of a task.
+The workflow is the file `workflows/develop-ticket.ts` of this repository. `cloving start` copies it into a host project, compiles it there and admits it under three names. `develop-ticket` takes a ticket ID and reads the ticket itself. `develop-prompt` takes the text of a task. `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request.
 
 `CLOVING_TICKET_COMMAND` (a JSON list of texts) names the ticket command. The daemon runs it with the ticket ID as the last argument when it admits a run, and the printed text is the ticket. The text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop-ticket` is refused with `ticket-source-not-configured`.
 
 One run does one Claude Code turn in a new work tree on the branch `cloving/<ticket id>-…`, then opens one approval. The approval text has the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you approve. An approval completes the run; it does not merge the branch. Merge the branch yourself.
 
 The worker is not confined. It runs the `claude` command of the search path as the current user, with file edits and shell commands permitted in the work tree and a spend limit of 5 USD for each turn. `CLOVING_CLAUDE_COMMAND` (a JSON list of texts) replaces the command. A stop of the service stops a turn in work; submit that ticket again.
+
+A run of `develop-issue` opens no approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title is the first line of the ticket, and the text closes the GitHub issue of the ticket. Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.
+
+At the confidence score 5/5, the worker merges the pull request with a merge commit. Then it removes the remote branch, the work tree and the local branch. With a lower score, the Claude worker gets the summary and the findings of the review for one more round. After three such rounds, or after 60 minutes with no review, the run stops and the pull request stays open.
+
+The GitHub worker does not push a change that has the path of the home folder in a file or in a commit message. `CLOVING_PRIVATE_TEXTS` (a JSON list of texts) adds more texts to refuse, with no difference between capital and small letters. `CLOVING_CHECK_COMMAND` (a JSON list of texts) names a check that must pass in the work tree before a merge. `CLOVING_GH_COMMAND` replaces the `gh` command. The worker uses the `gh` login and the git credentials of the current user.
 
 To get the `cloving` command in a development checkout, put a launcher in a directory of the search path that runs `src/cli.ts` with the Node version of `package.json`, or run `npm run build` and `npm link`.

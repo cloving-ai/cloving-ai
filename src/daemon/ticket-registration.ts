@@ -10,7 +10,8 @@ import { ticketText } from "./ticket-source.ts";
 
 export const ticketWorkflow = "develop-ticket";
 export const promptWorkflow = "develop-prompt";
-export const ticketCapabilities = ["claude"];
+export const issueWorkflow = "develop-issue";
+export const ticketCapabilities = ["claude", "github"];
 
 const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
 
@@ -73,6 +74,21 @@ export function ticketResolver(source: TicketSource): Resolver {
   };
 }
 
+export function issueResolver(source: TicketSource): Resolver {
+  return {
+    id: "issue-command",
+    version: "1",
+    resolve: async (request) => {
+      const resolution = await ticket(source, request);
+      if (resolution.kind === "rejected") return resolution;
+      return {
+        kind: "resolved",
+        input: { ...Object(resolution.input), delivery: "pull-request" },
+      };
+    },
+  };
+}
+
 export function promptResolver(repository: string): Resolver {
   return {
     id: "ticket-prompt",
@@ -115,6 +131,13 @@ export async function ticketRegistrations(
         workflowId: ticketWorkflow,
         submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
         resolver: ticketResolver(source),
+      },
+      {
+        ...shared,
+        workflowId: issueWorkflow,
+        effectLimit: 16,
+        submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
+        resolver: issueResolver(source),
       },
       {
         ...shared,

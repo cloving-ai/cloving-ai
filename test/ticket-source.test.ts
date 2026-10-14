@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  issueResolver,
   promptResolver,
   ticketResolver,
 } from "../src/daemon/ticket-registration.ts";
@@ -139,4 +140,23 @@ await test("CLV-016 the prompt resolver gives the workflow the prompt as the tic
       },
     },
   );
+});
+
+await test("CLV-063 the issue resolver gives the workflow the ticket of the ticket resolver with the pull request delivery, and refuses the same tickets", async () => {
+  const resolver = issueResolver({ command, repository: "/repository" });
+  assert.deepEqual(await resolver.resolve(request({ ticket: "CLV-016" })), {
+    kind: "resolved",
+    input: {
+      cycleId: "clv-016-a6f7ef47",
+      ticketId: "CLV-016",
+      ticket: "# CLV-016: Connect the board\n\nThe text of the ticket.",
+      repository: "/repository",
+      delivery: "pull-request",
+    },
+  });
+  assert.equal(
+    (await resolver.resolve(request({ ticket: "CLV-404" }))).kind,
+    "rejected",
+  );
+  assert.equal(resolver.id, "issue-command");
 });

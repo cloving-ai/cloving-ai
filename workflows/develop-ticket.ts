@@ -7,6 +7,7 @@ interface Ticket {
   readonly ticket: string;
   readonly ticketId?: string;
   readonly repository: string;
+  readonly delivery?: string;
 }
 
 interface Round {
@@ -21,6 +22,35 @@ interface Decision {
 }
 
 const lastRound = 3;
+const lastFix = 3;
+const publicRule =
+  "The branch becomes a public pull request. Do not write local file paths, such as the path of your home folder, in files or in commit messages.";
+
+type Fields = Readonly<Record<string, unknown>>;
+
+type Stepped =
+  { readonly kind: "done"; readonly result: Fields } | CycleOutcome;
+
+interface Call {
+  readonly phase: string;
+  readonly operation: string;
+  readonly capability: string;
+  readonly method: string;
+  readonly round: number;
+  readonly payload: string;
+}
+
+interface Pull {
+  readonly number: number;
+  readonly url: string;
+  readonly commit: string;
+}
+
+interface Fix {
+  readonly round: number;
+  readonly pull: Pull;
+  readonly review: Fields;
+}
 
 function instructions(repository: string): string {
   return [
@@ -122,11 +152,165 @@ function decided(cycleId: string, decision: Decision): CycleOutcome | Round {
   return { number: number + 1, feedback: decision.answer };
 }
 
+function pullPrompt(input: Ticket): string {
+  return `${instructions(input.repository)}\n${publicRule}\n\nThe text of ${named(input)}:\n\n${input.ticket}`;
+}
+
+function findingLines(findings: unknown): string {
+  if (!Array.isArray(findings)) return "";
+  return findings
+    .map((item: unknown) => {
+      const finding = fields(JSON.stringify(item));
+      const line = finding["line"];
+      const place = typeof line === "number" ? `:${String(line)}` : "";
+      return `- ${part(finding, "path")}${place}: ${part(finding, "body")}`;
+    })
+    .join("\n");
+}
+
+function turnPrompt(input: Ticket, fix: Fix | null): string {
+  if (fix === null) return pullPrompt(input);
+  const { round, pull, review } = fix;
+  return [
+    pullPrompt(input),
+    "",
+    `This is round ${String(round)}. The branch has the commits of the earlier rounds. Greptile reviewed the pull request ${pull.url} at the commit ${pull.commit.slice(0, 7)} and gave the confidence score ${String(review["score"])}/5. Fix each problem of the review, then commit the fixes. Cloving merges the pull request when the score is 5/5.`,
+    "",
+    "Summary of the review:",
+    "",
+    part(review, "summary"),
+    "",
+    "Findings on lines:",
+    "",
+    findingLines(review["findings"]),
+  ].join("\n");
+}
+
+function pullTitle(input: Ticket): string {
+  const [first = ""] = input.ticket.split("\n", 1);
+  return first.startsWith("# ")
+    ? first.slice(2).trim().slice(0, 200)
+    : `Cloving task ${input.cycleId}`;
+}
+
+function pullBody(input: Ticket): string {
+  const issue = /^GitHub issue: ([\w.-]+[/][\w.-]+#\d+)/m.exec(input.ticket);
+  const about = `Cloving made this change for ${named(input)}. Greptile reviews the pull request, and Cloving merges it when the confidence score is 5/5.`;
+  return issue === null ? about : `Closes ${String(issue[1])}\n\n${about}`;
+}
+
+async function stepped(input: Ticket, call: Call): Promise<Stepped> {
+  const { phase, operation, round, capability, method, payload } = call;
+  const done = await protectedEffect({
+    scope: { phase, operation, round },
+    capability,
+    method,
+    target: input.cycleId,
+    payload,
+    units: 1,
+  });
+  if (done.kind === "completed")
+    return { kind: "done", result: fields(done.result) };
+  const cause =
+    "reason" in done && done.reason !== null ? ` (${done.reason})` : "";
+  return blocked(input.cycleId, {
+    reason: `The step ${operation} has the result ${done.kind}${cause}.`,
+    evidenceId: operation,
+  });
+}
+
+function github(
+  input: Ticket,
+  call: {
+    readonly method: string;
+    readonly round: number;
+    readonly payload: unknown;
+  },
+): Promise<Stepped> {
+  return stepped(input, {
+    phase: "pull-request",
+    operation: `github-${call.method}`,
+    capability: "github",
+    method: call.method,
+    round: call.round,
+    payload: JSON.stringify(call.payload),
+  });
+}
+
+function pullOf(result: Fields): Pull {
+  return {
+    number: Number(result["number"]),
+    url: part(result, "url"),
+    commit: part(result, "commit"),
+  };
+}
+
+async function merged(
+  input: Ticket,
+  done: { readonly round: number; readonly pull: Pull },
+): Promise<CycleOutcome> {
+  const { number, commit } = done.pull;
+  const merge = await github(input, {
+    method: "merge",
+    round: done.round,
+    payload: { number, commit },
+  });
+  if (merge.kind !== "done") return merge;
+  return {
+    kind: "handoff_requested",
+    cycleId: input.cycleId,
+    promotionId: `pull-request-${String(number)}`,
+  };
+}
+
+async function pullRequest(input: Ticket): Promise<CycleOutcome> {
+  const prepared = await github(input, {
+    method: "prepare",
+    round: 1,
+    payload: {},
+  });
+  if (prepared.kind !== "done") return prepared;
+  let fix: Fix | null = null;
+  for (let round = 1; ; round += 1) {
+    const turn = await stepped(input, {
+      phase: "implement",
+      operation: "claude-turn",
+      capability: "claude",
+      method: "run-turn",
+      round,
+      payload: turnPrompt(input, fix),
+    });
+    if (turn.kind !== "done") return turn;
+    const opened = await github(input, {
+      method: "open-pr",
+      round,
+      payload: { title: pullTitle(input), body: pullBody(input) },
+    });
+    if (opened.kind !== "done") return opened;
+    const pull = pullOf(opened.result);
+    const reviewed = await github(input, {
+      method: "wait-review",
+      round,
+      payload: { number: pull.number, commit: pull.commit },
+    });
+    if (reviewed.kind !== "done") return reviewed;
+    const score = reviewed.result["score"];
+    if (score === 5) return merged(input, { round, pull });
+    if (round > lastFix)
+      return blocked(input.cycleId, {
+        reason: `Greptile gave the confidence score ${String(score)}/5 in round ${String(round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${pull.url}`,
+        evidenceId: "github-wait-review",
+      });
+    fix = { round: round + 1, pull, review: reviewed.result };
+  }
+}
+
 export async function developTicket(
   input: Ticket,
   decision?: Decision,
 ): Promise<CycleOutcome> {
   "use workflow";
+  if (input.delivery === "pull-request") return pullRequest(input);
   const { cycleId } = input;
   const round =
     decision === undefined

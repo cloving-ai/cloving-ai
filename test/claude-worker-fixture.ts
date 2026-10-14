@@ -17,8 +17,8 @@ import {
   claudeWorker,
   type ClaudeWorker,
   type ClaudeWorkerSettings,
-  type TurnReport,
 } from "../src/daemon/claude-worker.ts";
+import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 
 const fakeClaude = `
 import { execFileSync } from "node:child_process";
@@ -70,7 +70,7 @@ export interface Scene {
   readonly repository: string;
   readonly worktrees: string;
   readonly journal: string;
-  readonly reports: TurnReport[];
+  readonly reports: WorkerReport[];
   readonly turns: () => readonly TurnRecord[];
   readonly worker: (
     mode: string,
@@ -167,7 +167,7 @@ export async function withScene<Result>(
   writeFileSync(script, fakeClaude);
   writeFileSync(turnLog, "");
   const workers: ClaudeWorker[] = [];
-  const reports: TurnReport[] = [];
+  const reports: WorkerReport[] = [];
   const scene: Scene = {
     directory,
     repository: repository(directory),

@@ -58,6 +58,9 @@ const defaultCommand = [
 interface Commands {
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
+  readonly githubCommand: readonly string[] | undefined;
+  readonly checkCommand: readonly string[] | undefined;
+  readonly privateTexts: readonly string[] | undefined;
 }
 
 function listed(name: string): readonly string[] | undefined {
@@ -144,7 +147,7 @@ async function registered(): Promise<void> {
       steps: identifiers(compiled["steps"], "stepId").filter((identifier) =>
         identifier.startsWith("step//cloving/"),
       ),
-      capabilities: ["claude"],
+      capabilities: ["claude", "github"],
       resources: [],
       artifacts: "artifacts",
     }),
@@ -176,7 +179,7 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
-const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows: { "develop-ticket": workflows.developTicket, "develop-prompt": workflows.developTicket }, handler: POST });
+const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows: { "develop-ticket": workflows.developTicket, "develop-prompt": workflows.developTicket, "develop-issue": workflows.developTicket }, handler: POST });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -196,6 +199,7 @@ function guide(): string {
     `Work trees: ${join(directory, "worktrees")}`,
     "Commands for a second terminal:",
     `  ${client} run develop-ticket --ticket <ticket-id>`,
+    `  ${client} run develop-issue --ticket <ticket-id>`,
     `  ${client} run develop-prompt --prompt "<the text of the task>"`,
     `  ${client} status`,
     `  ${client} questions`,
@@ -228,6 +232,9 @@ await prepared();
 await launchers({
   command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
   ticketCommand: listed("CLOVING_TICKET_COMMAND"),
+  githubCommand: listed("CLOVING_GH_COMMAND"),
+  checkCommand: listed("CLOVING_CHECK_COMMAND"),
+  privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
 });
 const watchPort = process.env["CLOVING_WATCH_PORT"] ?? "3663";
 const watch =
