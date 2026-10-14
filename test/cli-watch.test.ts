@@ -43,6 +43,46 @@ function journal(runtimeDirectory: string, runId: string): void {
   );
 }
 
+function githubResult(
+  runtimeDirectory: string,
+  ended: { readonly key: string; readonly result: unknown },
+): void {
+  writeFileSync(
+    join(dirname(runtimeDirectory), "github", ended.key, "result.json"),
+    JSON.stringify({
+      outcome: "completed",
+      result: JSON.stringify(ended.result),
+      endedAt: "2026-10-14T10:05:00.000Z",
+    }),
+  );
+}
+
+function githubJournal(runtimeDirectory: string, runId: string): void {
+  const records = join(dirname(runtimeDirectory), "github");
+  const url = "https://github.com/cloving-ai/cloving-ai/pull/61";
+  const operations = [
+    ["open-pr", 1, { number: 61, url, commit: "aaa" }],
+    ["wait-review", 1, { number: 61, commit: "aaa", score: 4 }],
+    ["wait-review", 2, null],
+  ] as const;
+  for (const [method, round, result] of operations) {
+    const key = `${method}-${String(round)}`;
+    mkdirSync(join(records, key), { recursive: true });
+    const scope = ["cloving-operation", round, runId, "pull-request", method];
+    writeFileSync(
+      join(records, key, "started.json"),
+      JSON.stringify({
+        operationId: JSON.stringify(scope),
+        method,
+        target: "clv-065-1e28b544",
+        startedAt: "2026-10-14T10:00:00.000Z",
+      }),
+    );
+    if (result !== null) githubResult(runtimeDirectory, { key, result });
+  }
+  mkdirSync(join(records, "empty"));
+}
+
 async function served(address: string): Promise<void> {
   const page = await fetch(address);
   assert.match(String(page.headers.get("content-type")), /^text\/html/);
@@ -135,6 +175,52 @@ await test("CLV-016 cloving watch serves the page, the Preact file of the instal
       );
       assert.equal(busy.status, 1);
       assert.match(busy.output, /^watch-not-started: /);
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+    await service.close();
+  }));
+
+async function pullRequestData(address: string): Promise<unknown> {
+  const model: unknown = await (await fetch(`${address}data.json`)).json();
+  const run = field(field(model, "runs"), 0);
+  return [field(run, "pullRequest"), field(run, "reviews")];
+}
+
+await test("CLV-065 cloving watch reads the records of the GitHub journal in the host directory and gives a run its pull request link and the scores of its completed reviews, and it reads a finished record one time and a record in work again at each request", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const waiting = await waitingGate(harness, {
+      service,
+      commandId: "c-65",
+      kind: "approval",
+    });
+    githubJournal(harness.runtimeDirectory, waiting.runId);
+    const pullRequest = {
+      number: 61,
+      url: "https://github.com/cloving-ai/cloving-ai/pull/61",
+    };
+    const watch = await watching(harness.runtimeDirectory);
+    try {
+      assert.deepEqual(await pullRequestData(watch.address), [
+        pullRequest,
+        [{ round: 1, commit: "aaa", score: 4 }],
+      ]);
+      githubResult(harness.runtimeDirectory, {
+        key: "wait-review-1",
+        result: { number: 61, commit: "aaa", score: 1 },
+      });
+      githubResult(harness.runtimeDirectory, {
+        key: "wait-review-2",
+        result: { number: 61, commit: "bbb", score: 5 },
+      });
+      assert.deepEqual(await pullRequestData(watch.address), [
+        pullRequest,
+        [
+          { round: 1, commit: "aaa", score: 4 },
+          { round: 2, commit: "bbb", score: 5 },
+        ],
+      ]);
     } finally {
       assert.equal(await watch.stop(), 0);
     }

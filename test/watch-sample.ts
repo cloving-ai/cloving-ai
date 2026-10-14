@@ -96,6 +96,9 @@ export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
     phases: phases(["done", "done", "done", "active"]),
     decision: "",
     feedback: [],
+    pullRequest: null,
+    reviews: [],
+    mergeCommit: null,
     ...changes,
   };
 }

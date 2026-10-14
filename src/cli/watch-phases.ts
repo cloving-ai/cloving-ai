@@ -6,6 +6,7 @@ interface Span {
   readonly name: string;
   readonly startedAt: string | null;
   readonly endedAt: string | null;
+  readonly ending: string;
 }
 
 const endings = [
@@ -15,10 +16,20 @@ const endings = [
 ];
 
 const review = { open: "gate.opened", close: "gate.decided" };
+const effect = { open: "effect.requested", close: "effect.reported" };
+const issueWorkflow = "develop-issue";
+const issueSteps = [
+  { name: "Work tree", operation: "github-prepare" },
+  { name: "Claude turn", operation: "claude-turn" },
+  { name: "Pull request", operation: "github-open-pr" },
+  { name: "Greptile review", operation: "github-wait-review" },
+  { name: "Merge", operation: "github-merge" },
+];
 const verdicts: Readonly<Record<string, string>> = {
   approved: "Approved",
   denied: "Denied",
 };
+const unfinished = ["failed", "stopped"];
 
 function record(value: unknown): Fields {
   return typeof value === "object" && value !== null ? { ...value } : {};
@@ -51,30 +62,67 @@ export function decisionOf(events: readonly unknown[]): string {
   return typeof decision === "string" ? decision : "";
 }
 
-function spans(events: readonly Fields[]): Span[] {
+function admission(events: readonly Fields[]): Span[] {
   const created = firstAt(events, "run.created");
   const started = firstAt(events, "run.started");
-  const turn = { open: "effect.requested", close: "effect.reported" };
   return [
-    { name: "Admitted", startedAt: created, endedAt: created },
-    { name: "Started", startedAt: started, endedAt: started },
+    { name: "Admitted", startedAt: created, endedAt: created, ending: "done" },
+    { name: "Started", startedAt: started, endedAt: started, ending: "done" },
+  ];
+}
+
+function ticketSpans(events: readonly Fields[]): Span[] {
+  const decision = decisionOf(events);
+  return [
+    ...admission(events),
     {
       name: "Claude turn",
-      startedAt: firstAt(events, turn.open),
-      endedAt: closedAt(events, turn),
+      startedAt: firstAt(events, effect.open),
+      endedAt: closedAt(events, effect),
+      ending: "done",
     },
     {
-      name: verdicts[decisionOf(events)] ?? "Your review",
+      name: verdicts[decision] ?? "Your review",
       startedAt: firstAt(events, review.open),
       endedAt: closedAt(events, review),
+      ending: decision === "denied" ? "failed" : "done",
     },
   ];
 }
 
+function spans(events: readonly Fields[], workflowId: string): Span[] {
+  if (workflowId !== issueWorkflow) return ticketSpans(events);
+  const effects = events.filter((event) =>
+    [effect.open, effect.close].includes(String(event["type"])),
+  );
+  return [
+    ...admission(events),
+    ...issueSteps.map((step) => {
+      const own = effects.filter((event) => {
+        const operationId = record(event["payload"])["operationId"];
+        try {
+          const scope: unknown = JSON.parse(String(operationId));
+          return Array.isArray(scope) && scope[4] === step.operation;
+        } catch {
+          return false;
+        }
+      });
+      const last = own.findLast((event) => event["type"] === effect.close);
+      const outcome = String(record(last?.["payload"])["outcome"]);
+      return {
+        name: step.name,
+        startedAt: firstAt(own, effect.open),
+        endedAt: closedAt(own, effect),
+        ending: unfinished.includes(outcome) ? "failed" : "done",
+      };
+    }),
+  ];
+}
+
 function phase(span: Span, open: string): WatchPhase {
-  if (span.endedAt !== null)
-    return { ...span, state: span.name === "Denied" ? "failed" : "done" };
-  return { ...span, state: span.startedAt === null ? "pending" : open };
+  const { ending, ...shown } = span;
+  if (span.endedAt !== null) return { ...shown, state: ending };
+  return { ...shown, state: span.startedAt === null ? "pending" : open };
 }
 
 function ends(events: readonly Fields[]): WatchPhase[] {
@@ -90,16 +138,26 @@ function advanced(phases: readonly WatchPhase[]): WatchPhase[] {
   const next = phases.findLastIndex((item) => item.state === "done") + 1;
   const idle = phases.every((item) => item.state !== "active");
   return phases.map((item, index) =>
-    idle && next > 0 && index === next ? { ...item, state: "active" } : item,
+    idle && next > 0 && index === next && item.state === "pending"
+      ? { ...item, state: "active" }
+      : item,
   );
 }
 
-export function phasesOf(events: readonly unknown[]): WatchPhase[] {
+export function phasesOf(
+  events: readonly unknown[],
+  workflowId = "",
+): WatchPhase[] {
   const known = events.map(record);
-  const steps = spans(known);
+  const steps = spans(known, workflowId);
   const [end] = ends(known);
   if (end !== undefined)
     return [...steps.map((span) => phase(span, "failed")), end];
-  const open = { name: "Completed", startedAt: null, endedAt: null };
+  const open = {
+    name: "Completed",
+    startedAt: null,
+    endedAt: null,
+    ending: "done",
+  };
   return advanced([...steps, open].map((span) => phase(span, "active")));
 }

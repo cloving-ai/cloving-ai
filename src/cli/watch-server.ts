@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Fields, ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
-import { turnOf, watchModel } from "./watch-model.ts";
+import { turnOf, watchModel, type GithubRecords } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchModel, WatchTurn } from "./watch-render.ts";
 import { watchStream, type WatchStream } from "./watch-stream.ts";
@@ -34,6 +34,7 @@ interface Watch {
   readonly settings: WatchSettings;
   readonly details: Map<string, { sequence: unknown; value: unknown }>;
   readonly streams: Map<string, { size: number; lines: readonly string[] }>;
+  readonly github: Map<string, GithubRecords>;
 }
 
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
@@ -139,14 +140,34 @@ async function turns(watch: Watch): Promise<WatchTurn[]> {
   );
 }
 
+async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
+  const journal = join(dirname(watch.settings.runtimeDirectory), "github");
+  const keys = await readdir(journal).catch(() => []);
+  for (const key of keys) {
+    const known = watch.github.get(key);
+    if (known !== undefined && known.result !== null) continue;
+    const started =
+      known?.started ?? (await stored(join(journal, key, "started.json")));
+    if (started === null) continue;
+    const result = await stored(join(journal, key, "result.json"));
+    watch.github.set(key, { started, result });
+  }
+  return keys.flatMap((key) => watch.github.get(key) ?? []);
+}
+
 async function snapshot(watch: Watch): Promise<WatchModel> {
-  const [read, journal] = await Promise.all([service(watch), turns(watch)]);
+  const [read, journal, github] = await Promise.all([
+    service(watch),
+    turns(watch),
+    githubRecords(watch),
+  ]);
   return watchModel({
     ...read,
     host: dirname(watch.settings.runtimeDirectory),
     client: watch.settings.client,
     updatedAt: new Date().toISOString(),
     turns: journal,
+    githubRecords: github,
   });
 }
 
@@ -207,7 +228,12 @@ function subscribed(
 }
 
 export function watchServer(settings: WatchSettings): Promise<number> {
-  const watch: Watch = { settings, details: new Map(), streams: new Map() };
+  const watch: Watch = {
+    settings,
+    details: new Map(),
+    streams: new Map(),
+    github: new Map(),
+  };
   const stream = watchStream({
     runtimeDirectory: settings.runtimeDirectory,
     journal: join(dirname(settings.runtimeDirectory), "journal"),

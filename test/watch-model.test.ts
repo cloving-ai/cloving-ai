@@ -220,6 +220,7 @@ function modelOf(runs: readonly unknown[]): ReturnType<typeof watchModel> {
     runs,
     decisions: [decision],
     turns: [turnOf({ key: "k1", started, result: null, lines: [] })],
+    githubRecords: [],
   });
 }
 
@@ -275,6 +276,9 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       phases: model.runs[1]?.phases,
       decision: "",
       feedback: [],
+      pullRequest: null,
+      reviews: [],
+      mergeCommit: null,
     },
   );
   assert.deepEqual(

@@ -4,6 +4,8 @@ import type {
   WatchFeedback,
   WatchItem,
   WatchModel,
+  WatchPullRequest,
+  WatchReview,
   WatchRun,
   WatchTurn,
 } from "./watch-render.ts";
@@ -169,6 +171,75 @@ export interface WatchInputs {
   readonly runs: readonly unknown[];
   readonly decisions: readonly unknown[];
   readonly turns: readonly WatchTurn[];
+  readonly githubRecords: readonly GithubRecords[];
+}
+
+export interface GithubRecords {
+  readonly started: unknown;
+  readonly result: unknown;
+}
+
+interface GithubResult {
+  readonly runId: string;
+  readonly round: number;
+  readonly method: string;
+  readonly report: Fields;
+}
+
+function githubOf(records: GithubRecords): GithubResult {
+  const started = record(records.started);
+  const operation = list(parsed(text(started["operationId"])));
+  const result = record(records.result);
+  const completed = result["outcome"] === "completed";
+  return {
+    runId: text(operation[2]),
+    round: Number(operation[1]),
+    method: text(started["method"]),
+    report: completed ? record(parsed(text(result["result"]))) : {},
+  };
+}
+
+function pullRequestOf(
+  results: readonly GithubResult[],
+): WatchPullRequest | null {
+  const opened = results
+    .filter((item) => item.method === "open-pr")
+    .map((item) => item.report)
+    .findLast((report) => text(report["url"]).startsWith("https://"));
+  if (opened === undefined) return null;
+  return { number: Number(opened["number"]), url: text(opened["url"]) };
+}
+
+function reviewsOf(results: readonly GithubResult[]): WatchReview[] {
+  return results
+    .filter((item) => item.method === "wait-review")
+    .flatMap(({ round, report }) => {
+      const score = count(report["score"]);
+      if (score === null) return [];
+      return [{ round, commit: text(report["commit"]), score }];
+    });
+}
+
+function mergeCommitOf(results: readonly GithubResult[]): string | null {
+  const merged = results
+    .filter((item) => item.method === "merge")
+    .map((item) => stamp(item.report["merged"]));
+  return merged.find((commit) => commit !== null) ?? null;
+}
+
+function pullOf(
+  inputs: WatchInputs,
+  runId: string,
+): Pick<WatchRun, "pullRequest" | "reviews" | "mergeCommit"> {
+  const results = inputs.githubRecords
+    .map(githubOf)
+    .filter((item) => item.runId === runId)
+    .toSorted((first, second) => first.round - second.round);
+  return {
+    pullRequest: pullRequestOf(results),
+    reviews: reviewsOf(results),
+    mergeCommit: mergeCommitOf(results),
+  };
 }
 
 function feedbackOf(value: unknown): WatchFeedback {
@@ -191,10 +262,11 @@ function eventOf(value: unknown): WatchEvent {
 function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
+  const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
   return {
     runId,
-    workflowId: text(status["workflowId"]),
+    workflowId,
     state: text(status["state"]),
     code: text(record(status["reason"])["code"]),
     detail: text(record(status["reason"])["detail"]),
@@ -205,9 +277,10 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
       .map((decision) => decisionCommands(decision, inputs.client)),
     events: list(record(value)["events"]).map(eventOf),
     turns: inputs.turns.filter((turn) => turn.runId === runId),
-    phases: phasesOf(list(record(value)["events"])),
+    phases: phasesOf(list(record(value)["events"]), workflowId),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),
+    ...pullOf(inputs, runId),
   };
 }
 
