@@ -9,11 +9,18 @@ interface Ticket {
   readonly repository: string;
 }
 
+interface Round {
+  readonly number: number;
+  readonly feedback: string | null;
+}
+
 interface Decision {
   readonly gateId: string;
   readonly decision: string;
   readonly answer: string | null;
 }
+
+const lastRound = 3;
 
 function instructions(repository: string): string {
   return [
@@ -46,10 +53,20 @@ function part(turn: Readonly<Record<string, unknown>>, name: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function review(input: Ticket, result: string | null): string {
-  const turn = fields(result);
+function denial(round: number): string {
+  return round < lastRound
+    ? "Deny with a feedback text to send the work back to the worker for one more round. Deny with no text to reject the work."
+    : "Deny to reject the work. This is the last round.";
+}
+
+function review(
+  input: Ticket,
+  turnResult: { readonly round: number; readonly result: string | null },
+): string {
+  const turn = fields(turnResult.result);
   return [
     `Review the work of the Claude worker for ${named(input)}.`,
+    `Round: ${String(turnResult.round)} of ${String(lastRound)}`,
     `Branch: ${part(turn, "branch")}`,
     `Work tree: ${part(turn, "worktree")}`,
     `Cost (USD): ${part(turn, "costUsd")}`,
@@ -66,7 +83,8 @@ function review(input: Ticket, result: string | null): string {
     "Report of the worker:",
     part(turn, "summary"),
     "",
-    "Approve to accept the branch, then merge the branch yourself. Deny to reject the work.",
+    "Approve to accept the branch, then merge the branch yourself.",
+    denial(turnResult.round),
   ].join("\n");
 }
 
@@ -77,17 +95,31 @@ function blocked(
   return { kind: "blocked", cycleId, ...cause };
 }
 
-function decided(cycleId: string, decision: Decision): CycleOutcome {
-  if (decision.decision !== "approved")
+function prompt(input: Ticket, round: Round): string {
+  const ticket = `${instructions(input.repository)}\n\nThe text of ${named(input)}:\n\n${input.ticket}`;
+  if (round.feedback === null) return ticket;
+  return `${ticket}\n\nThis is round ${String(round.number)}. The branch has the commits of the earlier rounds. The operator denied the work of round ${String(round.number - 1)} with this feedback:\n\n${round.feedback}`;
+}
+
+function decided(cycleId: string, decision: Decision): CycleOutcome | Round {
+  const number = Number(decision.gateId.slice("review-".length));
+  if (decision.decision === "approved")
+    return {
+      kind: "handoff_requested",
+      cycleId,
+      promotionId: `cloving-${cycleId}`,
+    };
+  if (decision.answer === null)
     return blocked(cycleId, {
       reason: "The operator denied the work.",
       evidenceId: decision.gateId,
     });
-  return {
-    kind: "handoff_requested",
-    cycleId,
-    promotionId: `cloving-${cycleId}`,
-  };
+  if (number >= lastRound)
+    return blocked(cycleId, {
+      reason: `The operator denied the work of round ${String(number)}, and a run has at most ${String(lastRound)} rounds.`,
+      evidenceId: decision.gateId,
+    });
+  return { number: number + 1, feedback: decision.answer };
 }
 
 export async function developTicket(
@@ -96,13 +128,22 @@ export async function developTicket(
 ): Promise<CycleOutcome> {
   "use workflow";
   const { cycleId } = input;
-  if (decision !== undefined) return decided(cycleId, decision);
+  const round =
+    decision === undefined
+      ? { number: 1, feedback: null }
+      : decided(cycleId, decision);
+  if ("kind" in round) return round;
+  const gateId = `review-${String(round.number)}`;
   const turn = await protectedEffect({
-    scope: { phase: "implement", operation: "claude-turn", round: 1 },
+    scope: {
+      phase: "implement",
+      operation: "claude-turn",
+      round: round.number,
+    },
     capability: "claude",
     method: "run-turn",
     target: cycleId,
-    payload: `${instructions(input.repository)}\n\nThe text of ${named(input)}:\n\n${input.ticket}`,
+    payload: prompt(input, round),
     units: 1,
   });
   if (turn.kind !== "completed")
@@ -111,14 +152,14 @@ export async function developTicket(
       evidenceId: "claude-turn",
     });
   const gate = await decisionGate({
-    gateId: "review-1",
+    gateId,
     kind: "approval",
-    prompt: review(input, turn.result),
+    prompt: review(input, { round: round.number, result: turn.result }),
   });
   if (gate.kind !== "opened")
     return blocked(cycleId, {
       reason: `The review gate has the result ${gate.kind}.`,
-      evidenceId: "review-1",
+      evidenceId: gateId,
     });
   return { kind: "waiting_for_decision", cycleId, decisionId: gate.decisionId };
 }

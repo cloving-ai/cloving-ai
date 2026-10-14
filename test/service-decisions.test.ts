@@ -52,6 +52,7 @@ await test("CLV-008 questions lists each pending decision with its identity, its
             openedAt: "",
             expiresAt: null,
             context: [],
+            feedback: [],
           },
         ],
       },

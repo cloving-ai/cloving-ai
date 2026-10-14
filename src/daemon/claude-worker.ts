@@ -73,11 +73,12 @@ interface Started extends Located {
   readonly tree: WorkTree;
 }
 
+function keyOf(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 32);
+}
+
 function located(settings: ClaudeWorkerSettings, operationId: string): Located {
-  const key = createHash("sha256")
-    .update(operationId)
-    .digest("hex")
-    .slice(0, 32);
+  const key = keyOf(operationId);
   return { key, folder: join(settings.journal, key) };
 }
 
@@ -235,6 +236,25 @@ async function begun(
   await record(turn.processId);
 }
 
+async function firstTurn(
+  settings: ClaudeWorkerSettings,
+  opening: { readonly tree: WorkTree; readonly target: string },
+): Promise<WorkTree> {
+  const { tree, target } = opening;
+  const folder = join(settings.journal, "targets");
+  const name = `${keyOf(target)}.json`;
+  const startCommit: unknown = Reflect.get(
+    Object(await read(folder, name)),
+    "startCommit",
+  );
+  if (typeof startCommit === "string") return { ...tree, startCommit };
+  await written(folder, {
+    name,
+    value: { target, startCommit: tree.startCommit },
+  });
+  return tree;
+}
+
 function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
   return (
     intent.capability === worker &&
@@ -271,7 +291,8 @@ async function delivered(
   if (signal.aborted) return failure("claude-start-aborted");
   if (tree === undefined) return failure("work-tree-not-available");
   const place = located(settings, intent.operationId);
-  await begun(parts, { ...place, intent, tree, prompt });
+  const first = await firstTurn(settings, { tree, target: intent.target });
+  await begun(parts, { ...place, intent, tree: first, prompt });
   return { receipt: place.key, worker };
 }
 

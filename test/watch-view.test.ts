@@ -173,3 +173,57 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
     '<a class="run good selected" href="#run-2">',
   ]);
 });
+
+await test("CLV-062 the watch page shows each turn and each review of a run in order, with the feedback of each denial", () => {
+  const html = page(
+    sampleModel([
+      sampleRun({
+        turns: [
+          { ...sampleTurn(), key: "turn-1" },
+          { ...sampleTurn(), key: "turn-2" },
+        ],
+        decisions: [
+          {
+            decisionId: "run-1/review-2",
+            type: "approval",
+            prompt: "Review round 2.",
+            approve: "cloving approve run-1/review-2",
+            deny: 'cloving deny run-1/review-2 --text "<feedback>"',
+          },
+        ],
+        feedback: [
+          {
+            decisionId: "run-1/review-1",
+            text: "Add a test for <empty> lists.",
+          },
+        ],
+      }),
+    ]),
+    "run-1",
+  );
+  const turn = '<section class="turn">';
+  const first =
+    '<section class="review denied"><h3>Review 1 · denied</h3><p>Add a test for &lt;empty&gt; lists.</p></section>';
+  const second =
+    '<section class="review pending"><h3>Review 2 · waits for your decision</h3></section>';
+  const found = [
+    html.indexOf('<section class="decision">'),
+    html.indexOf(turn),
+    html.indexOf(first),
+    html.lastIndexOf(turn),
+    html.indexOf(second),
+  ];
+  assert.ok(
+    found.every((index) => index >= 0),
+    html,
+  );
+  assert.deepEqual(
+    found,
+    found.toSorted((left, right) => left - right),
+  );
+  assert.notEqual(found[1], found[3]);
+  assert.match(
+    html,
+    /<code>cloving deny run-1\/review-2 --text &quot;&lt;feedback&gt;&quot;<\/code>/,
+  );
+});

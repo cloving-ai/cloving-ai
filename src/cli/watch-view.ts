@@ -82,6 +82,31 @@ export function Phases(props: {
   return element("ol", { class: "phases", children: steps });
 }
 
+export function Review(props: {
+  readonly run: WatchRun;
+  readonly round: number;
+}): Shown {
+  const { run, round } = props;
+  const decisionId = `${run.runId}/review-${String(round)}`;
+  const denied = run.feedback.find((item) => item.decisionId === decisionId);
+  if (denied !== undefined)
+    return element("section", {
+      class: "review denied",
+      children: [
+        element("h3", { children: `Review ${String(round)} · denied` }),
+        element("p", { children: denied.text }),
+      ],
+    });
+  if (!run.decisions.some((item) => item.decisionId === decisionId))
+    return null;
+  return element("section", {
+    class: "review pending",
+    children: element("h3", {
+      children: `Review ${String(round)} · waits for your decision`,
+    }),
+  });
+}
+
 export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
@@ -93,9 +118,14 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const turns =
     run.turns.length === 0
       ? element("p", { class: "meta", children: none })
-      : run.turns.map((item) =>
+      : run.turns.map((item, index) => [
           component(Turn, { key: item.key, turn: item, now }),
-        );
+          component(Review, {
+            key: `review-${item.key}`,
+            run,
+            round: index + 1,
+          }),
+        ]);
   const foot = [
     `${run.workflowId} · ${run.runId}${budget}`,
     element("br", {}),

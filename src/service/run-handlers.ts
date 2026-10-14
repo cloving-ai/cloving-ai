@@ -21,6 +21,7 @@ import {
   wholeNumber,
   type ServiceContext,
 } from "./replies.ts";
+import { feedbackOf } from "./decision-handler.ts";
 
 interface Snapshot {
   readonly state: StoredState;
@@ -95,6 +96,7 @@ async function effectInput(
 type ShownRun = RunView & {
   readonly workflowId: string;
   readonly unresolvedEffects: readonly string[];
+  readonly feedback: readonly Fields[];
 };
 
 async function viewOf(
@@ -127,6 +129,7 @@ async function viewOf(
     ...runView(input),
     workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
     unresolvedEffects: unresolvedEffects(input),
+    feedback: await feedbackOf(context, { state, runId: run.runId }),
   };
 }
 
@@ -154,6 +157,7 @@ function full(view: ShownRun): Fields {
     nextAction: view.nextAction,
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
+    ...(view.feedback.length === 0 ? {} : { feedback: view.feedback }),
   };
 }
 

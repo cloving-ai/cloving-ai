@@ -7,11 +7,14 @@ import {
   digestOf,
   eventually,
   field,
+  items,
   later,
   noon,
+  parsed,
   startedRun,
   waitingGate,
   withHarness,
+  type Harness,
 } from "./service-fixture.ts";
 
 const prompt = "Which color is correct?";
@@ -112,4 +115,94 @@ await test("CLV-008 an expired approval identity is not opened again, and the ru
       ["running", []],
     );
     await service.close();
+  }));
+
+const feedback = "Add a test for an empty list.";
+const approvalPrompt = "approval of c-1?";
+const binding = [
+  "--expected-revision",
+  "1",
+  "--generation",
+  "1",
+  "--subject-digest",
+  digestOf(approvalPrompt),
+];
+
+async function deniedRun(
+  harness: Harness,
+): Promise<Readonly<Record<string, string>>> {
+  const service = await harness.start();
+  const { runId, decisionId } = await waitingGate(harness, {
+    service,
+    commandId: "c-1",
+    kind: "approval",
+  });
+  const large = await harness.cli([
+    "deny",
+    decisionId,
+    "--text",
+    "é".repeat(4_001),
+    ...binding,
+    "--json",
+  ]);
+  assert.equal(field(parsed(large), "code"), "input-too-large");
+  assert.equal(
+    field(
+      await decide(harness, {
+        command: "approve",
+        reference: decisionId,
+        subjectDigest: digestOf(approvalPrompt),
+        text: feedback,
+      }),
+      "code",
+    ),
+    "invalid-request",
+  );
+  const denied = await harness.cli([
+    "deny",
+    decisionId,
+    "--text",
+    feedback,
+    ...binding,
+    "--json",
+  ]);
+  assert.equal(field(parsed(denied), "decision"), "denied");
+  const second = "approval of round 2?";
+  await service.worker.openGate({
+    runId,
+    commandId: "c-1-open-2",
+    expectedRevision: 4,
+    gateId: "design-2",
+    kind: "approval",
+    prompt: second,
+    subject: digestOf(second),
+  });
+  await service.worker.registerWait({
+    runId,
+    commandId: "c-1-wait-2",
+    gateId: "design-2",
+  });
+  await service.close();
+  return { runId, decisionId };
+}
+
+await test("CLV-062 cloving deny --text records the feedback with the denial, and status and questions show it, also after a restart", () =>
+  withHarness(async (harness) => {
+    const { runId = "", decisionId = "" } = await deniedRun(harness);
+    await harness.start();
+    const earlier = [{ decisionId, text: feedback }];
+    const status = parsed(await harness.cli(["status", runId, "--json"]));
+    assert.deepEqual(field(field(status, "run"), "feedback"), earlier);
+    assert.match(
+      (await harness.cli(["status", runId])).stdout,
+      new RegExp(`\\nFeedback of ${decisionId}: ${feedback}\\n`),
+    );
+    const questions = parsed(await harness.cli(["questions", "--json"]));
+    const [pending] = items(field(questions, "decisions"));
+    assert.equal(field(pending, "decisionId"), `${runId}/design-2`);
+    assert.deepEqual(field(pending, "feedback"), earlier);
+    assert.match(
+      (await harness.cli(["questions"])).stdout,
+      new RegExp(`\\n  Feedback of ${decisionId}: ${feedback}\\n`),
+    );
   }));

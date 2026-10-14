@@ -42,6 +42,11 @@ export interface WatchPhase {
   readonly endedAt: string | null;
 }
 
+export interface WatchFeedback {
+  readonly decisionId: string;
+  readonly text: string;
+}
+
 export interface WatchRun {
   readonly runId: string;
   readonly workflowId: string;
@@ -55,6 +60,7 @@ export interface WatchRun {
   readonly turns: readonly WatchTurn[];
   readonly phases: readonly WatchPhase[];
   readonly decision: string;
+  readonly feedback: readonly WatchFeedback[];
 }
 
 export interface WatchModel {

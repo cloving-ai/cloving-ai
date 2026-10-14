@@ -28,6 +28,7 @@ import {
   Header,
   Page,
   Phases,
+  Review,
   Run,
   Runs,
 } from "./watch-view.ts";
@@ -56,6 +57,7 @@ const functions = [
   BannerDetail,
   Banner,
   Phases,
+  Review,
   Run,
   Runs,
   Header,
@@ -108,6 +110,8 @@ h3 { margin: 22px 0 6px; font-size: 14px; }
 .foot { margin-top: 18px; }
 .decision { border: 1px solid var(--attention); border-radius: 8px; padding: 2px 14px 12px; margin-top: 14px; }
 .decision h3 { margin-top: 10px; }
+.review { border-left: 3px solid var(--bad); padding: 0 12px; margin-top: 10px; }
+.review p { white-space: pre-wrap; }
 .fact, p.good, p.bad { margin: 8px 0 4px; }
 .report { white-space: pre-wrap; margin: 6px 0; max-height: 300px; overflow: auto; border-left: 3px solid var(--line); padding-left: 10px; }
 pre, code, .activity, .events { font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
