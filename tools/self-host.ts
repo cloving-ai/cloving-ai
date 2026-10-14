@@ -52,7 +52,7 @@ const defaultCommand = [
   "--permission-mode",
   "acceptEdits",
   "--allowedTools",
-  "Bash,Read,Edit,Write,Glob,Grep",
+  "Bash,Read,Edit,Write,Glob,Grep,WebSearch,WebFetch",
   "--max-budget-usd",
   "5",
 ];
@@ -192,6 +192,7 @@ function guide(): string {
     `  ${client} run develop-ticket --ticket <ticket-id>`,
     `  ${client} run develop-issue --ticket <ticket-id>`,
     `  ${client} run develop-prompt --prompt "<the text of the task>"`,
+    `  ${client} run develop-prd --prompt "<the idea>"`,
     `  ${client} status`,
     `  ${client} questions`,
     `  ${client} watch`,

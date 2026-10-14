@@ -46,6 +46,22 @@ const reviewedNow = (pr) => {
   if (score < 5) state.reviewComments.push({ pr: pr.number, user: { login: "greptile-apps[bot]" }, path: "src/change.ts", line: score, original_commit_id: head, body: "Finding of the review with the score " + score + "." });
 };
 const actions = {
+  "issue create": () => {
+    const created = { number: state.issues.length + 1, title: option("--title"), body: option("--body") };
+    created.html_url = "https://github.com/acme/demo/issues/" + created.number;
+    state.issues.push(created);
+    out(created.html_url);
+  },
+  "repo view": () => out({ nameWithOwner: "acme/demo" }),
+  "api GET issues": () => {
+    const pages = state.issuePages ?? [state.issues];
+    if (option("--jq")) {
+      const marker = JSON.parse(option("--jq").match(/contains\\((".*")\\)/)[1]);
+      for (const page of pages) out(JSON.stringify(page.filter((issue) => issue.body?.includes(marker)).map(({ number, html_url }) => ({ number, html_url }))));
+      return;
+    }
+    out(args.includes("--slurp") ? pages : pages[0]);
+  },
   "pr list": () => out(state.prs.filter((pr) => pr.head === option("--head") && (option("--state") !== "open" || pr.state === "OPEN")).map(view)),
   "pr create": () => {
     const created = { number: state.prs.length + 1, head: option("--head"), base: option("--base"), title: option("--title"), body: option("--body"), state: "OPEN" };
@@ -80,12 +96,13 @@ const actions = {
   },
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
-const kind = path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
+const kind = path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (state.fail === name) {
   process.stderr.write("the fake gh refused " + name);
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");
+else if (state.replies && Object.hasOwn(state.replies, name)) out(state.replies[name]);
 else actions[name]();
 const staged = file + "." + process.pid;
 writeFileSync(staged, JSON.stringify(state));
@@ -100,9 +117,11 @@ export interface GithubState {
 
 export interface Plan {
   readonly scores: readonly number[];
+  readonly issuePages?: readonly (readonly unknown[])[];
   readonly waitForTrigger?: boolean;
   readonly fail?: string;
   readonly garble?: string;
+  readonly replies?: Readonly<Record<string, unknown>>;
 }
 
 export interface GithubScene {
@@ -128,6 +147,7 @@ export interface GithubScene {
 export function ghState(plan: Plan): string {
   return JSON.stringify({
     prs: [],
+    issues: [],
     calls: [],
     triggers: [],
     reviewed: {},

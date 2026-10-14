@@ -28,6 +28,7 @@
     "node_modules/acorn/dist/acorn.d.mts": "tooling",
     "node_modules/ast-v8-to-istanbul/dist/index.d.mts": "tooling",
     "node_modules/@types/istanbul-lib-coverage/index.d.ts": "tooling",
+    "node_modules/entities/dist/decode.d.ts": "pure",
     "package.json": "metadata",
     "quality/architecture.ts": "quality",
     "quality/clone-arguments.ts": "quality",
@@ -555,7 +556,17 @@
     "test/cli-start-usage.test.ts": "test",
     "test/watch-fixture.ts": "test",
     "test/watch-pull-request.test.ts": "test",
-    "test/readme.test.ts": "test"
+    "test/readme.test.ts": "test",
+    "src/daemon/github-operation.ts": "daemon",
+    "src/daemon/github-issue-methods.ts": "daemon",
+    "src/daemon/github-issue-privacy.ts": "daemon",
+    "test/develop-prd-workflow.test.ts": "test",
+    "test/github-issue.test.ts": "test",
+    "test/github-issue-privacy.test.ts": "test",
+    "test/github-issue-restart.test.ts": "test",
+    "test/claude-turn-environment.test.ts": "test",
+    "test/self-host-prd.test.ts": "test",
+    "workflows/develop-prd.ts": "workflow"
   },
   "allowed": {
     "quality": [

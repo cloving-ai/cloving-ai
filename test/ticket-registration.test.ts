@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   promptResolver,
   ticketRegistrations,
+  ticketRegistrationTable,
 } from "../src/daemon/ticket-registration.ts";
 import { withProject, workflowId } from "./cli-fixture.ts";
 
@@ -87,4 +88,19 @@ await test("CLV-074 registrations admit the manifest of each row's workflow func
       })),
     );
   });
+});
+
+await test("CLV-075 develop-prd registers its own function with prompt input and eight effects", () => {
+  const row = ticketRegistrationTable({
+    repository: "/repositories/example",
+    command: undefined,
+  }).find((entry) => entry.workflowId === "develop-prd");
+  assert.ok(row);
+  assert.equal(row.functionName, "developPrd");
+  assert.equal(row.effectLimit, 8);
+  assert.deepEqual(row.submission, {
+    maximumBytes: 65_536,
+    fields: { prompt: "string" },
+  });
+  assert.equal(row.resolver.id, promptResolver("/repositories/example").id);
 });

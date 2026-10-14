@@ -142,23 +142,25 @@ The client commands find the service with no setting, because the two sides use 
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
-- `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`.
+- `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`; the GitHub command and private-text list also apply to `develop-prd`.
 
 A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='["npm", "test"]'`.
 
 ## Daily development
 
-The workflow is the file `workflows/develop-ticket.ts` of this repository. `cloving start` copies it into a host project, compiles it there and admits it under three names:
+`cloving start` copies the TypeScript files in `workflows/` into a host project and compiles them there. The bundled workflows are:
 
 - `develop-prompt` takes the text of a task. Use it for a small task with no ticket, or for a first try in a new repository.
 - `develop-ticket` takes a ticket ID and reads the ticket itself. Use it for the normal work on a ticket, when you want to read each diff and merge the branch yourself.
 - `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request. Use it for a small ticket with clear criteria, in a GitHub repository that Greptile reviews and that has a check command. It is the workflow of the continuous process.
+- `develop-prd` takes an idea, researches the code and web, reviews a draft PRD, and posts it as a GitHub issue. Set `CLOVING_PRIVATE_TEXTS` to a nonempty JSON list before starting the daemon. A refused post preserves the worktree and draft. A successful post removes the worktree and adds no label; read the issue and add `cloving: ready` when it is ready for implementation.
 
 ```sh
 cloving start                                  # terminal 1, in the repository
 cloving run develop-ticket --ticket TICKET_ID  # terminal 2
 cloving run develop-issue --ticket TICKET_ID   # the work goes through a pull request
 cloving run develop-prompt --prompt "the text of the task"
+cloving run develop-prd --prompt "Show the cost of each run on the watch page"
 cloving watch                                  # the live page, also started by cloving start
 cloving questions
 cloving approve DECISION_REF --expected-revision N --generation N --subject-digest DIGEST
@@ -166,6 +168,8 @@ cloving deny DECISION_REF --text "FEEDBACK" --expected-revision N --generation N
 ```
 
 The rule: read the diff before you approve.
+
+Claude turns have web research tools by default, an empty GitHub CLI configuration folder, and no GitHub token environment variables. This is not a sandbox: a turn can still find other credentials. The PRD refusal rules catch the listed private text and common sensitive forms; unlisted private names can pass. A `post-uncertain` result requires checking GitHub before trying another run.
 
 ### The ticket command
 

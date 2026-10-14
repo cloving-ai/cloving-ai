@@ -1,56 +1,28 @@
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { findingsOf, scoreOf } from "./github-calls.ts";
+import { createIssue, discard } from "./github-issue-methods.ts";
 import {
-  findingsOf,
-  scoreOf,
-  type CallSettings,
-  type Calls,
-} from "./github-calls.ts";
+  existingTree,
+  removeWorktree,
+  field,
+  githubTiming,
+  repositoryPath,
+  text,
+  type Operation,
+  type Place,
+  type Pull,
+} from "./github-operation.ts";
+export type { GithubTiming, MethodSettings } from "./github-operation.ts";
 import { treePlace, workTree } from "./work-tree.ts";
 
-export interface GithubTiming {
-  readonly pollMilliseconds: number;
-  readonly triggerMilliseconds: number;
-  readonly limitMilliseconds: number;
-}
-
-export const githubTiming: GithubTiming = {
-  pollMilliseconds: 30_000,
-  triggerMilliseconds: 300_000,
-  limitMilliseconds: 3_600_000,
-};
-
-export interface MethodSettings extends CallSettings {
-  readonly worktrees: string;
-  readonly timing?: GithubTiming;
-  readonly check?: readonly string[];
-  readonly privateTexts?: readonly string[];
-}
-
-export interface Operation {
-  readonly settings: MethodSettings;
-  readonly calls: Calls;
-  readonly target: string;
-  readonly payload: Readonly<Record<string, unknown>>;
-  readonly signal: AbortSignal;
-}
-
-interface Place {
-  readonly path: string;
-  readonly branch: string;
-}
-
-interface Pull {
-  readonly number: number;
-  readonly url: string;
-}
-
-const repositoryPath = "repos/{owner}/{repo}";
 const triggerText = "@greptileai";
 
 export const methodReasons: ReadonlySet<string> = new Set([
+  "draft-not-available",
+  "invalid-draft",
+  "post-uncertain",
+  "private-texts-not-set",
   "github-call-failed",
   "git-call-failed",
   "check-failed",
@@ -62,22 +34,11 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "work-tree-not-available",
 ]);
 
-function text(operation: Operation, name: string): string {
-  const value = operation.payload[name];
-  if (typeof value !== "string" || value === "")
-    throw new Error("invalid-payload");
-  return value;
-}
-
 function integer(operation: Operation, name: string): number {
   const value = operation.payload[name];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
     throw new Error("invalid-payload");
   return value;
-}
-
-function field(value: unknown, name: string): unknown {
-  return Reflect.get(Object(value), name);
 }
 
 async function defaultBranch(operation: Operation): Promise<string> {
@@ -87,16 +48,6 @@ async function defaultBranch(operation: Operation): Promise<string> {
     "refs/remotes/origin/HEAD",
   ]);
   return reference.trim().replace(/^origin[/]/, "");
-}
-
-function existingTree(operation: Operation): Place {
-  const place = treePlace({
-    worktrees: operation.settings.worktrees,
-    target: operation.target,
-  });
-  if (!existsSync(join(place.path, ".git")))
-    throw new Error("work-tree-not-available");
-  return place;
 }
 
 async function prepare(operation: Operation): Promise<unknown> {
@@ -133,7 +84,7 @@ async function changeChecked(
     await call(["diff", `origin/${place.base}...HEAD`]),
     await call(["log", "--format=%B", range]),
   ].join("\n");
-  const privateTexts = operation.settings.privateTexts ?? [homedir()];
+  const privateTexts = [homedir(), ...(operation.settings.privateTexts ?? [])];
   const lowered = change.toLowerCase();
   if (
     privateTexts.some(
@@ -306,13 +257,12 @@ async function removed(operation: Operation, place: Place): Promise<void> {
       `${repositoryPath}/git/refs/heads/${place.branch}`,
     ])
     .catch(() => undefined);
-  const repository = (parts: readonly string[]): Promise<string> =>
-    calls.git(settings.repository, parts);
-  if (existsSync(join(place.path, ".git")))
-    await repository(["worktree", "remove", "--force", place.path]);
-  if ((await repository(["branch", "--list", place.branch])).trim() !== "")
-    await repository(["branch", "-D", place.branch]);
-  await repository(["update-ref", "-d", `refs/remotes/origin/${place.branch}`]);
+  await removeWorktree(operation, place);
+  await calls.git(settings.repository, [
+    "update-ref",
+    "-d",
+    `refs/remotes/origin/${place.branch}`,
+  ]);
 }
 
 async function merge(operation: Operation): Promise<unknown> {
@@ -335,6 +285,8 @@ export type Method = (operation: Operation) => Promise<unknown>;
 
 export const methods: ReadonlyMap<string, Method> = new Map([
   ["prepare", prepare],
+  ["create-issue", createIssue],
+  ["discard", discard],
   ["open-pr", openPull],
   ["wait-review", waitReview],
   ["merge", merge],

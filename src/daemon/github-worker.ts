@@ -113,6 +113,7 @@ async function outcome(
   try {
     const result = await method({
       settings,
+      folder: run.folder,
       calls: calls(settings, signal),
       target: intent.target,
       payload,
