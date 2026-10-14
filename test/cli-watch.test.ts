@@ -43,6 +43,40 @@ function journal(runtimeDirectory: string, runId: string): void {
   );
 }
 
+function githubJournal(runtimeDirectory: string, runId: string): void {
+  const records = join(dirname(runtimeDirectory), "github");
+  const url = "https://github.com/cloving-ai/cloving-ai/pull/61";
+  const operations = [
+    ["open-pr", 1, { number: 61, url, commit: "aaa" }],
+    ["wait-review", 1, { number: 61, commit: "aaa", score: 4 }],
+    ["wait-review", 2, null],
+  ] as const;
+  for (const [method, round, result] of operations) {
+    const folder = join(records, `${method}-${String(round)}`);
+    mkdirSync(folder, { recursive: true });
+    const scope = ["cloving-operation", round, runId, "pull-request", method];
+    writeFileSync(
+      join(folder, "started.json"),
+      JSON.stringify({
+        operationId: JSON.stringify(scope),
+        method,
+        target: "clv-065-1e28b544",
+        startedAt: "2026-10-14T10:00:00.000Z",
+      }),
+    );
+    if (result !== null)
+      writeFileSync(
+        join(folder, "result.json"),
+        JSON.stringify({
+          outcome: "completed",
+          result: JSON.stringify(result),
+          endedAt: "2026-10-14T10:05:00.000Z",
+        }),
+      );
+  }
+  mkdirSync(join(records, "empty"));
+}
+
 async function served(address: string): Promise<void> {
   const page = await fetch(address);
   assert.match(String(page.headers.get("content-type")), /^text\/html/);
@@ -138,6 +172,27 @@ await test("CLV-016 cloving watch serves the page, the Preact file of the instal
     } finally {
       assert.equal(await watch.stop(), 0);
     }
+    await service.close();
+  }));
+
+await test("CLV-065 cloving watch reads the records of the GitHub journal in the host directory and gives a run its pull request link and the scores of its completed reviews", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const waiting = await waitingGate(harness, {
+      service,
+      commandId: "c-65",
+      kind: "approval",
+    });
+    githubJournal(harness.runtimeDirectory, waiting.runId);
+    const model = await watchedModel(harness.runtimeDirectory);
+    const run = field(field(model, "runs"), 0);
+    assert.deepEqual(
+      [field(run, "pullRequest"), field(run, "reviews")],
+      [
+        { number: 61, url: "https://github.com/cloving-ai/cloving-ai/pull/61" },
+        [{ round: 1, commit: "aaa", score: 4 }],
+      ],
+    );
     await service.close();
   }));
 

@@ -47,6 +47,17 @@ export interface WatchFeedback {
   readonly text: string;
 }
 
+export interface WatchPullRequest {
+  readonly number: number;
+  readonly url: string;
+}
+
+export interface WatchReview {
+  readonly round: number;
+  readonly commit: string;
+  readonly score: number;
+}
+
 export interface WatchRun {
   readonly runId: string;
   readonly workflowId: string;
@@ -61,6 +72,9 @@ export interface WatchRun {
   readonly phases: readonly WatchPhase[];
   readonly decision: string;
   readonly feedback: readonly WatchFeedback[];
+  readonly pullRequest: WatchPullRequest | null;
+  readonly reviews: readonly WatchReview[];
+  readonly mergeCommit: string | null;
 }
 
 export interface WatchModel {

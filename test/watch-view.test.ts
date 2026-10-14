@@ -227,3 +227,41 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
     /<code>cloving deny run-1\/review-2 --text &quot;&lt;feedback&gt;&quot;<\/code>/,
   );
 });
+
+await test("CLV-065 the watch page shows the pull request of a develop-issue run as a link, the Greptile score of each review and the merge commit, after the steps", () => {
+  const url = "https://github.com/cloving-ai/cloving-ai/pull/61";
+  const merged = "c0ffee1234567890c0ffee1234567890c0ffee12";
+  const issue = sampleRun({
+    workflowId: "develop-issue",
+    state: "completed",
+    decisions: [],
+    pullRequest: { number: 61, url },
+    reviews: [
+      { round: 1, commit: "aaaaaaa1111111", score: 4 },
+      { round: 2, commit: "bbbbbbb2222222", score: 5 },
+    ],
+  });
+  const section = (run: WatchRun): string => {
+    const html = page(sampleModel([run]));
+    const start = html.indexOf('<section class="pull">');
+    return start < 0
+      ? ""
+      : html.slice(start, html.indexOf("</section>", start));
+  };
+  const reviews =
+    '<ul class="reviews"><li>Round 1 · Greptile 4/5 · commit aaaaaaa</li><li>Round 2 · Greptile 5/5 · commit bbbbbbb</li></ul>';
+  assert.equal(
+    section(issue),
+    `<section class="pull"><h3>Pull request <a href="${url}">#61</a></h3>${reviews}`,
+  );
+  assert.equal(
+    section({ ...issue, mergeCommit: merged }),
+    `<section class="pull"><h3>Pull request <a href="${url}">#61</a></h3>${reviews}<p class="meta">Merge commit <code>${merged}</code></p>`,
+  );
+  positions(page(sampleModel([issue])), [
+    '<ol class="phases">',
+    '<section class="pull">',
+    '<section class="turn">',
+  ]);
+  assert.equal(section(sampleRun()), "");
+});

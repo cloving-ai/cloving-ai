@@ -536,7 +536,8 @@
     "src/cli/main.ts": "cli",
     "test/cli-watch.test.ts": "test",
     "test/cli-start-usage.test.ts": "test",
-    "test/watch-fixture.ts": "test"
+    "test/watch-fixture.ts": "test",
+    "test/watch-pull-request.test.ts": "test"
   },
   "allowed": {
     "quality": [

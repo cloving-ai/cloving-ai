@@ -15,6 +15,15 @@ const endings = [
 ];
 
 const review = { open: "gate.opened", close: "gate.decided" };
+const effect = { open: "effect.requested", close: "effect.reported" };
+const issueWorkflow = "develop-issue";
+const issueSteps = [
+  { name: "Work tree", operation: "github-prepare" },
+  { name: "Claude turn", operation: "claude-turn" },
+  { name: "Pull request", operation: "github-open-pr" },
+  { name: "Greptile review", operation: "github-wait-review" },
+  { name: "Merge", operation: "github-merge" },
+];
 const verdicts: Readonly<Record<string, string>> = {
   approved: "Approved",
   denied: "Denied",
@@ -51,17 +60,44 @@ export function decisionOf(events: readonly unknown[]): string {
   return typeof decision === "string" ? decision : "";
 }
 
-function spans(events: readonly Fields[]): Span[] {
+function operationOf(event: Fields): string {
+  const operationId = record(event["payload"])["operationId"];
+  try {
+    const scope: unknown = JSON.parse(String(operationId));
+    return Array.isArray(scope) ? String(scope[4]) : "";
+  } catch {
+    return "";
+  }
+}
+
+function effectSpan(
+  events: readonly Fields[],
+  step: { readonly name: string; readonly operation: string },
+): Span {
+  const own = events.filter((event) => operationOf(event) === step.operation);
+  return {
+    name: step.name,
+    startedAt: firstAt(own, effect.open),
+    endedAt: closedAt(own, effect),
+  };
+}
+
+function admission(events: readonly Fields[]): Span[] {
   const created = firstAt(events, "run.created");
   const started = firstAt(events, "run.started");
-  const turn = { open: "effect.requested", close: "effect.reported" };
   return [
     { name: "Admitted", startedAt: created, endedAt: created },
     { name: "Started", startedAt: started, endedAt: started },
+  ];
+}
+
+function ticketSpans(events: readonly Fields[]): Span[] {
+  return [
+    ...admission(events),
     {
       name: "Claude turn",
-      startedAt: firstAt(events, turn.open),
-      endedAt: closedAt(events, turn),
+      startedAt: firstAt(events, effect.open),
+      endedAt: closedAt(events, effect),
     },
     {
       name: verdicts[decisionOf(events)] ?? "Your review",
@@ -69,6 +105,21 @@ function spans(events: readonly Fields[]): Span[] {
       endedAt: closedAt(events, review),
     },
   ];
+}
+
+function issueSpans(events: readonly Fields[]): Span[] {
+  const effects = events.filter((event) =>
+    [effect.open, effect.close].includes(String(event["type"])),
+  );
+  return [
+    ...admission(events),
+    ...issueSteps.map((step) => effectSpan(effects, step)),
+  ];
+}
+
+function spans(events: readonly Fields[], workflowId: string): Span[] {
+  if (workflowId === issueWorkflow) return issueSpans(events);
+  return ticketSpans(events);
 }
 
 function phase(span: Span, open: string): WatchPhase {
@@ -94,9 +145,12 @@ function advanced(phases: readonly WatchPhase[]): WatchPhase[] {
   );
 }
 
-export function phasesOf(events: readonly unknown[]): WatchPhase[] {
+export function phasesOf(
+  events: readonly unknown[],
+  workflowId = "",
+): WatchPhase[] {
   const known = events.map(record);
-  const steps = spans(known);
+  const steps = spans(known, workflowId);
   const [end] = ends(known);
   if (end !== undefined)
     return [...steps.map((span) => phase(span, "failed")), end];

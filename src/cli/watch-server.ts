@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Fields, ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
-import { turnOf, watchModel } from "./watch-model.ts";
+import { turnOf, watchModel, type GithubRecords } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchModel, WatchTurn } from "./watch-render.ts";
 import { watchStream, type WatchStream } from "./watch-stream.ts";
@@ -139,14 +139,31 @@ async function turns(watch: Watch): Promise<WatchTurn[]> {
   );
 }
 
+async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
+  const journal = join(dirname(watch.settings.runtimeDirectory), "github");
+  const found: GithubRecords[] = [];
+  for (const key of await readdir(journal).catch(() => [])) {
+    const started = await stored(join(journal, key, "started.json"));
+    if (started === null) continue;
+    const result = await stored(join(journal, key, "result.json"));
+    found.push({ started, result });
+  }
+  return found;
+}
+
 async function snapshot(watch: Watch): Promise<WatchModel> {
-  const [read, journal] = await Promise.all([service(watch), turns(watch)]);
+  const [read, journal, github] = await Promise.all([
+    service(watch),
+    turns(watch),
+    githubRecords(watch),
+  ]);
   return watchModel({
     ...read,
     host: dirname(watch.settings.runtimeDirectory),
     client: watch.settings.client,
     updatedAt: new Date().toISOString(),
     turns: journal,
+    githubRecords: github,
   });
 }
 
