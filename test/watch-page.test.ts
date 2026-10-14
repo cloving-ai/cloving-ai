@@ -25,6 +25,7 @@ const timers = [];
 const scrolled = [];
 const copied = [];
 const replies = [];
+const sources = [];
 const settled = () => new Promise((settle) => { setImmediate(settle); });
 const fixed = Date.parse(process.env.WATCH_NOW);
 const RealDate = Date;
@@ -42,6 +43,12 @@ Object.assign(globalThis, {
   innerHeight: 800,
   scrollY: 0,
   scrollTo: (left, top) => { scrolled.push(top); },
+  EventSource: class {
+    constructor(address) {
+      this.address = address;
+      sources.push(this);
+    }
+  },
 });
 Object.defineProperty(globalThis, "navigator", {
   configurable: true,
@@ -52,10 +59,12 @@ Object.defineProperty(globalThis, "navigator", {
 const scenario = `
 const model = JSON.parse(process.env.WATCH_MODEL);
 const waiting = app.inner;
-await settled();
+const [source] = sources;
+source.onerror();
 const stale = app.inner;
 replies.push(model);
-await load();
+source.onmessage({ data: "change" });
+await settled();
 const first = { html: app.inner, title: document.title };
 const fold = app.all("details").find((node) => !node.attributes.has("open"));
 fold.setAttribute("open", "");
@@ -66,13 +75,16 @@ const label = button.text;
 globalThis.scrollY = 1200;
 replies.push({ ...model, runs: model.runs.map((run) => ({ ...run, state: "running" })) });
 await load();
-replies.push({ ...model, service: "down" });
-await load();
+replies.push(model, { ...model, service: "down" });
+source.onmessage({ data: "change" });
+source.onmessage({ data: "change" });
+await settled();
+await settled();
 const kept = app.all("details").includes(fold) && fold.attributes.has("open");
 const down = app.inner.includes("The Cloving service does not answer.");
 location.hash = "#run-2";
 listeners.hashchange();
-console.log(JSON.stringify({ waiting, stale, first, label, kept, down, copied, scrolled, timers, other: document.title }));
+console.log(JSON.stringify({ waiting, stale, first, label, kept, down, copied, scrolled, timers, other: document.title, streams: sources.map((item) => item.address), unread: replies.length }));
 `;
 
 function fields(value: unknown): Record<string, unknown> {
@@ -105,7 +117,7 @@ function played(model: {
   return fields(result);
 }
 
-await test("CLV-016 the watch page document has the components, a script that gets Preact from the watch server and reads the data each second, and no outside resource", () => {
+await test("CLV-016 the watch page document has the components, a script that gets Preact from the watch server, listens to the event stream of the watch server and draws each second, and no outside resource", () => {
   const page = pageDocument();
   assert.match(page, /^<!doctype html>/);
   for (const part of [
@@ -116,13 +128,16 @@ await test("CLV-016 the watch page document has the components, a script that ge
     "function Page(",
     "function pageTitle(",
     'fetch("data.json", { cache: "no-store" })',
-    "setInterval(load, 1000)",
+    'new EventSource("events")',
+    "setInterval(draw, 1000)",
+    "setInterval(load, 15000)",
   ])
     assert.ok(page.includes(part), part);
+  assert.equal(page.includes("setInterval(load, 1000)"), false);
   assert.equal(/https?:\/\//.test(page), false);
 });
 
-await test("CLV-016 the script of the watch page draws the data with Preact and its own copy of the components, keeps the nodes and a fold that the user opened, copies a command, follows the end of the page only while the run is in work and goes to the top when a decision arrives", () => {
+await test("CLV-016 the script of the watch page reads the data at each message of the event stream and draws it with Preact and its own copy of the components, keeps the nodes and a fold that the user opened, copies a command, follows the end of the page only while the run is in work and goes to the top when a decision arrives", () => {
   const done = sampleRun({
     runId: "run-2",
     state: "completed",
@@ -146,7 +161,9 @@ await test("CLV-016 the script of the watch page draws the data with Preact and 
     down: true,
     copied: [sampleDecision.approve],
     scrolled: [0, 2000, 0],
-    timers: [1000],
+    timers: [1000, 15000],
     other: pageTitle(model, "run-2"),
+    streams: ["events"],
+    unread: 0,
   });
 });

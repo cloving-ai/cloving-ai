@@ -11,6 +11,7 @@ import {
 } from "../broker/actor/authority.ts";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { Reply, ServiceRequest } from "../protocol.ts";
+import { changeSignal } from "./changes.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { expiryScan } from "./expiry.ts";
@@ -190,6 +191,7 @@ async function started(
   const clock = options.clock ?? wallClock;
   const { textBytes, documentBytes } = options.limits ?? serviceLimits;
   await rm(path, { force: true });
+  const changes = changeSignal(authority.changes.subscribe);
   const listener = await listen({
     path,
     limits: { idleMilliseconds: timing.idleMilliseconds },
@@ -198,6 +200,7 @@ async function started(
       registry,
       gateway,
       clock,
+      changed: changes.next,
       livenessMilliseconds: timing.livenessMilliseconds,
       followMilliseconds: timing.followMilliseconds,
       resolverMilliseconds: timing.resolverMilliseconds,
@@ -219,6 +222,7 @@ async function started(
     epoch: authority.epoch,
     worker: setup.worker,
     close: async () => {
+      changes.close();
       await expiry.stop();
       await listener.close();
       stopping.abort();

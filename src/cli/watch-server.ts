@@ -1,5 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { createServer, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Fields, ServiceRequest } from "../protocol.ts";
@@ -7,6 +11,7 @@ import { send } from "./client.ts";
 import { turnOf, watchModel } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchModel, WatchTurn } from "./watch-render.ts";
+import { watchStream, type WatchStream } from "./watch-stream.ts";
 
 export const defaultWatchPort = 3663;
 
@@ -182,9 +187,37 @@ function replied(response: ServerResponse, reply: Reply): void {
   response.end(reply.body);
 }
 
+function subscribed(
+  stream: WatchStream,
+  exchange: {
+    readonly request: IncomingMessage;
+    readonly response: ServerResponse;
+  },
+): void {
+  const { request, response } = exchange;
+  const changed = (): void => {
+    response.write("data: change\n\n");
+  };
+  response.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-store",
+  });
+  changed();
+  request.once("close", stream.subscribe(changed));
+}
+
 export function watchServer(settings: WatchSettings): Promise<number> {
   const watch: Watch = { settings, details: new Map(), streams: new Map() };
+  const stream = watchStream({
+    runtimeDirectory: settings.runtimeDirectory,
+    journal: join(dirname(settings.runtimeDirectory), "journal"),
+    retryMilliseconds: 1000,
+  });
   const server = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/events") {
+      subscribed(stream, { request, response });
+      return;
+    }
     answered(watch, request).then(
       (reply) => {
         replied(response, reply);
@@ -196,6 +229,7 @@ export function watchServer(settings: WatchSettings): Promise<number> {
   });
   return new Promise((settle) => {
     server.once("error", (error) => {
+      stream.close();
       settings.complain(`watch-not-started: ${error.message}\n`);
       settle(1);
     });
@@ -204,6 +238,7 @@ export function watchServer(settings: WatchSettings): Promise<number> {
       settings.announce(`Watch page: http://127.0.0.1:${String(bound)}/\n`);
     });
     const closed = (): void => {
+      stream.close();
       server.close();
       server.closeAllConnections();
       settle(0);

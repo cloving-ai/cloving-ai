@@ -1,5 +1,6 @@
 import {
   Actor,
+  broadcastValue,
   type ActorClass,
   type Database,
   type JsonObject,
@@ -54,6 +55,10 @@ export function authorityActor(parts: ActorParts): AuthorityActorClass {
 
     sequence = 0;
     epoch = 0;
+
+    override observables(): Record<string, unknown> {
+      return { sequence: broadcastValue(this.sequence) };
+    }
 
     beginEpoch(): JsonObject {
       this.epoch += 1;

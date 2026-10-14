@@ -5,6 +5,7 @@ import type {
 } from "../broker/actor/authority.ts";
 import { isRecordKey } from "../authority/commands.ts";
 import type { Fields, Reply } from "../protocol.ts";
+import type { ChangeSignal } from "./changes.ts";
 import type { Gateway } from "./gateway.ts";
 import type { Registry } from "./registry.ts";
 
@@ -19,6 +20,7 @@ export interface ServiceContext {
   readonly textBytes: number;
   readonly documentBytes: number;
   readonly worldReports?: () => readonly unknown[];
+  readonly changed?: ChangeSignal["next"];
 }
 
 const codes: Readonly<Record<string, string>> = {

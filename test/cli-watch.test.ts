@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { waitingGate, withHarness } from "./service-fixture.ts";
@@ -134,6 +135,45 @@ await test("CLV-016 cloving watch serves the page, the Preact file of the instal
       );
       assert.equal(busy.status, 1);
       assert.match(busy.output, /^watch-not-started: /);
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+    await service.close();
+  }));
+
+async function nextMessage(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  for (;;) {
+    const chunk = await reader.read();
+    const text = decoder.decode(chunk.value);
+    if (chunk.done || text.includes("data:")) return text;
+  }
+}
+
+await test("CLV-016 cloving watch has an event stream that sends one message at the connection of a page and one message for a change that the service commits", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const watch = await watching(harness.runtimeDirectory);
+    try {
+      const response = await fetch(`${watch.address}events`);
+      assert.match(
+        String(response.headers.get("content-type")),
+        /^text\/event-stream/,
+      );
+      assert.ok(response.body);
+      const reader = response.body.getReader();
+      assert.match(await nextMessage(reader), /data: change\n\n/);
+      await delay(300);
+      const next = nextMessage(reader);
+      await waitingGate(harness, {
+        service,
+        commandId: "c-7",
+        kind: "approval",
+      });
+      assert.match(await next, /data: change\n\n/);
+      await reader.cancel();
     } finally {
       assert.equal(await watch.stop(), 0);
     }

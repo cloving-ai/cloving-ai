@@ -133,7 +133,7 @@ button { font: inherit; border: 1px solid var(--line); border-radius: 6px; backg
 `;
 
 const loader = `
-const state = { model: null, stale: false, copied: "", label: "", run: "" };
+const state = { model: null, stale: false, copied: "", label: "", run: "", loading: false, again: false };
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
   state.run = next;
@@ -164,6 +164,9 @@ function draw() {
   moved(selectedRun(model, selected)?.state ?? "", followed);
 }
 async function load() {
+  state.again = state.loading;
+  if (state.loading) return;
+  state.loading = true;
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
     state.model = await reply.json();
@@ -171,12 +174,20 @@ async function load() {
   } catch {
     state.stale = true;
   }
+  state.loading = false;
   draw();
+  if (state.again) load();
+}
+function listen() {
+  const source = new EventSource("events");
+  source.onmessage = () => { load(); };
+  source.onerror = () => { state.stale = true; draw(); };
 }
 addEventListener("hashchange", () => { state.run = ""; draw(); });
 draw();
-load();
-setInterval(load, 1000);
+listen();
+setInterval(draw, 1000);
+setInterval(load, 15000);
 `;
 
 export function pageDocument(): string {

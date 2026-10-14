@@ -50,6 +50,7 @@ const parts = {
   watchMilliseconds: 1_000,
   stopLimit: 3,
   recoveryLimit: 3,
+  subscribe: (): (() => void) => () => undefined,
 };
 
 await test("CLV-049 a background close of a fail-closed path that rejects causes no unhandled rejection", async () => {

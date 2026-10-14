@@ -61,9 +61,16 @@ async function followed(
     });
     if (!(await connection.send(published(page)))) return undefined;
     after = page.events.at(-1)?.sequence ?? after;
-    if (page.events.length === 0) await delay(context.followMilliseconds);
+    if (page.events.length === 0) await changed(context, page.latest);
   }
   return undefined;
+}
+
+function changed(context: ServiceContext, latest: number): Promise<void> {
+  const milliseconds = context.followMilliseconds;
+  return context.changed === undefined
+    ? delay(milliseconds)
+    : context.changed({ after: latest, milliseconds });
 }
 
 async function known(context: ServiceContext, runId: string): Promise<boolean> {

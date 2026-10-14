@@ -38,7 +38,7 @@ await test("CLV-042 only the opening broker may send authority commands, and nob
   );
 });
 
-await test("CLV-042 queries, destruction and subscriptions are denied, and administration needs the broker", () => {
+await test("CLV-042 queries and destruction are denied, and administration and a subscription need the broker", () => {
   const actor = {
     actorType: "ClovingAuthority",
     actorId: "authority",
@@ -49,7 +49,12 @@ await test("CLV-042 queries, destruction and subscriptions are denied, and admin
     false,
   );
   assert.equal(policy.authorizeDestroy(actor), false);
-  assert.equal(policy.authorizeSubscription(actor), false);
+  assert.deepEqual(
+    [broker, {}, undefined].map((authorizationContext) =>
+      policy.authorizeSubscription({ ...actor, authorizationContext }),
+    ),
+    [true, false, false],
+  );
   assert.deepEqual(
     [broker, {}].map((authorizationContext) =>
       policy.authorizeAdministration({

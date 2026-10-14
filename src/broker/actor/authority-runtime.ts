@@ -15,6 +15,10 @@ import { integer, latestSequence, text } from "../../storage/domain-rows.ts";
 import { trackedDelivery } from "./authority-release.ts";
 import { authorityActor } from "./authority-actor.ts";
 import {
+  sequenceSubscriber,
+  type SequenceListener,
+} from "./authority-changes.ts";
+import {
   contentionMilliseconds,
   lockContention,
   lockExclusively,
@@ -179,6 +183,10 @@ export interface AuthorityRuntime {
     actorId: string,
   ) => Promise<Refusal | undefined>;
   readonly condition: () => Promise<string | undefined>;
+  readonly subscribe: (
+    actorId: string,
+    listener: SequenceListener,
+  ) => () => void;
 }
 
 function unhealthy(watchdog: StrandingWatchdog): string | undefined {
@@ -343,5 +351,6 @@ export function authorityRuntime(
     storedActorRefusal: (actorId) =>
       storedActorRefusal({ database, actor: ClovingAuthority, actorId }),
     condition: () => condition({ runtime, broker, watchdog }),
+    subscribe: sequenceSubscriber({ realtime: runtime.realtime, broker }),
   };
 }

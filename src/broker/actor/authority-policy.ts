@@ -1,6 +1,7 @@
 import type {
   AdministrationAuthorizationInput,
   AuthorizationInput,
+  SubscriptionAuthorizationInput,
 } from "solid-objects";
 
 const brokerOperations = ["adopt", "beginEpoch", "execute", "recover"];
@@ -12,7 +13,9 @@ export interface BrokerAuthorization {
     input: AdministrationAuthorizationInput,
   ) => boolean;
   readonly authorizeDestroy: (input: object) => boolean;
-  readonly authorizeSubscription: (input: object) => boolean;
+  readonly authorizeSubscription: (
+    input: SubscriptionAuthorizationInput,
+  ) => boolean;
 }
 
 export function brokerAuthorization(broker: object): BrokerAuthorization {
@@ -23,6 +26,6 @@ export function brokerAuthorization(broker: object): BrokerAuthorization {
     authorizeQuery: () => false,
     authorizeAdministration: (input) => input.authorizationContext === broker,
     authorizeDestroy: () => false,
-    authorizeSubscription: () => false,
+    authorizeSubscription: (input) => input.authorizationContext === broker,
   };
 }

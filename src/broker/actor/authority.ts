@@ -158,6 +158,7 @@ async function start(opening: {
       unhealthy: parts.unhealthy,
       condition: parts.condition,
       watchMilliseconds: parts.watchMilliseconds,
+      subscribe: (listener) => parts.subscribe(actorId, listener),
     }),
   };
 }

@@ -23,6 +23,11 @@ import {
 } from "../authority-restore.ts";
 import { checkedRequest } from "./authority-actor.ts";
 import {
+  subscriptions,
+  type SequenceChanges,
+  type SequenceListener,
+} from "./authority-changes.ts";
+import {
   authorityQueries,
   guardedRead,
   type AuthorityQueries,
@@ -88,6 +93,7 @@ export interface Authority {
   readonly queries: AuthorityQueries;
   readonly effects: EffectQueries;
   readonly deliver: (signal: AbortSignal) => Promise<void>;
+  readonly changes: SequenceChanges;
   readonly backup: (target: string) => Promise<void>;
   readonly close: () => Promise<void>;
 }
@@ -106,6 +112,7 @@ export interface SessionParts {
   readonly unhealthy: () => string | undefined;
   readonly condition: () => Promise<string | undefined>;
   readonly watchMilliseconds: number;
+  readonly subscribe: (listener: SequenceListener) => () => void;
 }
 
 interface Session {
@@ -118,6 +125,7 @@ interface Session {
   closed: boolean;
   running: Promise<void>;
   readonly invocations: Set<Promise<unknown>>;
+  readonly changes: ReturnType<typeof subscriptions>;
   closing: Promise<void> | null;
 }
 
@@ -132,6 +140,7 @@ export function authoritySession(parts: SessionParts): Authority {
     closed: false,
     running: Promise.resolve(),
     invocations: new Set(),
+    changes: subscriptions(parts.subscribe),
     closing: null,
   };
   const read = guardedRead({
@@ -170,6 +179,7 @@ export function authoritySession(parts: SessionParts): Authority {
     queries: authorityQueries(read),
     effects: effectQueries(read, { stopLimit: parts.stopLimit }),
     deliver: (signal) => deliver(session, signal),
+    changes: { subscribe: session.changes.add },
     backup: (target) => backup(session, target),
     close: () => close(session),
   };
@@ -184,6 +194,7 @@ function close(session: Session): Promise<void> {
 async function stopped(session: Session): Promise<void> {
   try {
     session.stopping.abort();
+    session.changes.close();
     await Promise.allSettled([session.running, ...session.invocations]);
     await session.parts.stop();
   } catch (error) {
