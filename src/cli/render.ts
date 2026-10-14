@@ -117,15 +117,13 @@ function binding(decision: unknown): string {
   return `--expected-revision ${show(part(decision, "revision"))} --generation ${show(part(decision, "generation"))} --subject-digest ${show(part(decision, "subjectDigest"))}`;
 }
 
-const textOptions: ReadonlyMap<unknown, string> = new Map([
-  ["answer", " --text <answer>"],
-  ["deny", ' --text "<feedback>"'],
-]);
-
 function suggestion(decision: unknown, command: unknown): string {
   const reference = part(decision, "label") ?? part(decision, "decisionId");
-  const text = textOptions.get(command) ?? "";
-  return `  cloving ${show(command)} ${show(reference)}${text} ${binding(decision)}`;
+  const head = `  cloving ${show(command)} ${show(reference)}`;
+  const tail = binding(decision);
+  if (command === "answer") return `${head} --text <answer> ${tail}`;
+  if (command === "deny") return `${head} --text "<feedback>" ${tail}`;
+  return `${head} ${tail}`;
 }
 
 function decisionLines(decision: unknown): readonly string[] {

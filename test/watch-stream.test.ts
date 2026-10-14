@@ -38,19 +38,6 @@ await test("CLV-016 a burst of changes of the watch stream gives one notificatio
   assert.equal(calls.length, 3);
 });
 
-function unstartedFolderGrows(
-  seen: Counter,
-  journal: string,
-): Promise<boolean> {
-  const targets = join(journal, "targets");
-  const lines = join(targets, "turn.jsonl");
-  mkdirSync(targets, { recursive: true });
-  writeFileSync(lines, "{}\n");
-  return more(seen, () => {
-    appendFileSync(lines, "{}\n");
-  });
-}
-
 async function followedTurn(
   harness: Harness,
   watched: { readonly seen: Counter; readonly journal: string },
@@ -69,8 +56,13 @@ async function followedTurn(
     await more(seen, () => startedRun(harness, { service, commandId: "c-1" })),
     "the service commits a change",
   );
+  const unstartedLines = join(journal, "targets", "turn.jsonl");
+  mkdirSync(dirname(unstartedLines), { recursive: true });
+  writeFileSync(unstartedLines, "{}\n");
   assert.equal(
-    await unstartedFolderGrows(seen, journal),
+    await more(seen, () => {
+      appendFileSync(unstartedLines, "{}\n");
+    }),
     false,
     "the stream file of a folder with no start file gets a line",
   );
