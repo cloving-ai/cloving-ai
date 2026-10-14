@@ -112,6 +112,7 @@ await test("CLV-065 the watch model gives a develop-issue run its steps, its pul
     client: "cloving",
     updatedAt: "2026-10-14T10:10:00.000Z",
     service: "up",
+    workflows: ["develop-issue", "develop-ticket", "develop-prompt"],
     runs: [
       run("run-1", { workflowId: "develop-issue", minute: 3 }),
       run("run-4", { workflowId: "develop-ticket", minute: 2 }),

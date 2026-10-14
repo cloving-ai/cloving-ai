@@ -6,8 +6,7 @@ import {
 } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Fields, ServiceRequest } from "../protocol.ts";
-import { send } from "./client.ts";
+import { watchReader, type WatchReader } from "./watch-reads.ts";
 import { turnOf, watchModel, type GithubRecords } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchModel, WatchTurn } from "./watch-render.ts";
@@ -32,19 +31,13 @@ interface Reply {
 
 interface Watch {
   readonly settings: WatchSettings;
-  readonly details: Map<string, { sequence: unknown; value: unknown }>;
+  readonly reader: WatchReader;
   readonly streams: Map<string, { size: number; lines: readonly string[] }>;
   readonly github: Map<string, GithubRecords>;
 }
 
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
-const shownRuns = 12;
-
-function list(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value.map((item: unknown) => item) : [];
-}
-
 function parsed(text: string): unknown {
   try {
     const value: unknown = JSON.parse(text);
@@ -52,47 +45,6 @@ function parsed(text: string): unknown {
   } catch {
     return null;
   }
-}
-
-async function asked(watch: Watch, request: ServiceRequest): Promise<Fields> {
-  const reply = await send(watch.settings.runtimeDirectory, request);
-  return reply.kind === "error" ? {} : reply.result;
-}
-
-async function detailed(watch: Watch, run: unknown): Promise<unknown> {
-  const runId = String(Reflect.get(Object(run), "runId"));
-  const sequence: unknown = Reflect.get(Object(run), "latestSequence");
-  const known = watch.details.get(runId);
-  if (known !== undefined && known.sequence === sequence) return known.value;
-  const shown = await asked(watch, {
-    operation: "status",
-    parameters: { runId },
-  });
-  const events = await asked(watch, {
-    operation: "events",
-    parameters: { runId, after: 0, limit: 1000 },
-  });
-  const value = { status: shown["run"], events: events["events"] };
-  watch.details.set(runId, { sequence, value });
-  return value;
-}
-
-async function service(watch: Watch): Promise<{
-  readonly service: string;
-  readonly runs: readonly unknown[];
-  readonly decisions: readonly unknown[];
-}> {
-  const status = await asked(watch, { operation: "status", parameters: {} });
-  if (!Array.isArray(status["runs"]))
-    return { service: "down", runs: [], decisions: [] };
-  const runs: unknown[] = [];
-  for (const run of list(status["runs"]).slice(-shownRuns))
-    runs.push(await detailed(watch, run));
-  const questions = await asked(watch, {
-    operation: "questions",
-    parameters: {},
-  });
-  return { service: "up", runs, decisions: list(questions["decisions"]) };
 }
 
 interface Stream {
@@ -155,9 +107,13 @@ async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
   return keys.flatMap((key) => watch.github.get(key) ?? []);
 }
 
-async function snapshot(watch: Watch): Promise<WatchModel> {
+async function snapshot(
+  watch: Watch,
+  runId: string | null,
+): Promise<WatchModel> {
+  const updatedAt = new Date().toISOString();
   const [read, journal, github] = await Promise.all([
-    service(watch),
+    runId === null ? watch.reader.read(updatedAt) : watch.reader.run(runId),
     turns(watch),
     githubRecords(watch),
   ]);
@@ -165,7 +121,7 @@ async function snapshot(watch: Watch): Promise<WatchModel> {
     ...read,
     host: dirname(watch.settings.runtimeDirectory),
     client: watch.settings.client,
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     turns: journal,
     githubRecords: github,
   });
@@ -178,7 +134,8 @@ async function answered(
     readonly url?: string | undefined;
   },
 ): Promise<Reply> {
-  const path = new URL(String(request.url), "http://localhost").pathname;
+  const url = new URL(String(request.url), "http://localhost");
+  const path = url.pathname;
   if (request.method !== "GET") return notFound;
   if (path === "/")
     return {
@@ -193,10 +150,13 @@ async function answered(
       body: await readFile(libraryFile, "utf8"),
     };
   if (path !== "/data.json") return notFound;
+  const runId = url.searchParams.get("runId");
+  const model = await snapshot(watch, runId);
+  if (runId !== null && model.runs.length === 0) return notFound;
   return {
     status: 200,
     type: "application/json",
-    body: JSON.stringify(await snapshot(watch)),
+    body: JSON.stringify(runId === null ? model : { run: model.runs[0] }),
   };
 }
 
@@ -230,7 +190,7 @@ function subscribed(
 export function watchServer(settings: WatchSettings): Promise<number> {
   const watch: Watch = {
     settings,
-    details: new Map(),
+    reader: watchReader(settings.runtimeDirectory),
     streams: new Map(),
     github: new Map(),
   };

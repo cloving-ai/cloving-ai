@@ -175,7 +175,15 @@ async function load() {
   state.loading = true;
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
-    state.model = await reply.json();
+    let model = await reply.json();
+    const selected = location.hash.slice(1);
+    if (selected !== "" && !model.runs.some((run) => run.runId === selected)) {
+      const detail = await fetch("data.json?runId=" + encodeURIComponent(selected), { cache: "no-store" });
+      if (!detail.ok) throw new Error("run-not-available");
+      const { run } = await detail.json();
+      model = { ...model, runs: [...model.runs, run] };
+    }
+    state.model = model;
     state.stale = false;
   } catch {
     state.stale = true;
@@ -189,7 +197,7 @@ function listen() {
   source.onmessage = () => { load(); };
   source.onerror = () => { state.stale = true; draw(); };
 }
-addEventListener("hashchange", () => { state.run = ""; draw(); });
+addEventListener("hashchange", () => { state.run = ""; draw(); load(); });
 draw();
 listen();
 setInterval(draw, 1000);

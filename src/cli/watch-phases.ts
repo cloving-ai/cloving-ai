@@ -18,7 +18,7 @@ const endings = [
 const review = { open: "gate.opened", close: "gate.decided" };
 const effect = { open: "effect.requested", close: "effect.reported" };
 const issueWorkflow = "develop-issue";
-const issueSteps = [
+export const issueSteps = [
   { name: "Work tree", operation: "github-prepare" },
   { name: "Claude turn", operation: "claude-turn" },
   { name: "Pull request", operation: "github-open-pr" },
