@@ -73,7 +73,7 @@ function ports(scene: {
       outcomes.push(receipt);
       return scene.unreadable?.includes(receipt) === true
         ? Promise.reject(new Error("the World record is not readable"))
-        : Promise.resolve("handoff_requested");
+        : Promise.resolve({ kind: "handoff_requested" });
     },
     submit: (command) => {
       submitted.push(String(command["commandId"]));

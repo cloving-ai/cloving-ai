@@ -33,9 +33,10 @@ interface Snapshot {
 
 async function snapshot(context: ServiceContext): Promise<Snapshot> {
   const { authority } = context;
+  const state = await authority.state();
   const sequences = await authority.queries.sequences();
   return {
-    state: await authority.state(),
+    state,
     operations: await authority.operations(),
     sequences: sequences.runs,
     times: sequences.times,
@@ -95,6 +96,7 @@ async function effectInput(
 
 type ShownRun = RunView & {
   readonly workflowId: string;
+  readonly latestAt: string | null;
   readonly unresolvedEffects: readonly string[];
   readonly feedback: readonly Fields[];
 };
@@ -128,6 +130,7 @@ async function viewOf(
   return {
     ...runView(input),
     workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
+    latestAt: times[run.runId] ?? null,
     unresolvedEffects: unresolvedEffects(input),
     feedback: await feedbackOf(context, { state, runId: run.runId }),
   };
@@ -141,6 +144,7 @@ function summary(view: ShownRun): Fields {
     condition: view.condition,
     revision: view.revision,
     latestSequence: view.latestSequence,
+    latestAt: view.latestAt,
     pendingDecisions: view.pendingDecisions,
   };
 }
@@ -185,6 +189,51 @@ function full(view: ShownRun & { readonly claudeCostUsd: number }): Fields {
   };
 }
 
+async function outcomeOf(
+  context: ServiceContext,
+  view: ShownRun,
+): Promise<Fields | null> {
+  if (view.state !== "completed") return null;
+  const page = await context.authority.queries.eventsAfter({
+    runId: view.runId,
+    after: 0,
+    limit: view.latestSequence,
+  });
+  const event = page.events.findLast(
+    (event) =>
+      event.type === "run.completed" && event.sequence <= view.latestSequence,
+  );
+  const kind = event?.payload["outcome"];
+  if (kind === undefined) return null;
+  return { kind, reason: event?.payload["outcomeReason"] ?? null };
+}
+
+async function titleOf(
+  context: ServiceContext,
+  source: {
+    readonly input: string | null | undefined;
+    readonly workflowId: string;
+  },
+): Promise<string | null> {
+  if (!source.input) return null;
+  const document = await context.authority.queries.document(source.input);
+  const input = record(JSON.parse(document ?? "null"));
+  const ticket = input?.["ticket"];
+  if (typeof ticket !== "string") return null;
+  const fallback = `Cloving task ${String(input?.["cycleId"])}`;
+  const lines = ticket.split("\n");
+  if (source.workflowId === "develop-prompt") {
+    const first = lines.find((line) => /\S/.test(line));
+    return first === undefined
+      ? fallback
+      : first.replace(/^# /, "").trim().slice(0, 200);
+  }
+  const first = lines[0] ?? "";
+  return first.startsWith("# ")
+    ? first.slice(2).trim().slice(0, 200)
+    : fallback;
+}
+
 async function listed(
   context: ServiceContext,
   page: {
@@ -202,6 +251,7 @@ async function listed(
     views.push(await viewOf(context, { snapshot: page.snapshot, runId }));
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
+    workflows: context.registry.workflowIds,
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
     worldReports: context.worldReports?.() ?? [],
@@ -225,7 +275,16 @@ export async function status(
   if (view === undefined)
     return failed("unknown-run", { detail: `No run has the ID ${named}.` });
   const claudeCostUsd = await claudeCost(context, view.runId);
-  return result("run-status", { run: full({ ...view, claudeCostUsd }) });
+  return result("run-status", {
+    run: {
+      ...full({ ...view, claudeCostUsd }),
+      outcome: await outcomeOf(context, view),
+      title: await titleOf(context, {
+        input: current.state.details[view.runId]?.input,
+        workflowId: view.workflowId,
+      }),
+    },
+  });
 }
 
 const kinds: Readonly<Record<string, string>> = {

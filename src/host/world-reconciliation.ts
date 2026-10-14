@@ -11,13 +11,18 @@ export type ReconciledState = Pick<
   "runs" | "intents" | "details" | "gates" | "commands"
 >;
 
+export interface WorkflowOutcome {
+  readonly kind: string;
+  readonly reason?: string;
+}
+
 export interface ReconciliationPorts {
   readonly state: () => Promise<ReconciledState>;
   readonly submit: (command: Readonly<Record<string, unknown>>) => Promise<{
     readonly kind: "accepted" | "duplicate" | "rejected" | "failed";
   }>;
   readonly runs: () => Promise<readonly WorldRun[]>;
-  readonly outcome: (receipt: string) => Promise<string | undefined>;
+  readonly outcome: (receipt: string) => Promise<WorkflowOutcome | undefined>;
 }
 
 export interface Pass {
@@ -43,7 +48,13 @@ async function withOutcome(
   if (read === undefined) return { ...world, status: "unreadable" };
   return read.outcome === undefined
     ? world
-    : { ...world, outcome: read.outcome };
+    : {
+        ...world,
+        outcome: read.outcome.kind,
+        ...(read.outcome.reason === undefined
+          ? {}
+          : { outcomeReason: read.outcome.reason }),
+      };
 }
 
 export async function reconcileWorld(

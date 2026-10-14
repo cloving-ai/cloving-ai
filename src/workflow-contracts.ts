@@ -27,6 +27,10 @@ export type Validation<Value> =
 const identifier = /^[A-Za-z0-9._:-]{1,128}$/;
 const reason = /^\S[\s\S]{0,255}$/;
 
+export function isBlockedReason(value: unknown): value is string {
+  return typeof value === "string" && reason.test(value);
+}
+
 const outcomes: Readonly<
   Record<
     string,
@@ -64,8 +68,8 @@ const outcomes: Readonly<
         key: "evidenceId",
         pattern: identifier,
       });
-      const blocker = textField(fields, { key: "reason", pattern: reason });
-      if (cycleId === null || evidenceId === null || blocker === null)
+      const blocker = fields["reason"];
+      if (cycleId === null || evidenceId === null || !isBlockedReason(blocker))
         return null;
       return { kind: "blocked", cycleId, reason: blocker, evidenceId };
     },

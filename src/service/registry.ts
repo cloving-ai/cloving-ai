@@ -37,6 +37,7 @@ export interface Registered extends WorkflowRegistration {
 }
 
 export interface Registry {
+  readonly workflowIds: readonly string[];
   readonly byId: (workflowId: string) => Registered | undefined;
   readonly byPin: (pin: string) => Registered | undefined;
   readonly available: (
@@ -52,6 +53,7 @@ export function workflowRegistry(
     pin: workflowPin(workflow.manifest),
   }));
   return {
+    workflowIds: registered.map((workflow) => workflow.workflowId),
     byId: (workflowId) =>
       registered.find((workflow) => workflow.workflowId === workflowId),
     byPin: (pin) => registered.find((workflow) => workflow.pin === pin),
