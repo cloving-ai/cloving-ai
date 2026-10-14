@@ -64,12 +64,16 @@ export interface WatchModel {
   readonly runs: readonly WatchRun[];
 }
 
-export function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+export interface WatchTone {
+  readonly tone: string;
+  readonly icon: string;
+  readonly label: string;
+}
+
+export interface Copying {
+  readonly command: string;
+  readonly label: string;
+  readonly onCopy: (command: string) => void;
 }
 
 export function counted(count: number, noun: string): string {
@@ -86,18 +90,9 @@ export function elapsed(from: string, to: string): string {
   return `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
 }
 
-export function renderSince(from: string, now: string): string {
-  return `<span data-since="${escapeHtml(from)}">${elapsed(from, now)}</span>`;
-}
-
-export function renderClock(time: string): string {
-  return `<span data-clock="${escapeHtml(time)}">${escapeHtml(time.slice(11, 19))}</span>`;
-}
-
-export function renderItem(item: WatchItem): string {
-  const text = escapeHtml(item.text);
-  const full = item.kind === "tool" ? ` title="${text}"` : "";
-  return `<div class="item ${escapeHtml(item.kind)}"${full}>${text}</div>`;
+export function clockTime(time: string): string {
+  const moment = new Date(time);
+  return Number.isNaN(moment.getTime()) ? "" : moment.toLocaleTimeString();
 }
 
 export function groupActivity(activity: readonly WatchItem[]): WatchItem[][] {
@@ -111,96 +106,77 @@ export function groupActivity(activity: readonly WatchItem[]): WatchItem[][] {
   }, []);
 }
 
-export function renderGroup(
-  items: readonly WatchItem[],
-  fold: { readonly key: string; readonly open: boolean },
-): string {
-  const lines = items.map(renderItem).join("");
-  if (items.length < 2) return lines;
-  const errors = items.filter((item) => item.kind === "error").length;
-  const failed =
-    errors === 0
-      ? ""
-      : ` · <span class="bad">${counted(errors, "error")}</span>`;
-  const last = escapeHtml(items.at(-1)?.text ?? "");
-  return [
-    `<details class="tools" data-key="${escapeHtml(fold.key)}"${fold.open ? " open" : ""}>`,
-    `<summary>${counted(items.length - errors, "tool call")}${failed}<span class="last">${last}</span></summary>`,
-    `${lines}</details>`,
-  ].join("");
-}
-
 export function turnTime(turn: WatchTurn, now: string): string {
-  if (turn.outcome === "in work") return renderSince(turn.startedAt, now);
+  if (turn.outcome === "in work") return elapsed(turn.startedAt, now);
   return turn.endedAt === null ? "" : elapsed(turn.startedAt, turn.endedAt);
 }
 
-export function renderTurn(turn: WatchTurn, now: string): string {
-  const groups = groupActivity(turn.activity);
-  const working = turn.outcome === "in work";
-  const cost = turn.costUsd === null ? "" : `${turn.costUsd.toFixed(2)} USD`;
-  const heading = [
-    "Claude turn",
-    escapeHtml(turn.outcome),
-    turnTime(turn, now),
-    cost,
-  ];
-  const log = groups.map((items, index) =>
-    renderGroup(items, {
-      key: `${turn.key}:${String(index)}`,
-      open: working && index === groups.length - 1,
-    }),
-  );
-  return [
-    '<section class="turn">',
-    `<h3>${heading.filter((part) => part !== "").join(" · ")}</h3>`,
-    `<p class="meta">Branch ${escapeHtml(turn.branch)} · work tree ${escapeHtml(turn.worktree)}</p>`,
-    `<div class="activity">${log.join("")}</div>`,
-    "</section>",
-  ].join("");
+export function toneOf(state: string): WatchTone {
+  const tones: Readonly<Record<string, readonly [string, string, string]>> = {
+    waiting_gate: ["attention", "!", "Needs your decision"],
+    running: ["working", "●", "In work"],
+    paused: ["attention", "Ⅱ", "Paused"],
+    completed: ["good", "✓", "Completed"],
+    failed: ["bad", "✕", "Failed"],
+    cancelled: ["bad", "✕", "Dropped"],
+  };
+  const [tone, icon, label] = tones[state] ?? ["idle", "○", state];
+  return { tone, icon, label };
 }
 
-export function renderWork(turn: WatchTurn | undefined): string {
-  if (turn === undefined) return "";
-  const block = (lines: readonly string[]): string =>
-    `<pre>${escapeHtml(lines.join("\n"))}</pre>`;
-  const loose = turn.uncommitted.length;
-  return [
-    turn.commits.length === 0
-      ? '<p class="bad">The worker made no commit.</p>'
-      : `<p class="fact">Branch <code>${escapeHtml(turn.branch)}</code> · ${counted(turn.commits.length, "commit")}</p>${block(turn.commits)}${block(turn.files)}`,
-    loose === 0
-      ? '<p class="good">All the work is committed.</p>'
-      : `<p class="bad">${counted(loose, "file")} ${loose === 1 ? "is" : "are"} not committed:</p>${block(turn.uncommitted)}`,
-    `<details data-key="report" open><summary>Report of the worker</summary><div class="report">${escapeHtml(turn.summary)}</div></details>`,
-  ].join("");
+export function runTone(run: WatchRun): WatchTone {
+  if (run.state === "completed" && run.decision === "denied")
+    return { tone: "idle", icon: "✕", label: "Denied" };
+  return toneOf(run.state);
 }
 
-export function renderCommand(label: string, command: string): string {
-  const shown = escapeHtml(command);
-  return `<div class="command"><span class="label">${escapeHtml(label)}</span><code>${shown}</code><button type="button" data-copy="${shown}">Copy</button></div>`;
+export function runName(run: WatchRun): string {
+  return run.turns[0]?.target ?? run.runId.slice(0, 12);
 }
 
-export function renderDecision(
-  decision: WatchDecision,
-  turn: WatchTurn | undefined,
-): string {
-  const open = turn === undefined ? " open" : "";
-  return [
-    '<section class="decision">',
-    `<h3>Your decision · ${escapeHtml(decision.type)}</h3>`,
-    renderWork(turn),
-    `<details data-key="prompt"${open}><summary>Full text of the request</summary><pre>${escapeHtml(decision.prompt)}</pre></details>`,
-    renderCommand("Approve", decision.approve),
-    renderCommand("Deny", decision.deny),
-    "</section>",
-  ].join("");
+export function waitingDetail(run: WatchRun, now: string): string {
+  const opened = run.phases.find((phase) => phase.state === "active");
+  const since = opened?.startedAt ?? null;
+  const waited = since === null ? "" : ` for ${elapsed(since, now)}`;
+  return `A decision waits for you${waited}. Examine the work, then approve or deny.`;
 }
 
-export function renderEvents(events: readonly WatchEvent[]): string {
-  const rows = events.map(
-    (event) =>
-      `<div class="event">${renderClock(event.recordedAt)} ${escapeHtml(event.type)}</div>`,
-  );
-  return `<details class="events" data-key="events"><summary>All events (${String(events.length)})</summary>${rows.join("")}</details>`;
+export function completedDetail(run: WatchRun): string {
+  const [first] = run.events;
+  const last = run.events.at(-1);
+  const cost = run.turns.reduce((sum, turn) => sum + (turn.costUsd ?? 0), 0);
+  const time =
+    first === undefined || last === undefined
+      ? ""
+      : ` in ${elapsed(first.recordedAt, last.recordedAt)}`;
+  const verdicts: Readonly<Record<string, string>> = {
+    approved: "You approved the work. ",
+    denied: "You denied the work. ",
+  };
+  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost.toFixed(2)} USD.`;
+}
+
+export function phaseTime(phase: WatchPhase, now: string): string {
+  if (phase.startedAt === null) return "";
+  if (phase.endedAt === null)
+    return phase.state === "active" ? elapsed(phase.startedAt, now) : "";
+  return phase.startedAt === phase.endedAt
+    ? clockTime(phase.startedAt)
+    : elapsed(phase.startedAt, phase.endedAt);
+}
+
+export function selectedRun(
+  model: WatchModel,
+  selected: string,
+): WatchRun | undefined {
+  return model.runs.find((run) => run.runId === selected) ?? model.runs[0];
+}
+
+export function pageTitle(model: WatchModel, selected: string): string {
+  const run = selectedRun(model, selected);
+  if (run === undefined) return "Cloving";
+  const waiting = model.runs.filter((item) => item.state === "waiting_gate");
+  const count = waiting.length === 0 ? "" : `(${String(waiting.length)}) `;
+  const { icon, label } = runTone(run);
+  return `${count}${icon} ${label} · ${runName(run)} · Cloving`;
 }

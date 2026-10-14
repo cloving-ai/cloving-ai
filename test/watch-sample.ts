@@ -7,6 +7,13 @@ import type {
 } from "../src/cli/watch-render.ts";
 
 export const at = (clock: string): string => `2026-10-13T${clock}.000Z`;
+export const shownClock = (clock: string): string =>
+  new Date(at(clock)).toLocaleTimeString();
+export const noCopy = {
+  command: "",
+  label: "",
+  onCopy: (): void => undefined,
+};
 
 export function sampleTurn(changes: Partial<WatchTurn> = {}): WatchTurn {
   return {

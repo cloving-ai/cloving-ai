@@ -1,180 +1,187 @@
+import { component, element, type Shown } from "./watch-element.ts";
 import {
+  clockTime,
+  completedDetail,
   counted,
   elapsed,
-  escapeHtml,
-  renderClock,
-  renderDecision,
-  renderEvents,
-  renderSince,
-  renderTurn,
+  phaseTime,
+  runName,
+  runTone,
+  selectedRun,
+  waitingDetail,
+  type Copying,
   type WatchModel,
   type WatchPhase,
   type WatchRun,
-  type WatchTurn,
 } from "./watch-render.ts";
+import { Decision, Events, Turn } from "./watch-turn.ts";
 
-export interface Tone {
-  readonly tone: string;
-  readonly icon: string;
-  readonly label: string;
+interface Timed {
+  readonly run: WatchRun;
+  readonly now: string;
 }
 
-export function toneOf(state: string): Tone {
-  const tones: Readonly<Record<string, readonly [string, string, string]>> = {
-    waiting_gate: ["attention", "!", "Needs your decision"],
-    running: ["working", "●", "In work"],
-    paused: ["attention", "Ⅱ", "Paused"],
-    completed: ["good", "✓", "Completed"],
-    failed: ["bad", "✕", "Failed"],
-    cancelled: ["bad", "✕", "Dropped"],
-  };
-  const [tone, icon, label] = tones[state] ?? ["idle", "○", state];
-  return { tone, icon, label };
-}
-
-export function runTone(run: WatchRun): Tone {
-  if (run.state === "completed" && run.decision === "denied")
-    return { tone: "idle", icon: "✕", label: "Denied" };
-  return toneOf(run.state);
-}
-
-export function runName(run: WatchRun): string {
-  return run.turns[0]?.target ?? run.runId.slice(0, 12);
-}
-
-export function workingDetail(turn: WatchTurn, now: string): string {
+export function BannerDetail(props: Timed): Shown {
+  const { run, now } = props;
+  const turn = run.turns.at(-1);
+  if (run.state === "waiting_gate") return waitingDetail(run, now);
+  if (run.state === "completed") return completedDetail(run);
+  if (run.state !== "running" || turn?.outcome !== "in work")
+    return `${run.code}: ${run.detail}`;
   const calls = turn.activity.filter((item) => item.kind === "tool").length;
   const quiet =
     turn.activeAt === null
       ? ""
-      : ` · last output ${renderSince(turn.activeAt, now)} ago`;
+      : ` · last output ${elapsed(turn.activeAt, now)} ago`;
   const last = turn.activity.at(-1)?.text ?? "The worker starts.";
-  return `Claude works for ${renderSince(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}<span class="now">${escapeHtml(last)}</span>`;
-}
-
-export function waitingDetail(run: WatchRun, now: string): string {
-  const opened = run.phases.find((phase) => phase.state === "active");
-  const since = opened?.startedAt ?? null;
-  const waited = since === null ? "" : ` for ${renderSince(since, now)}`;
-  return `A decision waits for you${waited}. Examine the work, then approve or deny.`;
-}
-
-export function completedDetail(run: WatchRun): string {
-  const [first] = run.events;
-  const last = run.events.at(-1);
-  const cost = run.turns.reduce((sum, turn) => sum + (turn.costUsd ?? 0), 0);
-  const time =
-    first === undefined || last === undefined
-      ? ""
-      : ` in ${elapsed(first.recordedAt, last.recordedAt)}`;
-  const verdicts: Readonly<Record<string, string>> = {
-    approved: "You approved the work. ",
-    denied: "You denied the work. ",
-  };
-  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost.toFixed(2)} USD.`;
-}
-
-export function bannerDetail(run: WatchRun, now: string): string {
-  const turn = run.turns.at(-1);
-  if (run.state === "running" && turn?.outcome === "in work")
-    return workingDetail(turn, now);
-  if (run.state === "waiting_gate") return waitingDetail(run, now);
-  if (run.state === "completed") return completedDetail(run);
-  return `${escapeHtml(run.code)}: ${escapeHtml(run.detail)}`;
-}
-
-export function renderBanner(run: WatchRun, now: string): string {
-  const { tone, icon, label } = runTone(run);
   return [
-    `<section class="banner ${tone}"><span class="icon">${icon}</span>`,
-    `<div><h2>${escapeHtml(label)} <span class="name">${escapeHtml(runName(run))}</span></h2>`,
-    `<p>${bannerDetail(run, now)}</p></div></section>`,
-  ].join("");
+    `Claude works for ${elapsed(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}`,
+    element("span", { class: "now", children: last }),
+  ];
 }
 
-export function phaseTime(phase: WatchPhase, now: string): string {
-  if (phase.startedAt === null) return "";
-  if (phase.endedAt === null)
-    return phase.state === "active" ? renderSince(phase.startedAt, now) : "";
-  return phase.startedAt === phase.endedAt
-    ? renderClock(phase.startedAt)
-    : elapsed(phase.startedAt, phase.endedAt);
+export function Banner(props: Timed): Shown {
+  const { run, now } = props;
+  const { tone, icon, label } = runTone(run);
+  const name = element("span", { class: "name", children: runName(run) });
+  const words = [
+    element("h2", { children: [label, " ", name] }),
+    element("p", { children: component(BannerDetail, { run, now }) }),
+  ];
+  return element("section", {
+    class: `banner ${tone}`,
+    children: [
+      element("span", { class: "icon", children: icon }),
+      element("div", { children: words }),
+    ],
+  });
 }
 
-export function renderPhases(
-  phases: readonly WatchPhase[],
-  now: string,
-): string {
+export function Phases(props: {
+  readonly phases: readonly WatchPhase[];
+  readonly now: string;
+}): Shown {
   const marks: Readonly<Record<string, string>> = {
     done: "✓",
     active: "●",
     failed: "✕",
   };
-  const steps = phases.map(
-    (phase) =>
-      `<li class="phase ${escapeHtml(phase.state)}"><span class="mark">${marks[phase.state] ?? "○"}</span><span class="name">${escapeHtml(phase.name)}</span><span class="time">${phaseTime(phase, now)}</span></li>`,
+  const steps = props.phases.map((phase) =>
+    element("li", {
+      class: `phase ${phase.state}`,
+      children: [
+        element("span", { class: "mark", children: marks[phase.state] ?? "○" }),
+        element("span", { class: "name", children: phase.name }),
+        element("span", {
+          class: "time",
+          children: phaseTime(phase, props.now),
+        }),
+      ],
+    }),
   );
-  return `<ol class="phases">${steps.join("")}</ol>`;
+  return element("ol", { class: "phases", children: steps });
 }
 
-export function renderRun(run: WatchRun, now: string): string {
-  const reviewed = run.turns.at(-1);
+export function Run(props: Timed & { readonly copying: Copying }): Shown {
+  const { run, now, copying } = props;
+  const turn = run.turns.at(-1);
   const budget =
     run.spent === null || run.limit === null
       ? ""
       : ` · ${String(run.spent)} of ${String(run.limit)} effect units`;
+  const none = "No Claude turn for this run.";
   const turns =
     run.turns.length === 0
-      ? '<p class="meta">No Claude turn for this run.</p>'
-      : run.turns.map((turn) => renderTurn(turn, now)).join("");
+      ? element("p", { class: "meta", children: none })
+      : run.turns.map((item) =>
+          component(Turn, { key: item.key, turn: item, now }),
+        );
+  const foot = [
+    `${run.workflowId} · ${run.runId}${budget}`,
+    element("br", {}),
+    `${run.code}: ${run.detail}`,
+  ];
   return [
-    renderBanner(run, now),
-    renderPhases(run.phases, now),
-    run.decisions
-      .map((decision) => renderDecision(decision, reviewed))
-      .join(""),
+    component(Banner, { run, now }),
+    component(Phases, { phases: run.phases, now }),
+    run.decisions.map((decision) =>
+      component(Decision, { decision, turn, copying }),
+    ),
     turns,
-    renderEvents(run.events),
-    `<p class="meta foot">${escapeHtml(run.workflowId)} · ${escapeHtml(run.runId)}${budget}<br>${escapeHtml(run.code)}: ${escapeHtml(run.detail)}</p>`,
-  ].join("");
+    component(Events, { events: run.events }),
+    element("p", { class: "meta foot", children: foot }),
+  ];
 }
 
-export function renderRuns(
-  runs: readonly WatchRun[],
-  selected: string,
-): string {
-  return runs
-    .map((run) => {
-      const { tone, icon, label } = runTone(run);
-      const marked = run.runId === selected ? " selected" : "";
-      return `<a class="run ${tone}${marked}" href="#${escapeHtml(run.runId)}"><span class="icon">${icon}</span> ${escapeHtml(runName(run))} · ${escapeHtml(label)}</a>`;
-    })
-    .join("");
+export function Runs(props: {
+  readonly runs: readonly WatchRun[];
+  readonly selected: string;
+}): Shown {
+  const links = props.runs.map((run) => {
+    const { tone, icon, label } = runTone(run);
+    const marked = run.runId === props.selected ? " selected" : "";
+    return element("a", {
+      class: `run ${tone}${marked}`,
+      href: `#${run.runId}`,
+      children: [
+        element("span", { class: "icon", children: icon }),
+        ` ${runName(run)} · ${label}`,
+      ],
+    });
+  });
+  return element("nav", { children: links });
 }
 
-export function selectedRun(
-  model: WatchModel,
-  selected: string,
-): WatchRun | undefined {
-  return model.runs.find((run) => run.runId === selected) ?? model.runs[0];
+export function Header(props: {
+  readonly model: WatchModel | null;
+  readonly stale: boolean;
+}): Shown {
+  const { model, stale } = props;
+  const updated = model === null ? "" : `updated ${clockTime(model.updatedAt)}`;
+  const stamp = stale
+    ? element("span", {
+        class: "bad",
+        children: "The watch tool does not answer.",
+      })
+    : element("span", { children: updated });
+  return element("header", {
+    children: [
+      element("strong", { children: "Cloving" }),
+      element("span", { children: model?.host }),
+      stamp,
+    ],
+  });
 }
 
-export function pageTitle(model: WatchModel, selected: string): string {
+export interface PageProps {
+  readonly model: WatchModel | null;
+  readonly selected: string;
+  readonly now: string;
+  readonly stale: boolean;
+  readonly copying: Copying;
+}
+
+export function Page(props: PageProps): Shown {
+  const { model, selected, now, stale, copying } = props;
+  const head = component(Header, { model, stale });
+  const text = (tone: string, children: Shown): Shown =>
+    element("p", { class: tone, children });
+  const waits = "The page waits for the first data of the watch tool.";
+  if (model === null) return [head, text("meta", waits)];
+  const lost =
+    "The Cloving service does not answer. The page shows the last known records.";
+  const down = model.service === "up" ? null : text("down", lost);
   const run = selectedRun(model, selected);
-  if (run === undefined) return "Cloving";
-  const waiting = model.runs.filter((item) => item.state === "waiting_gate");
-  const count = waiting.length === 0 ? "" : `(${String(waiting.length)}) `;
-  const { icon, label } = runTone(run);
-  return `${count}${icon} ${label} · ${runName(run)} · Cloving`;
-}
-
-export function renderPage(model: WatchModel, selected: string): string {
-  const down =
-    model.service === "up"
-      ? ""
-      : '<p class="down">The Cloving service does not answer. The page shows the last known records.</p>';
-  const run = selectedRun(model, selected);
-  if (run === undefined)
-    return `${down}<p class="meta">No run yet. Submit one with <code>cloving run</code>.</p>`;
-  return `${down}<nav>${renderRuns(model.runs, run.runId)}</nav>${renderRun(run, model.updatedAt)}`;
+  const hint = [
+    "No run yet. Submit one with ",
+    element("code", { children: "cloving run" }),
+    ".",
+  ];
+  if (run === undefined) return [head, down, text("meta", hint)];
+  return [
+    head,
+    down,
+    component(Runs, { runs: model.runs, selected: run.runId }),
+    component(Run, { key: run.runId, run, now, copying }),
+  ];
 }

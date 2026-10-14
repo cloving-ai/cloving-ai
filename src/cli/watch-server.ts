@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Fields, ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { turnOf, watchModel } from "./watch-model.ts";
@@ -31,6 +32,7 @@ interface Watch {
 }
 
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
+const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 const shownRuns = 12;
 
 function list(value: unknown): readonly unknown[] {
@@ -157,6 +159,12 @@ async function answered(
       status: 200,
       type: "text/html; charset=utf-8",
       body: pageDocument(),
+    };
+  if (path === "/preact.mjs")
+    return {
+      status: 200,
+      type: "text/javascript; charset=utf-8",
+      body: await readFile(libraryFile, "utf8"),
     };
   if (path !== "/data.json") return notFound;
   return {

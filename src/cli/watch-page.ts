@@ -1,67 +1,65 @@
 import {
+  clockTime,
+  completedDetail,
   counted,
   elapsed,
-  escapeHtml,
   groupActivity,
-  renderClock,
-  renderCommand,
-  renderDecision,
-  renderEvents,
-  renderGroup,
-  renderItem,
-  renderSince,
-  renderTurn,
-  renderWork,
-  turnTime,
-} from "./watch-render.ts";
-import {
-  bannerDetail,
-  completedDetail,
   pageTitle,
   phaseTime,
-  renderBanner,
-  renderPage,
-  renderPhases,
-  renderRun,
-  renderRuns,
   runName,
   runTone,
   selectedRun,
   toneOf,
+  turnTime,
   waitingDetail,
-  workingDetail,
+} from "./watch-render.ts";
+import {
+  Command,
+  Decision,
+  Events,
+  Group,
+  Item,
+  Turn,
+  Work,
+} from "./watch-turn.ts";
+import {
+  Banner,
+  BannerDetail,
+  Header,
+  Page,
+  Phases,
+  Run,
+  Runs,
 } from "./watch-view.ts";
 
 const functions = [
-  escapeHtml,
   counted,
   elapsed,
-  renderSince,
-  renderClock,
-  renderItem,
+  clockTime,
   groupActivity,
-  renderGroup,
   turnTime,
-  renderTurn,
-  renderWork,
-  renderCommand,
-  renderDecision,
-  renderEvents,
   toneOf,
   runTone,
   runName,
-  workingDetail,
   waitingDetail,
   completedDetail,
-  bannerDetail,
-  renderBanner,
   phaseTime,
-  renderPhases,
-  renderRun,
-  renderRuns,
   selectedRun,
   pageTitle,
-  renderPage,
+  Item,
+  Group,
+  Turn,
+  Work,
+  Command,
+  Decision,
+  Events,
+  BannerDetail,
+  Banner,
+  Phases,
+  Run,
+  Runs,
+  Header,
+  Page,
 ];
 
 const style = `
@@ -97,7 +95,7 @@ a.run.selected { border-color: CanvasText; font-weight: 600; }
 .banner .name { font-weight: 400; font-size: 13px; color: var(--soft); margin-left: 6px; }
 .banner p { margin: 2px 0 0; }
 .now { display: block; color: var(--soft); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-[data-since] { font-variant-numeric: tabular-nums; }
+.banner p, .phase .time, h3 { font-variant-numeric: tabular-nums; }
 .phases { display: flex; gap: 4px; list-style: none; margin: 12px 0 4px; padding: 0; }
 .phase { flex: 1; display: grid; grid-template-columns: auto 1fr; column-gap: 5px; border-top: 3px solid var(--line); padding-top: 6px; color: var(--soft); font-size: 12px; }
 .phase.done, .phase.active, .phase.failed { color: CanvasText; }
@@ -135,83 +133,64 @@ button { font: inherit; border: 1px solid var(--line); border-radius: 6px; backg
 `;
 
 const loader = `
-let shown = "";
-let state = "";
-const folds = new Map();
-function refold() {
-  for (const fold of document.querySelectorAll("details[data-key]")) {
-    const choice = folds.get(fold.dataset.key);
-    if (choice !== undefined) fold.open = choice;
-  }
-}
-function tick() {
-  const now = new Date().toISOString();
-  for (const item of document.querySelectorAll("[data-since]"))
-    item.textContent = elapsed(item.dataset.since, now);
-}
-function localize() {
-  for (const item of document.querySelectorAll("[data-clock]"))
-    item.textContent = new Date(item.dataset.clock).toLocaleTimeString();
-}
-function stamped(text, tone) {
-  const stamp = document.getElementById("stamp");
-  stamp.textContent = text;
-  stamp.className = tone;
-}
+const state = { model: null, stale: false, copied: "", label: "", run: "" };
 function moved(next, followed) {
-  const arrived = next === "waiting_gate" && next !== state;
-  state = next;
+  const arrived = next === "waiting_gate" && next !== state.run;
+  state.run = next;
   if (arrived) scrollTo(0, 0);
   else if (followed && next === "running") scrollTo(0, document.body.scrollHeight);
 }
-function clovingUpdate(model) {
+function copy(command) {
+  const shown = (label) => {
+    state.copied = command;
+    state.label = label;
+    draw();
+  };
+  navigator.clipboard.writeText(command).then(
+    () => { shown("Copied"); },
+    () => { shown("Copy failed"); },
+  );
+}
+function draw() {
+  const { model, stale } = state;
   const selected = location.hash.slice(1);
-  stamped("updated " + new Date(model.updatedAt).toLocaleTimeString(), "");
-  document.getElementById("host").textContent = model.host;
-  document.title = pageTitle(model, selected);
-  const next = JSON.stringify([model.service, model.runs, selected]);
-  if (next === shown) return;
-  shown = next;
   const followed = innerHeight + scrollY >= document.body.scrollHeight - 80;
-  document.getElementById("app").innerHTML = renderPage(model, selected);
-  refold();
-  localize();
-  tick();
+  const copying = { command: state.copied, label: state.label, onCopy: copy };
+  const now = new Date().toISOString();
+  const page = component(Page, { model, selected, now, stale, copying });
+  render(page, document.getElementById("app"));
+  if (model === null) return;
+  document.title = pageTitle(model, selected);
   moved(selectedRun(model, selected)?.state ?? "", followed);
 }
 async function load() {
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
-    clovingUpdate(await reply.json());
+    state.model = await reply.json();
+    state.stale = false;
   } catch {
-    stamped("The watch tool does not answer.", "bad");
+    state.stale = true;
   }
+  draw();
 }
-addEventListener("hashchange", () => { shown = ""; state = ""; load(); });
-addEventListener("click", (event) => {
-  const fold = event.target.closest("summary")?.parentElement;
-  if (fold?.dataset.key !== undefined) folds.set(fold.dataset.key, !fold.open);
-  const copy = event.target.closest("[data-copy]");
-  if (copy === null) return;
-  navigator.clipboard.writeText(copy.dataset.copy).then(
-    () => { copy.textContent = "Copied"; },
-    () => { copy.textContent = "Copy failed"; },
-  );
-});
+addEventListener("hashchange", () => { state.run = ""; draw(); });
+draw();
 load();
 setInterval(load, 1000);
-setInterval(tick, 1000);
 `;
 
 export function pageDocument(): string {
-  const script = `${functions.map((item) => item.toString()).join("\n")}\n${loader}`;
+  const script = [
+    'import { h as element, h as component, render } from "./preact.mjs";',
+    ...functions.map((item) => item.toString()),
+    loader,
+  ].join("\n");
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><title>Cloving</title><link rel="icon" href="data:,">',
     `<style>${style}</style></head><body>`,
-    '<header><strong>Cloving</strong><span id="host"></span><span id="stamp"></span></header>',
-    '<main id="app"><p class="meta">The page waits for the first data of the watch tool.</p></main>',
-    `<script>${script}</script></body></html>`,
+    '<div id="app"></div>',
+    `<script type="module">${script}</script></body></html>`,
     "",
   ].join("\n");
 }

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { waitingGate, withHarness } from "./service-fixture.ts";
 import { refusedWatch, watchedModel, watching } from "./watch-fixture.ts";
@@ -41,6 +42,21 @@ function journal(runtimeDirectory: string, runId: string): void {
   );
 }
 
+async function served(address: string): Promise<void> {
+  const page = await fetch(address);
+  assert.match(String(page.headers.get("content-type")), /^text\/html/);
+  assert.match(await page.text(), /function Page\(/);
+  const library = await fetch(`${address}preact.mjs`);
+  assert.match(
+    String(library.headers.get("content-type")),
+    /^text\/javascript/,
+  );
+  assert.equal(
+    await library.text(),
+    readFileSync(fileURLToPath(import.meta.resolve("preact")), "utf8"),
+  );
+}
+
 await test("CLV-016 the parser reads the watch command with an optional port, and it refuses an argument, a port that is no port and each other option", () => {
   const words = (line: string): readonly string[] => line.split(" ");
   assert.deepEqual(parseInvocation(words("watch")), {
@@ -66,7 +82,7 @@ await test("CLV-016 the parser reads the watch command with an optional port, an
     });
 });
 
-await test("CLV-016 cloving watch serves the page and the run data of its service on the loopback address, with the decision commands and the Claude turn of a run, and gives 404 for each other request", () =>
+await test("CLV-016 cloving watch serves the page, the Preact file of the installed package and the run data of its service on the loopback address, with the decision commands and the Claude turn of a run, and gives 404 for each other request", () =>
   withHarness(async (harness) => {
     const service = await harness.start();
     const waiting = await waitingGate(harness, {
@@ -77,9 +93,7 @@ await test("CLV-016 cloving watch serves the page and the run data of its servic
     journal(harness.runtimeDirectory, waiting.runId);
     const watch = await watching(harness.runtimeDirectory);
     try {
-      const page = await fetch(watch.address);
-      assert.match(String(page.headers.get("content-type")), /^text\/html/);
-      assert.match(await page.text(), /function renderPage\(/);
+      await served(watch.address);
       const first: unknown = await (
         await fetch(`${watch.address}data.json`)
       ).json();

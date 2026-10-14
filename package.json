@@ -75,6 +75,7 @@
     }
   },
   "dependencies": {
+    "preact": "11.0.0",
     "solid-objects": "0.17.8",
     "workflow": "5.1.0"
   }
