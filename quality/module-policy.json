@@ -523,6 +523,7 @@
     "test/watch-sample.ts": "test",
     "src/cli/main.ts": "cli",
     "test/cli-watch.test.ts": "test",
+    "test/cli-start-usage.test.ts": "test",
     "test/watch-fixture.ts": "test"
   },
   "allowed": {
