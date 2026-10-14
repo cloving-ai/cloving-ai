@@ -118,15 +118,18 @@ async function outcome(
   end: TurnEnd,
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
-  const result = end.exitCode === 0 ? end.result : undefined;
-  if (result !== undefined && !result.failed)
-    return {
-      outcome: "completed",
-      result: await resultText(running.tree, result),
-      endedAt,
-    };
+  const { result } = end;
+  const text =
+    result === undefined ? undefined : await resultText(running.tree, result);
+  if (text !== undefined && end.exitCode === 0 && result?.failed === false)
+    return { outcome: "completed", result: text, endedAt };
   if (running.stopping.requested) return { outcome: "stopped", endedAt };
-  return { outcome: "failed", reason: "claude-turn-failed", endedAt };
+  return {
+    outcome: "failed",
+    reason: "claude-turn-failed",
+    ...(text === undefined ? {} : { result: text }),
+    endedAt,
+  };
 }
 
 function reported(started: Started, recorded: Recorded): WorkerReport {

@@ -54,6 +54,7 @@ await test("CLV-049 the command check accepts each protected effect command with
     { ...base, kind: "expire-lease", operationId, leaseGeneration: 1 },
     report,
     { ...report, outcome: "failed", result: undefined, reason: "tool-exit" },
+    { ...report, outcome: "failed", reason: "tool-exit" },
     { ...report, outcome: "stopped", result: undefined },
     {
       ...outcome,
@@ -105,6 +106,7 @@ await test("CLV-049 the command check rejects a protected effect command with a 
     { ...report, outcome: "completed", result: undefined },
     { ...report, outcome: "failed", result: undefined },
     { ...report, outcome: "stopped", reason: "tool-exit", result: digest },
+    { ...report, outcome: "stopped" },
     { ...report, leaseGeneration: 0 },
     { ...report, worker: "" },
     { ...outcome, outcome: "sent" },

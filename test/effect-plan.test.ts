@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { effectSettings } from "../src/broker/actor/authority-settings.ts";
 import { stageable } from "../src/broker/actor/delivery-intents.ts";
-import { outcomeCommand, promoted } from "../src/broker/actor/effect-plan.ts";
+import {
+  outcomeCommand,
+  promoted,
+  resultDocuments,
+} from "../src/broker/actor/effect-plan.ts";
 import { digestOf } from "./digest-fixture.ts";
 import {
   admission,
@@ -142,6 +146,35 @@ await test("CLV-049 the outcome command of a closed attempt has the effect ID in
       worker: null,
     }),
     { ...base, outcome: "stopped" },
+  );
+});
+
+await test("CLV-066 the outcome command and the documents of a failed attempt keep its result", () => {
+  const failed = {
+    ...attempt,
+    outcome: "failed",
+    reason: "tool-exit",
+    result: "the text",
+  };
+  assert.deepEqual(outcomeCommand(failed), {
+    kind: "record-outcome",
+    commandId: "outcome:effect-1",
+    runId: "run-1",
+    operationId: operationOf(1),
+    leaseGeneration: 2,
+    outcome: "failed",
+    reason: "tool-exit",
+    result: digestOf("the text"),
+    receipt: "receipt-1",
+    worker: "worker-2",
+  });
+  assert.deepEqual(
+    [
+      resultDocuments(failed),
+      resultDocuments({ ...failed, outcome: "stopped" }),
+      resultDocuments({ ...failed, result: null }),
+    ],
+    [[{ digest: digestOf("the text"), body: "the text" }], [], []],
   );
 });
 

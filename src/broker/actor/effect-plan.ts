@@ -182,6 +182,7 @@ const outcomes: Readonly<Record<string, Outcome>> = {
     stated({
       outcome: "failed",
       reason: attempt.reason,
+      result: attempt.result === null ? null : documentDigest(attempt.result),
       ...identified(attempt),
     }),
   stopped: (attempt) => stated({ outcome: "stopped", ...identified(attempt) }),
@@ -215,7 +216,8 @@ export function outcomeCommand(attempt: ClosedAttempt): Fields | undefined {
 export function resultDocuments(
   attempt: Pick<ClosedAttempt, "outcome" | "result">,
 ): readonly Fields[] {
-  if (attempt.outcome !== "completed" || attempt.result === null) return [];
+  const kept = ["completed", "failed"].includes(attempt.outcome);
+  if (!kept || attempt.result === null) return [];
   return [{ digest: documentDigest(attempt.result), body: attempt.result }];
 }
 

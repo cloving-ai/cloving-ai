@@ -97,6 +97,7 @@ function runStatus(result: Fields): readonly string[] {
   const reason = part(run, "reason");
   const recovery = part(run, "recovery");
   const at = part(run, "nextActionAt") ?? null;
+  const cost = part(run, "claudeCostUsd");
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
     `State: ${show(part(run, "state"))}`,
@@ -107,6 +108,7 @@ function runStatus(result: Fields): readonly string[] {
     `Evidence: ${listing(part(run, "evidence"))}`,
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
+    `Claude cost: ${(typeof cost === "number" ? cost : 0).toFixed(2)} USD`,
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
     ...feedbackLines(part(run, "feedback")),

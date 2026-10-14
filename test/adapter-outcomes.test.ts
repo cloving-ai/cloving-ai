@@ -55,6 +55,20 @@ await test("CLV-049 a completed, failed or stopped reply keeps the receipt and t
   );
 });
 
+await test("CLV-066 a failed reply keeps a result that is in the size limit, and drops a result that is too large", () => {
+  const failure = { kind: "failed", reason: "tool-exit" };
+  assert.deepEqual(
+    [
+      replied({ ...failure, result: "12345678" }),
+      replied({ ...failure, result: "123456789" }),
+    ],
+    [
+      { ...failure, receipt: null, worker: null, result: "12345678" },
+      { ...failure, receipt: null, worker: null },
+    ],
+  );
+});
+
 await test("CLV-049 an adapter reply whose kind is the name of an inherited object property is an unknown outcome", () => {
   for (const kind of [
     "constructor",
