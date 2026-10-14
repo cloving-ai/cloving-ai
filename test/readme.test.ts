@@ -6,6 +6,28 @@ import { commandUsage, usage } from "../src/cli/usage.ts";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
 
+await test("CLV-076 the README starts with the three exact lines of the product owner", () => {
+  const opening = readme.split("\n").filter((line) => line.trim() !== "");
+  assert.deepEqual(opening.slice(0, 4), [
+    "# Cloving",
+    "The world's easiest software factory.",
+    "Build a software factory with simple TypeScript for your project, and your project can build itself.",
+    "The end of vibe coding. This is agentic engineering.",
+  ]);
+});
+
+await test("CLV-076 What works now says Cloving develops itself through develop-issue with a Greptile review and an automatic merge", () => {
+  const working = readme
+    .split("## Cloving\n")[1]
+    ?.split("What works now:\n")[1]
+    ?.split("What does not work yet:\n")[0];
+  assert.ok(working);
+  assert.match(
+    working,
+    /^- Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge\.$/m,
+  );
+});
+
 const sections = [
   "Cloving",
   "Install",
