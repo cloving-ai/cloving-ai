@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   startDelivery,
@@ -130,7 +129,9 @@ function githubOf(
     gh: settings.githubCommand ?? ["gh"],
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "github"),
-    privateTexts: [homedir(), ...(settings.privateTexts ?? [])],
+    ...(settings.privateTexts === undefined
+      ? {}
+      : { privateTexts: settings.privateTexts }),
     ...(checkCommand === undefined ? {} : { check: checkCommand }),
   });
 }

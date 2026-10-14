@@ -44,7 +44,7 @@ export interface Scene {
   readonly origin: string;
   readonly runtimeDirectory: string;
   readonly start: (
-    environment?: Readonly<Record<string, string>>,
+    environment?: Readonly<NodeJS.ProcessEnv>,
   ) => Promise<ChildProcess>;
   readonly refused: (bound?: string) => Promise<string>;
 }
@@ -115,7 +115,7 @@ async function launched(
     readonly command: readonly string[];
     readonly board: readonly string[];
     readonly bound?: string;
-    readonly environment?: Readonly<Record<string, string>>;
+    readonly environment?: Readonly<NodeJS.ProcessEnv>;
   },
   expected: string,
 ): Promise<Launch> {

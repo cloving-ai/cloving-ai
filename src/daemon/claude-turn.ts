@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StreamResult {
@@ -70,10 +70,25 @@ function ended(stream: NodeJS.WritableStream): Promise<void> {
   });
 }
 
+function turnEnvironment(folder: string): NodeJS.ProcessEnv {
+  const excluded = new Set([
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+  ]);
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !excluded.has(name)),
+  );
+  environment["GH_CONFIG_DIR"] = mkdtempSync(join(folder, "gh-config-"));
+  return environment;
+}
+
 export function startTurn(start: TurnStart): RunningTurn {
   const [executable = "", ...fixed] = start.command;
   const child = spawn(executable, fixed, {
     cwd: start.directory,
+    env: turnEnvironment(start.folder),
     stdio: ["pipe", "pipe", "pipe"],
   });
   const output = createWriteStream(join(start.folder, "turn.jsonl"));

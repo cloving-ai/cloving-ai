@@ -65,9 +65,9 @@ The command reads these settings from the environment:
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
-  CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, which the workflow develop-issue uses for pull requests. The default is gh.
+  CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, which the workflow develop-issue uses for pull requests and develop-prd uses for issues. The default is gh.
   CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that the workflow develop-issue runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.
-  CLOVING_PRIVATE_TEXTS            A JSON list of texts that the workflow develop-issue does not push in a file or in a commit message. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
+  CLOVING_PRIVATE_TEXTS            A JSON list of texts that the workflow develop-issue does not push in a file or in a commit message. The workflow develop-prd requires the list before posting an issue. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
 `,
 };
 

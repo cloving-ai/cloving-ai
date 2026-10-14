@@ -132,6 +132,13 @@ export function ticketRegistrationTable(
       resolver: issueResolver(source),
     },
     {
+      workflowId: "develop-prd",
+      functionName: "developPrd",
+      effectLimit: 8,
+      submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
+      resolver: promptResolver(source.repository),
+    },
+    {
       workflowId: promptWorkflow,
       functionName: "developTicket",
       effectLimit: 8,

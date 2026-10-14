@@ -30,3 +30,19 @@ await test("CLV-061 the help text of the start command has one line for each set
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);
 });
+
+await test("CLV-075 the default Claude command allows web research and help describes develop-prd", () => {
+  const command = program.slice(
+    program.indexOf("const defaultCommand"),
+    program.indexOf("interface Commands"),
+  );
+  assert.match(command, /--allowedTools[\s\S]*WebSearch/);
+  assert.match(command, /--allowedTools[\s\S]*WebFetch/);
+  for (const name of ["CLOVING_PRIVATE_TEXTS", "CLOVING_GH_COMMAND"])
+    assert.match(
+      String(commandUsage["start"])
+        .split("\n")
+        .find((line) => line.startsWith(`  ${name} `)) ?? "",
+      /develop-prd/,
+    );
+});

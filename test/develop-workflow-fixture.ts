@@ -23,6 +23,7 @@ registerHooks({
 
 const scenario = `
 import { developTicket } from ${located("workflows/develop-ticket.ts")};
+import { developPrd } from ${located("workflows/develop-prd.ts")};
 const cases = JSON.parse(process.argv[2]);
 const key = Symbol.for("cloving.step-bridge/v1");
 const unavailable = { kind: "unavailable", reason: "no-scenario-result" };
@@ -33,7 +34,8 @@ for (const given of cases) {
     effect: async (request) => { requests.push(["effect", request]); return next(given, request); },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
   };
-  const outcome = await developTicket(given.input, given.decision);
+  const develop = given.workflow === "develop-prd" ? developPrd : developTicket;
+  const outcome = await develop(given.input, given.decision);
   process.stdout.write(JSON.stringify({ outcome, requests }) + "\\n");
 }
 `;
