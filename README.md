@@ -1,6 +1,12 @@
 # Cloving
 
-A local service that runs durable development workflows with a Claude Code worker.
+The world's easiest software factory.
+
+Build a software factory with simple TypeScript for your project, and your project can build itself.
+
+The end of vibe coding. This is agentic engineering.
+
+A workflow file in TypeScript is the factory. It sets the steps: a worker turn in a work tree, a pull request, a review and a merge. Cloving keeps the state of each run and a record of each step. A GitHub step continues after a restart of the service. A worker turn in work stops at a restart. Cloving builds itself through `develop-issue` in this repository.
 
 ## Cloving
 
@@ -14,6 +20,7 @@ What works now:
 - Three workflows from one workflow file: `develop-prompt`, `develop-ticket` and `develop-issue`.
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
+- Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the Claude worker as it occurs.
 
 What does not work yet:
