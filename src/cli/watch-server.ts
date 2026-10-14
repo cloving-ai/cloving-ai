@@ -34,6 +34,7 @@ interface Watch {
   readonly settings: WatchSettings;
   readonly details: Map<string, { sequence: unknown; value: unknown }>;
   readonly streams: Map<string, { size: number; lines: readonly string[] }>;
+  readonly github: Map<string, GithubRecords>;
 }
 
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
@@ -141,14 +142,17 @@ async function turns(watch: Watch): Promise<WatchTurn[]> {
 
 async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
   const journal = join(dirname(watch.settings.runtimeDirectory), "github");
-  const found: GithubRecords[] = [];
-  for (const key of await readdir(journal).catch(() => [])) {
-    const started = await stored(join(journal, key, "started.json"));
+  const keys = await readdir(journal).catch(() => []);
+  for (const key of keys) {
+    const known = watch.github.get(key);
+    if (known !== undefined && known.result !== null) continue;
+    const started =
+      known?.started ?? (await stored(join(journal, key, "started.json")));
     if (started === null) continue;
     const result = await stored(join(journal, key, "result.json"));
-    found.push({ started, result });
+    watch.github.set(key, { started, result });
   }
-  return found;
+  return keys.flatMap((key) => watch.github.get(key) ?? []);
 }
 
 async function snapshot(watch: Watch): Promise<WatchModel> {
@@ -224,7 +228,12 @@ function subscribed(
 }
 
 export function watchServer(settings: WatchSettings): Promise<number> {
-  const watch: Watch = { settings, details: new Map(), streams: new Map() };
+  const watch: Watch = {
+    settings,
+    details: new Map(),
+    streams: new Map(),
+    github: new Map(),
+  };
   const stream = watchStream({
     runtimeDirectory: settings.runtimeDirectory,
     journal: join(dirname(settings.runtimeDirectory), "journal"),

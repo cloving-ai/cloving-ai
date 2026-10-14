@@ -100,14 +100,15 @@ const effect = (
   timed: {
     readonly second: number;
     readonly operation: readonly [string, number];
+    readonly outcome?: string;
   },
 ): Record<string, unknown> => {
-  const { second, operation } = timed;
+  const { second, operation, outcome } = timed;
   const [name, round] = operation;
   const scope = ["cloving-operation", round, "run-1", "work", name, null, null];
   return {
     ...event(type, second),
-    payload: { operationId: JSON.stringify(scope) },
+    payload: { operationId: JSON.stringify(scope), outcome },
   };
 };
 const step = (
@@ -208,5 +209,36 @@ await test("CLV-065 the watch phases show the Greptile review of a develop-issue
     "Greptile review: done",
     "Merge: pending",
     "Failed: failed",
+  ]);
+});
+
+await test("CLV-065 the watch phases show a step of a develop-issue run as failed when the last report of its operation failed or stopped, and as active at a new request of the operation", () => {
+  const operation = ["github-open-pr", 1] as const;
+  const reported = (outcome: string): Record<string, unknown>[] => [
+    ...opened.slice(0, -1),
+    effect("effect.reported", { second: 12, operation, outcome }),
+  ];
+  assert.deepEqual(issued(reported("failed")).slice(3, 6), [
+    "Claude turn: done",
+    "Pull request: failed",
+    "Greptile review: pending",
+  ]);
+  assert.deepEqual(
+    issued([...reported("stopped"), event("run.failed", 13)]).slice(4),
+    [
+      "Pull request: failed",
+      "Greptile review: pending",
+      "Merge: pending",
+      "Failed: failed",
+    ],
+  );
+  const again = effect("effect.requested", { second: 14, operation });
+  assert.deepEqual(issued([...reported("failed"), again]).slice(4, 6), [
+    "Pull request: active",
+    "Greptile review: pending",
+  ]);
+  assert.deepEqual(issued(reported("completed")).slice(4, 6), [
+    "Pull request: done",
+    "Greptile review: active",
   ]);
 });
