@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { ticketResolver } from "../src/daemon/ticket-registration.ts";
 import {
   call,
   field,
@@ -24,6 +27,46 @@ function run(
     },
   });
 }
+
+for (const stage of ["selection", "ticket"])
+  await test(`CLV-070 the resolver deadline aborts the ${stage} command without admitting a run`, () =>
+    withHarness(async (harness) => {
+      const marker = join(harness.stateDirectory, "command-started");
+      const waiting = `import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(marker)}, ${JSON.stringify(stage)});
+setInterval(() => {}, 1000);`;
+      const source = {
+        repository: harness.projectDirectory,
+        command: [process.execPath, "-e", waiting],
+        nextCommand: [
+          process.execPath,
+          "-e",
+          stage === "selection" ? waiting : 'console.log("CLV-016")',
+        ],
+      };
+      const service = await harness.start({
+        timing: { ...testTiming, resolverMilliseconds: 1000 },
+        workflows: [
+          {
+            ...harness.registration,
+            submission: { maximumBytes: 4096, fields: { ticket: "string" } },
+            resolver: ticketResolver(source),
+          },
+        ],
+      });
+      const result = await run(harness, {
+        source: "ticket",
+        submission: { ticket: "next" },
+      });
+      assert.equal(result["code"], "resolver-timeout");
+      assert.equal(await readFile(marker, "utf8"), stage);
+      const events = await call(harness, {
+        operation: "events",
+        parameters: { after: 0, limit: 10 },
+      });
+      assert.deepEqual(events["events"], []);
+      await service.close();
+    }));
 
 await test("CLV-008 a resolver that gives no result ends with resolver-timeout, and a retry with the same command ID is admitted", () =>
   withHarness(async (harness) => {

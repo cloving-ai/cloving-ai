@@ -43,9 +43,22 @@ export function ticketText(
   request: TicketRequest,
 ): Promise<TicketRead> {
   const [executable = "", ...fixed] = command;
-  return executed(executable, [...fixed, request.ticketId], {
-    signal: request.signal,
+  return ticketCommandText(
+    [executable, ...fixed, request.ticketId],
+    request.signal,
+  ).then((result) =>
+    result.kind === "failed" ? result : printed(result.text),
+  );
+}
+
+export function ticketCommandText(
+  command: readonly string[],
+  signal: AbortSignal,
+): Promise<TicketRead> {
+  const [executable = "", ...fixed] = command;
+  return executed(executable, fixed, {
+    signal,
     maxBuffer: 4 * ticketLimits.textBytes,
     encoding: "utf8",
-  }).then((output) => printed(output.stdout), ended);
+  }).then((output) => ({ kind: "read", text: output.stdout.trim() }), ended);
 }

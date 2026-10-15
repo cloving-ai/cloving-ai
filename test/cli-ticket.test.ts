@@ -7,6 +7,27 @@ function words(line: string): readonly string[] {
   return line.split(" ");
 }
 
+await test("CLV-070 next submits the reserved ticket ID and conflicts with every other input source", () => {
+  assert.deepEqual(
+    parseInvocation(words("run develop-issue --next")),
+    parseInvocation(words("run develop-issue --ticket next")),
+  );
+  for (const source of [
+    "--ticket CLV-016",
+    "--ticket next",
+    "--prompt work",
+    "--input input.json",
+  ])
+    assert.deepEqual(
+      parseInvocation(words(`run develop-issue --next ${source}`)),
+      {
+        kind: "usage-error",
+        code: "conflicting-input-sources",
+        json: false,
+      },
+    );
+});
+
 await test("CLV-016 the parser reads a ticket ID as the one input source of a run, and it refuses a second source and an ID that is no identifier", () => {
   const run = { kind: "run", workflowId: "develop", commandId: null };
   assert.deepEqual(parseInvocation(words("run develop --ticket CLV-016")), {

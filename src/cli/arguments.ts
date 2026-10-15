@@ -35,6 +35,7 @@ const options = {
   json: { type: "boolean" },
   prompt: { type: "string" },
   ticket: { type: "string" },
+  next: { type: "boolean" },
   port: { type: "string" },
   text: { type: "string" },
   "command-id": { type: "string" },
