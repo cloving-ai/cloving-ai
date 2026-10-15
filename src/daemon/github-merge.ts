@@ -17,6 +17,14 @@ interface ReviewedPull {
   readonly commit: string;
 }
 
+function commitOf(value: unknown, name: string): string {
+  if (typeof value !== "object" || value === null)
+    throw new Error("github-call-failed");
+  const commit: unknown = Reflect.get(value, name);
+  if (typeof commit !== "string") throw new Error("github-call-failed");
+  return commit;
+}
+
 async function knownMerge(
   operation: Operation,
   expected: ReviewedPull & { readonly updated: string },
@@ -27,11 +35,11 @@ async function knownMerge(
       `${repositoryPath}/pulls/${String(expected.number)}`,
     ]),
   );
-  const head = String(field(field(pull, "head"), "sha"));
+  const head = commitOf(field(pull, "head"), "sha");
   if (field(pull, "merged") !== true) return { head, merged: undefined };
   if (head !== expected.commit && head !== expected.updated)
     throw new Error("merged-other-commit");
-  return { head, merged: String(field(pull, "merge_commit_sha")) };
+  return { head, merged: commitOf(pull, "merge_commit_sha") };
 }
 
 async function abortMerge(operation: Operation, tree: Place): Promise<void> {
@@ -133,16 +141,17 @@ async function refreshed(
   });
   const base = await defaultBranch(operation);
   let newest = await fetched(operation, base);
-  if (place.recorded !== undefined) {
-    const ancestor = (
+  if (
+    place.recorded !== undefined &&
+    (
       await operation.calls.git(place.tree.path, [
         "merge-base",
         place.recorded,
         newest,
       ])
-    ).trim();
-    if (ancestor === newest) return place.recorded;
-  }
+    ).trim() === newest
+  )
+    return place.recorded;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await updatedTree(operation, { tree: place.tree, base: newest });
     const head = await checked(operation, { ...place, base });
@@ -169,7 +178,7 @@ async function mergedNow(
       `sha=${pull.commit}`,
     ]),
   );
-  return String(field(reply, "sha"));
+  return commitOf(reply, "sha");
 }
 
 async function removed(operation: Operation, place: Place): Promise<void> {

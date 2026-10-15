@@ -238,3 +238,80 @@ await test("CLV-078 the fake merge API refuses a SHA that is not the pull reques
       commit,
     );
   }));
+
+await test("CLV-078 rejects malformed merge replies and retains the branch", async () => {
+  for (const reply of [null, [], 42, {}, { sha: null }, { sha: 42 }])
+    await withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({ scores: [], replies: { "api PUT merge": reply } });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.deepEqual(
+        [report.outcome, report.reason],
+        ["failed", "github-call-failed"],
+      );
+      assert.equal(existsSync(treeOf(scene)), true);
+      assert.equal(
+        git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
+        commit,
+      );
+      assert.equal(mergeCalls(scene).length, 1);
+    });
+});
+
+await test("CLV-078 rejects malformed pull request heads before merging", async () => {
+  for (const head of [undefined, null, [], 42, {}, { sha: null }, { sha: 42 }])
+    await withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({
+        scores: [],
+        replies: { "api GET pull": { merged: false, head } },
+      });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.deepEqual(
+        [report.outcome, report.reason],
+        ["failed", "github-call-failed"],
+      );
+      assert.deepEqual(mergeCalls(scene), []);
+      assert.equal(existsSync(treeOf(scene)), true);
+    });
+});
+
+await test("CLV-078 rejects malformed known merge commits without cleanup", async () => {
+  for (const merged of [undefined, null, 42, false, {}, []])
+    await withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({
+        scores: [],
+        replies: {
+          "api GET pull": {
+            merged: true,
+            head: { sha: commit },
+            merge_commit_sha: merged,
+          },
+        },
+      });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.deepEqual(
+        [report.outcome, report.reason],
+        ["failed", "github-call-failed"],
+      );
+      assert.deepEqual(mergeCalls(scene), []);
+      assert.equal(existsSync(treeOf(scene)), true);
+      assert.equal(
+        git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
+        commit,
+      );
+    });
+});
