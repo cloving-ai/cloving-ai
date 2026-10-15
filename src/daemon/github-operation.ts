@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CallSettings, Calls } from "./github-calls.ts";
@@ -73,4 +74,36 @@ export async function removeWorktree(
     await repository(["worktree", "remove", "--force", place.path]);
   if ((await repository(["branch", "--list", place.branch])).trim() !== "")
     await repository(["branch", "-D", place.branch]);
+}
+
+export async function defaultBranch(operation: Operation): Promise<string> {
+  const reference = await operation.calls.git(operation.settings.repository, [
+    "symbolic-ref",
+    "--short",
+    "refs/remotes/origin/HEAD",
+  ]);
+  return reference.trim().replace(/^origin[/]/, "");
+}
+
+export async function changeChecked(
+  operation: Operation,
+  place: { readonly tree: Place; readonly base: string },
+): Promise<void> {
+  const call = (parts: readonly string[]): Promise<string> =>
+    operation.calls.git(place.tree.path, parts);
+  const range = `origin/${place.base}..HEAD`;
+  if (Number((await call(["rev-list", "--count", range])).trim()) === 0)
+    throw new Error("no-change");
+  const change = [
+    await call(["diff", `origin/${place.base}...HEAD`]),
+    await call(["log", "--format=%B", range]),
+  ].join("\n");
+  const privateTexts = [homedir(), ...(operation.settings.privateTexts ?? [])];
+  const lowered = change.toLowerCase();
+  if (
+    privateTexts.some(
+      (item) => item !== "" && lowered.includes(item.toLowerCase()),
+    )
+  )
+    throw new Error("private-path-in-change");
 }
