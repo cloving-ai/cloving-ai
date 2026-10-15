@@ -1,4 +1,9 @@
 import { join } from "node:path";
+import {
+  profileCommand,
+  type TurnProfile,
+  type TurnProfiles,
+} from "../turn-profile.ts";
 import type {
   AdapterOutcome,
   Delivery,
@@ -27,6 +32,8 @@ import { changes, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings {
   readonly worker?: Worker;
+  readonly profiles?: TurnProfiles;
+  readonly workflowId?: (runId: string) => Promise<string | undefined>;
   readonly repository: string;
   readonly worktrees: string;
   readonly journal: string;
@@ -157,7 +164,7 @@ async function concluded(
 
 async function begun(
   parts: Parts,
-  start: Started & { readonly prompt: string },
+  start: Started & { readonly prompt: string; readonly profile: TurnProfile },
 ): Promise<void> {
   const { intent, key, folder, tree, prompt } = start;
   const record = (processId: number | null): Promise<void> =>
@@ -176,7 +183,9 @@ async function begun(
   await record(null);
   const turn = startTurn({
     worker: parts.settings.worker ?? "claude",
-    command: parts.settings.command,
+    command: profileCommand(parts.settings.command, start.profile),
+    environment: start.profile.env ?? {},
+    turnId: `${intent.runId}-${key}`,
     directory: tree.path,
     folder,
     prompt,
@@ -214,7 +223,8 @@ async function firstTurn(
 function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
   return (
     intent.capability === worker &&
-    intent.method === "run-turn" &&
+    (intent.method === "run-turn" ||
+      /^run-turn:[A-Za-z0-9_-]{1,119}$/.test(intent.method ?? "")) &&
     intent.target !== undefined &&
     intent.payload !== undefined &&
     intent.leaseGeneration !== undefined
@@ -223,6 +233,34 @@ function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
 
 function failure(reason: string): AdapterOutcome {
   return { kind: "failed", reason };
+}
+
+async function runWorkflow(
+  settings: ClaudeWorkerSettings,
+  runId: string,
+): Promise<string | undefined> {
+  try {
+    return await settings.workflowId?.(runId);
+  } catch {
+    return undefined;
+  }
+}
+
+async function selectedProfile(
+  settings: ClaudeWorkerSettings,
+  intent: ProtectedIntent,
+): Promise<TurnProfile | string> {
+  if (intent.method === "run-turn") return {};
+  if (settings.worker === "codex") return "profile-needs-claude";
+  const name = intent.method.slice("run-turn:".length);
+  const profiles = settings.profiles ?? {};
+  const profile = Object.hasOwn(profiles, name) ? profiles[name] : undefined;
+  if (profile === undefined) return "unknown-profile";
+  if (profile.workflows === undefined) return profile;
+  const workflowId = await runWorkflow(settings, intent.runId);
+  if (workflowId === undefined || !profile.workflows.includes(workflowId))
+    return "profile-not-allowed";
+  return profile;
 }
 
 async function delivered(
@@ -236,6 +274,8 @@ async function delivered(
   if (!turnIntent(intent)) return failure("unsupported-effect");
   const known = await reconciled(parts, intent);
   if (known.kind !== "absent") return known;
+  const profile = await selectedProfile(settings, intent);
+  if (typeof profile === "string") return failure(profile);
   const prompt = await settings.document(intent.payload);
   if (prompt === undefined) return failure("payload-not-available");
   const tree = await workTree({
@@ -248,7 +288,7 @@ async function delivered(
   if (tree === undefined) return failure("work-tree-not-available");
   const place = located(settings, intent.operationId);
   const first = await firstTurn(settings, { tree, target: intent.target });
-  await begun(parts, { ...place, intent, tree: first, prompt });
+  await begun(parts, { ...place, intent, tree: first, prompt, profile });
   return { receipt: place.key, worker };
 }
 

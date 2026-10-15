@@ -20,6 +20,8 @@ export interface TurnEnd {
 
 export interface TurnStart {
   readonly worker?: Worker;
+  readonly turnId?: string;
+  readonly environment?: Readonly<Record<string, string>>;
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
@@ -74,16 +76,28 @@ function ended(stream: NodeJS.WritableStream): Promise<void> {
   });
 }
 
-function turnEnvironment(configuration: string): NodeJS.ProcessEnv {
+function turnEnvironment(
+  configuration: string,
+  start: TurnStart,
+): NodeJS.ProcessEnv {
   const excluded = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "GH_ENTERPRISE_TOKEN",
     "GITHUB_ENTERPRISE_TOKEN",
   ]);
-  const environment = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => !excluded.has(name)),
+  const supplied = Object.fromEntries(
+    Object.entries(start.environment ?? {}).map(([name, value]) => [
+      name,
+      value.replaceAll("{turn}", start.turnId ?? ""),
+    ]),
   );
+  const environment = Object.fromEntries(
+    Object.entries({ ...process.env, ...supplied }).filter(
+      ([name]) => !excluded.has(name),
+    ),
+  );
+  if (start.turnId !== undefined) environment["CLOVING_TURN_ID"] = start.turnId;
   environment["GH_CONFIG_DIR"] = configuration;
   return environment;
 }
@@ -97,7 +111,7 @@ function spawnTurn(start: TurnStart): {
   try {
     const child = spawn(executable, fixed, {
       cwd: start.directory,
-      env: turnEnvironment(configuration),
+      env: turnEnvironment(configuration, start),
       stdio: ["pipe", "pipe", "pipe"],
     });
     return { child, configuration };

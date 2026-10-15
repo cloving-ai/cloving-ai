@@ -1,3 +1,4 @@
+import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
 import { execFileSync, spawn } from "node:child_process";
 import {
   copyFile,
@@ -71,7 +72,20 @@ function selectedWorker(): "claude" | "codex" {
   throw new Error(`The daemon did not start: invalid-worker: ${worker}`);
 }
 
+async function profilesFile(): Promise<TurnProfiles> {
+  const path = process.env["CLOVING_PROFILES"];
+  if (path === undefined) return {};
+  try {
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (isProfilesFile(value)) return value.profiles;
+  } catch {
+    throw new Error("The daemon did not start: invalid-profiles");
+  }
+  throw new Error("The daemon did not start: invalid-profiles");
+}
+
 interface Commands {
+  readonly profiles: TurnProfiles;
   readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
@@ -207,7 +221,7 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
-const opening = await startDaemon({ ...${JSON.stringify(settings)}, workflows, handler: POST });
+const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -258,6 +272,7 @@ async function prepared(): Promise<Readonly<Record<string, string>>> {
   return registered();
 }
 
+const profiles = await profilesFile();
 const worker = selectedWorker();
 const command =
   worker === "codex"
@@ -270,6 +285,7 @@ const manifests = await prepared();
 await launchers(
   {
     worker,
+    profiles,
     command,
     ticketCommand,
     nextCommand,
