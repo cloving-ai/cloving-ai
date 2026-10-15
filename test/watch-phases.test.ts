@@ -168,7 +168,86 @@ await test("CLV-065 the watch phases give a develop-issue run the steps of its p
   ]);
 });
 
-await test("CLV-065 the watch phases show the Greptile review of a develop-issue run as active while it waits, and give the Claude turn of two rounds the time from the first request to the last report", () => {
+const secondRound = [
+  ...reviewing,
+  effect("effect.reported", {
+    second: 20,
+    operation: ["github-wait-review", 1],
+  }),
+  effect("effect.requested", { second: 21, operation: ["claude-turn", 2] }),
+];
+
+await test("CLV-068 the watch phases show the current Claude round and leave its unstarted pull request and review pending", () => {
+  assert.deepEqual(issued(secondRound), [
+    "Admitted: done",
+    "Started: done",
+    "Work tree: done",
+    "Claude turn, round 2: active",
+    "Pull request, round 2: pending",
+    "Greptile review, round 2: pending",
+    "Merge: pending",
+    "Completed: pending",
+  ]);
+  assert.deepEqual(phasesOf(secondRound, "develop-issue").slice(3, 6), [
+    {
+      name: "Claude turn, round 2",
+      state: "active",
+      startedAt: at(21),
+      endedAt: null,
+    },
+    {
+      name: "Pull request, round 2",
+      state: "pending",
+      startedAt: null,
+      endedAt: null,
+    },
+    {
+      name: "Greptile review, round 2",
+      state: "pending",
+      startedAt: null,
+      endedAt: null,
+    },
+  ]);
+});
+
+await test("CLV-068 a completed two-round issue run shows completed steps timed only within the current round", () => {
+  const completed = [
+    ...secondRound,
+    effect("effect.reported", { second: 30, operation: ["claude-turn", 2] }),
+    ...step(["github-open-pr", 2], [31, 32]),
+    ...step(["github-wait-review", 2], [33, 40]),
+    ...step(["github-merge", 2], [41, 42]),
+    event("run.completed", 43),
+  ];
+  assert.deepEqual(issued(completed), [
+    "Admitted: done",
+    "Started: done",
+    "Work tree: done",
+    "Claude turn, round 2: done",
+    "Pull request, round 2: done",
+    "Greptile review, round 2: done",
+    "Merge: done",
+    "Completed: done",
+  ]);
+  assert.deepEqual(
+    phasesOf(completed, "develop-issue").map(({ startedAt, endedAt }) => [
+      startedAt,
+      endedAt,
+    ]),
+    [
+      [at(0), at(0)],
+      [at(1), at(1)],
+      [at(2), at(3)],
+      [at(21), at(30)],
+      [at(31), at(32)],
+      [at(33), at(40)],
+      [at(41), at(42)],
+      [at(43), at(43)],
+    ],
+  );
+});
+
+await test("CLV-068 the watch phases show the waiting Greptile review, then show and time only the current Claude round", () => {
   const broken = ["not json", "5"].map((operationId) => ({
     ...event("effect.requested", 2),
     payload: { operationId },
@@ -182,31 +261,24 @@ await test("CLV-065 the watch phases show the Greptile review of a develop-issue
     "Merge: pending",
     "Completed: pending",
   ]);
-  const fixed = [
-    ...reviewing,
-    effect("effect.reported", {
-      second: 20,
-      operation: ["github-wait-review", 1],
-    }),
-    effect("effect.requested", { second: 21, operation: ["claude-turn", 2] }),
-  ];
-  assert.deepEqual(issued(fixed).slice(3, 5), [
-    "Claude turn: active",
-    "Pull request: done",
+  assert.deepEqual(issued(secondRound).slice(3, 6), [
+    "Claude turn, round 2: active",
+    "Pull request, round 2: pending",
+    "Greptile review, round 2: pending",
   ]);
   const twice = [
-    ...fixed,
+    ...secondRound,
     effect("effect.reported", { second: 30, operation: ["claude-turn", 2] }),
     ...step(["github-open-pr", 2], [31, 32]),
   ];
   assert.deepEqual(phasesOf(twice, "develop-issue")[3], {
-    name: "Claude turn",
+    name: "Claude turn, round 2",
     state: "done",
-    startedAt: at(4),
+    startedAt: at(21),
     endedAt: at(30),
   });
   assert.deepEqual(issued([...twice, event("run.failed", 33)]).slice(5), [
-    "Greptile review: done",
+    "Greptile review, round 2: pending",
     "Merge: pending",
     "Failed: failed",
   ]);
