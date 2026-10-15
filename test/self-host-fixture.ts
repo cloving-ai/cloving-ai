@@ -46,7 +46,10 @@ export interface Scene {
   readonly start: (
     environment?: Readonly<NodeJS.ProcessEnv>,
   ) => Promise<ChildProcess>;
-  readonly refused: (bound?: string) => Promise<string>;
+  readonly refused: (
+    bound?: string,
+    environment?: Readonly<NodeJS.ProcessEnv>,
+  ) => Promise<string>;
 }
 
 const children: ChildProcess[] = [];
@@ -97,9 +100,13 @@ export async function scene(script = fakeClaude): Promise<Scene> {
     runtimeDirectory: join(directory, "run"),
     start: async (environment = {}) =>
       (await launched({ ...settings, environment }, "Cloving runs")).child,
-    refused: async (bound = "8") =>
-      (await launched({ ...settings, bound }, "The daemon did not start"))
-        .output.text,
+    refused: async (bound = "8", environment = {}) =>
+      (
+        await launched(
+          { ...settings, bound, environment },
+          "The daemon did not start",
+        )
+      ).output.text,
   };
 }
 
@@ -124,6 +131,8 @@ async function launched(
     env: {
       ...process.env,
       CLOVING_RUNTIME_DIR: join(settings.directory, "run"),
+      CLOVING_WORKER: undefined,
+      CLOVING_CODEX_COMMAND: undefined,
       CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
       CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
       CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
@@ -181,6 +190,7 @@ export function items(value: unknown): readonly unknown[] {
 export function withoutChildren(scene: () => Promise<void>): Promise<void> {
   return scene().finally(() => {
     for (const child of children)
-      if (child.exitCode === null) process.kill(-Number(child.pid), "SIGKILL");
+      if (child.exitCode === null && child.signalCode === null)
+        process.kill(-Number(child.pid), "SIGKILL");
   });
 }

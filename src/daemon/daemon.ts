@@ -24,6 +24,7 @@ import {
   type ServiceHost,
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
+import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
@@ -34,6 +35,7 @@ import {
 } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
+  readonly worker?: Worker;
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
@@ -155,6 +157,7 @@ function adapters(
     effect: Parameters<HostPorts["reportEffect"]>[0],
   ): Promise<unknown> => (await given).reportEffect(effect);
   const worker = claudeWorker({
+    worker: settings.worker ?? "claude",
     repository,
     command,
     document,

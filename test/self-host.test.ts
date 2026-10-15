@@ -134,7 +134,7 @@ async function ticketRun(): Promise<void> {
     await refused("65"),
     /The daemon did not start: host-unavailable: invalid-host-bound: 65/,
   );
-  const first = await start();
+  const first = await start({ CLOVING_CODEX_COMMAND: "not JSON" });
   const empty = await asked("run", ticket(" ", "c-0"));
   assert.deepEqual(
     [empty["kind"], empty["code"]],

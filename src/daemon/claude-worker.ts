@@ -5,7 +5,12 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import { startTurn, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
+import {
+  startTurn,
+  type RunningTurn,
+  type TurnEnd,
+  type Worker,
+} from "./claude-turn.ts";
 import {
   interrupted,
   located as locatedIn,
@@ -21,6 +26,7 @@ import {
 import { changes, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings {
+  readonly worker?: Worker;
   readonly repository: string;
   readonly worktrees: string;
   readonly journal: string;
@@ -169,6 +175,7 @@ async function begun(
     });
   await record(null);
   const turn = startTurn({
+    worker: parts.settings.worker ?? "claude",
     command: parts.settings.command,
     directory: tree.path,
     folder,
