@@ -50,6 +50,7 @@
     "check:lint": "eslint src tools quality test eslint.config.mjs --max-warnings 0",
     "check:format": "prettier --check src tools quality test eslint.config.mjs package.json tsconfig.json tsconfig.build.json",
     "test:quality": "node --test test/quality/*.test.ts",
+    "test:scale": "node --test --test-concurrency=1 test/authority-opening-scale.benchmark.ts",
     "check": "node tools/quality-pending.ts",
     "test:concurrency": "node tools/quality-pending.ts"
   },

@@ -4,7 +4,7 @@ import type { WatchRun, WatchTurn } from "./watch-render.ts";
 function folderPattern(folder: string): RegExp {
   const escaped = folder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `(?<![^\\s'"\`([{<,:;=])${escaped}(?=$|[/\\s'"),:;]|\\.(?=\\s|$))`,
+    `(?<![^\\s'"\`([{<,:;=])(?:file://)?${escaped}(?=$|[/\\s'"),:;]|\\.(?=\\s|$))`,
     "g",
   );
 }

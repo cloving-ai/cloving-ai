@@ -1,6 +1,7 @@
 export interface WatchItem {
   readonly kind: string;
   readonly text: string;
+  readonly costUsd?: number;
 }
 
 export interface WatchTurn {
