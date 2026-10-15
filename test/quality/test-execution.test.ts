@@ -1,10 +1,31 @@
 import assert from "node:assert/strict";
-import { symlink } from "node:fs/promises";
+import { readdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runCommand } from "../../quality/command.ts";
 import { checkTests, testCommand } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
+
+await test("CLV-048 excludes the authority opening benchmark from the regular suite", async () => {
+  const benchmarks = (await readdir(join(import.meta.dirname, ".."))).filter(
+    (file) => file.startsWith("authority-opening-scale."),
+  );
+  assert.equal(benchmarks.length, 1);
+  const benchmark = benchmarks[0];
+  assert.ok(benchmark);
+  const files = {
+    "main.test.ts":
+      'import { test } from "node:test"; await test("regular suite", () => {});',
+    [benchmark]: 'throw new Error("benchmark ran in the regular suite");',
+  };
+  await withFiles(files, (directory) => {
+    assert.doesNotThrow(() => {
+      checkTests(directory, {
+        files: Object.keys(files).map((file) => join(directory, file)),
+      });
+    });
+  });
+});
 
 await test("QG-10 matches executed test coverage through canonical paths", async () => {
   const source =

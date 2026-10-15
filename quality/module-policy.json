@@ -580,7 +580,7 @@
     "test/authority-history-reference.ts": "test",
     "test/authority-history-tamper.test.ts": "test",
     "test/authority-opening-fixture.ts": "test",
-    "test/authority-opening-scale.test.ts": "test"
+    "test/authority-opening-scale.benchmark.ts": "test"
   },
   "allowed": {
     "quality": [
