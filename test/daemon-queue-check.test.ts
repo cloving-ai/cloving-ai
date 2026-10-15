@@ -21,7 +21,7 @@ const empty: Reply = {
 async function withQueue(
   options: { readonly handle: Handle; readonly commands?: readonly string[] },
   body: (scene: {
-    readonly commands: () => Promise<unknown>;
+    readonly commands: () => Promise<readonly string[]>;
     readonly stop: () => Promise<void>;
   }) => Promise<void>,
 ): Promise<void> {
@@ -41,8 +41,12 @@ async function withQueue(
     });
     try {
       await body({
-        commands: async (): Promise<unknown> =>
-          JSON.parse(await readFile(file, "utf8")),
+        commands: async (): Promise<readonly string[]> => {
+          const value: unknown = JSON.parse(await readFile(file, "utf8"));
+          assert.ok(Array.isArray(value));
+          assert.ok(value.every((id): id is string => typeof id === "string"));
+          return value;
+        },
         stop: queue.stop,
       });
     } finally {
@@ -120,16 +124,14 @@ await test("CLV-084 failed and cancelled tracked runs stop the queue and retire 
   }
 });
 
-function pagedRuns(tracking: {
-  pages: unknown[];
-  submissions: number;
-}): Handle {
+function pagedRuns(tracking: { pages: string[]; submissions: number }): Handle {
   return (request) => {
     if (request.operation === "run") {
       tracking.submissions += 1;
       return Promise.resolve(empty);
     }
     const after = request.parameters["after"];
+    assert.ok(typeof after === "string");
     tracking.pages.push(after);
     return Promise.resolve(
       result(
@@ -156,8 +158,8 @@ function pagedRuns(tracking: {
 }
 
 await test("CLV-084 a later page containing an active issue holds the queue", async () => {
-  const tracking = { pages: [], submissions: 0 };
-  const pages: unknown[] = tracking.pages;
+  const pages: string[] = [];
+  const tracking = { pages, submissions: 0 };
   await withQueue({ handle: pagedRuns(tracking) }, async (scene) => {
     await eventually(() => (pages.includes("first") ? true : undefined));
     await scene.stop();

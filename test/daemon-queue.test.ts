@@ -47,6 +47,41 @@ process.exit(0);
     );
   }));
 
+await test("CLV-084 queue admission excludes a manual submission while next-ticket selection waits", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+writeFileSync("next.mjs", \`import { existsSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
+writeFileSync("selecting", "");
+while (!existsSync("release-selection")) await delay(10);
+process.stdout.write("CLV-900");\`);
+const daemon = await launched();
+try {
+  await until(() => existsSync("selecting"));
+  const manual = submitted("manual-during-selection", { submission: { ticket: "next" } });
+  await delay(100);
+  writeFileSync("release-selection", "");
+  const reply = await manual;
+  await until(async () => (await runs()).some((run) => run.runId === runIdentity(commands()[0])));
+  assert.equal((await runs()).length, 1);
+  assert.equal(reply.code, "workflow-active");
+  assert.equal(commands().length, 1);
+  const replay = await submitted(commands()[0], { submission: { ticket: "next" } });
+  assert.equal(replay.replayed, true);
+} finally {
+  writeFileSync("release-selection", "");
+  await daemon.close();
+}
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      result.stderr.includes("Queue stopped:"),
+      false,
+      result.stderr,
+    );
+  }));
+
 await test("CLV-084 active issue runs hold the queue until handoff and other workflows do not hold it", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
@@ -67,6 +102,41 @@ try {
 process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-084 a manual admission winning the idle check defers the queue without stopping it", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+writeFileSync("ticket.mjs", \`import { existsSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
+writeFileSync("resolving-ticket", "");
+while (!existsSync("release-ticket")) await delay(10);
+process.stdout.write("# " + process.argv.at(-1) + ": Queue task");\`);
+writeFileSync("ready", "CLV-901");
+const daemon = await launched({ queueMilliseconds: 100 });
+try {
+  const manual = submitted("manual-before-check");
+  await until(() => existsSync("resolving-ticket"));
+  await until(() => commands().length === 1);
+  writeFileSync("release-ticket", "");
+  assert.equal((await manual).kind, "run-admitted");
+  await until(() => commands().length === 0);
+  assert.equal((await runs()).length, 1);
+  writeFileSync("outcome-CLV-900", "handoff_requested");
+  await until(() => existsSync("input-CLV-901"));
+  assert.equal((await runs()).length, 2);
+} finally {
+  writeFileSync("release-ticket", "");
+  await daemon.close();
+}
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      result.stderr.includes("Queue stopped:"),
+      false,
+      result.stderr,
+    );
   }));
 
 await test("CLV-084 empty next results keep polling silently and retire each persisted command", () =>
@@ -120,6 +190,12 @@ try {
   assert.deepEqual(await runs(), []);
   assert.equal(existsSync("checks"), false);
   assert.equal(existsSync("queue-commands.json"), false);
+  const replies = await Promise.all([
+    submitted("manual-one"),
+    submitted("manual-two", { submission: { ticket: "next" } }),
+  ]);
+  assert.ok(replies.every((reply) => reply.kind === "run-admitted"));
+  assert.equal((await runs()).length, 2);
 } finally { await daemon.close(); }
 process.exit(0);
 `);

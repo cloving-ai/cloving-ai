@@ -209,7 +209,13 @@ export async function startDaemon(
   const opening = await startService({
     stateDirectory: join(directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
-    workflows: admitted.registrations,
+    workflows: admitted.registrations.map((registration) => ({
+      ...registration,
+      ...(settings.queueMilliseconds !== undefined &&
+      registration.workflowId === "develop-issue"
+        ? { admission: "when-idle" as const }
+        : {}),
+    })),
     delivery: deliveryRouter({
       runs,
       effects: { claude: worker, github },

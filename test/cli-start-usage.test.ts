@@ -11,7 +11,10 @@ const program = readFileSync(
 
 const facts: readonly (readonly [string, RegExp])[] = [
   ["CLOVING_TICKET_COMMAND", /JSON list/],
-  ["CLOVING_QUEUE_SECONDS", /10.*3600.*no queue.*manual.*same issue/],
+  [
+    "CLOVING_QUEUE_SECONDS",
+    /10.*3600.*CLOVING_NEXT_COMMAND.*CLOVING_TICKET_COMMAND.*no queue.*manual.*workflow-active/,
+  ],
   [
     "CLOVING_NEXT_COMMAND",
     /JSON list .*no added argument.*ticket ID.*no default/,

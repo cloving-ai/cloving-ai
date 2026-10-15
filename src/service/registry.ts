@@ -30,6 +30,7 @@ export interface WorkflowRegistration {
   readonly submission: SubmissionContract;
   readonly resolver: Resolver;
   readonly effectLimit?: number;
+  readonly admission?: "when-idle";
 }
 
 export interface Registered extends WorkflowRegistration {

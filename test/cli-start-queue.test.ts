@@ -16,6 +16,7 @@ async function refused(
         env: {
           ...process.env,
           CLOVING_RUNTIME_DIR: harness.runtimeDirectory,
+          CLOVING_WATCH_PORT: "off",
           ...environment,
         },
         encoding: "utf8",
@@ -43,5 +44,17 @@ await test("CLV-084 start refuses the queue without a next-ticket command", asyn
         CLOVING_NEXT_COMMAND: command,
       }),
       /The daemon did not start: queue-needs-next-command/,
+    );
+});
+
+await test("CLV-084 start refuses the queue without a ticket command", async () => {
+  for (const command of [undefined, "[]"])
+    assert.match(
+      await refused({
+        CLOVING_QUEUE_SECONDS: "10",
+        CLOVING_NEXT_COMMAND: '["false"]',
+        CLOVING_TICKET_COMMAND: command,
+      }),
+      /The daemon did not start: queue-needs-ticket-command/,
     );
 });

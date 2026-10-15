@@ -83,7 +83,7 @@ interface Commands {
 }
 
 function queueInterval(
-  nextCommand: readonly string[] | undefined,
+  commands: Pick<Commands, "nextCommand" | "ticketCommand">,
 ): number | undefined {
   const value = process.env["CLOVING_QUEUE_SECONDS"];
   if (value === undefined) return undefined;
@@ -95,8 +95,10 @@ function queueInterval(
     seconds > 3600
   )
     throw new Error("The daemon did not start: invalid-queue-seconds");
-  if (nextCommand === undefined || nextCommand.length === 0)
+  if (!commands.nextCommand?.length)
     throw new Error("The daemon did not start: queue-needs-next-command");
+  if (!commands.ticketCommand?.length)
+    throw new Error("The daemon did not start: queue-needs-ticket-command");
   return seconds * 1000;
 }
 
@@ -262,13 +264,14 @@ const command =
     ? (listed("CLOVING_CODEX_COMMAND") ?? defaultCodexCommand)
     : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
-const queueMilliseconds = queueInterval(nextCommand);
+const ticketCommand = listed("CLOVING_TICKET_COMMAND");
+const queueMilliseconds = queueInterval({ nextCommand, ticketCommand });
 const manifests = await prepared();
 await launchers(
   {
     worker,
     command,
-    ticketCommand: listed("CLOVING_TICKET_COMMAND"),
+    ticketCommand,
     nextCommand,
     queueMilliseconds,
     githubCommand: listed("CLOVING_GH_COMMAND"),

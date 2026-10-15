@@ -55,10 +55,9 @@ async function runStatus(
     operation: "status",
     parameters: { runId: runIdentity(commandId) },
   });
-  if (reply.kind === "error") {
-    if (reply.error.code === "unknown-run") return undefined;
-    throw new Error(reply.error.code);
-  }
+  if (reply.kind === "error" && reply.error.code === "unknown-run")
+    return undefined;
+  if (reply.kind === "error") throw new Error(reply.error.code);
   const run = record(reply.result["run"]);
   if (run === undefined) throw new Error("invalid-run-status");
   return run;
@@ -147,7 +146,8 @@ async function submit(
     },
   });
   if (reply.kind === "result") return;
-  if (reply.error.code !== "no-ready-ticket") throw new Error(reply.error.code);
+  if (!["no-ready-ticket", "workflow-active"].includes(reply.error.code))
+    throw new Error(reply.error.code);
   pending.commands.delete(commandId);
   await pending.save();
 }
