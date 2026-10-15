@@ -160,3 +160,84 @@ await test("CLV-063 the issue resolver gives the workflow the ticket of the tick
   );
   assert.equal(resolver.id, "issue-command");
 });
+
+await test("CLV-070 both ticket resolvers select the next ID without adding arguments and resolve its ticket", async () => {
+  const source = {
+    repository: "/repository",
+    command,
+    nextCommand: [
+      process.execPath,
+      "-e",
+      'if (process.argv.length !== 1) process.exit(2); process.stdout.write("  CLV-016\\n");',
+    ],
+  };
+  for (const factory of [ticketResolver, issueResolver]) {
+    const resolver = factory(source);
+    const direct = await resolver.resolve(request({ ticket: "CLV-016" }));
+    assert.equal(direct.kind, "resolved");
+    assert.deepEqual(
+      await resolver.resolve(request({ ticket: "next" })),
+      direct,
+    );
+  }
+});
+
+const selections = [
+  { name: "empty output", script: "", code: "no-ready-ticket" },
+  { name: "whitespace", script: 'console.log("  ")', code: "no-ready-ticket" },
+  {
+    name: "failure",
+    script: 'console.error("board unavailable"); process.exit(3)',
+    code: "next-ticket-not-available",
+    detail: "The ticket command ended with the code 3: board unavailable",
+  },
+  {
+    name: "invalid ID",
+    script: 'console.log("CLV 016")',
+    code: "invalid-ticket-id",
+  },
+  {
+    name: "multiple IDs",
+    script: 'console.log("CLV-016\\nCLV-017")',
+    code: "invalid-ticket-id",
+  },
+  {
+    name: "oversized ID",
+    script: 'console.log("x".repeat(65))',
+    code: "invalid-ticket-id",
+  },
+  {
+    name: "reserved ID",
+    script: 'console.log("next")',
+    code: "invalid-ticket-id",
+  },
+  {
+    name: "missing command",
+    script: undefined,
+    code: "next-source-not-configured",
+  },
+] as const;
+
+for (const selection of selections)
+  await test(`CLV-070 both ticket resolvers reject next selection with ${selection.name}`, async () => {
+    const source = {
+      repository: "/repository",
+      command: [
+        process.execPath,
+        "-e",
+        'throw new Error("The ticket command must not run")',
+      ],
+      nextCommand:
+        selection.script === undefined
+          ? undefined
+          : [process.execPath, "-e", selection.script],
+    };
+    for (const factory of [ticketResolver, issueResolver]) {
+      const result = await factory(source).resolve(request({ ticket: "next" }));
+      assert.partialDeepStrictEqual(result, {
+        kind: "rejected",
+        code: selection.code,
+        ...("detail" in selection ? { detail: selection.detail } : {}),
+      });
+    }
+  });

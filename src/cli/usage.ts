@@ -2,10 +2,11 @@ const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
 
 export const commandUsage: Readonly<Record<string, string>> = {
-  run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --input <json-file>) [--command-id <id>] [--json]
+  run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
 With --ticket, the workflow gets the ticket ID and reads the ticket itself.
+With --next (the same as --ticket next), develop-issue and develop-ticket select a ready ticket through CLOVING_NEXT_COMMAND.
 Success means a committed receipt. It does not mean completed work.
 `,
   status: `Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]
@@ -61,6 +62,7 @@ Stop it with Control-C.
 The command reads these settings from the environment:
   CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
+  CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. The setting has no default.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
