@@ -597,7 +597,14 @@
     "test/authority-history-reference.ts": "test",
     "test/authority-history-tamper.test.ts": "test",
     "test/authority-opening-fixture.ts": "test",
-    "test/authority-opening-scale.benchmark.ts": "test"
+    "test/authority-opening-scale.benchmark.ts": "test",
+    "src/daemon/issue-queue.ts": "daemon",
+    "test/daemon-queue-fixture.ts": "test",
+    "test/daemon-queue.test.ts": "test",
+    "test/daemon-queue-restart.test.ts": "test",
+    "test/cli-start-queue.test.ts": "test",
+    "test/daemon-queue-check.test.ts": "test",
+    "test/daemon-queue-errors.test.ts": "test"
   },
   "allowed": {
     "quality": [

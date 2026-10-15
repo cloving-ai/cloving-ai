@@ -21,6 +21,7 @@ import {
 import {
   startService,
   type HostPorts,
+  type Service,
   type ServiceHost,
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
@@ -28,6 +29,7 @@ import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
+import { issueQueue } from "./issue-queue.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -45,6 +47,7 @@ export interface DaemonSettings {
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];
+  readonly queueMilliseconds?: number;
   readonly githubCommand?: readonly string[];
   readonly checkCommand?: readonly string[];
   readonly privateTexts?: readonly string[];
@@ -221,16 +224,40 @@ export async function startDaemon(
     await closed();
     return opening;
   }
-  const { service } = opening;
-  await github.scan();
   return {
     kind: "started",
-    daemon: {
-      socket: service.socket,
-      close: async () => {
-        await closed();
-        await service.close();
-      },
+    daemon: await runningDaemon(settings, {
+      service: opening.service,
+      worker,
+      github,
+    }),
+  };
+}
+
+async function runningDaemon(
+  settings: DaemonSettings,
+  resources: {
+    readonly service: Service;
+    readonly worker: ClaudeWorker;
+    readonly github: GithubWorker;
+  },
+): Promise<Daemon> {
+  const { service, worker, github } = resources;
+  await github.scan();
+  const queue =
+    settings.queueMilliseconds === undefined
+      ? undefined
+      : issueQueue({
+          directory: settings.directory,
+          runtimeDirectory: settings.runtimeDirectory,
+          intervalMilliseconds: settings.queueMilliseconds,
+        });
+  return {
+    socket: service.socket,
+    close: async () => {
+      await queue?.stop();
+      await Promise.all([worker.close(), github.close()]);
+      await service.close();
     },
   };
 }

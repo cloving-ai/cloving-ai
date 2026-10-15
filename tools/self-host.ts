@@ -79,6 +79,25 @@ interface Commands {
   readonly githubCommand: readonly string[] | undefined;
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
+  readonly queueMilliseconds: number | undefined;
+}
+
+function queueInterval(
+  nextCommand: readonly string[] | undefined,
+): number | undefined {
+  const value = process.env["CLOVING_QUEUE_SECONDS"];
+  if (value === undefined) return undefined;
+  const seconds = Number(value);
+  if (
+    !/^\d+$/.test(value) ||
+    !Number.isInteger(seconds) ||
+    seconds < 10 ||
+    seconds > 3600
+  )
+    throw new Error("The daemon did not start: invalid-queue-seconds");
+  if (nextCommand === undefined || nextCommand.length === 0)
+    throw new Error("The daemon did not start: queue-needs-next-command");
+  return seconds * 1000;
 }
 
 function listed(name: string): readonly string[] | undefined {
@@ -242,13 +261,16 @@ const command =
   worker === "codex"
     ? (listed("CLOVING_CODEX_COMMAND") ?? defaultCodexCommand)
     : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
+const nextCommand = listed("CLOVING_NEXT_COMMAND");
+const queueMilliseconds = queueInterval(nextCommand);
 const manifests = await prepared();
 await launchers(
   {
     worker,
     command,
     ticketCommand: listed("CLOVING_TICKET_COMMAND"),
-    nextCommand: listed("CLOVING_NEXT_COMMAND"),
+    nextCommand,
+    queueMilliseconds,
     githubCommand: listed("CLOVING_GH_COMMAND"),
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
