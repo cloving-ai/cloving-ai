@@ -65,3 +65,52 @@ await test("CLV-083 the Codex worker records translated activity and a final res
       "prompt of sha256:prompt",
     );
   }));
+
+await test("CLV-087 the Codex worker completes a turn after a reconnect error", () =>
+  withScene(async (scene) => {
+    const events = [
+      { type: "thread.started", thread_id: "reconnected-thread" },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Working." },
+      },
+      { type: "error", message: "Reconnecting... 3/5" },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Recovered." },
+      },
+      { type: "turn.completed" },
+    ];
+    const output = events.map((event) => JSON.stringify(event)).join("\n");
+    const worker = scene.worker("complete", {
+      worker: "codex",
+      command: [
+        process.execPath,
+        "--input-type=module",
+        "-e",
+        `process.stdin.resume(); process.stdout.write(${JSON.stringify(output)});`,
+      ],
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    assert.equal(resultOf(scene.reports[0].result)["summary"], "Recovered.");
+    const lines = readFileSync(
+      join(scene.journal, journalKey("operation-1"), "turn.jsonl"),
+      "utf8",
+    )
+      .trim()
+      .split("\n");
+    assert.deepEqual(streamResult(lines.at(-1) ?? ""), {
+      text: "Recovered.",
+      failed: false,
+      costUsd: null,
+      sessionId: "reconnected-thread",
+      turns: 1,
+    });
+    assert.deepEqual(lines.flatMap(activityOf), [
+      { kind: "say", text: "Working." },
+      { kind: "say", text: "Recovered." },
+      { kind: "result", text: "Recovered." },
+    ]);
+  }));
