@@ -1,10 +1,11 @@
-import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { findingsOf, scoreOf } from "./github-calls.ts";
+import { merge } from "./github-merge.ts";
 import { createIssue, discard } from "./github-issue-methods.ts";
 import {
   existingTree,
-  removeWorktree,
+  defaultBranch,
+  changeChecked,
   field,
   githubTiming,
   repositoryPath,
@@ -14,7 +15,7 @@ import {
   type Pull,
 } from "./github-operation.ts";
 export type { GithubTiming, MethodSettings } from "./github-operation.ts";
-import { treePlace, workTree } from "./work-tree.ts";
+import { workTree } from "./work-tree.ts";
 
 const triggerText = "@greptileai";
 
@@ -26,6 +27,10 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "github-call-failed",
   "git-call-failed",
   "check-failed",
+  "merge-conflict",
+  "check-required",
+  "base-moved",
+  "uncommitted-change",
   "invalid-payload",
   "merged-other-commit",
   "no-change",
@@ -39,15 +44,6 @@ function integer(operation: Operation, name: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
     throw new Error("invalid-payload");
   return value;
-}
-
-async function defaultBranch(operation: Operation): Promise<string> {
-  const reference = await operation.calls.git(operation.settings.repository, [
-    "symbolic-ref",
-    "--short",
-    "refs/remotes/origin/HEAD",
-  ]);
-  return reference.trim().replace(/^origin[/]/, "");
 }
 
 async function prepare(operation: Operation): Promise<unknown> {
@@ -69,29 +65,6 @@ async function prepare(operation: Operation): Promise<unknown> {
     base,
     startCommit: tree.startCommit,
   };
-}
-
-async function changeChecked(
-  operation: Operation,
-  place: { readonly tree: Place; readonly base: string },
-): Promise<void> {
-  const call = (parts: readonly string[]): Promise<string> =>
-    operation.calls.git(place.tree.path, parts);
-  const range = `origin/${place.base}..HEAD`;
-  if (Number((await call(["rev-list", "--count", range])).trim()) === 0)
-    throw new Error("no-change");
-  const change = [
-    await call(["diff", `origin/${place.base}...HEAD`]),
-    await call(["log", "--format=%B", range]),
-  ].join("\n");
-  const privateTexts = [homedir(), ...(operation.settings.privateTexts ?? [])];
-  const lowered = change.toLowerCase();
-  if (
-    privateTexts.some(
-      (item) => item !== "" && lowered.includes(item.toLowerCase()),
-    )
-  )
-    throw new Error("private-path-in-change");
 }
 
 async function pullOf(
@@ -205,82 +178,6 @@ async function waitReview(operation: Operation): Promise<unknown> {
   }
 }
 
-async function knownMerge(
-  operation: Operation,
-  expected: { readonly number: number; readonly commit: string },
-): Promise<string | undefined> {
-  const pull: unknown = JSON.parse(
-    await operation.calls.gh([
-      "api",
-      `${repositoryPath}/pulls/${String(expected.number)}`,
-    ]),
-  );
-  if (field(pull, "merged") !== true) return undefined;
-  if (field(field(pull, "head"), "sha") !== expected.commit)
-    throw new Error("merged-other-commit");
-  return String(field(pull, "merge_commit_sha"));
-}
-
-async function mergedNow(
-  operation: Operation,
-  pull: {
-    readonly number: number;
-    readonly commit: string;
-    readonly tree: Place;
-  },
-): Promise<string> {
-  const { settings, calls } = operation;
-  if (settings.check !== undefined)
-    await calls.run(settings.check, pull.tree.path);
-  const reply: unknown = JSON.parse(
-    await calls.gh([
-      "api",
-      "-X",
-      "PUT",
-      `${repositoryPath}/pulls/${String(pull.number)}/merge`,
-      "-f",
-      "merge_method=merge",
-      "-f",
-      `sha=${pull.commit}`,
-    ]),
-  );
-  return String(field(reply, "sha"));
-}
-
-async function removed(operation: Operation, place: Place): Promise<void> {
-  const { settings, calls } = operation;
-  await calls
-    .gh([
-      "api",
-      "-X",
-      "DELETE",
-      `${repositoryPath}/git/refs/heads/${place.branch}`,
-    ])
-    .catch(() => undefined);
-  await removeWorktree(operation, place);
-  await calls.git(settings.repository, [
-    "update-ref",
-    "-d",
-    `refs/remotes/origin/${place.branch}`,
-  ]);
-}
-
-async function merge(operation: Operation): Promise<unknown> {
-  const pull = {
-    number: integer(operation, "number"),
-    commit: text(operation, "commit"),
-  };
-  const place = treePlace({
-    worktrees: operation.settings.worktrees,
-    target: operation.target,
-  });
-  const merged =
-    (await knownMerge(operation, pull)) ??
-    (await mergedNow(operation, { ...pull, tree: existingTree(operation) }));
-  await removed(operation, place);
-  return { number: pull.number, merged };
-}
-
 export type Method = (operation: Operation) => Promise<unknown>;
 
 export const methods: ReadonlyMap<string, Method> = new Map([
@@ -289,5 +186,12 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["discard", discard],
   ["open-pr", openPull],
   ["wait-review", waitReview],
-  ["merge", merge],
+  [
+    "merge",
+    (operation) =>
+      merge(operation, {
+        number: integer(operation, "number"),
+        commit: text(operation, "commit"),
+      }),
+  ],
 ]);

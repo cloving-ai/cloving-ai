@@ -89,6 +89,11 @@ const actions = {
   },
   "api PUT merge": () => {
     const pr = state.prs.find((item) => item.number === number);
+    if (!args.includes("sha=" + headOf(pr.head))) {
+      process.stderr.write("gh: Head branch was modified (HTTP 409)");
+      process.exitCode = 1;
+      return;
+    }
     pr.mergedHead = headOf(pr.head);
     pr.mergeCommit = "f".repeat(40);
     pr.state = "MERGED";
