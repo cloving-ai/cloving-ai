@@ -68,7 +68,7 @@ function readmeFindings(text: string): readonly string[] {
   );
   return [
     ...distinct(text.match(/\bCLOVING_\w+/g) ?? [])
-      .filter((name) => !settings.has(name))
+      .filter((name) => !settings.has(name) && name !== "CLOVING_TURN_ID")
       .map((name) => `unknown-setting: ${name}`),
     ...distinct(named)
       .filter((name) => !commands.has(name))

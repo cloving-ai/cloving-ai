@@ -141,6 +141,7 @@ The client commands find the service with no setting, because the two sides use 
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
+- `CLOVING_PROFILES`: a JSON file of named Claude turn profiles, read once when the service starts.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
 - `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`; the GitHub command and private-text list also apply to `develop-prd`.
@@ -213,6 +214,26 @@ A run of `develop-ticket` or `develop-prompt` has one to three review rounds. Ea
 - A denial with no text, or a denial in round 3, ends the run.
 
 The worker is not confined. It runs the `claude` command of the search path as the current user, with file edits and shell commands permitted in the work tree and a spend limit of 5 USD for each turn. `CLOVING_CLAUDE_COMMAND` (a JSON list of texts) replaces the command.
+
+Set `CLOVING_PROFILES` to a file such as:
+
+```json
+{
+  "profiles": {
+    "checker": {
+      "env": { "REVIEW_ONLY": "1", "TURN_NAME": "{turn}" },
+      "allowedTools": ["Read", "Grep", "Skill", "Agent"],
+      "maxBudgetUsd": 15,
+      "workflows": ["review-loop"]
+    },
+    "fixer": { "env": { "TURN_NAME": "{turn}" } }
+  }
+}
+```
+
+A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional; `model` and `permissionMode` also override the corresponding Claude command flags. Unspecified fields keep the service defaults, and `run-turn` keeps the original command. Flags after `--` remain unchanged.
+
+`workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile`, disallowed workflows with `profile-not-allowed`, and Codex profiles with `profile-needs-claude`.
 
 ### Pull requests of `develop-issue`
 

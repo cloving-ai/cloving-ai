@@ -604,7 +604,14 @@
     "test/daemon-queue-restart.test.ts": "test",
     "test/cli-start-queue.test.ts": "test",
     "test/daemon-queue-check.test.ts": "test",
-    "test/daemon-queue-errors.test.ts": "test"
+    "test/daemon-queue-errors.test.ts": "test",
+    "src/turn-profile.ts": "pure",
+    "test/claude-profiles-fixture.ts": "test",
+    "test/claude-profiles.test.ts": "test",
+    "test/cli-start-profiles.test.ts": "test",
+    "test/turn-profile.test.ts": "test",
+    "test/daemon-profiles.test.ts": "test",
+    "test/self-host-profiles.test.ts": "test"
   },
   "allowed": {
     "quality": [
@@ -637,7 +644,15 @@
       "daemon",
       "entry"
     ],
-    "build": ["build", "quality", "stdlib", "sdk-build", "metadata", "process"],
+    "build": [
+      "build",
+      "quality",
+      "stdlib",
+      "sdk-build",
+      "metadata",
+      "process",
+      "pure"
+    ],
     "configuration": ["tooling", "quality"],
     "cli": ["cli", "stdlib", "metadata", "pure", "broker", "network"],
     "pure": ["pure"],

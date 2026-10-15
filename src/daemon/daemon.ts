@@ -25,6 +25,7 @@ import {
   type ServiceHost,
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
+import type { TurnProfiles } from "../turn-profile.ts";
 import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
@@ -38,6 +39,7 @@ import {
 
 export interface DaemonSettings {
   readonly worker?: Worker;
+  readonly profiles?: TurnProfiles;
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
@@ -161,6 +163,8 @@ function adapters(
   ): Promise<unknown> => (await given).reportEffect(effect);
   const worker = claudeWorker({
     worker: settings.worker ?? "claude",
+    profiles: settings.profiles ?? {},
+    workflowId: async (runId) => (await given).workflowId(runId),
     repository,
     command,
     document,
