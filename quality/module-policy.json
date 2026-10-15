@@ -577,7 +577,14 @@
     "test/github-issue-restart.test.ts": "test",
     "test/claude-turn-environment.test.ts": "test",
     "test/self-host-prd.test.ts": "test",
-    "workflows/develop-prd.ts": "workflow"
+    "workflows/develop-prd.ts": "workflow",
+    "src/authority/history-state.ts": "pure",
+    "test/authority-history-generated.ts": "test",
+    "test/authority-history-parity.test.ts": "test",
+    "test/authority-history-reference.ts": "test",
+    "test/authority-history-tamper.test.ts": "test",
+    "test/authority-opening-fixture.ts": "test",
+    "test/authority-opening-scale.benchmark.ts": "test"
   },
   "allowed": {
     "quality": [
