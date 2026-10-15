@@ -110,6 +110,8 @@ async function outcome(
 ): Promise<Recorded> {
   const { intent, method, payload, signal } = run;
   const { settings } = parts;
+  if (intent.target.startsWith("branch:"))
+    return interrupted("branch-target-not-supported");
   try {
     const result = await method({
       settings,
@@ -203,6 +205,8 @@ async function delivered(
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome | Identity> {
   if (!ownIntent(intent)) return failure("unsupported-effect");
+  if (intent.target.startsWith("branch:"))
+    return failure("branch-target-not-supported");
   const method = methods.get(intent.method);
   if (method === undefined) return failure("unsupported-effect");
   const known = await reconciled(parts, intent);
