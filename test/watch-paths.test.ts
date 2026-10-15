@@ -68,7 +68,20 @@ await test("CLV-080 file addresses hide home folders and preserve unrelated fold
   );
 });
 
-function activityModel(message: unknown) {
+type ActivityMessage =
+  | {
+      type: "assistant" | "user";
+      message: {
+        content: (
+          | { type: "text"; text: string }
+          | { type: "tool_result"; is_error: boolean; content: string }
+          | { type: "tool_use"; name: string; input: { command: string } }
+        )[];
+      };
+    }
+  | { type: "result"; result: string; total_cost_usd?: number };
+
+function activityModel(message: ActivityMessage) {
   const turn = turnOf({
     key: "activity",
     started: {
@@ -110,7 +123,7 @@ await test("CLV-080 long errors and tool calls replace file addresses before sho
   for (const content of [
     { type: "tool_result", is_error: true, content: text },
     { type: "tool_use", name: "Bash", input: { command: text } },
-  ]) {
+  ] as const) {
     const model = activityModel({
       type: content.type === "tool_result" ? "user" : "assistant",
       message: { content: [content] },
