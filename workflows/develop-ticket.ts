@@ -267,19 +267,18 @@ async function merged(
     payload: { number, commit },
   });
   if (merge.kind !== "done") return merge;
-  if (typeof merge.result["reason"] === "string") {
-    if (done.round > lastFix)
-      return blocked(input.cycleId, {
-        reason: `The merge has the result ${merge.result["reason"]} in round ${String(done.round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${done.pull.url}`,
-        evidenceId: "github-merge",
-      });
-    return { round: done.round + 1, pull: done.pull, review: merge.result };
-  }
-  return {
-    kind: "handoff_requested",
-    cycleId: input.cycleId,
-    promotionId: `pull-request-${String(number)}`,
-  };
+  if (typeof merge.result["reason"] !== "string")
+    return {
+      kind: "handoff_requested",
+      cycleId: input.cycleId,
+      promotionId: `pull-request-${String(number)}`,
+    };
+  if (done.round > lastFix)
+    return blocked(input.cycleId, {
+      reason: `The merge has the result ${merge.result["reason"]} in round ${String(done.round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${done.pull.url}`,
+      evidenceId: "github-merge",
+    });
+  return { round: done.round + 1, pull: done.pull, review: merge.result };
 }
 
 async function pullRequest(input: Ticket): Promise<CycleOutcome> {
