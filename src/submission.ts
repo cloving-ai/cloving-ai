@@ -1,8 +1,18 @@
 import { record, type Fields } from "./protocol.ts";
 
+export type SubmissionField =
+  | { readonly type: "string"; readonly optional?: boolean }
+  | { readonly type: "boolean"; readonly optional?: boolean }
+  | {
+      readonly type: "integer";
+      readonly optional?: boolean;
+      readonly minimum?: number;
+      readonly maximum?: number;
+    };
+
 export interface SubmissionContract {
   readonly maximumBytes: number;
-  readonly fields: Readonly<Record<string, "string">>;
+  readonly fields: Readonly<Record<string, "string" | SubmissionField>>;
 }
 
 export type SubmissionCheck =
@@ -43,10 +53,23 @@ function invalidField(
     (key) => !Object.hasOwn(contract.fields, key),
   );
   if (undeclared !== undefined) return undeclared;
-  return Object.keys(contract.fields).find((key) => {
-    const value = submission[key];
-    return typeof value !== "string" || value.trim().length === 0;
-  });
+  return Object.entries(contract.fields).find(([key, rule]) => {
+    if (rule !== "string" && rule.optional && !Object.hasOwn(submission, key))
+      return false;
+    return !validValue(rule, submission[key]);
+  })?.[0];
+}
+
+function validValue(rule: "string" | SubmissionField, value: unknown): boolean {
+  if (rule === "string" || rule.type === "string")
+    return typeof value === "string" && value.trim().length > 0;
+  if (rule.type === "boolean") return typeof value === "boolean";
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    (rule.minimum === undefined || value >= rule.minimum) &&
+    (rule.maximum === undefined || value <= rule.maximum)
+  );
 }
 
 export function normalizedRequest(

@@ -19,6 +19,85 @@ const functions = [
   },
 ];
 
+const declared = {
+  workflowId: "review-run",
+  functionName: "developOther",
+  effectLimit: 14,
+  capabilities: ["claude"],
+  input: {
+    maximumBytes: 65_536,
+    fields: { rounds: { type: "integer", minimum: 1, maximum: 10 } },
+  },
+} as const;
+
+await test("CLV-089 a declared workflow registers its manifest, effect limit and capabilities", async () => {
+  await withProject({}, async (_cli, directory) => {
+    const manifests = await manifestsIn(directory);
+    const path = join(directory, "other.workflow.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "other",
+        workflowId: functions[1]?.workflowId,
+        steps: [],
+        capabilities: ["claude"],
+        resources: [],
+        artifacts: "artifacts",
+      }),
+    );
+    const table = ticketRegistrationTable(
+      { repository: directory, command: undefined },
+      [declared],
+    );
+    assert.deepEqual(
+      table.slice(0, 4).map((row) => row.workflowId),
+      ["develop-ticket", "develop-issue", "develop-prd", "develop-prompt"],
+    );
+    const row = table.find((entry) => entry.workflowId === "review-run");
+    assert.ok(row);
+    const result = await ticketRegistrations(manifests, { table: [row] });
+    assert.equal(result.kind, "admitted");
+    const registration = result.registrations[0];
+    assert.ok(registration);
+    assert.equal(registration.effectLimit, 14);
+    assert.equal(registration.manifest.workflowId, functions[1]?.workflowId);
+    assert.deepEqual(registration.manifest.capabilities, ["claude"]);
+    assert.deepEqual(registration.submission, declared.input);
+    assert.deepEqual(
+      await registration.resolver.resolve({
+        workflowId: "review-run",
+        commandId: "command-1",
+        submission: { rounds: 3 },
+        signal: new AbortController().signal,
+      }),
+      {
+        kind: "resolved",
+        input: {
+          cycleId: "task-e12c157c0051",
+          repository: directory,
+          input: { rounds: 3 },
+        },
+      },
+    );
+  });
+});
+
+await test("CLV-089 duplicate declared IDs cannot shadow built-in or declared registrations", async () => {
+  for (const declarations of [
+    [{ ...declared, workflowId: "develop-ticket" }],
+    [declared, declared],
+  ]) {
+    const table = ticketRegistrationTable(
+      { repository: "/repositories/example", command: undefined },
+      declarations,
+    );
+    const result = await ticketRegistrations({}, { table });
+    assert.equal(result.kind, "rejected");
+    assert.match(result.detail, /duplicate-workflow-id/);
+  }
+});
+
 await test("CLV-081 develop-issue admits preparation, four complete rounds and labels with 20 effects", () => {
   const row = ticketRegistrationTable({
     repository: "/repositories/example",

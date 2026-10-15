@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
+import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type {
   Resolution,
   ResolutionRequest,
@@ -42,6 +43,7 @@ export interface TicketRegistration {
   readonly resolver: Resolver;
   readonly submission: WorkflowRegistration["submission"];
   readonly effectLimit: number;
+  readonly capabilities?: readonly string[];
 }
 
 async function ticket(
@@ -142,6 +144,7 @@ export function promptResolver(repository: string): Resolver {
 
 export function ticketRegistrationTable(
   source: TicketSource,
+  declarations: readonly DeclaredWorkflow[] = [],
 ): readonly TicketRegistration[] {
   return [
     {
@@ -172,13 +175,46 @@ export function ticketRegistrationTable(
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
+    ...declarations.map((declaration) => ({
+      workflowId: declaration.workflowId,
+      functionName: declaration.functionName,
+      effectLimit: declaration.effectLimit,
+      capabilities: declaration.capabilities,
+      submission: declaration.input,
+      resolver: declaredResolver(source.repository),
+    })),
   ];
+}
+
+function declaredResolver(repository: string): Resolver {
+  return {
+    id: "declared-input",
+    version: "1",
+    resolve: (request) =>
+      Promise.resolve({
+        kind: "resolved",
+        input: {
+          cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
+          repository,
+          input: request.submission,
+        },
+      }),
+  };
 }
 
 export async function ticketRegistrations(
   manifests: Readonly<Record<string, string | undefined>>,
   options: { readonly table: readonly TicketRegistration[] },
 ): Promise<TicketRegistrations> {
+  const ids = new Set<string>();
+  for (const row of options.table) {
+    if (ids.has(row.workflowId))
+      return {
+        kind: "rejected",
+        detail: `duplicate-workflow-id: ${row.workflowId}`,
+      };
+    ids.add(row.workflowId);
+  }
   const registrations: WorkflowRegistration[] = [];
   for (const row of options.table) {
     const manifest = manifests[row.functionName];
@@ -189,7 +225,7 @@ export async function ticketRegistrations(
       };
     const admission = await admitCompiled(manifest, {
       file: manifest,
-      capabilities: ticketCapabilities,
+      capabilities: row.capabilities ?? ticketCapabilities,
     });
     if (admission.kind === "rejected")
       return {

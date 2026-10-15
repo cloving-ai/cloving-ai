@@ -11,8 +11,13 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { workflowFiles, workflowManifests } from "./self-host-workflows.ts";
+import {
+  workflowDeclarations,
+  workflowFiles,
+  workflowManifests,
+} from "./self-host-workflows.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
+import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -176,21 +181,38 @@ async function linkedPackages(): Promise<void> {
   );
 }
 
-async function registered(): Promise<Readonly<Record<string, string>>> {
+interface RegisteredWorkflows {
+  readonly manifests: Readonly<Record<string, string>>;
+  readonly declarations: readonly DeclaredWorkflow[];
+}
+
+async function registered(): Promise<RegisteredWorkflows> {
   const compiled: unknown = JSON.parse(
     await readFile(join(project, "artifacts/manifest.json"), "utf8"),
   );
   if (!isWorkflowManifest(compiled))
     throw new Error("The compiled workflow manifest is invalid.");
-  const paths: Record<string, string> = {};
-  for (const [functionName, manifest] of Object.entries(
-    workflowManifests(compiled),
-  )) {
+  const manifests = workflowManifests(compiled);
+  const declarations = await workflowDeclarations(
+    join(product, "workflows"),
+    manifests,
+  );
+  const paths = new Map<string, string>();
+  for (const [functionName, manifest] of Object.entries(manifests)) {
     const path = join(project, `${manifest.name}.workflow.json`);
-    await writeFile(path, JSON.stringify(manifest));
-    paths[functionName] = path;
+    const declared = declarations.find(
+      (entry) => entry.functionName === functionName,
+    );
+    await writeFile(
+      path,
+      JSON.stringify({
+        ...manifest,
+        capabilities: declared?.capabilities ?? manifest.capabilities,
+      }),
+    );
+    paths.set(functionName, path);
   }
-  return paths;
+  return { manifests: Object.fromEntries(paths), declarations };
 }
 
 function source(file: string): string {
@@ -199,7 +221,7 @@ function source(file: string): string {
 
 async function launchers(
   commands: Commands,
-  manifests: Readonly<Record<string, string>>,
+  workflows: RegisteredWorkflows,
 ): Promise<void> {
   const settings = {
     ...commands,
@@ -207,7 +229,7 @@ async function launchers(
     repository,
     concurrency,
     runtimeDirectory: runtime,
-    manifests,
+    ...workflows,
   };
   await writeFile(
     join(project, "start.mjs"),
@@ -251,7 +273,7 @@ function guide(): string {
   ].join("\n");
 }
 
-async function prepared(): Promise<Readonly<Record<string, string>>> {
+async function prepared(): Promise<RegisteredWorkflows> {
   await rm(project, { recursive: true, force: true });
   await mkdir(join(project, "workflows"), { recursive: true });
   await writeFile(

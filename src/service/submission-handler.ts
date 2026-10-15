@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { isIdentifier as isWorkflowIdentifier } from "../authority/commands.ts";
 import type { CommandRecord } from "../broker/actor/authority.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
@@ -194,7 +195,7 @@ async function submitted(
   parameters: Fields,
 ): Promise<Reply> {
   const { workflowId, commandId } = parameters;
-  if (!isIdentifier(workflowId) || !isIdentifier(commandId))
+  if (!isWorkflowIdentifier(workflowId) || !isIdentifier(commandId))
     return invalidRequest("The workflow ID or the command ID is not valid.");
   const existing = await context.authority.queries.receipt(commandId);
   if (existing !== undefined)
