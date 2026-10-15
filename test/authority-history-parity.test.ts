@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rebuildHistory } from "../src/authority/history.ts";
+import { rebuildHistory, type History } from "../src/authority/history.ts";
 import { emptyAuthority } from "../src/authority/reducer.ts";
 import { eventTypes } from "../src/authority/transitions.ts";
 import { restore } from "../src/broker/authority-restore.ts";
@@ -8,7 +8,7 @@ import { generatedHistory } from "./authority-history-generated.ts";
 import { referenceHistory } from "./authority-history-reference.ts";
 import { historySnapshot } from "./authority-opening-fixture.ts";
 
-function outcome(rebuild: () => unknown): unknown {
+function outcome<Value>(rebuild: () => Value): Value | string {
   try {
     return rebuild();
   } catch (error) {
@@ -45,8 +45,8 @@ await test("CLV-048 generated histories retain the full reducer state and invali
     ];
     for (const history of variants)
       assert.deepEqual(
-        outcome(() => rebuildHistory(history)),
-        outcome(() => referenceHistory(history)),
+        outcome(() => rebuildHistory(history)) satisfies History | string,
+        outcome(() => referenceHistory(history)) satisfies History | string,
         `seed ${String(seed)}`,
       );
   }
