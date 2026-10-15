@@ -35,10 +35,43 @@ function rows(value: unknown): readonly Fields[] {
   });
 }
 
+type OutcomeCache = Map<
+  string,
+  {
+    readonly latestSequence: unknown;
+    readonly event: NotifyEvent | undefined;
+  }
+>;
+
+async function observedOutcome(
+  summary: Fields,
+  source: { readonly runtimeDirectory: string; readonly cache: OutcomeCache },
+): Promise<NotifyEvent | undefined> {
+  const { runtimeDirectory, cache } = source;
+  const runId = String(summary["runId"]);
+  const previous = cache.get(runId);
+  if (
+    previous !== undefined &&
+    previous.latestSequence === summary["latestSequence"]
+  )
+    return previous.event;
+  const status = await request(runtimeDirectory, {
+    operation: "status",
+    parameters: { runId },
+  });
+  const run = record(status["run"]);
+  if (run === undefined) throw new Error("invalid-notify-status");
+  const event = outcomeNotification(run);
+  cache.set(runId, { latestSequence: summary["latestSequence"], event });
+  return event;
+}
+
 async function events(
   runtimeDirectory: string,
+  cache: OutcomeCache,
 ): Promise<readonly NotifyEvent[]> {
   const found: NotifyEvent[] = [];
+  const runs = new Map<string, Fields>();
   let after: string | null = "";
   do {
     const page = await request(runtimeDirectory, {
@@ -46,30 +79,26 @@ async function events(
       parameters: { after, limit: 500 },
     });
     for (const summary of rows(page["runs"])) {
-      const parameters = { runId: summary["runId"] };
-      const status = await request(runtimeDirectory, {
-        operation: "status",
-        parameters,
+      runs.set(String(summary["runId"]), summary);
+      const outcome = await observedOutcome(summary, {
+        runtimeDirectory,
+        cache,
       });
-      const run = record(status["run"]);
-      if (run === undefined) throw new Error("invalid-notify-status");
-      const outcome = outcomeNotification(run);
       if (outcome !== undefined) found.push(outcome);
-      const questions = await request(runtimeDirectory, {
-        operation: "questions",
-        parameters,
-      });
-      found.push(
-        ...rows(questions["decisions"]).map((decision) =>
-          decisionNotification(run, decision),
-        ),
-      );
     }
     const next = page["next"];
     if (next !== null && (typeof next !== "string" || next <= after))
       throw new Error("invalid-notify-page");
     after = next;
   } while (after !== null);
+  const questions = await request(runtimeDirectory, {
+    operation: "questions",
+    parameters: {},
+  });
+  for (const decision of rows(questions["decisions"])) {
+    const run = runs.get(String(decision["runId"]));
+    if (run !== undefined) found.push(decisionNotification(run, decision));
+  }
   return found;
 }
 
@@ -127,9 +156,13 @@ function report(label: string, error: unknown): void {
 
 async function check(
   settings: NotifySettings,
-  journal: { readonly file: string; readonly keys: Set<string> },
+  journal: {
+    readonly file: string;
+    readonly keys: Set<string>;
+    readonly cache: OutcomeCache;
+  },
 ): Promise<void> {
-  for (const event of await events(settings.runtimeDirectory)) {
+  for (const event of await events(settings.runtimeDirectory, journal.cache)) {
     if (journal.keys.has(event.key)) continue;
     await save(journal.file, new Set([...journal.keys, event.key]));
     journal.keys.add(event.key);
@@ -146,9 +179,10 @@ export async function notifyRuns(settings: NotifySettings): Promise<{
 }> {
   const file = join(settings.directory, "notify-events.json");
   const keys = await recorded(file);
-  const journal = { file, keys: keys ?? new Set<string>() };
+  const cache: OutcomeCache = new Map();
+  const journal = { file, keys: keys ?? new Set<string>(), cache };
   if (keys === undefined) {
-    for (const event of await events(settings.runtimeDirectory))
+    for (const event of await events(settings.runtimeDirectory, cache))
       journal.keys.add(event.key);
     await save(file, journal.keys);
   }

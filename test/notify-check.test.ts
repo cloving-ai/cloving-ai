@@ -3,6 +3,7 @@ import { readFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import type { Fields, ServiceRequest } from "../src/protocol.ts";
 import type { Handle } from "../src/service/transport.ts";
 import { eventually } from "./service-fixture.ts";
 import {
@@ -57,6 +58,170 @@ function changingRuns(state: { ready: boolean }): Handle {
   };
 }
 
+function historyRuns(state: {
+  readonly requests: ServiceRequest[];
+  readonly runs: Fields[];
+  readonly decisions?: readonly Fields[];
+}): Handle {
+  return (request) => {
+    state.requests.push(request);
+    if (request.operation === "questions")
+      return notifyReply({ decisions: state.decisions ?? [] });
+    const runId = request.parameters["runId"];
+    if (runId !== undefined)
+      return notifyReply({
+        run: state.runs.find((run) => run["runId"] === runId),
+      });
+    return notifyReply({ runs: state.runs, next: null });
+  };
+}
+
+function heldScan(
+  release: Promise<undefined>,
+  counts: { reads: number },
+): Handle {
+  return async (request) => {
+    if (request.operation === "questions")
+      return notifyReply({ decisions: [] });
+    counts.reads += 1;
+    await release;
+    return notifyReply({ runs: [], next: null });
+  };
+}
+
+function unavailableQuestions(counts: {
+  statuses: number;
+  questions: number;
+}): Handle {
+  return (request) => {
+    if (request.operation === "questions") {
+      counts.questions += 1;
+      if (counts.questions === 1)
+        return Promise.resolve({
+          kind: "error",
+          error: { code: "unavailable", detail: "unavailable" },
+        });
+      return notifyReply({ decisions: [] });
+    }
+    if (request.parameters["runId"] !== undefined) {
+      counts.statuses += 1;
+      return notifyReply({ run: blockedRun });
+    }
+    return notifyReply({ runs: [blockedRun], next: null });
+  };
+}
+
+await test("CLV-090 notification checks skip unchanged history and read questions once per check", async () => {
+  const state = {
+    requests: [] as ServiceRequest[],
+    runs: [
+      { ...blockedRun, latestSequence: 1 },
+      {
+        ...blockedRun,
+        runId: "run-successful",
+        latestSequence: 2,
+        outcome: { kind: "handoff_requested" },
+      },
+    ],
+  };
+  await withNotifier(
+    { handle: historyRuns(state), record: '["blocked:run-blocked"]' },
+    async (scene) => {
+      await eventually(() =>
+        state.requests.filter((request) => request.operation === "questions")
+          .length >= 3
+          ? true
+          : undefined,
+      );
+      await scene.stop();
+      const statuses = state.requests.filter(
+        (request) => request.operation === "status",
+      );
+      assert.deepEqual(
+        statuses
+          .filter((request) => request.parameters["runId"] !== undefined)
+          .map((request) => request.parameters["runId"]),
+        ["run-blocked", "run-successful"],
+      );
+      const questions = state.requests.filter(
+        (request) => request.operation === "questions",
+      );
+      assert.equal(
+        questions.length,
+        statuses.filter((request) => request.parameters["runId"] === undefined)
+          .length,
+      );
+      assert.ok(
+        questions.every(
+          (request) => Object.keys(request.parameters).length === 0,
+        ),
+      );
+      assert.deepEqual(await scene.notices(), []);
+    },
+  );
+});
+
+await test("CLV-090 sequence changes refresh outcomes and cached runs still supply new decisions", async () => {
+  const state = {
+    requests: [] as ServiceRequest[],
+    runs: [{ ...blockedRun, state: "running", latestSequence: 1 }] as Fields[],
+    decisions: [] as Fields[],
+  };
+  await withNotifier(
+    {
+      handle: historyRuns(state),
+      script: `
+import { appendFileSync } from "node:fs";
+let text = "";
+for await (const chunk of process.stdin) text += chunk;
+appendFileSync("notifications", text);
+`,
+    },
+    async (scene) => {
+      await eventually(() => (state.requests.length >= 5 ? true : undefined));
+      state.decisions = [
+        {
+          decisionId: "run-blocked/review",
+          runId: blockedRun.runId,
+          type: "approval",
+          prompt: "Review this change",
+          allowed: ["approve", "deny"],
+        },
+      ];
+      await eventually(async () =>
+        (await scene.notices()).length === 1 ? true : undefined,
+      );
+      state.decisions = [];
+      state.runs = [{ ...blockedRun, latestSequence: 2 }];
+      await eventually(async () =>
+        (await scene.notices()).length === 2 ? true : undefined,
+      );
+      await scene.stop();
+      const notices = await scene.notices();
+      assert.deepEqual(
+        notices.map((notice) => notice["event"]),
+        ["decision", "blocked"],
+      );
+      assert.equal(notices[0]?.["workflowId"], "develop-ticket");
+      assert.match(
+        String(notices[0]["body"]),
+        /cloving approve run-blocked\/review/,
+      );
+      assert.match(
+        String(notices[0]["body"]),
+        /cloving deny run-blocked\/review/,
+      );
+      assert.match(String(notices[1]?.["body"]), /needs help/);
+      assert.equal(
+        state.requests.filter(
+          (request) => request.parameters["runId"] !== undefined,
+        ).length,
+        2,
+      );
+    },
+  );
+});
+
 await test("CLV-090 the notifier reads every page and records the event before running the command without added arguments", async () => {
   const pages: unknown[] = [];
   await withNotifier(
@@ -77,20 +242,16 @@ await test("CLV-090 the notifier reads every page and records the event before r
 
 await test("CLV-090 a check in progress skips timer ticks and shutdown waits for the check", async () => {
   const release = Promise.withResolvers<undefined>();
-  let reads = 0;
+  const counts = { reads: 0 };
   await withNotifier(
     {
-      handle: async () => {
-        reads += 1;
-        await release.promise;
-        return notifyReply({ runs: [], next: null });
-      },
+      handle: heldScan(release.promise, counts),
     },
     async (scene) => {
       try {
-        await eventually(() => (reads === 1 ? true : undefined));
+        await eventually(() => (counts.reads === 1 ? true : undefined));
         await delay(40);
-        assert.equal(reads, 1);
+        assert.equal(counts.reads, 1);
         const stopping = scene.stop();
         release.resolve(undefined);
         await stopping;
@@ -120,6 +281,24 @@ await test("CLV-090 failed scans cannot consume event keys and a later check rec
         ),
         ["blocked:run-blocked"],
       );
+    },
+  );
+});
+
+await test("CLV-090 a failed questions read retains cached outcomes for the next check", async () => {
+  const counts = { statuses: 0, questions: 0 };
+  await withNotifier(
+    {
+      handle: unavailableQuestions(counts),
+    },
+    async (scene) => {
+      await eventually(async () =>
+        (await scene.notices()).length === 1 ? true : undefined,
+      );
+      await scene.stop();
+      assert.equal(counts.statuses, 1);
+      assert.ok(counts.questions >= 2);
+      assert.equal((await scene.notices())[0]?.["event"], "blocked");
     },
   );
 });
