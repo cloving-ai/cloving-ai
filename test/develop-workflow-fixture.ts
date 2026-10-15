@@ -24,19 +24,31 @@ registerHooks({
 const scenario = `
 import { developTicket } from ${located("workflows/develop-ticket.ts")};
 import { developPrd } from ${located("workflows/develop-prd.ts")};
+import { authorizeEffect } from ${located("src/effect-authorization.ts")};
 const cases = JSON.parse(process.argv[2]);
 const key = Symbol.for("cloving.step-bridge/v1");
 const unavailable = { kind: "unavailable", reason: "no-scenario-result" };
 const next = (given, request) => given.effects === undefined ? given.turn : given.effects[request.capability + " " + request.method]?.shift() ?? unavailable;
 for (const given of cases) {
   const requests = [];
+  let spent = 0;
   globalThis[key] = {
-    effect: async (request) => { requests.push(["effect", request]); return next(given, request); },
+    effect: async (request) => {
+      requests.push(["effect", request]);
+      if (given.effectLimit !== undefined) {
+        const allowed = authorizeEffect({ capabilities: ["claude", "github"] }, {
+          budget: { limit: given.effectLimit, spent }, request,
+        });
+        if (allowed.kind === "rejected") return { kind: "refused", reason: allowed.reason };
+        spent = allowed.spent;
+      }
+      return next(given, request);
+    },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
   };
   const develop = given.workflow === "develop-prd" ? developPrd : developTicket;
   const outcome = await develop(given.input, given.decision);
-  process.stdout.write(JSON.stringify({ outcome, requests }) + "\\n");
+  process.stdout.write(JSON.stringify({ outcome, requests, ...(given.effectLimit === undefined ? {} : { spent }) }) + "\\n");
 }
 `;
 

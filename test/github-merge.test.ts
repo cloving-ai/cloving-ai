@@ -15,6 +15,64 @@ import {
   movingCheck,
 } from "./github-merge-fixture.ts";
 
+await test("CLV-081 completes a failed check with its output and no push or merge", () =>
+  withGithub(async (scene) => {
+    const trace = join(scene.directory, "git-trace");
+    const worker = scene.worker({
+      environment: {
+        FAKE_GH_STATE: join(scene.directory, "gh-state.json"),
+        FAKE_GH_ORIGIN: scene.origin,
+        GIT_TRACE: trace,
+      },
+      check: [
+        process.execPath,
+        "-e",
+        'process.stdout.write("Failed test: merged tree\\n"); process.stderr.write("Expected 2, got 1\\n"); process.exitCode = 1',
+      ],
+    });
+    const commit = await opened(scene, worker);
+    advancedBase(scene);
+    writeFileSync(trace, "");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.deepEqual(resultOf(report.result), {
+      reason: "check-failed",
+      output: "Failed test: merged tree\nExpected 2, got 1\n",
+    });
+    assert.doesNotMatch(readFileSync(trace, "utf8"), /built-in: git push/);
+    assert.deepEqual(mergeCalls(scene), []);
+    assert.equal(
+      git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
+      commit,
+    );
+  }));
+
+await test("CLV-081 keeps only the last 6000 characters of failed check output", () =>
+  withGithub(async (scene) => {
+    const stdout = "discard this prefix\n" + "a".repeat(6_000);
+    const stderr = "\nThe failing assertion.\n";
+    const worker = scene.worker({
+      check: [
+        process.execPath,
+        "-e",
+        `process.stdout.write(${JSON.stringify(stdout)}); process.stderr.write(${JSON.stringify(stderr)}); process.exitCode = 1`,
+      ],
+    });
+    const commit = await opened(scene, worker);
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.deepEqual(resultOf(report.result), {
+      reason: "check-failed",
+      output: (stdout + stderr).slice(-6_000),
+    });
+  }));
+
 await test("CLV-078 refreshes the branch, checks the updated tree and merges its pushed head", () =>
   withGithub(async (scene) => {
     const checked = join(scene.directory, "checked");
@@ -152,20 +210,30 @@ await test("CLV-078 refuses checks that dirty tracked files or change HEAD", asy
     });
 });
 
-await test("CLV-078 aborts a conflicting base update without a push or merge call", () =>
+await test("CLV-081 returns conflicting files and aborts the update without a push or merge call", () =>
   withGithub(async (scene) => {
-    const worker = scene.worker();
+    const trace = join(scene.directory, "git-trace");
+    const worker = scene.worker({
+      environment: {
+        FAKE_GH_STATE: join(scene.directory, "gh-state.json"),
+        FAKE_GH_ORIGIN: scene.origin,
+        GIT_TRACE: trace,
+      },
+    });
     const commit = await opened(scene, worker);
     committed(scene.repository, { name: "one.ts", text: "2;\n" });
     git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    writeFileSync(trace, "");
     const report = await scene.perform(worker, {
       method: "merge",
       payload: { number: 1, commit },
     });
-    assert.deepEqual(
-      [report.outcome, report.reason],
-      ["failed", "merge-conflict"],
-    );
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.deepEqual(resultOf(report.result), {
+      reason: "merge-conflict",
+      output: "src/one.ts",
+    });
+    assert.doesNotMatch(readFileSync(trace, "utf8"), /built-in: git push/);
     assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
     assert.equal(
       existsSync(git(treeOf(scene), ["rev-parse", "--git-path", "MERGE_HEAD"])),
@@ -182,7 +250,10 @@ await test("CLV-078 aborts a conflicting base update without a push or merge cal
   }));
 
 await test("CLV-078 keeps an updated head private and unrecorded when privacy or the check fails", async () => {
-  for (const reason of ["private-path-in-change", "check-failed"]) {
+  for (const [reason, outcome] of [
+    ["private-path-in-change", "failed"],
+    ["check-failed", "completed"],
+  ]) {
     await withGithub(async (scene) => {
       const initial = scene.worker();
       const commit = await opened(scene, initial);
@@ -196,7 +267,8 @@ await test("CLV-078 keeps an updated head private and unrecorded when privacy or
         method: "merge",
         payload: { number: 1, commit },
       });
-      assert.equal(report.reason, reason);
+      assert.equal(report.outcome, outcome);
+      assert.equal(report.reason ?? resultOf(report.result)["reason"], reason);
       assert.deepEqual(mergeCalls(scene), []);
       assert.equal(
         git(scene.origin, ["rev-parse", "cloving/ticket-one"]),

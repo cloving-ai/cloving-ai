@@ -239,10 +239,11 @@ await test("CLV-063 the GitHub worker runs the check command in the work tree be
     const commit = await opened(scene, failing);
     const call = { method: "merge", payload: { number: 1, commit } };
     const refused = await scene.perform(failing, call);
-    assert.deepEqual(
-      [refused.outcome, refused.reason],
-      ["failed", "check-failed"],
-    );
+    assert.equal(refused.outcome, "completed");
+    assert.deepEqual(resultOf(refused.result), {
+      reason: "check-failed",
+      output: "",
+    });
     assert.deepEqual(
       [scene.state().prs[0]?.["state"], existsSync(tree(scene))],
       ["OPEN", true],

@@ -17,6 +17,20 @@ interface ReviewedPull {
   readonly commit: string;
 }
 
+interface SuccessfulMerge {
+  readonly number: number;
+  readonly commit: string;
+  readonly updated: string;
+  readonly merged: string;
+}
+
+interface MergeRepair {
+  readonly reason: "check-failed" | "merge-conflict";
+  readonly output: string;
+}
+
+export type MergeResult = SuccessfulMerge | MergeRepair;
+
 function commitOf(value: unknown, name: string): string {
   if (typeof value !== "object" || value === null)
     throw new Error("github-call-failed");
@@ -102,8 +116,13 @@ async function updatedTree(
       place.base,
     ]);
   } catch {
+    const conflicts = await calls.git(place.tree.path, [
+      "diff",
+      "--name-only",
+      "--diff-filter=U",
+    ]);
     await calls.git(place.tree.path, ["merge", "--abort"]);
-    throw new Error("merge-conflict");
+    throw new Error("merge-conflict", { cause: conflicts.trim() });
   }
 }
 
@@ -244,10 +263,39 @@ async function readyHead(
   return updated;
 }
 
+function checkOutput(cause: unknown): string {
+  return ["stdout", "stderr"]
+    .map((name) => {
+      const value = field(cause, name);
+      return typeof value === "string" ? value : "";
+    })
+    .join("")
+    .slice(-6_000);
+}
+
 export async function merge(
   operation: Operation,
   pull: ReviewedPull,
-): Promise<unknown> {
+): Promise<MergeResult> {
+  try {
+    return await completedMerge(operation, pull);
+  } catch (error) {
+    operation.signal.throwIfAborted();
+    if (!(error instanceof Error)) throw error;
+    const reason = error.message;
+    if (reason !== "check-failed" && reason !== "merge-conflict") throw error;
+    const conflicts = typeof error.cause === "string" ? error.cause : "";
+    return {
+      reason,
+      output: reason === "check-failed" ? checkOutput(error.cause) : conflicts,
+    };
+  }
+}
+
+async function completedMerge(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<SuccessfulMerge> {
   const place = treePlace({
     worktrees: operation.settings.worktrees,
     target: operation.target,

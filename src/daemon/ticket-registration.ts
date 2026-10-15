@@ -127,7 +127,7 @@ export function ticketRegistrationTable(
     {
       workflowId: issueWorkflow,
       functionName: "developTicket",
-      effectLimit: 16,
+      effectLimit: 17,
       submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
       resolver: issueResolver(source),
     },
