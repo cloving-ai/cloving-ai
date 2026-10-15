@@ -206,17 +206,21 @@ writeFileSync("hold", "");
 const service = await hosted();
 const runId = await submitted("c-1");
 await until(() => stepStarts() === 1);
-await halt("in-work", { runId, world: await tagged() });
+let world = [];
+await until(async () => (world = await tagged()).length === 1);
+await halt("in-work", { runId, world });
 `,
     );
     const runId = field(first.lines[0], "runId");
     const [written] = items(field(first.lines[0], "world"));
     const receipt = field(written, "receipt");
+    assert.equal(typeof receipt, "string");
     const second = await consumer.runUntil(
       "in-work-again",
       `${servicePrelude}
 const service = await hosted();
 await until(() => stepStarts() === 2);
+await until(async () => (await dispatches(${JSON.stringify(String(runId))})).length === 1);
 await halt("in-work-again", { world: await tagged(), dispatches: await dispatches(${JSON.stringify(String(runId))}) });
 `,
     );

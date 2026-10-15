@@ -218,6 +218,14 @@ async function submitted(
   );
   if (check.kind === "rejected")
     return failed(check.code, { commandId, detail: check.detail });
+  if (
+    found.workflow.admission === "when-idle" &&
+    (await activeWorkflow(context, workflowId))
+  )
+    return failed("workflow-active", {
+      commandId,
+      detail: `The workflow ${workflowId} already has an active run.`,
+    });
   return admit(context, {
     workflow: found.workflow,
     workflowId,
@@ -227,17 +235,37 @@ async function submitted(
   });
 }
 
+async function activeWorkflow(
+  context: ServiceContext,
+  workflowId: string,
+): Promise<boolean> {
+  const workflows = await context.authority.queries.workflowIds();
+  const state = await context.authority.state();
+  return Object.values(state.runs).some(
+    (run) =>
+      workflows[run.runId] === workflowId &&
+      !["completed", "failed", "cancelled"].includes(run.status),
+  );
+}
+
 export function submissionHandler(
   context: ServiceContext,
 ): (parameters: Fields) => Promise<Reply> {
-  const pending = new Map<string, Promise<unknown>>();
+  const pending = new Map<string, Promise<Reply>>();
   return (parameters) => {
-    const key = String(parameters["commandId"]);
+    const keys = [`command:${String(parameters["commandId"])}`];
+    const workflowId = String(parameters["workflowId"]);
+    if (context.registry.byId(workflowId)?.admission === "when-idle")
+      keys.push(`workflow:${workflowId}`);
     const next = (): Promise<Reply> => submitted(context, parameters);
-    const reply = (pending.get(key) ?? Promise.resolve()).then(next, next);
-    pending.set(key, reply);
+    const previous = keys
+      .map((key) => pending.get(key))
+      .filter((reply) => reply !== undefined);
+    const reply = Promise.allSettled(previous).then(next);
+    for (const key of keys) pending.set(key, reply);
     const settled = (): void => {
-      if (pending.get(key) === reply) pending.delete(key);
+      for (const key of keys)
+        if (pending.get(key) === reply) pending.delete(key);
     };
     reply.then(settled, settled);
     return reply;

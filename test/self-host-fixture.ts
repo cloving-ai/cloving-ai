@@ -100,19 +100,30 @@ export async function scene(script = fakeClaude): Promise<Scene> {
     runtimeDirectory: join(directory, "run"),
     start: async (environment = {}) =>
       (await launched({ ...settings, environment }, "Cloving runs")).child,
-    refused: async (bound = "8", environment = {}) =>
-      (
-        await launched(
-          { ...settings, bound, environment },
-          "The daemon did not start",
-        )
-      ).output.text,
+    refused: (bound = "8", environment = {}) =>
+      refused({ ...settings, bound, environment }),
   };
 }
 
 interface Launch {
   readonly child: ChildProcess;
   readonly output: { text: string };
+}
+
+async function refused(
+  settings: Parameters<typeof launched>[0],
+): Promise<string> {
+  const { child, output } = await launched(
+    settings,
+    "The daemon did not start",
+  );
+  if (child.exitCode === null && child.signalCode === null)
+    await new Promise<undefined>((settle) =>
+      child.once("close", () => {
+        settle(undefined);
+      }),
+    );
+  return output.text;
 }
 
 async function launched(
