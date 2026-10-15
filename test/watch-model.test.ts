@@ -213,7 +213,7 @@ function run(runId: string, at: string): Record<string, unknown> {
 
 function modelOf(runs: readonly unknown[]): ReturnType<typeof watchModel> {
   return watchModel({
-    host: "/host",
+    home: "/fixture/home",
     client: "cloving",
     updatedAt: "2026-10-13T21:40:00.000Z",
     service: "up",
@@ -265,7 +265,7 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       latestAt: null,
       claudeCostUsd: 0,
       round: 1,
-      currentStep: { name: "Claude turn", startedAt: "2026-10-13T21:26:00Z" },
+      currentStep: { name: "Claude turn", startedAt: null },
       state: "waiting_gate",
       code: "policy-approval",
       detail: "A person must approve.",
@@ -293,8 +293,8 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
     ["done", "active", "pending", "pending", "pending"],
   );
   assert.deepEqual(
-    [model.host, model.service, model.updatedAt],
-    ["/host", "up", "2026-10-13T21:40:00.000Z"],
+    [Object.hasOwn(model, "host"), model.service, model.updatedAt],
+    [false, "up", "2026-10-13T21:40:00.000Z"],
   );
 });
 

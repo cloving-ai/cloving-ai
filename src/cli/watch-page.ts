@@ -1,4 +1,17 @@
 import {
+  Board,
+  Card,
+  WorkflowList,
+  cardReview,
+  cardStep,
+} from "./watch-board-view.ts";
+import {
+  boardWorkflow,
+  watchHash,
+  watchLocation,
+  watchTitle,
+} from "./watch-navigation.ts";
+import {
   clockTime,
   completedDetail,
   counted,
@@ -31,10 +44,18 @@ import {
   PullRequest,
   Review,
   Run,
-  Runs,
 } from "./watch-view.ts";
 
 const functions = [
+  watchHash,
+  watchLocation,
+  boardWorkflow,
+  watchTitle,
+  cardReview,
+  cardStep,
+  Card,
+  WorkflowList,
+  Board,
   counted,
   elapsed,
   clockTime,
@@ -61,7 +82,6 @@ const functions = [
   PullRequest,
   Review,
   Run,
-  Runs,
   Header,
   Page,
 ];
@@ -77,12 +97,26 @@ const style = `
   --attention: light-dark(#a15c00, #f0b440);
   --working: light-dark(#1f5fd0, #6ea8ff);
 }
-body { margin: 0 auto; max-width: 980px; padding: 0 16px 96px; }
+body { margin: 0 auto; max-width: 1800px; padding: 0 16px 96px; }
 header { display: flex; gap: 12px; align-items: baseline; padding: 10px 0 0; color: var(--soft); font-size: 12px; }
 header strong { color: CanvasText; font-size: 14px; }
-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
-a.run { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: inherit; text-decoration: none; font-size: 12px; }
-a.run.selected { border-color: CanvasText; font-weight: 600; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--working); outline-offset: 3px; }
+.workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; margin-top: 20px; }
+.workflows { display: flex; flex-direction: column; gap: 8px; }
+.workflows a { display: grid; gap: 2px; border-left: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.workflows a[aria-current="page"] { border-left-color: var(--working); background: light-dark(#edf3fc, #18273e); }
+.workflows span, .card small { color: var(--soft); font-size: 12px; }
+.board { min-width: 0; }
+.board h2 { margin: 0 0 14px; font-size: 20px; }
+.columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 14px; }
+.column { min-width: 0; }
+.column-name { margin: 0 0 10px; padding: 8px 0; border-top: 3px solid var(--line); color: var(--soft); }
+.card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; color: inherit; text-decoration: none; overflow-wrap: anywhere; background: Canvas; }
+.card:hover { border-color: var(--working); }
+.card-step, .card-review, .card-cost { font-size: 12px; font-variant-numeric: tabular-nums; }
+.decision-mark { color: var(--attention); font-size: 12px; font-weight: 600; }
+.back { display: block; width: fit-content; margin: 16px 0; color: var(--working); }
+@media (max-width: 700px) { .workspace { grid-template-columns: 150px minmax(0, 1fr); gap: 12px; } .workflows a { padding: 8px 4px; } }
 .icon { font-weight: 700; color: var(--soft); }
 .good .icon, .phase.done .mark, p.good { color: var(--good); }
 .bad .icon, .phase.failed .mark, .bad, .down { color: var(--bad); }
@@ -166,8 +200,22 @@ function draw() {
   const page = component(Page, { model, selected, now, stale, copying });
   render(page, document.getElementById("app"));
   if (model === null) return;
-  document.title = pageTitle(model, selected);
-  moved(selectedRun(model, selected)?.state ?? "", followed);
+  document.title = watchTitle(model, selected);
+  const { runId } = watchLocation(selected);
+  moved(model.runs.find((run) => run.runId === runId)?.state ?? "", followed);
+}
+async function withSelectedRun(model) {
+  const { runId } = watchLocation(location.hash);
+  if (runId === null || model.runs.some((run) => run.runId === runId)) return model;
+  try {
+    const detail = await fetch("data.json?runId=" + encodeURIComponent(runId), { cache: "no-store" });
+    if (!detail.ok) return model;
+    const { run } = await detail.json();
+    if (run?.runId !== runId) return model;
+    return { ...model, runs: [...model.runs, run] };
+  } catch {
+    return model;
+  }
 }
 async function load() {
   state.again = state.loading;
@@ -175,15 +223,8 @@ async function load() {
   state.loading = true;
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
-    let model = await reply.json();
-    const selected = location.hash.slice(1);
-    if (selected !== "" && !model.runs.some((run) => run.runId === selected)) {
-      const detail = await fetch("data.json?runId=" + encodeURIComponent(selected), { cache: "no-store" });
-      if (!detail.ok) throw new Error("run-not-available");
-      const { run } = await detail.json();
-      model = { ...model, runs: [...model.runs, run] };
-    }
-    state.model = model;
+    if (!reply.ok) throw new Error("watch-not-available");
+    state.model = await withSelectedRun(await reply.json());
     state.stale = false;
   } catch {
     state.stale = true;
@@ -212,7 +253,7 @@ export function pageDocument(): string {
   ].join("\n");
   return [
     "<!doctype html>",
-    '<html lang="en"><head><meta charset="utf-8"><title>Cloving</title><link rel="icon" href="data:,">',
+    '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title><link rel="icon" href="data:,">',
     `<style>${style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,

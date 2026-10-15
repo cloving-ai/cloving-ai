@@ -36,7 +36,7 @@ await test("CLV-016 the watch page folds the tool calls between two messages of 
   const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
   includes(html, [
     '<section class="turn"><h3>Claude turn · completed · 7 min 38 s · 1.03 USD</h3>',
-    '<p class="meta">Branch cloving/clv-016-a6f7ef47 · work tree /host/worktrees/clv-016-a6f7ef47</p>',
+    '<p class="meta">Branch cloving/clv-016-a6f7ef47 · work tree clv-016-a6f7ef47</p>',
     '<div class="activity"><div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
     '<details class="tools"><summary>3 tool calls · <span class="bad">1 error</span><span class="last">Bash: npm test</span></summary><div class="item tool" title="Bash: git status">Bash: git status</div>',
     '<div class="item error">exit code 1</div>',

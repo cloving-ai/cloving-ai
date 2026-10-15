@@ -117,7 +117,6 @@ export interface WatchModel {
   readonly workflows: readonly WatchWorkflow[];
   readonly startWorkflowId: string | null;
   readonly updatedAt: string;
-  readonly host: string;
   readonly service: string;
   readonly runs: readonly WatchRun[];
 }

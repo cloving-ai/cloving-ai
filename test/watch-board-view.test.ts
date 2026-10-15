@@ -1,0 +1,129 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { component } from "../src/cli/watch-element.ts";
+import type { WatchCard, WatchModel } from "../src/cli/watch-render.ts";
+import { Page } from "../src/cli/watch-view.ts";
+import { activeBoardModel } from "./watch-board-fixture.ts";
+import { rendered } from "./watch-dom.ts";
+import { noCopy } from "./watch-sample.ts";
+
+function page(model: WatchModel, selected: string): string {
+  return rendered(
+    component(Page, {
+      model,
+      selected,
+      now: model.updatedAt,
+      stale: false,
+      copying: noCopy,
+    }),
+  );
+}
+
+await test("CLV-079 the workflow list shows counts and selection beside ordered columns and cards", () => {
+  const model = activeBoardModel();
+  const html = page(model, "workflow=develop-issue");
+  assert.match(html, /<nav class="workflows" aria-label="Workflows">/);
+  assert.match(html, /href="#workflow=develop-issue" aria-current="page"/);
+  assert.match(html, /develop-issue<\/strong><span>7 active · 0 waiting/);
+  assert.match(html, /develop-ticket<\/strong><span>1 active · 0 waiting/);
+  assert.match(html, /develop-prompt<\/strong><span>0 active · 0 waiting/);
+  assert.deepEqual(
+    [...html.matchAll(/<h3 class="column-name">(.*?)<\/h3>/g)].map(
+      (match) => match[1],
+    ),
+    [
+      "Work tree",
+      "Claude turn",
+      "Pull request",
+      "Greptile review",
+      "Merge",
+      "Done",
+      "Stopped",
+    ],
+  );
+  assert.match(html, /href="#workflow=develop-issue&amp;run=round-2"/);
+  assert.ok(
+    html.indexOf("Title of round-2") < html.indexOf("Title of claude-turn"),
+  );
+  assert.match(html, /<h3 class="column-name">Done<\/h3><\/section>/);
+  const ticket = page(model, "workflow=develop-ticket");
+  assert.deepEqual(
+    [...ticket.matchAll(/<h3 class="column-name">(.*?)<\/h3>/g)].map(
+      (match) => match[1],
+    ),
+    ["Claude turn", "Your review", "Done", "Stopped"],
+  );
+  assert.match(ticket, /Title of ticket/);
+  assert.doesNotMatch(ticket, /Title of round-2|class="banner|class="run /);
+});
+
+function cardPage(
+  changes: Partial<WatchCard>,
+  column = "Greptile review",
+): string {
+  const model = activeBoardModel();
+  const card: WatchCard = {
+    runId: "run /&1",
+    title: "Review the change",
+    claudeCostUsd: 1.236,
+    currentStep: { name: "Greptile review", startedAt: "2026-10-14T11:57:00Z" },
+    endedAt: null,
+    decisionWaiting: true,
+    round: 2,
+    greptileScore: 4,
+    pullRequestNumber: 67,
+    ...changes,
+  };
+  return page(
+    {
+      ...model,
+      workflows: model.workflows.map((workflow) => ({
+        ...workflow,
+        columns: [{ name: column, cards: [card] }],
+      })),
+    },
+    "workflow=develop-issue",
+  );
+}
+
+await test("CLV-079 cards show step time, review progress, cost, decisions and encoded run links", () => {
+  const html = cardPage({});
+  for (const text of [
+    "Review the change",
+    "Greptile review · 3 min",
+    "round 2 · 4/5 · #67",
+    "1.24 USD",
+    "Decision waiting",
+    "run /&amp;1",
+  ])
+    assert.ok(html.includes(text), text);
+  assert.match(html, /href="#workflow=develop-issue&amp;run=run%20%2F%261"/);
+  assert.doesNotMatch(html, /button|draggable/);
+});
+
+await test("CLV-079 cards omit absent review parts and step time and fall back to the run ID", () => {
+  const html = cardPage({
+    title: null,
+    currentStep: { name: "Work tree", startedAt: null },
+    round: null,
+    greptileScore: null,
+    pullRequestNumber: null,
+    decisionWaiting: false,
+  });
+  assert.match(html, /<strong>run \/&amp;1<\/strong>/);
+  assert.match(html, /<span class="card-step">Work tree<\/span>/);
+  assert.doesNotMatch(html, /round |\/5|Decision waiting|Work tree ·/);
+  assert.match(
+    cardPage({ round: null, pullRequestNumber: null }),
+    /<span class="card-review">4\/5<\/span>/,
+  );
+});
+
+await test("CLV-079 Done and Stopped cards show the local end date and time instead of a step", () => {
+  const endedAt = "2026-10-14T11:57:00Z";
+  for (const column of ["Done", "Stopped"]) {
+    const html = cardPage({ currentStep: null, endedAt }, column);
+    assert.ok(html.includes(new Date(endedAt).toLocaleString()));
+    assert.doesNotMatch(html, /Greptile review ·/);
+  }
+});

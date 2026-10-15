@@ -4,6 +4,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { watchReader, type WatchReader } from "./watch-reads.ts";
@@ -119,7 +120,7 @@ async function snapshot(
   ]);
   return watchModel({
     ...read,
-    host: dirname(watch.settings.runtimeDirectory),
+    home: homedir(),
     client: watch.settings.client,
     updatedAt,
     turns: journal,

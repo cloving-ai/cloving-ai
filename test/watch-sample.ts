@@ -21,7 +21,7 @@ export function sampleTurn(changes: Partial<WatchTurn> = {}): WatchTurn {
     runId: "run-1",
     target: "clv-016-a6f7ef47",
     branch: "cloving/clv-016-a6f7ef47",
-    worktree: "/host/worktrees/clv-016-a6f7ef47",
+    worktree: "clv-016-a6f7ef47",
     startedAt: at("21:26:02"),
     endedAt: null,
     activeAt: at("21:30:20"),
@@ -112,7 +112,6 @@ export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
 export function sampleModel(runs: readonly WatchRun[]): WatchModel {
   return {
     updatedAt: at("21:34:41"),
-    host: "/host",
     service: "up",
     workflows: [],
     startWorkflowId: null,

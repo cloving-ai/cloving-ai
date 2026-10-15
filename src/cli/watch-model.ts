@@ -17,6 +17,8 @@ import {
 } from "./watch-board.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
+import { displayRun } from "./watch-paths.ts";
+
 type Fields = Readonly<Record<string, unknown>>;
 
 const textLimit = 600;
@@ -172,7 +174,7 @@ export function decisionCommands(
 export interface WatchInputs {
   readonly workflows: readonly string[];
   readonly summaries?: readonly unknown[];
-  readonly host: string;
+  readonly home: string;
   readonly client: string;
   readonly updatedAt: string;
   readonly service: string;
@@ -303,13 +305,14 @@ function began(run: WatchRun): string {
 }
 
 export function watchModel(inputs: WatchInputs): WatchModel {
-  const runs = inputs.runs.map((value) => runOf(inputs, value));
+  const runs = inputs.runs.map((value) =>
+    displayRun(runOf(inputs, value), inputs.home),
+  );
   const workflows = boardsOf(inputs, runs);
   return {
     workflows,
     startWorkflowId: startWorkflowOf(workflows),
     updatedAt: inputs.updatedAt,
-    host: inputs.host,
     service: inputs.service,
     runs: runs.toSorted((first, second) =>
       began(first) < began(second) ? 1 : -1,

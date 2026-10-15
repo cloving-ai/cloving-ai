@@ -28,7 +28,10 @@ const done = sampleRun({
 });
 const model = sampleModel([done, waiting]);
 
-function page(shown: WatchModel | null, selected = ""): string {
+function page(
+  shown: WatchModel | null,
+  selected = shown?.runs[0]?.runId ?? "",
+): string {
   return rendered(
     component(Page, {
       model: shown,
@@ -55,8 +58,8 @@ function banner(run: Partial<WatchRun>): string {
 
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the steps of the run, its pending decision, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
-    `<header><strong>Cloving</strong><span>/host</span><span>updated ${shownClock("21:34:41")}</span></header>`,
-    '<nav><a class="run good" href="#run-2"><span class="icon">✓</span> run-2 · Completed</a><a class="run attention selected" href="#run-1"><span class="icon">!</span> clv-016-a6f7ef47 · Needs your decision</a></nav>',
+    `<header><strong>Cloving</strong><span>updated ${shownClock("21:34:41")}</span></header>`,
+    '<a class="back" href="#workflow=develop-ticket">← Back to develop-ticket</a>',
     '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
     '<li class="phase done"><span class="mark">✓</span><span class="name">Claude turn</span><span class="time">7 min 38 s</span></li>',
@@ -132,7 +135,7 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
   }
 });
 
-await test("CLV-016 the steps of a run that failed show the step that stopped and the end with its clock time, and the run list shows a run that the operator denied", () => {
+await test("CLV-016 the steps of a run that failed show the step that stopped and the end with its clock time, and the banner shows a run that the operator denied", () => {
   const failed = sampleRun({
     state: "failed",
     phases: phases(["done", "done", "failed", "pending", "failed"], "Failed"),
@@ -142,13 +145,13 @@ await test("CLV-016 the steps of a run that failed show the step that stopped an
     `<li class="phase failed"><span class="mark">✕</span><span class="name">Failed</span><span class="time">${shownClock("21:35:01")}</span></li></ol>`,
   ]);
   positions(page(sampleModel([{ ...done, decision: "denied" }])), [
-    '<a class="run idle selected" href="#run-2"><span class="icon">✕</span> run-2 · Denied</a>',
+    '<section class="banner idle"><span class="icon">✕</span><div><h2>Denied',
   ]);
 });
 
-await test("CLV-016 the watch page shows the newest run when no run is selected, and plain words for no turn, for no run, for no data and for a service that does not answer", () => {
+await test("CLV-016 the full page shows a selected run and plain words for no turn, for no workflows, for no data and for a service that does not answer", () => {
   positions(page(model), [
-    '<a class="run good selected" href="#run-2">',
+    '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
     '<p class="meta">No Claude turn for this run.</p>',
     '<p class="meta foot">develop-prompt · run-2 · 1 of 8 effect units<br>',
   ]);
@@ -157,20 +160,20 @@ await test("CLV-016 the watch page shows the newest run when no run is selected,
   ]);
   positions(page({ ...model, service: "down", runs: [] }), [
     '<p class="down">The Cloving service does not answer. The page shows the last known records.</p>',
-    '<p class="meta">No run yet. Submit one with <code>cloving run</code>.</p>',
+    '<p class="meta">No workflows registered.</p>',
   ]);
   assert.equal(
     page(null),
-    '<header><strong>Cloving</strong><span></span><span></span></header><p class="meta">The page waits for the first data of the watch tool.</p>',
+    '<header><strong>Cloving</strong><span></span></header><p class="meta">The page waits for the first data of the watch tool.</p>',
   );
 });
 
 await test("CLV-016 the watch page says that the watch tool does not answer, and it keeps the last data", () => {
-  const props = { selected: "", now: at("21:34:41"), copying: noCopy };
+  const props = { selected: "run-2", now: at("21:34:41"), copying: noCopy };
   const stale = rendered(component(Page, { ...props, model, stale: true }));
   positions(stale, [
-    '<header><strong>Cloving</strong><span>/host</span><span class="bad">The watch tool does not answer.</span></header>',
-    '<a class="run good selected" href="#run-2">',
+    '<header><strong>Cloving</strong><span class="bad">The watch tool does not answer.</span></header>',
+    '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
   ]);
 });
 
