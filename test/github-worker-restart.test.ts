@@ -254,7 +254,10 @@ await test("CLV-067 a merge of a pull request that is merged already runs no che
     });
     assert.deepEqual(
       [report.outcome, resultOf(report.result)],
-      ["completed", { number: 1, merged: "f".repeat(40) }],
+      [
+        "completed",
+        { number: 1, commit, updated: commit, merged: "f".repeat(40) },
+      ],
     );
     assert.equal(
       scene.state().calls.filter((call) => call.includes("PUT")).length,
@@ -279,7 +282,10 @@ await test("CLV-067 a merge of a pull request that is merged already completes w
     });
     assert.deepEqual(
       [report.outcome, resultOf(report.result)],
-      ["completed", { number: 1, merged: "f".repeat(40) }],
+      [
+        "completed",
+        { number: 1, commit, updated: commit, merged: "f".repeat(40) },
+      ],
     );
   }));
 

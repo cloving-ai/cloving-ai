@@ -123,7 +123,7 @@ await test("CLV-067 the scan continues a kept merge that the service shows as re
       [report?.outcome, resultOf(report?.result), report?.leaseGeneration],
       [
         "completed",
-        { number: 1, merged: "f".repeat(40) },
+        { number: 1, commit, updated: commit, merged: "f".repeat(40) },
         kept.leaseGeneration,
       ],
     );

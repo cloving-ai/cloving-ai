@@ -210,6 +210,8 @@ await test("CLV-063 the GitHub worker merges the reviewed commit, then removes t
     });
     assert.deepEqual(resultOf(report.result), {
       number: 1,
+      commit,
+      updated: commit,
       merged: "f".repeat(40),
     });
     const merge = scene.state().calls.find((call) => call.includes("PUT"));
