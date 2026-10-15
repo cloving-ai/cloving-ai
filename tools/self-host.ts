@@ -12,6 +12,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workflowFiles, workflowManifests } from "./self-host-workflows.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
+import { localSelfUpdate, selfUpdateInterval } from "./self-update-files.ts";
+import { hostProcesses } from "./self-host-processes.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -43,6 +45,13 @@ const project = join(directory, "project");
 const concurrency = Number(process.env["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = process.env["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
+const selfUpdateMilliseconds = await selfUpdateInterval(
+  process.env["CLOVING_SELF_UPDATE_SECONDS"],
+  {
+    repository,
+    product: topLevel(product),
+  },
+);
 const defaultCommand = [
   "claude",
   "-p",
@@ -292,5 +301,19 @@ const watch =
           env: { ...process.env, CLOVING_RUNTIME_DIR: runtime },
         },
       );
-process.exitCode = await ended([join(project, "start.mjs")], process.env);
-watch?.kill("SIGTERM");
+process.exitCode = await hostProcesses({
+  daemon: spawn(process.execPath, [join(project, "start.mjs")], {
+    cwd: project,
+    env: process.env,
+    stdio: "inherit",
+  }),
+  watch,
+  ...(selfUpdateMilliseconds === undefined
+    ? {}
+    : {
+        update: {
+          milliseconds: selfUpdateMilliseconds,
+          settings: localSelfUpdate({ directory, repository }),
+        },
+      }),
+});

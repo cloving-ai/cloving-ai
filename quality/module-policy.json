@@ -604,7 +604,15 @@
     "test/daemon-queue-restart.test.ts": "test",
     "test/cli-start-queue.test.ts": "test",
     "test/daemon-queue-check.test.ts": "test",
-    "test/daemon-queue-errors.test.ts": "test"
+    "test/daemon-queue-errors.test.ts": "test",
+    "tools/self-update.ts": "build",
+    "tools/self-update-files.ts": "build",
+    "tools/self-host-processes.ts": "build",
+    "test/self-update.test.ts": "test",
+    "test/self-update-fixture.ts": "test",
+    "test/self-update-files.test.ts": "test",
+    "test/self-host-processes.test.ts": "test",
+    "test/cli-start-restart.test.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -58,3 +58,18 @@ await test("CLV-084 start refuses the queue without a ticket command", async () 
       /The daemon did not start: queue-needs-ticket-command/,
     );
 });
+
+await test("CLV-085 start refuses self-update intervals outside whole second bounds", async () => {
+  for (const value of ["10", "3601", "30.5", "", "NaN", "3e2"])
+    assert.match(
+      await refused({ CLOVING_SELF_UPDATE_SECONDS: value }),
+      /invalid-self-update-seconds/,
+    );
+});
+
+await test("CLV-085 self-update requires the checkout of the running code", async () => {
+  assert.match(
+    await refused({ CLOVING_SELF_UPDATE_SECONDS: "120" }),
+    /self-update-needs-own-repository/,
+  );
+});
