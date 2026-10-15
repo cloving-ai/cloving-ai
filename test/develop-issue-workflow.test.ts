@@ -3,77 +3,23 @@ import { test } from "node:test";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
 import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 
-const cycleId = "clv-063-1a2b3c4d";
-const ticket = [
-  "# CLV-063: Merge the work through a pull request",
-  "",
-  "GitHub issue: cloving-ai/cloving-ai#63 (open)",
-  "",
-  "The body of the issue.",
-].join("\n");
-const input = {
+import {
   cycleId,
-  ticketId: "CLV-063",
   ticket,
-  repository: "/repositories/cloving",
-  delivery: "pull-request",
-};
-const url = "https://github.com/cloving-ai/cloving-ai/pull/7";
-const first = "1".repeat(40);
-const second = "2".repeat(40);
-const about =
-  "Greptile reviews the pull request, and Cloving merges it when the confidence score is 5/5.";
-
-function completed(result: unknown): unknown {
-  return {
-    kind: "completed",
-    operationId: "operation",
-    receipt: "receipt",
-    result: JSON.stringify(result),
-  };
-}
-
-const prepared = completed({ branch: `cloving/${cycleId}`, base: "main" });
-const turned = completed({ summary: "I made the change." });
-const merged = completed({ number: 7, merged: "f".repeat(40) });
-
-function pull(commit: string): unknown {
-  return completed({ number: 7, url, commit });
-}
-
-function review(commit: string, score: number): unknown {
-  const findings =
-    score < 5 ? [{ path: "src/a.ts", line: 4, body: "Check the bound." }] : [];
-  return completed({
-    number: 7,
-    commit,
-    score,
-    summary: `Confidence Score: ${String(score)}/5`,
-    findings,
-  });
-}
-
-function steps(line: unknown): readonly unknown[] {
-  const requests = field(line, "requests");
-  return Array.isArray(requests)
-    ? requests.map((item: unknown) => {
-        const effect = field(item, 1);
-        const scope = field(effect, "scope");
-        return [
-          field(effect, "capability"),
-          field(effect, "method"),
-          field(scope, "phase"),
-          field(scope, "operation"),
-          field(scope, "round"),
-          field(effect, "target"),
-        ];
-      })
-    : [];
-}
-
-function payloadOf(line: unknown, index: number): string {
-  return String(field(request(line, index), "payload"));
-}
+  input,
+  url,
+  first,
+  second,
+  about,
+  prepared,
+  turned,
+  merged,
+  completed,
+  pull,
+  review,
+  steps,
+  payloadOf,
+} from "./develop-issue-fixture.ts";
 
 await test("CLV-081 a failed merge check starts a fix turn and reviews the new commit before merging", async () => {
   const output = "Failed test: expected the merged tree to pass.";
@@ -82,6 +28,7 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [turned, turned],
         "github open-pr": [pull(first), pull(second)],
         "github wait-review": [review(first, 5), review(second, 5)],
@@ -93,6 +40,7 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
     steps(line).map((step) => [field(step, 3), field(step, 4)]),
     [
       ["github-prepare", 1],
+      ["github-label", 1],
       ["claude-turn", 1],
       ["github-open-pr", 1],
       ["github-wait-review", 1],
@@ -101,19 +49,20 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
       ["github-open-pr", 2],
       ["github-wait-review", 2],
       ["github-merge", 2],
+      ["github-label", 2],
     ],
   );
-  const prompt = payloadOf(line, 5);
-  assert.ok(prompt.startsWith(payloadOf(line, 1)));
+  const prompt = payloadOf(line, 6);
+  assert.ok(prompt.startsWith(payloadOf(line, 2)));
   assert.match(prompt, /check-failed/);
   assert.ok(prompt.includes(output));
   assert.match(prompt, /newest commit of the default branch/);
   assert.match(prompt, /[Ff]ix the cause.*commit/);
-  assert.deepEqual(JSON.parse(payloadOf(line, 7)), {
+  assert.deepEqual(JSON.parse(payloadOf(line, 8)), {
     number: 7,
     commit: second,
   });
-  assert.deepEqual(JSON.parse(payloadOf(line, 8)), {
+  assert.deepEqual(JSON.parse(payloadOf(line, 9)), {
     number: 7,
     commit: second,
   });
@@ -130,6 +79,7 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [pull(first)],
         "github wait-review": [review(first, 5)],
@@ -144,26 +94,32 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
   });
   assert.deepEqual(steps(line), [
     ["github", "prepare", "pull-request", "github-prepare", 1, cycleId],
+    ["github", "label", "pull-request", "github-label", 1, cycleId],
     ["claude", "run-turn", "implement", "claude-turn", 1, cycleId],
     ["github", "open-pr", "pull-request", "github-open-pr", 1, cycleId],
     ["github", "wait-review", "pull-request", "github-wait-review", 1, cycleId],
     ["github", "merge", "pull-request", "github-merge", 1, cycleId],
+    ["github", "label", "pull-request", "github-label", 1, cycleId],
   ]);
+  assert.deepEqual(
+    [1, 6].map((index) => field(field(request(line, index), "scope"), "key")),
+    ["start", "done"],
+  );
   assert.equal(payloadOf(line, 0), "{}");
-  const prompt = payloadOf(line, 1);
+  const prompt = payloadOf(line, 2);
   assert.match(prompt, /^You work on one ticket of this repository\./);
   assert.match(
     prompt,
     /\nThe branch becomes a public pull request\. Do not write local file paths, such as the path of your home folder, in files or in commit messages\.\n/,
   );
   assert.ok(prompt.endsWith(`The text of the ticket CLV-063:\n\n${ticket}`));
-  assert.deepEqual(JSON.parse(payloadOf(line, 2)), {
+  assert.deepEqual(JSON.parse(payloadOf(line, 3)), {
     title: "CLV-063: Merge the work through a pull request",
     body: `Closes cloving-ai/cloving-ai#63\n\nCloving made this change for the ticket CLV-063. ${about}`,
   });
   const reviewed = { number: 7, commit: first };
-  assert.deepEqual(JSON.parse(payloadOf(line, 3)), reviewed);
   assert.deepEqual(JSON.parse(payloadOf(line, 4)), reviewed);
+  assert.deepEqual(JSON.parse(payloadOf(line, 5)), reviewed);
 });
 
 await test("CLV-063 the issue workflow sends a review under 5/5 back to the worker with the summary and the findings, then pushes and waits for the next review", async () => {
@@ -172,6 +128,7 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [turned, turned],
         "github open-pr": [pull(first), pull(second)],
         "github wait-review": [review(first, 3), review(second, 5)],
@@ -184,6 +141,7 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
     steps(line).map((step) => [field(step, 3), field(step, 4)]),
     [
       ["github-prepare", 1],
+      ["github-label", 1],
       ["claude-turn", 1],
       ["github-open-pr", 1],
       ["github-wait-review", 1],
@@ -191,10 +149,11 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
       ["github-open-pr", 2],
       ["github-wait-review", 2],
       ["github-merge", 2],
+      ["github-label", 2],
     ],
   );
-  const fix = payloadOf(line, 4);
-  assert.ok(fix.startsWith(payloadOf(line, 1)));
+  const fix = payloadOf(line, 5);
+  assert.ok(fix.startsWith(payloadOf(line, 2)));
   assert.ok(
     fix.endsWith(
       [
@@ -211,11 +170,11 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
       ].join("\n"),
     ),
   );
-  assert.deepEqual(JSON.parse(payloadOf(line, 6)), {
+  assert.deepEqual(JSON.parse(payloadOf(line, 7)), {
     number: 7,
     commit: second,
   });
-  assert.deepEqual(JSON.parse(payloadOf(line, 7)), {
+  assert.deepEqual(JSON.parse(payloadOf(line, 8)), {
     number: 7,
     commit: second,
   });
@@ -228,6 +187,7 @@ await test("CLV-063 the issue workflow stops after three fix rounds with no scor
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": commits.map(() => turned),
         "github open-pr": commits.map((commit) => pull(commit)),
         "github wait-review": commits.map((commit, index) =>
@@ -243,7 +203,20 @@ await test("CLV-063 the issue workflow stops after three fix rounds with no scor
     reason: `Greptile gave the confidence score 4/5 in round 4, and a run has at most 3 fix rounds. The pull request stays open: ${url}`,
     evidenceId: "github-wait-review",
   });
-  assert.equal(steps(line).length, 13);
+  assert.equal(steps(line).length, 15);
+  assert.deepEqual(JSON.parse(payloadOf(line, 14)), {
+    owner: "cloving-ai",
+    repository: "cloving-ai",
+    number: 63,
+    add: ["cloving: blocked"],
+    remove: ["cloving: in progress"],
+  });
+  assert.deepEqual(field(request(line, 14), "scope"), {
+    phase: "pull-request",
+    operation: "github-label",
+    round: 4,
+    key: "blocked",
+  });
   assert.ok(steps(line).every((step) => field(step, 1) !== "merge"));
 });
 
@@ -258,6 +231,7 @@ await test("CLV-063 the issue workflow ends as blocked with the step and its rea
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [failed("private-path-in-change")],
       },
@@ -267,6 +241,7 @@ await test("CLV-063 the issue workflow ends as blocked with the step and its rea
       input,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [{ kind: "refused", reason: "budget-exhausted" }],
       },
     },
@@ -278,7 +253,7 @@ await test("CLV-063 the issue workflow ends as blocked with the step and its rea
       "The step github-open-pr has the result failed (private-path-in-change).",
     evidenceId: "github-open-pr",
   });
-  assert.equal(steps(refusedPush).length, 3);
+  assert.equal(steps(refusedPush).length, 5);
   assert.deepEqual(
     [field(noTree, "outcome"), field(noBudget, "outcome")].map((outcome) => [
       field(outcome, "reason"),
@@ -306,11 +281,13 @@ await test("CLV-063 the issue workflow names a pull request for a task with no t
       input: task,
       effects: {
         "github prepare": [prepared],
+        "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [failed()],
       },
     },
   ]);
+  assert.ok(steps(line).every((step) => field(step, 1) !== "label"));
   assert.deepEqual(JSON.parse(payloadOf(line, 2)), {
     title: "Cloving task task-abc",
     body: `Cloving made this change for this ticket. ${about}`,
@@ -332,6 +309,7 @@ function mergeScenario(reasons: readonly string[]): unknown {
     effectLimit: registration?.effectLimit,
     effects: {
       "github prepare": [prepared],
+      "github label": [completed({}), completed({})],
       "claude run-turn": commits.map(() => turned),
       "github open-pr": commits.map((commit) => pull(commit)),
       "github wait-review": commits.map((commit) => review(commit, 5)),
@@ -345,13 +323,13 @@ function mergeScenario(reasons: readonly string[]): unknown {
 
 await test("CLV-081 a merge conflict tells the next worker to merge the default branch and resolve conflicts", async () => {
   const [line] = await ran([mergeScenario(["merge-conflict"])]);
-  const prompt = payloadOf(line, 5);
-  assert.ok(prompt.startsWith(payloadOf(line, 1)));
+  const prompt = payloadOf(line, 6);
+  assert.ok(prompt.startsWith(payloadOf(line, 2)));
   assert.match(prompt, /merge-conflict/);
   assert.match(prompt, /[Mm]erge the default branch of origin into the branch/);
   assert.match(prompt, /resolve each conflict.*run the tests.*commit/);
   assert.match(prompt, /src\/a\.ts/);
-  assert.equal(steps(line).length, 9);
+  assert.equal(steps(line).length, 11);
   assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
 });
 
@@ -366,7 +344,7 @@ await test("CLV-081 exhausted merge fixes block with the reason and the open pul
       reason: `The merge has the result ${reason} in round 4, and a run has at most 3 fix rounds. The pull request stays open: ${url}`,
       evidenceId: "github-merge",
     });
-    assert.equal(steps(line).length, 17);
+    assert.equal(steps(line).length, 19);
   }
 });
 
@@ -375,7 +353,7 @@ await test("CLV-081 the registered effect budget permits a fourth merge after th
     mergeScenario(["check-failed", "merge-conflict", "check-failed"]),
   ]);
   assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
-  assert.equal(field(line, "spent"), 17);
+  assert.equal(field(line, "spent"), 19);
   assert.deepEqual(
     steps(line)
       .filter((step) => field(step, 1) === "merge")

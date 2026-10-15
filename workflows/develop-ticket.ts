@@ -1,6 +1,7 @@
 import type { CycleOutcome } from "cloving/workflows";
 import { decisionGate } from "cloving/workflows/steps/decision-gate";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
+import { finishIssue, labelIssue } from "./issue-labels.ts";
 
 interface Ticket {
   readonly cycleId: string;
@@ -288,6 +289,7 @@ async function pullRequest(input: Ticket): Promise<CycleOutcome> {
     payload: {},
   });
   if (prepared.kind !== "done") return prepared;
+  await labelIssue(input, { key: "start", round: 1 });
   let fix: Fix | null = null;
   for (let round = 1; ; round += 1) {
     const turn = await stepped(input, {
@@ -298,31 +300,38 @@ async function pullRequest(input: Ticket): Promise<CycleOutcome> {
       round,
       payload: turnPrompt(input, fix),
     });
-    if (turn.kind !== "done") return turn;
+    if (turn.kind !== "done")
+      return finishIssue(input, { round, outcome: turn });
     const opened = await github(input, {
       method: "open-pr",
       round,
       payload: { title: pullTitle(input), body: pullBody(input) },
     });
-    if (opened.kind !== "done") return opened;
+    if (opened.kind !== "done")
+      return finishIssue(input, { round, outcome: opened });
     const pull = pullOf(opened.result);
     const reviewed = await github(input, {
       method: "wait-review",
       round,
       payload: { number: pull.number, commit: pull.commit },
     });
-    if (reviewed.kind !== "done") return reviewed;
+    if (reviewed.kind !== "done")
+      return finishIssue(input, { round, outcome: reviewed });
     const score = reviewed.result["score"];
     if (score === 5) {
       const result = await merged(input, { round, pull });
-      if ("kind" in result) return result;
+      if ("kind" in result)
+        return finishIssue(input, { round, outcome: result });
       fix = result;
       continue;
     }
     if (round > lastFix)
-      return blocked(input.cycleId, {
-        reason: `Greptile gave the confidence score ${String(score)}/5 in round ${String(round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${pull.url}`,
-        evidenceId: "github-wait-review",
+      return finishIssue(input, {
+        round,
+        outcome: blocked(input.cycleId, {
+          reason: `Greptile gave the confidence score ${String(score)}/5 in round ${String(round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${pull.url}`,
+          evidenceId: "github-wait-review",
+        }),
       });
     fix = { round: round + 1, pull, review: reviewed.result };
   }

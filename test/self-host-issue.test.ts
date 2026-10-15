@@ -26,6 +26,24 @@ function pulls(file: string): readonly Readonly<Record<string, unknown>>[] {
     : [];
 }
 
+function issueState(scores: readonly number[]): string {
+  return ghState({
+    scores,
+    labels: [
+      { repository: "acme/demo", name: "cloving: ready", color: "ededed" },
+    ],
+    issues: [
+      { repository: "acme/demo", number: 900, labels: ["cloving: ready"] },
+    ],
+  });
+}
+
+function assertIssueLabels(file: string, labels: readonly string[]): void {
+  assert.deepEqual(record(JSON.parse(readFileSync(file, "utf8")))["issues"], [
+    { repository: "acme/demo", number: 900, labels },
+  ]);
+}
+
 function githubEnvironment(
   work: Pick<Scene, "root" | "origin">,
 ): Readonly<Record<string, string>> {
@@ -66,13 +84,14 @@ async function issueRun(): Promise<void> {
   const { root, repository, origin, runtimeDirectory } = work;
   const stateFile = join(root, "gh-state.json");
   writeFileSync(join(root, "fake-gh.mjs"), fakeGh);
-  writeFileSync(stateFile, ghState({ scores: [5] }));
+  writeFileSync(stateFile, issueState([5]));
   const before = git(repository, ["rev-parse", "HEAD"]);
   const asked: Asked = (operation, parameters) =>
     call({ runtimeDirectory }, { operation, parameters });
   const daemon = await work.start(githubEnvironment(work));
   const run = await completion(asked, await issueStarted(asked));
-  assert.deepEqual(field(run, "budget"), { limit: 17, spent: 5 });
+  assert.deepEqual(field(run, "budget"), { limit: 20, spent: 7 });
+  assertIssueLabels(stateFile, []);
   const [pull] = pulls(stateFile);
   assert.deepEqual(
     [pull?.["state"], pull?.["title"], pull?.["base"]],
@@ -117,7 +136,7 @@ async function restartedReview(): Promise<void> {
   const work = await scene();
   const stateFile = join(work.root, "gh-state.json");
   writeFileSync(join(work.root, "fake-gh.mjs"), fakeGh);
-  writeFileSync(stateFile, ghState({ scores: [] }));
+  writeFileSync(stateFile, issueState([]));
   const asked: Asked = (operation, parameters) =>
     call(
       { runtimeDirectory: work.runtimeDirectory },
@@ -126,11 +145,13 @@ async function restartedReview(): Promise<void> {
   const first = await work.start(githubEnvironment(work));
   const runId = await issueStarted(asked);
   await reached(() => Promise.resolve(reviewRead(stateFile)));
+  assertIssueLabels(stateFile, ["cloving: in progress"]);
   assert.equal(await ended(first), 0);
   const state = record(JSON.parse(readFileSync(stateFile, "utf8")));
   writeFileSync(stateFile, JSON.stringify({ ...state, scores: [5] }));
   const second = await work.start(githubEnvironment(work));
   await completion(asked, runId);
+  assertIssueLabels(stateFile, []);
   assert.deepEqual(
     pulls(stateFile).map((pull) => pull["state"]),
     ["MERGED"],

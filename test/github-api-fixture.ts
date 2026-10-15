@@ -35,6 +35,26 @@ const reviewedNow = (pr) => {
   if (score < 5) state.reviewComments.push({ pr: pr.number, user: { login: "greptile-apps[bot]" }, path: "src/change.ts", line: score, original_commit_id: head, body: "Finding of the review with the score " + score + "." });
 };
 const actions = {
+  "label create": () => {
+    const repository = option("--repo");
+    const label = state.labels.find((item) => item.repository === repository && item.name === args[2]);
+    const values = { repository, name: args[2], color: option("--color") ?? "random", description: option("--description") ?? "" };
+    if (label && !args.includes("--force")) throw new Error("label already exists");
+    if (label) Object.assign(label, values);
+    else state.labels.push(values);
+  },
+  "issue edit": () => {
+    const repository = option("--repo");
+    const labels = (flag) => args.flatMap((item, index) => item === flag ? args[index + 1].split(",") : []);
+    const added = labels("--add-label");
+    const removed = labels("--remove-label");
+    for (const name of [...added, ...removed]) {
+      if (!state.labels.some((label) => label.repository === repository && label.name === name)) throw new Error("label does not exist: " + name);
+    }
+    const issue = state.issues.find((item) => item.repository === repository && item.number === Number(args[2]));
+    if (!issue) throw new Error("issue does not exist");
+    issue.labels = [...new Set([...(issue.labels ?? []).filter((name) => !removed.includes(name)), ...added])];
+  },
   "issue create": () => {
     const created = { number: state.issues.length + 1, title: option("--title"), body: option("--body") };
     created.html_url = "https://github.com/acme/demo/issues/" + created.number;
