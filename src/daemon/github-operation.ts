@@ -20,7 +20,6 @@ export interface MethodSettings extends CallSettings {
   readonly worktrees: string;
   readonly timing?: GithubTiming;
   readonly check?: readonly string[];
-  readonly privateTexts?: readonly string[];
 }
 
 export interface Operation {

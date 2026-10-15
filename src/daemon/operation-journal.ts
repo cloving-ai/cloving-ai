@@ -22,6 +22,7 @@ export interface Recorded {
   readonly outcome: WorkerReport["outcome"];
   readonly result?: string;
   readonly reason?: string;
+  readonly detail?: string;
   readonly endedAt: string;
 }
 

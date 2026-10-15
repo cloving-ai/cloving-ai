@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import {
   changeChecked,
   defaultBranch,
   existingTree,
   field,
+  githubTiming,
   removeWorktree,
   repositoryPath,
   type Operation,
@@ -200,6 +202,46 @@ async function mergedNow(
   return commitOf(reply, "sha");
 }
 
+async function waitForHead(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<void> {
+  const timing = operation.settings.timing ?? githubTiming;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (attempt > 0)
+      await delay(timing.pollMilliseconds, undefined, {
+        signal: operation.signal,
+      });
+    const current: unknown = JSON.parse(
+      await operation.calls.gh([
+        "api",
+        `${repositoryPath}/pulls/${String(pull.number)}`,
+      ]),
+    );
+    if (commitOf(field(current, "head"), "sha") === pull.commit) return;
+  }
+  throw new Error("head-not-updated");
+}
+
+async function mergeUpdated(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<string> {
+  const timing = operation.settings.timing ?? githubTiming;
+  for (let attempt = 0; ; attempt += 1) {
+    await waitForHead(operation, pull);
+    try {
+      return await mergedNow(operation, pull);
+    } catch (error) {
+      const status = field(error, "status");
+      if (attempt === 2 || (status !== 405 && status !== 409)) throw error;
+      await delay(timing.pollMilliseconds, undefined, {
+        signal: operation.signal,
+      });
+    }
+  }
+}
+
 async function removed(operation: Operation, place: Place): Promise<void> {
   const { settings, calls } = operation;
   await calls
@@ -309,8 +351,9 @@ async function completedMerge(
     known.merged === undefined
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
       : (recorded ?? pull.commit);
+  const mergeCall = updated === pull.commit ? mergedNow : mergeUpdated;
   const merged =
-    known.merged ?? (await mergedNow(operation, { ...pull, commit: updated }));
+    known.merged ?? (await mergeCall(operation, { ...pull, commit: updated }));
   await removed(operation, place);
   return { number: pull.number, commit: pull.commit, updated, merged };
 }

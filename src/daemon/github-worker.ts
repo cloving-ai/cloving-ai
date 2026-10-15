@@ -128,9 +128,11 @@ async function outcome(
     if (signal.aborted)
       return { outcome: "stopped", endedAt: new Date().toISOString() };
     const reason = String(Reflect.get(Object(error), "message"));
-    return interrupted(
-      methodReasons.has(reason) ? reason : "github-call-failed",
-    );
+    const detail: unknown = Reflect.get(Object(error), "detail");
+    return {
+      ...interrupted(methodReasons.has(reason) ? reason : "github-call-failed"),
+      ...(typeof detail === "string" ? { detail } : {}),
+    };
   }
 }
 
