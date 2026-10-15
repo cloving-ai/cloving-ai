@@ -68,6 +68,46 @@ async function prepare(operation: Operation): Promise<unknown> {
   };
 }
 
+function labels(operation: Operation, name: string): readonly string[] {
+  const value = operation.payload[name];
+  if (!Array.isArray(value)) throw new Error("invalid-payload");
+  return value.map((label: unknown) => {
+    if (typeof label !== "string" || label.trim() === "")
+      throw new Error("invalid-payload");
+    return label;
+  });
+}
+
+async function label(operation: Operation): Promise<unknown> {
+  const repository = `${text(operation, "owner")}/${text(operation, "repository")}`;
+  const number = integer(operation, "number");
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !Number.isSafeInteger(number))
+    throw new Error("invalid-payload");
+  const added = labels(operation, "add");
+  const removed = labels(operation, "remove");
+  for (const name of new Set([...added, ...removed]))
+    await operation.calls.gh([
+      "label",
+      "create",
+      name,
+      "--repo",
+      repository,
+      "--color",
+      "ededed",
+      "--force",
+    ]);
+  await operation.calls.gh([
+    "issue",
+    "edit",
+    String(number),
+    "--repo",
+    repository,
+    ...added.flatMap((name) => ["--add-label", name]),
+    ...removed.flatMap((name) => ["--remove-label", name]),
+  ]);
+  return { number };
+}
+
 async function pullOf(
   operation: Operation,
   branch: string,
@@ -183,6 +223,7 @@ export type Method = (operation: Operation) => Promise<unknown>;
 
 export const methods: ReadonlyMap<string, Method> = new Map([
   ["prepare", prepare],
+  ["label", label],
   ["create-issue", createIssue],
   ["discard", discard],
   ["open-pr", openPull],
