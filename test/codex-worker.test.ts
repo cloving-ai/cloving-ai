@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { activityOf } from "../src/cli/watch-model.ts";
 import { streamResult } from "../src/daemon/claude-turn.ts";
 import {
   intent,
+  git,
   journalKey,
   resultOf,
   until,
@@ -13,6 +14,42 @@ import {
 } from "./claude-worker-fixture.ts";
 
 import { fakeCodex } from "./codex-fixture.ts";
+
+await test("CLV-088 Codex uses the existing branch work tree and refuses another turn when it is dirty", () =>
+  withScene(async (scene) => {
+    const tree = join(scene.directory, "existing");
+    git(scene.repository, ["worktree", "add", "-b", "feature-search", tree]);
+    const worker = scene.worker("complete", {
+      worker: "codex",
+      command: [process.execPath, "--input-type=module", "-e", fakeCodex],
+    });
+    const target = "branch:feature-search";
+    const signal = new AbortController().signal;
+    await worker.deliver(intent({ target }), signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const result = resultOf(scene.reports[0].result);
+    assert.deepEqual(
+      [result["worktree"], result["branch"]],
+      [tree, "feature-search"],
+    );
+    assert.equal(
+      readFileSync(join(tree, "codex-work.txt"), "utf8"),
+      "prompt of sha256:prompt",
+    );
+    assert.deepEqual(
+      await worker.deliver(
+        intent({ target, operationId: "operation-2" }),
+        signal,
+      ),
+      { kind: "failed", reason: "branch-worktree-not-clean" },
+    );
+    assert.equal(
+      existsSync(join(scene.journal, journalKey("operation-2"))),
+      false,
+    );
+    assert.equal(scene.reports.length, 1);
+  }));
 
 await test("CLV-083 the Codex worker records translated activity and a final result with no cost", () =>
   withScene(async (scene) => {

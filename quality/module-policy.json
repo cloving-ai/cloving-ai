@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/branch-worker.test.ts": "test",
+    "test/github-worker-branch.test.ts": "test",
     "eslint.config.mjs": "configuration",
     "node:assert/strict": "stdlib",
     "node:child_process": "process",

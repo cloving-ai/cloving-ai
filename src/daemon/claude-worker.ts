@@ -28,7 +28,7 @@ import {
   type Recorded,
   type WorkerReport,
 } from "./operation-journal.ts";
-import { changes, workTree, type WorkTree } from "./work-tree.ts";
+import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings {
   readonly worker?: Worker;
@@ -203,10 +203,13 @@ async function begun(
 
 async function firstTurn(
   settings: ClaudeWorkerSettings,
-  opening: { readonly tree: WorkTree; readonly target: string },
+  opening: { readonly tree: WorkTree; readonly intent: ProtectedIntent },
 ): Promise<WorkTree> {
-  const { tree, target } = opening;
-  const folder = join(settings.journal, "targets");
+  const { tree, intent } = opening;
+  const { target, runId } = intent;
+  const folder = target.startsWith("branch:")
+    ? join(settings.journal, "runs", operationKey(runId), "targets")
+    : join(settings.journal, "targets");
   const name = `${operationKey(target)}.json`;
   const startCommit: unknown = Reflect.get(
     Object(await read(folder, name)),
@@ -283,11 +286,11 @@ async function delivered(
     worktrees: settings.worktrees,
     target: intent.target,
     signal,
-  }).catch(() => undefined);
+  }).catch(treeFailure);
   if (signal.aborted) return failure("claude-start-aborted");
-  if (tree === undefined) return failure("work-tree-not-available");
+  if (typeof tree === "string") return failure(tree);
   const place = located(settings, intent.operationId);
-  const first = await firstTurn(settings, { tree, target: intent.target });
+  const first = await firstTurn(settings, { tree, intent });
   await begun(parts, { ...place, intent, tree: first, prompt, profile });
   return { receipt: place.key, worker };
 }

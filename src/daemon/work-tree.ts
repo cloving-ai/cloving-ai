@@ -1,7 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, realpath } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const executed = promisify(execFile);
@@ -92,6 +92,15 @@ export function treePlace(request: Pick<TreeRequest, "worktrees" | "target">): {
 }
 
 export async function workTree(request: TreeRequest): Promise<WorkTree> {
+  if (request.target.startsWith("branch:"))
+    return branchTree(request).catch((error: unknown) => {
+      const reason = treeFailure(error);
+      throw new Error(
+        reason === "work-tree-not-available"
+          ? "branch-worktree-not-found"
+          : reason,
+      );
+    });
   const { path, branch } = treePlace(request);
   if (!existsSync(join(path, ".git"))) await added(request, { path, branch });
   const head = await git({
@@ -100,6 +109,126 @@ export async function workTree(request: TreeRequest): Promise<WorkTree> {
     signal: request.signal,
   });
   return { path, branch, startCommit: head.trim() };
+}
+
+async function branchTree(request: TreeRequest): Promise<WorkTree> {
+  const branch = request.target.slice("branch:".length);
+  if (branch.startsWith("cloving/")) throw new Error("branch-reserved");
+  const listing = await git({
+    directory: request.repository,
+    parts: ["worktree", "list", "--porcelain", "-z"],
+    signal: request.signal,
+  });
+  const entry = listing
+    .split("\0\0")
+    .slice(1)
+    .find((record) =>
+      record.split("\0").includes(`branch refs/heads/${branch}`),
+    );
+  const path = entry?.split("\0")[0]?.slice("worktree ".length);
+  if (path === undefined) throw new Error("branch-worktree-not-found");
+  await sameBranch(request, { path, branch });
+  await outsideManaged(request, path);
+  await cleanBranch({ directory: path, signal: request.signal });
+  const head = await git({
+    directory: path,
+    parts: ["rev-parse", "HEAD"],
+    signal: request.signal,
+  });
+  return { path, branch, startCommit: head.trim() };
+}
+
+async function outsideManaged(
+  request: TreeRequest,
+  path: string,
+): Promise<void> {
+  const folder = await realpath(request.worktrees).catch((error: unknown) => {
+    if (Reflect.get(Object(error), "code") !== "ENOENT") throw error;
+    return resolve(request.worktrees);
+  });
+  const location = relative(folder, await realpath(path));
+  if (location !== ".." && !location.startsWith(`..${sep}`))
+    throw new Error("branch-reserved");
+}
+
+async function sameBranch(
+  request: TreeRequest,
+  tree: Pick<WorkTree, "path" | "branch">,
+): Promise<void> {
+  const common = async (directory: string): Promise<string> => {
+    const folder = await git({
+      directory,
+      parts: ["rev-parse", "--git-common-dir"],
+      signal: request.signal,
+    });
+    return realpath(resolve(directory, folder.trim()));
+  };
+  if ((await common(request.repository)) !== (await common(tree.path)))
+    throw new Error("branch-worktree-not-found");
+  const head = await git({
+    directory: tree.path,
+    parts: ["symbolic-ref", "--quiet", "HEAD"],
+    signal: request.signal,
+  });
+  if (head.trim() !== `refs/heads/${tree.branch}`)
+    throw new Error("branch-worktree-not-found");
+}
+
+async function cleanBranch(place: Omit<GitCall, "parts">): Promise<void> {
+  const status = await git({
+    ...place,
+    parts: [
+      "-c",
+      "core.fileMode=true",
+      "status",
+      "--porcelain",
+      "--untracked-files=all",
+      "--ignore-submodules=none",
+    ],
+  });
+  if (status !== "") throw new Error("branch-worktree-not-clean");
+  await cleanIndex(place);
+}
+
+async function hiddenIndex(output: AsyncIterable<unknown>): Promise<boolean> {
+  let entryStart = true;
+  let hidden = false;
+  for await (const chunk of output) {
+    for (const character of String(chunk)) {
+      if (entryStart && /[a-zS]/.test(character)) hidden = true;
+      entryStart = character === "\0";
+    }
+  }
+  return hidden;
+}
+
+async function cleanIndex(place: Omit<GitCall, "parts">): Promise<void> {
+  const child = spawn("git", ["-C", place.directory, "ls-files", "-v", "-z"], {
+    stdio: ["ignore", "pipe", "ignore"],
+    ...(place.signal === undefined ? {} : { signal: place.signal }),
+  });
+  const ended = new Promise<boolean>((resolve) => {
+    child.once("error", () => {
+      resolve(false);
+    });
+    child.once("close", (code) => {
+      resolve(code === 0);
+    });
+  });
+  const hidden = await hiddenIndex(child.stdout);
+  if (!(await ended)) throw new Error("branch-worktree-not-found");
+  if (hidden) throw new Error("branch-worktree-not-clean");
+}
+
+export function treeFailure(error: unknown): string {
+  const reason = error instanceof Error ? error.message : "";
+  return [
+    "branch-worktree-not-found",
+    "branch-worktree-not-clean",
+    "branch-reserved",
+  ].includes(reason)
+    ? reason
+    : "work-tree-not-available";
 }
 
 export async function changes(tree: WorkTree): Promise<Changes> {

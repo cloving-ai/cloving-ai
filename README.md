@@ -235,6 +235,26 @@ A workflow selects a profile with a `protectedEffect` request for capability `cl
 
 `workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile`, disallowed workflows with `profile-not-allowed`, and Codex profiles with `profile-needs-claude`.
 
+To run a Claude or Codex turn on an existing branch, a custom workflow sets
+the effect target to `branch:feature-search`. The service finds that branch's
+linked work tree in its own repository. The main checkout is excluded. Before
+each turn, the work tree must be clean, including untracked files, submodule
+changes and executable bits. Index entries marked assume-unchanged or
+skip-worktree are refused even when unchanged. Missing or mismatched work trees
+fail with `branch-worktree-not-found`; dirty work trees fail with
+`branch-worktree-not-clean`. Branches beginning with `cloving/` and work trees
+inside the managed work-tree directory fail with `branch-reserved`.
+
+Cloving only inspects an existing branch work tree; the turn itself can edit
+and commit there. Cloving does not create, stash, reset, clean, remove or delete
+it or its branch. Results count commits and changed files from the first turn
+of that run and target, including after a worker restart. Sequential runs have
+separate starting commits; concurrent runs on one branch do not isolate their
+commits. Index flags inside submodules and other settings that hide changes
+are outside these checks. Every GitHub worker method refuses `branch:` targets
+with `branch-target-not-supported`, so this target adds no Cloving push or merge
+step. The bundled development workflows keep their existing targets.
+
 ### Pull requests of `develop-issue`
 
 A run of `develop-issue` opens no approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title and the closed issue come from the ticket text (see "The ticket command"). Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.

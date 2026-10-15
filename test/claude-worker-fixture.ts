@@ -45,6 +45,12 @@ const modes = {
     writeFileSync("loose.txt", "not committed");
     result({});
   },
+  committed: () => {
+    writeFileSync("change-" + turn + ".txt", prompt);
+    git("add", ".");
+    git("commit", "-m", "Add the change " + turn);
+    result({});
+  },
   "error-result": () => result({ subtype: "error_during_execution", is_error: true }),
   "exit-code": () => { result({}); process.exitCode = 3; },
   "no-result": () => undefined,
