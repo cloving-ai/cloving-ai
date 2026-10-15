@@ -1,7 +1,7 @@
 import type { Evidence } from "./operations.ts";
+import { HistoryState } from "./history-state.ts";
 import {
   applyEvent,
-  emptyAuthority,
   type AuthorityState,
   type EffectIntent,
 } from "./reducer.ts";
@@ -19,12 +19,13 @@ export interface History {
 }
 
 export function rebuildHistory(events: readonly unknown[]): History {
-  let state = emptyAuthority;
+  const replay = new HistoryState();
   const created: OutboxEntry[] = [];
   const released = new Map<string, number>();
   const runSequences: Record<string, number> = {};
   const evidence: Evidence[] = [];
   for (const [index, value] of events.entries()) {
+    const state = replay.scope(value);
     const applied = applyEvent(state, { value, index });
     const before = new Set(state.intents.map((intent) => intent.operationId));
     const after = new Set(
@@ -42,10 +43,10 @@ export function rebuildHistory(events: readonly unknown[]): History {
         released.set(operationId, applied.event.sequence);
     runSequences[applied.event.runId] = applied.event.sequence;
     evidence.push(...applied.evidence);
-    state = applied.state;
+    replay.record(applied.state, applied.event.runId);
   }
   return {
-    state,
+    state: replay.finish(),
     outbox: created.map((entry) => ({
       ...entry,
       releasedSequence: released.get(entry.operationId) ?? null,
