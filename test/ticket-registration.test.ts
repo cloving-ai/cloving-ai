@@ -19,12 +19,12 @@ const functions = [
   },
 ];
 
-await test("CLV-081 develop-issue admits preparation and four complete rounds with 17 effects", () => {
+await test("CLV-081 develop-issue admits preparation, four complete rounds and labels with 20 effects", () => {
   const row = ticketRegistrationTable({
     repository: "/repositories/example",
     command: undefined,
   }).find((entry) => entry.workflowId === "develop-issue");
-  assert.equal(row?.effectLimit, 17);
+  assert.equal(row?.effectLimit, 20);
 });
 
 async function manifestsIn(directory: string): Promise<Record<string, string>> {
