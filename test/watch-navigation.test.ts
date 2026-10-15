@@ -29,7 +29,11 @@ console.log(JSON.stringify({ pages, requests, scrolled }));
   const pages = result["pages"];
   assert.ok(Array.isArray(pages));
   assert.deepEqual(
-    pages.map((page: unknown): unknown => Reflect.get(Object(page), "hash")),
+    pages.map((page: unknown): string => {
+      assert.ok(typeof page === "object" && page !== null && "hash" in page);
+      assert.ok(typeof page.hash === "string");
+      return page.hash;
+    }),
     ["", "#workflow=missing", "#workflow=develop-issue"],
   );
   assert.match(JSON.stringify(pages.slice(0, 2)), /develop-ticket · Cloving/);

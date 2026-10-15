@@ -118,6 +118,55 @@ console.log(JSON.stringify({ initial, refreshed, recent, returned: document.titl
   });
 });
 
+for (const failure of ["server", "connection", "json", "mismatched run"]) {
+  await test(`CLV-079 saved runs survive ${failure} errors and recover on refresh`, () => {
+    const archived = sampleRun({
+      runId: "run-1",
+      workflowId: "develop-issue",
+      detail: "Saved run details",
+    });
+    const result = played(
+      { ...sampleModel([sampleRun({ runId: "recent" })]), archived },
+      `
+const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#workflow=develop-issue&run=run-1";
+replies.push(model, { run: archived });
+await load();
+replies.push(model);
+const failure = ${JSON.stringify(failure)};
+if (failure === "server") replies.push(new Response(null, { status: 500 }));
+if (failure === "json") replies.push(new Response("invalid json"));
+if (failure === "mismatched run") replies.push({ run: { ...archived, runId: "other" } });
+await load();
+const failedHtml = app.inner;
+const failedRuns = state.model.runs.map((run) => run.runId);
+const stale = state.stale;
+replies.push(model, { run: { ...archived, detail: "Refreshed saved run details" } });
+await load();
+console.log(JSON.stringify({ failedHtml, failedRuns, stale, recoveredHtml: app.inner, recoveredStale: state.stale, hash: location.hash }));
+`,
+    );
+    assert.equal(result["stale"], true);
+    assert.deepEqual(result["failedRuns"], ["recent", "run-1"]);
+    assert.match(String(result["failedHtml"]), /Saved run/);
+    assert.match(
+      String(result["failedHtml"]),
+      /The watch tool does not answer/,
+    );
+    assert.doesNotMatch(
+      String(result["failedHtml"]),
+      /This run is not available/,
+    );
+    assert.equal(result["recoveredStale"], false);
+    assert.match(String(result["recoveredHtml"]), /Refreshed saved run/);
+    assert.doesNotMatch(
+      String(result["recoveredHtml"]),
+      /The watch tool does not answer/,
+    );
+    assert.equal(result["hash"], "#workflow=develop-issue&run=run-1");
+  });
+}
+
 await test("CLV-079 a workflow and run hash reads the saved run and keeps its full page on reload", () => {
   const archived = sampleRun({
     runId: "old /&run",

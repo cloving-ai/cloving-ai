@@ -31,9 +31,10 @@ Object.assign(globalThis, {
     requests.push(address);
     const available = replies.length > 0;
     const reply = replies.shift();
+    if (reply instanceof Response) return Promise.resolve(reply);
     return !available
       ? Promise.reject(new Error("no server"))
-      : Promise.resolve({ ok: reply !== null, json: () => Promise.resolve(reply) });
+      : Promise.resolve({ ok: reply !== null, status: reply === null ? 404 : 200, json: () => Promise.resolve(reply) });
   },
   innerHeight: 800,
   scrollY: 0,

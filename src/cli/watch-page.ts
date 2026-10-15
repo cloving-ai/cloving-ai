@@ -207,15 +207,12 @@ function draw() {
 async function withSelectedRun(model) {
   const { runId } = watchLocation(location.hash);
   if (runId === null || model.runs.some((run) => run.runId === runId)) return model;
-  try {
-    const detail = await fetch("data.json?runId=" + encodeURIComponent(runId), { cache: "no-store" });
-    if (!detail.ok) return model;
-    const { run } = await detail.json();
-    if (run?.runId !== runId) return model;
-    return { ...model, runs: [...model.runs, run] };
-  } catch {
-    return model;
-  }
+  const detail = await fetch("data.json?runId=" + encodeURIComponent(runId), { cache: "no-store" });
+  if (detail.status === 404) return model;
+  if (!detail.ok) throw new Error("watch-run-not-available");
+  const { run } = await detail.json();
+  if (run?.runId !== runId) throw new Error("watch-run-mismatch");
+  return { ...model, runs: [...model.runs, run] };
 }
 async function load() {
   state.again = state.loading;
