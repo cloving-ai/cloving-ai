@@ -38,7 +38,7 @@ function rows(value: unknown): readonly Fields[] {
 type OutcomeCache = Map<
   string,
   {
-    readonly latestSequence: unknown;
+    readonly latestSequence: number;
     readonly event: NotifyEvent | undefined;
   }
 >;
@@ -48,12 +48,12 @@ async function observedOutcome(
   source: { readonly runtimeDirectory: string; readonly cache: OutcomeCache },
 ): Promise<NotifyEvent | undefined> {
   const { runtimeDirectory, cache } = source;
+  const latestSequence = summary["latestSequence"];
+  if (typeof latestSequence !== "number")
+    throw new Error("invalid-notify-sequence");
   const runId = String(summary["runId"]);
   const previous = cache.get(runId);
-  if (
-    previous !== undefined &&
-    previous.latestSequence === summary["latestSequence"]
-  )
+  if (previous !== undefined && previous.latestSequence === latestSequence)
     return previous.event;
   const status = await request(runtimeDirectory, {
     operation: "status",
@@ -62,7 +62,7 @@ async function observedOutcome(
   const run = record(status["run"]);
   if (run === undefined) throw new Error("invalid-notify-status");
   const event = outcomeNotification(run);
-  cache.set(runId, { latestSequence: summary["latestSequence"], event });
+  cache.set(runId, { latestSequence, event });
   return event;
 }
 

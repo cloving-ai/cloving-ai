@@ -111,6 +111,43 @@ function unavailableQuestions(counts: {
   };
 }
 
+for (const latestSequence of [undefined, null, "1", true, {}, []]) {
+  await test(`CLV-090 notification checks reject invalid sequence ${JSON.stringify(latestSequence)} and recover`, async () => {
+    const state = {
+      requests: [] as ServiceRequest[],
+      runs: [{ ...blockedRun, latestSequence }] as Fields[],
+    };
+    await withNotifier({ handle: historyRuns(state) }, async (scene) => {
+      await eventually(() => (state.requests.length >= 3 ? true : undefined));
+      assert.equal(
+        state.requests.filter(
+          (request) => request.parameters["runId"] !== undefined,
+        ).length,
+        0,
+      );
+      assert.deepEqual(await scene.notices(), []);
+      assert.deepEqual(
+        JSON.parse(
+          await readFile(join(scene.directory, "notify-events.json"), "utf8"),
+        ),
+        [],
+      );
+      state.runs = [blockedRun];
+      await eventually(async () =>
+        (await scene.notices()).length === 1 ? true : undefined,
+      );
+      await scene.stop();
+      assert.equal((await scene.notices())[0]?.["event"], "blocked");
+      assert.equal(
+        state.requests.filter(
+          (request) => request.parameters["runId"] !== undefined,
+        ).length,
+        1,
+      );
+    });
+  });
+}
+
 await test("CLV-090 notification checks skip unchanged history and read questions once per check", async () => {
   const state = {
     requests: [] as ServiceRequest[],

@@ -12,6 +12,7 @@ export function notifyReply(result: Fields): Promise<Reply> {
 export const blockedRun = {
   runId: "run-blocked",
   workflowId: "develop-ticket",
+  latestSequence: 1,
   state: "completed",
   outcome: { kind: "blocked", reason: "needs help" },
 };
