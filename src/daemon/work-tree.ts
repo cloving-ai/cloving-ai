@@ -143,7 +143,13 @@ async function outsideManaged(
   path: string,
 ): Promise<void> {
   const folder = await realpath(request.worktrees).catch((error: unknown) => {
-    if (Reflect.get(Object(error), "code") !== "ENOENT") throw error;
+    if (
+      typeof error !== "object" ||
+      error === null ||
+      !("code" in error) ||
+      error.code !== "ENOENT"
+    )
+      throw error;
     return resolve(request.worktrees);
   });
   const location = relative(folder, await realpath(path));
@@ -175,26 +181,36 @@ async function sameBranch(
 }
 
 async function cleanBranch(place: Omit<GitCall, "parts">): Promise<void> {
-  const status = await git({
-    ...place,
-    parts: [
-      "-c",
-      "core.fileMode=true",
-      "status",
-      "--porcelain",
-      "--untracked-files=all",
-      "--ignore-submodules=none",
-    ],
-  });
-  if (status !== "") throw new Error("branch-worktree-not-clean");
-  await cleanIndex(place);
+  await cleanOutput(
+    {
+      ...place,
+      parts: [
+        "-c",
+        "core.fileMode=true",
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+      ],
+    },
+    hasOutput,
+  );
+  await cleanOutput({ ...place, parts: ["ls-files", "-v", "-z"] }, hiddenIndex);
 }
 
-async function hiddenIndex(output: AsyncIterable<unknown>): Promise<boolean> {
+async function hasOutput(output: AsyncIterable<Buffer>): Promise<boolean> {
+  let present = false;
+  for await (const chunk of output) {
+    if (chunk.length > 0) present = true;
+  }
+  return present;
+}
+
+async function hiddenIndex(output: AsyncIterable<Buffer>): Promise<boolean> {
   let entryStart = true;
   let hidden = false;
   for await (const chunk of output) {
-    for (const character of String(chunk)) {
+    for (const character of chunk.toString()) {
       if (entryStart && /[a-zS]/.test(character)) hidden = true;
       entryStart = character === "\0";
     }
@@ -202,10 +218,13 @@ async function hiddenIndex(output: AsyncIterable<unknown>): Promise<boolean> {
   return hidden;
 }
 
-async function cleanIndex(place: Omit<GitCall, "parts">): Promise<void> {
-  const child = spawn("git", ["-C", place.directory, "ls-files", "-v", "-z"], {
+async function cleanOutput(
+  call: GitCall,
+  inspect: (output: AsyncIterable<Buffer>) => Promise<boolean>,
+): Promise<void> {
+  const child = spawn("git", ["-C", call.directory, ...call.parts], {
     stdio: ["ignore", "pipe", "ignore"],
-    ...(place.signal === undefined ? {} : { signal: place.signal }),
+    ...(call.signal === undefined ? {} : { signal: call.signal }),
   });
   const ended = new Promise<boolean>((resolve) => {
     child.once("error", () => {
@@ -215,9 +234,9 @@ async function cleanIndex(place: Omit<GitCall, "parts">): Promise<void> {
       resolve(code === 0);
     });
   });
-  const hidden = await hiddenIndex(child.stdout);
+  const dirty = await inspect(child.stdout);
   if (!(await ended)) throw new Error("branch-worktree-not-found");
-  if (hidden) throw new Error("branch-worktree-not-clean");
+  if (dirty) throw new Error("branch-worktree-not-clean");
 }
 
 export function treeFailure(error: unknown): string {

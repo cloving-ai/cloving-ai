@@ -205,6 +205,31 @@ await test("CLV-088 a dirty branch work tree refuses the effect before the comma
     await unclean(scene);
   }));
 
+await test("CLV-088 a dirty work tree with large status output is refused as not clean", () =>
+  withScene(async (scene) => {
+    const tree = linked(scene);
+    const directory = join(...Array<string>(4).fill("folder".repeat(30)));
+    mkdirSync(join(tree, directory), { recursive: true });
+    for (let index = 0; index < 1800; index += 1)
+      writeFileSync(join(tree, directory, `${String(index)}.txt`), "New.\n");
+    const status = execFileSync(
+      "git",
+      [
+        "-C",
+        tree,
+        "-c",
+        "core.fileMode=true",
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+      ],
+      { maxBuffer: 2 * 1024 * 1024 },
+    );
+    assert.ok(status.length > 1024 * 1024);
+    await unclean(scene);
+  }));
+
 await test("CLV-088 a large index is checked completely without an output buffer limit", () =>
   withScene(async (scene) => {
     const tree = linked(scene);
