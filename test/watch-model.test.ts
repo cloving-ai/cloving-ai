@@ -186,10 +186,35 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
   ]);
 });
 
+await test("CLV-080 turns retain only recent activity before path replacement", () => {
+  const content = Array.from({ length: 1000 }, (_, index) => ({
+    type: "text",
+    text: `Message ${String(index)}: ${started.worktree}/test.ts`,
+  }));
+  const turn = turnOf({
+    ...working,
+    lines: [
+      line({ type: "assistant", message: { content } }),
+      finished("Done.", 1.25),
+      line({ type: "system" }),
+    ],
+  });
+  assert.equal(turn.activity.length, 401);
+  assert.deepEqual(turn.activity, [
+    ...content.slice(600).map(({ text }) => ({ kind: "say", text })),
+    { kind: "result", text: "Done.", costUsd: 1.25 },
+  ]);
+  assert.equal(turn.costUsd, 1.25);
+});
+
 await test("CLV-080 the activity limit preserves the summary of a repeated result", () => {
   const turn = shownTurn({
     ...working,
-    lines: [said, finished("a", 1.25), ...Array<string>(399).fill(said)],
+    lines: [
+      ...Array<string>(500).fill(said),
+      finished("a", 1.25),
+      ...Array<string>(399).fill(said),
+    ],
   });
   assert.equal(turn.activity.length, 400);
   assert.deepEqual(turn.activity[0], {

@@ -167,7 +167,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     startedAt: text(started["startedAt"]),
     outcome: records.result === null ? "in work" : outcome,
     costUsd: costOf(records.lines),
-    activity: records.lines.flatMap(activityOf),
+    activity: records.lines.flatMap(activityOf).slice(-activityLimit - 1),
     endedAt: stamp(result["endedAt"]),
     activeAt: records.activeAt ?? null,
     commits: texts(report["commits"]),
