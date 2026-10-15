@@ -53,8 +53,8 @@ function completed(item: Fields): string[] {
 interface State {
   sessionId: string | null;
   turns: number;
-  failed: boolean;
-  error: string;
+  failure: string | null;
+  error: string | null;
   message: string;
 }
 
@@ -62,16 +62,13 @@ function updated(event: Fields, state: State): void {
   const type = event["type"];
   if (type === "thread.started")
     state.sessionId = text(event["thread_id"]) || null;
-  if (type === "turn.completed") state.turns += 1;
-  if (type === "turn.failed" || type === "error") {
-    state.failed = true;
-    state.error =
-      text(
-        type === "turn.failed"
-          ? record(event["error"])["message"]
-          : event["message"],
-      ) || state.error;
+  if (type === "turn.completed") {
+    state.turns += 1;
+    state.error = null;
   }
+  if (type === "turn.failed")
+    state.failure = text(record(event["error"])["message"]);
+  if (type === "error") state.error = text(event["message"]);
 }
 
 function translated(event: Fields, state: State): string[] {
@@ -106,21 +103,27 @@ export function codexStream(): {
   const state: State = {
     sessionId: null,
     turns: 0,
-    failed: false,
-    error: "",
+    failure: null,
+    error: null,
     message: "",
   };
   return {
     line: (line) => translated(parsed(line), state),
     result: (exitCode) => {
-      const success = exitCode === 0 && state.turns > 0 && !state.failed;
+      const success =
+        exitCode === 0 &&
+        state.turns > 0 &&
+        state.failure === null &&
+        state.error === null;
       return JSON.stringify({
         type: "result",
         subtype: success ? "success" : "error_during_execution",
         is_error: !success,
         result: success
           ? state.message
-          : state.error || `codex ended with the code ${String(exitCode)}`,
+          : state.failure ||
+            state.error ||
+            `codex ended with the code ${String(exitCode)}`,
         total_cost_usd: null,
         session_id: state.sessionId,
         num_turns: state.turns,

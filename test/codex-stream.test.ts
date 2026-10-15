@@ -151,7 +151,30 @@ await test("CLV-083 completes with the last agent message, the thread ID and the
   ]);
 });
 
-await test("CLV-083 requires a completed turn, a zero exit code and no failure event for success", () => {
+await test("CLV-087 completes with the last agent message after a recovered error", () => {
+  const stream = codexStream();
+  stream.line('{"type":"thread.started","thread_id":"thread-1"}');
+  stream.line(completed({ type: "agent_message", text: "Working." }));
+  assert.deepEqual(
+    stream.line('{"type":"error","message":"Reconnecting... 3/5"}'),
+    [],
+  );
+  stream.line(completed({ type: "agent_message", text: "Done." }));
+  stream.line('{"type":"turn.completed"}');
+  assert.deepEqual(decoded([stream.result(0)]), [
+    {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "Done.",
+      total_cost_usd: null,
+      session_id: "thread-1",
+      num_turns: 1,
+    },
+  ]);
+});
+
+await test("CLV-087 requires completion, zero exit, no failed turn and no error after the last completion", () => {
   const cases = [
     {
       lines: ['{"type":"turn.failed","error":{"message":"Turn failed."}}'],
@@ -168,8 +191,8 @@ await test("CLV-083 requires a completed turn, a zero exit code and no failure e
     { lines: [], exitCode: 0, result: "codex ended with the code 0", turns: 0 },
     {
       lines: [
-        '{"type":"error","message":"Stream error."}',
         '{"type":"turn.completed"}',
+        '{"type":"error","message":"Stream error."}',
       ],
       exitCode: 0,
       result: "Stream error.",
@@ -200,6 +223,100 @@ await test("CLV-083 requires a completed turn, a zero exit code and no failure e
         total_cost_usd: null,
         session_id: null,
         num_turns: turns,
+      },
+    ]);
+  }
+});
+
+await test("CLV-087 clears errors on each completion and keeps failures permanent", () => {
+  const cases = [
+    {
+      events: [
+        { type: "turn.completed" },
+        { type: "error", message: "Reconnecting." },
+        { type: "turn.completed" },
+      ],
+      failed: false,
+      result: "Done.",
+    },
+    {
+      events: [
+        { type: "turn.failed", error: { message: "Turn failed." } },
+        { type: "turn.completed" },
+        { type: "error", message: "Later error." },
+      ],
+      failed: true,
+      result: "Turn failed.",
+    },
+    {
+      events: [
+        { type: "turn.completed" },
+        { type: "error", message: "First error." },
+        { type: "error", message: "Last error." },
+      ],
+      failed: true,
+      result: "Last error.",
+    },
+  ];
+  for (const { events, failed, result } of cases) {
+    const stream = codexStream();
+    stream.line(completed({ type: "agent_message", text: "Done." }));
+    for (const event of events)
+      assert.deepEqual(stream.line(JSON.stringify(event)), []);
+    assert.deepEqual(decoded([stream.result(0)]), [
+      {
+        type: "result",
+        subtype: failed ? "error_during_execution" : "success",
+        is_error: failed,
+        result,
+        total_cost_usd: null,
+        session_id: null,
+        num_turns: events.filter((event) => event.type === "turn.completed")
+          .length,
+      },
+    ]);
+  }
+});
+
+await test("CLV-087 uses the exit code when no current failure message remains", () => {
+  const cases = [
+    {
+      events: [
+        { type: "error", message: "Recovered error." },
+        { type: "turn.completed" },
+      ],
+      exitCode: 2,
+    },
+    {
+      events: [
+        { type: "turn.completed" },
+        { type: "error", message: "Earlier error." },
+        { type: "error" },
+      ],
+      exitCode: 0,
+    },
+    {
+      events: [
+        { type: "error", message: "Recovered error." },
+        { type: "turn.failed" },
+        { type: "turn.completed" },
+      ],
+      exitCode: 0,
+    },
+  ];
+  for (const { events, exitCode } of cases) {
+    const stream = codexStream();
+    for (const event of events)
+      assert.deepEqual(stream.line(JSON.stringify(event)), []);
+    assert.deepEqual(decoded([stream.result(exitCode)]), [
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        result: `codex ended with the code ${String(exitCode)}`,
+        total_cost_usd: null,
+        session_id: null,
+        num_turns: 1,
       },
     ]);
   }
