@@ -32,6 +32,7 @@ import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { issueQueue } from "./issue-queue.ts";
+import { notifyRuns } from "./notify.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -51,6 +52,8 @@ export interface DaemonSettings {
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];
+  readonly notifyCommand?: readonly string[];
+  readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
   readonly githubCommand?: readonly string[];
   readonly checkCommand?: readonly string[];
@@ -256,6 +259,21 @@ async function runningDaemon(
 ): Promise<Daemon> {
   const { service, worker, github } = resources;
   await github.scan();
+  const notifier =
+    settings.notifyCommand === undefined
+      ? undefined
+      : await notifyRuns({
+          directory: settings.directory,
+          runtimeDirectory: settings.runtimeDirectory,
+          command: settings.notifyCommand,
+          ...(settings.notifyMilliseconds === undefined
+            ? {}
+            : { intervalMilliseconds: settings.notifyMilliseconds }),
+        }).catch(async (error: unknown) => {
+          await Promise.all([worker.close(), github.close()]);
+          await service.close();
+          throw error;
+        });
   const queue =
     settings.queueMilliseconds === undefined
       ? undefined
@@ -267,6 +285,7 @@ async function runningDaemon(
   return {
     socket: service.socket,
     close: async () => {
+      await notifier?.stop();
       await queue?.stop();
       await Promise.all([worker.close(), github.close()]);
       await service.close();

@@ -103,7 +103,7 @@ function outcome(value: unknown): string {
   return typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind;
 }
 
-function runStatus(result: Fields): readonly string[] {
+export function runStatus(result: Fields): readonly string[] {
   const run = result["run"];
   const reason = part(run, "reason");
   const recovery = part(run, "recovery");
@@ -142,7 +142,7 @@ function suggestion(decision: unknown, command: unknown): string {
   return `${head} ${tail}`;
 }
 
-function decisionLines(decision: unknown): readonly string[] {
+export function decisionLines(decision: unknown): readonly string[] {
   const allowed = part(decision, "allowed");
   const label = part(decision, "label");
   return [

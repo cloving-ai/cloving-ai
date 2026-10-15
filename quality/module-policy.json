@@ -1,5 +1,13 @@
 {
   "roles": {
+    "test/notify-check-fixture.ts": "test",
+    "test/notify-check.test.ts": "test",
+    "test/notify-message.test.ts": "test",
+    "test/notify-command.test.ts": "test",
+    "src/daemon/notify.ts": "daemon",
+    "src/daemon/notify-message.ts": "daemon",
+    "test/daemon-notify-fixture.ts": "test",
+    "test/daemon-notify.test.ts": "test",
     "test/branch-worker.test.ts": "test",
     "test/github-worker-branch.test.ts": "test",
     "eslint.config.mjs": "configuration",

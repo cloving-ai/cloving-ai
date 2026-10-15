@@ -95,6 +95,7 @@ interface Commands {
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
   readonly nextCommand: readonly string[] | undefined;
+  readonly notifyCommand: readonly string[] | undefined;
   readonly githubCommand: readonly string[] | undefined;
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
@@ -312,6 +313,7 @@ await launchers(
     ticketCommand,
     nextCommand,
     queueMilliseconds,
+    notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),

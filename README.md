@@ -139,6 +139,7 @@ The client commands find the service with no setting, because the two sides use 
 
 - `CLOVING_RUNTIME_DIR`: the runtime directory.
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
+- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs and failed runs. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_PROFILES`: a JSON file of named Claude turn profiles, read once when the service starts.
@@ -147,6 +148,8 @@ The client commands find the service with no setting, because the two sides use 
 - `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`; the GitHub command and private-text list also apply to `develop-prd`.
 
 A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='["npm", "test"]'`.
+
+The notify command receives no added argument. Its standard input receives one JSON object with `event`, `runId`, `workflowId`, `subject` and `body`. The body contains the decision or outcome text already shown by `cloving questions` or `cloving status`, with complete response commands, up to 4000 characters. The daemon checks every 15 seconds and records each event before calling the command. The first check with no notification record only records existing events. Records survive restarts; a failed command is logged once and never retried. Commands have 30 seconds to finish. A stop after recording an event but before sending it can lose that notification, and decisions opened and closed between checks can be missed.
 
 ## Daily development
 
