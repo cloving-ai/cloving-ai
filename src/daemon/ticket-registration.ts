@@ -6,7 +6,7 @@ import type {
   Resolver,
   WorkflowRegistration,
 } from "../service/registry.ts";
-import { ticketText } from "./ticket-source.ts";
+import { ticketCommandText, ticketText } from "./ticket-source.ts";
 
 export const ticketWorkflow = "develop-ticket";
 export const promptWorkflow = "develop-prompt";
@@ -33,6 +33,7 @@ function digest(commandId: string): string {
 export interface TicketSource {
   readonly repository: string;
   readonly command: readonly string[] | undefined;
+  readonly nextCommand?: readonly string[] | undefined;
 }
 
 export interface TicketRegistration {
@@ -49,6 +50,7 @@ async function ticket(
 ): Promise<Resolution> {
   const { command, repository } = source;
   const ticketId = String(request.submission["ticket"]);
+  if (ticketId === "next") return nextTicket(source, request);
   if (!ticketIdentifier.test(ticketId))
     return rejected(
       "invalid-ticket-id",
@@ -72,6 +74,31 @@ async function ticket(
       repository,
     },
   };
+}
+
+async function nextTicket(
+  source: TicketSource,
+  request: ResolutionRequest,
+): Promise<Resolution> {
+  if (source.nextCommand === undefined)
+    return rejected(
+      "next-source-not-configured",
+      "The daemon has no next-ticket command. Set CLOVING_NEXT_COMMAND.",
+    );
+  const selected = await ticketCommandText(source.nextCommand, request.signal);
+  if (selected.kind === "failed")
+    return rejected("next-ticket-not-available", selected.detail);
+  if (selected.text === "")
+    return rejected(
+      "no-ready-ticket",
+      "The next-ticket command printed no ticket ID.",
+    );
+  if (!ticketIdentifier.test(selected.text) || selected.text === "next")
+    return rejected(
+      "invalid-ticket-id",
+      "The next-ticket command must print one valid ticket ID other than next.",
+    );
+  return ticket(source, { ...request, submission: { ticket: selected.text } });
 }
 
 export function ticketResolver(source: TicketSource): Resolver {

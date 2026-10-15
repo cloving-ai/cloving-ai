@@ -139,6 +139,7 @@ The client commands find the service with no setting, because the two sides use 
 
 - `CLOVING_RUNTIME_DIR`: the runtime directory.
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
+- `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
@@ -159,6 +160,7 @@ A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='[
 cloving start                                  # terminal 1, in the repository
 cloving run develop-ticket --ticket TICKET_ID  # terminal 2
 cloving run develop-issue --ticket TICKET_ID   # the work goes through a pull request
+cloving run develop-issue --next               # select the next ready ticket
 cloving run develop-prompt --prompt "the text of the task"
 cloving run develop-prd --prompt "Show the cost of each run on the watch page"
 cloving watch                                  # the live page, also started by cloving start
@@ -197,6 +199,10 @@ Then start the service with the setting:
 ```sh
 CLOVING_TICKET_COMMAND='["github-ticket"]' cloving start
 ```
+
+`cloving run develop-issue --next` and `cloving run develop-ticket --next` use the reserved ticket ID `next`, just like `--ticket next`. Set `CLOVING_NEXT_COMMAND` to a JSON list naming your selection command and its arguments. The daemon adds no argument. The command chooses a ready ticket in your tracker and prints its ID; the daemon trims it and reads the ticket with `CLOVING_TICKET_COMMAND`. Both commands share the resolver's 30-second deadline. Selection logic stays in your command, and each invocation submits only one run.
+
+An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-not-available`. Missing configuration gives `next-source-not-configured`. Multiple IDs, an invalid ID, or `next` as the selected ID give `invalid-ticket-id`. Use only one of `--next`, `--ticket`, `--prompt` and `--input`.
 
 ### Review rounds of `develop-ticket` and `develop-prompt`
 

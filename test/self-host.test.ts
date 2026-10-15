@@ -13,7 +13,7 @@ import {
   withoutChildren,
   type Asked,
 } from "./self-host-fixture.ts";
-import { call } from "./service-fixture.ts";
+import { call, parsed, runCli } from "./service-fixture.ts";
 import { watchedModel } from "./watch-fixture.ts";
 
 async function watchedRun(directory: string): Promise<readonly unknown[]> {
@@ -247,3 +247,34 @@ await test("CLV-016 the start command starts a daemon that refuses a host bound 
 
 await test("CLV-062 a denial with a feedback text starts round 2 in the same work tree and on the same branch, its review lists the commits and the files of both rounds, and an approval completes the run", () =>
   withoutChildren(roundsRun));
+
+await test("CLV-070 start passes the next command to the daemon and run next admits the selected ticket", () =>
+  withoutChildren(async () => {
+    const { repository, runtimeDirectory, start } = await scene();
+    const daemon = await start({
+      CLOVING_NEXT_COMMAND: JSON.stringify([
+        process.execPath,
+        "-e",
+        'if (process.argv.length !== 1) process.exit(2); console.log("CLV-900");',
+      ]),
+    });
+    const admitted = await runCli(
+      ["run", "develop-ticket", "--next", "--command-id", "c-next", "--json"],
+      { directory: repository, runtime: runtimeDirectory },
+    );
+    assert.equal(admitted.status, 0, admitted.stdout + admitted.stderr);
+    const receipt = parsed(admitted);
+    assert.equal(field(receipt, "kind"), "run-admitted");
+    const decision = await reached(async () => {
+      const reply = await call(
+        { runtimeDirectory },
+        {
+          operation: "questions",
+          parameters: { runId: field(receipt, "runId") },
+        },
+      );
+      return items(reply["decisions"])[0];
+    });
+    assert.match(String(field(decision, "prompt")), /ticket CLV-900/);
+    assert.equal(await ended(daemon), 0);
+  }));

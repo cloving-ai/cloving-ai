@@ -60,6 +60,7 @@ const defaultCommand = [
 interface Commands {
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
+  readonly nextCommand: readonly string[] | undefined;
   readonly githubCommand: readonly string[] | undefined;
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
@@ -226,6 +227,7 @@ await launchers(
   {
     command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
     ticketCommand: listed("CLOVING_TICKET_COMMAND"),
+    nextCommand: listed("CLOVING_NEXT_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),

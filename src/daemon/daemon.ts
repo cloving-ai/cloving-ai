@@ -42,6 +42,7 @@ export interface DaemonSettings {
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
+  readonly nextCommand?: readonly string[];
   readonly githubCommand?: readonly string[];
   readonly checkCommand?: readonly string[];
   readonly privateTexts?: readonly string[];
@@ -180,6 +181,7 @@ export async function startDaemon(
   const table = ticketRegistrationTable({
     repository: settings.repository,
     command: settings.ticketCommand,
+    nextCommand: settings.nextCommand,
   });
   const admitted = await ticketRegistrations(settings.manifests, { table });
   if (admitted.kind === "rejected")
