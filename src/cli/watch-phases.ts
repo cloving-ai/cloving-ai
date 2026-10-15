@@ -30,6 +30,7 @@ const verdicts: Readonly<Record<string, string>> = {
   denied: "Denied",
 };
 const unfinished = ["failed", "stopped"];
+const roundOperations = ["claude-turn", "github-open-pr", "github-wait-review"];
 
 function record(value: unknown): Fields {
   return typeof value === "object" && value !== null ? { ...value } : {};
@@ -90,27 +91,46 @@ function ticketSpans(events: readonly Fields[]): Span[] {
   ];
 }
 
+function operationOf(event: Fields | undefined): readonly unknown[] {
+  const operationId = record(event?.["payload"])["operationId"];
+  try {
+    const scope: unknown = JSON.parse(String(operationId));
+    return Array.isArray(scope) ? scope : [];
+  } catch {
+    return [];
+  }
+}
+
+function currentRound(events: readonly Fields[]): number {
+  const requested = events.findLast(
+    (event) =>
+      event["type"] === effect.open && operationOf(event)[4] === "claude-turn",
+  );
+  const round = operationOf(requested)[1];
+  return typeof round === "number" ? round : 1;
+}
+
 function spans(events: readonly Fields[], workflowId: string): Span[] {
   if (workflowId !== issueWorkflow) return ticketSpans(events);
   const effects = events.filter((event) =>
     [effect.open, effect.close].includes(String(event["type"])),
   );
+  const round = currentRound(effects);
   return [
     ...admission(events),
     ...issueSteps.map((step) => {
+      const repeated = roundOperations.includes(step.operation);
       const own = effects.filter((event) => {
-        const operationId = record(event["payload"])["operationId"];
-        try {
-          const scope: unknown = JSON.parse(String(operationId));
-          return Array.isArray(scope) && scope[4] === step.operation;
-        } catch {
-          return false;
-        }
+        const scope = operationOf(event);
+        return scope[4] === step.operation && (!repeated || scope[1] === round);
       });
       const last = own.findLast((event) => event["type"] === effect.close);
       const outcome = String(record(last?.["payload"])["outcome"]);
       return {
-        name: step.name,
+        name:
+          repeated && round > 1
+            ? `${step.name}, round ${String(round)}`
+            : step.name,
         startedAt: firstAt(own, effect.open),
         endedAt: closedAt(own, effect),
         ending: unfinished.includes(outcome) ? "failed" : "done",
