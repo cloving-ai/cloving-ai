@@ -1,3 +1,4 @@
+import type { ProtectedResult } from "../src/step-bridge.ts";
 import { field, request } from "./develop-workflow-fixture.ts";
 
 export const cycleId = "clv-063-1a2b3c4d";
@@ -21,7 +22,7 @@ export const second = "2".repeat(40);
 export const about =
   "Greptile reviews the pull request, and Cloving merges it when the confidence score is 5/5.";
 
-export function completed(result: unknown): unknown {
+export function completed(result: unknown): ProtectedResult {
   return {
     kind: "completed",
     operationId: "operation",
@@ -37,11 +38,11 @@ export const prepared = completed({
 export const turned = completed({ summary: "I made the change." });
 export const merged = completed({ number: 7, merged: "f".repeat(40) });
 
-export function pull(commit: string): unknown {
+export function pull(commit: string): ProtectedResult {
   return completed({ number: 7, url, commit });
 }
 
-export function review(commit: string, score: number): unknown {
+export function review(commit: string, score: number): ProtectedResult {
   const findings =
     score < 5 ? [{ path: "src/a.ts", line: 4, body: "Check the bound." }] : [];
   return completed({

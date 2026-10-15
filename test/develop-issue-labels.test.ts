@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { ProtectedResult } from "../src/step-bridge.ts";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
 import {
   completed,
@@ -15,9 +16,9 @@ import {
   turned,
 } from "./develop-issue-fixture.ts";
 
-function scenario(labels: readonly unknown[]): {
+function scenario(labels: readonly ProtectedResult[]): {
   readonly input: typeof input;
-  readonly effects: Readonly<Record<string, readonly unknown[]>>;
+  readonly effects: Readonly<Record<string, readonly ProtectedResult[]>>;
 } {
   return {
     input,
@@ -33,14 +34,16 @@ function scenario(labels: readonly unknown[]): {
 }
 
 await test("CLV-069 failed label steps are requested without changing the merged outcome", async () => {
-  const failures = [
-    "failed",
-    "stopped",
-    "blocked",
-    "cancelled",
-    "refused",
-    "unavailable",
-  ].map((kind) => ({
+  const failures = (
+    [
+      "failed",
+      "stopped",
+      "blocked",
+      "cancelled",
+      "refused",
+      "unavailable",
+    ] as const
+  ).map((kind): ProtectedResult => ({
     kind,
     operationId: "label-operation",
     reason: "label-not-available",
@@ -74,7 +77,7 @@ await test("CLV-069 failed label steps are requested without changing the merged
 });
 
 await test("CLV-069 every blocked step after preparation attempts the blocked label and preserves its outcome", async () => {
-  const failure = {
+  const failure: ProtectedResult = {
     kind: "failed",
     operationId: "operation",
     reason: "test-failure",
