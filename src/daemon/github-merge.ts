@@ -51,6 +51,7 @@ async function restored(
   place: { readonly tree: Place; readonly commit: string },
 ): Promise<void> {
   await abortMerge(operation, place.tree);
+  await clean(operation, place.tree);
   if ((await headOf(operation, place.tree)) === place.commit) return;
   await operation.calls.git(place.tree.path, ["reset", "--hard", place.commit]);
 }
@@ -120,12 +121,28 @@ async function checked(
 
 async function refreshed(
   operation: Operation,
-  place: { readonly tree: Place; readonly commit: string },
+  place: {
+    readonly tree: Place;
+    readonly commit: string;
+    readonly recorded: string | undefined;
+  },
 ): Promise<string> {
-  await restored(operation, place);
-  await clean(operation, place.tree);
+  await restored(operation, {
+    tree: place.tree,
+    commit: place.recorded ?? place.commit,
+  });
   const base = await defaultBranch(operation);
   let newest = await fetched(operation, base);
+  if (place.recorded !== undefined) {
+    const ancestor = (
+      await operation.calls.git(place.tree.path, [
+        "merge-base",
+        place.recorded,
+        newest,
+      ])
+    ).trim();
+    if (ancestor === newest) return place.recorded;
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await updatedTree(operation, { tree: place.tree, base: newest });
     const head = await checked(operation, { ...place, base });
@@ -197,11 +214,13 @@ async function readyHead(
   },
 ): Promise<string> {
   const tree = existingTree(operation);
-  const updated =
-    pull.recorded ??
-    (await refreshed(operation, { tree, commit: pull.commit }));
+  const updated = await refreshed(operation, {
+    tree,
+    commit: pull.commit,
+    recorded: pull.recorded,
+  });
   if (updated === pull.commit) return updated;
-  if (pull.recorded === undefined)
+  if (pull.recorded !== updated)
     await writeRecord(operation.folder, {
       name: "updated-head.json",
       value: { commit: pull.commit, updated },
