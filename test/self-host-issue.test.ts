@@ -72,7 +72,7 @@ async function issueRun(): Promise<void> {
     call({ runtimeDirectory }, { operation, parameters });
   const daemon = await work.start(githubEnvironment(work));
   const run = await completion(asked, await issueStarted(asked));
-  assert.deepEqual(field(run, "budget"), { limit: 16, spent: 5 });
+  assert.deepEqual(field(run, "budget"), { limit: 17, spent: 5 });
   const [pull] = pulls(stateFile);
   assert.deepEqual(
     [pull?.["state"], pull?.["title"], pull?.["base"]],

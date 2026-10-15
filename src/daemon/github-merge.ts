@@ -102,8 +102,13 @@ async function updatedTree(
       place.base,
     ]);
   } catch {
+    const conflicts = await calls.git(place.tree.path, [
+      "diff",
+      "--name-only",
+      "--diff-filter=U",
+    ]);
     await calls.git(place.tree.path, ["merge", "--abort"]);
-    throw new Error("merge-conflict");
+    throw new Error("merge-conflict", { cause: conflicts.trim() });
   }
 }
 
@@ -244,7 +249,39 @@ async function readyHead(
   return updated;
 }
 
+function checkOutput(cause: unknown): string {
+  return ["stdout", "stderr"]
+    .map((name) => {
+      const value = field(cause, name);
+      return typeof value === "string" ? value : "";
+    })
+    .join("")
+    .slice(-6_000);
+}
+
 export async function merge(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<unknown> {
+  try {
+    return await completedMerge(operation, pull);
+  } catch (error) {
+    operation.signal.throwIfAborted();
+    if (
+      !(error instanceof Error) ||
+      !["check-failed", "merge-conflict"].includes(error.message)
+    )
+      throw error;
+    const conflicts = typeof error.cause === "string" ? error.cause : "";
+    return {
+      reason: error.message,
+      output:
+        error.message === "check-failed" ? checkOutput(error.cause) : conflicts,
+    };
+  }
+}
+
+async function completedMerge(
   operation: Operation,
   pull: ReviewedPull,
 ): Promise<unknown> {

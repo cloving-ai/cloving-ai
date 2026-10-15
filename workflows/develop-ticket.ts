@@ -171,6 +171,17 @@ function findingLines(findings: unknown): string {
 function turnPrompt(input: Ticket, fix: Fix | null): string {
   if (fix === null) return pullPrompt(input);
   const { round, pull, review } = fix;
+  if (typeof review["reason"] === "string")
+    return [
+      pullPrompt(input),
+      "",
+      `This is round ${String(round)}. The merge of the pull request ${pull.url} needs a fix: ${review["reason"]}.`,
+      review["reason"] === "merge-conflict"
+        ? "Merge the default branch of origin into the branch, resolve each conflict, run the tests, and commit."
+        : "The check failed on the tree of the merge of the branch with the newest commit of the default branch. Fix the cause and commit the fix.",
+      "",
+      part(review, "output"),
+    ].join("\n");
   return [
     pullPrompt(input),
     "",
@@ -248,7 +259,7 @@ function pullOf(result: Fields): Pull {
 async function merged(
   input: Ticket,
   done: { readonly round: number; readonly pull: Pull },
-): Promise<CycleOutcome> {
+): Promise<CycleOutcome | Fix> {
   const { number, commit } = done.pull;
   const merge = await github(input, {
     method: "merge",
@@ -256,6 +267,14 @@ async function merged(
     payload: { number, commit },
   });
   if (merge.kind !== "done") return merge;
+  if (typeof merge.result["reason"] === "string") {
+    if (done.round > lastFix)
+      return blocked(input.cycleId, {
+        reason: `The merge has the result ${merge.result["reason"]} in round ${String(done.round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${done.pull.url}`,
+        evidenceId: "github-merge",
+      });
+    return { round: done.round + 1, pull: done.pull, review: merge.result };
+  }
   return {
     kind: "handoff_requested",
     cycleId: input.cycleId,
@@ -295,7 +314,12 @@ async function pullRequest(input: Ticket): Promise<CycleOutcome> {
     });
     if (reviewed.kind !== "done") return reviewed;
     const score = reviewed.result["score"];
-    if (score === 5) return merged(input, { round, pull });
+    if (score === 5) {
+      const result = await merged(input, { round, pull });
+      if ("kind" in result) return result;
+      fix = result;
+      continue;
+    }
     if (round > lastFix)
       return blocked(input.cycleId, {
         reason: `Greptile gave the confidence score ${String(score)}/5 in round ${String(round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${pull.url}`,

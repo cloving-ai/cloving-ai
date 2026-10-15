@@ -62,8 +62,8 @@ async function output(
       maxBuffer: outputBytes,
     });
     return stdout;
-  } catch {
-    throw new Error(place.reason);
+  } catch (error) {
+    throw new Error(place.reason, { cause: error });
   }
 }
 

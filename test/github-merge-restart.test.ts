@@ -17,6 +17,48 @@ import {
   pausedMerge,
 } from "./github-merge-fixture.ts";
 
+await test("CLV-081 a restart replays a saved merge repair without running the check again", () =>
+  withGithub(async (scene) => {
+    const checked = join(scene.directory, "checks");
+    const check = [
+      process.execPath,
+      "-e",
+      `require("node:fs").appendFileSync(${JSON.stringify(checked)}, "check\\n"); process.stderr.write("The assertion failed.\\n"); process.exitCode = 1`,
+    ];
+    const worker = scene.worker({ check });
+    const commit = await opened(scene, worker);
+    advancedBase(scene);
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    await worker.close();
+    assert.equal(report.outcome, "completed");
+    assert.deepEqual(resultOf(report.result), {
+      reason: "check-failed",
+      output: "The assertion failed.\n",
+    });
+    const recorded = resultOf(
+      readFileSync(
+        join(scene.journal, journalKey(report.operationId), "result.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(recorded["result"], report.result);
+    scene.reports.length = 0;
+    const restarted = scene.unscanned({ check });
+    await restarted.scan();
+    await until(() =>
+      scene.reports.some((item) => item.operationId === report.operationId),
+    );
+    const replayed = scene.reports.find(
+      (item) => item.operationId === report.operationId,
+    );
+    assert.deepEqual(replayed, report);
+    assert.equal(readFileSync(checked, "utf8"), "check\n");
+    assert.deepEqual(mergeCalls(scene), []);
+  }));
+
 for (const state of ["open", "merged"]) {
   await test(`CLV-078 resumes a checked and pushed head when the pull request is ${state}`, () =>
     withGithub(async (scene) => {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
+import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 
 const cycleId = "clv-063-1a2b3c4d";
 const ticket = [
@@ -73,6 +74,55 @@ function steps(line: unknown): readonly unknown[] {
 function payloadOf(line: unknown, index: number): string {
   return String(field(request(line, index), "payload"));
 }
+
+await test("CLV-081 a failed merge check starts a fix turn and reviews the new commit before merging", async () => {
+  const output = "Failed test: expected the merged tree to pass.";
+  const [line] = await ran([
+    {
+      input,
+      effects: {
+        "github prepare": [prepared],
+        "claude run-turn": [turned, turned],
+        "github open-pr": [pull(first), pull(second)],
+        "github wait-review": [review(first, 5), review(second, 5)],
+        "github merge": [completed({ reason: "check-failed", output }), merged],
+      },
+    },
+  ]);
+  assert.deepEqual(
+    steps(line).map((step) => [field(step, 3), field(step, 4)]),
+    [
+      ["github-prepare", 1],
+      ["claude-turn", 1],
+      ["github-open-pr", 1],
+      ["github-wait-review", 1],
+      ["github-merge", 1],
+      ["claude-turn", 2],
+      ["github-open-pr", 2],
+      ["github-wait-review", 2],
+      ["github-merge", 2],
+    ],
+  );
+  const prompt = payloadOf(line, 5);
+  assert.ok(prompt.startsWith(payloadOf(line, 1)));
+  assert.match(prompt, /check-failed/);
+  assert.ok(prompt.includes(output));
+  assert.match(prompt, /newest commit of the default branch/);
+  assert.match(prompt, /[Ff]ix the cause.*commit/);
+  assert.deepEqual(JSON.parse(payloadOf(line, 7)), {
+    number: 7,
+    commit: second,
+  });
+  assert.deepEqual(JSON.parse(payloadOf(line, 8)), {
+    number: 7,
+    commit: second,
+  });
+  assert.deepEqual(field(line, "outcome"), {
+    kind: "handoff_requested",
+    cycleId,
+    promotionId: "pull-request-7",
+  });
+});
 
 await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, opens a pull request, waits for the review, and merges at the score 5/5", async () => {
   const [line] = await ran([
@@ -270,3 +320,66 @@ await test("CLV-063 the issue workflow names a pull request for a task with no t
 function failed(): unknown {
   return { kind: "failed", operationId: "operation", reason: null };
 }
+
+function mergeScenario(reasons: readonly string[]): unknown {
+  const commits = ["1", "2", "3", "4"].map((digit) => digit.repeat(40));
+  const registration = ticketRegistrationTable({
+    repository: input.repository,
+    command: undefined,
+  }).find((entry) => entry.workflowId === "develop-issue");
+  return {
+    input,
+    effectLimit: registration?.effectLimit,
+    effects: {
+      "github prepare": [prepared],
+      "claude run-turn": commits.map(() => turned),
+      "github open-pr": commits.map((commit) => pull(commit)),
+      "github wait-review": commits.map((commit) => review(commit, 5)),
+      "github merge": [
+        ...reasons.map((reason) => completed({ reason, output: "src/a.ts" })),
+        merged,
+      ],
+    },
+  };
+}
+
+await test("CLV-081 a merge conflict tells the next worker to merge the default branch and resolve conflicts", async () => {
+  const [line] = await ran([mergeScenario(["merge-conflict"])]);
+  const prompt = payloadOf(line, 5);
+  assert.ok(prompt.startsWith(payloadOf(line, 1)));
+  assert.match(prompt, /merge-conflict/);
+  assert.match(prompt, /[Mm]erge the default branch of origin into the branch/);
+  assert.match(prompt, /resolve each conflict.*run the tests.*commit/);
+  assert.match(prompt, /src\/a\.ts/);
+  assert.equal(steps(line).length, 9);
+  assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
+});
+
+await test("CLV-081 exhausted merge fixes block with the reason and the open pull request", async () => {
+  for (const reason of ["check-failed", "merge-conflict"]) {
+    const [line] = await ran([
+      mergeScenario(Array.from({ length: 4 }, () => reason)),
+    ]);
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "blocked",
+      cycleId,
+      reason: `The merge has the result ${reason} in round 4, and a run has at most 3 fix rounds. The pull request stays open: ${url}`,
+      evidenceId: "github-merge",
+    });
+    assert.equal(steps(line).length, 17);
+  }
+});
+
+await test("CLV-081 the registered effect budget permits a fourth merge after three failed attempts", async () => {
+  const [line] = await ran([
+    mergeScenario(["check-failed", "merge-conflict", "check-failed"]),
+  ]);
+  assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
+  assert.equal(field(line, "spent"), 17);
+  assert.deepEqual(
+    steps(line)
+      .filter((step) => field(step, 1) === "merge")
+      .map((step) => field(step, 4)),
+    [1, 2, 3, 4],
+  );
+});
