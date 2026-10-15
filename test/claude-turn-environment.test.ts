@@ -25,10 +25,14 @@ const folder = process.env.GH_CONFIG_DIR;
 const names = ${JSON.stringify(names)};
 const result = { folder, entries: folder ? readdirSync(folder) : null, tokens: names.filter((name) => name in process.env) };
 if (folder) writeFileSync(join(folder, "hosts.yml"), "left over from a turn");
-process.stdout.write(JSON.stringify({ type: "result", result: JSON.stringify(result) }) + "\\n");
+const message = process.argv[1] === "codex"
+  ? { type: "item.completed", item: { type: "agent_message", text: JSON.stringify(result) } }
+  : { type: "result", result: JSON.stringify(result) };
+process.stdout.write(JSON.stringify(message) + "\\n");
+process.stdout.write(JSON.stringify({ type: "turn.completed" }) + "\\n");
 `;
 
-await test("CLV-075 each Claude turn starts with empty gh configuration and no GitHub tokens", async () => {
+await test("CLV-075 CLV-083 each Claude and Codex turn starts with empty gh configuration and no GitHub tokens", async () => {
   const directory = mkdtempSync(join(tmpdir(), "cloving-turn-env-"));
   const saved = { ...process.env };
   try {
@@ -37,9 +41,16 @@ await test("CLV-075 each Claude turn starts with empty gh configuration and no G
     writeFileSync(join(config, "hosts.yml"), "operator credential");
     process.env["GH_CONFIG_DIR"] = config;
     for (const name of names) process.env[name] = "test-credential";
-    for (let turn = 0; turn < 2; turn += 1) {
+    for (const worker of ["claude", "claude", "codex", "codex"] as const) {
       const running = startTurn({
-        command: [process.execPath, "--input-type=module", "-e", script],
+        worker,
+        command: [
+          process.execPath,
+          "--input-type=module",
+          "-e",
+          script,
+          worker,
+        ],
         directory,
         folder: directory,
         prompt: "Research",

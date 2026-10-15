@@ -16,6 +16,8 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*no added argument.*ticket ID.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
+  ["CLOVING_WORKER", /claude.*codex.*default is claude/],
+  ["CLOVING_CODEX_COMMAND", /JSON list.*codex exec.*no sandbox/],
   ["CLOVING_WATCH_PORT", /The value off .* The default is 3663\./],
   ["CLOVING_OWNERSHIP_LEASE_SECONDS", /The default is 15\./],
   ["CLOVING_HOST_BOUND", /The default is 8\./],
@@ -29,7 +31,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 10);
+  assert.equal(names.length, 12);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);
@@ -38,6 +40,37 @@ await test("CLV-061 the help text of the start command has one line for each set
 await test("CLV-070 run help names next as an input source and explains the reserved ticket ID", () => {
   assert.match(String(commandUsage["run"]), /\| --next \|/);
   assert.match(String(commandUsage["run"]), /--next.*--ticket next/);
+});
+
+await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by default", () => {
+  const argumentsOf = (name: string): string[] =>
+    [
+      ...(
+        program.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`))?.[1] ??
+        ""
+      ).matchAll(/"([^"]*)"/g),
+    ].map((match) => match[1] ?? "");
+  assert.deepEqual(argumentsOf("defaultCommand"), [
+    "claude",
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "acceptEdits",
+    "--allowedTools",
+    "Bash,Read,Edit,Write,Glob,Grep,WebSearch,WebFetch",
+    "--max-budget-usd",
+    "5",
+  ]);
+  assert.deepEqual(argumentsOf("defaultCodexCommand"), [
+    "codex",
+    "exec",
+    "--json",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--skip-git-repo-check",
+    "-",
+  ]);
 });
 
 await test("CLV-075 the default Claude command allows web research and help describes develop-prd", () => {

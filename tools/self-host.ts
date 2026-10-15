@@ -56,8 +56,23 @@ const defaultCommand = [
   "--max-budget-usd",
   "5",
 ];
+const defaultCodexCommand = [
+  "codex",
+  "exec",
+  "--json",
+  "--dangerously-bypass-approvals-and-sandbox",
+  "--skip-git-repo-check",
+  "-",
+];
+
+function selectedWorker(): "claude" | "codex" {
+  const worker = process.env["CLOVING_WORKER"] ?? "claude";
+  if (worker === "claude" || worker === "codex") return worker;
+  throw new Error(`The daemon did not start: invalid-worker: ${worker}`);
+}
 
 interface Commands {
+  readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
   readonly nextCommand: readonly string[] | undefined;
@@ -222,10 +237,16 @@ async function prepared(): Promise<Readonly<Record<string, string>>> {
   return registered();
 }
 
+const worker = selectedWorker();
+const command =
+  worker === "codex"
+    ? (listed("CLOVING_CODEX_COMMAND") ?? defaultCodexCommand)
+    : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
 const manifests = await prepared();
 await launchers(
   {
-    command: listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand,
+    worker,
+    command,
     ticketCommand: listed("CLOVING_TICKET_COMMAND"),
     nextCommand: listed("CLOVING_NEXT_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),

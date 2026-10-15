@@ -1,6 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { codexStream } from "./codex-stream.ts";
+
+export type Worker = "claude" | "codex";
 
 export interface StreamResult {
   readonly text: string;
@@ -16,6 +19,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly worker?: Worker;
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
@@ -103,18 +107,44 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
-export function startTurn(start: TurnStart): RunningTurn {
-  const { child, configuration } = spawnTurn(start);
+function turnOutput(
+  start: TurnStart,
+  stdout: ChildProcessWithoutNullStreams["stdout"],
+): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = createWriteStream(join(start.folder, "turn.jsonl"));
-  const errors = createWriteStream(join(start.folder, "turn.stderr.log"));
+  const codex = start.worker === "codex" ? codexStream() : undefined;
   const stream: Stream = { pending: "", result: undefined };
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => {
-    output.write(chunk);
+  const written = (lines: readonly string[]): void => {
+    for (const line of lines) output.write(`${line}\n`);
+    stream.result = lines.map(streamResult).findLast(Boolean) ?? stream.result;
+  };
+  stdout.setEncoding("utf8");
+  stdout.on("data", (chunk: string) => {
+    if (codex === undefined) output.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
+    if (codex !== undefined) {
+      written(lines.flatMap(codex.line));
+      return;
+    }
     stream.result = lines.map(streamResult).findLast(Boolean) ?? stream.result;
   });
+  return async (exitCode) => {
+    if (codex !== undefined) {
+      written(codex.line(stream.pending));
+      written([codex.result(exitCode)]);
+    }
+    await ended(output);
+    return codex === undefined
+      ? (streamResult(stream.pending) ?? stream.result)
+      : stream.result;
+  };
+}
+
+export function startTurn(start: TurnStart): RunningTurn {
+  const { child, configuration } = spawnTurn(start);
+  const output = turnOutput(start, child.stdout);
+  const errors = createWriteStream(join(start.folder, "turn.stderr.log"));
   child.stderr.pipe(errors);
   child.stdin.on("error", () => undefined);
   child.stdin.end(start.prompt);
@@ -128,10 +158,9 @@ export function startTurn(start: TurnStart): RunningTurn {
     ended: closed
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);
-        await ended(output);
         return {
           exitCode,
-          result: streamResult(stream.pending) ?? stream.result,
+          result: await output(exitCode),
         };
       })
       .finally(() => {
