@@ -108,7 +108,7 @@ const records = [
 
 await test("CLV-065 the watch model gives a develop-issue run its steps, its pull request, its completed reviews in the order of the rounds and its merge commit from the records of the GitHub journal", () => {
   const model = watchModel({
-    host: "/host",
+    home: "/fixture/home",
     client: "cloving",
     updatedAt: "2026-10-14T10:10:00.000Z",
     service: "up",

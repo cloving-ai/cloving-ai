@@ -7,13 +7,14 @@ import {
   phaseTime,
   runName,
   runTone,
-  selectedRun,
   waitingDetail,
   type Copying,
   type WatchModel,
   type WatchPhase,
   type WatchRun,
 } from "./watch-render.ts";
+import { Board, WorkflowList } from "./watch-board-view.ts";
+import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn } from "./watch-turn.ts";
 
 interface Timed {
@@ -176,25 +177,6 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
 }
 
-export function Runs(props: {
-  readonly runs: readonly WatchRun[];
-  readonly selected: string;
-}): Shown {
-  const links = props.runs.map((run) => {
-    const { tone, icon, label } = runTone(run);
-    const marked = run.runId === props.selected ? " selected" : "";
-    return element("a", {
-      class: `run ${tone}${marked}`,
-      href: `#${run.runId}`,
-      children: [
-        element("span", { class: "icon", children: icon }),
-        ` ${runName(run)} · ${label}`,
-      ],
-    });
-  });
-  return element("nav", { children: links });
-}
-
 export function Header(props: {
   readonly model: WatchModel | null;
   readonly stale: boolean;
@@ -208,11 +190,7 @@ export function Header(props: {
       })
     : element("span", { children: updated });
   return element("header", {
-    children: [
-      element("strong", { children: "Cloving" }),
-      element("span", { children: model?.host }),
-      stamp,
-    ],
+    children: [element("strong", { children: "Cloving" }), stamp],
   });
 }
 
@@ -234,17 +212,42 @@ export function Page(props: PageProps): Shown {
   const lost =
     "The Cloving service does not answer. The page shows the last known records.";
   const down = model.service === "up" ? null : text("down", lost);
-  const run = selectedRun(model, selected);
-  const hint = [
-    "No run yet. Submit one with ",
-    element("code", { children: "cloving run" }),
-    ".",
-  ];
-  if (run === undefined) return [head, down, text("meta", hint)];
+  const location = watchLocation(selected);
+  const workflowId = boardWorkflow(model, location.workflowId);
+  if (location.runId !== null) {
+    const run = model.runs.find((item) => item.runId === location.runId);
+    const back =
+      run?.workflowId ?? location.workflowId ?? model.startWorkflowId;
+    return [
+      head,
+      down,
+      element("a", {
+        class: "back",
+        href: watchHash({ workflowId: back, runId: null }),
+        children: `← Back to ${back ?? "workflows"}`,
+      }),
+      run === undefined
+        ? text("meta", "This run is not available.")
+        : component(Run, { key: run.runId, run, now, copying }),
+    ];
+  }
+  const workflow = model.workflows.find(
+    (item) => item.workflowId === workflowId,
+  );
   return [
     head,
     down,
-    component(Runs, { runs: model.runs, selected: run.runId }),
-    component(Run, { key: run.runId, run, now, copying }),
+    element("div", {
+      class: "workspace",
+      children: [
+        component(WorkflowList, {
+          workflows: model.workflows,
+          selected: workflowId,
+        }),
+        workflow === undefined
+          ? text("meta", "No workflows registered.")
+          : component(Board, { workflow, now }),
+      ],
+    }),
   ];
 }

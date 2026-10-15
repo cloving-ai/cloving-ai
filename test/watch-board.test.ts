@@ -9,6 +9,18 @@ import {
   workflowIds,
 } from "./watch-board-fixture.ts";
 
+await test("CLV-079 an active run with only a creation event has no step start time", () => {
+  const model = boardModel([
+    boardRun("created", {
+      events: [{ type: "run.created", recordedAt: boardTime }],
+    }),
+  ]);
+  assert.deepEqual(model.runs[0]?.currentStep, {
+    name: "Work tree",
+    startedAt: null,
+  });
+});
+
 await test("CLV-077 boards follow registration order and place each active run at its newest step start", () => {
   const model = activeBoardModel();
   assert.deepEqual(

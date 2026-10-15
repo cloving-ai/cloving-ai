@@ -271,7 +271,7 @@ await test("CLV-016 cloving watch shows a service that does not answer with no r
     const model = await watchedModel(harness.runtimeDirectory);
     assert.deepEqual(
       [field(model, "service"), field(model, "runs"), field(model, "host")],
-      ["down", [], dirname(harness.runtimeDirectory)],
+      ["down", [], undefined],
     );
   }));
 

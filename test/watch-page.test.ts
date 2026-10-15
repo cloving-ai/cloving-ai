@@ -1,8 +1,5 @@
+import { played } from "./watch-browser.ts";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import { pageDocument } from "../src/cli/watch-page.ts";
@@ -16,51 +13,6 @@ import {
   sampleModel,
   sampleRun,
 } from "./watch-sample.ts";
-
-const browser = `
-import { PageNode } from ${JSON.stringify(join(import.meta.dirname, "watch-dom.ts"))};
-const app = new PageNode("div");
-const listeners = {};
-const timers = [];
-const scrolled = [];
-const copied = [];
-const replies = [];
-const requests = [];
-const sources = [];
-const settled = () => new Promise((settle) => { setImmediate(settle); });
-const fixed = Date.parse(process.env.WATCH_NOW);
-const RealDate = Date;
-globalThis.Date = class extends RealDate {
-  constructor(...values) { super(...(values.length === 0 ? [fixed] : values)); }
-};
-Object.assign(globalThis, {
-  document: { title: "", body: { scrollHeight: 2000 }, getElementById: () => app },
-  location: { hash: "#run-1" },
-  addEventListener: (type, listener) => { listeners[type] = listener; },
-  setInterval: (callback, time) => { timers.push(time); return 0; },
-  fetch: (address) => {
-    requests.push(address);
-    const available = replies.length > 0;
-    const reply = replies.shift();
-    return !available
-      ? Promise.reject(new Error("no server"))
-      : Promise.resolve({ ok: reply !== null, json: () => Promise.resolve(reply) });
-  },
-  innerHeight: 800,
-  scrollY: 0,
-  scrollTo: (left, top) => { scrolled.push(top); },
-  EventSource: class {
-    constructor(address) {
-      this.address = address;
-      sources.push(this);
-    }
-  },
-});
-Object.defineProperty(globalThis, "navigator", {
-  configurable: true,
-  value: { clipboard: { writeText: (text) => { copied.push(text); return Promise.resolve(); } } },
-});
-`;
 
 const scenario = `
 const model = JSON.parse(process.env.WATCH_MODEL);
@@ -92,40 +44,6 @@ location.hash = "#run-2";
 listeners.hashchange();
 console.log(JSON.stringify({ waiting, stale, first, label, kept, down, copied, scrolled, timers, other: document.title, streams: sources.map((item) => item.address), unread: replies.length }));
 `;
-
-function fields(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? { ...value } : {};
-}
-
-function played(
-  model: {
-    readonly updatedAt: string;
-    readonly archived?: ReturnType<typeof sampleRun>;
-  },
-  scriptScenario: string = scenario,
-): Record<string, unknown> {
-  const [, script = ""] =
-    /<script type="module">([\s\S]*)<\/script>/.exec(pageDocument()) ?? [];
-  const library = JSON.stringify(import.meta.resolve("preact"));
-  const directory = mkdtempSync(join(tmpdir(), "cloving-watch-page-"));
-  const file = join(directory, "page.mjs");
-  writeFileSync(
-    file,
-    `${browser}${script.replace('"./preact.mjs"', library)}${scriptScenario}`,
-  );
-  const run = spawnSync(process.execPath, [file], {
-    env: {
-      ...process.env,
-      WATCH_MODEL: JSON.stringify(model),
-      WATCH_NOW: model.updatedAt,
-    },
-    encoding: "utf8",
-  });
-  rmSync(directory, { recursive: true });
-  assert.equal(run.status, 0, run.stderr);
-  const result: unknown = JSON.parse(run.stdout);
-  return fields(result);
-}
 
 await test("CLV-016 the watch page document has the components, a script that gets Preact from the watch server, listens to the event stream of the watch server and draws each second, and no outside resource", () => {
   const page = pageDocument();
@@ -200,6 +118,89 @@ console.log(JSON.stringify({ initial, refreshed, recent, returned: document.titl
   });
 });
 
+for (const failure of ["server", "connection", "json", "mismatched run"]) {
+  await test(`CLV-079 saved runs survive ${failure} errors and recover on refresh`, () => {
+    const archived = sampleRun({
+      runId: "run-1",
+      workflowId: "develop-issue",
+      detail: "Saved run details",
+    });
+    const result = played(
+      { ...sampleModel([sampleRun({ runId: "recent" })]), archived },
+      `
+const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#workflow=develop-issue&run=run-1";
+replies.push(model, { run: archived });
+await load();
+replies.push(model);
+const failure = ${JSON.stringify(failure)};
+if (failure === "server") replies.push(new Response(null, { status: 500 }));
+if (failure === "json") replies.push(new Response("invalid json"));
+if (failure === "mismatched run") replies.push({ run: { ...archived, runId: "other" } });
+await load();
+const failedHtml = app.inner;
+const failedRuns = state.model.runs.map((run) => run.runId);
+const stale = state.stale;
+replies.push(model, { run: { ...archived, detail: "Refreshed saved run details" } });
+await load();
+console.log(JSON.stringify({ failedHtml, failedRuns, stale, recoveredHtml: app.inner, recoveredStale: state.stale, hash: location.hash }));
+`,
+    );
+    assert.equal(result["stale"], true);
+    assert.deepEqual(result["failedRuns"], ["recent", "run-1"]);
+    assert.match(String(result["failedHtml"]), /Saved run/);
+    assert.match(
+      String(result["failedHtml"]),
+      /The watch tool does not answer/,
+    );
+    assert.doesNotMatch(
+      String(result["failedHtml"]),
+      /This run is not available/,
+    );
+    assert.equal(result["recoveredStale"], false);
+    assert.match(String(result["recoveredHtml"]), /Refreshed saved run/);
+    assert.doesNotMatch(
+      String(result["recoveredHtml"]),
+      /The watch tool does not answer/,
+    );
+    assert.equal(result["hash"], "#workflow=develop-issue&run=run-1");
+  });
+}
+
+await test("CLV-079 a workflow and run hash reads the saved run and keeps its full page on reload", () => {
+  const archived = sampleRun({
+    runId: "old /&run",
+    workflowId: "develop-issue",
+  });
+  const result = played(
+    { ...sampleModel([]), archived },
+    `
+const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#workflow=develop-issue&run=old%20%2F%26run";
+replies.push(model, { run: archived });
+await load();
+const first = app.inner;
+replies.push(model, { run: archived });
+await load();
+console.log(JSON.stringify({ first, refreshed: app.inner, hash: location.hash, requests }));
+`,
+  );
+  assert.deepEqual(result["requests"], [
+    "data.json",
+    "data.json?runId=old%20%2F%26run",
+    "data.json",
+    "data.json?runId=old%20%2F%26run",
+  ]);
+  assert.match(
+    String(result["first"]),
+    /href="#workflow=develop-issue">← Back to develop-issue/,
+  );
+  assert.match(String(result["first"]), /class="banner attention"/);
+  assert.doesNotMatch(String(result["first"]), /class="workflows"|class="run /);
+  assert.equal(result["first"], result["refreshed"]);
+  assert.equal(result["hash"], "#workflow=develop-issue&run=old%20%2F%26run");
+});
+
 await test("CLV-077 an unavailable saved run never selects another run after navigation", () => {
   const result = played(
     sampleModel([sampleRun()]),
@@ -211,10 +212,13 @@ location.hash = "#missing";
 replies.push(model, null);
 listeners.hashchange();
 await settled();
-console.log(JSON.stringify({ title: document.title, selected: selectedRun(state.model, "missing")?.runId ?? null, stale: state.stale }));
+console.log(JSON.stringify({ title: document.title, selected: selectedRun(state.model, "missing")?.runId ?? null, stale: state.stale, html: app.inner }));
 `,
   );
-  assert.deepEqual(result, { title: "Cloving", selected: null, stale: true });
+  assert.equal(result["title"], "Cloving");
+  assert.equal(result["selected"], null);
+  assert.equal(result["stale"], false);
+  assert.match(String(result["html"]), /This run is not available/);
 });
 
 await test("CLV-016 the script of the watch page reads the data at each message of the event stream and draws it with Preact and its own copy of the components, keeps the nodes and a fold that the user opened, copies a command, follows the end of the page only while the run is in work and goes to the top when a decision arrives", () => {
@@ -229,7 +233,7 @@ await test("CLV-016 the script of the watch page reads the data at each message 
   const props = { now: model.updatedAt, copying: noCopy, selected: "run-1" };
   const page = (shown: Parameters<typeof Page>[0]): string =>
     rendered(component(Page, shown));
-  assert.deepEqual(played(model), {
+  assert.deepEqual(played(model, scenario), {
     waiting: page({ ...props, model: null, stale: false }),
     stale: page({ ...props, model: null, stale: true }),
     first: {

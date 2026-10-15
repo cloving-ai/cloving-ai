@@ -67,7 +67,7 @@ export function currentStepOf(
   return {
     name:
       stepName(event, workflowId) ?? stepNames(workflowId)[0] ?? "Claude turn",
-    startedAt: startedAt(event) ?? startedAt(events[0]),
+    startedAt: startedAt(event),
   };
 }
 

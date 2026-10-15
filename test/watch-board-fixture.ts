@@ -56,7 +56,7 @@ export function boardModel(
   changes: Partial<WatchInputs> = {},
 ): ReturnType<typeof watchModel> {
   return watchModel({
-    host: "/host",
+    home: "/fixture/home",
     client: "cloving",
     updatedAt: boardTime,
     service: "up",
