@@ -18,6 +18,7 @@ export interface CallSettings {
   readonly repository: string;
   readonly gh: readonly string[];
   readonly environment?: Readonly<Record<string, string>>;
+  readonly privateTexts?: readonly string[];
 }
 
 export interface Calls {
@@ -48,6 +49,44 @@ interface Place {
   readonly signal: AbortSignal;
   readonly environment: NodeJS.ProcessEnv;
   readonly reason: string;
+  readonly privateTexts: readonly string[];
+}
+
+function privateEnvironment(environment: NodeJS.ProcessEnv): readonly string[] {
+  try {
+    const value: unknown = JSON.parse(
+      environment["CLOVING_PRIVATE_TEXTS"] ?? "[]",
+    );
+    return list(value).filter(
+      (item): item is string => typeof item === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function failureDetail(
+  error: unknown,
+  place: Place,
+): { readonly detail: string; readonly status: number } {
+  const stderr = field(error, "stderr");
+  const text = typeof stderr === "string" ? stderr : "";
+  const secrets = Object.entries(place.environment)
+    .filter(([name]) => /TOKEN|SECRET|PASSWORD|KEY/i.test(name))
+    .map(([, value]) => value);
+  const hidden = [...secrets, ...place.privateTexts]
+    .filter(
+      (value): value is string => typeof value === "string" && value !== "",
+    )
+    .sort((left, right) => right.length - left.length);
+  const detail = hidden.reduce(
+    (redacted, value) => redacted.replaceAll(value, "[hidden]"),
+    text,
+  );
+  return {
+    detail: detail.slice(-2_000),
+    status: Number(/\(HTTP (\d{3})\)/.exec(text)?.[1]),
+  };
 }
 
 async function output(
@@ -63,17 +102,24 @@ async function output(
     });
     return stdout;
   } catch (error) {
-    throw new Error(place.reason, { cause: error });
+    const failure = new Error(place.reason, { cause: error });
+    if (place.reason === "check-failed") throw failure;
+    throw Object.assign(failure, failureDetail(error, place));
   }
 }
 
 export function calls(settings: CallSettings, signal: AbortSignal): Calls {
   const environment = { ...process.env, ...settings.environment };
+  const privateTexts = [
+    ...(settings.privateTexts ?? []),
+    ...privateEnvironment(environment),
+  ];
   const place = (directory: string, reason: string): Place => ({
     directory,
     signal,
     environment,
     reason,
+    privateTexts,
   });
   return {
     gh: (parts) =>

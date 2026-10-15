@@ -30,6 +30,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "merge-conflict",
   "check-required",
   "base-moved",
+  "head-not-updated",
   "uncommitted-change",
   "invalid-payload",
   "merged-other-commit",
