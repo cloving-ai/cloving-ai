@@ -613,7 +613,12 @@
     "test/cli-start-profiles.test.ts": "test",
     "test/turn-profile.test.ts": "test",
     "test/daemon-profiles.test.ts": "test",
-    "test/self-host-profiles.test.ts": "test"
+    "test/self-host-profiles.test.ts": "test",
+    "src/workflow-declaration.ts": "pure",
+    "test/submission-rules.test.ts": "test",
+    "test/workflow-declarations.test.ts": "test",
+    "test/self-host-declarations.test.ts": "test",
+    "test/declaration-compatibility.test.ts": "test"
   },
   "allowed": {
     "quality": [

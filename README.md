@@ -463,14 +463,28 @@ In this example, an approval completes the run and a denial ends it. `workflows/
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
-The present limits:
+`cloving start` compiles the TypeScript files in the application's `workflows` folder. Each file may contain one workflow function, and function names must be unique across files. The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
 
-- `cloving start` copies only `workflows/develop-ticket.ts` (`prepared()` in `tools/self-host.ts`). It takes only the workflow ID of the function `developTicket` (`registered()`).
-- The daemon registers only `develop-ticket`, `develop-prompt` and `develop-issue`, each with its own resolver (`src/daemon/ticket-registration.ts`).
-- Only the capabilities `claude` (method `run-turn`) and `github` have a worker.
-- The map of workflow functions in `launchers()` of `tools/self-host.ts` and the import of `developTicket` in `test/develop-workflow-fixture.ts` name only `developTicket`.
+To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
 
-So a new workflow file also needs changes of these programs.
+```json
+{
+  "workflowId": "review-run",
+  "effectLimit": 14,
+  "capabilities": ["claude"],
+  "input": {
+    "maximumBytes": 65536,
+    "fields": {
+      "prompt": { "type": "string" },
+      "rounds": { "type": "integer", "minimum": 1, "maximum": 10, "optional": true }
+    }
+  }
+}
+```
+
+The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities must contain `claude`, `github`, or both. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, or booleans. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
+
+After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
 ## Development of Cloving
 

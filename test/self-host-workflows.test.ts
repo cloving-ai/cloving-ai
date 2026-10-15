@@ -44,6 +44,23 @@ await test("CLV-074 start rejects a file with more than one workflow function", 
   );
 });
 
+await test("CLV-089 start refuses two files exporting the same workflow function name", () => {
+  assert.throws(
+    () =>
+      workflowManifests({
+        workflows: {
+          "workflows/first.ts": {
+            review: { workflowId: "workflow//./workflows/first//review" },
+          },
+          "workflows/second.ts": {
+            review: { workflowId: "workflow//./workflows/second//review" },
+          },
+        },
+      }),
+    /duplicate-workflow-function.*review/,
+  );
+});
+
 await test("CLV-074 start makes a manifest per workflow function with the file name and the shared filtered steps", () => {
   const workflowId = "workflow//./workflows/develop-ticket//developTicket";
   const otherId = "workflow//./workflows/develop-other//developOther";

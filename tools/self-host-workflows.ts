@@ -1,6 +1,10 @@
-import { readdir } from "node:fs/promises";
-import { basename } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { WorkflowManifest } from "@workflow/builders";
+import {
+  isWorkflowDeclaration,
+  type DeclaredWorkflow,
+} from "../src/workflow-declaration.ts";
 
 interface HostManifest {
   readonly schemaVersion: 1;
@@ -20,9 +24,53 @@ export async function workflowFiles(directory: string): Promise<string[]> {
     .sort();
 }
 
+export async function workflowDeclarations(
+  directory: string,
+  manifests: Readonly<Record<string, HostManifest>>,
+): Promise<readonly DeclaredWorkflow[]> {
+  const declarations: DeclaredWorkflow[] = [];
+  for (const file of await workflowFiles(directory)) {
+    const name = basename(file, ".ts");
+    const declarationFile = `${name}.declaration.json`;
+    const text = await readFile(join(directory, declarationFile), "utf8").catch(
+      (error: unknown) => {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return undefined;
+        throw new Error(`invalid-workflow-declaration: ${declarationFile}`, {
+          cause: error,
+        });
+      },
+    );
+    if (text === undefined) continue;
+    const entry = Object.entries(manifests).find(
+      ([, manifest]) => manifest.name === name,
+    );
+    try {
+      const value: unknown = JSON.parse(text);
+      if (!isWorkflowDeclaration(value) || entry === undefined)
+        throw new Error("Invalid declaration or missing workflow function.");
+      declarations.push({
+        ...value,
+        functionName: entry[0],
+        capabilities: [...new Set(value.capabilities)],
+      });
+    } catch (error) {
+      throw new Error(`invalid-workflow-declaration: ${declarationFile}`, {
+        cause: error,
+      });
+    }
+  }
+  return declarations;
+}
+
 export function workflowManifests(
   compiled: WorkflowManifest,
 ): Readonly<Record<string, HostManifest>> {
+  const names = new Set<string>();
   const steps = Object.values(compiled.steps ?? {})
     .flatMap((entries) => Object.values(entries))
     .map((entry) => entry.stepId)
@@ -35,6 +83,9 @@ export function workflowManifests(
       return functions.map((entry) => {
         const workflowId = entry.workflowId;
         const functionName = workflowId.slice(workflowId.lastIndexOf("//") + 2);
+        if (names.has(functionName))
+          throw new Error(`duplicate-workflow-function: ${functionName}`);
+        names.add(functionName);
         return [
           functionName,
           {

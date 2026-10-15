@@ -26,6 +26,7 @@ import {
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
+import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
@@ -44,6 +45,7 @@ export interface DaemonSettings {
   readonly runtimeDirectory: string;
   readonly repository: string;
   readonly manifests: Readonly<Record<string, string | undefined>>;
+  readonly declarations?: readonly DeclaredWorkflow[];
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
@@ -188,11 +190,14 @@ export async function startDaemon(
   settings: DaemonSettings,
 ): Promise<DaemonOpening> {
   const { directory } = settings;
-  const table = ticketRegistrationTable({
-    repository: settings.repository,
-    command: settings.ticketCommand,
-    nextCommand: settings.nextCommand,
-  });
+  const table = ticketRegistrationTable(
+    {
+      repository: settings.repository,
+      command: settings.ticketCommand,
+      nextCommand: settings.nextCommand,
+    },
+    settings.declarations,
+  );
   const admitted = await ticketRegistrations(settings.manifests, { table });
   if (admitted.kind === "rejected")
     return {
@@ -205,9 +210,6 @@ export async function startDaemon(
     given: given.promise,
     table,
   });
-  const closed = async (): Promise<void> => {
-    await Promise.all([worker.close(), github.close()]);
-  };
   await mkdir(join(directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
@@ -231,7 +233,7 @@ export async function startDaemon(
     },
   });
   if (opening.kind === "refused") {
-    await closed();
+    await Promise.all([worker.close(), github.close()]);
     return opening;
   }
   return {
