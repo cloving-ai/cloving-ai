@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { isProfilesFile } from "../src/turn-profile.ts";
 import { ended, scene, withoutChildren } from "./self-host-fixture.ts";
 
 await test("CLV-086 start snapshots profiles once and preserves every allowed profile name in daemon settings", () =>
@@ -39,6 +40,8 @@ await test("CLV-086 start snapshots profiles once and preserves every allowed pr
     });
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stderr, /settings recorded/);
-    const captured: unknown = JSON.parse(result.stdout.trim());
-    assert.deepEqual(captured, profiles);
+    const parsedProfiles: unknown = JSON.parse(result.stdout.trim());
+    const captured = { profiles: parsedProfiles };
+    assert.ok(isProfilesFile(captured));
+    assert.deepEqual(captured.profiles, profiles);
   }));
