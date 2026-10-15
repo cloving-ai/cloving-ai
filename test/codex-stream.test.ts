@@ -6,7 +6,7 @@ function decoded(lines: readonly string[]): unknown[] {
   return lines.map((line): unknown => JSON.parse(line));
 }
 
-function assistant(content: Readonly<Record<string, unknown>>): unknown {
+function assistant(content: Readonly<Record<string, unknown>>) {
   return { type: "assistant", message: { content: [content] } };
 }
 
