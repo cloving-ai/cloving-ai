@@ -69,7 +69,7 @@ function summary(input: Fields): string {
 }
 
 function spoken(part: Fields): WatchItem[] {
-  const words = cut(text(part["text"]));
+  const words = text(part["text"]);
   return words.trim() === "" ? [] : [{ kind: "say", text: words }];
 }
 
@@ -77,20 +77,25 @@ function said(part: Fields): WatchItem[] {
   if (part["type"] === "text") return spoken(part);
   if (part["type"] !== "tool_use") return [];
   const tool = `${text(part["name"])}: ${summary(record(part["input"]))}`;
-  return [{ kind: "tool", text: cut(tool) }];
+  return [{ kind: "tool", text: tool }];
 }
 
 function failed(part: Fields): WatchItem[] {
   if (part["type"] !== "tool_result" || part["is_error"] !== true) return [];
   const content = part["content"];
   const shown = typeof content === "string" ? content : JSON.stringify(content);
-  return [{ kind: "error", text: cut(shown) }];
+  return [{ kind: "error", text: shown }];
 }
 
 function ended(line: Fields): WatchItem[] {
   const cost = count(line["total_cost_usd"]);
-  const spent = cost === null ? "" : ` (cost ${cost.toFixed(2)} USD)`;
-  return [{ kind: "result", text: `${cut(text(line["result"]))}${spent}` }];
+  return [
+    {
+      kind: "result",
+      text: text(line["result"]),
+      ...(cost === null ? {} : { costUsd: cost }),
+    },
+  ];
 }
 
 function parts(line: Fields): readonly Fields[] {
@@ -122,6 +127,23 @@ function concise(items: readonly WatchItem[]): WatchItem[] {
   });
 }
 
+function shortened(run: WatchRun): WatchRun {
+  return {
+    ...run,
+    turns: run.turns.map((turn) => ({
+      ...turn,
+      activity: concise(
+        turn.activity.map((item) => {
+          const cost = item.costUsd;
+          const spent =
+            cost === undefined ? "" : ` (cost ${cost.toFixed(2)} USD)`;
+          return { kind: item.kind, text: `${cut(item.text)}${spent}` };
+        }),
+      ).slice(-activityLimit),
+    })),
+  };
+}
+
 export interface TurnRecords {
   readonly key: string;
   readonly started: unknown;
@@ -145,7 +167,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     startedAt: text(started["startedAt"]),
     outcome: records.result === null ? "in work" : outcome,
     costUsd: costOf(records.lines),
-    activity: concise(records.lines.flatMap(activityOf)).slice(-activityLimit),
+    activity: records.lines.flatMap(activityOf).slice(-activityLimit - 1),
     endedAt: stamp(result["endedAt"]),
     activeAt: records.activeAt ?? null,
     commits: texts(report["commits"]),
@@ -306,7 +328,7 @@ function began(run: WatchRun): string {
 
 export function watchModel(inputs: WatchInputs): WatchModel {
   const runs = inputs.runs.map((value) =>
-    displayRun(runOf(inputs, value), inputs.home),
+    shortened(displayRun(runOf(inputs, value), inputs.home)),
   );
   const workflows = boardsOf(inputs, runs);
   return {

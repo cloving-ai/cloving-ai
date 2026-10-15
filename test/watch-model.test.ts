@@ -5,7 +5,9 @@ import {
   decisionCommands,
   turnOf,
   watchModel,
+  type TurnRecords,
 } from "../src/cli/watch-model.ts";
+import { boardModel, boardRun } from "./watch-board-fixture.ts";
 
 const line = (value: unknown): string => JSON.stringify(value);
 const operationId =
@@ -18,7 +20,7 @@ const started = {
   startedAt: "2026-10-13T21:26:01.000Z",
 };
 
-await test("CLV-016 the watch model reads the stream of a Claude turn as short activity items", () => {
+await test("CLV-016 the watch model reads the stream of a Claude turn as activity items", () => {
   const assistant = line({
     type: "assistant",
     message: {
@@ -56,13 +58,13 @@ await test("CLV-016 the watch model reads the stream of a Claude turn as short a
     total_cost_usd: 1.0330776000000002,
   });
   assert.deepEqual(activityOf(result), [
-    { kind: "result", text: "Done. (cost 1.03 USD)" },
+    { kind: "result", text: "Done.", costUsd: 1.0330776000000002 },
   ]);
   const long = line({
     type: "assistant",
     message: { content: [{ type: "text", text: "x".repeat(900) }] },
   });
-  assert.equal(activityOf(long)[0]?.text.length, 601);
+  assert.equal(activityOf(long)[0]?.text.length, 900);
   const silent = line({
     type: "assistant",
     message: { content: [{ type: "text", text: " \n" }] },
@@ -98,7 +100,7 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     costUsd: 0.5,
     activity: [
       { kind: "say", text: "a" },
-      { kind: "result", text: "Done. (cost 0.50 USD)" },
+      { kind: "result", text: "Done.", costUsd: 0.5 },
     ],
     endedAt: null,
     activeAt: "2026-10-13T21:27:00.000Z",
@@ -155,8 +157,15 @@ await test("CLV-016 the watch model gives a turn at its end its end time, and th
   );
 });
 
+function shownTurn(records: TurnRecords) {
+  const model = boardModel([boardRun("run-1")], { turns: [turnOf(records)] });
+  const turn = model.runs[0]?.turns[0];
+  assert.ok(turn);
+  return turn;
+}
+
 await test("CLV-016 the watch model shows a result that repeats the message before it as one short line with the cost", () => {
-  const repeated = turnOf({
+  const repeated = shownTurn({
     ...working,
     lines: [finished("Done.", 0.25), ...working.lines, finished("a", 0.5)],
   });
@@ -166,7 +175,7 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
     { kind: "result", text: "Done. (cost 0.50 USD)" },
     { kind: "result", text: "a (cost 0.50 USD)" },
   ]);
-  const echoed = turnOf({
+  const echoed = shownTurn({
     ...working,
     lines: [said, said, finished("a", 0.5)],
   });
@@ -175,6 +184,43 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
     { kind: "say", text: "a" },
     { kind: "result", text: "Result of the worker (cost 0.50 USD)" },
   ]);
+});
+
+await test("CLV-080 turns retain only recent activity before path replacement", () => {
+  const content = Array.from({ length: 1000 }, (_, index) => ({
+    type: "text",
+    text: `Message ${String(index)}: ${started.worktree}/test.ts`,
+  }));
+  const turn = turnOf({
+    ...working,
+    lines: [
+      line({ type: "assistant", message: { content } }),
+      finished("Done.", 1.25),
+      line({ type: "system" }),
+    ],
+  });
+  assert.equal(turn.activity.length, 401);
+  assert.deepEqual(turn.activity, [
+    ...content.slice(600).map(({ text }) => ({ kind: "say", text })),
+    { kind: "result", text: "Done.", costUsd: 1.25 },
+  ]);
+  assert.equal(turn.costUsd, 1.25);
+});
+
+await test("CLV-080 the activity limit preserves the summary of a repeated result", () => {
+  const turn = shownTurn({
+    ...working,
+    lines: [
+      ...Array<string>(500).fill(said),
+      finished("a", 1.25),
+      ...Array<string>(399).fill(said),
+    ],
+  });
+  assert.equal(turn.activity.length, 400);
+  assert.deepEqual(turn.activity[0], {
+    kind: "result",
+    text: "Result of the worker (cost 1.25 USD)",
+  });
 });
 
 const decision = {
