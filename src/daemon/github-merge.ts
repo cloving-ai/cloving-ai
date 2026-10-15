@@ -17,6 +17,20 @@ interface ReviewedPull {
   readonly commit: string;
 }
 
+interface SuccessfulMerge {
+  readonly number: number;
+  readonly commit: string;
+  readonly updated: string;
+  readonly merged: string;
+}
+
+interface MergeRepair {
+  readonly reason: "check-failed" | "merge-conflict";
+  readonly output: string;
+}
+
+export type MergeResult = SuccessfulMerge | MergeRepair;
+
 function commitOf(value: unknown, name: string): string {
   if (typeof value !== "object" || value === null)
     throw new Error("github-call-failed");
@@ -262,21 +276,18 @@ function checkOutput(cause: unknown): string {
 export async function merge(
   operation: Operation,
   pull: ReviewedPull,
-): Promise<unknown> {
+): Promise<MergeResult> {
   try {
     return await completedMerge(operation, pull);
   } catch (error) {
     operation.signal.throwIfAborted();
-    if (
-      !(error instanceof Error) ||
-      !["check-failed", "merge-conflict"].includes(error.message)
-    )
-      throw error;
+    if (!(error instanceof Error)) throw error;
+    const reason = error.message;
+    if (reason !== "check-failed" && reason !== "merge-conflict") throw error;
     const conflicts = typeof error.cause === "string" ? error.cause : "";
     return {
-      reason: error.message,
-      output:
-        error.message === "check-failed" ? checkOutput(error.cause) : conflicts,
+      reason,
+      output: reason === "check-failed" ? checkOutput(error.cause) : conflicts,
     };
   }
 }
@@ -284,7 +295,7 @@ export async function merge(
 async function completedMerge(
   operation: Operation,
   pull: ReviewedPull,
-): Promise<unknown> {
+): Promise<SuccessfulMerge> {
   const place = treePlace({
     worktrees: operation.settings.worktrees,
     target: operation.target,

@@ -522,6 +522,7 @@
     "test/github-worker-fixture.ts": "test",
     "test/github-merge-fixture.ts": "test",
     "test/github-merge.test.ts": "test",
+    "test/github-merge-types.test.ts": "test",
     "test/github-merge-restart.test.ts": "test",
     "test/develop-workflow-fixture.ts": "test",
     "test/develop-issue-workflow.test.ts": "test",
