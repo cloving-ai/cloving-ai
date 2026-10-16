@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
-import type { Fields, Reply } from "../src/protocol.ts";
+import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { eventually, withHarness } from "./service-fixture.ts";
@@ -19,7 +19,11 @@ const empty: Reply = {
 };
 
 async function withQueue(
-  options: { readonly handle: Handle; readonly commands?: readonly string[] },
+  options: {
+    readonly handle: Handle;
+    readonly commands?: readonly string[];
+    readonly intervalMilliseconds?: number;
+  },
   body: (scene: {
     readonly commands: () => Promise<readonly string[]>;
     readonly stop: () => Promise<void>;
@@ -37,7 +41,7 @@ async function withQueue(
     const queue = issueQueue({
       directory,
       runtimeDirectory: harness.runtimeDirectory,
-      intervalMilliseconds: 5,
+      intervalMilliseconds: options.intervalMilliseconds ?? 5,
     });
     try {
       await body({
@@ -195,4 +199,159 @@ await test("CLV-084 checks do not overlap a pending submission and shutdown wait
       released.resolve(undefined);
     }
   });
+});
+
+const timeout: Reply = {
+  kind: "error",
+  error: { code: "resolver-timeout", detail: "Retry the same command." },
+};
+
+function retryScene() {
+  const submissions: {
+    readonly request: ServiceRequest;
+    readonly receivedAt: number;
+    readonly reply: ReturnType<typeof Promise.withResolvers<Reply>>;
+  }[] = [];
+  const status: { run?: Fields; runs: Fields[]; reads: number; scans: number } =
+    {
+      runs: [],
+      reads: 0,
+      scans: 0,
+    };
+  const handle: Handle = async (request) => {
+    if (request.operation === "run") {
+      const reply = Promise.withResolvers<Reply>();
+      submissions.push({ request, receivedAt: performance.now(), reply });
+      return reply.promise;
+    }
+    if (request.parameters["runId"] !== undefined) {
+      status.reads += 1;
+      return status.run
+        ? result({ run: status.run })
+        : {
+            kind: "error",
+            error: { code: "unknown-run", detail: "Not admitted." },
+          };
+    }
+    status.scans += 1;
+    return result({ runs: status.runs, next: null });
+  };
+  return {
+    submissions,
+    status,
+    handle,
+    release: () => {
+      for (const submission of submissions) submission.reply.resolve(empty);
+    },
+  };
+}
+
+await test("CLV-092 repeated timeouts wait a full cycle, reuse the request and track only the admitted run", async () => {
+  const retry = retryScene();
+  const intervalMilliseconds = 80;
+  await withQueue(
+    { handle: retry.handle, intervalMilliseconds },
+    async (scene) => {
+      try {
+        let repliedAt = 0;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const submission = await eventually(() => retry.submissions[attempt]);
+          const original = retry.submissions[0]?.request;
+          assert.ok(original);
+          assert.deepEqual(submission.request, original);
+          assert.deepEqual(original, {
+            operation: "run",
+            parameters: {
+              workflowId: "develop-issue",
+              source: "ticket",
+              submission: { ticket: "next" },
+              commandId: original.parameters["commandId"],
+            },
+          });
+          assert.deepEqual(await scene.commands(), [
+            original.parameters["commandId"],
+          ]);
+          assert.equal(retry.status.reads, 0);
+          assert.ok(
+            submission.receivedAt - repliedAt >= intervalMilliseconds - 1,
+          );
+          await delay(intervalMilliseconds * 2);
+          assert.equal(retry.submissions.length, attempt + 1);
+          repliedAt = performance.now();
+          if (attempt < 2) submission.reply.resolve(timeout);
+          else {
+            retry.status.run = { state: "running" };
+            submission.reply.resolve(result({ kind: "run-admitted" }));
+          }
+        }
+        await eventually(() => (retry.status.reads >= 2 ? true : undefined));
+        assert.equal(retry.submissions.length, 3);
+        retry.status.run = {
+          state: "completed",
+          outcome: { kind: "handoff_requested" },
+        };
+        const next = await eventually(() => retry.submissions[3]);
+        assert.notEqual(
+          next.request.parameters["commandId"],
+          retry.submissions[0]?.request.parameters["commandId"],
+        );
+        assert.deepEqual(await scene.commands(), [
+          next.request.parameters["commandId"],
+        ]);
+      } finally {
+        retry.release();
+      }
+    },
+  );
+});
+
+await test("CLV-092 an active issue defers a pending retry and preserves its request", async () => {
+  const retry = retryScene();
+  await withQueue(
+    { handle: retry.handle, intervalMilliseconds: 40 },
+    async (scene) => {
+      try {
+        const first = await eventually(() => retry.submissions[0]);
+        retry.status.runs = [{ workflowId: "develop-issue", state: "running" }];
+        first.reply.resolve(timeout);
+        const priorScans = retry.status.scans;
+        await eventually(() =>
+          retry.status.scans >= priorScans + 2 ? true : undefined,
+        );
+        assert.equal(retry.submissions.length, 1);
+        assert.equal(retry.status.reads, 0);
+        assert.deepEqual(await scene.commands(), [
+          first.request.parameters["commandId"],
+        ]);
+        retry.status.runs = [
+          { workflowId: "develop-issue", state: "completed" },
+        ];
+        const second = await eventually(() => retry.submissions[1]);
+        assert.deepEqual(second.request, first.request);
+        assert.deepEqual(await scene.commands(), [
+          first.request.parameters["commandId"],
+        ]);
+      } finally {
+        retry.release();
+      }
+    },
+  );
+});
+
+await test("CLV-092 stopping after a timeout prevents its pending retry", async () => {
+  const retry = retryScene();
+  await withQueue(
+    { handle: retry.handle, intervalMilliseconds: 80 },
+    async (scene) => {
+      const first = await eventually(() => retry.submissions[0]);
+      first.reply.resolve(timeout);
+      await delay(30);
+      await scene.stop();
+      await delay(100);
+      assert.equal(retry.submissions.length, 1);
+      assert.deepEqual(await scene.commands(), [
+        first.request.parameters["commandId"],
+      ]);
+    },
+  );
 });
