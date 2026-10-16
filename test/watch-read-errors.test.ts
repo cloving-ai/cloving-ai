@@ -31,7 +31,7 @@ const completionFailures = [
   { operation: "status", runId: undefined, after: "done-48" },
   { operation: "status", runId: "zz-later", after: undefined },
   { operation: "events", runId: "zz-later", after: 0 },
-  { operation: "events", runId: "zz-later", after: 1000 },
+  { operation: "events", runId: "zz-later", after: 1 },
 ];
 for (const failure of completionFailures)
   await test(`CLV-091 required search failure ${JSON.stringify(failure)} returns failed and retries complete evidence`, async () => {

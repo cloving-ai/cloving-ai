@@ -49,7 +49,7 @@ export function completionReplies(
     }),
     "zz-later": pagedEvidence("run.created", {
       recordedAt: "2026-10-14T10:01:00Z",
-      at: 0,
+      at: 1000,
     }),
   };
   const replies = watchReplies({ runs, eventsByRun });
@@ -101,6 +101,45 @@ export function stoppedMark(model: Fields): unknown {
     .find((card) => card["runId"] === "a-stopped");
   assert.ok(card);
   return card["completionMark"];
+}
+
+export function terminalDetailReplies(times: {
+  readonly now: string;
+  readonly latestAt: string;
+}) {
+  const { runs } = completionReplies();
+  const stopped = runs[0];
+  const later = runs.at(-1);
+  assert.ok(stopped && later);
+  const changing = Array.from({ length: 20 }, (_, index) => ({
+    ...stopped,
+    runId: `changing-${String(index).padStart(2, "0")}`,
+    state: "running",
+    ticketId: "OTHER",
+  }));
+  const replies = watchReplies({
+    runs: [{ ...stopped, latestAt: times.now }, ...changing, later],
+  });
+  const answer: typeof replies.answer = (request) => {
+    const reply = replies.answer(request);
+    if (
+      request.operation !== "status" ||
+      !String(request.parameters["runId"]).startsWith("changing-") ||
+      reply.kind !== "result"
+    )
+      return reply;
+    return {
+      kind: "result",
+      result: {
+        run: {
+          ...fields(reply.result["run"]),
+          state: "completed",
+          latestAt: times.latestAt,
+        },
+      },
+    };
+  };
+  return { ...replies, answer };
 }
 
 export function interruptedCompletionReplies(failure: {
