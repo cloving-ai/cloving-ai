@@ -30,7 +30,8 @@ async function present(path: string): Promise<boolean> {
     await access(path);
     return true;
   } catch (error) {
-    if (Reflect.get(Object(error), "code") === "ENOENT") return false;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return false;
     throw error;
   }
 }

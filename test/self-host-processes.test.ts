@@ -82,6 +82,28 @@ await test("CLV-085 without the setting the host never fetches and preserves nor
   });
 });
 
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  await test(`CLV-085 ${signal} awaits a local merge before shutdown completes`, async () => {
+    await withUpdateRepository(async ({ root, repository, git, target }) => {
+      const result = await stalledCheck(root, {
+        repository,
+        command: "merge",
+        signal,
+      });
+      assert.equal(result.error, undefined, result.stderr);
+      assert.equal(result.status, 75, result.stderr);
+      assert.equal(git(["rev-parse", "HEAD"]), target);
+      assert.equal(
+        await readFile(join(root, "merge-completed"), "utf8"),
+        "completed",
+      );
+      await assert.rejects(readFile(join(root, "host/failed-self-updates")), {
+        code: "ENOENT",
+      });
+    });
+  });
+}
+
 for (const command of ["fetch", "remote"]) {
   for (const signal of ["SIGINT", "SIGTERM", "daemon"]) {
     await test(`CLV-085 ${signal} cancels stalled git ${command} and waits for children`, async () => {

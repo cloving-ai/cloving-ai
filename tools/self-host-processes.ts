@@ -50,6 +50,12 @@ async function stopped(programs: readonly Program[]): Promise<void> {
 function updatingGit(settings: HostProcesses, stopping: AbortSignal) {
   const git = promisify(execFile);
   return async (argumentsList: readonly string[]): Promise<string> => {
+    if (argumentsList[0] === "merge")
+      return (
+        await git("git", ["-C", settings.repository, ...argumentsList], {
+          encoding: "utf8",
+        })
+      ).stdout;
     const command = git("git", ["-C", settings.repository, ...argumentsList], {
       encoding: "utf8",
       signal: stopping,

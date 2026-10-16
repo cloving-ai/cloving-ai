@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import filesystem, { readFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import { selfUpdater } from "../tools/self-update.ts";
@@ -28,6 +29,25 @@ await test("CLV-085 a failed fast-forward records the target and skips it after 
     assert.equal(await selfUpdater(fixture.settings).check(), undefined);
     assert.equal(fixture.actions.includes("stop"), false);
     assert.equal(fixture.actions.includes(mergeCommand), false);
+  });
+});
+
+await test("CLV-085 an ENOENT-shaped non-Error cannot admit an update", async () => {
+  await withUpdate(async (fixture) => {
+    const failure = Object.assign(new Error("missing"), { code: "ENOENT" });
+    Object.setPrototypeOf(failure, null);
+    assert.equal(failure instanceof Error, false);
+    const read = filesystem.readFile;
+    filesystem.readFile = () => Promise.reject(failure);
+    syncBuiltinESMExports();
+    try {
+      assert.equal(await fixture.updater.check(), undefined);
+      assert.equal(fixture.actions.includes("stop"), false);
+      assert.equal(fixture.actions.includes(mergeCommand), false);
+    } finally {
+      filesystem.readFile = read;
+      syncBuiltinESMExports();
+    }
   });
 });
 

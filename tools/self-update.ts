@@ -50,7 +50,8 @@ async function failedTargets(directory: string): Promise<readonly string[]> {
       await readFile(join(directory, "failed-self-updates"), "utf8")
     ).split("\n");
   } catch (error) {
-    if (Reflect.get(Object(error), "code") === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return [];
     throw error;
   }
 }

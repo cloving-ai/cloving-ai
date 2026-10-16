@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import filesystem, { mkdir, symlink, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -18,6 +19,24 @@ await test("CLV-085 the worker journal blocks only started turns without results
     await writeFile(join(turn, "result.json"), "{}");
     assert.equal(await workerTurnActive(directory), false);
   });
+});
+
+await test("CLV-085 journal access rejects an ENOENT-shaped non-Error", async () => {
+  const failure = Object.assign(new Error("missing"), { code: "ENOENT" });
+  Object.setPrototypeOf(failure, null);
+  assert.equal(failure instanceof Error, false);
+  const access = filesystem.access;
+  filesystem.access = () => Promise.reject(failure);
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(
+      workerTurnActive("unused"),
+      (error) => error === failure,
+    );
+  } finally {
+    filesystem.access = access;
+    syncBuiltinESMExports();
+  }
 });
 
 await test("CLV-085 self-update settings use real paths and whole seconds with inclusive bounds", async () => {

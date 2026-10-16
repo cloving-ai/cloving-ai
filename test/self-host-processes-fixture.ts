@@ -38,14 +38,25 @@ export async function stalledCheck(root: string, options: StalledCheck) {
   const bin = join(root, "bin");
   await mkdir(bin);
   const executable = join(bin, "git");
-  await writeFile(executable, stalledGit(root, options));
+  await writeFile(
+    executable,
+    options.command === "merge"
+      ? interruptedMerge(root, options)
+      : stalledGit(root, options),
+  );
   await chmod(executable, 0o755);
   const entry = join(root, "host.mjs");
   await writeFile(
     entry,
     `import { hostedPrograms } from ${JSON.stringify(pathToFileURL(resolve("tools/self-host-processes.ts")).href)};
-const status = await hostedPrograms(${JSON.stringify({ ...paths, repository: options.repository, runtime: join(root, "host/run"), directory: join(root, "host"), watchPort: "3663", updateMilliseconds: 10 })});
-process.exitCode = status;`,
+const running = hostedPrograms(${JSON.stringify({ ...paths, repository: options.repository, runtime: join(root, "host/run"), directory: join(root, "host"), watchPort: "3663", updateMilliseconds: 10 })});
+${
+  options.command === "merge"
+    ? `import { writeFileSync } from "node:fs";
+process.once(${JSON.stringify(options.signal)}, () => writeFileSync(${JSON.stringify(join(root, "shutdown-observed"))}, "observed"));`
+    : ""
+}
+process.exitCode = await running;`,
   );
   try {
     return spawnSync(process.execPath, [entry], {
@@ -57,6 +68,32 @@ process.exitCode = status;`,
   } finally {
     await cleanedProcesses(root);
   }
+}
+
+function interruptedMerge(root: string, options: StalledCheck): string {
+  return `#!${process.execPath}
+import { spawnSync } from "node:child_process";
+import { existsSync, watch, writeFileSync } from "node:fs";
+const argumentsList = process.argv.slice(2);
+function merge() {
+  const result = spawnSync("git", argumentsList, {
+    env: { ...process.env, PATH: ${JSON.stringify(process.env["PATH"])} },
+    stdio: "inherit",
+  });
+  if (argumentsList[2] === "merge" && result.status === 0)
+    writeFileSync(${JSON.stringify(join(root, "merge-completed"))}, "completed");
+  process.exit(result.status ?? 1);
+}
+if (argumentsList[2] === "merge") {
+  writeFileSync(${JSON.stringify(join(root, "git-pid"))}, String(process.pid));
+  const watcher = watch(${JSON.stringify(root)}, () => {
+    if (!existsSync(${JSON.stringify(join(root, "shutdown-observed"))})) return;
+    watcher.close();
+    merge();
+  });
+  process.kill(process.ppid, ${JSON.stringify(options.signal)});
+} else merge();
+`;
 }
 
 async function cleanedProcesses(root: string): Promise<void> {
