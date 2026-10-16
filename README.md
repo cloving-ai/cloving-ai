@@ -22,6 +22,7 @@ What works now:
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the Claude worker as it occurs.
+- `cloving chats import -- FILE_A FILE_B` imports selected Claude Code transcripts into private runtime files without a service.
 
 What does not work yet:
 
@@ -30,6 +31,22 @@ What does not work yet:
 - `cloving start` loads only the workflow file `workflows/develop-ticket.ts`. A new workflow file also needs changes of the code (see "Develop a workflow").
 - Cloving cannot make a workflow from your earlier chats yet. The issues [#42](https://github.com/cloving-ai/cloving-ai/issues/42), [#43](https://github.com/cloving-ai/cloving-ai/issues/43) and [#44](https://github.com/cloving-ai/cloving-ai/issues/44) are open for this work. Until then, the prompt "Find workflows in your chats" is a guide for a coding agent.
 - This pre-release package is not published to npm.
+
+### Import selected chats
+
+```sh
+cloving chats import -- TRANSCRIPT_A.jsonl TRANSCRIPT_B.jsonl
+```
+
+Select each file explicitly. Relative paths use the current directory. The command does not scan directories or expand globs. Your shell can expand an unquoted glob. A source must be a regular file of at most 10 MiB (10,485,760 bytes). Symbolic links are refused. Sources keep their original bytes.
+
+The supported Claude Code JSONL subset has `user` and `assistant` envelopes with a matching `message.role`. Content can be a string or an ordered array of `text`, `tool_use` and `tool_result` blocks. Records preserve the role, timestamp, session ID, tool fields and original block positions. Missing timestamps and session IDs become `null`. Thinking blocks and non-message metadata are omitted and counted. Unknown message shapes or blocks refuse the entire source. Claude Code's internal transcript format can change between versions.
+
+Each import creates `chats/IMPORT_ID/corpus.jsonl` and `coverage.json` below the resolved Cloving runtime directory. Selection uses a nonempty `CLOVING_RUNTIME_DIR`, then `XDG_RUNTIME_DIR/cloving`, then `XDG_STATE_HOME/cloving/run`, then `HOME/.local/state/cloving/run`. Relative settings resolve against the current directory. Destinations inside a Git repository are refused, including through symbolic links. New directories have mode `0700`; files have mode `0600`. These permissions add no encryption or redaction.
+
+Corpus records have `schemaVersion: 1` and a `sourceId` of `sha256:HEX:OFFSET`. The digest covers the exact source bytes. The offset is the zero-based byte position of the source line. `text` joins the message's text blocks with a newline; `blocks` retains each supported block's `position`. Tool result content is copied as JSON data. The versioned coverage manifest has one entry per selection, including its resolved path, status, fixed reason code, digest when available, record count and omission counts (`metadataRecords` and `thinkingBlocks`). Refused sources contribute no records. The final manifest appears only after the corpus closes successfully.
+
+Console output contains counts, fixed codes and an opaque import ID. Source paths and transcript text stay in the private files. Exit code `0` means every source was included. Code `1` means partial coverage or an output failure. Code `2` means invalid usage. Importing does not analyze chats, call a model or execute transcript instructions. Full quality admission and release qualification remain pending.
 
 ## Install
 

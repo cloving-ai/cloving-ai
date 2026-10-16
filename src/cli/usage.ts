@@ -85,6 +85,7 @@ export const usage = `Usage: cloving [--help] [--version]
 
 Commands:
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
+  chats import  Import explicitly selected Claude Code transcripts into private runtime files.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
   questions  List the pending decisions.
@@ -100,6 +101,17 @@ Commands:
 
 The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
 Use npm exec -- cloving ... for a project-local installation.
+`;
+
+export const chatsImportUsage = `Usage: cloving chats import [--] <path> [<path> ...]
+
+Imports only the selected Claude Code JSONL files. Relative paths use the current directory.
+This local command needs no service. It does not expand globs or scan directories.
+The file limit is 10 MiB (10,485,760 bytes). Links and nonregular files are refused.
+Private corpus.jsonl and coverage.json files go into a new import directory under the runtime directory's chats directory.
+The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
+Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
+Exit codes: 0 for complete coverage, 1 for refused sources or output failure, 2 for invalid usage.
 `;
 
 export const validateUsage = `Usage: cloving workflows validate <manifest-path> [--input <json-file>] [--json]
