@@ -27,6 +27,9 @@ async function start(root: string): Promise<ChildProcess> {
   for (const file of [
     "self-host.ts",
     "self-host-workflows.ts",
+    "self-host-processes.ts",
+    "self-update-host.ts",
+    "self-update.ts",
     "compile-workflows.ts",
     "workflow-manifest.ts",
   ])

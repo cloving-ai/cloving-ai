@@ -628,7 +628,21 @@
     "test/submission-rules.test.ts": "test",
     "test/workflow-declarations.test.ts": "test",
     "test/self-host-declarations.test.ts": "test",
-    "test/declaration-compatibility.test.ts": "test"
+    "test/declaration-compatibility.test.ts": "test",
+    "test/cli-start-self-update.test.ts": "test",
+    "test/self-update-failure.test.ts": "test",
+    "test/self-update-fixture.ts": "test",
+    "test/self-update-git-fixture.ts": "test",
+    "test/self-update-git.test.ts": "test",
+    "test/self-update-host.test.ts": "test",
+    "test/self-update.test.ts": "test",
+    "test/self-host-processes.test.ts": "test",
+    "test/self-host-processes-fixture.ts": "test",
+    "test/cli-start-fixture.ts": "test",
+    "test/cli-start-restart.test.ts": "test",
+    "tools/self-update.ts": "build",
+    "tools/self-update-host.ts": "build",
+    "tools/self-host-processes.ts": "build"
   },
   "allowed": {
     "quality": [

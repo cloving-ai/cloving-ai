@@ -18,6 +18,8 @@ import {
 } from "./self-host-workflows.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+import { selfUpdateMilliseconds } from "./self-update-host.ts";
+import { hostedPrograms } from "./self-host-processes.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -44,6 +46,11 @@ if (runtimeArgument === undefined)
 const runtime = resolve(runtimeArgument);
 const directory = dirname(runtime);
 const repository = topLevel(resolve(flag("--repository") ?? process.cwd()));
+const updateMilliseconds = await selfUpdateMilliseconds({
+  seconds: process.env["CLOVING_SELF_UPDATE_SECONDS"],
+  repository,
+  product: topLevel(product),
+});
 const client = flag("--client") ?? "cloving";
 const project = join(directory, "project");
 const concurrency = Number(process.env["CLOVING_HOST_BOUND"] ?? "8");
@@ -320,17 +327,12 @@ await launchers(
   },
   manifests,
 );
-const watchPort = process.env["CLOVING_WATCH_PORT"] ?? "3663";
-const watch =
-  watchPort === "off"
-    ? undefined
-    : spawn(
-        process.execPath,
-        [join(product, "src/cli.ts"), "watch", "--port", watchPort],
-        {
-          stdio: "inherit",
-          env: { ...process.env, CLOVING_RUNTIME_DIR: runtime },
-        },
-      );
-process.exitCode = await ended([join(project, "start.mjs")], process.env);
-watch?.kill("SIGTERM");
+process.exitCode = await hostedPrograms({
+  project,
+  product,
+  runtime,
+  directory,
+  repository,
+  updateMilliseconds,
+  watchPort: process.env["CLOVING_WATCH_PORT"] ?? "3663",
+});

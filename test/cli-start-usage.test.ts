@@ -4,12 +4,17 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { commandUsage } from "../src/cli/usage.ts";
 
-const program = readFileSync(
-  join(import.meta.dirname, "../tools/self-host.ts"),
-  "utf8",
-);
+const program = ["self-host.ts", "self-host-processes.ts"]
+  .map((file) =>
+    readFileSync(join(import.meta.dirname, "../tools", file), "utf8"),
+  )
+  .join("\n");
 
 const facts: readonly (readonly [string, RegExp])[] = [
+  [
+    "CLOVING_SELF_UPDATE_SECONDS",
+    /30.*3600.*stops the daemon.*package-lock.json.*operator/,
+  ],
   ["CLOVING_TICKET_COMMAND", /JSON list/],
   ["CLOVING_NOTIFY_COMMAND", /JSON list.*standard input.*no default/],
   [
@@ -37,7 +42,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 15);
+  assert.equal(names.length, 16);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);
