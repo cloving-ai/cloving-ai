@@ -203,21 +203,12 @@ async function outcomeOf(
   return { kind, reason: event?.payload["outcomeReason"] ?? null };
 }
 
-async function titleOf(
-  context: ServiceContext,
-  source: {
-    readonly input: string | null | undefined;
-    readonly workflowId: string;
-  },
-): Promise<string | null> {
-  if (!source.input) return null;
-  const document = await context.authority.queries.document(source.input);
-  const input = record(JSON.parse(document ?? "null"));
+function titleOf(input: Fields | undefined, workflowId: string): string | null {
   const ticket = input?.["ticket"];
   if (typeof ticket !== "string") return null;
   const fallback = `Cloving task ${String(input?.["cycleId"])}`;
   const lines = ticket.split("\n");
-  if (source.workflowId === "develop-prompt") {
+  if (workflowId === "develop-prompt") {
     const first = lines.find((line) => /\S/.test(line));
     return first === undefined
       ? fallback
@@ -227,6 +218,24 @@ async function titleOf(
   return first.startsWith("# ")
     ? first.slice(2).trim().slice(0, 200)
     : fallback;
+}
+
+async function metadataOf(
+  context: ServiceContext,
+  source: {
+    readonly workflowId: string;
+    readonly digest: string | null | undefined;
+  },
+): Promise<Fields> {
+  const document = source.digest
+    ? await context.authority.queries.document(source.digest)
+    : undefined;
+  const input = record(JSON.parse(document ?? "null"));
+  const ticketId = input?.["ticketId"];
+  return {
+    ticketId: typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
+    title: titleOf(input, source.workflowId),
+  };
 }
 
 async function listed(
@@ -274,10 +283,10 @@ export async function status(
     run: {
       ...full({ ...view, claudeCostUsd }),
       outcome: await outcomeOf(context, view),
-      title: await titleOf(context, {
-        input: current.state.details[view.runId]?.input,
+      ...(await metadataOf(context, {
         workflowId: view.workflowId,
-      }),
+        digest: current.state.details[view.runId]?.input,
+      })),
     },
   });
 }

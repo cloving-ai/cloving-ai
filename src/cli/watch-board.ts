@@ -1,7 +1,9 @@
 import { record } from "../protocol.ts";
+import { isInstant } from "../authority/instants.ts";
 import { issueSteps } from "./watch-phases.ts";
 import type {
   WatchCard,
+  WatchCompletionMark,
   WatchRun,
   WatchStep,
   WatchWorkflow,
@@ -9,6 +11,50 @@ import type {
 
 const weekMilliseconds = 7 * 24 * 60 * 60 * 1000;
 const terminalStates = ["completed", "failed", "cancelled"];
+
+function eventTime(run: WatchRun, type: string): number {
+  const recordedAt = run.events.find(
+    (event) => event.type === type,
+  )?.recordedAt;
+  return isInstant(recordedAt) ? Date.parse(recordedAt) : NaN;
+}
+
+export function completionMarkOf(
+  run: WatchRun,
+  candidates: readonly WatchRun[],
+): WatchCompletionMark | null {
+  if (
+    run.workflowId !== "develop-issue" ||
+    run.state !== "completed" ||
+    run.outcome !== "blocked"
+  )
+    return null;
+  const completedAt = eventTime(run, "run.completed");
+  const later = candidates
+    .filter(
+      (candidate) =>
+        typeof run.ticketId === "string" &&
+        run.ticketId !== "" &&
+        candidate.ticketId === run.ticketId &&
+        candidate.runId !== run.runId &&
+        candidate.workflowId === "develop-issue" &&
+        candidate.state === "completed" &&
+        candidate.outcome === "handoff_requested",
+    )
+    .map((candidate) => ({
+      runId: candidate.runId,
+      createdAt: eventTime(candidate, "run.created"),
+    }))
+    .filter((candidate) => candidate.createdAt > completedAt)
+    .toSorted(
+      (first, second) =>
+        first.createdAt - second.createdAt ||
+        (first.runId < second.runId ? -1 : 1),
+    )[0];
+  return later === undefined
+    ? { text: "Needs attention", laterRunId: null }
+    : { text: "Done in a later run", laterRunId: later.runId };
+}
 
 export function activeRun(state: string): boolean {
   return !terminalStates.includes(state);
@@ -88,11 +134,12 @@ function columnOf(run: WatchRun, now: string): string | null {
   return run.outcome === "handoff_requested" ? "Done" : null;
 }
 
-function cardOf(run: WatchRun): WatchCard {
+function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   const issue = run.workflowId === "develop-issue";
   return {
     runId: run.runId,
     title: run.title,
+    completionMark: completionMarkOf(run, runs),
     claudeCostUsd: run.claudeCostUsd,
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
@@ -117,6 +164,7 @@ interface BoardInputs {
   readonly workflows: readonly string[];
   readonly updatedAt: string;
   readonly summaries?: readonly unknown[];
+  readonly completionCandidates?: readonly WatchRun[];
 }
 
 function latestTime(times: readonly (string | null)[]): string | null {
@@ -163,7 +211,7 @@ export function boardsOf(
       (name) => {
         const cards = own
           .filter((run) => columnOf(run, inputs.updatedAt) === name)
-          .map(cardOf);
+          .map((run) => cardOf(run, inputs.completionCandidates ?? runs));
         return {
           name,
           cards: ["Done", "Stopped"].includes(name)

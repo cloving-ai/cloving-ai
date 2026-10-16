@@ -24,6 +24,7 @@ function status(
 }
 
 const initialRunDetails = {
+  ticketId: null,
   latestAt: noon,
   outcome: null,
   title: null,

@@ -14,7 +14,7 @@ import { watching, type Watching } from "./watch-fixture.ts";
 
 export async function withWatchService(
   answer: (request: ServiceRequest) => Reply,
-  body: (watch: Watching) => Promise<void>,
+  body: (watch: Watching, runtimeDirectory: string) => Promise<void>,
 ): Promise<void> {
   await withHarness(async (harness) => {
     const address = socketAddress(
@@ -35,7 +35,7 @@ export async function withWatchService(
     try {
       const watch = await watching(harness.runtimeDirectory);
       try {
-        await body(watch);
+        await body(watch, harness.runtimeDirectory);
       } finally {
         assert.equal(await watch.stop(), 0);
       }
@@ -57,15 +57,33 @@ export async function watchData(address: string): Promise<Fields> {
   return Object.fromEntries(Object.entries(value));
 }
 
+function eventReply(events: readonly Fields[], parameters: Fields): Reply {
+  return {
+    kind: "result",
+    result: {
+      events: events
+        .filter(
+          (event) => Number(event["sequence"]) > Number(parameters["after"]),
+        )
+        .slice(0, Number(parameters["limit"] ?? 1000)),
+      latestSequence: 2500,
+      decisions: [],
+    },
+  };
+}
+
 export function watchReplies(options: {
   readonly runs: readonly Fields[];
   readonly events?: readonly Fields[];
+  readonly eventsByRun?: Readonly<Record<string, readonly Fields[]>>;
   readonly workflows?: readonly string[];
 }): {
   readonly requests: ServiceRequest[];
   readonly answer: (request: ServiceRequest) => Reply;
 } {
   const requests: ServiceRequest[] = [];
+  const eventsByRun = options.eventsByRun ?? {};
+  const defaultEvents = options.events ?? [];
   const answer = (request: ServiceRequest): Reply => {
     requests.push(request);
     const runId = request.parameters["runId"];
@@ -98,16 +116,10 @@ export function watchReplies(options: {
         },
       };
     }
-    const events = (options.events ?? [])
-      .filter(
-        (event) =>
-          Number(event["sequence"]) > Number(request.parameters["after"]),
-      )
-      .slice(0, 1000);
-    return {
-      kind: "result",
-      result: { events, latestSequence: 2500, decisions: [] },
-    };
+    return eventReply(
+      eventsByRun[String(runId)] ?? defaultEvents,
+      request.parameters,
+    );
   };
   return { requests, answer };
 }

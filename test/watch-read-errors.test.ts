@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fields, items } from "./service-fixture.ts";
 import {
+  interruptedCompletionReplies,
+  laterMark,
+  stoppedMark,
+} from "./watch-completion-fixture.ts";
+import {
   interruptedReplies,
   longEvents,
   longRun,
@@ -11,6 +16,51 @@ import {
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test("CLV-091 a failed first status read preserves the empty service-down model", async () => {
+  const { answer } = interruptedReplies({ operation: "status", runs: [] });
+  await withWatchService(answer, async (watch) => {
+    const model = await watchData(watch.address);
+    assert.equal(model["service"], "down");
+    assert.deepEqual(model["runs"], []);
+    assert.deepEqual(model["workflows"], []);
+  });
+});
+
+const completionFailures = [
+  { operation: "status", runId: undefined, after: "done-48" },
+  { operation: "status", runId: "zz-later", after: undefined },
+  { operation: "events", runId: "zz-later", after: 0 },
+  { operation: "events", runId: "zz-later", after: 1 },
+];
+for (const failure of completionFailures)
+  await test(`CLV-091 required search failure ${JSON.stringify(failure)} returns failed and retries complete evidence`, async () => {
+    const replies = interruptedCompletionReplies(failure);
+    await withWatchService(replies.answer, async (watch) => {
+      const failed = await fetch(`${watch.address}data.json`);
+      assert.equal(failed.status, 500, JSON.stringify(failure));
+      assert.equal(await failed.text(), "failed");
+      assert.deepEqual(stoppedMark(await watchData(watch.address)), laterMark);
+      const reads = replies.requests.filter(
+        (request) =>
+          request.operation === "events" &&
+          request.parameters["runId"] === "zz-later",
+      );
+      assert.equal(
+        reads.filter((request) => request.parameters["after"] === 0).length,
+        failure.operation === "events" ? 2 : 1,
+      );
+      await watchData(watch.address);
+      assert.equal(
+        replies.requests.filter(
+          (request) =>
+            request.operation === "events" &&
+            request.parameters["runId"] === "zz-later",
+        ).length,
+        reads.length,
+      );
+    });
+  });
 
 await test("CLV-077 an interrupted event page gives an error and retry reads the complete history before caching it", async () => {
   const { answer, requests } = interruptedReplies({

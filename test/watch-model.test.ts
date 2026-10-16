@@ -10,6 +10,26 @@ import {
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
 
 const line = (value: unknown): string => JSON.stringify(value);
+
+await test("CLV-091 the model retains exact stored ticket identity independently of the title", () => {
+  for (const ticketId of [
+    "DEMO-1",
+    " demo-1 ",
+    " ",
+    "",
+    undefined,
+    null,
+    1,
+    {},
+  ]) {
+    const [run] = boardModel([boardRun("identity", { ticketId })]).runs;
+    assert.equal(
+      run?.["ticketId"],
+      typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
+    );
+    assert.equal(run.title, "Title of identity");
+  }
+});
 const operationId =
   '["cloving-operation",1,"run-1","implement","claude-turn",null,null]';
 const started = {
@@ -307,6 +327,7 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       runId: "run-1",
       workflowId: "develop-ticket",
       title: null,
+      ticketId: null,
       outcome: null,
       latestAt: null,
       claudeCostUsd: 0,

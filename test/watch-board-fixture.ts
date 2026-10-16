@@ -34,6 +34,7 @@ export function boardRun(
     readonly state?: string;
     readonly latestAt?: string | null;
     readonly outcome?: string;
+    readonly ticketId?: unknown;
     readonly events?: readonly unknown[];
   } = {},
 ): Record<string, unknown> {
@@ -43,12 +44,43 @@ export function boardRun(
       workflowId: options.workflowId ?? "develop-issue",
       state: options.state ?? "running",
       title: `Title of ${runId}`,
+      ticketId: options.ticketId,
       latestAt: options.latestAt ?? boardTime,
       outcome: options.outcome === undefined ? null : { kind: options.outcome },
       claudeCostUsd: 1.25,
     },
     events: options.events ?? [],
   };
+}
+
+export function completionScenario(
+  ids: { readonly stopped?: string; readonly later?: string } = {},
+): ReturnType<typeof watchModel> {
+  const completed = (runId: string, ticketId: string) =>
+    boardRun(runId, {
+      ticketId,
+      state: "completed",
+      outcome: "blocked",
+      latestAt: "2026-10-14T10:05:00Z",
+      events: [{ type: "run.completed", recordedAt: "2026-10-14T10:00:00Z" }],
+    });
+  return boardModel(
+    [
+      completed(ids.stopped ?? "A", "DEMO-1"),
+      boardRun(ids.later ?? "B", {
+        ticketId: "DEMO-1",
+        state: "completed",
+        outcome: "handoff_requested",
+        latestAt: "2026-10-14T10:30:00Z",
+        events: [
+          { type: "run.created", recordedAt: "2026-10-14T10:01:00Z" },
+          { type: "run.completed", recordedAt: "2026-10-14T10:30:00Z" },
+        ],
+      }),
+      completed("C", "DEMO-2"),
+    ],
+    { updatedAt: "2026-10-14T10:31:00Z" },
+  );
 }
 
 export function boardModel(

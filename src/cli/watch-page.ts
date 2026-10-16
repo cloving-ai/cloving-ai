@@ -4,6 +4,7 @@ import {
   WorkflowList,
   cardReview,
   cardStep,
+  completionMark,
 } from "./watch-board-view.ts";
 import {
   boardWorkflow,
@@ -53,6 +54,7 @@ const functions = [
   watchTitle,
   cardReview,
   cardStep,
+  completionMark,
   Card,
   WorkflowList,
   Board,
@@ -113,6 +115,8 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--working); outli
 .column-name { margin: 0 0 10px; padding: 8px 0; border-top: 3px solid var(--line); color: var(--soft); }
 .card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; color: inherit; text-decoration: none; overflow-wrap: anywhere; background: Canvas; }
 .card:hover { border-color: var(--working); }
+.card-run { display: grid; gap: 6px; color: inherit; text-decoration: none; }
+.completion-mark { font-size: 12px; }
 .card-step, .card-review, .card-cost { font-size: 12px; font-variant-numeric: tabular-nums; }
 .decision-mark { color: var(--attention); font-size: 12px; font-weight: 600; }
 .back { display: block; width: fit-content; margin: 16px 0; color: var(--working); }

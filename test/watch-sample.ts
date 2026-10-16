@@ -80,6 +80,7 @@ export function phases(
 
 export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
   return {
+    ticketId: null,
     title: null,
     outcome: null,
     latestAt: null,

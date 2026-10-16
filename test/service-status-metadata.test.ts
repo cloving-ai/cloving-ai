@@ -16,6 +16,7 @@ import {
   admitted,
   call,
   field,
+  fields,
   items,
   later,
   noon,
@@ -61,6 +62,78 @@ function statusContext(authority: Authority): ServiceContext {
     documentBytes: 65536,
   };
 }
+
+function identityInput(request: {
+  readonly submission: Readonly<Record<string, unknown>>;
+}) {
+  return Promise.resolve({
+    kind: "resolved" as const,
+    input: {
+      ticketId: parsedTicket(request.submission["prompt"]),
+      ticket: "# OTHER-2: A conflicting title\nPrivate ticket text",
+      repository: "/fixture/private-repository",
+      cycleId: "different-cycle",
+    },
+  });
+}
+
+await test("CLV-091 single status exposes only the exact stored ticket ID alongside existing metadata", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [
+        harness.registration,
+        {
+          ...harness.registration,
+          workflowId: "develop-issue",
+          resolver: {
+            ...harness.registration.resolver,
+            resolve: identityInput,
+          },
+        },
+      ],
+    });
+    for (const [index, ticketId] of [
+      "DEMO-1",
+      " demo-1 ",
+      " ",
+      "",
+      null,
+      42,
+      {},
+    ].entries()) {
+      const reply = await call(harness, {
+        operation: "run",
+        parameters: {
+          workflowId: "develop-issue",
+          source: "prompt",
+          submission: { prompt: JSON.stringify(ticketId) },
+          commandId: `identity-${String(index)}`,
+        },
+      });
+      const shown = await view(harness, text(reply, "runId"));
+      assert.equal(
+        field(shown, "ticketId"),
+        typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
+      );
+      assert.equal(field(shown, "title"), "OTHER-2: A conflicting title");
+      for (const name of [
+        "runId",
+        "state",
+        "latestSequence",
+        "budget",
+        "outcome",
+        "claudeCostUsd",
+      ])
+        assert.ok(Object.hasOwn(fields(shown), name), name);
+      assert.doesNotMatch(
+        JSON.stringify(shown),
+        /Private ticket text|private-repository|different-cycle|"input"|"ticket"|"repository"/,
+      );
+    }
+    const missing = await admitted(harness, "missing-input-id");
+    assert.equal(field(await view(harness, missing), "ticketId"), null);
+    await service.close();
+  }));
 
 await test("CLV-072 status shows a completion outcome or null for active and old runs", () =>
   withHarness(async (harness) => {

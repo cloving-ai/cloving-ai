@@ -6,8 +6,35 @@ import {
   boardModel,
   boardRun,
   boardTime,
+  completionScenario,
   workflowIds,
 } from "./watch-board-fixture.ts";
+
+await test("CLV-091 blocked issue cards mark completion in a later local run without merge evidence", () => {
+  const model = completionScenario();
+  const board = model.workflows[0];
+  const stopped = board?.columns.find((column) => column.name === "Stopped");
+  assert.deepEqual(
+    stopped?.cards.map((card) => card["completionMark"]),
+    [
+      { text: "Done in a later run", laterRunId: "B" },
+      { text: "Needs attention", laterRunId: null },
+    ],
+  );
+  assert.equal(stopped.cards[0]?.endedAt, "2026-10-14T10:05:00Z");
+  assert.equal(model.runs.find((run) => run.runId === "A")?.outcome, "blocked");
+  assert.deepEqual(
+    board?.columns
+      .find((column) => column.name === "Done")
+      ?.cards.map((card) => card.runId),
+    ["B"],
+  );
+  assert.ok(
+    model.runs.every(
+      (run) => run.pullRequest === null && run.mergeCommit === null,
+    ),
+  );
+});
 
 await test("CLV-079 an active run with only a creation event has no step start time", () => {
   const model = boardModel([
@@ -76,6 +103,7 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
   assert.deepEqual(issue.columns[1]?.cards[0], {
     runId: "round-2",
     title: "Title of round-2",
+    completionMark: null,
     claudeCostUsd: 1.25,
     currentStep: { name: "Claude turn", startedAt: "2026-10-14T11:00:00Z" },
     endedAt: null,
