@@ -60,3 +60,31 @@ await test("CLV-085 a changed origin default branch overrides stale origin HEAD 
     assert.equal(await updater.check(), undefined);
   });
 });
+
+await test("CLV-085 switching to a clean feature branch during stop cannot move either branch", async () => {
+  await withUpdateRepository(async ({ root, git, old, target }) => {
+    const errors: string[] = [];
+    const updater = selfUpdater({
+      directory: join(root, "host"),
+      git: (argumentsList) => Promise.resolve(git(argumentsList)),
+      active: () => Promise.resolve(false),
+      stop: () => {
+        git(["checkout", "-qb", "work"]);
+        return Promise.resolve();
+      },
+      error: (line) => {
+        errors.push(line);
+      },
+    });
+    assert.equal(await updater.check(), 75);
+    assert.equal(git(["symbolic-ref", "HEAD"]), "refs/heads/work");
+    assert.equal(git(["rev-parse", "work"]), old);
+    assert.equal(git(["rev-parse", "main"]), old);
+    assert.equal(errors.length, 1);
+    assert.match(String(errors[0]), /checkout changed after stop/);
+    assert.equal(
+      await readFile(join(root, "host", "failed-self-updates"), "utf8"),
+      `${target}\n`,
+    );
+  });
+});

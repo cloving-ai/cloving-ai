@@ -1,32 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
+import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
-
-async function programs(
-  root: string,
-  options: { readonly daemonMilliseconds?: number } = {},
-): Promise<{ readonly product: string; readonly project: string }> {
-  const product = join(root, "product");
-  const project = join(root, "project");
-  await mkdir(join(product, "src"), { recursive: true });
-  await mkdir(project);
-  const program = (name: string): string => `
-import { writeFileSync } from "node:fs";
-const timer = setInterval(() => {}, 1000);
-process.on("SIGTERM", () => setTimeout(() => {
-  writeFileSync(${JSON.stringify(join(root, `${name}-stopped`))}, "stopped");
-  clearInterval(timer);
-}, 50));
-writeFileSync(${JSON.stringify(join(root, `${name}-ready`))}, "ready");
-${name === "daemon" && options.daemonMilliseconds ? `setTimeout(() => process.emit("SIGTERM"), ${String(options.daemonMilliseconds)});` : ""}
-`;
-  await writeFile(join(project, "start.mjs"), program("daemon"));
-  await writeFile(join(product, "src/cli.ts"), program("watch"));
-  return { product, project };
-}
 
 await test("CLV-085 the host stops and awaits daemon and watch before fast-forwarding", async () => {
   await withUpdateRepository(async ({ root, repository, git, target }) => {
@@ -49,6 +27,33 @@ await test("CLV-085 the host stops and awaits daemon and watch before fast-forwa
       await readFile(join(root, "watch-stopped"), "utf8"),
       "stopped",
     );
+  });
+});
+
+await test("CLV-085 a local merge can finish after the network deadline", async () => {
+  await withUpdateRepository(async ({ root, repository, git, target }) => {
+    const paths = await programs(root);
+    const hook = join(repository, ".git/hooks/post-merge");
+    await writeFile(
+      hook,
+      `#!${process.execPath}\nsetTimeout(() => {}, 31000);\n`,
+    );
+    await chmod(hook, 0o755);
+    assert.equal(
+      await hostedPrograms({
+        ...paths,
+        repository,
+        runtime: join(root, "host/run"),
+        directory: join(root, "host"),
+        watchPort: "off",
+        updateMilliseconds: 300,
+      }),
+      75,
+    );
+    assert.equal(git(["rev-parse", "HEAD"]), target);
+    await assert.rejects(readFile(join(root, "host/failed-self-updates")), {
+      code: "ENOENT",
+    });
   });
 });
 
@@ -76,3 +81,38 @@ await test("CLV-085 without the setting the host never fetches and preserves nor
     );
   });
 });
+
+for (const command of ["fetch", "remote"]) {
+  for (const signal of ["SIGINT", "SIGTERM", "daemon"]) {
+    await test(`CLV-085 ${signal} cancels stalled git ${command} and waits for children`, async () => {
+      await withUpdateRepository(async ({ root, repository, git, old }) => {
+        const result = await stalledCheck(root, {
+          repository,
+          command,
+          signal,
+        });
+        assert.equal(result.error, undefined, result.stderr);
+        assert.equal(result.status, 0, result.stderr);
+        for (const name of ["daemon", "watch"])
+          assert.equal(
+            await readFile(join(root, `${name}-stopped`), "utf8"),
+            "stopped",
+          );
+        assert.equal(git(["rev-parse", "HEAD"]), old);
+      });
+    });
+  }
+  await test(`CLV-085 stalled git ${command} reaches its deadline and polling recovers`, async () => {
+    await withUpdateRepository(async ({ root, repository, git, old }) => {
+      const result = await stalledCheck(root, {
+        repository,
+        command,
+        signal: "deadline",
+      });
+      assert.equal(result.error, undefined, result.stderr);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stderr, "");
+      assert.equal(git(["rev-parse", "HEAD"]), old);
+    });
+  });
+}

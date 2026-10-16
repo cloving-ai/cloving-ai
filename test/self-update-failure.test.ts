@@ -31,7 +31,15 @@ await test("CLV-085 a failed fast-forward records the target and skips it after 
   });
 });
 
-for (const changed of ["dirty", "index", "status-error"] as const) {
+for (const changed of [
+  "dirty",
+  "index",
+  "status-error",
+  "branch",
+  "head",
+  "detached",
+  "head-error",
+] as const) {
   await test(`CLV-085 ${changed} after stop records failure and restarts without merge`, async () => {
     await withUpdate(async (fixture) => {
       const updater = selfUpdater({
@@ -47,6 +55,16 @@ for (const changed of ["dirty", "index", "status-error"] as const) {
               statusCommand,
               new Error("status unavailable"),
             );
+          if (changed === "branch")
+            fixture.replies["symbolic-ref HEAD"] = "refs/heads/work\n";
+          if (changed === "head") fixture.replies["rev-parse HEAD"] = "moved\n";
+          if (changed === "detached")
+            fixture.failures.set("symbolic-ref HEAD", new Error("detached"));
+          if (changed === "head-error")
+            fixture.failures.set(
+              "rev-parse HEAD",
+              new Error("HEAD unavailable"),
+            );
         },
       });
       assert.equal(await updater.check(), 75);
@@ -56,6 +74,13 @@ for (const changed of ["dirty", "index", "status-error"] as const) {
         await readFile(join(fixture.directory, "failed-self-updates"), "utf8"),
         "target\n",
       );
+      fixture.failures.clear();
+      fixture.replies["symbolic-ref HEAD"] = "refs/heads/main\n";
+      fixture.replies["rev-parse HEAD"] = "old\n";
+      fixture.actions.length = 0;
+      assert.equal(await selfUpdater(fixture.settings).check(), undefined);
+      assert.equal(fixture.actions.includes("stop"), false);
+      assert.equal(fixture.actions.includes(mergeCommand), false);
     });
   });
 }

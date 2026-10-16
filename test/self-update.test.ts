@@ -51,6 +51,8 @@ await test("CLV-085 an idle clean checkout fast-forwards after stopping and requ
       "stop",
       "status --porcelain --untracked-files=all --ignore-submodules=none",
       "ls-files -v",
+      "symbolic-ref HEAD",
+      "rev-parse HEAD",
       "merge --ff-only --no-overwrite-ignore target",
     ]);
   } finally {

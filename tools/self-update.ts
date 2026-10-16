@@ -6,6 +6,12 @@ export interface SelfUpdateSettings {
   readonly error: (line: string) => void;
 }
 
+interface UpdateCandidate {
+  readonly branch: string;
+  readonly head: string;
+  readonly target: string;
+}
+
 async function clean(git: SelfUpdateSettings["git"]): Promise<boolean> {
   const status = await git([
     "status",
@@ -19,26 +25,23 @@ async function clean(git: SelfUpdateSettings["git"]): Promise<boolean> {
 
 async function candidate(
   settings: SelfUpdateSettings,
-): Promise<{ readonly head: string; readonly target: string } | undefined> {
+): Promise<UpdateCandidate | undefined> {
   const git = settings.git;
   await git(["fetch", "origin"]);
   await git(["remote", "set-head", "origin", "--auto"]);
-  const branch = (
+  const remoteBranch = (
     await git(["symbolic-ref", "refs/remotes/origin/HEAD"])
   ).trim();
-  if (!branch.startsWith("refs/remotes/origin/")) return;
-  if (
-    (await git(["symbolic-ref", "HEAD"])).trim() !==
-    branch.replace("refs/remotes/origin/", "refs/heads/")
-  )
-    return;
+  if (!remoteBranch.startsWith("refs/remotes/origin/")) return;
+  const branch = remoteBranch.replace("refs/remotes/origin/", "refs/heads/");
+  if ((await git(["symbolic-ref", "HEAD"])).trim() !== branch) return;
   const head = (await git(["rev-parse", "HEAD"])).trim();
-  const target = (await git(["rev-parse", branch])).trim();
+  const target = (await git(["rev-parse", remoteBranch])).trim();
   if (head === target) return;
   await git(["merge-base", "--is-ancestor", head, target]);
   if (!(await clean(git))) return;
   if (await settings.active()) return;
-  return { head, target };
+  return { branch, head, target };
 }
 
 async function failedTargets(directory: string): Promise<readonly string[]> {
@@ -54,13 +57,23 @@ async function failedTargets(directory: string): Promise<readonly string[]> {
 
 async function updated(
   settings: SelfUpdateSettings,
-  target: string,
+  update: UpdateCandidate,
 ): Promise<number> {
   await settings.stop();
   try {
     if (!(await clean(settings.git)))
       throw new Error("checkout changed after stop");
-    await settings.git(["merge", "--ff-only", "--no-overwrite-ignore", target]);
+    if (
+      (await settings.git(["symbolic-ref", "HEAD"])).trim() !== update.branch ||
+      (await settings.git(["rev-parse", "HEAD"])).trim() !== update.head
+    )
+      throw new Error("checkout changed after stop");
+    await settings.git([
+      "merge",
+      "--ff-only",
+      "--no-overwrite-ignore",
+      update.target,
+    ]);
   } catch (error) {
     settings.error(
       `Self-update failed: ${String(error).replace(/[\r\n]+/g, " ")}\n`,
@@ -68,7 +81,7 @@ async function updated(
     await mkdir(settings.directory, { recursive: true });
     await appendFile(
       join(settings.directory, "failed-self-updates"),
-      `${target}\n`,
+      `${update.target}\n`,
     );
   }
   return 75;
@@ -107,7 +120,7 @@ export function selfUpdater(settings: SelfUpdateSettings): {
         );
         if (!failed || failed.includes(update.target)) return;
         disabled = true;
-        return await updated(settings, update.target);
+        return await updated(settings, update);
       } finally {
         checking = false;
       }

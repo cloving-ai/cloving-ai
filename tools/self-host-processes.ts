@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { addAbortListener } from "node:events";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -46,6 +47,29 @@ async function stopped(programs: readonly Program[]): Promise<void> {
   await Promise.all(programs.map((program) => program.ended));
 }
 
+function updatingGit(settings: HostProcesses, stopping: AbortSignal) {
+  const git = promisify(execFile);
+  return async (argumentsList: readonly string[]): Promise<string> => {
+    const command = git("git", ["-C", settings.repository, ...argumentsList], {
+      encoding: "utf8",
+      signal: stopping,
+      killSignal: "SIGKILL",
+      timeout:
+        argumentsList[0] === "fetch" || argumentsList[0] === "remote"
+          ? 30000
+          : 0,
+    });
+    const listener = addAbortListener(stopping, () => {
+      command.child.kill("SIGKILL");
+    });
+    try {
+      return (await command).stdout;
+    } finally {
+      listener[Symbol.dispose]();
+    }
+  };
+}
+
 async function polled(
   settings: HostProcesses,
   lifecycle: {
@@ -55,17 +79,9 @@ async function polled(
 ): Promise<number | undefined> {
   if (settings.updateMilliseconds === undefined) return;
   const cancelled = (): boolean => lifecycle.stopping.aborted;
-  const git = promisify(execFile);
   const updater = selfUpdater({
     directory: settings.directory,
-    git: async (argumentsList) => {
-      const result = await git(
-        "git",
-        ["-C", settings.repository, ...argumentsList],
-        { encoding: "utf8" },
-      );
-      return result.stdout;
-    },
+    git: updatingGit(settings, lifecycle.stopping),
     active: async () =>
       lifecycle.stopping.aborted ||
       (await workerTurnActive(settings.directory)),
@@ -81,7 +97,7 @@ async function polled(
     await delay(settings.updateMilliseconds, undefined, {
       signal: lifecycle.stopping,
     }).catch((error: unknown) => {
-      if (Reflect.get(Object(error), "name") !== "AbortError") throw error;
+      if (!(error instanceof Error) || error.name !== "AbortError") throw error;
     });
     if (cancelled()) return;
     const status = await updater.check();
@@ -90,37 +106,37 @@ async function polled(
   return undefined;
 }
 
-function hostedChildren(settings: HostProcesses): readonly Program[] {
+function hostedChildren(
+  settings: HostProcesses,
+): readonly [Program] | readonly [Program, Program] {
   const daemon = launched([join(settings.project, "start.mjs")], {
     directory: settings.project,
     environment: process.env,
   });
-  const programs = [daemon];
-  if (settings.watchPort !== "off")
-    programs.push(
-      launched(
-        [
-          join(settings.product, "src/cli.ts"),
-          "watch",
-          "--port",
-          settings.watchPort,
-        ],
-        {
-          directory: settings.product,
-          environment: {
-            ...process.env,
-            CLOVING_RUNTIME_DIR: settings.runtime,
-          },
+  if (settings.watchPort === "off") return [daemon];
+  return [
+    daemon,
+    launched(
+      [
+        join(settings.product, "src/cli.ts"),
+        "watch",
+        "--port",
+        settings.watchPort,
+      ],
+      {
+        directory: settings.product,
+        environment: {
+          ...process.env,
+          CLOVING_RUNTIME_DIR: settings.runtime,
         },
-      ),
-    );
-  return programs;
+      },
+    ),
+  ];
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   const programs = hostedChildren(settings);
   const daemon = programs[0];
-  if (!daemon) throw new Error("self-host-daemon-missing");
   const stopping = new AbortController();
   let updating = false;
   const interrupt = (): void => {
