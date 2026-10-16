@@ -46,7 +46,14 @@ async function privateDirectory(path: string): Promise<void> {
     if (!missing(error)) throw error;
   }
   await privateDirectory(dirname(path));
-  await mkdir(path, { mode: 0o700 });
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EEXIST"))
+      throw error;
+    if (!(await lstat(path)).isDirectory())
+      throw new Error("destination-refused", { cause: error });
+  }
 }
 
 export async function importDirectory(

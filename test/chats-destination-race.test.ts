@@ -5,6 +5,7 @@ import filesystem, {
   readdir,
   rename,
   symlink,
+  writeFile,
 } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { basename, dirname, join } from "node:path";
@@ -66,4 +67,57 @@ for (const name of ["corpus.jsonl", "coverage.json"] as const) {
       },
     );
   });
+}
+
+for (const parent of ["runtime", "runtime/chats"]) {
+  for (const replacement of ["directory", "file", "symlink"]) {
+    await test(`CLV-095 handles a competing ${replacement} at ${parent} creation`, async () => {
+      await withFiles({ source }, async (directory) => {
+        const original = Object.getOwnPropertyDescriptor(filesystem, "mkdir");
+        assert.ok(original);
+        const createDirectory = filesystem.mkdir;
+        const shared = join(directory, parent);
+        const target = join(directory, "target");
+        await createDirectory(target);
+        let raced = false;
+        Object.defineProperty(filesystem, "mkdir", {
+          configurable: true,
+          value: async (path: string, options: { mode: number }) => {
+            if (path === shared && !raced) {
+              raced = true;
+              if (replacement === "directory")
+                await createDirectory(path, options);
+              if (replacement === "file") await writeFile(path, "occupied");
+              if (replacement === "symlink") await symlink(target, path);
+            }
+            return createDirectory(path, options);
+          },
+        });
+        syncBuiltinESMExports();
+        try {
+          const result = await importChats({
+            paths: ["source"],
+            workingDirectory: directory,
+            runtimeDirectory: "runtime",
+          });
+          assert.equal(raced, true);
+          assert.equal(
+            result.code,
+            replacement === "directory"
+              ? "import-complete"
+              : "destination-refused",
+          );
+          assert.equal(result.records, replacement === "directory" ? 1 : 0);
+          assert.deepEqual(await readdir(target), []);
+          assert.equal(
+            await readFile(join(directory, "source"), "utf8"),
+            source,
+          );
+        } finally {
+          Object.defineProperty(filesystem, "mkdir", original);
+          syncBuiltinESMExports();
+        }
+      });
+    });
+  }
 }

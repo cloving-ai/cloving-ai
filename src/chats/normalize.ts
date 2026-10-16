@@ -113,8 +113,13 @@ function message(
 ): MessageRecord | null {
   if (!object(value) || typeof value["type"] !== "string")
     throw new Error("unsupported-record");
+  if (
+    value["type"] !== "user" &&
+    value["type"] !== "assistant" &&
+    Object.hasOwn(value, "message")
+  )
+    throw new Error("unsupported-message");
   if (value["type"] !== "user" && value["type"] !== "assistant") {
-    if (Object.hasOwn(value, "message")) throw new Error("unsupported-message");
     context.omissions.metadataRecords++;
     return null;
   }
