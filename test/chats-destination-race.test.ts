@@ -18,6 +18,29 @@ const source = JSON.stringify({
   message: { role: "user", content: "private-race-sentinel" },
 });
 
+function directoryCreationRace(configuration: {
+  readonly shared: string;
+  readonly target: string;
+  readonly replacement: string;
+}) {
+  const { shared, target, replacement } = configuration;
+  const createDirectory = filesystem.mkdir;
+  let raced = false;
+  return {
+    get raced() {
+      return raced;
+    },
+    mkdir: async (path: string, options: { mode: number }) => {
+      if (path !== shared || raced) return createDirectory(path, options);
+      raced = true;
+      if (replacement === "directory") await createDirectory(path, options);
+      if (replacement === "file") await writeFile(path, "occupied");
+      if (replacement === "symlink") await symlink(target, path);
+      return createDirectory(path, options);
+    },
+  };
+}
+
 for (const name of ["corpus.jsonl", "coverage.json"] as const) {
   await test(`CLV-095 refuses an ancestor symlink swapped immediately before ${name} opens`, async () => {
     await withFiles(
@@ -75,23 +98,13 @@ for (const parent of ["runtime", "runtime/chats"]) {
       await withFiles({ source }, async (directory) => {
         const original = Object.getOwnPropertyDescriptor(filesystem, "mkdir");
         assert.ok(original);
-        const createDirectory = filesystem.mkdir;
         const shared = join(directory, parent);
         const target = join(directory, "target");
-        await createDirectory(target);
-        let raced = false;
+        await mkdir(target);
+        const race = directoryCreationRace({ shared, target, replacement });
         Object.defineProperty(filesystem, "mkdir", {
           configurable: true,
-          value: async (path: string, options: { mode: number }) => {
-            if (path === shared && !raced) {
-              raced = true;
-              if (replacement === "directory")
-                await createDirectory(path, options);
-              if (replacement === "file") await writeFile(path, "occupied");
-              if (replacement === "symlink") await symlink(target, path);
-            }
-            return createDirectory(path, options);
-          },
+          value: race.mkdir,
         });
         syncBuiltinESMExports();
         try {
@@ -100,7 +113,7 @@ for (const parent of ["runtime", "runtime/chats"]) {
             workingDirectory: directory,
             runtimeDirectory: "runtime",
           });
-          assert.equal(raced, true);
+          assert.equal(race.raced, true);
           assert.equal(
             result.code,
             replacement === "directory"
