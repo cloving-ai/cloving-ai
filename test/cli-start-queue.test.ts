@@ -1,32 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
 import { test } from "node:test";
-import { withHarness } from "./service-fixture.ts";
-
-async function refused(
-  environment: Readonly<NodeJS.ProcessEnv>,
-): Promise<string> {
-  return withHarness((harness) => {
-    const result = spawnSync(
-      process.execPath,
-      [join(import.meta.dirname, "../src/cli.ts"), "start"],
-      {
-        cwd: harness.projectDirectory,
-        env: {
-          ...process.env,
-          CLOVING_RUNTIME_DIR: harness.runtimeDirectory,
-          CLOVING_WATCH_PORT: "off",
-          ...environment,
-        },
-        encoding: "utf8",
-        timeout: 10_000,
-      },
-    );
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    return Promise.resolve(result.stderr);
-  });
-}
+import { refusedStart as refused } from "./cli-start-fixture.ts";
 
 await test("CLV-084 start refuses a queue interval outside its whole second bounds", async () => {
   for (const value of ["5", "3601", "10.5", "", "NaN", "1e2"])

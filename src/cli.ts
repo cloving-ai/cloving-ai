@@ -24,11 +24,22 @@ function started(runtime: string): Promise<number> {
       PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
     },
   });
-  for (const signal of ["SIGINT", "SIGTERM"] as const)
-    process.on(signal, () => child.kill(signal));
+  let stopping = false;
+  const interrupt = (): void => {
+    stopping = true;
+    child.kill("SIGINT");
+  };
+  const terminate = (): void => {
+    stopping = true;
+    child.kill("SIGTERM");
+  };
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", terminate);
   return new Promise((settle) => {
     child.once("close", (status) => {
-      settle(status === 0 ? 0 : 1);
+      process.off("SIGINT", interrupt);
+      process.off("SIGTERM", terminate);
+      settle(stopping && status === 75 ? 0 : (status ?? 1));
     });
   });
 }
@@ -39,7 +50,11 @@ async function start(): Promise<number> {
     return 0;
   }
   const runtime = runtimeDirectory(process.env);
-  if (runtime !== undefined) return await started(runtime);
+  if (runtime !== undefined) {
+    let status = await started(runtime);
+    while (status === 75) status = await started(runtime);
+    return status === 0 ? 0 : 1;
+  }
   process.stderr.write(
     "runtime-directory-unknown: Set CLOVING_RUNTIME_DIR to the runtime directory of the service.\n",
   );
