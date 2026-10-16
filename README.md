@@ -66,11 +66,11 @@ cd ~/cloving
 npm ci --ignore-scripts
 ```
 
-The runtime dependencies are the Workflow SDK (`workflow`), Solid Objects (`solid-objects`) and Preact (`preact`), which the watch page loads. The official builder of the SDK is development tooling. `cloving start` compiles the workflow with this builder, so keep the development dependencies.
+The runtime dependencies include the Workflow SDK (`workflow`), its directive compiler (`@workflow/builders`), Solid Objects (`solid-objects`), Entities (`entities`) and Preact (`preact`), which the watch page loads. Startup runs the SDK compiler to transform workflow and step directives. Development dependencies are needed to build the package, but an installed tarball runs without them.
 
 ### The `cloving` command
 
-`cloving start` runs the start program `tools/self-host.ts` of the checkout. So the `cloving` command must run `src/cli.ts` of the checkout. Put a launcher in a directory of the search path. The launcher must use the Node version of `engines` in `package.json`. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
+For checkout development, put a launcher for `src/cli.ts` in a directory of the search path. The launcher must use the Node version of `engines` in `package.json`. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin
@@ -84,11 +84,24 @@ cloving --version
 
 If the `node` program of the search path has a different version, write the full path of the correct `node` program in the launcher.
 
-Other ways do not give the full `cloving` command:
+To install a built tarball, build and pack it in the checkout:
 
-- `npm run build` and `npm link` give only the client commands. The build has only the files of `src`, and the start program is `tools/self-host.ts`. So `cloving start` does not work.
-- The packed tarball (`npm pack`) also has only the built `src`.
-- The npm name `cloving` holds a different, older program. Do not install it from npm.
+```sh
+npm run build
+npm pack --ignore-scripts
+```
+
+Then install the resulting tarball in your project using its absolute location:
+
+```sh
+npm install --ignore-scripts --omit=dev /path/to/cloving-0.4.0.tgz
+./node_modules/.bin/cloving --help
+./node_modules/.bin/cloving start
+```
+
+The installed executable includes JavaScript for startup, the watch command and bundled workflows. It uses the installed runtime dependencies, including the SDK compiler, without a source checkout. Runtime state and generated workflow artifacts use the configured runtime location outside the installation. Installation scripts are unnecessary. The checkout launcher above remains supported, including its existing checkout self-update behavior; installing a tarball does not add package self-updates.
+
+Use `./node_modules/.bin/cloving` wherever the examples below say `cloving`, or add your project's `node_modules/.bin` to the search path. After a build, `npm link` also supplies the executable. The npm name `cloving` holds a different, older program; do not install it by name from npm.
 
 ## First run
 
@@ -516,7 +529,7 @@ node dist/src/cli.js --help
 npm pack --ignore-scripts
 ```
 
-`npm pack` prints the file name of the tarball. Install the tarball into a separate project with `npm install --save-dev --ignore-scripts /absolute/path/to/TARBALL`, then run `npm exec -- cloving --version`. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect` and `decisionGate`, and starts no service. The tarball has only the built `src`, so it gives the client commands and not `cloving start`.
+`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and bundled workflows; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect` and `decisionGate`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 

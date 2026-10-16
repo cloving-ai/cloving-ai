@@ -3,13 +3,14 @@ import { execFileSync, spawn } from "node:child_process";
 import {
   copyFile,
   mkdir,
-  readdir,
   readFile,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
+import packageMetadata from "#package" with { type: "json" };
+import { findPackageJSON } from "node:module";
 import { pathToFileURL } from "node:url";
 import {
   workflowDeclarations,
@@ -49,7 +50,8 @@ const repository = topLevel(resolve(flag("--repository") ?? process.cwd()));
 const updateMilliseconds = await selfUpdateMilliseconds({
   seconds: process.env["CLOVING_SELF_UPDATE_SECONDS"],
   repository,
-  product: topLevel(product),
+  product:
+    extname(import.meta.filename) === ".ts" ? topLevel(product) : product,
 });
 const client = flag("--client") ?? "cloving";
 const project = join(directory, "project");
@@ -164,11 +166,14 @@ function ended(
 async function linkedPackages(): Promise<void> {
   const modules = join(project, "node_modules");
   await mkdir(join(modules, "cloving"), { recursive: true });
-  for (const entry of await readdir(join(product, "node_modules")))
-    await symlink(join(product, "node_modules", entry), join(modules, entry));
-  const manifest = record(
-    JSON.parse(await readFile(join(product, "package.json"), "utf8")),
-  );
+  for (const name of Object.keys(packageMetadata.dependencies)) {
+    const location = findPackageJSON(name, join(product, "package.json"));
+    if (location === undefined)
+      throw new Error(`missing-runtime-dependency: ${name}`);
+    await mkdir(dirname(join(modules, name)), { recursive: true });
+    await symlink(dirname(location), join(modules, name));
+  }
+  const manifest = record(packageMetadata);
   const exported = Object.keys(record(manifest["exports"])).filter((subpath) =>
     subpath.startsWith("./workflows"),
   );
@@ -182,7 +187,7 @@ async function linkedPackages(): Promise<void> {
       exports: Object.fromEntries(
         exported.map((subpath) => [
           subpath,
-          `./src/${subpath.slice("./workflows/".length) || "workflows"}.ts`,
+          `./src/${subpath.slice("./workflows/".length) || "workflows"}${extname(import.meta.filename)}`,
         ]),
       ),
     }),
@@ -224,7 +229,11 @@ async function registered(): Promise<RegisteredWorkflows> {
 }
 
 function source(file: string): string {
-  return JSON.stringify(pathToFileURL(join(product, file)).href);
+  return JSON.stringify(
+    pathToFileURL(
+      join(product, file.replace(/\.ts$/, extname(import.meta.filename))),
+    ).href,
+  );
 }
 
 async function launchers(
@@ -295,7 +304,11 @@ async function prepared(): Promise<RegisteredWorkflows> {
     );
   await linkedPackages();
   const compiled = await ended(
-    [join(product, "tools/compile-workflows.ts"), "workflows", "artifacts"],
+    [
+      join(product, `tools/compile-workflows${extname(import.meta.filename)}`),
+      "workflows",
+      "artifacts",
+    ],
     process.env,
   );
   if (compiled !== 0) throw new Error("The workflows did not compile.");

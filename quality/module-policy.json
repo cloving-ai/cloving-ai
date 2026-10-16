@@ -657,7 +657,9 @@
     "test/cli-start-restart.test.ts": "test",
     "tools/self-update.ts": "build",
     "tools/self-update-host.ts": "build",
-    "tools/self-host-processes.ts": "build"
+    "tools/self-host-processes.ts": "build",
+    "test/packed-install.test.ts": "test",
+    "tools/copy-workflow-declarations.ts": "build"
   },
   "allowed": {
     "quality": [

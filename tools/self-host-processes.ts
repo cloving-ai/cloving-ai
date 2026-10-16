@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { addAbortListener } from "node:events";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { selfUpdater } from "./self-update.ts";
@@ -124,7 +124,7 @@ function hostedChildren(
     daemon,
     launched(
       [
-        join(settings.product, "src/cli.ts"),
+        join(settings.product, `src/cli${extname(import.meta.filename)}`),
         "watch",
         "--port",
         settings.watchPort,
