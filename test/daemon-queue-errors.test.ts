@@ -249,13 +249,12 @@ await withHarness(async (harness) => {
   const listener = await listen({
     path: join(harness.runtimeDirectory, "control.sock"),
     handle: async (request) => {
-      if (request.operation !== "run") {
-        if (requests.length === 2) {
-          assert.deepEqual(JSON.parse(await readFile(file, "utf8")), []);
-          retired = true;
-        }
-        return { kind: "result", result: { runs: [], next: null } };
+      if (request.operation !== "run" && requests.length === 2) {
+        assert.deepEqual(JSON.parse(await readFile(file, "utf8")), []);
+        retired = true;
       }
+      if (request.operation !== "run")
+        return { kind: "result", result: { runs: [], next: null } };
       requests.push(request);
       assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
       if (requests.length === 3) await released.promise;
