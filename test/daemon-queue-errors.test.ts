@@ -13,14 +13,18 @@ import { listen } from "./src/service/transport.ts";
 import { eventually, withHarness } from "./test/service-fixture.ts";
 `;
 
-function observed(script: string): string {
+function observation(script: string): { stdout: string; stderr: string } {
   const result = spawnSync(
     process.execPath,
     ["--input-type=module", "--eval", prelude + script],
     { encoding: "utf8", timeout: 10_000 },
   );
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  return result.stderr;
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
+function observed(script: string): string {
+  return observation(script).stderr;
 }
 
 function statusFailure(options: {
@@ -143,4 +147,140 @@ await withHarness(async (harness) => {
 `);
   assert.equal(stderr.trim().split("\n").length, 1);
   assert.match(stderr, /Queue stopped:.*EISDIR/);
+});
+
+await test("CLV-092 a resolver timeout reports a retry and keeps its command without stopping", () => {
+  const output = observation(`
+await withHarness(async (harness) => {
+  const file = join(harness.stateDirectory, "queue-commands.json");
+  let commandId;
+  const listener = await listen({
+    path: join(harness.runtimeDirectory, "control.sock"),
+    handle: async (request) => {
+      if (request.operation !== "run")
+        return { kind: "result", result: { runs: [], next: null } };
+      commandId = request.parameters.commandId;
+      return { kind: "error", error: { code: "resolver-timeout", detail: "Retry." } };
+    },
+    limits: { idleMilliseconds: 5000 },
+  });
+  const queue = issueQueue({ directory: harness.stateDirectory,
+    runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 200 });
+  try {
+    await eventually(() => commandId ? true : undefined);
+    await delay(50);
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [commandId]);
+  } finally {
+    await queue.stop();
+    await listener.close();
+  }
+  assert.match(commandId, /^[0-9a-f-]{36}$/);
+  process.stdout.write(commandId);
+});
+`);
+  assert.equal(
+    output.stderr,
+    `Queue resolver-timeout: command ${output.stdout}; will retry\n`,
+  );
+});
+
+function stoppedSubmission(codes: readonly string[]) {
+  return observation(`
+await withHarness(async (harness) => {
+  const file = join(harness.stateDirectory, "queue-commands.json");
+  const codes = ${JSON.stringify(codes)};
+  const requests = [];
+  const listener = await listen({
+    path: join(harness.runtimeDirectory, "control.sock"),
+    handle: async (request) => {
+      if (request.operation !== "run")
+        return request.parameters.runId === undefined
+          ? { kind: "result", result: { runs: [], next: null } }
+          : { kind: "error", error: { code: "unknown-run", detail: "Not admitted." } };
+      requests.push(request);
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      const code = codes[requests.length - 1];
+      return { kind: "error", error: { code, detail: code } };
+    },
+    limits: { idleMilliseconds: 5000 },
+  });
+  const queue = issueQueue({ directory: harness.stateDirectory,
+    runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 10 });
+  try {
+    await eventually(() => requests.length === codes.length ? true : undefined);
+    await delay(60);
+    assert.equal(requests.length, codes.length);
+    assert.ok(requests.every((request) => JSON.stringify(request) === JSON.stringify(requests[0])));
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [requests[0].parameters.commandId]);
+    process.stdout.write(requests[0].parameters.commandId);
+  } finally {
+    await queue.stop();
+    await listener.close();
+  }
+});
+`);
+}
+
+await test("CLV-092 resolver and ticket failures stop once and retain the command, including after timeouts", () => {
+  for (const code of ["resolver-failure", "invalid-ticket-id"]) {
+    for (const preceding of [[], ["resolver-timeout", "resolver-timeout"]]) {
+      const output = stoppedSubmission([...preceding, code]);
+      assert.equal(
+        output.stderr,
+        preceding
+          .map(
+            () =>
+              `Queue resolver-timeout: command ${output.stdout}; will retry\n`,
+          )
+          .join("") + `Queue stopped: ${JSON.stringify(code)}\n`,
+      );
+    }
+  }
+});
+
+await test("CLV-092 empty and active refusals retire a timed-out command and allow a new ID", () => {
+  for (const code of ["no-ready-ticket", "workflow-active"]) {
+    const output = observation(`
+await withHarness(async (harness) => {
+  const file = join(harness.stateDirectory, "queue-commands.json");
+  const requests = [];
+  const released = Promise.withResolvers();
+  let retired = false;
+  const listener = await listen({
+    path: join(harness.runtimeDirectory, "control.sock"),
+    handle: async (request) => {
+      if (request.operation !== "run" && requests.length === 2) {
+        assert.deepEqual(JSON.parse(await readFile(file, "utf8")), []);
+        retired = true;
+      }
+      if (request.operation !== "run")
+        return { kind: "result", result: { runs: [], next: null } };
+      requests.push(request);
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      if (requests.length === 3) await released.promise;
+      const code = requests.length === 1 ? "resolver-timeout" : ${JSON.stringify(code)};
+      return { kind: "error", error: { code, detail: code } };
+    },
+    limits: { idleMilliseconds: 5000 },
+  });
+  const queue = issueQueue({ directory: harness.stateDirectory,
+    runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 20 });
+  try {
+    await eventually(() => requests.length === 3 ? true : undefined);
+    assert.equal(retired, true);
+    assert.deepEqual(requests[1], requests[0]);
+    assert.notEqual(requests[2].parameters.commandId, requests[0].parameters.commandId);
+    process.stdout.write(requests[0].parameters.commandId);
+  } finally {
+    released.resolve();
+    await queue.stop();
+    await listener.close();
+  }
+});
+`);
+    assert.equal(
+      output.stderr,
+      `Queue resolver-timeout: command ${output.stdout}; will retry\n`,
+    );
+  }
 });

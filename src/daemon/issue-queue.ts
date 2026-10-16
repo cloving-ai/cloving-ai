@@ -15,6 +15,7 @@ interface QueueSettings {
 interface QueueJournal {
   readonly commands: Set<string>;
   readonly save: () => Promise<void>;
+  retryCommandId: string | undefined;
 }
 
 async function journal(directory: string): Promise<QueueJournal> {
@@ -33,6 +34,7 @@ async function journal(directory: string): Promise<QueueJournal> {
   const commands = new Set(value.map(String));
   return {
     commands,
+    retryCommandId: undefined,
     save: async () => {
       await writeFile(`${file}.tmp`, JSON.stringify([...commands]) + "\n", {
         mode: 0o600,
@@ -80,7 +82,10 @@ async function completed(
 ): Promise<boolean> {
   let failure: string | undefined;
   let pendingRun = false;
-  for (const commandId of pending.commands) {
+  const tracked = [...pending.commands].filter(
+    (commandId) => commandId !== pending.retryCommandId,
+  );
+  for (const commandId of tracked) {
     const run = await runStatus(settings.runtimeDirectory, commandId);
     if (run === undefined) throw new Error("queue-run-missing");
     if (!terminal(run)) {
@@ -133,7 +138,7 @@ async function submit(
   settings: QueueSettings,
   pending: QueueJournal,
 ): Promise<void> {
-  const commandId = randomUUID();
+  const commandId = pending.retryCommandId ?? randomUUID();
   pending.commands.add(commandId);
   await pending.save();
   const reply = await send(settings.runtimeDirectory, {
@@ -145,7 +150,15 @@ async function submit(
       commandId,
     },
   });
+  pending.retryCommandId = undefined;
   if (reply.kind === "result") return;
+  if (reply.error.code === "resolver-timeout") {
+    pending.retryCommandId = commandId;
+    process.stderr.write(
+      `Queue resolver-timeout: command ${commandId}; will retry\n`,
+    );
+    return;
+  }
   if (!["no-ready-ticket", "workflow-active"].includes(reply.error.code))
     throw new Error(reply.error.code);
   pending.commands.delete(commandId);
