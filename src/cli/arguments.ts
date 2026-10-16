@@ -10,6 +10,8 @@ export type Invocation =
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
+  | { readonly kind: "chats-import-help" }
+  | { readonly kind: "chats-import"; readonly paths: readonly string[] }
   | {
       readonly kind: "validate";
       readonly manifest: string;
@@ -82,6 +84,8 @@ function textValues(argumentsList: readonly string[]): readonly string[] {
 }
 
 export function parseInvocation(given: readonly string[]): Invocation {
+  if (given[0] === "chats" && given[1] === "import")
+    return chatsImport(given.slice(2));
   const argumentsList = textValues(given);
   const json = given.includes("--json");
   const parsed = parsedArguments(argumentsList);
@@ -100,6 +104,31 @@ export function parseInvocation(given: readonly string[]): Invocation {
   if (typeof outcome === "string")
     return { kind: "usage-error", code: outcome, json };
   return outcome;
+}
+
+function chatsImport(argumentsList: readonly string[]): Invocation {
+  const error = (code: string): Invocation => ({
+    kind: "usage-error",
+    code,
+    json: false,
+  });
+  if (
+    argumentsList.length === 1 &&
+    ["--help", "-h"].includes(String(argumentsList[0]))
+  )
+    return { kind: "chats-import-help" };
+  const paths: string[] = [];
+  let literal = false;
+  for (const argument of argumentsList) {
+    if (!literal && argument === "--") literal = true;
+    else if (!literal && argument.startsWith("-"))
+      return error("unexpected-option");
+    else if (argument === "") return error("missing-argument");
+    else paths.push(argument);
+  }
+  return paths.length === 0
+    ? error("missing-argument")
+    : { kind: "chats-import", paths };
 }
 
 function parsedArguments(argumentsList: readonly string[]): Parsed | string {
