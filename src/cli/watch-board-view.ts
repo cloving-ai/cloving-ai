@@ -26,6 +26,18 @@ export function cardReview(card: WatchCard): string {
     .join(" · ");
 }
 
+export function completionMark(card: WatchCard, workflowId: string): Shown {
+  const mark = card.completionMark;
+  if (mark === null) return null;
+  if (mark.laterRunId === null)
+    return element("span", { class: "completion-mark", children: mark.text });
+  return element("a", {
+    class: "completion-mark",
+    href: watchHash({ workflowId, runId: mark.laterRunId }),
+    children: mark.text,
+  });
+}
+
 export function Card(props: {
   readonly card: WatchCard;
   readonly workflowId: string;
@@ -33,26 +45,35 @@ export function Card(props: {
 }): Shown {
   const { card, workflowId, now } = props;
   const review = workflowId === "develop-issue" ? cardReview(card) : "";
-  return element("a", {
+  return element("article", {
     class: "card",
-    href: watchHash({ workflowId, runId: card.runId }),
     children: [
-      element("strong", { children: card.title ?? card.runId }),
-      element("span", { class: "card-step", children: cardStep(card, now) }),
-      review === ""
-        ? null
-        : element("span", { class: "card-review", children: review }),
-      element("span", {
-        class: "card-cost",
-        children: `${card.claudeCostUsd.toFixed(2)} USD`,
+      element("a", {
+        class: "card-run",
+        href: watchHash({ workflowId, runId: card.runId }),
+        children: [
+          element("strong", { children: card.title ?? card.runId }),
+          element("span", {
+            class: "card-step",
+            children: cardStep(card, now),
+          }),
+          review === ""
+            ? null
+            : element("span", { class: "card-review", children: review }),
+          element("span", {
+            class: "card-cost",
+            children: `${card.claudeCostUsd.toFixed(2)} USD`,
+          }),
+          card.decisionWaiting
+            ? element("span", {
+                class: "decision-mark",
+                children: "! Decision waiting",
+              })
+            : null,
+          element("small", { children: card.runId }),
+        ],
       }),
-      card.decisionWaiting
-        ? element("span", {
-            class: "decision-mark",
-            children: "! Decision waiting",
-          })
-        : null,
-      element("small", { children: card.runId }),
+      completionMark(card, workflowId),
     ],
   });
 }

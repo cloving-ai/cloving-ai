@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchCard, WatchModel } from "../src/cli/watch-render.ts";
 import { Page } from "../src/cli/watch-view.ts";
-import { activeBoardModel } from "./watch-board-fixture.ts";
-import { rendered } from "./watch-dom.ts";
+import { activeBoardModel, completionScenario } from "./watch-board-fixture.ts";
+import { found, rendered } from "./watch-dom.ts";
 import { noCopy } from "./watch-sample.ts";
 
 function page(model: WatchModel, selected: string): string {
@@ -18,6 +18,35 @@ function page(model: WatchModel, selected: string): string {
     }),
   );
 }
+
+await test("CLV-091 stopped cards show exact marks with separate encoded original and later links", () => {
+  const model = completionScenario({ stopped: "A /&<b>", later: "B /&<em>" });
+  const shown = component(Page, {
+    model,
+    selected: "workflow=develop-issue",
+    now: model.updatedAt,
+    stale: false,
+    copying: noCopy,
+  });
+  const html = rendered(shown);
+  assert.match(html, />Done in a later run<\/a>/);
+  assert.match(html, />Needs attention<\/span>/);
+  assert.match(html, /Title of A \/&amp;&lt;b&gt;/);
+  const links = found(shown, "a");
+  for (const href of [
+    "#workflow=develop-issue&run=A%20%2F%26%3Cb%3E",
+    "#workflow=develop-issue&run=B%20%2F%26%3Cem%3E",
+  ])
+    assert.ok(
+      links.some((link) => link["href"] === href),
+      href,
+    );
+  assert.ok(links.every((link) => found(link["children"], "a").length === 0));
+  assert.doesNotMatch(
+    page(model, "workflow=develop-issue&run=A%20%2F%26%3Cb%3E"),
+    /Done in a later run|Needs attention/,
+  );
+});
 
 await test("CLV-079 the workflow list shows counts and selection beside ordered columns and cards", () => {
   const model = activeBoardModel();
@@ -63,6 +92,7 @@ function cardPage(
 ): string {
   const model = activeBoardModel();
   const card: WatchCard = {
+    completionMark: null,
     runId: "run /&1",
     title: "Review the change",
     claudeCostUsd: 1.236,

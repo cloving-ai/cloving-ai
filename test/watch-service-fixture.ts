@@ -60,12 +60,15 @@ export async function watchData(address: string): Promise<Fields> {
 export function watchReplies(options: {
   readonly runs: readonly Fields[];
   readonly events?: readonly Fields[];
+  readonly eventsByRun?: Readonly<Record<string, readonly Fields[]>>;
   readonly workflows?: readonly string[];
 }): {
   readonly requests: ServiceRequest[];
   readonly answer: (request: ServiceRequest) => Reply;
 } {
   const requests: ServiceRequest[] = [];
+  const eventsByRun = options.eventsByRun ?? {};
+  const defaultEvents = options.events ?? [];
   const answer = (request: ServiceRequest): Reply => {
     requests.push(request);
     const runId = request.parameters["runId"];
@@ -98,7 +101,7 @@ export function watchReplies(options: {
         },
       };
     }
-    const events = (options.events ?? [])
+    const events = (eventsByRun[String(runId)] ?? defaultEvents)
       .filter(
         (event) =>
           Number(event["sequence"]) > Number(request.parameters["after"]),

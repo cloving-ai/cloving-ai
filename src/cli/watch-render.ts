@@ -74,6 +74,12 @@ export interface WatchCard {
   readonly round: number | null;
   readonly greptileScore: number | null;
   readonly pullRequestNumber: number | null;
+  readonly completionMark: WatchCompletionMark | null;
+}
+
+export interface WatchCompletionMark {
+  readonly text: string;
+  readonly laterRunId: string | null;
 }
 
 export interface WatchColumn {
@@ -90,6 +96,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly ticketId: string | null;
   readonly title: string | null;
   readonly outcome: string | null;
   readonly latestAt: string | null;

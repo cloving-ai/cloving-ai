@@ -23,6 +23,7 @@ export interface WatchRead {
   readonly workflows: readonly string[];
   readonly summaries: readonly ReadStatus[];
   readonly runs: readonly ReadRun[];
+  readonly completionCandidates: readonly ReadRun[];
   readonly decisions: readonly unknown[];
 }
 
@@ -44,6 +45,7 @@ const unavailable: WatchRead = {
   workflows: [],
   summaries: [],
   runs: [],
+  completionCandidates: [],
   decisions: [],
 };
 
@@ -160,9 +162,15 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   if (status === null || !Array.isArray(status["runs"])) return unavailable;
   const summaries = await allRuns(reader, status);
   const runs: ReadRun[] = [];
+  const completionCandidates: ReadRun[] = [];
   for (const summary of summaries) {
     if (activeRun(summary.state) || recentRun(summary.latestAt, now))
       runs.push(await detailed(reader, summary));
+    else if (
+      summary["workflowId"] === "develop-issue" &&
+      summary.state === "completed"
+    )
+      completionCandidates.push(await detailed(reader, summary));
   }
   return {
     service: "up",
@@ -171,6 +179,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     ),
     summaries,
     runs,
+    completionCandidates,
     decisions: await decisionsOf(reader),
   };
 }

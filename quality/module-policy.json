@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/watch-completion-fixture.ts": "test",
+    "test/watch-completion.test.ts": "test",
     "test/notify-check-fixture.ts": "test",
     "test/notify-check.test.ts": "test",
     "test/notify-message.test.ts": "test",

@@ -2,10 +2,90 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fields, items } from "./service-fixture.ts";
 import {
+  attentionMark,
+  completionReplies,
+  laterMark,
+  stoppedMark,
+} from "./watch-completion-fixture.ts";
+import {
   watchData,
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test("CLV-091 watch searches later status pages and paginated evidence outside Done limits and retention", async () => {
+  const recent = new Date().toISOString();
+  for (const latestAt of [
+    recent,
+    "2020-01-01T00:00:00Z",
+    "2099-01-01T00:00:00Z",
+    "invalid",
+    null,
+  ]) {
+    const { answer, requests } = completionReplies(latestAt);
+    await withWatchService(answer, async (watch) => {
+      const model = await watchData(watch.address);
+      assert.deepEqual(stoppedMark(model), laterMark);
+      const board = fields(items(model["workflows"])[0]);
+      const done = items(board["columns"])
+        .map(fields)
+        .find((column) => column["name"] === "Done");
+      assert.equal(items(done?.["cards"]).length, 20);
+      assert.ok(
+        !items(done?.["cards"]).some(
+          (card) => fields(card)["runId"] === "zz-later",
+        ),
+      );
+      assert.equal(
+        items(model["runs"]).some((run) => fields(run)["runId"] === "zz-later"),
+        latestAt === recent,
+      );
+      for (const runId of ["a-stopped", "zz-later"])
+        assert.ok(
+          requests.some(
+            (request) =>
+              request.operation === "events" &&
+              request.parameters["runId"] === runId &&
+              request.parameters["after"] === 1000,
+          ),
+        );
+      assert.ok(
+        requests.every((request) =>
+          ["status", "events", "questions"].includes(request.operation),
+        ),
+      );
+    });
+  }
+});
+
+await test("CLV-091 each board read recomputes completion when only the later run changes", async () => {
+  const { answer, requests, runs } = completionReplies();
+  const index = runs.findIndex((run) => run["runId"] === "zz-later");
+  const completed = runs[index];
+  assert.ok(completed);
+  runs[index] = {
+    ...completed,
+    state: "running",
+    outcome: null,
+    latestSequence: 1000,
+  };
+  await withWatchService(answer, async (watch) => {
+    assert.deepEqual(
+      stoppedMark(await watchData(watch.address)),
+      attentionMark,
+    );
+    const reads = requests.filter(
+      (request) => request.parameters["runId"] === "a-stopped",
+    ).length;
+    runs[index] = completed;
+    assert.deepEqual(stoppedMark(await watchData(watch.address)), laterMark);
+    assert.equal(
+      requests.filter((request) => request.parameters["runId"] === "a-stopped")
+        .length,
+      reads,
+    );
+  });
+});
 
 await test("CLV-077 watch reads both run pages and every active run, including the second page", async () => {
   const runs = Array.from({ length: 51 }, (_, index) => ({

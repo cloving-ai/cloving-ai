@@ -201,6 +201,7 @@ export interface WatchInputs {
   readonly updatedAt: string;
   readonly service: string;
   readonly runs: readonly unknown[];
+  readonly completionCandidates?: readonly unknown[];
   readonly decisions: readonly unknown[];
   readonly turns: readonly WatchTurn[];
   readonly githubRecords: readonly GithubRecords[];
@@ -296,9 +297,11 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
+  const ticketId = text(status["ticketId"]);
   return {
     runId,
     workflowId,
+    ticketId: ticketId === "" ? null : ticketId,
     title: stamp(status["title"]),
     outcome: stamp(record(status["outcome"])["kind"]),
     latestAt: stamp(status["latestAt"]),
@@ -330,7 +333,14 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   const runs = inputs.runs.map((value) =>
     shortened(displayRun(runOf(inputs, value), inputs.home)),
   );
-  const workflows = boardsOf(inputs, runs);
+  const candidates = [
+    ...runs,
+    ...list(inputs.completionCandidates).map((value) => runOf(inputs, value)),
+  ];
+  const workflows = boardsOf(
+    { ...inputs, completionCandidates: candidates },
+    runs,
+  );
   return {
     workflows,
     startWorkflowId: startWorkflowOf(workflows),
