@@ -216,9 +216,9 @@ await withHarness(async (harness) => {
   const listener = await listen({
     path: join(harness.runtimeDirectory, "control.sock"),
     handle: async (request) => {
+      if (request.operation !== "run" && request.parameters.runId === undefined)
+        return { kind: "result", result: { runs: [], next: null } };
       if (request.operation !== "run") {
-        if (request.parameters.runId === undefined)
-          return { kind: "result", result: { runs: [], next: null } };
         assert.equal(admissions, 1);
         runReads += 1;
         return { kind: "result", result: { run: { state: "running" } } };
