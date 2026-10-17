@@ -93,3 +93,31 @@ await test("CLV-074 start makes a manifest per workflow function with the file n
     },
   });
 });
+
+await test("CLV-096 discovers JavaScript and TypeScript but excludes type declarations", async () => {
+  await withFiles(
+    {
+      "workflows/alpha.js": "export {};",
+      "workflows/beta.ts": "export {};",
+      "workflows/alpha.d.ts": "export {};",
+      "workflows/beta.declaration.json": "{}",
+    },
+    async (directory) => {
+      assert.deepEqual(await workflowFiles(join(directory, "workflows")), [
+        "alpha.js",
+        "beta.ts",
+      ]);
+    },
+  );
+});
+
+await test("CLV-096 emission preserves logical workflow names", () => {
+  const workflowId = "workflow//./workflows/review-run//review";
+  const compiled = (extension: string) =>
+    workflowManifests({
+      workflows: {
+        [`workflows/review-run.${extension}`]: { review: { workflowId } },
+      },
+    });
+  assert.deepEqual(compiled("js"), compiled("ts"));
+});

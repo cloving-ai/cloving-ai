@@ -67,6 +67,7 @@
     "quality/coverage.ts": "quality",
     "quality/coverage-command.ts": "quality",
     "quality/coverage-report.ts": "quality",
+    "test/quality/coverage-volume.test.ts": "test",
     "quality/dependency-graph.ts": "quality",
     "quality/dependency-admission.ts": "quality",
     "quality/dependency-surface.ts": "quality",
@@ -657,7 +658,9 @@
     "test/cli-start-restart.test.ts": "test",
     "tools/self-update.ts": "build",
     "tools/self-update-host.ts": "build",
-    "tools/self-host-processes.ts": "build"
+    "tools/self-host-processes.ts": "build",
+    "test/packed-install.test.ts": "test",
+    "tools/copy-workflow-declarations.ts": "build"
   },
   "allowed": {
     "quality": [
