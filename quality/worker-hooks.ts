@@ -7,6 +7,7 @@ import { checkSuppressions } from "./suppression-approval.ts";
 import { readWorkerHookEvent } from "./worker-hook-input.ts";
 import type { WorkerHookPolicy } from "./worker-hook-input.ts";
 import { proposedWorkerText, workerEditFile } from "./worker-edit.ts";
+import { traceWorkerHook } from "./worker-hook-trace.ts";
 
 export async function evaluateWorkerHook(
   input: unknown,
@@ -46,16 +47,7 @@ export async function evaluateWorkerHook(
         return { exit: 0, diagnostic: "" };
       }
     }
-    const files = policy.sourceFiles.map((file) =>
-      resolve(policy.workspace, file),
-    );
-    const program = compilerProgram(policy.workspace, {
-      files,
-      trustedConfiguration: policy.compilerConfiguration,
-    });
-    await checkLint(policy.workspace, { files, approvals: [], program });
-    const findings = inspectStructure(program);
-    if (findings.length > 0) throw new Error(JSON.stringify(findings));
+    await checkWorkerSources(policy);
     return { exit: 0, diagnostic: "" };
   } catch (error) {
     return {
@@ -63,4 +55,23 @@ export async function evaluateWorkerHook(
       diagnostic: error instanceof Error ? error.message : "worker-hook-failed",
     };
   }
+}
+
+async function checkWorkerSources(policy: WorkerHookPolicy): Promise<void> {
+  const files = policy.sourceFiles.map((file) =>
+    resolve(policy.workspace, file),
+  );
+  traceWorkerHook("compiler:start");
+  const program = compilerProgram(policy.workspace, {
+    files,
+    trustedConfiguration: policy.compilerConfiguration,
+  });
+  traceWorkerHook("compiler:end");
+  traceWorkerHook("lint:start");
+  await checkLint(policy.workspace, { files, approvals: [], program });
+  traceWorkerHook("lint:end");
+  traceWorkerHook("structure:start");
+  const findings = inspectStructure(program);
+  traceWorkerHook("structure:end");
+  if (findings.length > 0) throw new Error(JSON.stringify(findings));
 }

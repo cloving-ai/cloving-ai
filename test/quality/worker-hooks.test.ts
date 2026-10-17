@@ -1,20 +1,19 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { open, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./files-fixture.ts";
 import { evaluateWorkerHook } from "../../quality/worker-hooks.ts";
-import { parseCheckTimeFactor } from "../../quality/test-execution.ts";
 import { runCommand } from "../../quality/command.ts";
-
-function hookTimeoutMilliseconds(factor: string | undefined): number {
-  return 10000 * parseCheckTimeFactor(factor);
-}
-
-const hookTimeout = hookTimeoutMilliseconds(
-  process.env["CLOVING_CHECK_TIME_FACTOR"],
-);
+import {
+  hookTimeoutMilliseconds,
+  hookEnvironment,
+  hookFailureMessage,
+  hookDiagnostic,
+  runHook,
+  withHook,
+} from "./worker-hook-fixture.ts";
 
 await test("CLV-100 scales the QG-15 hook subprocess limit by the check time factor", () => {
   assert.equal(hookTimeoutMilliseconds(undefined), 10000);
@@ -43,49 +42,76 @@ await test("CLV-100 forwards the check time factor to hook test subprocesses", (
   }
 });
 
-async function withHook(
-  source: string,
-  inspect: (
-    dispatch: (input: unknown) => { exit: number | null; diagnostic: string },
-    directory: string,
-  ) => Promise<void> | void,
-): Promise<void> {
-  await withFiles(
-    {
-      "workspace/main.ts": source,
-      "workspace/package.json": '{"type":"module"}',
-      "policy.json": "{}",
-    },
-    async (directory) => {
-      const workspace = join(directory, "workspace");
-      const policy = join(directory, "policy.json");
-      await writeFile(
-        policy,
-        JSON.stringify({
-          workspace,
-          editableFiles: ["main.ts"],
-          sourceFiles: ["main.ts"],
-          compilerConfiguration: resolve("tsconfig.json"),
-        }),
+await test("CLV-104 hook trace reports ordered phases with nondecreasing elapsed milliseconds", async () => {
+  await withHook("export const value = 1;\n", (dispatch) => {
+    const result = dispatch(
+      { hook_event_name: "Stop", stop_hook_active: false },
+      { expectedExit: 0 },
+    );
+    assert.equal(result.exit, 0, result.diagnostic);
+    const trace = [
+      ...result.stderr.matchAll(/^\[cloving-worker-hook\] (\d+)ms (\S+)$/gm),
+    ];
+    assert.deepEqual(
+      trace.map((line) => line[2]),
+      [
+        "start",
+        "input:read",
+        "check:start",
+        "input-policy:read",
+        "compiler:start",
+        "compiler:end",
+        "lint:start",
+        "lint:end",
+        "structure:start",
+        "structure:end",
+        "check:end",
+      ],
+    );
+    const times = trace.map((line) => Number(line[1]));
+    assert.deepEqual(
+      times,
+      [...times].sort((left, right) => left - right),
+    );
+    assert.ok(times.every((time) => Number.isInteger(time) && time >= 0));
+    assert.equal(result.stdout, "");
+  });
+});
+
+await test("CLV-104 hook without the trace setting preserves its exact output", async () => {
+  await withHook("export const value = 1;\n", (dispatch) => {
+    const event = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Write",
+      tool_input: {
+        file_path: "eslint.config.mjs",
+        content: "export default [];",
+      },
+    };
+    const traced = dispatch(event);
+    for (const setting of [undefined, "0", "true"]) {
+      const plain = dispatch(event, {
+        environment: { CLOVING_WORKER_HOOK_TRACE: setting },
+      });
+      assert.doesNotMatch(plain.stderr, /\[cloving-worker-hook\]/);
+      assert.equal(plain.stderr, "outside-worker-edit-scope");
+      assert.equal(plain.stdout, "");
+      assert.equal(plain.exit, 2);
+      assert.deepEqual(
+        {
+          exit: traced.exit,
+          stdout: traced.stdout,
+          diagnostic: traced.diagnostic,
+        },
+        {
+          exit: plain.exit,
+          stdout: plain.stdout,
+          diagnostic: plain.diagnostic,
+        },
       );
-      const dispatch = (input: unknown) => {
-        const result = spawnSync(
-          process.execPath,
-          [resolve("tools/worker-hook.ts"), policy],
-          {
-            input: JSON.stringify(input),
-            encoding: "utf8",
-            timeout: hookTimeout,
-            env: { PATH: process.env["PATH"], NODE_DISABLE_COMPILE_CACHE: "1" },
-          },
-        );
-        assert.equal(result.error, undefined);
-        return { exit: result.status, diagnostic: result.stderr };
-      };
-      await inspect(dispatch, workspace);
-    },
-  );
-}
+    }
+  });
+});
 
 await test("QG-15 executed PreToolUse hook denies protected writes and suppression additions", async () => {
   await withHook("export const value = 1;\n", (dispatch) => {
@@ -130,7 +156,10 @@ await test("QG-15 executed PostToolUse and Stop hooks report size and request re
       assert.equal(stop.exit, 2);
       assert.match(stop.diagnostic, /max-lines-per-function/);
       assert.equal(
-        dispatch({ hook_event_name: "Stop", stop_hook_active: true }).exit,
+        dispatch(
+          { hook_event_name: "Stop", stop_hook_active: true },
+          { expectedExit: 0 },
+        ).exit,
         0,
       );
     },
@@ -211,18 +240,15 @@ await test("QG-10 hook rejects oversized input before source analysis", async ()
     );
     const input = await open(inputFile, "r");
     try {
-      const result = spawnSync(
-        process.execPath,
-        [resolve("tools/worker-hook.ts"), resolve(directory, "../policy.json")],
-        {
-          stdio: [input.fd, "pipe", "pipe"],
-          encoding: "utf8",
-          timeout: hookTimeout,
-        },
-      );
-      assert.equal(result.error, undefined);
-      assert.equal(result.status, 2);
-      assert.match(result.stderr, /worker-hook-input-limit/);
+      const result = runHook({
+        arguments: [
+          resolve("tools/worker-hook.ts"),
+          resolve(directory, "../policy.json"),
+        ],
+        inputFile: input.fd,
+      });
+      assert.equal(result.exit, 2);
+      assert.match(result.diagnostic, /worker-hook-input-limit/);
     } finally {
       await input.close();
     }
@@ -231,26 +257,34 @@ await test("QG-10 hook rejects oversized input before source analysis", async ()
 
 await test("QG-15 hook accepts a complete streamed edit below the input limit", async () => {
   await withHook("export const value = 1;\n", (dispatch) => {
-    const result = dispatch({
-      hook_event_name: "PreToolUse",
-      tool_name: "Write",
-      tool_input: {
-        file_path: "main.ts",
-        content: " ".repeat(700000) + "export {};",
+    const result = dispatch(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Write",
+        tool_input: {
+          file_path: "main.ts",
+          content: " ".repeat(700000) + "export {};",
+        },
       },
-    });
+      { expectedExit: 0 },
+    );
     assert.equal(result.exit, 0, result.diagnostic);
   });
 });
 
 await test("QG-10 hook bounds an input stream that never closes", async () => {
   await withHook("export const value = 1;\n", async (_dispatch, directory) => {
+    const started = performance.now();
     const child = spawn(
       process.execPath,
       [resolve("tools/worker-hook.ts"), resolve(directory, "../policy.json")],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      { stdio: ["pipe", "pipe", "pipe"], env: hookEnvironment() },
     );
     let diagnostic = "";
+    let error: NodeJS.ErrnoException | undefined;
+    child.once("error", (failure) => {
+      error = failure;
+    });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       diagnostic += chunk;
@@ -260,11 +294,23 @@ await test("QG-10 hook bounds an input stream that never closes", async () => {
     }, 5000);
     try {
       child.stdin.write("{");
-      const exit = await new Promise<number | null>((resolveExit, reject) => {
-        child.once("error", reject);
+      const exit = await new Promise<number | null>((resolveExit) => {
         child.once("close", resolveExit);
       });
-      assert.equal(exit, 2);
+      assert.equal(
+        exit,
+        2,
+        hookFailureMessage(
+          {
+            status: exit,
+            signal: child.signalCode,
+            stderr: diagnostic,
+            ...(error ? { error } : {}),
+          },
+          started,
+        ),
+      );
+      diagnostic = hookDiagnostic(diagnostic);
       assert.match(diagnostic, /worker-hook-input-timeout/);
     } finally {
       clearTimeout(deadline);
