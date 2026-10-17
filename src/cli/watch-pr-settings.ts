@@ -35,8 +35,6 @@ export async function watchPrObserver(
           .execute({
             command: [
               "git",
-              "-C",
-              directory,
               "config",
               "--local",
               "--get-all",

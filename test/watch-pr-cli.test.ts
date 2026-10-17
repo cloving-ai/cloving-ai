@@ -76,3 +76,46 @@ await test("CLV-093 CLI board returns while configured GitHub waits and a later 
     },
   );
 });
+
+await test("CLV-093 CLI reads the service origin from a relative repository path", async () => {
+  const replies = watchReplies({ runs: [stoppedPrRun()] });
+  await withWatchService(
+    {
+      answer: replies.answer,
+      configure: async (runtime) => {
+        const options = await configuredPrWatch(runtime);
+        return {
+          ...options,
+          environment: {
+            ...options.environment,
+            CLOVING_WATCH_REPOSITORY: "./service-repository",
+          },
+        };
+      },
+    },
+    async (watch, runtime) => {
+      await recordedPrJournal(runtime);
+      const first = stoppedPrCard(await watchData(watch.address));
+      assert.equal(first["pullRequestObservation"], null);
+      assert.deepEqual(await ghRequest(runtime), [
+        "prefix with spaces",
+        "api",
+        "--method",
+        "GET",
+        "--hostname",
+        "github.example",
+        "repos/fixture/demo/pulls/7",
+        "--include",
+      ]);
+      await releasePr(runtime, true);
+      await until(
+        async () =>
+          fields(
+            stoppedPrCard(await watchData(watch.address))[
+              "pullRequestObservation"
+            ],
+          )["status"] === "merged",
+      );
+    },
+  );
+});

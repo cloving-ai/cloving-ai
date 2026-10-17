@@ -30,13 +30,12 @@ await test("CLV-093 watch parses configured command and reads only the service r
       assert.equal(requests.length, 2);
       assert.deepEqual(requests[0]?.command, [
         "git",
-        "-C",
-        "service-repository",
         "config",
         "--local",
         "--get-all",
         "remote.origin.url",
       ]);
+      assert.equal(requests[0].directory, "service-repository");
       assert.deepEqual(
         requests[1]?.command.slice(0, -7),
         configured === undefined ? ["gh"] : ["fake-gh", "prefix with spaces"],

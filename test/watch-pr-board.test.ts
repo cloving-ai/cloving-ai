@@ -7,7 +7,7 @@ import {
   completionScenario,
 } from "./watch-board-fixture.ts";
 import { recordedPr } from "./watch-pr-fixture.ts";
-import type { WatchModel } from "../src/cli/watch-render.ts";
+import type { WatchModel, WatchPullRequest } from "../src/cli/watch-render.ts";
 
 function recorded(model: WatchModel): WatchModel {
   return {
@@ -19,7 +19,7 @@ function recorded(model: WatchModel): WatchModel {
 await test("CLV-093 observations decorate retained unresolved cards without changing local marks or run state", () => {
   const model = recorded(completionScenario());
   const before = JSON.stringify(model);
-  const calls: unknown[] = [];
+  const calls: WatchPullRequest[] = [];
   const result = observedBoard(model, {
     observe: (pull) => {
       calls.push(pull);

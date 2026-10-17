@@ -48,12 +48,11 @@ export function completionMark(card: WatchCard, workflowId: string): Shown {
   const mark = card.completionMark;
   if (mark === null) return null;
   let text = mark.text;
-  if (text === "Needs attention") {
-    if (card.pullRequestObservation?.status === "merged")
-      text = `PR merged #${String(card.pullRequestNumber)}`;
-    if (card.pullRequestObservation?.status === "unavailable")
-      text = "PR status unavailable";
-  }
+  const status = card.pullRequestObservation?.status;
+  if (text === "Needs attention" && status === "merged")
+    text = `PR merged #${String(card.pullRequestNumber)}`;
+  if (text === "Needs attention" && status === "unavailable")
+    text = "PR status unavailable";
   if (mark.laterRunId === null)
     return element("span", { class: "completion-mark", children: text });
   return element("a", {
