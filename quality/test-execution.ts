@@ -81,7 +81,7 @@ export function checkTests(directory: string, execution: TestExecution): void {
     if (before !== sourceSnapshot(checked))
       throw new Error("test-source-changed");
   } finally {
-    rmSync(temporary, { recursive: true });
+    rmSync(temporary, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }
 }
 
