@@ -67,6 +67,7 @@
     "quality/coverage.ts": "quality",
     "quality/coverage-command.ts": "quality",
     "quality/coverage-report.ts": "quality",
+    "test/quality/coverage-volume.test.ts": "test",
     "quality/dependency-graph.ts": "quality",
     "quality/dependency-admission.ts": "quality",
     "quality/dependency-surface.ts": "quality",
