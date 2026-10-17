@@ -21,6 +21,7 @@ export function runCommand(command: CheckCommand): string {
     maxBuffer: 8 * 1024 * 1024,
     env: {
       PATH: process.env["PATH"],
+      CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
       TZ: "UTC",
       CI: "true",
       NODE_DISABLE_COMPILE_CACHE: "1",
