@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
+import filesystem from "node:fs";
 import { readdir, symlink } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { runCommand } from "../../quality/command.ts";
@@ -11,6 +13,69 @@ import {
   testCommand,
 } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
+
+await test("CLV-101 bounds retries for transient coverage cleanup errors", async () => {
+  const remove = filesystem.rmSync;
+  let removals = 0;
+  filesystem.rmSync = (path, options) => {
+    removals += 1;
+    remove(path, options);
+    assert.ok(options);
+    assert.equal(options.recursive, true);
+    assert.ok((options.maxRetries ?? 0) > 0);
+    assert.ok((options.maxRetries ?? Infinity) <= 5);
+    assert.ok((options.retryDelay ?? 100) > 0);
+    assert.ok((options.retryDelay ?? 100) <= 1000);
+    assert.equal(filesystem.existsSync(path), false);
+  };
+  syncBuiltinESMExports();
+  try {
+    await withFiles(
+      {
+        "main.test.ts":
+          'import { test } from "node:test"; await test("passes", () => {});',
+      },
+      (directory) => {
+        checkTests(directory, { files: [join(directory, "main.test.ts")] });
+        assert.equal(removals, 1);
+      },
+    );
+  } finally {
+    filesystem.rmSync = remove;
+    syncBuiltinESMExports();
+  }
+});
+
+await test("CLV-101 fails the gate when coverage cleanup exhausts its retries", async () => {
+  const remove = filesystem.rmSync;
+  const failure = Object.assign(new Error("coverage directory still busy"), {
+    code: "ENOTEMPTY",
+  });
+  filesystem.rmSync = (path, options) => {
+    remove(path, options);
+    throw failure;
+  };
+  syncBuiltinESMExports();
+  try {
+    await withFiles(
+      {
+        "main.test.ts":
+          'import { test } from "node:test"; await test("passes", () => {});',
+      },
+      (directory) => {
+        assert.throws(
+          () => {
+            checkTests(directory, { files: [join(directory, "main.test.ts")] });
+          },
+          (error) => error === failure,
+        );
+      },
+    );
+  } finally {
+    filesystem.rmSync = remove;
+    syncBuiltinESMExports();
+  }
+});
 
 await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
   assert.equal(parseCheckTimeFactor(undefined), 1);

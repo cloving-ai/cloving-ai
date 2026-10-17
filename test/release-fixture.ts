@@ -181,6 +181,8 @@ export async function metadata(
   return { manifest, lock };
 }
 
+export const packageVersion = (await metadata()).manifest.version;
+
 export function parseCommands(content: string): readonly Command[] {
   return content
     .split("\n")
@@ -246,8 +248,8 @@ export const tagged: ReleaseContext = {
   github: {
     event_name: "push",
     ref_type: "tag",
-    ref: "refs/tags/v1.0.0",
-    ref_name: "v1.0.0",
+    ref: `refs/tags/v${packageVersion}`,
+    ref_name: `v${packageVersion}`,
   },
   quality: "success",
 };
@@ -259,7 +261,7 @@ const args = process.argv.slice(2);
 const state = JSON.parse(readFileSync("scenario.json", "utf8"));
 appendFileSync("commands.jsonl", JSON.stringify([command, ...args]) + "\\n");
 if (command === "npm" && args[0] === "view" && existsSync("published")) {
-  console.log(JSON.stringify("1.0.0")); process.exit(0);
+  console.log(JSON.stringify(${JSON.stringify(packageVersion)})); process.exit(0);
 }
 if (command === "npm" && args[0] === "view") {
   console.log(state.registry);
@@ -332,7 +334,7 @@ export async function releaseAttempt(scenario: ReleaseScenario = {}): Promise<{
     {
       "package.json": JSON.stringify({
         name: "cloving",
-        version: "1.0.0",
+        version: packageVersion,
         type: "module",
       }),
       "bin/npm": fake,
