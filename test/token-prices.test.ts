@@ -57,8 +57,9 @@ await test("CLV-105 invalid token price settings fail with the setting name", ()
     '{"model":null}',
     '{"model":[]}',
     '{"model":{}}',
-    ...[-1, "1", null, true].map((input: unknown) =>
-      JSON.stringify({ model: { ...price, input } }),
+    ...[{ input: -1 }, { input: "1" }, { input: null }, { input: true }].map(
+      (invalidInput) =>
+        JSON.stringify({ model: { ...price, ...invalidInput } }),
     ),
     '{"model":{"input":1e400,"cachedInput":0,"output":1}}',
   ])
