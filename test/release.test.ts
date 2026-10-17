@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   job,
   metadata,
+  packageVersion,
   parseCommands,
   releaseAttempt,
   releaseWorkflow,
@@ -101,10 +102,10 @@ await test("CLV-097 release fixtures reject malformed manifest and lock metadata
     );
 });
 
-await test("CLV-097 release metadata and both lock versions describe the public 1.0.0 package", async () => {
+await test("CLV-101 release metadata and both lock versions describe the public package", async () => {
   const { manifest, lock } = await metadata();
   assert.equal(manifest.name, "cloving");
-  assert.equal(manifest.version, "1.0.0");
+  assert.equal(manifest.version, "1.0.1");
   assert.equal(manifest.private, undefined);
   assert.deepEqual(manifest.repository, {
     type: "git",
@@ -123,7 +124,7 @@ await test("CLV-097 release metadata and both lock versions describe the public 
   });
   assert.deepEqual(manifest.os, ["darwin"]);
   assert.deepEqual(manifest.cpu, ["arm64"]);
-  assert.equal(lock.version, "1.0.0");
+  assert.equal(lock.version, manifest.version);
   const root = lock.packages[""];
   for (const name of [
     "name",
@@ -260,7 +261,7 @@ await test("CLV-097 branches, pull requests, dispatches and failed, cancelled or
       ...tagged,
       github: {
         ...tagged.github,
-        ref: "refs/heads/v1.0.0",
+        ref: `refs/heads/v${packageVersion}`,
         ref_type: "branch",
       },
     },
@@ -283,10 +284,11 @@ await test("CLV-097 branches, pull requests, dispatches and failed, cancelled or
 });
 
 await test("CLV-097 a mismatching tag stops before registry, publication or release", async () => {
+  const tag = `${tagged.github.ref_name}-mismatch`;
   const result = await releaseAttempt({
     context: {
       ...tagged,
-      github: { ...tagged.github, ref: "refs/tags/v9.9.9", ref_name: "v9.9.9" },
+      github: { ...tagged.github, ref: `refs/tags/${tag}`, ref_name: tag },
     },
   });
   assert.notEqual(result.statuses[0], 0);
@@ -297,19 +299,19 @@ await test("CLV-097 a confirmed missing version publishes publicly before creati
   const result = await releaseAttempt();
   assert.deepEqual(result.statuses, [0]);
   assert.deepEqual(result.commands, [
-    ["npm", "view", "cloving@1.0.0", "version", "--json"],
+    ["npm", "view", `cloving@${packageVersion}`, "version", "--json"],
     ["npm", "publish", "--access", "public", "--ignore-scripts"],
     [
       "gh",
       "api",
       "--include",
-      "repos/cloving-ai/cloving-ai/releases/tags/v1.0.0",
+      `repos/cloving-ai/cloving-ai/releases/tags/v${packageVersion}`,
     ],
     [
       "gh",
       "release",
       "create",
-      "v1.0.0",
+      `v${packageVersion}`,
       "--repo",
       "cloving-ai/cloving-ai",
       "--verify-tag",
@@ -321,7 +323,10 @@ await test("CLV-097 a confirmed missing version publishes publicly before creati
 });
 
 await test("CLV-097 an existing npm version skips publish and repairs a missing GitHub release", async () => {
-  const result = await releaseAttempt({ registry: '"1.0.0"', registryExit: 0 });
+  const result = await releaseAttempt({
+    registry: JSON.stringify(packageVersion),
+    registryExit: 0,
+  });
   assert.deepEqual(result.statuses, [0]);
   assert.deepEqual(
     result.commands.map((entry) => entry.slice(0, 2)),
@@ -358,7 +363,7 @@ await test("CLV-097 registry failures and malformed or unexpected responses fail
     ['{"error":{"code":"E500"}}', 1],
     ["connection failed", 1],
     ['{"error":{"code":"E404"}}', 0],
-    ['"0.3.20"', 0],
+    [JSON.stringify(`${packageVersion}-unexpected`), 0],
     ["", 0],
   ] as const) {
     const result = await releaseAttempt({ registry, registryExit });
