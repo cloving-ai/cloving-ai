@@ -149,8 +149,8 @@ await withHarness(async (harness) => {
   assert.match(stderr, /Queue stopped:.*EISDIR/);
 });
 
-await test("CLV-092 a resolver timeout reports a retry and keeps its command without stopping", () => {
-  const output = observation(`
+function retriedSubmission(code: string) {
+  return observation(`
 await withHarness(async (harness) => {
   const file = join(harness.stateDirectory, "queue-commands.json");
   let commandId;
@@ -160,7 +160,7 @@ await withHarness(async (harness) => {
       if (request.operation !== "run")
         return { kind: "result", result: { runs: [], next: null } };
       commandId = request.parameters.commandId;
-      return { kind: "error", error: { code: "resolver-timeout", detail: "Retry." } };
+      return { kind: "error", error: { code: ${JSON.stringify(code)}, detail: "Retry." } };
     },
     limits: { idleMilliseconds: 5000 },
   });
@@ -178,9 +178,81 @@ await withHarness(async (harness) => {
   process.stdout.write(commandId);
 });
 `);
+}
+
+await test("CLV-092 a resolver timeout reports a retry and keeps its command without stopping", () => {
+  const output = retriedSubmission("resolver-timeout");
   assert.equal(
     output.stderr,
     `Queue resolver-timeout: command ${output.stdout}; will retry\n`,
+  );
+});
+
+await test("CLV-102 an unavailable next-ticket command reports one retry and keeps its command without stopping", () => {
+  const output = retriedSubmission("next-ticket-not-available");
+  assert.equal(
+    output.stderr,
+    `Queue next-ticket-not-available: command ${output.stdout}; will retry\n`,
+  );
+});
+
+await test("CLV-102 an unavailable ticket command reports one retry and keeps its command without stopping", () => {
+  const output = retriedSubmission("ticket-not-available");
+  assert.equal(
+    output.stderr,
+    `Queue ticket-not-available: command ${output.stdout}; will retry\n`,
+  );
+});
+
+await test("CLV-102 an unavailable next-ticket command admits one run with the same request on the next cycle", () => {
+  const output = observation(`
+await withHarness(async (harness) => {
+  const file = join(harness.stateDirectory, "queue-commands.json");
+  const requests = [];
+  const intervalMilliseconds = 40;
+  let refusedAt = 0;
+  let admissions = 0;
+  let runReads = 0;
+  const listener = await listen({
+    path: join(harness.runtimeDirectory, "control.sock"),
+    handle: async (request) => {
+      if (request.operation !== "run" && request.parameters.runId === undefined)
+        return { kind: "result", result: { runs: [], next: null } };
+      if (request.operation !== "run") {
+        assert.equal(admissions, 1);
+        runReads += 1;
+        return { kind: "result", result: { run: { state: "running" } } };
+      }
+      requests.push(request);
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      if (requests.length === 1) {
+        refusedAt = performance.now();
+        return { kind: "error", error: { code: "next-ticket-not-available", detail: "Retry." } };
+      }
+      assert.deepEqual(request, requests[0]);
+      assert.ok(performance.now() - refusedAt >= intervalMilliseconds - 1);
+      admissions += 1;
+      return { kind: "result", result: { kind: "run-admitted" } };
+    },
+    limits: { idleMilliseconds: 5000 },
+  });
+  const queue = issueQueue({ directory: harness.stateDirectory,
+    runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds });
+  try {
+    await eventually(() => runReads >= 2 ? true : undefined);
+    assert.equal(requests.length, 2);
+    assert.equal(admissions, 1);
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [requests[0].parameters.commandId]);
+    process.stdout.write(requests[0].parameters.commandId);
+  } finally {
+    await queue.stop();
+    await listener.close();
+  }
+});
+`);
+  assert.equal(
+    output.stderr,
+    `Queue next-ticket-not-available: command ${output.stdout}; will retry\n`,
   );
 });
 
@@ -222,7 +294,11 @@ await withHarness(async (harness) => {
 }
 
 await test("CLV-092 resolver and ticket failures stop once and retain the command, including after timeouts", () => {
-  for (const code of ["resolver-failure", "invalid-ticket-id"]) {
+  for (const code of [
+    "resolver-failure",
+    "invalid-ticket-id",
+    "next-source-not-configured",
+  ]) {
     for (const preceding of [[], ["resolver-timeout", "resolver-timeout"]]) {
       const output = stoppedSubmission([...preceding, code]);
       assert.equal(

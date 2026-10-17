@@ -152,10 +152,16 @@ async function submit(
   });
   pending.retryCommandId = undefined;
   if (reply.kind === "result") return;
-  if (reply.error.code === "resolver-timeout") {
+  if (
+    [
+      "resolver-timeout",
+      "next-ticket-not-available",
+      "ticket-not-available",
+    ].includes(reply.error.code)
+  ) {
     pending.retryCommandId = commandId;
     process.stderr.write(
-      `Queue resolver-timeout: command ${commandId}; will retry\n`,
+      `Queue ${reply.error.code}: command ${commandId}; will retry\n`,
     );
     return;
   }
