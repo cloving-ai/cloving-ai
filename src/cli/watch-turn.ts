@@ -55,9 +55,10 @@ export function Turn(props: {
     component(Group, { items, open: working && index === groups.length - 1 }),
   );
   return element("section", {
-    class: "turn",
+    class: "turn code-window",
     children: [
       element("h3", {
+        class: "code-head",
         children: heading.filter((part) => part !== "").join(" · "),
       }),
       element("p", { class: "meta", children: place }),
@@ -108,9 +109,9 @@ export function Command(props: {
   };
   const shown = copying.command === command ? copying.label : "Copy";
   return element("div", {
-    class: "command",
+    class: "command code-window",
     children: [
-      element("span", { class: "label", children: label }),
+      element("span", { class: "label code-head", children: label }),
       element("code", { children: command }),
       element("button", { type: "button", onClick, children: shown }),
     ],
@@ -157,9 +158,12 @@ export function Events(props: {
     }),
   );
   return element("details", {
-    class: "events",
+    class: "events code-window",
     children: [
-      element("summary", { children: `All events (${String(events.length)})` }),
+      element("summary", {
+        class: "code-head",
+        children: `All events (${String(events.length)})`,
+      }),
       rows,
     ],
   });

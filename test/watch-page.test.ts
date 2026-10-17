@@ -1,10 +1,11 @@
+import { activeBoardModel } from "./watch-board-fixture.ts";
 import { played } from "./watch-browser.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import { pageTitle } from "../src/cli/watch-render.ts";
-import { Page } from "../src/cli/watch-view.ts";
+import { clove, Page } from "../src/cli/watch-view.ts";
 import { rendered } from "./watch-dom.ts";
 import {
   noCopy,
@@ -45,11 +46,10 @@ listeners.hashchange();
 console.log(JSON.stringify({ waiting, stale, first, label, kept, down, copied, scrolled, timers, other: document.title, streams: sources.map((item) => item.address), unread: replies.length }));
 `;
 
-await test("CLV-016 the watch page document has the components, a script that gets Preact from the watch server, listens to the event stream of the watch server and draws each second, and no outside resource", () => {
+await test("CLV-016 the watch page document has the components, a script that gets Preact from the watch server, listens to the event stream of the watch server and draws each second, and only fixed optional font resources", () => {
   const page = pageDocument();
   assert.match(page, /^<!doctype html>/);
   for (const part of [
-    '<link rel="icon" href="data:,">',
     '<div id="app"></div>',
     '<script type="module">',
     'import { h as element, h as component, render } from "./preact.mjs";',
@@ -62,7 +62,20 @@ await test("CLV-016 the watch page document has the components, a script that ge
   ])
     assert.ok(page.includes(part), part);
   assert.equal(page.includes("setInterval(load, 1000)"), false);
-  assert.equal(/https?:\/\//.test(page), false);
+  const outside = [...page.matchAll(/https?:\/\/[^"<>\s]+/g)].map(
+    (match) => match[0],
+  );
+  assert.deepEqual(
+    [...new Set(outside.filter((url) => url !== "http://www.w3.org/2000/svg"))],
+    [
+      "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space+Grotesk:wght@400..700&amp;display=swap",
+    ],
+  );
+  assert.doesNotMatch(page, /@import|<form|fetch\([^)]*method:/);
+  assert.deepEqual(
+    [...page.matchAll(/\bfetch\(([^,\n]+)/g)].map((call) => call[1]),
+    ['"data.json?runId=" + encodeURIComponent(runId)', '"data.json"'],
+  );
 });
 
 await test("CLV-077 saved links load an older run on arrival, refresh and hash navigation without replacing the run list", () => {
@@ -250,4 +263,86 @@ await test("CLV-016 the script of the watch page reads the data at each message 
     streams: ["events"],
     unread: 0,
   });
+});
+
+await test("CLV-098 themes default to light, follow system dark only without a valid override, and load fixed fonts", () => {
+  const page = pageDocument();
+  assert.match(page, /:root\s*\{[^}]*color-scheme: light;/);
+  assert.match(
+    page,
+    /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\):not\(\[data-theme="dark"\]\)/,
+  );
+  for (const theme of ["light", "dark"]) {
+    assert.ok(page.includes(`:root[data-theme="${theme}"]`));
+  }
+  assert.match(
+    page,
+    /<link rel="stylesheet" href="https:\/\/fonts.googleapis.com\/css2\?family=Fira\+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space\+Grotesk:wght@400\.\.700&amp;display=swap">/,
+  );
+  assert.equal([...page.matchAll(/<style>/g)].length, 1);
+  assert.doesNotMatch(page, /light-dark\(|color-scheme: light dark/);
+});
+
+await test("CLV-098 the embedded favicon uses the header clove shape with a fixed green fill", () => {
+  const page = pageDocument();
+  const icon = /<link rel="icon" href="data:image\/svg\+xml,([^"]+)">/.exec(
+    page,
+  )?.[1];
+  assert.ok(icon);
+  const svg = decodeURIComponent(icon);
+  assert.match(svg, /xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+  assert.match(
+    svg,
+    /viewBox="0.6625858545303345 0.6630800366401672 46.674827575683594 46.673831939697266"/,
+  );
+  assert.equal([...svg.matchAll(/<path fill="#0BBF64"/g)].length, 4);
+  assert.doesNotMatch(svg, /currentColor|<script/);
+  assert.deepEqual(
+    [...svg.matchAll(/ d="([^"]+)"/g)].map((path) => path[1]),
+    clove.paths,
+  );
+});
+
+await test("CLV-098 embedded board rendering includes review pills and stopped presentation", () => {
+  const result = played(
+    activeBoardModel(),
+    `
+location.hash = "#workflow=develop-issue";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+console.log(JSON.stringify({ html: app.inner, requests }));
+`,
+  );
+  assert.match(String(result["html"]), /class="review-pill">round 2/);
+  assert.match(String(result["html"]), /class="column stopped"/);
+  assert.deepEqual(result["requests"], ["data.json"]);
+});
+
+await test("CLV-098 copy failure is shown for its command and long commands copy the complete original text", () => {
+  const command = `cloving approve ${"long-run/".repeat(40)} --text "<yes> & done"`;
+  const decision = { ...sampleDecision, approve: command };
+  const model = sampleModel([sampleRun({ decisions: [decision] })]);
+  const result = played(
+    model,
+    `
+const model = JSON.parse(process.env.WATCH_MODEL);
+replies.push(model);
+await load();
+navigator.clipboard.writeText = (text) => { copied.push(text); return Promise.reject(new Error("clipboard refused")); };
+const [approve, deny] = app.all("button");
+approve.dispatch("click");
+await settled();
+const failed = [approve.text, deny.text];
+navigator.clipboard.writeText = (text) => { copied.push(text); return Promise.resolve(); };
+approve.dispatch("click");
+await settled();
+console.log(JSON.stringify({ failed, recovered: approve.text, copied, requests, timers, code: app.all("code").map((node) => node.text) }));
+`,
+  );
+  assert.deepEqual(result["failed"], ["Copy failed", "Copy"]);
+  assert.equal(result["recovered"], "Copied");
+  assert.deepEqual(result["copied"], [command, command]);
+  assert.ok(Array.isArray(result["code"]) && result["code"].includes(command));
+  assert.deepEqual(result["requests"], ["data.json"]);
+  assert.deepEqual(result["timers"], [1000, 15000]);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { component, element, type Shown } from "../src/cli/watch-element.ts";
-import { found, rendered } from "./watch-dom.ts";
+import { found, rendered, PageNode } from "./watch-dom.ts";
 
 function Greeting(props: { readonly name: string }): Shown {
   return element("b", { title: props.name, children: props.name });
@@ -47,4 +47,10 @@ await test("CLV-016 the static view of the watch tests shows text as text, omits
   );
   assert.deepEqual(found(view, "b"), [{ title: "n", children: "n" }]);
   assert.deepEqual(found(view, "i"), []);
+});
+
+await test("CLV-098 the DOM fixture preserves string aria attributes for the hidden brand", () => {
+  const svg = new PageNode("svg");
+  svg.setAttribute("aria-hidden", "true");
+  assert.equal(svg.html, '<svg aria-hidden="true"></svg>');
 });
