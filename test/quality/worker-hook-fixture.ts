@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { inspect } from "node:util";
 import { parseCheckTimeFactor } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
 
@@ -57,6 +58,15 @@ export function hookFailureMessage(
 
 export function hookDiagnostic(stderr: string): string {
   return stderr.replace(/^\[cloving-worker-hook\] \d+ms \S+\n/gm, "");
+}
+
+function boundedAssertionDetail(value: unknown): string {
+  if (typeof value === "string") return value.slice(-2000);
+  return inspect(value, {
+    depth: 4,
+    maxArrayLength: 30,
+    maxStringLength: 2000,
+  }).slice(-2000);
 }
 
 export function runHook(
@@ -127,11 +137,12 @@ export async function withHook(
       } catch (error) {
         if (!(error instanceof assert.AssertionError) || !lastResult)
           throw error;
-        const message = `Hook assertion ${error.operator} failed (expected ${String(error.expected)})\n${lastResult.context}`;
+        const message = `Hook assertion ${error.operator} failed\n${error.message.slice(-4000)}\n${lastResult.context}`;
         error.stack =
           error.stack?.replace(error.message, () => message) ?? message;
         error.message = message;
-        error.actual = undefined;
+        error.actual = boundedAssertionDetail(error.actual);
+        error.expected = boundedAssertionDetail(error.expected);
         throw error;
       }
     },

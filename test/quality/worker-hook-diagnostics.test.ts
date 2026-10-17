@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runHook, withHook } from "./worker-hook-fixture.ts";
+import { hookTimeout, runHook, withHook } from "./worker-hook-fixture.ts";
 
 await test("CLV-104 unexpected hook exits and signals retain failure details", () => {
   for (const scenario of [
@@ -32,15 +32,15 @@ await test("CLV-104 unexpected hook exits and signals retain failure details", (
   }
 });
 
-await test("CLV-104 timed out hook failure retains timing, termination and the bounded stderr tail", () => {
+await test("CLV-104 timed out slow-starting hook retains timing, termination and the bounded stderr tail", () => {
   assert.throws(
     () =>
       runHook({
         arguments: [
           "-e",
-          "require('node:fs').writeSync(2, 'discard-me' + 'x'.repeat(5000) + 'last-hook-phase'); setInterval(() => {}, 1000)",
+          "setTimeout(() => { require('node:fs').writeSync(2, 'discard-me' + 'x'.repeat(5000) + 'last-hook-phase'); }, 500); setInterval(() => {}, 1000)",
         ],
-        timeout: 250,
+        timeout: hookTimeout / 5,
       }),
     (error: unknown) => {
       assert.ok(error instanceof Error);
@@ -85,6 +85,52 @@ await test("CLV-104 expected hook exit retains raw context when its diagnostic a
       assert.ok(tail.endsWith("spawnSync node ETIMEDOUT"));
       assert.doesNotMatch(tail, /discard-me/);
       assert.doesNotMatch(error.stack ?? "", /discard-me/);
+      assert.ok(error.message.length < 9000);
+      assert.ok(error instanceof assert.AssertionError);
+      assert.ok(String(error.actual).length <= 2000);
+      assert.ok(String(error.expected).length <= 2000);
+      return true;
+    },
+  );
+});
+
+await test("CLV-104 hook assertion preserves bounded original phase-order details", async () => {
+  await assert.rejects(
+    withHook("export const value = 1;\n", (dispatch) => {
+      dispatch(
+        {},
+        {
+          arguments: [
+            "-e",
+            "require('node:fs').writeSync(2, '[cloving-worker-hook] 5ms lint:start\\n'); process.exit(2)",
+          ],
+        },
+      );
+      assert.deepEqual(
+        ["start", "lint:start", "input-policy:read"],
+        ["start", "input-policy:read", "lint:start"],
+        "hook phases must follow policy loading",
+      );
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof assert.AssertionError);
+      assert.match(error.message, /hook phases must follow policy loading/);
+      assert.match(
+        String(error.actual),
+        /start.*lint:start.*input-policy:read/s,
+      );
+      assert.match(
+        String(error.expected),
+        /start.*input-policy:read.*lint:start/s,
+      );
+      assert.match(error.stack ?? "", /hook phases must follow policy loading/);
+      assert.match(
+        error.message,
+        /elapsed=\d+ms signal=none exit=2 error=none/,
+      );
+      assert.ok(
+        error.message.endsWith("[cloving-worker-hook] 5ms lint:start\n"),
+      );
       return true;
     },
   );
