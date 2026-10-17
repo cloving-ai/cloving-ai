@@ -16,6 +16,25 @@ import { field, items } from "./self-host-fixture.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
+interface PackageMetadata {
+  readonly exports: Readonly<Record<string, Readonly<Record<string, string>>>>;
+}
+
+function packageMetadata(value: unknown): value is PackageMetadata {
+  const exports = field(value, "exports");
+  if (!exports || typeof exports !== "object" || Array.isArray(exports))
+    return false;
+  return Object.values(exports).every(
+    (entry: unknown) =>
+      entry !== null &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      Object.values(entry).every(
+        (target: unknown) => typeof target === "string",
+      ),
+  );
+}
+
 function command(
   executable: string,
   options: {
@@ -153,17 +172,14 @@ async function inventory(root: string): Promise<void> {
     (await readFile(join(product, "dist/workflows/develop-ticket.js"))).length >
       0,
   );
-  const metadata: unknown = JSON.parse(
+  const parsed: unknown = JSON.parse(
     await readFile(join(product, "package.json"), "utf8"),
   );
-  const exports = field(metadata, "exports");
-  assert.ok(exports && typeof exports === "object");
-  for (const entry of Object.values(exports)) {
-    const value: unknown = entry;
-    assert.ok(value && typeof value === "object");
-    for (const target of Object.values(value)) {
-      assert.equal(typeof target, "string");
-      assert.ok((await readFile(join(product, String(target)))).length > 0);
+  assert.ok(packageMetadata(parsed));
+  const metadata: PackageMetadata = parsed;
+  for (const entry of Object.values(metadata.exports)) {
+    for (const target of Object.values(entry)) {
+      assert.ok((await readFile(join(product, target))).length > 0);
     }
   }
   for (const name of [
