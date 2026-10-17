@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import type { WorkflowManifest } from "@workflow/builders";
 import {
   isWorkflowDeclaration,
@@ -19,7 +19,12 @@ interface HostManifest {
 export async function workflowFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        /\.(?:ts|js)$/.test(entry.name) &&
+        !entry.name.endsWith(".d.ts"),
+    )
     .map((entry) => entry.name)
     .sort();
 }
@@ -30,7 +35,7 @@ export async function workflowDeclarations(
 ): Promise<readonly DeclaredWorkflow[]> {
   const declarations: DeclaredWorkflow[] = [];
   for (const file of await workflowFiles(directory)) {
-    const name = basename(file, ".ts");
+    const name = basename(file, extname(file));
     const declarationFile = `${name}.declaration.json`;
     const text = await readFile(join(directory, declarationFile), "utf8").catch(
       (error: unknown) => {
@@ -90,7 +95,7 @@ export function workflowManifests(
           functionName,
           {
             schemaVersion: 1 as const,
-            name: basename(file, ".ts"),
+            name: basename(file, extname(file)),
             workflowId,
             steps,
             capabilities: ["claude", "github"],

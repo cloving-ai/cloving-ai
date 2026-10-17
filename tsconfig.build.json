@@ -5,5 +5,10 @@
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tools/self-host.ts",
+    "tools/compile-workflows.ts",
+    "workflows/**/*.ts"
+  ]
 }

@@ -1,5 +1,6 @@
+import { findPackageJSON } from "node:module";
 import { createHash } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import type { ToolchainIdentity } from "../workflow-admission.ts";
@@ -8,13 +9,18 @@ export async function observedToolchain(
   start: string,
 ): Promise<ToolchainIdentity> {
   const root = await projectRoot(start);
+  const sdk = await packageDirectory(start, "workflow");
+  const core =
+    sdk === undefined
+      ? undefined
+      : await packageDirectory(sdk, "@workflow/core");
   const lock = await readFile(join(root, "package-lock.json")).catch(
     () => null,
   );
   return {
-    sdk: `workflow@${await installedVersion(root, "workflow")}`,
-    world: `@workflow/world-local@${await installedVersion(root, "@workflow/world-local")}`,
-    builder: `@workflow/builders@${await installedVersion(root, "@workflow/builders")}`,
+    sdk: `workflow@${await installedVersion(start, "workflow")}`,
+    world: `@workflow/world-local@${await installedVersion(core ?? start, "@workflow/world-local")}`,
+    builder: `@workflow/builders@${await installedVersion(start, "@workflow/builders")}`,
     node: process.version,
     dependencies:
       lock === null
@@ -27,12 +33,13 @@ export async function qualifiedToolchain(
   observed: ToolchainIdentity,
   start: string,
 ): Promise<ToolchainIdentity> {
-  const core = await packageFields(await projectRoot(start), "@workflow/core");
+  const sdk = await packageDirectory(start, "workflow");
+  const core = await packageFields(sdk ?? start, "@workflow/core");
   const declared = fields(core["dependencies"])["@workflow/world-local"];
   return {
     sdk: `workflow@${packageMetadata.dependencies.workflow}`,
     world: `@workflow/world-local@${typeof declared === "string" ? declared : "undeclared"}`,
-    builder: `@workflow/builders@${packageMetadata.devDependencies["@workflow/builders"]}`,
+    builder: `@workflow/builders@${packageMetadata.dependencies["@workflow/builders"]}`,
     node: `v${packageMetadata.engines.node}`,
     dependencies: observed.dependencies,
   };
@@ -41,9 +48,7 @@ export async function qualifiedToolchain(
 async function projectRoot(start: string): Promise<string> {
   let directory = start;
   for (;;) {
-    const found = await access(
-      join(directory, "node_modules", "workflow", "package.json"),
-    ).then(
+    const found = await access(join(directory, "package-lock.json")).then(
       () => true,
       () => false,
     );
@@ -62,14 +67,33 @@ async function packageFields(
   root: string,
   name: string,
 ): Promise<Readonly<Record<string, unknown>>> {
-  const text = await readFile(
-    join(root, "node_modules", name, "package.json"),
-    "utf8",
-  ).catch(() => "{}");
+  const directory = await packageDirectory(root, name);
+  if (directory === undefined) return {};
+  const text = await readFile(join(directory, "package.json"), "utf8").catch(
+    () => "{}",
+  );
   return fields(JSON.parse(text));
 }
 
 function fields(value: unknown): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value));
+}
+
+async function packageDirectory(
+  start: string,
+  name: string,
+): Promise<string | undefined> {
+  try {
+    const file = findPackageJSON(name, join(start, "package.json"));
+    return file === undefined ? undefined : dirname(await realpath(file));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ERR_MODULE_NOT_FOUND"
+    )
+      return undefined;
+    throw error;
+  }
 }

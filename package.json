@@ -30,7 +30,9 @@
     }
   },
   "files": [
-    "dist/src"
+    "dist/src",
+    "dist/tools",
+    "dist/workflows"
   ],
   "engines": {
     "node": "26.9.0",
@@ -43,7 +45,7 @@
     "arm64"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json && node tools/copy-workflow-declarations.ts workflows dist/workflows",
     "build:workflows": "node tools/compile-workflows.ts",
     "check:setup": "tsc --project tsconfig.json --noEmit",
     "check:quality": "node tools/check-quality.ts",
@@ -58,7 +60,6 @@
     "@eslint/js": "10.0.1",
     "@types/istanbul-lib-coverage": "2.0.6",
     "@types/node": "26.6.4",
-    "@workflow/builders": "5.0.2",
     "acorn": "8.16.0",
     "ast-v8-to-istanbul": "1.0.5",
     "eslint": "10.12.0",
@@ -76,6 +77,7 @@
     }
   },
   "dependencies": {
+    "@workflow/builders": "5.0.2",
     "entities": "8.1.0",
     "preact": "11.0.0",
     "solid-objects": "0.17.8",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, extname, join } from "node:path";
 import { main } from "./cli/main.ts";
 import { clientCommand, runtimeDirectory } from "./cli/runtime-directory.ts";
 import { commandUsage } from "./cli/usage.ts";
@@ -8,7 +8,12 @@ import { commandUsage } from "./cli/usage.ts";
 const [command, ...options] = process.argv.slice(2);
 
 function started(runtime: string): Promise<number> {
-  const program = join(import.meta.dirname, "..", "tools", "self-host.ts");
+  const program = join(
+    import.meta.dirname,
+    "..",
+    "tools",
+    `self-host${extname(import.meta.filename)}`,
+  );
   const located = [
     "--runtime",
     runtime,
