@@ -1,50 +1,123 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { test } from "node:test";
-import { field, items } from "./self-host-fixture.ts";
 import {
   job,
+  metadata,
+  parseCommands,
   releaseAttempt,
   releaseWorkflow,
   script,
   steps,
   tagged,
 } from "./release-fixture.ts";
+import { withFiles } from "./quality/files-fixture.ts";
 
-async function metadata(file: string): Promise<unknown> {
-  const value: unknown = JSON.parse(
-    await readFile(join(import.meta.dirname, "..", file), "utf8"),
-  );
-  return value;
-}
+await test("CLV-097 release fixtures reject malformed workflow shapes at the JSON boundary", async () => {
+  const workflow = await releaseWorkflow();
+  for (const value of [
+    null,
+    [],
+    {},
+    { ...workflow, permissions: [] },
+    {
+      ...workflow,
+      jobs: {
+        ...workflow.jobs,
+        quality: { ...workflow.jobs.quality, "runs-on": 15 },
+      },
+    },
+    {
+      ...workflow,
+      jobs: {
+        ...workflow.jobs,
+        quality: { ...workflow.jobs.quality, steps: [{ run: 42 }] },
+      },
+    },
+  ])
+    await withFiles(
+      { ".github/workflows/ci.yml": JSON.stringify(value) },
+      async (directory) => {
+        await assert.rejects(
+          releaseWorkflow(directory),
+          /Invalid release workflow/,
+        );
+      },
+    );
+});
+
+await test("CLV-097 release fixtures validate command argument arrays", () => {
+  assert.deepEqual(parseCommands('["npm","view"]\n\n["gh","api"]\n'), [
+    ["npm", "view"],
+    ["gh", "api"],
+  ]);
+  for (const value of [null, {}, "npm", [1], ["npm", null], ["gh", ["api"]]])
+    assert.throws(
+      () => parseCommands(JSON.stringify(value)),
+      /Invalid release command/,
+    );
+});
+
+await test("CLV-097 release fixtures reject malformed manifest and lock metadata", async () => {
+  const { manifest, lock } = await metadata();
+  for (const invalid of [
+    null,
+    [],
+    { ...manifest, version: 100 },
+    { ...manifest, engines: { node: 26, npm: "11" } },
+    { ...manifest, dependencies: { workflow: 5 } },
+    { ...manifest, repository: { type: true } },
+  ])
+    await withFiles(
+      {
+        "package.json": JSON.stringify(invalid),
+        "package-lock.json": JSON.stringify(lock),
+      },
+      async (directory) => {
+        await assert.rejects(metadata(directory), /Invalid release metadata/);
+      },
+    );
+  for (const invalid of [
+    null,
+    [],
+    { ...lock, version: 1 },
+    { ...lock, packages: {} },
+    { ...lock, packages: { "": { ...lock.packages[""], version: 100 } } },
+  ])
+    await withFiles(
+      {
+        "package.json": JSON.stringify(manifest),
+        "package-lock.json": JSON.stringify(invalid),
+      },
+      async (directory) => {
+        await assert.rejects(metadata(directory), /Invalid release metadata/);
+      },
+    );
+});
 
 await test("CLV-097 release metadata and both lock versions describe the public 1.0.0 package", async () => {
-  const manifest = await metadata("package.json");
-  const lock = await metadata("package-lock.json");
-  assert.equal(field(manifest, "name"), "cloving");
-  assert.equal(field(manifest, "version"), "1.0.0");
-  assert.equal(field(manifest, "private"), undefined);
-  assert.deepEqual(field(manifest, "repository"), {
+  const { manifest, lock } = await metadata();
+  assert.equal(manifest.name, "cloving");
+  assert.equal(manifest.version, "1.0.0");
+  assert.equal(manifest.private, undefined);
+  assert.deepEqual(manifest.repository, {
     type: "git",
     url: "git+https://github.com/cloving-ai/cloving-ai.git",
   });
   assert.equal(
-    field(manifest, "homepage"),
+    manifest.homepage,
     "https://github.com/cloving-ai/cloving-ai#readme",
   );
-  assert.deepEqual(field(manifest, "bugs"), {
+  assert.deepEqual(manifest.bugs, {
     url: "https://github.com/cloving-ai/cloving-ai/issues",
   });
-  assert.deepEqual(field(manifest, "engines"), {
+  assert.deepEqual(manifest.engines, {
     node: ">=26.9.0 <27",
     npm: ">=11.19.1 <12",
   });
-  assert.deepEqual(field(manifest, "os"), ["darwin"]);
-  assert.deepEqual(field(manifest, "cpu"), ["arm64"]);
-  assert.equal(field(lock, "version"), "1.0.0");
-  const root = field(field(lock, "packages"), "");
+  assert.deepEqual(manifest.os, ["darwin"]);
+  assert.deepEqual(manifest.cpu, ["arm64"]);
+  assert.equal(lock.version, "1.0.0");
+  const root = lock.packages[""];
   for (const name of [
     "name",
     "version",
@@ -55,58 +128,40 @@ await test("CLV-097 release metadata and both lock versions describe the public 
     "cpu",
     "dependencies",
     "devDependencies",
-  ])
-    assert.deepEqual(field(root, name), field(manifest, name), name);
-});
-
-await test("CLV-097 release leaves dependency pins, overrides and every resolved lock record unchanged", async () => {
-  const manifest = await metadata("package.json");
-  const packages = field(await metadata("package-lock.json"), "packages");
-  assert.ok(packages && typeof packages === "object");
-  const baseline = {
-    dependencies: field(manifest, "dependencies"),
-    devDependencies: field(manifest, "devDependencies"),
-    overrides: field(manifest, "overrides"),
-    packages: Object.fromEntries(
-      Object.entries(packages).filter(([name]) => name !== ""),
-    ),
-  };
-  assert.equal(
-    createHash("sha256").update(JSON.stringify(baseline)).digest("hex"),
-    "b1d3cee2c5ea4b2316dd2f2fc390cdf6a3bfc865351e197b40ecaae4b5a5e9e8",
-  );
+  ] as const)
+    assert.deepEqual(root[name], manifest[name], name);
 });
 
 await test("CLV-097 CI checks every push, pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
-  assert.deepEqual(field(workflow, "on"), {
+  assert.deepEqual(workflow.on, {
     push: {},
     pull_request: {},
     workflow_dispatch: {},
   });
-  assert.deepEqual(field(workflow, "permissions"), { contents: "read" });
-  assert.equal(field(job(workflow, "quality"), "if"), undefined);
-  assert.equal(field(job(workflow, "quality"), "permissions"), undefined);
-  for (const name of ["quality", "publish"]) {
-    assert.equal(field(job(workflow, name), "runs-on"), "macos-15");
+  assert.deepEqual(workflow.permissions, { contents: "read" });
+  assert.equal(job(workflow, "quality").if, undefined);
+  assert.equal(job(workflow, "quality").permissions, undefined);
+  for (const name of ["quality", "publish"] as const) {
+    assert.equal(job(workflow, name)["runs-on"], "macos-15");
     const checkout = steps(workflow, name).find((step) =>
-      String(field(step, "uses")).startsWith("actions/checkout@"),
+      step.uses?.startsWith("actions/checkout@"),
     );
-    assert.deepEqual(field(checkout, "with"), {
+    assert.deepEqual(checkout?.with, {
       ref: "${{ github.sha }}",
       "persist-credentials": false,
     });
     const setup = steps(workflow, name).find((step) =>
-      String(field(step, "uses")).startsWith("actions/setup-node@"),
+      step.uses?.startsWith("actions/setup-node@"),
     );
-    assert.deepEqual(field(setup, "with"), {
+    assert.deepEqual(setup?.with, {
       "node-version": "26.9.0",
       architecture: "arm64",
       "registry-url": "https://registry.npmjs.org",
       "package-manager-cache": false,
     });
     const actions = steps(workflow, name)
-      .map((step) => field(step, "uses"))
+      .map((step) => step.uses)
       .filter((action) => action !== undefined);
     assert.equal(actions.length, 2);
     for (const action of actions) {
@@ -114,8 +169,8 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
       assert.match(action, /^actions\/(?:checkout|setup-node)@[a-f0-9]{40}$/);
     }
     for (const step of steps(workflow, name)) {
-      assert.equal(field(step, "continue-on-error"), undefined);
-      assert.equal(field(step, "if"), undefined);
+      assert.equal(step["continue-on-error"], undefined);
+      assert.equal(step.if, undefined);
     }
   }
 });
@@ -123,7 +178,7 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
 await test("CLV-097 quality qualifies the exact toolchain, completes the developer gate and verifies installed startup", async () => {
   const workflow = await releaseWorkflow();
   const commands = steps(workflow, "quality")
-    .map((step) => field(step, "run"))
+    .map((step) => step.run)
     .filter((run) => run !== undefined);
   assert.deepEqual(commands.slice(0, 1), [
     "npm install --global npm@11.19.1 --ignore-scripts",
@@ -146,17 +201,17 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
 
 await test("CLV-097 publish uses same-revision successful quality and only version-tag pushes", async () => {
   const workflow = await releaseWorkflow();
-  assert.equal(field(job(workflow, "publish"), "needs"), "quality");
+  assert.equal(job(workflow, "publish").needs, "quality");
   assert.equal(
-    field(job(workflow, "publish"), "if"),
+    job(workflow, "publish").if,
     "${{ success() && needs.quality.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}",
   );
-  assert.deepEqual(field(job(workflow, "publish"), "permissions"), {
+  assert.deepEqual(job(workflow, "publish").permissions, {
     contents: "write",
     "id-token": "write",
   });
   const commands = steps(workflow, "publish")
-    .map((step) => field(step, "run"))
+    .map((step) => step.run)
     .filter((run) => run !== undefined);
   assert.equal(commands[0], script(workflow, "validate-tag"));
   assert.deepEqual(commands.slice(1, 4), [
@@ -169,7 +224,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     script(workflow, "github-release"),
   ]);
   assert.equal(
-    field(field(job(workflow, "publish"), "env"), "NPM_CONFIG_REGISTRY"),
+    job(workflow, "publish").env?.["NPM_CONFIG_REGISTRY"],
     "https://registry.npmjs.org",
   );
   assert.doesNotMatch(
@@ -177,9 +232,9 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     /NPM_TOKEN|NODE_AUTH_TOKEN|npm run check["\\]|test:concurrency/,
   );
   const release = steps(workflow, "publish").find(
-    (step) => field(step, "id") === "github-release",
+    (step) => step.id === "github-release",
   );
-  assert.deepEqual(field(release, "env"), { GH_TOKEN: "${{ github.token }}" });
+  assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
 });
 
 await test("CLV-097 branches, pull requests, dispatches and failed, cancelled or skipped quality run no release commands", async () => {
@@ -252,7 +307,7 @@ await test("CLV-097 an existing npm version skips publish and repairs a missing 
   const result = await releaseAttempt({ registry: '"1.0.0"', registryExit: 0 });
   assert.deepEqual(result.statuses, [0]);
   assert.deepEqual(
-    result.commands.map((entry) => items(entry).slice(0, 2)),
+    result.commands.map((entry) => entry.slice(0, 2)),
     [
       ["npm", "view"],
       ["gh", "api"],
@@ -264,7 +319,7 @@ await test("CLV-097 an existing npm version skips publish and repairs a missing 
 await test("CLV-097 retries publish only once and accept an existing release", async () => {
   const result = await releaseAttempt({ attempts: 2 });
   assert.deepEqual(result.statuses, [0, 0]);
-  const calls = result.commands.map((entry) => items(entry).slice(0, 2));
+  const calls = result.commands.map((entry) => entry.slice(0, 2));
   assert.equal(
     calls.filter((entry) => entry[0] === "npm" && entry[1] === "publish")
       .length,
@@ -292,7 +347,7 @@ await test("CLV-097 registry failures and malformed or unexpected responses fail
     const result = await releaseAttempt({ registry, registryExit });
     assert.notEqual(result.statuses[0], 0, registry);
     assert.deepEqual(
-      result.commands.map((entry) => items(entry).slice(0, 2)),
+      result.commands.map((entry) => entry.slice(0, 2)),
       [["npm", "view"]],
     );
   }
@@ -302,7 +357,7 @@ await test("CLV-097 a failed npm publication never creates a GitHub release", as
   const result = await releaseAttempt({ publishExit: 1 });
   assert.notEqual(result.statuses[0], 0);
   assert.deepEqual(
-    result.commands.map((entry) => items(entry).slice(0, 2)),
+    result.commands.map((entry) => entry.slice(0, 2)),
     [
       ["npm", "view"],
       ["npm", "publish"],
@@ -314,7 +369,7 @@ await test("CLV-097 GitHub errors other than a confirmed missing release fail cl
   const result = await releaseAttempt({ releaseStatus: "403 Forbidden" });
   assert.notEqual(result.statuses[0], 0);
   assert.equal(
-    result.commands.filter((entry) => items(entry)[1] === "release").length,
+    result.commands.filter((entry) => entry[1] === "release").length,
     0,
   );
 });

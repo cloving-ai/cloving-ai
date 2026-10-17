@@ -2,38 +2,216 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmod, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { field, items } from "./self-host-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
-export async function releaseWorkflow(): Promise<unknown> {
-  const parsed: unknown = JSON.parse(
-    await readFile(
-      join(import.meta.dirname, "../.github/workflows/ci.yml"),
-      "utf8",
-    ),
+type StringRecord = Readonly<Record<string, string>>;
+export type Command = readonly string[];
+
+interface WorkflowStep {
+  readonly id?: string;
+  readonly uses?: string;
+  readonly run?: string;
+  readonly if?: string;
+  readonly "continue-on-error"?: boolean;
+  readonly with?: Readonly<Record<string, string | boolean>>;
+  readonly env?: StringRecord;
+}
+
+interface WorkflowJob {
+  readonly "runs-on": string;
+  readonly steps: readonly WorkflowStep[];
+  readonly if?: string;
+  readonly needs?: string;
+  readonly permissions?: StringRecord;
+  readonly env?: StringRecord;
+}
+
+export interface ReleaseWorkflow {
+  readonly on: Readonly<Record<string, StringRecord>>;
+  readonly permissions: StringRecord;
+  readonly jobs: {
+    readonly quality: WorkflowJob;
+    readonly publish: WorkflowJob;
+  };
+}
+
+interface PackageMetadata {
+  readonly name: string;
+  readonly version: string;
+  readonly license: string;
+  readonly bin: StringRecord;
+  readonly engines: StringRecord;
+  readonly os: readonly string[];
+  readonly cpu: readonly string[];
+  readonly dependencies: StringRecord;
+  readonly devDependencies: StringRecord;
+  readonly private?: boolean;
+  readonly repository?: StringRecord;
+  readonly homepage?: string;
+  readonly bugs?: StringRecord;
+}
+
+interface PackageLock {
+  readonly version: string;
+  readonly packages: { readonly "": PackageMetadata };
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRecordOf<Value>(
+  value: unknown,
+  valid: (entry: unknown) => entry is Value,
+): value is Readonly<Record<string, Value>> {
+  return isRecord(value) && Object.values(value).every(valid);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isStringRecord(value: unknown): value is StringRecord {
+  return isRecordOf(value, isString);
+}
+
+function isInput(value: unknown): value is string | boolean {
+  return typeof value === "string" || typeof value === "boolean";
+}
+
+function isCommand(value: unknown): value is Command {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isStep(value: unknown): value is WorkflowStep {
+  if (!isRecord(value)) return false;
+  return (
+    ["id", "uses", "run", "if"].every(
+      (name) => value[name] === undefined || isString(value[name]),
+    ) &&
+    (value["continue-on-error"] === undefined ||
+      typeof value["continue-on-error"] === "boolean") &&
+    (value["with"] === undefined || isRecordOf(value["with"], isInput)) &&
+    (value["env"] === undefined || isStringRecord(value["env"]))
   );
+}
+
+function isJob(value: unknown): value is WorkflowJob {
+  if (!isRecord(value)) return false;
+  return (
+    isString(value["runs-on"]) &&
+    Array.isArray(value["steps"]) &&
+    value["steps"].every(isStep) &&
+    ["if", "needs"].every(
+      (name) => value[name] === undefined || isString(value[name]),
+    ) &&
+    ["permissions", "env"].every(
+      (name) => value[name] === undefined || isStringRecord(value[name]),
+    )
+  );
+}
+
+function isWorkflow(value: unknown): value is ReleaseWorkflow {
+  if (!isRecord(value)) return false;
+  const jobs = value["jobs"];
+  return (
+    isRecordOf(value["on"], isStringRecord) &&
+    isStringRecord(value["permissions"]) &&
+    isRecord(jobs) &&
+    isJob(jobs["quality"]) &&
+    isJob(jobs["publish"])
+  );
+}
+
+function isPackageMetadata(value: unknown): value is PackageMetadata {
+  if (!isRecord(value)) return false;
+  return (
+    ["name", "version", "license"].every((name) => isString(value[name])) &&
+    ["bin", "engines", "dependencies", "devDependencies"].every((name) =>
+      isStringRecord(value[name]),
+    ) &&
+    isCommand(value["os"]) &&
+    isCommand(value["cpu"]) &&
+    (value["private"] === undefined || typeof value["private"] === "boolean") &&
+    (value["homepage"] === undefined || isString(value["homepage"])) &&
+    ["repository", "bugs"].every(
+      (name) => value[name] === undefined || isStringRecord(value[name]),
+    )
+  );
+}
+
+function isPackageLock(value: unknown): value is PackageLock {
+  if (!isRecord(value)) return false;
+  const packages = value["packages"];
+  return (
+    isString(value["version"]) &&
+    isRecord(packages) &&
+    isPackageMetadata(packages[""])
+  );
+}
+
+export async function releaseWorkflow(
+  directory = join(import.meta.dirname, ".."),
+): Promise<ReleaseWorkflow> {
+  const parsed: unknown = JSON.parse(
+    await readFile(join(directory, ".github/workflows/ci.yml"), "utf8"),
+  );
+  assert.ok(isWorkflow(parsed), "Invalid release workflow");
   return parsed;
 }
 
-export function job(workflow: unknown, name: string): unknown {
-  return field(field(workflow, "jobs"), name);
-}
-
-export function steps(workflow: unknown, name: string): readonly unknown[] {
-  return items(field(job(workflow, name), "steps"));
-}
-
-export function script(workflow: unknown, id: string): string {
-  const step = steps(workflow, "publish").find(
-    (step) => field(step, "id") === id,
+export async function metadata(
+  directory = join(import.meta.dirname, ".."),
+): Promise<{
+  readonly manifest: PackageMetadata;
+  readonly lock: PackageLock;
+}> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(directory, "package.json"), "utf8"),
   );
-  const run = field(step, "run");
-  assert.equal(typeof run, "string", `Missing shell step: ${id}`);
-  return String(run);
+  const lock: unknown = JSON.parse(
+    await readFile(join(directory, "package-lock.json"), "utf8"),
+  );
+  assert.ok(
+    isPackageMetadata(manifest) && isPackageLock(lock),
+    "Invalid release metadata",
+  );
+  return { manifest, lock };
 }
 
-function permits(workflow: unknown, context: ReleaseContext): boolean {
-  const expression = String(field(job(workflow, "publish"), "if")).replace(
+export function parseCommands(content: string): readonly Command[] {
+  return content
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const value: unknown = JSON.parse(line);
+      assert.ok(isCommand(value), "Invalid release command");
+      return value;
+    });
+}
+
+export function job(
+  workflow: ReleaseWorkflow,
+  name: keyof ReleaseWorkflow["jobs"],
+): WorkflowJob {
+  return workflow.jobs[name];
+}
+
+export function steps(
+  workflow: ReleaseWorkflow,
+  name: keyof ReleaseWorkflow["jobs"],
+): readonly WorkflowStep[] {
+  return job(workflow, name).steps;
+}
+
+export function script(workflow: ReleaseWorkflow, id: string): string {
+  const run = steps(workflow, "publish").find((step) => step.id === id)?.run;
+  assert.ok(typeof run === "string", `Missing shell step: ${id}`);
+  return run;
+}
+
+function permits(workflow: ReleaseWorkflow, context: ReleaseContext): boolean {
+  const expression = String(job(workflow, "publish").if).replace(
     /^\$\{\{\s*|\s*\}\}$/g,
     "",
   );
@@ -78,17 +256,21 @@ const command = process.argv[1].split("/").at(-1);
 const args = process.argv.slice(2);
 const state = JSON.parse(readFileSync("scenario.json", "utf8"));
 appendFileSync("commands.jsonl", JSON.stringify([command, ...args]) + "\\n");
+if (command === "npm" && args[0] === "view" && existsSync("published")) {
+  console.log(JSON.stringify("1.0.0")); process.exit(0);
+}
 if (command === "npm" && args[0] === "view") {
-  if (existsSync("published")) { console.log(JSON.stringify("1.0.0")); process.exit(0); }
   console.log(state.registry);
   process.exit(state.registryExit);
 }
+if (command === "npm" && args[0] === "publish" && state.publishExit) process.exit(state.publishExit);
 if (command === "npm" && args[0] === "publish") {
-  if (state.publishExit) process.exit(state.publishExit);
   writeFileSync("published", "yes"); process.exit(0);
 }
+if (command === "gh" && args[0] === "api" && existsSync("released")) {
+  console.log("HTTP/2.0 200 OK\\n\\n{}"); process.exit(0);
+}
 if (command === "gh" && args[0] === "api") {
-  if (existsSync("released")) { console.log("HTTP/2.0 200 OK\\n\\n{}"); process.exit(0); }
   console.log("HTTP/2.0 " + state.releaseStatus + "\\n\\n{}"); process.exit(1);
 }
 if (command === "gh" && args[0] === "release" && args[1] === "create") {
@@ -107,7 +289,7 @@ export interface ReleaseScenario {
 }
 
 function runScripts(
-  workflow: unknown,
+  workflow: ReleaseWorkflow,
   scene: { readonly directory: string; readonly context: ReleaseContext },
 ): number {
   const { directory, context } = scene;
@@ -139,7 +321,7 @@ function runScripts(
 
 export async function releaseAttempt(scenario: ReleaseScenario = {}): Promise<{
   readonly statuses: readonly number[];
-  readonly commands: readonly unknown[];
+  readonly commands: readonly Command[];
 }> {
   const workflow = await releaseWorkflow();
   const context = scenario.context ?? tagged;
@@ -168,12 +350,9 @@ export async function releaseAttempt(scenario: ReleaseScenario = {}): Promise<{
       for (let count = 0; count < (scenario.attempts ?? 1); count += 1) {
         statuses.push(runScripts(workflow, { directory, context }));
       }
-      const commands = (
-        await readFile(join(directory, "commands.jsonl"), "utf8")
-      )
-        .split("\n")
-        .filter(Boolean)
-        .map((line): unknown => JSON.parse(line));
+      const commands = parseCommands(
+        await readFile(join(directory, "commands.jsonl"), "utf8"),
+      );
       return { statuses, commands };
     },
   );
