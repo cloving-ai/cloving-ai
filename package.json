@@ -1,9 +1,16 @@
 {
   "name": "cloving",
-  "version": "0.4.0",
-  "private": true,
+  "version": "1.0.0",
   "description": "Local durable development workflow service",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloving-ai/cloving-ai.git"
+  },
+  "homepage": "https://github.com/cloving-ai/cloving-ai#readme",
+  "bugs": {
+    "url": "https://github.com/cloving-ai/cloving-ai/issues"
+  },
   "type": "module",
   "imports": {
     "#package": "./package.json"
@@ -35,8 +42,8 @@
     "dist/workflows"
   ],
   "engines": {
-    "node": "26.9.0",
-    "npm": "11.19.1"
+    "node": ">=26.9.0 <27",
+    "npm": ">=11.19.1 <12"
   },
   "os": [
     "darwin"

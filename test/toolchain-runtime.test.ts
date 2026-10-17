@@ -4,8 +4,45 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./quality/files-fixture.ts";
 import { observedToolchain, qualifiedToolchain } from "../src/cli/toolchain.ts";
+import { admitWorkflow } from "../src/workflow-admission.ts";
 
 const root = join(import.meta.dirname, "..");
+
+await test("CLV-097 installation engine ranges do not broaden exact workflow Node qualification", async () => {
+  const observed = await observedToolchain(root);
+  const qualified = await qualifiedToolchain(observed, root);
+  assert.equal(qualified.node, "v26.9.0");
+  const workflowId = "workflow//./workflows/probe//probe";
+  const registration = {
+    name: "probe",
+    workflowId,
+    steps: [],
+    capabilities: [],
+    resources: [],
+  };
+  const compiled = {
+    manifest: {
+      workflows: { "probe.js": { probe: { workflowId } } },
+      steps: {},
+    },
+    artifacts: { "flow.mjs": "a".repeat(64) },
+    resources: {},
+    toolchain: { ...observed, node: "v26.9.0" },
+  };
+  const policy = { toolchain: qualified, capabilities: [] };
+  assert.equal(
+    admitWorkflow(registration, { compiled, policy }).kind,
+    "admitted",
+  );
+  for (const node of ["v26.10.0", "v26.9.1", "v>=26.9.0 <27"])
+    assert.deepEqual(
+      admitWorkflow(registration, {
+        compiled: { ...compiled, toolchain: { ...observed, node } },
+        policy,
+      }),
+      { kind: "rejected", reason: "incompatible-toolchain", detail: "node" },
+    );
+});
 
 async function field(file: string, path: readonly string[]): Promise<unknown> {
   const document: unknown = JSON.parse(

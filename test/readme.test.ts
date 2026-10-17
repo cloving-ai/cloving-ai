@@ -6,6 +6,20 @@ import { commandUsage, usage } from "../src/cli/usage.ts";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
 
+await test("CLV-097 installation describes the packaged replacement and pending operator release", () => {
+  assert.match(readme, /^npm install --global cloving --ignore-scripts$/m);
+  assert.doesNotMatch(readme, /npm install --global cloving@/);
+  assert.match(readme, /replaces the older Cloving CLI/);
+  assert.match(readme, /Once the operator publishes this package/);
+  assert.match(readme, /Node 26\.9\.0 and npm 11\.19\.1/);
+  assert.match(readme, /macOS 15.*qualification.*pending/);
+  assert.match(readme, /without a source checkout/);
+  assert.doesNotMatch(
+    readme,
+    /do not install it by name from npm|cloving-0\.4\.0\.tgz/,
+  );
+});
+
 await test("CLV-076 the README starts with the three exact lines of the product owner", () => {
   const opening = readme.split("\n").filter((line) => line.trim() !== "");
   assert.deepEqual(opening.slice(0, 4), [
