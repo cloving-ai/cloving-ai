@@ -95,6 +95,7 @@ function cardPage(
   const model = activeBoardModel();
   const card: WatchCard = {
     completionMark: null,
+    pullRequestObservation: null,
     runId: "run /&1",
     title: "Review the change",
     claudeCostUsd: 1.236,
@@ -193,4 +194,40 @@ await test("CLV-098 develop-issue cards render only present review values as sep
       cardPage({}, { column: "Claude turn", workflowId: workflow }),
       /review-pill|card-review/,
     );
+});
+
+await test("CLV-093 PR marks render as escaped text and preserve original and later run links", () => {
+  const local = { text: "Needs attention", laterRunId: null };
+  const merged = cardPage(
+    {
+      completionMark: local,
+      pullRequestObservation: { status: "merged" },
+      pullRequestNumber: 7,
+      title: "<b>PR & run</b>",
+    },
+    { column: "Stopped" },
+  );
+  assert.match(merged, /<span class="completion-mark">PR merged #7<\/span>/);
+  assert.match(merged, /&lt;b&gt;PR &amp; run&lt;\/b&gt;/);
+  assert.match(merged, /href="#workflow=develop-issue&amp;run=run%20%2F%261"/);
+  assert.doesNotMatch(merged, />Needs attention</);
+  assert.match(
+    cardPage({
+      completionMark: local,
+      pullRequestObservation: { status: "unavailable", failure: "access" },
+    }),
+    />PR status unavailable<\/span>/,
+  );
+  for (const observation of [null, { status: "unmerged" }] as const)
+    assert.match(
+      cardPage({ completionMark: local, pullRequestObservation: observation }),
+      />Needs attention<\/span>/,
+    );
+  assert.match(
+    cardPage({
+      completionMark: { text: "Done in a later run", laterRunId: "later /&" },
+      pullRequestObservation: { status: "merged" },
+    }),
+    /href="#workflow=develop-issue&amp;run=later%20%2F%26">Done in a later run<\/a>/,
+  );
 });

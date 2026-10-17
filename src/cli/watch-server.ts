@@ -1,3 +1,6 @@
+import { observedBoard } from "./watch-pr-board.ts";
+import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
+import type { PrObserver } from "./watch-pr-observer.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
 import {
   createServer,
@@ -16,6 +19,7 @@ import { watchStream, type WatchStream } from "./watch-stream.ts";
 export const defaultWatchPort = 3663;
 
 export interface WatchSettings {
+  readonly pullRequests?: WatchPrSettings;
   readonly runtimeDirectory: string;
   readonly port: number;
   readonly client: string;
@@ -32,6 +36,7 @@ interface Reply {
 
 interface Watch {
   readonly settings: WatchSettings;
+  readonly observer: PrObserver;
   readonly reader: WatchReader;
   readonly streams: Map<string, { size: number; lines: readonly string[] }>;
   readonly github: Map<string, GithubRecords>;
@@ -118,7 +123,7 @@ async function snapshot(
     turns(watch),
     githubRecords(watch),
   ]);
-  return watchModel({
+  const model = watchModel({
     ...read,
     home: homedir(),
     client: watch.settings.client,
@@ -126,6 +131,7 @@ async function snapshot(
     turns: journal,
     githubRecords: github,
   });
+  return runId === null ? observedBoard(model, watch.observer) : model;
 }
 
 async function answered(
@@ -188,9 +194,17 @@ function subscribed(
   request.once("close", stream.subscribe(changed));
 }
 
-export function watchServer(settings: WatchSettings): Promise<number> {
+export async function watchServer(settings: WatchSettings): Promise<number> {
+  const observer: PrObserver =
+    settings.pullRequests === undefined
+      ? {
+          observe: () => ({ status: "unavailable", failure: "configuration" }),
+          close: () => undefined,
+        }
+      : await watchPrObserver(settings.pullRequests);
   const watch: Watch = {
     settings,
+    observer,
     reader: watchReader(settings.runtimeDirectory),
     streams: new Map(),
     github: new Map(),
@@ -216,6 +230,7 @@ export function watchServer(settings: WatchSettings): Promise<number> {
   });
   return new Promise((settle) => {
     server.once("error", (error) => {
+      observer.close();
       stream.close();
       settings.complain(`watch-not-started: ${error.message}\n`);
       settle(1);
@@ -225,6 +240,7 @@ export function watchServer(settings: WatchSettings): Promise<number> {
       settings.announce(`Watch page: http://127.0.0.1:${String(bound)}/\n`);
     });
     const closed = (): void => {
+      observer.close();
       stream.close();
       server.close();
       server.closeAllConnections();

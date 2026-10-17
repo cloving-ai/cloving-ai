@@ -1,3 +1,5 @@
+import type { PrObservation } from "./watch-pr-identity.ts";
+
 export interface WatchItem {
   readonly kind: string;
   readonly text: string;
@@ -75,6 +77,7 @@ export interface WatchCard {
   readonly greptileScore: number | null;
   readonly pullRequestNumber: number | null;
   readonly completionMark: WatchCompletionMark | null;
+  readonly pullRequestObservation: PrObservation | null;
 }
 
 export interface WatchCompletionMark {

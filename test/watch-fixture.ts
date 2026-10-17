@@ -4,6 +4,12 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const entry = join(import.meta.dirname, "../src/cli.ts");
 
+export interface WatchOptions {
+  readonly port?: string;
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly directory?: string;
+}
+
 export interface Watching {
   readonly address: string;
   readonly stop: () => Promise<number | null>;
@@ -16,12 +22,23 @@ export interface Watched {
 
 export function watchCommand(
   runtimeDirectory: string,
-  port: string,
+  selection: string | WatchOptions,
 ): { readonly child: ChildProcess; readonly output: { text: string } } {
-  const child = spawn(process.execPath, [entry, "watch", "--port", port], {
-    env: { ...process.env, CLOVING_RUNTIME_DIR: runtimeDirectory },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const options =
+    typeof selection === "string" ? { port: selection } : selection;
+  const child = spawn(
+    process.execPath,
+    [entry, "watch", "--port", options.port ?? "0"],
+    {
+      env: {
+        ...process.env,
+        CLOVING_RUNTIME_DIR: runtimeDirectory,
+        ...options.environment,
+      },
+      cwd: options.directory,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   const output = { text: "" };
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", (chunk: Buffer) => {
@@ -38,9 +55,9 @@ function closed(child: ChildProcess): Promise<number | null> {
 
 export async function watching(
   runtimeDirectory: string,
-  port = "0",
+  options: string | WatchOptions = "0",
 ): Promise<Watching> {
-  const { child, output } = watchCommand(runtimeDirectory, port);
+  const { child, output } = watchCommand(runtimeDirectory, options);
   const stop = (): Promise<number | null> => {
     const end = closed(child);
     child.kill("SIGTERM");

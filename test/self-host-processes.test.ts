@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
@@ -138,3 +138,34 @@ for (const command of ["fetch", "remote"]) {
     });
   });
 }
+
+await test("CLV-093 the watch child gets the service repository while its current directory is the product", async () => {
+  await withUpdateRepository(async ({ root, repository }) => {
+    const paths = await programs(root, { daemonMilliseconds: 300 });
+    const program = join(paths.product, "src/cli.ts");
+    const source = await readFile(program, "utf8");
+    await writeFile(
+      program,
+      source +
+        `\nwriteFileSync(${JSON.stringify(join(root, "watch-context"))}, JSON.stringify({ repository: process.env["CLOVING_WATCH_REPOSITORY"], cwd: process.cwd() }));\n`,
+    );
+    assert.equal(
+      await hostedPrograms({
+        ...paths,
+        repository,
+        runtime: join(root, "host/run"),
+        directory: join(root, "host"),
+        watchPort: "0",
+        updateMilliseconds: undefined,
+      }),
+      0,
+    );
+    const context: unknown = JSON.parse(
+      await readFile(join(root, "watch-context"), "utf8"),
+    );
+    assert.deepEqual(context, {
+      repository,
+      cwd: await realpath(paths.product),
+    });
+  });
+});
