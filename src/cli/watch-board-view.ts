@@ -47,8 +47,15 @@ export function CardReview(props: {
 export function completionMark(card: WatchCard, workflowId: string): Shown {
   const mark = card.completionMark;
   if (mark === null) return null;
+  let text = mark.text;
+  if (text === "Needs attention") {
+    if (card.pullRequestObservation?.status === "merged")
+      text = `PR merged #${String(card.pullRequestNumber)}`;
+    if (card.pullRequestObservation?.status === "unavailable")
+      text = "PR status unavailable";
+  }
   if (mark.laterRunId === null)
-    return element("span", { class: "completion-mark", children: mark.text });
+    return element("span", { class: "completion-mark", children: text });
   return element("a", {
     class: "completion-mark",
     href: watchHash({ workflowId, runId: mark.laterRunId }),

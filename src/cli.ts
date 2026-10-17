@@ -1,11 +1,59 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { addAbortListener } from "node:events";
+import { execFile, spawn } from "node:child_process";
 import { delimiter, dirname, extname, join } from "node:path";
 import { main } from "./cli/main.ts";
+import type {
+  WatchCommandOutput,
+  WatchCommandRunner,
+} from "./cli/watch-pr-command.ts";
 import { clientCommand, runtimeDirectory } from "./cli/runtime-directory.ts";
 import { commandUsage } from "./cli/usage.ts";
 
 const [command, ...options] = process.argv.slice(2);
+
+const watchCommand: WatchCommandRunner = async (request) => {
+  const [command = "", ...argumentsList] = request.command;
+  const completed = Promise.withResolvers<WatchCommandOutput>();
+  const stderr = { text: "" };
+  const execution = execFile(
+    command,
+    argumentsList,
+    {
+      cwd: request.directory,
+      signal: request.signal,
+      killSignal: "SIGKILL",
+      maxBuffer: 1024 * 1024,
+      encoding: "utf8",
+    },
+    (error, stdout) => {
+      const code = error === null ? 0 : error.code;
+      completed.resolve({
+        stdout,
+        stderr: stderr.text,
+        status: typeof code === "number" ? code : null,
+        errorCode: typeof code === "string" ? code : null,
+      });
+    },
+  );
+  execution.stderr?.on("data", (chunk: Buffer) => {
+    stderr.text += chunk.toString();
+  });
+  const closed = new Promise<void>((resolve) =>
+    execution.once("close", () => {
+      resolve();
+    }),
+  );
+  const listener = addAbortListener(request.signal, () => {
+    execution.kill("SIGKILL");
+  });
+  try {
+    await closed;
+    return await completed.promise;
+  } finally {
+    listener[Symbol.dispose]();
+  }
+};
 
 function started(runtime: string): Promise<number> {
   const program = join(
@@ -67,4 +115,9 @@ async function start(): Promise<number> {
 }
 
 if (command === "start") process.exitCode = await start();
-else await main(process.argv.slice(2));
+else
+  await main(process.argv.slice(2), {
+    repository: process.env["CLOVING_WATCH_REPOSITORY"],
+    githubCommand: process.env["CLOVING_GH_COMMAND"],
+    execute: watchCommand,
+  });

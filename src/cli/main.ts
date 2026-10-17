@@ -1,3 +1,4 @@
+import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { importChats } from "../chats/import.ts";
@@ -7,7 +8,10 @@ import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import { chatsImportUsage, usage, validateUsage } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
-export async function main(argumentsList: readonly string[]): Promise<void> {
+export async function main(
+  argumentsList: readonly string[],
+  watchPr?: WatchPrSettings,
+): Promise<void> {
   const invocation = parseInvocation(argumentsList);
 
   if (invocation.kind === "usage-error") {
@@ -33,6 +37,7 @@ export async function main(argumentsList: readonly string[]): Promise<void> {
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env),
+      ...(watchPr === undefined ? {} : { watchPr }),
       client: clientCommand(process.env),
       workingDirectory: process.cwd(),
       terminal: {

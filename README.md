@@ -183,6 +183,7 @@ The client commands find the service with no setting, because the two sides use 
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_PROFILES`: a JSON file of named Claude turn profiles, read once when the service starts.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
+- `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
 - `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`; the GitHub command and private-text list also apply to `develop-prd`.
 
@@ -304,6 +305,10 @@ A run of `develop-issue` opens no approval. The GitHub worker makes the work tre
 When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`; a completed merge removes `cloving: in progress`. Operators add `cloving: ready`. Label failures leave the run's outcome unchanged. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
 
 At the confidence score 5/5, the worker merges the pull request with a merge commit, with no human approval. Then it removes the remote branch, the work tree and the local branch. With a lower score, the Claude worker gets the summary and the findings of the review for one more round. After three such rounds, or after 60 minutes with no review, the run stops and the pull request stays open.
+
+The watch board keeps blocked `develop-issue` runs in `Stopped`. A qualifying later local run shows `Done in a later run`. Otherwise, the board reads the recorded pull request with `CLOVING_GH_COMMAND` (default `gh`). The service supplies its repository, and the board checks the local origin and the recorded PR identity. A confirmed merge shows `PR merged #N`; a read failure shows `PR status unavailable`. Other PR states keep `Needs attention`. These marks do not change the run outcome.
+
+Reads run in the background, one at a time, with a five-second limit. Board loads can refresh unresolved PRs at least 60 seconds after the previous attempt started. Confirmed merges remain cached until the watch process stops. A later normal page load shows each result.
 
 The GitHub worker does not push a change that has the path of the home folder in a file or in a commit message. `CLOVING_PRIVATE_TEXTS` (a JSON list of texts) adds more texts to refuse, with no difference between capital and small letters. `CLOVING_CHECK_COMMAND` (a JSON list of texts) names a check that must pass in the work tree before a merge. `CLOVING_GH_COMMAND` replaces the `gh` command. The worker uses the `gh` login and the git credentials of the current user.
 

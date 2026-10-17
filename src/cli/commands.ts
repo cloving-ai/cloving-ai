@@ -1,3 +1,4 @@
+import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -20,6 +21,7 @@ export interface Terminal {
 
 export interface CommandEnvironment {
   readonly runtimeDirectory: string | undefined;
+  readonly watchPr?: WatchPrSettings;
   readonly client?: string;
   readonly workingDirectory: string;
   readonly terminal: Terminal;
@@ -334,6 +336,9 @@ function located(
   if (invocation.kind === "events") return events(environment, invocation);
   if (invocation.kind === "watch")
     return watchServer({
+      ...(environment.watchPr === undefined
+        ? {}
+        : { pullRequests: environment.watchPr }),
       runtimeDirectory: environment.runtimeDirectory,
       port: invocation.port ?? defaultWatchPort,
       client: environment.client ?? "cloving",

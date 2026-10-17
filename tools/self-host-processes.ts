@@ -134,6 +134,7 @@ function hostedChildren(
         environment: {
           ...process.env,
           CLOVING_RUNTIME_DIR: settings.runtime,
+          CLOVING_WATCH_REPOSITORY: settings.repository,
         },
       },
     ),

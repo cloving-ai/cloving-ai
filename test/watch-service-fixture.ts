@@ -10,12 +10,24 @@ import {
   type Reply,
 } from "../src/protocol.ts";
 import { withHarness } from "./service-fixture.ts";
-import { watching, type Watching } from "./watch-fixture.ts";
+import { watching, type Watching, type WatchOptions } from "./watch-fixture.ts";
 
 export async function withWatchService(
-  answer: (request: ServiceRequest) => Reply,
+  configuration:
+    | ((request: ServiceRequest) => Reply)
+    | {
+        readonly answer: (request: ServiceRequest) => Reply;
+        readonly configure?: (
+          runtimeDirectory: string,
+        ) => Promise<WatchOptions>;
+        readonly launch?: (runtimeDirectory: string) => Promise<Watching>;
+      },
   body: (watch: Watching, runtimeDirectory: string) => Promise<void>,
 ): Promise<void> {
+  const settings =
+    typeof configuration === "function"
+      ? { answer: configuration, configure: undefined, launch: undefined }
+      : configuration;
   await withHarness(async (harness) => {
     const address = socketAddress(
       join(harness.runtimeDirectory, "control.sock"),
@@ -28,12 +40,14 @@ export async function withWatchService(
         if (!buffered.includes("\n")) return;
         const parsed = parseRequest(buffered.trim());
         assert.equal(parsed.kind, "request");
-        socket.end(replyLine(answer(parsed.request)));
+        socket.end(replyLine(settings.answer(parsed.request)));
       });
     });
     await new Promise<void>((ready) => server.listen(address.path, ready));
     try {
-      const watch = await watching(harness.runtimeDirectory);
+      const options = await settings.configure?.(harness.runtimeDirectory);
+      const watch = await (settings.launch?.(harness.runtimeDirectory) ??
+        watching(harness.runtimeDirectory, options));
       try {
         await body(watch, harness.runtimeDirectory);
       } finally {
