@@ -30,6 +30,13 @@ await test("CLV-097 release fixtures reject malformed workflow shapes at the JSO
       ...workflow,
       jobs: {
         ...workflow.jobs,
+        quality: { ...workflow.jobs.quality, "timeout-minutes": "60" },
+      },
+    },
+    {
+      ...workflow,
+      jobs: {
+        ...workflow.jobs,
         quality: { ...workflow.jobs.quality, steps: [{ run: 42 }] },
       },
     },
@@ -177,6 +184,10 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
 
 await test("CLV-097 quality qualifies the exact toolchain, completes the developer gate and verifies installed startup", async () => {
   const workflow = await releaseWorkflow();
+  assert.equal(job(workflow, "quality")["timeout-minutes"], 60);
+  assert.deepEqual(job(workflow, "quality").env, {
+    CLOVING_CHECK_TIME_FACTOR: "3",
+  });
   const commands = steps(workflow, "quality")
     .map((step) => step.run)
     .filter((run) => run !== undefined);
@@ -227,6 +238,12 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     job(workflow, "publish").env?.["NPM_CONFIG_REGISTRY"],
     "https://registry.npmjs.org",
   );
+  assert.equal(
+    job(workflow, "publish").env?.["CLOVING_CHECK_TIME_FACTOR"],
+    undefined,
+  );
+  for (const step of steps(workflow, "publish"))
+    assert.equal(step.env?.["CLOVING_CHECK_TIME_FACTOR"], undefined);
   assert.doesNotMatch(
     JSON.stringify(workflow),
     /NPM_TOKEN|NODE_AUTH_TOKEN|npm run check["\\]|test:concurrency/,

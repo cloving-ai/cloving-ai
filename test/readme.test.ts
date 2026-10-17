@@ -6,6 +6,13 @@ import { commandUsage, usage } from "../src/cli/usage.ts";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
 
+await test("CLV-099 the README explains the developer gate time factor and default", () => {
+  assert.match(
+    readme,
+    /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5.*default 1.*test and coverage.*time limits/,
+  );
+});
+
 await test("CLV-097 installation describes the packaged replacement and pending operator release", () => {
   assert.match(readme, /^npm install --global cloving --ignore-scripts$/m);
   assert.doesNotMatch(readme, /npm install --global cloving@/);
@@ -82,7 +89,11 @@ function readmeFindings(text: string): readonly string[] {
   );
   return [
     ...distinct(text.match(/\bCLOVING_\w+/g) ?? [])
-      .filter((name) => !settings.has(name) && name !== "CLOVING_TURN_ID")
+      .filter(
+        (name) =>
+          !settings.has(name) &&
+          !["CLOVING_TURN_ID", "CLOVING_CHECK_TIME_FACTOR"].includes(name),
+      )
       .map((name) => `unknown-setting: ${name}`),
     ...distinct(named)
       .filter((name) => !commands.has(name))

@@ -19,6 +19,7 @@ interface WorkflowStep {
 
 interface WorkflowJob {
   readonly "runs-on": string;
+  readonly "timeout-minutes": number;
   readonly steps: readonly WorkflowStep[];
   readonly if?: string;
   readonly needs?: string;
@@ -100,6 +101,7 @@ function isJob(value: unknown): value is WorkflowJob {
   if (!isRecord(value)) return false;
   return (
     isString(value["runs-on"]) &&
+    typeof value["timeout-minutes"] === "number" &&
     Array.isArray(value["steps"]) &&
     value["steps"].every(isStep) &&
     ["if", "needs"].every(
