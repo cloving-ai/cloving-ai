@@ -5,6 +5,43 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./files-fixture.ts";
 import { evaluateWorkerHook } from "../../quality/worker-hooks.ts";
+import { parseCheckTimeFactor } from "../../quality/test-execution.ts";
+import { runCommand } from "../../quality/command.ts";
+
+function hookTimeoutMilliseconds(factor: string | undefined): number {
+  return 10000 * parseCheckTimeFactor(factor);
+}
+
+const hookTimeout = hookTimeoutMilliseconds(
+  process.env["CLOVING_CHECK_TIME_FACTOR"],
+);
+
+await test("CLV-100 scales the QG-15 hook subprocess limit by the check time factor", () => {
+  assert.equal(hookTimeoutMilliseconds(undefined), 10000);
+  assert.equal(hookTimeoutMilliseconds("3"), 30000);
+});
+
+await test("CLV-100 forwards the check time factor to hook test subprocesses", () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+  try {
+    assert.equal(
+      runCommand({
+        executable: process.execPath,
+        arguments: [
+          "-e",
+          "process.stdout.write(process.env.CLOVING_CHECK_TIME_FACTOR ?? 'unset')",
+        ],
+        directory: process.cwd(),
+        timeoutMilliseconds: 1000,
+      }),
+      "3",
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+});
 
 async function withHook(
   source: string,
@@ -38,7 +75,7 @@ async function withHook(
           {
             input: JSON.stringify(input),
             encoding: "utf8",
-            timeout: 10000,
+            timeout: hookTimeout,
             env: { PATH: process.env["PATH"], NODE_DISABLE_COMPILE_CACHE: "1" },
           },
         );
@@ -180,7 +217,7 @@ await test("QG-10 hook rejects oversized input before source analysis", async ()
         {
           stdio: [input.fd, "pipe", "pipe"],
           encoding: "utf8",
-          timeout: 10000,
+          timeout: hookTimeout,
         },
       );
       assert.equal(result.error, undefined);
