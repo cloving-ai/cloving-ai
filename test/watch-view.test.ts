@@ -110,8 +110,8 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
     /^<section class="banner good"><span class="icon">✓<\/span><div><h2>Completed .*<p>The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   assert.match(
-    banner({ ...ended, events: [], turns: [] }),
-    /<p>The run completed · cost 0\.00 USD\.<\/p>/,
+    banner({ ...ended, events: [], turns: [], claudeCostUsd: null }),
+    /<p>The run completed · cost Price not known\.<\/p>/,
   );
   assert.match(
     banner({ ...ended, decision: "approved" }),

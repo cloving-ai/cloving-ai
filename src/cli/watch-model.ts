@@ -1,3 +1,6 @@
+import { priceFields, statusTurns } from "./watch-usage.ts";
+import { priceOf, usageOf } from "../worker-usage.ts";
+import { priceText } from "./usage-render.ts";
 import type {
   WatchDecision,
   WatchEvent,
@@ -88,7 +91,7 @@ function failed(part: Fields): WatchItem[] {
 }
 
 function ended(line: Fields): WatchItem[] {
-  const cost = count(line["total_cost_usd"]);
+  const cost = priceOf(line["total_cost_usd"]);
   return [
     {
       kind: "result",
@@ -109,14 +112,6 @@ export function activityOf(line: string): WatchItem[] {
   return value["type"] === "result" ? ended(value) : [];
 }
 
-function costOf(lines: readonly string[]): number | null {
-  const costs = lines
-    .map((line) => record(parsed(line)))
-    .filter((value) => value["type"] === "result")
-    .map((value) => count(value["total_cost_usd"]));
-  return costs.at(-1) ?? null;
-}
-
 function concise(items: readonly WatchItem[]): WatchItem[] {
   return items.map((item, index) => {
     const before = items[index - 1];
@@ -134,9 +129,8 @@ function shortened(run: WatchRun): WatchRun {
       ...turn,
       activity: concise(
         turn.activity.map((item) => {
-          const cost = item.costUsd;
           const spent =
-            cost === undefined ? "" : ` (cost ${cost.toFixed(2)} USD)`;
+            item.kind === "result" ? ` (cost ${priceText(item.costUsd)})` : "";
           return { kind: item.kind, text: `${cut(item.text)}${spent}` };
         }),
       ).slice(-activityLimit),
@@ -160,14 +154,27 @@ export function turnOf(records: TurnRecords): WatchTurn {
   const report = record(parsed(text(result["result"])));
   return {
     key: records.key,
+    operationId: text(started["operationId"]),
+    usage: usageOf(report["usage"]),
     runId: text(operation[2]),
     target: text(started["target"]),
     branch: text(started["branch"]),
     worktree: text(started["worktree"]),
     startedAt: text(started["startedAt"]),
     outcome: records.result === null ? "in work" : outcome,
-    costUsd: costOf(records.lines),
-    activity: records.lines.flatMap(activityOf).slice(-activityLimit - 1),
+    costUsd: priceOf(report["costUsd"]),
+    activity: records.lines
+      .flatMap(activityOf)
+      .map((item) =>
+        item.kind === "result"
+          ? {
+              kind: item.kind,
+              text: item.text,
+              ...priceFields(report["costUsd"]),
+            }
+          : item,
+      )
+      .slice(-activityLimit - 1),
     endedAt: stamp(result["endedAt"]),
     activeAt: records.activeAt ?? null,
     commits: texts(report["commits"]),
@@ -305,7 +312,8 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     title: stamp(status["title"]),
     outcome: stamp(record(status["outcome"])["kind"]),
     latestAt: stamp(status["latestAt"]),
-    claudeCostUsd: count(status["claudeCostUsd"]) ?? 0,
+    claudeCostUsd: priceOf(status["claudeCostUsd"]),
+    usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), workflowId),
     round: roundOf(list(record(value)["events"])),
     state: text(status["state"]),
@@ -317,7 +325,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
       .filter((decision) => record(decision)["runId"] === runId)
       .map((decision) => decisionCommands(decision, inputs.client)),
     events: list(record(value)["events"]).map(eventOf),
-    turns: inputs.turns.filter((turn) => turn.runId === runId),
+    turns: statusTurns(inputs.turns, status),
     phases: phasesOf(list(record(value)["events"]), workflowId),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),

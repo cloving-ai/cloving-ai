@@ -1,3 +1,4 @@
+import { priceText, usageText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchCard, WatchWorkflow } from "./watch-render.ts";
@@ -86,7 +87,11 @@ export function Card(props: {
           component(CardReview, { card, workflowId }),
           element("span", {
             class: "card-cost",
-            children: `${card.claudeCostUsd.toFixed(2)} USD`,
+            children: `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd)}`,
+          }),
+          element("span", {
+            class: "card-usage",
+            children: usageText(card.usage),
           }),
           card.decisionWaiting
             ? element("span", {

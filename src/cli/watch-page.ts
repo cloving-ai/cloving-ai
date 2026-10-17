@@ -1,3 +1,5 @@
+import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
+import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import {
   Board,
   Card,
@@ -50,6 +52,12 @@ import {
 } from "./watch-view.ts";
 
 const functions = [
+  priceOf,
+  tokenCount,
+  usageOf,
+  priceText,
+  usageText,
+  totalsSuffix,
   watchHash,
   watchLocation,
   boardWorkflow,
@@ -152,7 +160,7 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .card-run { display: grid; gap: 8px; color: inherit; text-decoration: none; }
 .card-run strong { font-family: var(--heading-font); font-weight: 700; }
 .completion-mark { font-size: 12px; }
-.card-step, .card-review, .card-cost, .card small { font: 400 12px/1.6 var(--code-font); font-variant-numeric: tabular-nums; }
+.card-step, .card-review, .card-cost, .card-usage, .card small { font: 400 12px/1.6 var(--code-font); font-variant-numeric: tabular-nums; }
 .card-step { color: var(--muted); }
 .card-step.active { color: var(--accent-strong); }
 .card-review { color: var(--muted); }

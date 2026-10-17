@@ -18,6 +18,12 @@ export const noCopy = {
 export function sampleTurn(changes: Partial<WatchTurn> = {}): WatchTurn {
   return {
     key: "k1",
+    operationId: "operation-1",
+    usage: {
+      input_tokens: null,
+      cache_read_input_tokens: null,
+      output_tokens: null,
+    },
     runId: "run-1",
     target: "clv-016-a6f7ef47",
     branch: "cloving/clv-016-a6f7ef47",
@@ -84,7 +90,12 @@ export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
     title: null,
     outcome: null,
     latestAt: null,
-    claudeCostUsd: 0,
+    claudeCostUsd: 1.0330776000000002,
+    usage: {
+      input_tokens: null,
+      cache_read_input_tokens: null,
+      output_tokens: null,
+    },
     round: 1,
     currentStep: { name: "Your review", startedAt: at("21:33:41") },
     runId: "run-1",

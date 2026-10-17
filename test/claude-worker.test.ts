@@ -78,6 +78,11 @@ await test("CLV-013 when a turn ends, the worker records a result with the commi
       },
     );
     const result = resultOf(report?.result);
+    assert.deepEqual(result["usage"], {
+      input_tokens: 1500,
+      cache_read_input_tokens: 800,
+      output_tokens: 150,
+    });
     assert.deepEqual(
       ["summary", "branch", "worktree", "uncommitted", "costUsd"].map(
         (name) => result[name],
@@ -158,6 +163,12 @@ await test("CLV-013 a turn that ends with an exit code, with an error result, wi
         ...result,
       });
     }
+    for (const report of scene.reports.slice(0, 2))
+      assert.deepEqual(resultOf(report.result)["usage"], {
+        input_tokens: 1500,
+        cache_read_input_tokens: 800,
+        output_tokens: 150,
+      });
     assert.deepEqual(
       scene.reports.map((report) =>
         report.result === undefined

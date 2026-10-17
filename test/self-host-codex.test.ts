@@ -14,7 +14,13 @@ import {
 import { call } from "./service-fixture.ts";
 import { watchedModel } from "./watch-fixture.ts";
 
-await test("CLV-083 start selects the Codex command for a develop-ticket worker and counts unknown cost as zero", () =>
+const usage = {
+  input_tokens: 100,
+  cache_read_input_tokens: 40,
+  output_tokens: 20,
+};
+
+await test("CLV-083 start selects the Codex command for a develop-ticket worker and retains unknown cost", () =>
   withoutChildren(async () => {
     const { root, directory, runtimeDirectory, start } = await scene();
     const script = join(root, "fake-codex.mjs");
@@ -58,7 +64,7 @@ await test("CLV-083 start selects the Codex command for a develop-ticket worker 
         field(turn, "costUsd"),
         field(turn, "outcome"),
       ],
-      [0, null, "completed"],
+      [null, null, "completed"],
     );
     assert.deepEqual(
       items(field(turn, "activity")).map((item) => field(item, "text")),
@@ -67,9 +73,11 @@ await test("CLV-083 start selects the Codex command for a develop-ticket worker 
         "Edit: codex-work.txt",
         "Working.",
         "Done.",
-        "Result of the worker",
+        "Result of the worker (cost Price not known)",
       ],
     );
+    assert.deepEqual(field(run, "usage"), usage);
+    assert.deepEqual(field(turn, "usage"), usage);
     assert.equal(await ended(daemon), 0);
   }));
 

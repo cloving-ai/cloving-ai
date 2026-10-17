@@ -31,7 +31,7 @@ for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
 appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
-const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, session_id: "session-1", num_turns: 3, ...fields });
+const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: "session-1", num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
 const held = () => new Promise(() => { setInterval(() => undefined, 1000); });
 print({ type: "system", subtype: "init", session_id: "session-1" });

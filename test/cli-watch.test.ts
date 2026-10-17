@@ -160,7 +160,7 @@ await test("CLV-016 cloving watch serves the page, the Preact file of the instal
           field(turn, "costUsd"),
           field(field(run, "phases"), "length"),
         ],
-        [1, 0.5, 5],
+        [1, null, 5],
       );
       assert.match(String(field(turn, "activeAt")), /^\d{4}-\d\d-\d\dT/);
       assert.equal(field(field(run, "events"), "length"), 5);

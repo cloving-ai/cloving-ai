@@ -99,6 +99,11 @@ function cardPage(
     runId: "run /&1",
     title: "Review the change",
     claudeCostUsd: 1.236,
+    usage: {
+      input_tokens: null,
+      cache_read_input_tokens: null,
+      output_tokens: null,
+    },
     currentStep: { name: "Greptile review", startedAt: "2026-10-14T11:57:00Z" },
     endedAt: null,
     decisionWaiting: true,

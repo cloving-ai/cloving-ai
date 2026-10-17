@@ -65,9 +65,8 @@ function costText(costUsd: number | null): string {
   return JSON.stringify({ summary: "the turn is done", costUsd });
 }
 
-async function claudeCost(scene: Scene): Promise<number> {
+async function claudeCost(scene: Scene): Promise<unknown> {
   const cost = field(await view(scene.harness, scene.runId), "claudeCostUsd");
-  assert(typeof cost === "number");
   return cost;
 }
 
@@ -111,10 +110,10 @@ await test("CLV-066 the Claude cost of a run adds the cost in the result of a fa
     assert.equal(await claudeCost(scene), 1.75);
   }));
 
-await test("CLV-066 a run with no completed Claude effect gives a Claude cost of 0", () =>
+await test("CLV-066 a run with no completed Claude effect gives an unknown Claude cost", () =>
   withHarness(async (harness) => {
     const scene = await claudeScene(harness);
-    assert.equal(await claudeCost(scene), 0);
+    assert.equal(await claudeCost(scene), null);
     await completed(scene, {
       round: 1,
       capability: "fake-harness",
@@ -126,10 +125,10 @@ await test("CLV-066 a run with no completed Claude effect gives a Claude cost of
       capability: "claude",
     });
     await untilStates(scene, ["completed", "running"]);
-    assert.equal(await claudeCost(scene), 0);
+    assert.equal(await claudeCost(scene), null);
   }));
 
-await test("CLV-066 a Claude result with no number in costUsd adds 0, and the sum has two decimal places", () =>
+await test("CLV-066 a Claude result with no number in costUsd makes the total unknown", () =>
   withHarness(async (harness) => {
     const scene = await claudeScene(harness);
     const results = [
@@ -145,10 +144,10 @@ await test("CLV-066 a Claude result with no number in costUsd adds 0, and the su
         capability: "claude",
         result,
       });
-    assert.equal(await claudeCost(scene), 0.3);
+    assert.equal(await claudeCost(scene), null);
   }));
 
-await test("CLV-066 a completed Claude effect with no result document adds 0", () =>
+await test("CLV-066 a completed Claude effect with no result document makes the total unknown", () =>
   withHarness(async (harness) => {
     let reconciliations = 0;
     const scene = await effectScene(harness, {
@@ -184,5 +183,5 @@ await test("CLV-066 a completed Claude effect with no result document adds 0", (
       capability: "claude",
       result: costText(0.25),
     });
-    assert.equal(await claudeCost(scene), 0.25);
+    assert.equal(await claudeCost(scene), null);
   }));

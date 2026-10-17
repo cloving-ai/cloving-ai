@@ -116,6 +116,7 @@ async function resultText(
     ...(await changes(tree)),
     worktree: tree.path,
     costUsd: result.costUsd,
+    usage: result.usage,
     sessionId: result.sessionId,
     turns: result.turns,
   };

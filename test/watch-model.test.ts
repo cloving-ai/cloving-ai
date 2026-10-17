@@ -9,6 +9,12 @@ import {
 } from "../src/cli/watch-model.ts";
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
 
+const unknownUsage = {
+  input_tokens: null,
+  cache_read_input_tokens: null,
+  output_tokens: null,
+};
+
 const line = (value: unknown): string => JSON.stringify(value);
 
 await test("CLV-091 the model retains exact stored ticket identity independently of the title", () => {
@@ -117,10 +123,12 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     worktree: "/host/worktrees/clv-016-a6f7ef47",
     startedAt: "2026-10-13T21:26:01.000Z",
     outcome: "in work",
-    costUsd: 0.5,
+    operationId,
+    usage: unknownUsage,
+    costUsd: null,
     activity: [
       { kind: "say", text: "a" },
-      { kind: "result", text: "Done.", costUsd: 0.5 },
+      { kind: "result", text: "Done." },
     ],
     endedAt: null,
     activeAt: "2026-10-13T21:27:00.000Z",
@@ -190,10 +198,10 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
     lines: [finished("Done.", 0.25), ...working.lines, finished("a", 0.5)],
   });
   assert.deepEqual(repeated.activity, [
-    { kind: "result", text: "Done. (cost 0.25 USD)" },
+    { kind: "result", text: "Done. (cost Price not known)" },
     { kind: "say", text: "a" },
-    { kind: "result", text: "Done. (cost 0.50 USD)" },
-    { kind: "result", text: "a (cost 0.50 USD)" },
+    { kind: "result", text: "Done. (cost Price not known)" },
+    { kind: "result", text: "a (cost Price not known)" },
   ]);
   const echoed = shownTurn({
     ...working,
@@ -202,7 +210,7 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
   assert.deepEqual(echoed.activity, [
     { kind: "say", text: "a" },
     { kind: "say", text: "a" },
-    { kind: "result", text: "Result of the worker (cost 0.50 USD)" },
+    { kind: "result", text: "Result of the worker (cost Price not known)" },
   ]);
 });
 
@@ -222,9 +230,9 @@ await test("CLV-080 turns retain only recent activity before path replacement", 
   assert.equal(turn.activity.length, 401);
   assert.deepEqual(turn.activity, [
     ...content.slice(600).map(({ text }) => ({ kind: "say", text })),
-    { kind: "result", text: "Done.", costUsd: 1.25 },
+    { kind: "result", text: "Done." },
   ]);
-  assert.equal(turn.costUsd, 1.25);
+  assert.equal(turn.costUsd, null);
 });
 
 await test("CLV-080 the activity limit preserves the summary of a repeated result", () => {
@@ -239,7 +247,7 @@ await test("CLV-080 the activity limit preserves the summary of a repeated resul
   assert.equal(turn.activity.length, 400);
   assert.deepEqual(turn.activity[0], {
     kind: "result",
-    text: "Result of the worker (cost 1.25 USD)",
+    text: "Result of the worker (cost Price not known)",
   });
 });
 
@@ -330,7 +338,8 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       ticketId: null,
       outcome: null,
       latestAt: null,
-      claudeCostUsd: 0,
+      claudeCostUsd: null,
+      usage: unknownUsage,
       round: 1,
       currentStep: { name: "Claude turn", startedAt: null },
       state: "waiting_gate",
