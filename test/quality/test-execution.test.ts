@@ -1,10 +1,61 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import { readdir, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { runCommand } from "../../quality/command.ts";
-import { checkTests, testCommand } from "../../quality/test-execution.ts";
+import {
+  checkTests,
+  coverageCommand,
+  parseCheckTimeFactor,
+  testCommand,
+} from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
+
+await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
+  assert.equal(parseCheckTimeFactor(undefined), 1);
+  for (const value of ["1", "2", "3", "4", "5"])
+    assert.equal(parseCheckTimeFactor(value), Number(value));
+  for (const value of [
+    "0",
+    "6",
+    "1.5",
+    "-1",
+    "3x",
+    "",
+    " ",
+    " 3",
+    "3 ",
+    "03",
+    "3\n",
+  ])
+    assert.throws(
+      () => parseCheckTimeFactor(value),
+      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5/,
+    );
+});
+
+await test("CLV-099 rejects an invalid time factor before the first gate check", async () => {
+  await withFiles({ "package.json": "npm-check-must-not-run" }, (directory) => {
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [resolve("tools/check-quality.ts")],
+      {
+        cwd: directory,
+        env: { ...process.env, CLOVING_CHECK_TIME_FACTOR: "0" },
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5/,
+    );
+    assert.equal(result.stdout, "");
+  });
+});
 
 await test("CLV-048 excludes the authority opening benchmark from the regular suite", async () => {
   const benchmarks = (await readdir(join(import.meta.dirname, ".."))).filter(
@@ -137,6 +188,37 @@ await test("CLV-044 the developer gate gives its test command a 600 s bound", ()
   assert.equal(command.timeoutMilliseconds, 600000);
   assert.deepEqual(command.arguments.slice(-1), ["/project/main.test.ts"]);
   assert.equal(command.directory, "/project");
+});
+
+await test("CLV-099 scales the test command bound by the check time factor", () => {
+  for (const [timeFactor, timeout] of [
+    [1, 600000],
+    [3, 1800000],
+  ] as const) {
+    const command = testCommand("/project", {
+      tests: ["/project/main.test.ts"],
+      timeFactor,
+    });
+    assert.equal(command.timeoutMilliseconds, timeout);
+    assert.equal(command.arguments[2], "--test-concurrency=2");
+  }
+});
+
+await test("CLV-099 scales the coverage command bound by the check time factor", () => {
+  const run = { coverageDirectory: "/coverage", files: ["/project/main.ts"] };
+  assert.equal(coverageCommand("/project", run).timeoutMilliseconds, 60000);
+  for (const [timeFactor, timeout] of [
+    [1, 60000],
+    [3, 180000],
+  ] as const) {
+    const command = coverageCommand("/project", { ...run, timeFactor });
+    assert.equal(command.timeoutMilliseconds, timeout);
+    assert.deepEqual(command.arguments.slice(1), [
+      "/coverage",
+      "/project/main.ts",
+    ]);
+    assert.equal(command.directory, "/project");
+  }
 });
 
 await test("CLV-044 a test run that is longer than its bound fails the test command", async () => {

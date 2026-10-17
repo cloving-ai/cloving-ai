@@ -5,7 +5,17 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
 
+export function parseCheckTimeFactor(value: string | undefined): number {
+  if (value === undefined) return 1;
+  if (!/^[1-5]$/.test(value))
+    throw new Error(
+      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 5",
+    );
+  return Number(value);
+}
+
 export interface TestExecutionOptions {
+  readonly timeFactor?: number;
   readonly coverageFiles?: readonly string[];
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
 }
@@ -89,6 +99,7 @@ export function testCommand(
   run: {
     readonly tests: readonly string[];
     readonly coverageDirectory?: string;
+    readonly timeFactor?: number;
   },
 ): CheckCommand {
   return {
@@ -100,10 +111,30 @@ export function testCommand(
       ...run.tests,
     ],
     directory,
-    timeoutMilliseconds: 600000,
+    timeoutMilliseconds: 600000 * (run.timeFactor ?? 1),
     ...(run.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: run.coverageDirectory }),
+  };
+}
+
+export function coverageCommand(
+  directory: string,
+  run: {
+    readonly coverageDirectory: string;
+    readonly files: readonly string[];
+    readonly timeFactor?: number;
+  },
+): CheckCommand {
+  return {
+    executable: process.execPath,
+    arguments: [
+      resolve(import.meta.dirname, "coverage-command.ts"),
+      run.coverageDirectory,
+      ...run.files,
+    ],
+    directory,
+    timeoutMilliseconds: 60000 * (run.timeFactor ?? 1),
   };
 }
 
@@ -119,6 +150,7 @@ function executeTests(
   const output = runCommand(
     testCommand(directory, {
       tests,
+      timeFactor: options.timeFactor ?? 1,
       ...(options.coverageFiles ? { coverageDirectory: temporary } : {}),
     }),
   );
@@ -131,16 +163,13 @@ function executeTests(
     validateRequiredTests(report, options.requiredTests);
   if (!options.coverageFiles) return;
   const coverage: unknown = JSON.parse(
-    runCommand({
-      executable: process.execPath,
-      arguments: [
-        resolve(import.meta.dirname, "coverage-command.ts"),
-        temporary,
-        ...options.coverageFiles,
-      ],
-      directory,
-      timeoutMilliseconds: 60000,
-    }),
+    runCommand(
+      coverageCommand(directory, {
+        coverageDirectory: temporary,
+        files: options.coverageFiles,
+        timeFactor: options.timeFactor ?? 1,
+      }),
+    ),
   );
   checkCoverage(coverage, options.coverageFiles);
 }

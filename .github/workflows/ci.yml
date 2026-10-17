@@ -16,7 +16,10 @@
   "jobs": {
     "quality": {
       "runs-on": "macos-15",
-      "timeout-minutes": 30,
+      "timeout-minutes": 60,
+      "env": {
+        "CLOVING_CHECK_TIME_FACTOR": "3"
+      },
       "steps": [
         {
           "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",

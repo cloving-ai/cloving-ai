@@ -12,6 +12,7 @@ export const requiredChecks = [
 ] as const;
 
 export interface ProjectOptions extends SourceOptions {
+  readonly timeFactor?: number;
   readonly trustedCompilerConfiguration?: string;
   readonly architecture: DependencyPolicy;
   readonly stepExports: Readonly<Record<string, readonly string[]>>;
@@ -111,6 +112,7 @@ function checkProjectTests(
   });
   checkTests(directory, {
     files,
+    timeFactor: options.timeFactor ?? 1,
     ...(production.length > 0 ? { coverageFiles: production } : {}),
     ...(options.requiredTests ? { requiredTests: options.requiredTests } : {}),
   });
