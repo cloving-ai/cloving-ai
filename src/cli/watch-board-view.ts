@@ -26,6 +26,24 @@ export function cardReview(card: WatchCard): string {
     .join(" · ");
 }
 
+export function CardReview(props: {
+  readonly card: WatchCard;
+  readonly workflowId: string;
+}): Shown {
+  if (props.workflowId !== "develop-issue") return null;
+  const review = cardReview(props.card);
+  if (review === "") return null;
+  return element("span", {
+    class: "card-review",
+    children: review
+      .split(" · ")
+      .map((part, index) => [
+        index === 0 ? "" : " · ",
+        element("span", { class: "review-pill", children: part }),
+      ]),
+  });
+}
+
 export function completionMark(card: WatchCard, workflowId: string): Shown {
   const mark = card.completionMark;
   if (mark === null) return null;
@@ -44,7 +62,6 @@ export function Card(props: {
   readonly now: string;
 }): Shown {
   const { card, workflowId, now } = props;
-  const review = workflowId === "develop-issue" ? cardReview(card) : "";
   return element("article", {
     class: "card",
     children: [
@@ -54,12 +71,13 @@ export function Card(props: {
         children: [
           element("strong", { children: card.title ?? card.runId }),
           element("span", {
-            class: "card-step",
+            class:
+              card.endedAt === null && card.currentStep !== null
+                ? "card-step active"
+                : "card-step",
             children: cardStep(card, now),
           }),
-          review === ""
-            ? null
-            : element("span", { class: "card-review", children: review }),
+          component(CardReview, { card, workflowId }),
           element("span", {
             class: "card-cost",
             children: `${card.claudeCostUsd.toFixed(2)} USD`,
@@ -116,7 +134,7 @@ export function Board(props: {
         children: workflow.columns.map((column) =>
           element("section", {
             key: column.name,
-            class: "column",
+            class: column.name === "Stopped" ? "column stopped" : "column",
             children: [
               element("h3", { class: "column-name", children: column.name }),
               column.cards.map((card) =>

@@ -29,6 +29,7 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
     copying: noCopy,
   });
   const html = rendered(shown);
+  assert.match(html, /<section class="column stopped">/);
   assert.match(html, />Done in a later run<\/a>/);
   assert.match(html, />Needs attention<\/span>/);
   assert.match(html, /Title of A \/&amp;&lt;b&gt;/);
@@ -88,8 +89,9 @@ await test("CLV-079 the workflow list shows counts and selection beside ordered 
 
 function cardPage(
   changes: Partial<WatchCard>,
-  column = "Greptile review",
+  options: { readonly column?: string; readonly workflowId?: string } = {},
 ): string {
+  const { column = "Greptile review", workflowId = "develop-issue" } = options;
   const model = activeBoardModel();
   const card: WatchCard = {
     completionMark: null,
@@ -112,7 +114,7 @@ function cardPage(
         columns: [{ name: column, cards: [card] }],
       })),
     },
-    "workflow=develop-issue",
+    `workflow=${workflowId}`,
   );
 }
 
@@ -121,7 +123,7 @@ await test("CLV-079 cards show step time, review progress, cost, decisions and e
   for (const text of [
     "Review the change",
     "Greptile review · 3 min",
-    "round 2 · 4/5 · #67",
+    '<span class="review-pill">round 2</span> · <span class="review-pill">4/5</span> · <span class="review-pill">#67</span>',
     "1.24 USD",
     "Decision waiting",
     "run /&amp;1",
@@ -141,19 +143,54 @@ await test("CLV-079 cards omit absent review parts and step time and fall back t
     decisionWaiting: false,
   });
   assert.match(html, /<strong>run \/&amp;1<\/strong>/);
-  assert.match(html, /<span class="card-step">Work tree<\/span>/);
+  assert.match(html, /<span class="card-step active">Work tree<\/span>/);
   assert.doesNotMatch(html, /round |\/5|Decision waiting|Work tree ·/);
   assert.match(
     cardPage({ round: null, pullRequestNumber: null }),
-    /<span class="card-review">4\/5<\/span>/,
+    /<span class="card-review"><span class="review-pill">4\/5<\/span><\/span>/,
   );
 });
 
 await test("CLV-079 Done and Stopped cards show the local end date and time instead of a step", () => {
   const endedAt = "2026-10-14T11:57:00Z";
   for (const column of ["Done", "Stopped"]) {
-    const html = cardPage({ currentStep: null, endedAt }, column);
+    const html = cardPage({ currentStep: null, endedAt }, { column });
     assert.ok(html.includes(new Date(endedAt).toLocaleString()));
     assert.doesNotMatch(html, /Greptile review ·/);
   }
+});
+
+await test("CLV-098 active steps and stopped categories retain their words with distinct presentation", () => {
+  assert.match(
+    cardPage({}),
+    /class="card-step active">Greptile review · 3 min/,
+  );
+  const stopped = cardPage(
+    { endedAt: "2026-10-14T11:57:00Z" },
+    { column: "Stopped" },
+  );
+  assert.match(stopped, /<section class="column stopped">/);
+  assert.doesNotMatch(stopped, /card-step active/);
+  assert.match(stopped, /1.24 USD/);
+  assert.doesNotMatch(cardPage({}, { column: "Done" }), /column stopped/);
+});
+
+await test("CLV-098 develop-issue cards render only present review values as separate ordered pills", () => {
+  assert.match(
+    cardPage({}),
+    /<span class="card-review"><span class="review-pill">round 2<\/span> · <span class="review-pill">4\/5<\/span> · <span class="review-pill">#67<\/span><\/span>/,
+  );
+  assert.match(
+    cardPage({ round: null, pullRequestNumber: null }),
+    /<span class="card-review"><span class="review-pill">4\/5<\/span><\/span>/,
+  );
+  assert.doesNotMatch(
+    cardPage({ round: null, greptileScore: null, pullRequestNumber: null }),
+    /review-pill|card-review/,
+  );
+  for (const workflow of ["develop-ticket", "develop-prompt"])
+    assert.doesNotMatch(
+      cardPage({}, { column: "Claude turn", workflowId: workflow }),
+      /review-pill|card-review/,
+    );
 });

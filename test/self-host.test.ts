@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   ended,
   field,
@@ -176,9 +175,8 @@ async function stoppedTurn(): Promise<void> {
   const admitted = await asked("run", prompted("A long ticket.", "c-1"));
   const runId = String(admitted["runId"]);
   await reached(async () =>
-    (await effects(runId)).includes("running") ? runId : undefined,
+    (await effects(runId)).slice(1).includes("running") ? runId : undefined,
   );
-  await delay(300);
   assert.equal(await ended(first), 0);
   const second = await start();
   const shown = await reached(async () => {

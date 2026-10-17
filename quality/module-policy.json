@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/watch-style-fixture.ts": "test",
+    "test/watch-style.test.ts": "test",
     "src/chats/normalize.ts": "pure",
     "src/chats/reader.ts": "cli",
     "src/chats/destination.ts": "cli",

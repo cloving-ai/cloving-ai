@@ -121,7 +121,7 @@ export class PageNode {
   get html(): string {
     if (this.localName === undefined) return escaped(this.data);
     const attributes = [...this.attributes].map(([name, value]) =>
-      ["", "true"].includes(value)
+      value === "" || (name === "open" && value === "true")
         ? ` ${name}`
         : ` ${name}="${escaped(value)}"`,
     );

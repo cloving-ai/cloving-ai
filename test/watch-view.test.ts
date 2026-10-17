@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchModel, WatchRun } from "../src/cli/watch-render.ts";
-import { Page } from "../src/cli/watch-view.ts";
-import { rendered } from "./watch-dom.ts";
+import { Header, Page } from "../src/cli/watch-view.ts";
+import { found, rendered } from "./watch-dom.ts";
 import {
   at,
   noCopy,
@@ -58,7 +59,7 @@ function banner(run: Partial<WatchRun>): string {
 
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the steps of the run, its pending decision, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
-    `<header><strong>Cloving</strong><span>updated ${shownClock("21:34:41")}</span></header>`,
+    `<span>updated ${shownClock("21:34:41")}</span></header>`,
     '<a class="back" href="#workflow=develop-ticket">← Back to develop-ticket</a>',
     '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
@@ -66,8 +67,8 @@ await test("CLV-016 the watch page shows the state of the selected run first, as
     '<li class="phase active"><span class="mark">●</span><span class="name">Your review</span><span class="time">1 min 0 s</span></li>',
     '<li class="phase pending"><span class="mark">○</span><span class="name">Completed</span><span class="time"></span></li></ol>',
     '<section class="decision">',
-    '<section class="turn">',
-    '<details class="events"><summary>All events (2)</summary>',
+    '<section class="turn code-window">',
+    '<details class="events code-window"><summary class="code-head">All events (2)</summary>',
     '<p class="meta foot">develop-ticket · run-1 · 1 of 8 effect units<br>policy-approval: A person must approve.</p>',
   ]);
   assert.deepEqual(
@@ -163,8 +164,8 @@ await test("CLV-016 the full page shows a selected run and plain words for no tu
     '<p class="meta">No workflows registered.</p>',
   ]);
   assert.equal(
-    page(null),
-    '<header><strong>Cloving</strong><span></span></header><p class="meta">The page waits for the first data of the watch tool.</p>',
+    page(null).slice(page(null).indexOf("<span>")),
+    '<span></span></header><p class="meta">The page waits for the first data of the watch tool.</p>',
   );
 });
 
@@ -172,7 +173,7 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
   const props = { selected: "run-2", now: at("21:34:41"), copying: noCopy };
   const stale = rendered(component(Page, { ...props, model, stale: true }));
   positions(stale, [
-    '<header><strong>Cloving</strong><span class="bad">The watch tool does not answer.</span></header>',
+    '<span class="bad">The watch tool does not answer.</span></header>',
     '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
   ]);
 });
@@ -204,7 +205,7 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
     ]),
     "run-1",
   );
-  const turn = '<section class="turn">';
+  const turn = '<section class="turn code-window">';
   const first =
     '<section class="review denied"><h3>Review 1 · denied</h3><p>Add a test for &lt;empty&gt; lists.</p></section>';
   const second =
@@ -264,7 +265,32 @@ await test("CLV-065 the watch page shows the pull request of a develop-issue run
   positions(page(sampleModel([issue])), [
     '<ol class="phases">',
     '<section class="pull">',
-    '<section class="turn">',
+    '<section class="turn code-window">',
   ]);
   assert.equal(section(sampleRun()), "");
+});
+
+await test("CLV-098 the brand names cloving beside the hidden accent clove SVG", () => {
+  const shown = component(Header, { model: null, stale: false });
+  const [brand] = found(shown, "strong");
+  assert.ok(brand);
+  assert.equal(brand["class"], "brand");
+  const [svg] = found(shown, "svg");
+  assert.ok(svg);
+  assert.equal(svg["aria-hidden"], "true");
+  assert.equal(svg["focusable"], "false");
+  assert.equal(
+    svg["viewBox"],
+    "0.6625858545303345 0.6630800366401672 46.674827575683594 46.673831939697266",
+  );
+  const paths = found(shown, "path");
+  assert.equal(paths.length, 4);
+  assert.ok(paths.every((path) => path["fill"] === "currentColor"));
+  assert.equal(
+    createHash("sha256")
+      .update(JSON.stringify(paths.map((path) => path["d"])))
+      .digest("hex"),
+    "85c874e4c8e439c77b2ef2ec65144df31fec3e83e4ed61cb02010ec4e33fbbbe",
+  );
+  assert.match(rendered(shown), /<\/svg>cloving<\/strong>/);
 });

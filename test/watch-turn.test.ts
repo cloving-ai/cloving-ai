@@ -35,7 +35,7 @@ await test("CLV-016 the watch page folds the tool calls between two messages of 
   const turn = sampleTurn({ ...reviewedTurn, activity });
   const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
   includes(html, [
-    '<section class="turn"><h3>Claude turn · completed · 7 min 38 s · 1.03 USD</h3>',
+    '<section class="turn code-window"><h3 class="code-head">Claude turn · completed · 7 min 38 s · 1.03 USD</h3>',
     '<p class="meta">Branch cloving/clv-016-a6f7ef47 · work tree clv-016-a6f7ef47</p>',
     '<div class="activity"><div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
     '<details class="tools"><summary>3 tool calls · <span class="bad">1 error</span><span class="last">Bash: npm test</span></summary><div class="item tool" title="Bash: git status">Bash: git status</div>',
@@ -53,13 +53,13 @@ await test("CLV-016 the watch page keeps the last group of tool calls open while
     component(Turn, { turn: working, now: at("21:26:44") }),
   );
   includes(html, [
-    "<h3>Claude turn · in work · 42 s</h3>",
+    '<h3 class="code-head">Claude turn · in work · 42 s</h3>',
     '<details class="tools"><summary>3 tool calls',
     '<details class="tools" open><summary>2 tool calls',
   ]);
   const failed = sampleTurn({ outcome: "failed" });
   includes(rendered(component(Turn, { turn: failed, now: at("21:26:44") })), [
-    "<h3>Claude turn · failed</h3>",
+    '<h3 class="code-head">Claude turn · failed</h3>',
     '<div class="activity"></div>',
   ]);
 });
@@ -82,8 +82,8 @@ await test("CLV-016 the watch page shows a pending decision with the commits, th
       '<p class="good">All the work is committed.</p>',
       '<details open><summary>Report of the worker</summary><div class="report">I added the check &amp; one test.</div></details>',
       "<details><summary>Full text of the request</summary><pre>Review &lt;b&gt;this&lt;/b&gt; &amp; that.</pre></details>",
-      '<div class="command"><span class="label">Approve</span><code>cloving approve run-1/review-1 --text &quot;yes&quot;</code><button type="button">Copy</button></div>',
-      '<div class="command"><span class="label">Deny</span><code>cloving deny run-1/review-1</code><button type="button">Copy</button></div>',
+      '<div class="command code-window"><span class="label code-head">Approve</span><code>cloving approve run-1/review-1 --text &quot;yes&quot;</code><button type="button">Copy</button></div>',
+      '<div class="command code-window"><span class="label code-head">Deny</span><code>cloving deny run-1/review-1</code><button type="button">Copy</button></div>',
       "</section>",
     ].join(""),
   );
@@ -141,6 +141,33 @@ await test("CLV-016 the watch page folds the events of a run and shows their cou
   ];
   assert.equal(
     rendered(component(Events, { events })),
-    `<details class="events"><summary>All events (1)</summary><div class="event">${shownClock("21:26:00")} run.&lt;created&gt;</div></details>`,
+    `<details class="events code-window"><summary class="code-head">All events (1)</summary><div class="event">${shownClock("21:26:00")} run.&lt;created&gt;</div></details>`,
   );
+});
+
+await test("CLV-098 turn, event and command code windows reuse headings and keep disclosure and copy controls", () => {
+  const turn = rendered(
+    component(Turn, { turn: sampleTurn(), now: at("21:26:44") }),
+  );
+  assert.match(
+    turn,
+    /<section class="turn code-window"><h3 class="code-head">Claude turn · in work · 42 s<\/h3>/,
+  );
+  assert.match(
+    rendered(component(Events, { events: [] })),
+    /<details class="events code-window"><summary class="code-head">All events \(0\)<\/summary>/,
+  );
+  const decision = rendered(
+    component(Decision, {
+      decision: sampleDecision,
+      turn: undefined,
+      copying: noCopy,
+    }),
+  );
+  assert.match(
+    decision,
+    /<div class="command code-window"><span class="label code-head">Approve<\/span><code>/,
+  );
+  assert.match(decision, /<button type="button">Copy<\/button>/);
+  assert.match(decision, /<details open><summary>Full text of the request/);
 });
