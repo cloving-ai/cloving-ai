@@ -145,7 +145,7 @@ await test("CLV-080 long results hide paths before shortening and keep costs at 
     total_cost_usd: 1.25,
   });
   assert.deepEqual(model.runs[0]?.turns[0]?.activity, [
-    { kind: "result", text: `${prefix}test.t… (cost 1.25 USD)` },
+    { kind: "result", text: `${prefix}test.t… (cost Price not known)` },
   ]);
 });
 
@@ -155,7 +155,10 @@ await test("CLV-080 the model keeps the text limit after path replacement withou
     const model = activityModel({ type: "result", result });
     const expected = `~/${"x".repeat(Math.min(length, 600) - 2)}`;
     assert.deepEqual(model.runs[0]?.turns[0]?.activity, [
-      { kind: "result", text: length > 600 ? `${expected}…` : expected },
+      {
+        kind: "result",
+        text: `${length > 600 ? `${expected}…` : expected} (cost Price not known)`,
+      },
     ]);
   }
 });

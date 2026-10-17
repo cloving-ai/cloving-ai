@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered } from "../src/cli/render.ts";
+import {
+  reportTurn,
+  workerScene,
+  scenarioUsage,
+  scenarioTotal,
+  turnResult,
+} from "./worker-report-fixture.ts";
+import { field, parsed } from "./service-fixture.ts";
 import { later, noon, startedRun, withHarness } from "./service-fixture.ts";
 
 await test("CLV-072 plain status lists unused and unavailable workflows and the latest time of each run", () =>
@@ -116,3 +124,40 @@ await test("CLV-072 plain status escapes terminal controls in titles and complet
   assert.match(output, /^Title: Task\\u001b\[2J\\u202e$/m);
   assert.match(output, /^Outcome: blocked: First\n {4}second\\u0007$/m);
 });
+
+await test("CLV-094 status text and JSON show separate worker turns and run totals so far", () =>
+  withHarness(async (harness) => {
+    const scene = await workerScene(harness);
+    const turns = [];
+    for (const [index, usage] of scenarioUsage.entries()) {
+      const report = await reportTurn(scene, {
+        round: index + 1,
+        result: turnResult(usage),
+        outcome: index === 0 ? "completed" : "failed",
+      });
+      turns.push({ operationId: report.operationId, usage, costUsd: null });
+    }
+    const json = await harness.cli(["status", scene.runId, "--json"]);
+    assert.equal(json.status, 0, json.stderr);
+    const run = field(parsed(json), "run");
+    assert.equal(field(run, "workflowId"), "develop-issue");
+    assert.equal(field(run, "claudeCostUsd"), null);
+    assert.deepEqual(field(run, "usage"), scenarioTotal);
+    assert.deepEqual(field(run, "workerTurns"), turns);
+    const text = await harness.cli(["status", scene.runId]);
+    assert.equal(text.status, 0, text.stderr);
+    assert.match(text.stdout, /Claude cost so far: Price not known/);
+    assert.match(
+      text.stdout,
+      /Token usage so far: Input tokens: 1800 · Cache read tokens: 900 · Output tokens: 170/,
+    );
+    for (const [index, turn] of turns.entries()) {
+      assert.ok(text.stdout.includes(`Worker turn ${turn.operationId}`));
+      assert.ok(
+        text.stdout.includes(
+          `Input tokens: ${String(scenarioUsage[index]?.input_tokens)}`,
+        ),
+      );
+    }
+    assert.doesNotMatch(text.stdout, /0\.00 USD/);
+  }));

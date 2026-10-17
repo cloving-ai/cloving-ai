@@ -1,3 +1,4 @@
+import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -177,6 +178,14 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
   return [
     component(Banner, { run, now }),
+    element("section", {
+      class: "run-usage",
+      children: [
+        element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
+        element("p", { children: usageText(run.usage) }),
+        element("p", { children: priceText(run.claudeCostUsd) }),
+      ],
+    }),
     component(Phases, { phases: run.phases, now }),
     component(PullRequest, { run }),
     run.decisions.map((decision) =>

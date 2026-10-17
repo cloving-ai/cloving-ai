@@ -77,7 +77,8 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
       "Evidence: event:7, usage-report-1",
       "Last confirmed observation: 2026-10-10T12:00:00.000Z (sequence 7, worker)",
       "Recovery: 1 of 3",
-      "Claude cost: 1.75 USD",
+      "Claude cost so far: 1.75 USD",
+      "Token usage so far: Input tokens: Token usage not known · Cache read tokens: Token usage not known · Output tokens: Token usage not known",
       "Next action: recheck-eligibility at 2026-10-10T13:00:00.000Z",
       "Human input can help: no",
       "",
@@ -97,21 +98,24 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
         pendingDecisions: ["run-1/design-1"],
       },
     }),
-    /Pending decisions: run-1\/design-1\n.*\nLast confirmed observation: none\nRecovery: 0 of no limit\nClaude cost: 0\.00 USD\nNext action: none\nHuman input can help: yes\n$/s,
+    /Pending decisions: run-1\/design-1\n.*\nLast confirmed observation: none\nRecovery: 0 of no limit\nClaude cost so far: Price not known\nToken usage so far: .*\nNext action: none\nHuman input can help: yes\n$/s,
   );
 });
 
-await test("CLV-066 the human form of a run status gives the Claude cost with two decimal places, and 0.00 for a cost that is not a number", () => {
+await test("CLV-066 the human form of a run status gives the Claude cost with two decimal places, and unknown for an invalid price", () => {
   const costLine = (claudeCostUsd: unknown): string | undefined =>
     rendered({ kind: "run-status", run: { ...run, claudeCostUsd } })
       .split("\n")
-      .find((line) => line.startsWith("Claude cost:"));
-  assert.deepEqual([0.3, 12, "1.75", null].map(costLine), [
-    "Claude cost: 0.30 USD",
-    "Claude cost: 12.00 USD",
-    "Claude cost: 0.00 USD",
-    "Claude cost: 0.00 USD",
-  ]);
+      .find((line) => line.startsWith("Claude cost so far:"));
+  assert.deepEqual(
+    [0.3, 12, 0, "1.75", null, -1, Infinity, NaN].map(costLine),
+    [
+      "Claude cost so far: 0.30 USD",
+      "Claude cost so far: 12.00 USD",
+      "Claude cost so far: 0.00 USD",
+      ...Array<string>(5).fill("Claude cost so far: Price not known"),
+    ],
+  );
 });
 
 await test("CLV-008 the human form of a run list, a run command and a decision has its fixed lines", () => {
@@ -329,4 +333,15 @@ await test("CLV-008 the human form shows zero-width and direction format charact
 await test("CLV-008 a result with a kind that the CLI does not know gives no text and no fault", () => {
   for (const kind of ["constructor", "toString", "valueOf", "later-kind"])
     assert.equal(rendered({ kind }), "", kind);
+});
+
+await test("CLV-094 finite prices always display two decimal places, including large values", () => {
+  for (const claudeCostUsd of [1e21, Number.MAX_VALUE]) {
+    const text = rendered({
+      kind: "run-status",
+      run: { state: "completed", claudeCostUsd },
+    });
+    assert.match(text, /^Claude cost: [0-9]+\.[0-9]{2} USD$/m);
+    assert.doesNotMatch(text, /[0-9]e\+/);
+  }
 });

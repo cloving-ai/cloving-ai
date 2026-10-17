@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { codexStream } from "../src/daemon/codex-stream.ts";
 
+const unknownUsage = {
+  input_tokens: null,
+  cache_read_input_tokens: null,
+  output_tokens: null,
+};
+
 function decoded(lines: readonly string[]): unknown[] {
   return lines.map((line): unknown => JSON.parse(line));
 }
@@ -145,6 +151,7 @@ await test("CLV-083 completes with the last agent message, the thread ID and the
       is_error: false,
       result: "Last.",
       total_cost_usd: null,
+      usage: unknownUsage,
       session_id: "thread-2",
       num_turns: 2,
     },
@@ -168,6 +175,7 @@ await test("CLV-087 completes with the last agent message after a recovered erro
       is_error: false,
       result: "Done.",
       total_cost_usd: null,
+      usage: unknownUsage,
       session_id: "thread-1",
       num_turns: 1,
     },
@@ -221,6 +229,7 @@ await test("CLV-087 requires completion, zero exit, no failed turn and no error 
         is_error: true,
         result,
         total_cost_usd: null,
+        usage: unknownUsage,
         session_id: null,
         num_turns: turns,
       },
@@ -270,6 +279,7 @@ await test("CLV-087 clears errors on each completion and keeps failures permanen
         is_error: failed,
         result,
         total_cost_usd: null,
+        usage: unknownUsage,
         session_id: null,
         num_turns: events.filter((event) => event.type === "turn.completed")
           .length,
@@ -315,9 +325,75 @@ await test("CLV-087 uses the exit code when no current failure message remains",
         is_error: true,
         result: `codex ended with the code ${String(exitCode)}`,
         total_cost_usd: null,
+        usage: unknownUsage,
         session_id: null,
         num_turns: 1,
       },
     ]);
   }
+});
+
+await test("CLV-094 sums selected usage across Codex completions and retains it after failure", () => {
+  for (const failure of [null, "turn.failed", "error", "exit"]) {
+    const stream = codexStream();
+    for (const [input_tokens, cached_input_tokens, output_tokens] of [
+      [100, 40, 20],
+      [200, 60, 30],
+    ])
+      stream.line(
+        JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens, cached_input_tokens, output_tokens },
+        }),
+      );
+    if (failure !== null && failure !== "exit")
+      stream.line(JSON.stringify({ type: failure }));
+    const result: unknown = JSON.parse(
+      stream.result(failure === "exit" ? 1 : 0),
+    );
+    assert.deepEqual(Reflect.get(Object(result), "usage"), {
+      input_tokens: 300,
+      cache_read_input_tokens: 100,
+      output_tokens: 50,
+    });
+    assert.equal(Reflect.get(Object(result), "total_cost_usd"), null);
+    assert.equal(Reflect.get(Object(result), "is_error"), failure !== null);
+  }
+});
+
+await test("CLV-094 unknown or overflowing completion counts stay unknown independently", () => {
+  for (const invalid of [
+    undefined,
+    null,
+    -1,
+    0.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    "4",
+  ]) {
+    const stream = codexStream();
+    for (const input_tokens of [invalid, 10])
+      stream.line(
+        JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens, cached_input_tokens: 0, output_tokens: 2 },
+        }),
+      );
+    const result: unknown = JSON.parse(stream.result(0));
+    assert.deepEqual(Reflect.get(Object(result), "usage"), {
+      input_tokens: null,
+      cache_read_input_tokens: 0,
+      output_tokens: 4,
+    });
+  }
+  const stream = codexStream();
+  for (const input_tokens of [Number.MAX_SAFE_INTEGER, 1])
+    stream.line(
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens } }),
+    );
+  for (const result of [stream.result(0), codexStream().result(0)])
+    assert.deepEqual(Reflect.get(Object(JSON.parse(result)), "usage"), {
+      input_tokens: null,
+      cache_read_input_tokens: null,
+      output_tokens: null,
+    });
 });

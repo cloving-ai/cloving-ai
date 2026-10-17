@@ -29,6 +29,11 @@ await test("CLV-088 Codex uses the existing branch work tree and refuses another
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
     const result = resultOf(scene.reports[0].result);
+    assert.deepEqual(result["usage"], {
+      input_tokens: 100,
+      cache_read_input_tokens: 40,
+      output_tokens: 20,
+    });
     assert.deepEqual(
       [result["worktree"], result["branch"]],
       [tree, "feature-search"],
@@ -91,6 +96,11 @@ await test("CLV-083 the Codex worker records translated activity and a final res
       text: "Done.",
       failed: false,
       costUsd: null,
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 40,
+        output_tokens: 20,
+      },
       sessionId: "thread-1",
       turns: 1,
     });
@@ -142,6 +152,11 @@ await test("CLV-087 the Codex worker completes a turn after a reconnect error", 
       text: "Recovered.",
       failed: false,
       costUsd: null,
+      usage: {
+        input_tokens: null,
+        cache_read_input_tokens: null,
+        output_tokens: null,
+      },
       sessionId: "reconnected-thread",
       turns: 1,
     });
@@ -150,4 +165,53 @@ await test("CLV-087 the Codex worker completes a turn after a reconnect error", 
       { kind: "say", text: "Recovered." },
       { kind: "result", text: "Recovered." },
     ]);
+  }));
+
+await test("CLV-094 a failed Codex command persists completed-event usage and replays the same report", () =>
+  withScene(async (scene) => {
+    const events = [
+      {
+        type: "turn.completed",
+        usage: {
+          input_tokens: 100,
+          cached_input_tokens: 40,
+          output_tokens: 20,
+        },
+      },
+      {
+        type: "turn.completed",
+        usage: {
+          input_tokens: 200,
+          cached_input_tokens: 60,
+          output_tokens: 30,
+        },
+      },
+      { type: "turn.failed", error: { message: "Later failure." } },
+    ];
+    const output = events.map((event) => JSON.stringify(event)).join("\n");
+    const worker = scene.worker("unused", {
+      worker: "codex",
+      command: [
+        process.execPath,
+        "-e",
+        `process.stdin.resume();process.stdout.write(${JSON.stringify(output)});process.exitCode=1`,
+      ],
+    });
+    const signal = new AbortController().signal;
+    await worker.deliver(intent(), signal);
+    await until(() => scene.reports.length === 1);
+    const report = scene.reports[0];
+    assert.equal(report?.outcome, "failed");
+    const result = resultOf(report.result);
+    assert.deepEqual(result["usage"], {
+      input_tokens: 300,
+      cache_read_input_tokens: 100,
+      output_tokens: 50,
+    });
+    assert.equal(result["costUsd"], null);
+    const reopened = scene.worker("hold");
+    assert.equal(
+      Reflect.get(Object(await reopened.reconcile(intent(), signal)), "result"),
+      report.result,
+    );
   }));

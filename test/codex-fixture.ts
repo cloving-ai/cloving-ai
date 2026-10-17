@@ -10,5 +10,5 @@ line({ type: "item.completed", item: { type: "command_execution", exit_code: 0 }
 line({ type: "item.completed", item: { type: "file_change", changes: [{ path: "codex-work.txt", kind: "add" }] } });
 line({ type: "item.completed", item: { type: "agent_message", text: "Working." } });
 line({ type: "item.completed", item: { type: "agent_message", text: "Done." } });
-process.stdout.write(JSON.stringify({ type: "turn.completed" }));
+process.stdout.write(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 20 } }));
 `;

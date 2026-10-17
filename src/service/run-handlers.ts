@@ -21,6 +21,8 @@ import {
   wholeNumber,
   type ServiceContext,
 } from "./replies.ts";
+import type { WorkerTotals } from "../worker-usage.ts";
+import { usageTotals } from "./worker-totals.ts";
 import { feedbackOf } from "./decision-handler.ts";
 
 interface Snapshot {
@@ -149,30 +151,7 @@ function summary(view: ShownRun): Fields {
   };
 }
 
-function costOf(text: string | undefined): number {
-  try {
-    const cost: unknown = record(JSON.parse(text ?? "null"))?.["costUsd"];
-    return typeof cost === "number" ? cost : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function claudeCost(
-  context: ServiceContext,
-  runId: string,
-): Promise<number> {
-  const { effects, queries } = context.authority;
-  const digests = (await effects.operations(runId))
-    .filter((operation) => operation.capability === "claude")
-    .map((operation) => operation.result)
-    .filter((digest) => digest !== null);
-  let total = 0;
-  for (const digest of digests) total += costOf(await queries.document(digest));
-  return Math.round(total * 100) / 100;
-}
-
-function full(view: ShownRun & { readonly claudeCostUsd: number }): Fields {
+function full(view: ShownRun & WorkerTotals): Fields {
   return {
     ...summary(view),
     reason: view.reason,
@@ -180,6 +159,8 @@ function full(view: ShownRun & { readonly claudeCostUsd: number }): Fields {
     lastConfirmedObservation: view.lastConfirmedObservation,
     recovery: view.recovery,
     claudeCostUsd: view.claudeCostUsd,
+    usage: view.usage,
+    workerTurns: view.workerTurns,
     budget: view.budget,
     effects: view.effects,
     nextAction: view.nextAction,
@@ -278,10 +259,10 @@ export async function status(
   const view = await viewOf(context, { snapshot: current, runId: named });
   if (view === undefined)
     return failed("unknown-run", { detail: `No run has the ID ${named}.` });
-  const claudeCostUsd = await claudeCost(context, view.runId);
+  const totals = await usageTotals(context, view.runId);
   return result("run-status", {
     run: {
-      ...full({ ...view, claudeCostUsd }),
+      ...full({ ...view, ...totals }),
       outcome: await outcomeOf(context, view),
       ...(await metadataOf(context, {
         workflowId: view.workflowId,

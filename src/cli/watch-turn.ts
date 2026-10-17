@@ -1,3 +1,4 @@
+import { priceText, usageText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -48,7 +49,7 @@ export function Turn(props: {
   const { turn, now } = props;
   const groups = groupActivity(turn.activity);
   const working = turn.outcome === "in work";
-  const cost = turn.costUsd === null ? "" : `${turn.costUsd.toFixed(2)} USD`;
+  const cost = priceText(turn.costUsd);
   const heading = ["Claude turn", turn.outcome, turnTime(turn, now), cost];
   const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
   const activity = groups.map((items, index) =>
@@ -62,6 +63,7 @@ export function Turn(props: {
         children: heading.filter((part) => part !== "").join(" · "),
       }),
       element("p", { class: "meta", children: place }),
+      element("p", { class: "turn-usage", children: usageText(turn.usage) }),
       element("div", { class: "activity", children: activity }),
     ],
   });

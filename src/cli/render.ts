@@ -1,3 +1,4 @@
+import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { record, type Fields } from "../protocol.ts";
 
 function show(value: unknown): string {
@@ -103,12 +104,19 @@ function outcome(value: unknown): string {
   return typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind;
 }
 
+function workerLines(value: unknown): readonly string[] {
+  return (Array.isArray(value) ? value : []).flatMap((turn: unknown) => [
+    `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"))}`,
+    `  ${usageText(part(turn, "usage"))}`,
+  ]);
+}
+
 export function runStatus(result: Fields): readonly string[] {
   const run = result["run"];
   const reason = part(run, "reason");
   const recovery = part(run, "recovery");
   const at = part(run, "nextActionAt") ?? null;
-  const cost = part(run, "claudeCostUsd");
+  const suffix = totalsSuffix(part(run, "state"));
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
     `Title: ${visible(part(run, "title") ?? "none")}`,
@@ -122,7 +130,9 @@ export function runStatus(result: Fields): readonly string[] {
     `Evidence: ${listing(part(run, "evidence"))}`,
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
-    `Claude cost: ${(typeof cost === "number" ? cost : 0).toFixed(2)} USD`,
+    `Claude cost${suffix}: ${priceText(part(run, "claudeCostUsd"))}`,
+    `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
+    ...workerLines(part(run, "workerTurns")),
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
     ...feedbackLines(part(run, "feedback")),

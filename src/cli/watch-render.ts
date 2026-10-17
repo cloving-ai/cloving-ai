@@ -1,3 +1,5 @@
+import type { WorkerUsage } from "../worker-usage.ts";
+import { priceText } from "./usage-render.ts";
 import type { PrObservation } from "./watch-pr-identity.ts";
 
 export interface WatchItem {
@@ -7,6 +9,8 @@ export interface WatchItem {
 }
 
 export interface WatchTurn {
+  readonly operationId: string;
+  readonly usage: WorkerUsage;
   readonly key: string;
   readonly runId: string;
   readonly target: string;
@@ -69,7 +73,8 @@ export interface WatchStep {
 export interface WatchCard {
   readonly runId: string;
   readonly title: string | null;
-  readonly claudeCostUsd: number;
+  readonly claudeCostUsd: number | null;
+  readonly usage: WorkerUsage;
   readonly currentStep: WatchStep | null;
   readonly endedAt: string | null;
   readonly decisionWaiting: boolean;
@@ -103,7 +108,8 @@ export interface WatchRun {
   readonly title: string | null;
   readonly outcome: string | null;
   readonly latestAt: string | null;
-  readonly claudeCostUsd: number;
+  readonly claudeCostUsd: number | null;
+  readonly usage: WorkerUsage;
   readonly currentStep: WatchStep;
   readonly round: number;
   readonly runId: string;
@@ -199,7 +205,7 @@ export function runTone(run: WatchRun): WatchTone {
 }
 
 export function runName(run: WatchRun): string {
-  return run.turns[0]?.target ?? run.runId.slice(0, 12);
+  return run.turns[0]?.target || run.runId.slice(0, 12);
 }
 
 export function waitingDetail(run: WatchRun, now: string): string {
@@ -212,7 +218,7 @@ export function waitingDetail(run: WatchRun, now: string): string {
 export function completedDetail(run: WatchRun): string {
   const [first] = run.events;
   const last = run.events.at(-1);
-  const cost = run.turns.reduce((sum, turn) => sum + (turn.costUsd ?? 0), 0);
+  const cost = priceText(run.claudeCostUsd);
   const time =
     first === undefined || last === undefined
       ? ""
@@ -221,7 +227,7 @@ export function completedDetail(run: WatchRun): string {
     approved: "You approved the work. ",
     denied: "You denied the work. ",
   };
-  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost.toFixed(2)} USD.`;
+  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.`;
 }
 
 export function phaseTime(phase: WatchPhase, now: string): string {

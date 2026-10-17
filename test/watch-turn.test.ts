@@ -53,13 +53,13 @@ await test("CLV-016 the watch page keeps the last group of tool calls open while
     component(Turn, { turn: working, now: at("21:26:44") }),
   );
   includes(html, [
-    '<h3 class="code-head">Claude turn · in work · 42 s</h3>',
+    '<h3 class="code-head">Claude turn · in work · 42 s · Price not known</h3>',
     '<details class="tools"><summary>3 tool calls',
     '<details class="tools" open><summary>2 tool calls',
   ]);
   const failed = sampleTurn({ outcome: "failed" });
   includes(rendered(component(Turn, { turn: failed, now: at("21:26:44") })), [
-    '<h3 class="code-head">Claude turn · failed</h3>',
+    '<h3 class="code-head">Claude turn · failed · Price not known</h3>',
     '<div class="activity"></div>',
   ]);
 });
@@ -151,7 +151,7 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
   );
   assert.match(
     turn,
-    /<section class="turn code-window"><h3 class="code-head">Claude turn · in work · 42 s<\/h3>/,
+    /<section class="turn code-window"><h3 class="code-head">Claude turn · in work · 42 s · Price not known<\/h3>/,
   );
   assert.match(
     rendered(component(Events, { events: [] })),
@@ -170,4 +170,29 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
   );
   assert.match(decision, /<button type="button">Copy<\/button>/);
   assert.match(decision, /<details open><summary>Full text of the request/);
+});
+
+await test("CLV-094 turn headings retain zero prices and selected counts beside unknown fields", () => {
+  for (const [costUsd, price] of [
+    [null, "Price not known"],
+    [-1, "Price not known"],
+    [Infinity, "Price not known"],
+    [0, "0.00 USD"],
+    [0.25, "0.25 USD"],
+  ] as const) {
+    const turn = sampleTurn({
+      costUsd,
+      usage: {
+        input_tokens: 0,
+        cache_read_input_tokens: null,
+        output_tokens: 2,
+      },
+    });
+    const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
+    assert.match(
+      html,
+      /Input tokens: 0 · Cache read tokens: Token usage not known · Output tokens: 2/,
+    );
+    assert.ok(html.includes(price));
+  }
 });

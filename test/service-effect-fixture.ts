@@ -35,6 +35,7 @@ export async function effectScene(
   harness: Harness,
   setup: {
     readonly effectLimit: number;
+    readonly workflowId?: string;
     readonly lostReplies?: number;
     readonly effects?: Partial<EffectSettings>;
     readonly reconcile?: Delivery["reconcile"];
@@ -49,6 +50,7 @@ export async function effectScene(
     workflows: [
       {
         ...harness.registration,
+        workflowId: setup.workflowId ?? harness.registration.workflowId,
         effectLimit: setup.effectLimit,
         manifest: {
           ...manifest,
@@ -73,7 +75,11 @@ export async function effectScene(
     ...(setup.limits === undefined ? {} : { limits: setup.limits }),
   };
   const service = await harness.start(options);
-  const runId = await startedRun(harness, { service, commandId: "c-1" });
+  const runId = await startedRun(harness, {
+    service,
+    commandId: "c-1",
+    workflowId: setup.workflowId ?? harness.registration.workflowId,
+  });
   return { harness, service, runId, destination, clock, options };
 }
 

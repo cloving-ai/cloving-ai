@@ -1,3 +1,5 @@
+import { sumUsage, usageOf, type WorkerUsage } from "../worker-usage.ts";
+
 type Fields = Readonly<Record<string, unknown>>;
 
 function record(value: unknown): Fields {
@@ -53,6 +55,7 @@ function completed(item: Fields): string[] {
 interface State {
   sessionId: string | null;
   turns: number;
+  usage: WorkerUsage;
   failure: string | null;
   error: string | null;
   message: string;
@@ -63,6 +66,14 @@ function updated(event: Fields, state: State): void {
   if (type === "thread.started")
     state.sessionId = text(event["thread_id"]) || null;
   if (type === "turn.completed") {
+    const usage = record(event["usage"]);
+    const current = usageOf({
+      input_tokens: usage["input_tokens"],
+      cache_read_input_tokens: usage["cached_input_tokens"],
+      output_tokens: usage["output_tokens"],
+    });
+    state.usage =
+      state.turns === 0 ? current : sumUsage([state.usage, current]);
     state.turns += 1;
     state.error = null;
   }
@@ -103,6 +114,7 @@ export function codexStream(): {
   const state: State = {
     sessionId: null,
     turns: 0,
+    usage: usageOf(null),
     failure: null,
     error: null,
     message: "",
@@ -125,6 +137,7 @@ export function codexStream(): {
             state.error ||
             `codex ended with the code ${String(exitCode)}`,
         total_cost_usd: null,
+        usage: state.usage,
         session_id: state.sessionId,
         num_turns: state.turns,
       });

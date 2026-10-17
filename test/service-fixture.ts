@@ -232,13 +232,17 @@ export interface Waiting {
 
 export async function admitted(
   harness: Harness,
-  commandId: string,
+  request:
+    string | { readonly commandId: string; readonly workflowId?: string },
 ): Promise<string> {
+  const commandId = typeof request === "string" ? request : request.commandId;
+  const workflowId =
+    typeof request === "string" ? "develop" : (request.workflowId ?? "develop");
   const before = harness.sent.length;
   const result = await call(harness, {
     operation: "run",
     parameters: {
-      workflowId: "develop",
+      workflowId,
       source: "prompt",
       submission: { prompt: `task of ${commandId}` },
       commandId,
@@ -258,9 +262,13 @@ export async function admitted(
 
 export async function startedRun(
   harness: Harness,
-  running: { readonly service: Service; readonly commandId: string },
+  running: {
+    readonly service: Service;
+    readonly commandId: string;
+    readonly workflowId?: string;
+  },
 ): Promise<string> {
-  const runId = await admitted(harness, running.commandId);
+  const runId = await admitted(harness, running);
   await running.service.worker.started({
     runId,
     commandId: `${running.commandId}-started`,

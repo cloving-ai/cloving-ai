@@ -106,6 +106,11 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
     completionMark: null,
     pullRequestObservation: null,
     claudeCostUsd: 1.25,
+    usage: {
+      input_tokens: null,
+      cache_read_input_tokens: null,
+      output_tokens: null,
+    },
     currentStep: { name: "Claude turn", startedAt: "2026-10-14T11:00:00Z" },
     endedAt: null,
     decisionWaiting: false,

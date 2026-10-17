@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
+import { priceOf, usageOf, type WorkerUsage } from "../worker-usage.ts";
 
 export type Worker = "claude" | "codex";
 
@@ -9,6 +10,7 @@ export interface StreamResult {
   readonly text: string;
   readonly failed: boolean;
   readonly costUsd: number | null;
+  readonly usage: WorkerUsage;
   readonly sessionId: string | null;
   readonly turns: number | null;
 }
@@ -64,7 +66,8 @@ export function streamResult(line: string): StreamResult | undefined {
   return {
     text: textOf(field("result")) ?? "",
     failed: field("is_error") === true,
-    costUsd: numberOf(field("total_cost_usd")),
+    costUsd: priceOf(field("total_cost_usd")),
+    usage: usageOf(field("usage")),
     sessionId: textOf(field("session_id")),
     turns: numberOf(field("num_turns")),
   };
