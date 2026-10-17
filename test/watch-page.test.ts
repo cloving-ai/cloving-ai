@@ -277,10 +277,31 @@ await test("CLV-098 themes default to light, follow system dark only without a v
   }
   assert.match(
     page,
-    /<link rel="stylesheet" href="https:\/\/fonts.googleapis.com\/css2\?family=Fira\+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space\+Grotesk:wght@400\.\.700&amp;display=swap">/,
+    /<link rel="stylesheet" href="https:\/\/fonts.googleapis.com\/css2\?family=Fira\+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space\+Grotesk:wght@400\.\.700&amp;display=swap"[^>]*>/,
   );
   assert.equal([...page.matchAll(/<style>/g)].length, 1);
   assert.doesNotMatch(page, /light-dark\(|color-scheme: light dark/);
+});
+
+await test("CLV-098 optional fonts do not block screen rendering while pending and apply after loading", () => {
+  const page = pageDocument();
+  const links = [...page.matchAll(/<link rel="stylesheet"[^>]*>/g)];
+  assert.equal(links.length, 1);
+  const link = links[0]?.[0];
+  assert.ok(link);
+  assert.match(link, / media="print"/);
+  assert.doesNotMatch(page, /blocking="render"/);
+  const handler = / onload="([^"]+)"/.exec(link)?.[1];
+  assert.ok(handler);
+  const result = played(
+    sampleModel([]),
+    `
+const stylesheet = { media: "print", loaded() { ${handler}; } };
+stylesheet.loaded();
+console.log(JSON.stringify({ media: stylesheet.media }));
+`,
+  );
+  assert.equal(result["media"], "all");
 });
 
 await test("CLV-098 the embedded favicon uses the header clove shape with a fixed green fill", () => {
