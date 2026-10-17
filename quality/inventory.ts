@@ -18,7 +18,12 @@ const sourceExtensions = new Set([
   ".cjs",
   ".jsx",
 ]);
-const metadataNames = new Set([".gitignore", ".npmrc", "LICENSE"]);
+const metadataNames = new Set([
+  ".gitignore",
+  ".npmrc",
+  "LICENSE",
+  ".github/workflows/ci.yml",
+]);
 
 async function discover(directory: string, prefix = ""): Promise<string[]> {
   const files: string[] = [];

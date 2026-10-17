@@ -50,7 +50,7 @@ Console output contains counts, fixed codes and an opaque import ID. Source path
 
 ## Install
 
-The current pilot is the Node and npm versions of `package.json` (`engines`), on macOS 27.0 on arm64. Other platforms and runtime versions are unqualified.
+The current pilot uses Node 26.9.0 and npm 11.19.1 on macOS 27.0 on arm64. The installation ranges in `package.json` do not qualify other workflow runtimes: workflow admission still requires exactly Node 26.9.0. GitHub-hosted macOS 15 arm64 qualification is pending its CI quality and packed-startup checks. Other platforms and runtime versions are unqualified.
 
 A run needs these tools:
 
@@ -58,7 +58,16 @@ A run needs these tools:
 - The `claude` command of Claude Code on the search path. The Claude worker runs it as the current user.
 - For `develop-issue` only: the `gh` command with a login, and a GitHub repository that Greptile reviews. The worker uses the `gh` login and the git credentials of the current user.
 
-Get the code and install the dependencies:
+Once the operator publishes this package, install the executable with:
+
+```sh
+npm install --global cloving --ignore-scripts
+cloving --version
+```
+
+This package replaces the older Cloving CLI under the same npm name. The registry currently serves that older CLI; the command above is for after this release is published. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
+
+For checkout development, get the code and install the dependencies:
 
 ```sh
 git clone https://github.com/cloving-ai/cloving-ai.git ~/cloving
@@ -70,7 +79,7 @@ The runtime dependencies include the Workflow SDK (`workflow`), its directive co
 
 ### The `cloving` command
 
-For checkout development, put a launcher for `src/cli.ts` in a directory of the search path. The launcher must use the Node version of `engines` in `package.json`. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
+For checkout development, put a launcher for `src/cli.ts` in a directory of the search path. The launcher must use exactly Node 26.9.0. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin
@@ -94,14 +103,14 @@ npm pack --ignore-scripts
 Then install the resulting tarball in your project using its absolute location:
 
 ```sh
-npm install --ignore-scripts --omit=dev /path/to/cloving-0.4.0.tgz
+npm install --ignore-scripts --omit=dev /path/to/TARBALL
 ./node_modules/.bin/cloving --help
 ./node_modules/.bin/cloving start
 ```
 
 The installed executable includes JavaScript for startup, the watch command and bundled workflows. It uses the installed runtime dependencies, including the SDK compiler, without a source checkout. Runtime state and generated workflow artifacts use the configured runtime location outside the installation. Installation scripts are unnecessary. The checkout launcher above remains supported, including its existing checkout self-update behavior; installing a tarball does not add package self-updates.
 
-Use `./node_modules/.bin/cloving` wherever the examples below say `cloving`, or add your project's `node_modules/.bin` to the search path. After a build, `npm link` also supplies the executable. The npm name `cloving` holds a different, older program; do not install it by name from npm.
+For a project-local tarball installation, use `./node_modules/.bin/cloving` wherever the examples below say `cloving`, or add your project's `node_modules/.bin` to the search path. After a build, `npm link` also supplies the executable.
 
 ## First run
 

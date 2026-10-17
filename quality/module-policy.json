@@ -662,7 +662,10 @@
     "tools/self-update-host.ts": "build",
     "tools/self-host-processes.ts": "build",
     "test/packed-install.test.ts": "test",
-    "tools/copy-workflow-declarations.ts": "build"
+    "tools/copy-workflow-declarations.ts": "build",
+    ".github/workflows/ci.yml": "metadata",
+    "test/release.test.ts": "test",
+    "test/release-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

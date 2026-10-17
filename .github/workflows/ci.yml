@@ -1,0 +1,124 @@
+{
+  "name": "CI",
+  "on": {
+    "push": {},
+    "pull_request": {},
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "defaults": {
+    "run": {
+      "shell": "bash"
+    }
+  },
+  "jobs": {
+    "quality": {
+      "runs-on": "macos-15",
+      "timeout-minutes": 30,
+      "steps": [
+        {
+          "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "with": {
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+          "with": {
+            "node-version": "26.9.0",
+            "architecture": "arm64",
+            "registry-url": "https://registry.npmjs.org",
+            "package-manager-cache": false
+          }
+        },
+        {
+          "run": "npm install --global npm@11.19.1 --ignore-scripts"
+        },
+        {
+          "name": "Verify runner toolchain",
+          "run": "node --input-type=module -e 'import assert from \"node:assert/strict\"; assert.equal(process.version, \"v26.9.0\"); assert.equal(process.platform, \"darwin\"); assert.equal(process.arch, \"arm64\");'\ntest \"$(npm --version)\" = \"11.19.1\"\ncase \"$(sw_vers -productVersion)\" in 15.*) ;; *) exit 1 ;; esac"
+        },
+        {
+          "run": "npm ci --ignore-scripts"
+        },
+        {
+          "run": "npm run check:setup"
+        },
+        {
+          "run": "npm run check:quality"
+        },
+        {
+          "run": "npm run build"
+        },
+        {
+          "run": "node --test test/packed-install.test.ts"
+        }
+      ]
+    },
+    "publish": {
+      "runs-on": "macos-15",
+      "timeout-minutes": 15,
+      "needs": "quality",
+      "if": "${{ success() && needs.quality.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}",
+      "permissions": {
+        "contents": "write",
+        "id-token": "write"
+      },
+      "concurrency": {
+        "group": "npm-release-${{ github.ref }}",
+        "cancel-in-progress": false
+      },
+      "env": {
+        "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "with": {
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+          "with": {
+            "node-version": "26.9.0",
+            "architecture": "arm64",
+            "registry-url": "https://registry.npmjs.org",
+            "package-manager-cache": false
+          }
+        },
+        {
+          "id": "validate-tag",
+          "name": "Require the manifest version tag",
+          "run": "version=\"$(node -p 'require(\"./package.json\").version')\"\ntest \"$GITHUB_REF_NAME\" = \"v$version\"\ntest \"$GITHUB_REF\" = \"refs/tags/$GITHUB_REF_NAME\""
+        },
+        {
+          "run": "npm install --global npm@11.19.1 --ignore-scripts"
+        },
+        {
+          "run": "npm ci --ignore-scripts"
+        },
+        {
+          "run": "npm run build"
+        },
+        {
+          "id": "publish-package",
+          "name": "Publish a confirmed missing version with OIDC",
+          "run": "version=\"$(node -p 'require(\"./package.json\").version')\"\nmetadata=\"$(mktemp)\"\ntrap 'rm -f \"$metadata\"' EXIT\nif npm view \"cloving@$version\" version --json > \"$metadata\"; then\n  node --input-type=module -e 'import { readFileSync } from \"node:fs\"; if (JSON.parse(readFileSync(process.argv[1], \"utf8\")) !== process.argv[2]) throw new Error(\"unexpected-registry-version\");' \"$metadata\" \"$version\"\nelse\n  node --input-type=module -e 'import { readFileSync } from \"node:fs\"; if (JSON.parse(readFileSync(process.argv[1], \"utf8\"))?.error?.code !== \"E404\") throw new Error(\"registry-lookup-failed\");' \"$metadata\"\n  npm publish --access public --ignore-scripts\nfi"
+        },
+        {
+          "id": "github-release",
+          "name": "Create a missing GitHub release",
+          "env": {
+            "GH_TOKEN": "${{ github.token }}"
+          },
+          "run": "response=\"$(mktemp)\"\ntrap 'rm -f \"$response\"' EXIT\nif gh api --include \"repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME\" > \"$response\"; then\n  exit 0\nfi\nnode --input-type=module -e 'import { readFileSync } from \"node:fs\"; if (!/^HTTP\\/[\\d.]+ 404\\b/m.test(readFileSync(process.argv[1], \"utf8\"))) throw new Error(\"release-lookup-failed\");' \"$response\"\ngh release create \"$GITHUB_REF_NAME\" --repo \"$GITHUB_REPOSITORY\" --verify-tag --target \"$GITHUB_SHA\" --generate-notes"
+        }
+      ]
+    }
+  }
+}

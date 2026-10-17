@@ -6,6 +6,35 @@ import { test } from "node:test";
 import { inspectInventory } from "../../quality/inventory.ts";
 import { withFiles } from "./files-fixture.ts";
 
+await test("CLV-097 admits only the exact CI workflow metadata path", async () => {
+  await withFiles(
+    { "src/main.ts": "export {};", ".github/workflows/ci.yml": "{}" },
+    async (directory) => {
+      const inventory = await inspectInventory(directory, {});
+      assert.deepEqual(inventory.metadata, [".github/workflows/ci.yml"]);
+      assert.deepEqual(inventory.sources, ["src/main.ts"]);
+    },
+  );
+});
+
+await test("CLV-097 rejects other YAML paths and spellings", async () => {
+  for (const path of [
+    "ci.yml",
+    ".github/workflows/ci.yaml",
+    ".github/workflows/other.yml",
+    "nested/.github/workflows/ci.yml",
+    "src/config.yaml",
+  ])
+    await withFiles(
+      { "src/main.ts": "export {};", [path]: "{}" },
+      async (directory) => {
+        await assert.rejects(inspectInventory(directory, {}), {
+          message: `unsupported-inventory-file: ${path}`,
+        });
+      },
+    );
+});
+
 await test("QG-07 discovers nested packages, ignored-looking directories and generated headers", async () => {
   const files = {
     "src/main.ts": "export {};",
