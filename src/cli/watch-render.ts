@@ -9,6 +9,7 @@ export interface WatchItem {
 }
 
 export interface WatchTurn {
+  readonly estimatedCostUsd: number | null;
   readonly operationId: string;
   readonly usage: WorkerUsage;
   readonly key: string;
@@ -71,6 +72,7 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly estimatedCostUsd: number | null;
   readonly runId: string;
   readonly title: string | null;
   readonly claudeCostUsd: number | null;
@@ -104,6 +106,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly estimatedCostUsd: number | null;
   readonly ticketId: string | null;
   readonly title: string | null;
   readonly outcome: string | null;

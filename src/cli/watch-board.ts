@@ -142,6 +142,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     completionMark: completionMarkOf(run, runs),
     pullRequestObservation: null,
     claudeCostUsd: run.claudeCostUsd,
+    estimatedCostUsd: run.estimatedCostUsd,
     usage: run.usage,
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,

@@ -91,7 +91,7 @@ export function Card(props: {
           }),
           element("span", {
             class: "card-usage",
-            children: usageText(card.usage),
+            children: usageText(card.usage, card.estimatedCostUsd),
           }),
           card.decisionWaiting
             ? element("span", {

@@ -8,6 +8,7 @@ import {
   type TurnRecords,
 } from "../src/cli/watch-model.ts";
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
+import { sampleRun } from "./watch-sample.ts";
 
 const unknownUsage = {
   input_tokens: null,
@@ -126,6 +127,7 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     operationId,
     usage: unknownUsage,
     costUsd: null,
+    estimatedCostUsd: null,
     activity: [
       { kind: "say", text: "a" },
       { kind: "result", text: "Done." },
@@ -329,24 +331,14 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       ["run-1", 1, 1],
     ],
   );
+  const selected = model.runs[1];
+  assert.ok(selected);
   assert.deepEqual(
-    { ...model.runs[1], decisions: [], turns: [] },
-    {
-      runId: "run-1",
-      workflowId: "develop-ticket",
-      title: null,
-      ticketId: null,
-      outcome: null,
-      latestAt: null,
+    { ...selected, decisions: [], turns: [] },
+    sampleRun({
       claudeCostUsd: null,
-      usage: unknownUsage,
-      round: 1,
+      estimatedCostUsd: null,
       currentStep: { name: "Claude turn", startedAt: null },
-      state: "waiting_gate",
-      code: "policy-approval",
-      detail: "A person must approve.",
-      spent: 1,
-      limit: 8,
       decisions: [],
       events: [
         {
@@ -356,13 +348,8 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
         },
       ],
       turns: [],
-      phases: model.runs[1]?.phases,
-      decision: "",
-      feedback: [],
-      pullRequest: null,
-      reviews: [],
-      mergeCommit: null,
-    },
+      phases: selected.phases,
+    }),
   );
   assert.deepEqual(
     model.runs[1]?.phases.map((phase) => phase.state),

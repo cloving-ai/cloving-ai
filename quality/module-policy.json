@@ -1,5 +1,11 @@
 {
   "roles": {
+    "src/token-prices.ts": "pure",
+    "test/token-prices.test.ts": "test",
+    "test/worker-token-prices.test.ts": "test",
+    "test/service-estimated-cost.test.ts": "test",
+    "test/estimated-cost-render.test.ts": "test",
+    "test/cli-start-token-prices.test.ts": "test",
     "test/watch-style-fixture.ts": "test",
     "test/watch-style.test.ts": "test",
     "src/chats/normalize.ts": "pure",

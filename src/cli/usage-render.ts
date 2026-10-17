@@ -10,9 +10,9 @@ export function priceText(value: unknown): string {
   })} USD`;
 }
 
-export function usageText(value: unknown): string {
+export function usageText(value: unknown, estimatedCostUsd?: unknown): string {
   const usage = usageOf(value);
-  return [
+  const tokens = [
     ["Input tokens", usage.input_tokens],
     ["Cache read tokens", usage.cache_read_input_tokens],
     ["Output tokens", usage.output_tokens],
@@ -22,6 +22,9 @@ export function usageText(value: unknown): string {
         `${String(label)}: ${count === null ? "Token usage not known" : String(count)}`,
     )
     .join(" · ");
+  return priceOf(estimatedCostUsd) === null
+    ? tokens
+    : `${tokens} · ≈${priceText(estimatedCostUsd)} estimate`;
 }
 
 export function totalsSuffix(state: unknown): string {

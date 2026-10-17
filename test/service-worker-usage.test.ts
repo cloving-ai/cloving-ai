@@ -41,6 +41,7 @@ await test("CLV-094 totals ended worker operations once across failed reports, r
         operationId: operationOf(scene.runId, { round: index + 1 }),
         usage,
         costUsd: null,
+        estimatedCostUsd: null,
       })),
     );
     await scene.service.worker.reportEffect({
@@ -91,6 +92,7 @@ await test("CLV-094 active operations do not contribute and ended operations wit
         operationId: operationOf(scene.runId, { round: 1 }),
         usage: unknownUsage,
         costUsd: null,
+        estimatedCostUsd: null,
       },
     ]);
     const list = await call(harness, { operation: "status", parameters: {} });

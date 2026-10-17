@@ -135,7 +135,12 @@ await test("CLV-094 status text and JSON show separate worker turns and run tota
         result: turnResult(usage),
         outcome: index === 0 ? "completed" : "failed",
       });
-      turns.push({ operationId: report.operationId, usage, costUsd: null });
+      turns.push({
+        operationId: report.operationId,
+        usage,
+        costUsd: null,
+        estimatedCostUsd: null,
+      });
     }
     const json = await harness.cli(["status", scene.runId, "--json"]);
     assert.equal(json.status, 0, json.stderr);

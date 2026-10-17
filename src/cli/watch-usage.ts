@@ -13,6 +13,7 @@ function emptyTurn(operationId: string, runId: string): WatchTurn {
     key: operationId,
     usage: usageOf(null),
     costUsd: null,
+    estimatedCostUsd: null,
     target: "",
     branch: "",
     worktree: "",
@@ -54,6 +55,7 @@ export function statusTurns(
       activeAt: null,
       usage: usageOf(fields["usage"]),
       costUsd: priceOf(fields["costUsd"]),
+      estimatedCostUsd: priceOf(fields["estimatedCostUsd"]),
       activity: known.activity.map((item) =>
         item.kind === "result"
           ? {

@@ -26,6 +26,7 @@ import {
 } from "../service/service.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
+import type { TokenPrices } from "../token-prices.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
@@ -40,6 +41,7 @@ import {
 } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
+  readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
   readonly directory: string;
@@ -167,6 +169,7 @@ function adapters(
     effect: Parameters<HostPorts["reportEffect"]>[0],
   ): Promise<unknown> => (await given).reportEffect(effect);
   const worker = claudeWorker({
+    tokenPrices: settings.tokenPrices ?? {},
     worker: settings.worker ?? "claude",
     profiles: settings.profiles ?? {},
     workflowId: async (runId) => (await given).workflowId(runId),

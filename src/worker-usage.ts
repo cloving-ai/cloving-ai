@@ -5,12 +5,14 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly estimatedCostUsd: number | null;
   readonly operationId: string;
   readonly usage: WorkerUsage;
   readonly costUsd: number | null;
 }
 
 export interface WorkerTotals {
+  readonly estimatedCostUsd: number | null;
   readonly workerTurns: readonly WorkerTurnUsage[];
   readonly usage: WorkerUsage;
   readonly claudeCostUsd: number | null;
@@ -56,17 +58,21 @@ export function sumUsage(values: readonly WorkerUsage[]): WorkerUsage {
   };
 }
 
+function sumPrices(values: readonly (number | null)[]): number | null {
+  const prices = values.map(priceOf);
+  if (prices.length === 0 || prices.includes(null)) return null;
+  return priceOf(prices.reduce<number>((sum, price) => sum + (price ?? 0), 0));
+}
+
 export function workerTotals(
   workerTurns: readonly WorkerTurnUsage[],
 ): WorkerTotals {
-  const prices = workerTurns.map((turn) => priceOf(turn.costUsd));
-  const cost =
-    prices.length === 0 || prices.includes(null)
-      ? null
-      : priceOf(prices.reduce<number>((sum, price) => sum + (price ?? 0), 0));
   return {
     workerTurns,
     usage: sumUsage(workerTurns.map((turn) => turn.usage)),
-    claudeCostUsd: cost,
+    claudeCostUsd: sumPrices(workerTurns.map((turn) => turn.costUsd)),
+    estimatedCostUsd: sumPrices(
+      workerTurns.map((turn) => turn.estimatedCostUsd),
+    ),
   };
 }

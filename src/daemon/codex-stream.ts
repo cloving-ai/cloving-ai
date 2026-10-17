@@ -53,6 +53,7 @@ function completed(item: Fields): string[] {
 }
 
 interface State {
+  model: string | null;
   sessionId: string | null;
   turns: number;
   usage: WorkerUsage;
@@ -63,6 +64,11 @@ interface State {
 
 function updated(event: Fields, state: State): void {
   const type = event["type"];
+  if (
+    typeof type === "string" &&
+    ["thread.started", "turn.started", "turn.completed"].includes(type)
+  )
+    state.model = text(event["model"]) || state.model;
   if (type === "thread.started")
     state.sessionId = text(event["thread_id"]) || null;
   if (type === "turn.completed") {
@@ -112,6 +118,7 @@ export function codexStream(): {
   readonly result: (exitCode: number | null) => string;
 } {
   const state: State = {
+    model: null,
     sessionId: null,
     turns: 0,
     usage: usageOf(null),
@@ -137,6 +144,7 @@ export function codexStream(): {
             state.error ||
             `codex ended with the code ${String(exitCode)}`,
         total_cost_usd: null,
+        ...(state.model === null ? {} : { model: state.model }),
         usage: state.usage,
         session_id: state.sessionId,
         num_turns: state.turns,

@@ -1,5 +1,10 @@
 import { join } from "node:path";
 import {
+  estimatedCostUsd,
+  priceForModel,
+  type TokenPrices,
+} from "../token-prices.ts";
+import {
   profileCommand,
   type TurnProfile,
   type TurnProfiles,
@@ -31,6 +36,7 @@ import {
 import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings {
+  readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
   readonly workflowId?: (runId: string) => Promise<string | undefined>;
@@ -109,14 +115,23 @@ async function reconciled(
 
 async function resultText(
   tree: WorkTree,
-  result: NonNullable<TurnEnd["result"]>,
+  turn: {
+    readonly result: NonNullable<TurnEnd["result"]>;
+    readonly settings: ClaudeWorkerSettings;
+  },
 ): Promise<string> {
+  const { result, settings } = turn;
   const fields = {
     summary: result.text.slice(0, claudeLimits.summaryCharacters),
     ...(await changes(tree)),
     worktree: tree.path,
     costUsd: result.costUsd,
     usage: result.usage,
+    model: result.model,
+    estimatedCostUsd: estimatedCostUsd(result.usage, {
+      worker: settings.worker ?? "claude",
+      price: priceForModel(settings.tokenPrices ?? {}, result.model),
+    }),
     sessionId: result.sessionId,
     turns: result.turns,
   };
@@ -128,13 +143,18 @@ async function resultText(
 }
 
 async function outcome(
-  running: Started & { readonly stopping: Active["stopping"] },
+  running: Started & {
+    readonly stopping: Active["stopping"];
+    readonly settings: ClaudeWorkerSettings;
+  },
   end: TurnEnd,
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
   const { result } = end;
   const text =
-    result === undefined ? undefined : await resultText(running.tree, result);
+    result === undefined
+      ? undefined
+      : await resultText(running.tree, { result, settings: running.settings });
   if (text !== undefined && end.exitCode === 0 && result?.failed === false)
     return { outcome: "completed", result: text, endedAt };
   if (running.stopping.requested) return { outcome: "stopped", endedAt };
@@ -158,7 +178,10 @@ async function concluded(
   parts: Parts,
   running: Started & Pick<Active, "turn" | "stopping">,
 ): Promise<void> {
-  const recorded = await outcome(running, await running.turn.ended);
+  const recorded = await outcome(
+    { ...running, settings: parts.settings },
+    await running.turn.ended,
+  );
   await written(running.folder, { name: "result.json", value: recorded });
   await parts.settings.report(reported(running, recorded));
 }

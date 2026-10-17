@@ -39,6 +39,7 @@ export async function usageTotals(
       operationId: operation.operationId,
       usage: usageOf(report["usage"]),
       costUsd: priceOf(report["costUsd"]),
+      estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
     });
   }
   return workerTotals(turns);

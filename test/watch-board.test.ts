@@ -106,6 +106,7 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
     completionMark: null,
     pullRequestObservation: null,
     claudeCostUsd: 1.25,
+    estimatedCostUsd: null,
     usage: {
       input_tokens: null,
       cache_read_input_tokens: null,

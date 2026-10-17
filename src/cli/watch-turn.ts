@@ -63,7 +63,10 @@ export function Turn(props: {
         children: heading.filter((part) => part !== "").join(" · "),
       }),
       element("p", { class: "meta", children: place }),
-      element("p", { class: "turn-usage", children: usageText(turn.usage) }),
+      element("p", {
+        class: "turn-usage",
+        children: usageText(turn.usage, turn.estimatedCostUsd),
+      }),
       element("div", { class: "activity", children: activity }),
     ],
   });
