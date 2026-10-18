@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, type FileHandle } from "node:fs/promises";
 import {
+  sourceFailure,
+  verifyScanSource,
+  verifyOpenSource,
+  type ScanSource,
+} from "./source.ts";
+import {
   normalizeTranscript,
   type MessageRecord,
   type Omissions,
@@ -81,27 +87,57 @@ function normalizeBytes(path: string, bytes: Buffer): ReadTranscript {
   };
 }
 
-export async function readTranscript(path: string): Promise<ReadTranscript> {
+async function readSourceBytes(
+  path: string,
+  inspection: ScanSource | undefined,
+): Promise<Buffer | string> {
+  const handle = await open(
+    path,
+    constants.O_RDONLY |
+      constants.O_NONBLOCK |
+      (inspection === undefined ? constants.O_NOFOLLOW : 0x20000000),
+  );
   try {
+    if (inspection !== undefined) {
+      verifyOpenSource(inspection, await handle.stat());
+      await verifyScanSource(inspection);
+    }
+    return await boundedBytes(handle);
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function readTranscript(
+  path: string,
+  inspection?: ScanSource,
+): Promise<ReadTranscript> {
+  try {
+    if (inspection !== undefined) await verifyScanSource(inspection);
     const stats = await lstat(path);
     if (stats.isSymbolicLink()) return refused(path, "symbolic-link");
     if (!stats.isFile()) return refused(path, "nonregular-file");
-    const handle = await open(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-    let bytes: Buffer | string;
-    try {
-      bytes = await boundedBytes(handle);
-    } finally {
-      await handle.close();
-    }
-    return typeof bytes === "string"
-      ? refused(path, bytes)
-      : normalizeBytes(path, bytes);
+    const bytes = await readSourceBytes(path, inspection);
+    const result =
+      typeof bytes === "string"
+        ? refused(path, bytes)
+        : normalizeBytes(path, bytes);
+    return scannedResult(result, inspection);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ELOOP")
       return refused(path, "symbolic-link");
-    return refused(path, "source-unreadable");
+    return refused(
+      path,
+      inspection === undefined ? "source-unreadable" : sourceFailure(error),
+    );
   }
+}
+
+function scannedResult(
+  result: ReadTranscript,
+  inspection: ScanSource | undefined,
+): ReadTranscript {
+  if (inspection === undefined || result.coverage.status !== "too-large")
+    return result;
+  return { ...result, coverage: { ...result.coverage, status: "unsupported" } };
 }

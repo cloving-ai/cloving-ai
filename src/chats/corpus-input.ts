@@ -153,12 +153,207 @@ function coverageFile(value: unknown): boolean {
 
 export function validateCoverage(text: string, importId: string): void {
   const value: unknown = JSON.parse(text);
+  if (!object(value) || value["importId"] !== importId)
+    throw new Error("invalid-import");
+  if (value["schemaVersion"] === 2 && scanCoverage(value)) return;
+  if (
+    value["schemaVersion"] === 1 &&
+    Array.isArray(value["files"]) &&
+    value["files"].every(coverageFile)
+  )
+    return;
+  throw new Error("invalid-import");
+}
+
+function scanCoverage(value: Record<string, unknown>): boolean {
+  const roots = value["roots"];
+  const exclusions = value["exclusions"];
+  const limits = value["limits"];
+  const entries = value["entries"];
+  return (
+    keys(value, {
+      required: [
+        "schemaVersion",
+        "importId",
+        "roots",
+        "exclusions",
+        "limits",
+        "entries",
+      ],
+    }) &&
+    Array.isArray(roots) &&
+    roots.length > 0 &&
+    roots.every(absolutePath) &&
+    Array.isArray(exclusions) &&
+    exclusions.every(
+      (name: unknown) =>
+        typeof name === "string" &&
+        name !== "" &&
+        name !== "." &&
+        name !== ".." &&
+        !["/", "\\", "\0", "*", "?", "[", "]"].some((character) =>
+          name.includes(character),
+        ),
+    ) &&
+    coverageLimits(limits) &&
+    Array.isArray(entries) &&
+    entries.every((entry: unknown) => scanCoverageEntry(entry, roots))
+  );
+}
+
+function coverageLimits(value: unknown): boolean {
+  return (
+    object(value) &&
+    keys(value, {
+      required: ["depth", "files", "sourceBytes", "corpusBytes"],
+    }) &&
+    value["depth"] === 4 &&
+    value["files"] === 100 &&
+    value["sourceBytes"] === 10_485_760 &&
+    value["corpusBytes"] === 52_428_800
+  );
+}
+
+function scanCoverageEntry(value: unknown, roots: readonly string[]): boolean {
+  if (!object(value) || !coverageFile({ ...value, status: "included" }))
+    return false;
+  if (
+    !keys(value, {
+      required: [
+        "kind",
+        "path",
+        "selection",
+        "status",
+        "reason",
+        "digest",
+        "recordCount",
+        "omissions",
+      ],
+    })
+  )
+    return false;
+  const selection = value["selection"];
+  if (!coverageSelection(selection, roots.length)) return false;
+  if (!["file", "subtree"].includes(String(value["kind"]))) return false;
+  if (selection["kind"] === "file" && value["kind"] !== "file") return false;
+  if (
+    selection.kind === "root" &&
+    !withinRoot(roots[selection.index], value["path"])
+  )
+    return false;
+  return scanStatus(value, selection["kind"]);
+}
+
+function coverageSelection(
+  value: unknown,
+  rootCount: number,
+): value is { readonly kind: "file" | "root"; readonly index: number } {
   if (
     !object(value) ||
-    value["schemaVersion"] !== 1 ||
-    value["importId"] !== importId ||
-    !Array.isArray(value["files"]) ||
-    !value["files"].every(coverageFile)
+    !keys(value, { required: ["kind", "index"] }) ||
+    !natural(value["index"])
   )
-    throw new Error("invalid-import");
+    return false;
+  return (
+    value["kind"] === "file" ||
+    (value["kind"] === "root" && value["index"] < rootCount)
+  );
+}
+
+function scanStatus(
+  value: Record<string, unknown>,
+  selection: unknown,
+): boolean {
+  const status = value["status"];
+  const reason = value["reason"];
+  if (status === "included")
+    return (
+      value["kind"] === "file" &&
+      reason === "supported" &&
+      typeof value["digest"] === "string"
+    );
+  if (status === "unreadable")
+    return reason === "source-unreadable" && emptyCoverageEntry(value);
+  if (["too-large", "excluded", "pending"].includes(String(status)))
+    return scanOmission(value, selection);
+  return scanRefusal(value);
+}
+
+function scanRefusal(value: Record<string, unknown>): boolean {
+  if (value["status"] !== "unsupported" || value["recordCount"] !== 0)
+    return false;
+  const contentReasons = [
+    "invalid-utf8",
+    "empty-file",
+    "invalid-json",
+    "unsupported-record",
+    "unsupported-message",
+    "unsupported-block",
+  ];
+  if (contentReasons.includes(String(value["reason"])))
+    return value["kind"] === "file" && typeof value["digest"] === "string";
+  const reasons =
+    value["kind"] === "subtree"
+      ? [
+          "symbolic-link",
+          "nonregular-file",
+          "outside-root",
+          "repository-root",
+          "source-changed",
+          "non-directory-root",
+        ]
+      : [
+          "symbolic-link",
+          "nonregular-file",
+          "outside-root",
+          "source-changed",
+          "unsupported-extension",
+          "file-too-large",
+        ];
+  return reasons.includes(String(value["reason"])) && emptyCoverageEntry(value);
+}
+
+function absolutePath(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.includes("\0") &&
+    value.split("/").every((part) => part !== "." && part !== "..")
+  );
+}
+
+function withinRoot(root: string | undefined, path: unknown): boolean {
+  if (root === undefined || !absolutePath(path)) return false;
+  const parent = root.split("/").filter(Boolean);
+  const child = path.split("/").filter(Boolean);
+  return parent.every((part, index) => part === child[index]);
+}
+
+function scanOmission(
+  value: Record<string, unknown>,
+  selection: unknown,
+): boolean {
+  if (!emptyCoverageEntry(value)) return false;
+  if (value["status"] === "too-large")
+    return selection === "file" && value["reason"] === "file-too-large";
+  if (selection !== "root") return false;
+  if (value["status"] === "excluded")
+    return (
+      value["kind"] === "subtree" && value["reason"] === "project-excluded"
+    );
+  return (
+    value["reason"] ===
+    (value["kind"] === "subtree" ? "depth-limit" : "file-limit")
+  );
+}
+
+function emptyCoverageEntry(value: Record<string, unknown>): boolean {
+  const omissions = value["omissions"];
+  return (
+    value["digest"] === null &&
+    value["recordCount"] === 0 &&
+    object(omissions) &&
+    omissions["metadataRecords"] === 0 &&
+    omissions["thinkingBlocks"] === 0
+  );
 }

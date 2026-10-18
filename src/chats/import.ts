@@ -13,12 +13,15 @@ import {
   validateDestination,
 } from "./destination.ts";
 import { readTranscript, type SelectedTranscript } from "./reader.ts";
+import {
+  selectChatSources,
+  type SelectionRequest,
+  type SourceSelection,
+} from "./selection.ts";
 
 const corpusLimit = 52_428_800;
 
-export interface ImportRequest {
-  readonly paths: readonly string[];
-  readonly workingDirectory: string;
+export interface ImportRequest extends SelectionRequest {
   readonly runtimeDirectory: string | undefined;
 }
 
@@ -32,6 +35,8 @@ export interface ImportSummary extends StructureCounts {
   readonly importId: string | null;
   readonly included: number;
   readonly refused: number;
+  readonly excluded?: number;
+  readonly pending?: number;
 }
 
 function boundedCorpusLine(record: MessageRecord, previousBytes: number) {
@@ -44,17 +49,24 @@ function boundedCorpusLine(record: MessageRecord, previousBytes: number) {
 async function writeImport(
   directory: string,
   request: ImportRequest,
-): Promise<{ files: SelectedTranscript[]; records: MessageRecord[] }> {
-  const files: SelectedTranscript[] = [];
+): Promise<{
+  roots: string[];
+  files: CoverageEntry[];
+  records: MessageRecord[];
+}> {
+  const selection = await selectChatSources(request);
+  const files: CoverageEntry[] = [];
   const records: MessageRecord[] = [];
   let corpusBytes = 0;
   const corpus = await createPrivateFile(join(directory, "corpus.jsonl"));
   try {
-    for (const selected of request.paths) {
-      const result = await readTranscript(
-        resolve(request.workingDirectory, selected),
-      );
-      files.push(result.coverage);
+    for (const selected of selection.entries) {
+      const result = await readSelected(selected);
+      files.push({
+        ...result.coverage,
+        kind: selected.kind,
+        selection: selected.selection,
+      });
       for (const record of result.records) {
         const next = boundedCorpusLine(record, corpusBytes);
         await corpus.writeFile(next.line);
@@ -65,7 +77,28 @@ async function writeImport(
   } finally {
     await corpus.close();
   }
-  return { files, records };
+  return { roots: selection.roots, files, records };
+}
+
+type CoverageEntry = Omit<SelectedTranscript, "status"> & {
+  readonly status: SelectedTranscript["status"] | "excluded" | "pending";
+  readonly kind: SourceSelection["kind"];
+  readonly selection: SourceSelection["selection"];
+};
+
+async function readSelected(selected: SourceSelection) {
+  if (selected.outcome !== undefined)
+    return {
+      coverage: {
+        path: selected.path,
+        ...selected.outcome,
+        digest: null,
+        recordCount: 0,
+        omissions: { metadataRecords: 0, thinkingBlocks: 0 },
+      },
+      records: [],
+    };
+  return readTranscript(selected.path, selected.inspection);
 }
 
 async function writeStructure(
@@ -108,12 +141,7 @@ async function writeCoverage(
 export async function importChats(
   request: ImportRequest,
 ): Promise<ImportSummary> {
-  const empty = {
-    importId: null,
-    included: 0,
-    refused: 0,
-    ...structureImport([]).counts,
-  };
+  const empty = emptyImport(request);
   if (request.runtimeDirectory === undefined)
     return { ...empty, code: "runtime-directory-unknown" };
   try {
@@ -122,17 +150,26 @@ export async function importChats(
       resolve(request.workingDirectory, request.runtimeDirectory),
       importId,
     );
-    const { files, records } = await writeImport(directory, request);
+    const { roots, files, records } = await writeImport(directory, request);
     const structure = structureImport(records);
     await writeStructure(directory, { importId, ...structure });
-    const included = files.filter((file) => file.status === "included").length;
-    const refused = files.length - included;
-    await writeCoverage(directory, { schemaVersion: 1, importId, files });
+    const totals = importTotals(files);
+    const { refused, pending } = totals;
+    await writeCoverage(
+      directory,
+      coverageManifest({
+        importId,
+        roots,
+        files,
+        exclusions: request.excludeProjects ?? [],
+      }),
+    );
     return {
-      code: refused === 0 ? "import-complete" : "import-partial",
+      code: refused + pending === 0 ? "import-complete" : "import-partial",
       importId,
-      included,
+      included: totals.included,
       refused,
+      ...(roots.length === 0 ? {} : { excluded: totals.excluded, pending }),
       ...structure.counts,
     };
   } catch (error) {
@@ -144,4 +181,60 @@ export async function importChats(
           : "output-failed",
     };
   }
+}
+
+function importTotals(files: readonly CoverageEntry[]) {
+  return {
+    included: files.filter((file) => file.status === "included").length,
+    refused: files.filter((file) =>
+      ["unreadable", "unsupported", "too-large"].includes(file.status),
+    ).length,
+    excluded: files.filter((file) => file.status === "excluded").length,
+    pending: files.filter((file) => file.status === "pending").length,
+  };
+}
+
+function coverageManifest(data: {
+  readonly importId: string;
+  readonly roots: readonly string[];
+  readonly files: readonly CoverageEntry[];
+  readonly exclusions: readonly string[];
+}) {
+  const { importId, roots, files, exclusions } = data;
+  if (roots.length > 0)
+    return {
+      schemaVersion: 2,
+      importId,
+      roots,
+      exclusions,
+      limits: {
+        depth: 4,
+        files: 100,
+        sourceBytes: 10_485_760,
+        corpusBytes: corpusLimit,
+      },
+      entries: files,
+    };
+  return {
+    schemaVersion: 1,
+    importId,
+    files: files.map((entry) => ({
+      path: entry.path,
+      status: entry.status,
+      reason: entry.reason,
+      digest: entry.digest,
+      recordCount: entry.recordCount,
+      omissions: entry.omissions,
+    })),
+  };
+}
+
+function emptyImport(request: ImportRequest) {
+  return {
+    importId: null,
+    included: 0,
+    refused: 0,
+    ...((request.roots?.length ?? 0) === 0 ? {} : { excluded: 0, pending: 0 }),
+    ...structureImport([]).counts,
+  };
 }

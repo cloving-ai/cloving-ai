@@ -13,6 +13,7 @@ import { importChats } from "../src/chats/import.ts";
 import { normalizeTranscript } from "../src/chats/normalize.ts";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { readRootOutput } from "./chats-selection-fixture.ts";
 
 const source = JSON.stringify({
   type: "user",
@@ -207,3 +208,121 @@ await test("CLV-095 leaves no completed manifest after a corpus write failure", 
     }
   });
 });
+
+await test("CLV-111 exclusions alone succeed, pending subtrees require partial status and files remain explicit", async () => {
+  await withFiles(
+    {
+      "root/skip/sentinel.jsonl": source,
+      "root/keep/session/subagents/deep/later.jsonl": source,
+    },
+    async (directory) => {
+      const request = {
+        paths: [],
+        roots: ["root"],
+        excludeProjects: ["skip", "keep"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      };
+      const excluded = await importChats(request);
+      assert.equal(excluded.code, "import-complete");
+      assert.deepEqual(
+        [
+          excluded.included,
+          excluded.refused,
+          excluded.excluded,
+          excluded.pending,
+        ],
+        [0, 0, 2, 0],
+      );
+      const pending = await importChats({
+        ...request,
+        excludeProjects: ["skip"],
+      });
+      assert.equal(pending.code, "import-partial");
+      assert.deepEqual(
+        [pending.included, pending.refused, pending.excluded, pending.pending],
+        [0, 0, 1, 1],
+      );
+      assert.ok(pending.importId);
+      const output = await readRootOutput(directory, pending.importId);
+      assert.doesNotMatch(output.coverage, /later.jsonl|sentinel.jsonl/);
+      const later = await importChats({
+        ...request,
+        paths: ["root/keep/session/subagents/deep/later.jsonl"],
+        roots: [],
+      });
+      assert.equal(later.code, "import-complete");
+      assert.equal(later.included, 1);
+      for (const name of ["corpus.jsonl", "coverage.json", "structure.json"])
+        assert.equal(
+          (await stat(join(output.output, name))).mode & 0o777,
+          0o600,
+        );
+    },
+  );
+});
+
+await test("CLV-111 mixed imports share the normalized corpus limit and preserve oversized status forms", async () => {
+  const selected = largeTranscript();
+  await withFiles(
+    { selected, "root/last.jsonl": selected },
+    async (directory) => {
+      const result = await importChats({
+        paths: Array<string>(9).fill("selected"),
+        roots: ["root"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      });
+      assert.equal(result.code, "import-complete");
+      assert.equal(result.records, 10);
+      assert.ok(result.importId);
+      const output = await readRootOutput(directory, result.importId);
+      assert.equal(Buffer.byteLength(output.corpus), corpusLimit);
+      const failed = await importChats({
+        paths: Array<string>(10).fill("selected"),
+        roots: ["root"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      });
+      assert.equal(failed.code, "output-failed");
+      assert.deepEqual(
+        [
+          failed.importId,
+          failed.included,
+          failed.refused,
+          failed.excluded,
+          failed.pending,
+          failed.records,
+        ],
+        [null, 0, 0, 0, 0, 0],
+      );
+      await writeLarge(join(directory, "root/large.jsonl"));
+      const large = await importChats({
+        paths: ["root/large.jsonl"],
+        roots: ["root"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      });
+      assert.ok(large.importId);
+      const oversized = await readRootOutput(directory, large.importId);
+      assert.deepEqual(
+        oversized.rows
+          .filter((row) => String(row[0]).endsWith("large.jsonl"))
+          .map((row) => row.slice(1, 3)),
+        [
+          ["too-large", "file-too-large"],
+          ["unsupported", "file-too-large"],
+        ],
+      );
+    },
+  );
+});
+
+async function writeLarge(path: string) {
+  const handle = await open(path, "w");
+  try {
+    await handle.truncate(10_485_761);
+  } finally {
+    await handle.close();
+  }
+}

@@ -101,6 +101,126 @@ const source = {
   recordCount: 0,
   omissions: { metadataRecords: 0, thinkingBlocks: 0 },
 };
+
+const scanCoverage = {
+  schemaVersion: 2,
+  importId,
+  roots: ["/synthetic/root"],
+  exclusions: ["skip"],
+  limits: {
+    depth: 4,
+    files: 100,
+    sourceBytes: 10_485_760,
+    corpusBytes: 52_428_800,
+  },
+  entries: [
+    {
+      ...source,
+      kind: "file",
+      selection: { kind: "file", index: 0 },
+      status: "too-large",
+      reason: "file-too-large",
+      digest: null,
+    },
+    {
+      ...source,
+      path: "/synthetic/root/transcript",
+      kind: "file",
+      selection: { kind: "root", index: 0 },
+    },
+    {
+      ...source,
+      path: "/synthetic/root/subtree",
+      kind: "subtree",
+      selection: { kind: "root", index: 0 },
+      status: "excluded",
+      reason: "project-excluded",
+      digest: null,
+    },
+    {
+      ...source,
+      path: "/synthetic/root/subtree",
+      kind: "subtree",
+      selection: { kind: "root", index: 0 },
+      status: "pending",
+      reason: "depth-limit",
+      digest: null,
+    },
+  ],
+};
+
+await test("CLV-111 accepts version 2 coverage including mixed positional too-large entries", () => {
+  assert.doesNotThrow(() => {
+    validateCoverage(JSON.stringify(scanCoverage), importId);
+  });
+});
+
+await test("CLV-111 validates limits by fields and refuses invented records on oversized sources", () => {
+  assert.doesNotThrow(() => {
+    validateCoverage(
+      JSON.stringify({
+        ...scanCoverage,
+        limits: {
+          files: 100,
+          corpusBytes: 52_428_800,
+          depth: 4,
+          sourceBytes: 10_485_760,
+        },
+      }),
+      importId,
+    );
+  });
+  for (const entry of [
+    { ...scanCoverage.entries[0], recordCount: 1 },
+    { ...scanCoverage.entries[0], digest: "sha256:invented" },
+    {
+      ...scanCoverage.entries[0],
+      omissions: { metadataRecords: 1, thinkingBlocks: 0 },
+    },
+  ])
+    assert.throws(() => {
+      validateCoverage(
+        JSON.stringify({ ...scanCoverage, entries: [entry] }),
+        importId,
+      );
+    }, /invalid-import/);
+});
+
+for (const change of [
+  { schemaVersion: 3 },
+  { roots: [] },
+  { roots: [null] },
+  { exclusions: ["../skip"] },
+  { limits: { ...scanCoverage.limits, files: 101 } },
+  { entries: [null] },
+  ...[
+    { kind: "unknown" },
+    { selection: { kind: "root", index: 1 } },
+    { status: "pending", reason: "project-excluded" },
+    { status: "excluded", reason: "project-excluded", kind: "file" },
+    { status: "too-large", reason: "file-too-large" },
+    { reason: "unknown-reason" },
+    { recordCount: -1 },
+  ].map((entry) => ({
+    entries: [
+      {
+        ...source,
+        kind: "file",
+        selection: { kind: "root", index: 0 },
+        ...entry,
+      },
+    ],
+  })),
+]) {
+  await test("CLV-111 refuses malformed version 2 coverage and unknown versions", () => {
+    assert.throws(() => {
+      validateCoverage(
+        JSON.stringify({ ...scanCoverage, ...change }),
+        importId,
+      );
+    }, /invalid-import/);
+  });
+}
 for (const file of [
   { ...source, path: null },
   { ...source, reason: null },
@@ -168,3 +288,43 @@ for (const value of [
     assert.throws(() => parseCorpus(JSON.stringify(value)), /invalid-import/);
   });
 }
+
+await test("CLV-111 refuses content states on subtrees and paths outside their selected root", () => {
+  for (const entry of [
+    {
+      ...source,
+      path: "/synthetic/root/subtree",
+      kind: "subtree",
+      selection: { kind: "root", index: 0 },
+      status: "unsupported",
+      reason: "invalid-json",
+      omissions: { metadataRecords: 1, thinkingBlocks: 0 },
+    },
+    {
+      ...source,
+      path: "/synthetic/root/subtree",
+      kind: "subtree",
+      selection: { kind: "root", index: 0 },
+      status: "unreadable",
+      reason: "source-unreadable",
+    },
+    {
+      ...source,
+      path: "/synthetic/root-escape/file.jsonl",
+      kind: "file",
+      selection: { kind: "root", index: 0 },
+    },
+    {
+      ...source,
+      path: "/synthetic/root/../outside.jsonl",
+      kind: "file",
+      selection: { kind: "root", index: 0 },
+    },
+  ])
+    assert.throws(() => {
+      validateCoverage(
+        JSON.stringify({ ...scanCoverage, entries: [entry] }),
+        importId,
+      );
+    }, /invalid-import/);
+});

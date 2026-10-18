@@ -5,11 +5,24 @@ import { chmod, mkdir, open, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { readTranscript, transcriptLimit } from "../src/chats/reader.ts";
+import { inspectScanSource } from "../src/chats/source.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const valid = JSON.stringify({
   type: "user",
   message: { role: "user", content: "selected" },
+});
+
+await test("CLV-111 maps scanned oversized sources to unsupported while preserving positional status", async () => {
+  await withFiles({ "root/project/source.jsonl": "" }, async (directory) => {
+    const path = join(directory, "root/project/source.jsonl");
+    await writeFile(path, Buffer.alloc(transcriptLimit + 1));
+    const inspection = await inspectScanSource(path, join(directory, "root"));
+    const result = await readTranscript(path, inspection);
+    assert.equal(result.coverage.status, "unsupported");
+    assert.equal(result.coverage.reason, "file-too-large");
+    assert.equal((await readTranscript(path)).coverage.status, "too-large");
+  });
 });
 
 await test("CLV-095 reads exact bytes and retains stable IDs across repeated reads", async () => {

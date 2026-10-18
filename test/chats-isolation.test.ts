@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { constants } from "node:fs";
-import filesystem from "node:fs/promises";
+import filesystem, { symlink, readFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { importChats } from "../src/chats/import.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { readRootOutput, syntheticMessage } from "./chats-selection-fixture.ts";
 
 const fixture = {
   "selected.jsonl": JSON.stringify({
@@ -120,5 +121,113 @@ await test("CLV-095 transcript instructions cause no process, extra source read,
       filesystem.open = original;
       syncBuiltinESMExports();
     }
+  });
+});
+
+function budgetFiles() {
+  const files = Object.fromEntries(
+    Array.from({ length: 101 }, (_, index) => [
+      `${index < 99 ? "A" : "B"}/project/${String(index).padStart(3, "0")}.jsonl`,
+      syntheticMessage(String(index)),
+    ]),
+  );
+  return {
+    ...files,
+    "A/skip/sentinel.jsonl": "sentinel",
+    "A/project/other.txt": "sentinel",
+    "A/project/session/subagents/deeper/sentinel.jsonl": "sentinel",
+    outside: "sentinel",
+  };
+}
+
+async function observedScan(directory: string, order: "forward" | "reverse") {
+  const opened: string[] = [];
+  const listed: string[] = [];
+  const originalOpen = filesystem.open;
+  const originalList = filesystem.readdir;
+  filesystem.open = (path, flags) => {
+    const selected = String(path);
+    if (typeof flags === "number" && (flags & constants.O_WRONLY) === 0) {
+      opened.push(selected);
+      if (selected.endsWith("/000.jsonl"))
+        return Promise.reject(
+          Object.assign(new Error("synthetic-refusal"), { code: "EACCES" }),
+        );
+    }
+    return originalOpen(path, flags, 0o600);
+  };
+  Object.defineProperty(filesystem, "readdir", {
+    configurable: true,
+    value: async (path: string) => {
+      listed.push(path);
+      const entries = await originalList(path, { withFileTypes: true });
+      return order === "reverse" ? entries.reverse() : entries;
+    },
+  });
+  const effects = observeEffects();
+  syncBuiltinESMExports();
+  try {
+    const result = await importChats({
+      paths: [],
+      roots: ["B", "A"],
+      excludeProjects: ["skip"],
+      workingDirectory: directory,
+      runtimeDirectory: "runtime",
+    });
+    assert.deepEqual(effects.attempts, []);
+    return { result, opened, listed };
+  } finally {
+    effects.restore();
+    filesystem.open = originalOpen;
+    filesystem.readdir = originalList;
+    syncBuiltinESMExports();
+  }
+}
+
+await test("CLV-111 only admits 100 scanned reads, counts failed attempts and ignores enumeration order", async () => {
+  await withFiles(budgetFiles(), async (directory) => {
+    await symlink(
+      join(directory, "outside"),
+      join(directory, "A/project/link.jsonl"),
+    );
+    const outputs: string[] = [];
+    for (const order of ["forward", "reverse"] as const) {
+      const { result, opened, listed } = await observedScan(directory, order);
+      assert.equal(result.code, "import-partial");
+      assert.deepEqual(
+        [result.included, result.refused, result.excluded, result.pending],
+        [99, 3, 1, 2],
+      );
+      assert.equal(opened.length, 100);
+      assert.ok(
+        opened.every(
+          (path) =>
+            !/100.jsonl|sentinel|link.jsonl|other.txt|outside/.test(path),
+        ),
+      );
+      assert.ok(listed.every((path) => !/\/skip|\/deeper/.test(path)));
+      assert.ok(result.importId);
+      const output = await readRootOutput(directory, result.importId);
+      assert.deepEqual(
+        output.records.map((record) => record.text),
+        Array.from({ length: 99 }, (_, index) => String(index + 1)),
+      );
+      outputs.push(
+        output.coverage.replace(result.importId, "IMPORT_ID"),
+        output.corpus,
+      );
+    }
+    assert.deepEqual(outputs.slice(0, 2), outputs.slice(2));
+    assert.equal(
+      await readFile(join(directory, "A/project/000.jsonl"), "utf8"),
+      syntheticMessage("0"),
+    );
+    const later = await importChats({
+      paths: ["B/project/100.jsonl"],
+      workingDirectory: directory,
+      runtimeDirectory: "runtime",
+    });
+    assert.equal(later.code, "import-complete");
+    assert.equal(later.records, 1);
   });
 });
