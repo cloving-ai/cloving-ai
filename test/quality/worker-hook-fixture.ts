@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
 import { parseCheckTimeFactor } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
@@ -39,6 +40,7 @@ export function hookEnvironment(
   return {
     PATH: process.env["PATH"],
     NODE_DISABLE_COMPILE_CACHE: "1",
+    CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
     CLOVING_WORKER_HOOK_TRACE: "1",
     ...overrides,
   };
@@ -99,6 +101,29 @@ export function runHook(
     stdout: result.stdout,
     context,
   };
+}
+
+export function probeHookCheck(options: HookOptions = {}): HookResult {
+  return runHook({
+    arguments: [
+      "--input-type=module",
+      "-e",
+      [
+        "import childProcess from 'node:child_process';",
+        "import { syncBuiltinESMExports } from 'node:module';",
+        "childProcess.spawnSync = (_executable, arguments_, options) => {",
+        "process.stdout.write(JSON.stringify({ check: arguments_[0], timeout: options.timeout }));",
+        "return { status: 0, stderr: '' };",
+        "};",
+        "syncBuiltinESMExports();",
+        "process.argv[2] = 'unused-policy.json';",
+        `await import(${JSON.stringify(pathToFileURL(resolve("tools/worker-hook.ts")).href)});`,
+      ].join("\n"),
+    ],
+    input: "{}",
+    expectedExit: 0,
+    ...options,
+  });
 }
 
 export async function withHook(

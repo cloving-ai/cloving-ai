@@ -11,6 +11,7 @@ import {
   hookEnvironment,
   hookFailureMessage,
   hookDiagnostic,
+  probeHookCheck,
   runHook,
   withHook,
 } from "./worker-hook-fixture.ts";
@@ -18,6 +19,56 @@ import {
 await test("CLV-100 scales the QG-15 hook subprocess limit by the check time factor", () => {
   assert.equal(hookTimeoutMilliseconds(undefined), 10000);
   assert.equal(hookTimeoutMilliseconds("3"), 30000);
+});
+
+await test("CLV-107 scales the inner hook check limit by the hook environment factor", () => {
+  for (const [factor, timeout] of [
+    [undefined, 5000],
+    ["3", 15000],
+  ] as const) {
+    const result = probeHookCheck({
+      environment: { CLOVING_CHECK_TIME_FACTOR: factor },
+    });
+    assert.deepEqual(JSON.parse(result.stdout), {
+      check: resolve("tools/worker-hook-check.ts"),
+      timeout,
+    });
+    assert.equal(result.diagnostic, "");
+  }
+});
+
+await test("CLV-107 QG-15 passes the check time factor to each hook subprocess", () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+  try {
+    const result = runHook({
+      arguments: [
+        "-e",
+        "process.stdout.write(process.env.CLOVING_CHECK_TIME_FACTOR ?? 'unset')",
+      ],
+      expectedExit: 0,
+    });
+    assert.equal(result.stdout, "3");
+    assert.equal(hookEnvironment()["CLOVING_CHECK_TIME_FACTOR"], "3");
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+});
+
+await test("CLV-107 rejects invalid factors before any inner hook check runs", () => {
+  for (const factor of ["0", "6", "1.5", "", "3x"]) {
+    const result = probeHookCheck({
+      environment: { CLOVING_CHECK_TIME_FACTOR: factor },
+      expectedExit: 2,
+    });
+    assert.equal(
+      result.diagnostic,
+      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 5",
+    );
+    assert.equal(result.stdout, "");
+    assert.doesNotMatch(result.stderr, /check:start|input-policy:read/);
+  }
 });
 
 await test("CLV-100 forwards the check time factor to hook test subprocesses", () => {
