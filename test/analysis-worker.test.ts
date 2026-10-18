@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { candidate } from "./chats-analysis-fixture.ts";
@@ -22,6 +29,40 @@ const snapshot = {
   redaction: JSON.stringify(manifest),
   structure: JSON.stringify(sidecar),
 };
+
+await test("CLV-116 replay cleans temporary analysis files before returning a durable result", () =>
+  withScene(async (scene) => {
+    const folder = join(scene.journal, journalKey(analysis.operationId));
+    for (const name of ["configuration", "working"]) {
+      mkdirSync(join(folder, name), { recursive: true, mode: 0o700 });
+      writeFileSync(join(folder, name, "temporary"), "private turn data", {
+        mode: 0o600,
+      });
+    }
+    const result = JSON.stringify({ reply: JSON.stringify(candidate()) });
+    const saved = JSON.stringify({ outcome: "completed", result });
+    writeFileSync(join(folder, "result.json"), saved, { mode: 0o600 });
+    const worker = scene.worker("bare", {
+      workflowId: () => Promise.resolve("analyze-chats"),
+      document: () => {
+        throw new Error("replay-must-not-read-evidence");
+      },
+    });
+    const expected = {
+      kind: "completed",
+      receipt: journalKey(analysis.operationId),
+      worker: "claude",
+      result,
+    };
+    assert.deepEqual(await worker.reconcile(analysis, signal), expected);
+    assert.deepEqual(readdirSync(folder), ["result.json"]);
+    assert.equal(readFileSync(join(folder, "result.json"), "utf8"), saved);
+    assert.deepEqual(await worker.reconcile(analysis, signal), expected);
+    assert.deepEqual(await worker.deliver(analysis, signal), expected);
+    assert.deepEqual(await worker.stop(analysis, signal), expected);
+    assert.deepEqual(scene.turns(), []);
+    assert.deepEqual(scene.reports, []);
+  }));
 
 await test("CLV-116 fixed Claude analysis removes tools and customization, keeps evidence private, and bypasses git with a Codex development worker", () =>
   withScene(async (scene) => {

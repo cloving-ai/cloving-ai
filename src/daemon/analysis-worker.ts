@@ -155,8 +155,10 @@ async function reconcile(
   if (!own(intent)) return failed("unsupported-effect");
   const { key, folder } = located(parts.settings.journal, intent.operationId);
   const result = await readRecord(folder, "result.json");
-  if (result !== undefined)
+  if (result !== undefined) {
+    await cleaned(folder);
     return replied({ receipt: key, worker: "claude" }, result);
+  }
   if (parts.active.has(key))
     return { kind: "accepted", receipt: key, worker: "claude" };
   const started = await readRecord(folder, "started.json");

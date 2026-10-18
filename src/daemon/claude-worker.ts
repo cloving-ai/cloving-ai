@@ -343,10 +343,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   if (settings.command.length === 0) throw new Error("invalid-claude-command");
   const parts: Parts = { settings, active: new Map() };
   const analysis = analysisWorker(settings);
-  const guarded = async (
-    intent: DeliveryIntent,
-    run: () => ReturnType<ClaudeWorker["deliver"]>,
-  ) => {
+  const guarded = async <T>(intent: DeliveryIntent, run: () => Promise<T>) => {
     if (
       !turnIntent(intent) ||
       Object.hasOwn(settings.profiles ?? {}, "analyze-chats") ||
@@ -360,18 +357,14 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       intent.method === analysisMethod
         ? guarded(intent, () => analysis.deliver(intent, signal))
         : delivered(parts, { intent, signal }),
-    reconcile: async (intent, signal) => {
-      if (intent.method !== analysisMethod) return reconciled(parts, intent);
-      const result = await guarded(intent, () =>
-        analysis.reconcile(intent, signal),
-      );
-      return "kind" in result ? result : { kind: "accepted", ...result };
-    },
-    stop: async (intent, signal) => {
-      if (intent.method !== analysisMethod) return stopped(parts, intent);
-      const result = await guarded(intent, () => analysis.stop(intent, signal));
-      return "kind" in result ? result : { kind: "accepted", ...result };
-    },
+    reconcile: (intent, signal) =>
+      intent.method === analysisMethod
+        ? guarded(intent, () => analysis.reconcile(intent, signal))
+        : reconciled(parts, intent),
+    stop: (intent, signal) =>
+      intent.method === analysisMethod
+        ? guarded(intent, () => analysis.stop(intent, signal))
+        : stopped(parts, intent),
     close: async () => {
       await analysis.close();
       await Promise.all(
