@@ -12,6 +12,30 @@ interface UpdateCandidate {
   readonly target: string;
 }
 
+export function lockRequiresInstall(before: string, after: string): boolean {
+  try {
+    return !isDeepStrictEqual(lockPackages(before), lockPackages(after));
+  } catch {
+    return true;
+  }
+}
+
+function lockPackages(text: string): Record<string, unknown> {
+  const lock: unknown = JSON.parse(text);
+  if (typeof lock !== "object" || lock === null || !("packages" in lock))
+    throw new Error("invalid package lock");
+  const packages: unknown = lock.packages;
+  if (
+    typeof packages !== "object" ||
+    packages === null ||
+    Array.isArray(packages)
+  )
+    throw new Error("invalid package lock packages");
+  return Object.fromEntries(
+    Object.entries(packages).filter(([path]) => path !== ""),
+  );
+}
+
 async function clean(git: SelfUpdateSettings["git"]): Promise<boolean> {
   const status = await git([
     "status",
@@ -21,6 +45,27 @@ async function clean(git: SelfUpdateSettings["git"]): Promise<boolean> {
   ]);
   if (status.length > 0) return false;
   return !/^[a-zS] /m.test(await git(["ls-files", "-v"]));
+}
+
+async function installRequired(
+  git: SelfUpdateSettings["git"],
+  update: UpdateCandidate,
+): Promise<boolean> {
+  try {
+    await git([
+      "diff",
+      "--exit-code",
+      update.head,
+      update.target,
+      "--",
+      "package-lock.json",
+    ]);
+    return false;
+  } catch {
+    const before = await git(["show", `${update.head}:package-lock.json`]);
+    const after = await git(["show", `${update.target}:package-lock.json`]);
+    return lockRequiresInstall(before, after);
+  }
 }
 
 async function candidate(
@@ -100,16 +145,7 @@ export function selfUpdater(settings: SelfUpdateSettings): {
       try {
         const update = await candidate(settings).catch(() => undefined);
         if (!update) return;
-        try {
-          await settings.git([
-            "diff",
-            "--exit-code",
-            update.head,
-            update.target,
-            "--",
-            "package-lock.json",
-          ]);
-        } catch {
+        if (await installRequired(settings.git, update).catch(() => true)) {
           disabled = true;
           settings.error(
             "Self-update disabled: package-lock.json changed; update and install by hand.\n",
@@ -130,3 +166,4 @@ export function selfUpdater(settings: SelfUpdateSettings): {
 }
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
