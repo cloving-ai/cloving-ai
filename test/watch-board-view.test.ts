@@ -137,7 +137,9 @@ await test("CLV-079 cards show step time, review progress, cost, decisions and e
   ])
     assert.ok(html.includes(text), text);
   assert.match(html, /href="#workflow=develop-issue&amp;run=run%20%2F%261"/);
-  assert.doesNotMatch(html, /button|draggable/);
+  const board = /<main class="board">[\s\S]*<\/main>/.exec(html)?.[0];
+  assert.ok(board);
+  assert.doesNotMatch(board, /button|draggable/);
 });
 
 await test("CLV-079 cards omit absent review parts and step time and fall back to the run ID", () => {

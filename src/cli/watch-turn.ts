@@ -106,13 +106,15 @@ export function Work(props: { readonly turn: WatchTurn }): Shown {
 export function Command(props: {
   readonly label: string;
   readonly command: string;
+  readonly copyLabel?: string;
   readonly copying: Copying;
 }): Shown {
   const { label, command, copying } = props;
   const onClick = (): void => {
     copying.onCopy(command);
   };
-  const shown = copying.command === command ? copying.label : "Copy";
+  const shown =
+    copying.command === command ? copying.label : (props.copyLabel ?? "Copy");
   return element("div", {
     class: "command code-window",
     children: [
