@@ -31,6 +31,7 @@ import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
+import { chatsWorker, type ChatsWorker } from "./chats-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
@@ -126,6 +127,7 @@ interface Adapters {
   readonly worker: ClaudeWorker;
   readonly github: GithubWorker;
   readonly runs: StartDelivery;
+  readonly chats: ChatsWorker;
 }
 
 function githubOf(
@@ -181,6 +183,11 @@ function adapters(
     journal: join(directory, "journal"),
   });
   const github = githubOf(settings, given);
+  const chats = chatsWorker({
+    runtimeDirectory: settings.runtimeDirectory,
+    document,
+    workflowId: async (runId) => (await given).workflowId(runId),
+  });
   const runs = startDelivery({
     document,
     runs: taggedRuns,
@@ -189,7 +196,7 @@ function adapters(
     workflow: async (runId) =>
       workflows[String(await (await given).workflowId(runId))],
   });
-  return { worker, github, runs };
+  return { worker, github, runs, chats };
 }
 
 export async function startDaemon(
@@ -212,7 +219,7 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
-  const { worker, github, runs } = adapters(settings, {
+  const { worker, github, runs, chats } = adapters(settings, {
     given: given.promise,
     table,
   });
@@ -230,7 +237,7 @@ export async function startDaemon(
     })),
     delivery: deliveryRouter({
       runs,
-      effects: { claude: worker, github },
+      effects: { claude: worker, github, chats },
     }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {
@@ -239,7 +246,7 @@ export async function startDaemon(
     },
   });
   if (opening.kind === "refused") {
-    await Promise.all([worker.close(), github.close()]);
+    await Promise.all([worker.close(), github.close(), chats.close()]);
     return opening;
   }
   return {
@@ -248,6 +255,7 @@ export async function startDaemon(
       service: opening.service,
       worker,
       github,
+      chats,
     }),
   };
 }
@@ -258,9 +266,10 @@ async function runningDaemon(
     readonly service: Service;
     readonly worker: ClaudeWorker;
     readonly github: GithubWorker;
+    readonly chats: ChatsWorker;
   },
 ): Promise<Daemon> {
-  const { service, worker, github } = resources;
+  const { service, worker, github, chats } = resources;
   await github.scan();
   const notifier =
     settings.notifyCommand === undefined
@@ -273,7 +282,7 @@ async function runningDaemon(
             ? {}
             : { intervalMilliseconds: settings.notifyMilliseconds }),
         }).catch(async (error: unknown) => {
-          await Promise.all([worker.close(), github.close()]);
+          await Promise.all([worker.close(), github.close(), chats.close()]);
           await service.close();
           throw error;
         });
@@ -290,7 +299,7 @@ async function runningDaemon(
     close: async () => {
       await notifier?.stop();
       await queue?.stop();
-      await Promise.all([worker.close(), github.close()]);
+      await Promise.all([worker.close(), github.close(), chats.close()]);
       await service.close();
     },
   };

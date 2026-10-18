@@ -7,6 +7,34 @@ import {
 } from "../tools/self-host-workflows.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
+await test("CLV-115 generated manifests bind explicit chats capability without expanding others", () => {
+  const manifests = workflowManifests(
+    {
+      workflows: {
+        "workflows/analyze-chats.ts": {
+          analyze: {
+            workflowId: "workflow//./workflows/analyze-chats//analyze",
+          },
+        },
+        "workflows/other.ts": {
+          other: { workflowId: "workflow//./workflows/other//other" },
+        },
+      },
+    },
+    [
+      {
+        functionName: "analyze",
+        workflowId: "analyze-chats",
+        effectLimit: 3,
+        capabilities: ["chats"],
+        input: { maximumBytes: 64, fields: {} },
+      },
+    ],
+  );
+  assert.deepEqual(manifests["analyze"]?.capabilities, ["chats"]);
+  assert.deepEqual(manifests["other"]?.capabilities, ["claude", "github"]);
+});
+
 await test("CLV-074 start lists every TypeScript workflow file", async () => {
   await withFiles(
     {
