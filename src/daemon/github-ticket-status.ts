@@ -1,5 +1,9 @@
 import { issuePrivacy } from "./github-issue-privacy.ts";
 import { field, text, type Operation } from "./github-operation.ts";
+import { ticketLimits } from "./ticket-source.ts";
+
+const privateRemaining = "Remaining work is in the private run report.";
+const issueBodyBytes = ticketLimits.textBytes - 2_048;
 
 const workflowLabels = [
   "cloving: ready",
@@ -56,20 +60,57 @@ async function readIssue(operation: Operation, path: string): Promise<Issue> {
   };
 }
 
+function openingFence(line: string): string | undefined {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  const delimiter = match?.[1];
+  if (delimiter?.startsWith("`") && match?.[2]?.includes("`")) return undefined;
+  return delimiter;
+}
+
+function markdownHeadings(body: string): readonly {
+  readonly index: number;
+  readonly end: number;
+  readonly text: string;
+}[] {
+  const headings = [];
+  let fence: string | undefined;
+  for (const match of body.matchAll(/[^\n]*(?:\n|$)/g)) {
+    const line = match[0].trimEnd();
+    if (fence !== undefined) {
+      if (
+        new RegExp(
+          `^ {0,3}${fence.charAt(0)}{${String(fence.length)},}[ \\t]*$`,
+        ).test(line)
+      )
+        fence = undefined;
+      continue;
+    }
+    fence = openingFence(line);
+    if (fence !== undefined) continue;
+    if (/^ {0,3}#{1,2} /.test(line))
+      headings.push({
+        index: match.index,
+        end: match.index + match[0].length,
+        text: line.trimStart(),
+      });
+  }
+  if (fence !== undefined) throw new Error("github-call-failed");
+  return headings;
+}
+
 function statusSection(body: string): {
   outside: string;
   lines: readonly string[];
 } {
-  const heading = /^## Cloving status[ \t]*\r?$/m.exec(body);
-  if (heading === null) return { outside: body, lines: [] };
-  const after = body
-    .slice(heading.index + heading[0].length)
-    .replace(/^\r?\n/, "");
-  const next = /^#{1,2} /m.exec(after)?.index ?? after.length;
+  const headings = markdownHeadings(body);
+  const heading = headings.find((item) => item.text === "## Cloving status");
+  if (heading === undefined) return { outside: body, lines: [] };
+  const next =
+    headings.find((item) => item.index > heading.index)?.index ?? body.length;
   return {
-    outside: body.slice(0, heading.index) + after.slice(next),
-    lines: after
-      .slice(0, next)
+    outside: body.slice(0, heading.index) + body.slice(next),
+    lines: body
+      .slice(heading.end, next)
       .trimEnd()
       .split(/\r?\n/)
       .filter((line) => line !== ""),
@@ -198,8 +239,24 @@ function publicRemaining(operation: Operation): string {
     });
     return remaining;
   } catch {
-    return "Remaining work is in the private run report.";
+    return privateRemaining;
   }
+}
+
+function partialHistory(
+  section: ReturnType<typeof statusSection>,
+  status: { readonly pull: number; readonly remaining: string },
+): readonly string[] {
+  const prefix = `- Pull request #${String(status.pull)}: partial.`;
+  const recorded = section.lines.some((item) => item.startsWith(prefix));
+  for (const remaining of [status.remaining, privateRemaining]) {
+    const lines = recorded
+      ? section.lines
+      : [...section.lines, `${prefix} Remaining: ${remaining}`];
+    if (Buffer.byteLength(withStatus(section.outside, lines)) <= issueBodyBytes)
+      return lines;
+  }
+  throw new Error("github-issue-too-large");
 }
 
 export async function partialIssue(operation: Operation): Promise<unknown> {
@@ -208,11 +265,7 @@ export async function partialIssue(operation: Operation): Promise<unknown> {
   const remaining = publicRemaining(operation);
   const issue = await readIssue(operation, path);
   const section = statusSection(issue.body);
-  const line = `- Pull request #${String(pull)}: partial. Remaining: ${remaining}`;
-  const prefix = `- Pull request #${String(pull)}: partial.`;
-  const lines = section.lines.some((item) => item.startsWith(prefix))
-    ? section.lines
-    : [...section.lines, line];
+  const lines = partialHistory(section, { pull, remaining });
   const count = lines.filter((item) =>
     /^- Pull request #\d+: partial\./.test(item),
   ).length;

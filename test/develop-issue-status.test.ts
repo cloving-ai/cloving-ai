@@ -6,6 +6,11 @@ import {
   statusScenario,
   payloadOf,
   steps,
+  first,
+  second,
+  pull,
+  review,
+  merged,
 } from "./develop-issue-fixture.ts";
 
 await test("CLV-123 merged issues use the preserved ticket status when the summary was shortened", async () => {
@@ -135,5 +140,63 @@ await test("CLV-123 a failed post-merge issue write remains visible on the merge
     ]);
     assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
     assert.equal(field(field(line, "outcome"), "issueUpdate"), "failed");
+  }
+});
+
+await test("CLV-123 review and merge fix turns retain remaining work and require reassessment before completion", async () => {
+  for (const reason of ["review", "check-failed", "merge-conflict"]) {
+    const given = statusScenario("Unused.");
+    const [line] = await ran([
+      {
+        ...given,
+        effects: {
+          ...given.effects,
+          "claude run-turn": [
+            completed({
+              summary: "Shortened report.",
+              ticketStatus: {
+                kind: "partial",
+                remaining: ["Add recovery.", "Verify restart."],
+              },
+            }),
+            completed({
+              summary: "Remaining:\n- Verify restart.\nTicket status: partial",
+            }),
+            completed({
+              summary: "Checked each remaining item.\nTicket status: complete",
+            }),
+          ],
+          "github open-pr": [pull(first), pull(second), pull("3".repeat(40))],
+          "github wait-review": [
+            review(first, reason === "review" ? 3 : 5),
+            review(second, 3),
+            review("3".repeat(40), 5),
+          ],
+          "github merge":
+            reason === "review"
+              ? [merged]
+              : [completed({ reason, output: "Fix the merged tree." }), merged],
+        },
+      },
+    ]);
+    const prompts = steps(line).flatMap((step, index) =>
+      field(step, 1) === "run-turn" ? [payloadOf(line, index)] : [],
+    );
+    assert.ok(
+      prompts[1]?.includes(
+        "Remaining work from the previous worker report:\n- Add recovery.\n- Verify restart.",
+      ),
+    );
+    assert.match(
+      prompts[1] ?? "",
+      /Reassess each remaining item before reporting Ticket status: complete/,
+    );
+    assert.ok(
+      prompts[2]?.includes(
+        "Remaining work from the previous worker report:\n- Verify restart.",
+      ),
+    );
+    assert.ok(!prompts[2]?.includes("- Add recovery."));
+    assert.equal(field(field(line, "outcome"), "ticketStatus"), "complete");
   }
 });

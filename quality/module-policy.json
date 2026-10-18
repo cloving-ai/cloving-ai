@@ -1,5 +1,6 @@
 {
   "roles": {
+    "workflows/ticket-prompts.ts": "workflow",
     "src/token-prices.ts": "pure",
     "test/token-prices.test.ts": "test",
     "test/worker-token-prices.test.ts": "test",

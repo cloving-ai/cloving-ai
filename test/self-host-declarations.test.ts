@@ -34,7 +34,12 @@ async function start(root: string): Promise<ChildProcess> {
     "workflow-manifest.ts",
   ])
     await copyFile(resolve("tools", file), join(root, "tools", file));
-  for (const file of ["develop-ticket.ts", "develop-prd.ts", "issue-labels.ts"])
+  for (const file of [
+    "develop-ticket.ts",
+    "develop-prd.ts",
+    "issue-labels.ts",
+    "ticket-prompts.ts",
+  ])
     await copyFile(resolve("workflows", file), join(root, "workflows", file));
   for (const folder of ["src", "node_modules"])
     await symlink(resolve(folder), join(root, folder));
