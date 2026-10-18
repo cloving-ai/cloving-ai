@@ -20,6 +20,7 @@ export interface SelectedTranscript {
   readonly status: "included" | "unreadable" | "unsupported" | "too-large";
   readonly reason: string;
   readonly digest: string | null;
+  readonly byteSize?: number;
   readonly recordCount: number;
   readonly omissions: Omissions;
 }
@@ -27,6 +28,7 @@ export interface SelectedTranscript {
 export interface ReadTranscript {
   readonly coverage: SelectedTranscript;
   readonly records: readonly MessageRecord[];
+  readonly prefixDigest?: string;
 }
 
 function refused(path: string, reason: string): ReadTranscript {
@@ -62,7 +64,11 @@ async function boundedBytes(handle: FileHandle): Promise<Buffer | string> {
   return Buffer.concat(chunks, total);
 }
 
-function normalizeBytes(path: string, bytes: Buffer): ReadTranscript {
+function normalizeBytes(
+  path: string,
+  options: { readonly bytes: Buffer; readonly prefixBytes?: number },
+): ReadTranscript {
+  const { bytes } = options;
   const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
   let text: string;
   try {
@@ -80,10 +86,18 @@ function normalizeBytes(path: string, bytes: Buffer): ReadTranscript {
       status: result.status,
       reason: result.reason,
       digest,
+      ...(result.status === "included" ? { byteSize: bytes.length } : {}),
       recordCount: result.records.length,
       omissions: result.omissions,
     },
     records: result.records,
+    ...(options.prefixBytes !== undefined &&
+    options.prefixBytes >= 0 &&
+    options.prefixBytes < bytes.length
+      ? {
+          prefixDigest: `sha256:${createHash("sha256").update(bytes.subarray(0, options.prefixBytes)).digest("hex")}`,
+        }
+      : {}),
   };
 }
 
@@ -110,8 +124,12 @@ async function readSourceBytes(
 
 export async function readTranscript(
   path: string,
-  inspection?: ScanSource,
+  options: {
+    readonly inspection?: ScanSource;
+    readonly prefixBytes?: number;
+  } = {},
 ): Promise<ReadTranscript> {
+  const { inspection } = options;
   try {
     if (inspection !== undefined) await verifyScanSource(inspection);
     const stats = await lstat(path);
@@ -121,15 +139,10 @@ export async function readTranscript(
     const result =
       typeof bytes === "string"
         ? refused(path, bytes)
-        : normalizeBytes(path, bytes);
+        : normalizeBytes(path, { bytes, ...options });
     return scannedResult(result, inspection);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ELOOP")
-      return refused(path, "symbolic-link");
-    return refused(
-      path,
-      inspection === undefined ? "source-unreadable" : sourceFailure(error),
-    );
+    return readFailure(path, { error, inspection });
   }
 }
 
@@ -140,4 +153,20 @@ function scannedResult(
   if (inspection === undefined || result.coverage.status !== "too-large")
     return result;
   return { ...result, coverage: { ...result.coverage, status: "unsupported" } };
+}
+
+function readFailure(
+  path: string,
+  data: {
+    readonly error: unknown;
+    readonly inspection: ScanSource | undefined;
+  },
+): ReadTranscript {
+  const { error, inspection } = data;
+  if (error instanceof Error && "code" in error && error.code === "ELOOP")
+    return refused(path, "symbolic-link");
+  return refused(
+    path,
+    inspection === undefined ? "source-unreadable" : sourceFailure(error),
+  );
 }

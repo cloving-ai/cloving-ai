@@ -18,7 +18,7 @@ await test("CLV-111 maps scanned oversized sources to unsupported while preservi
     const path = join(directory, "root/project/source.jsonl");
     await writeFile(path, Buffer.alloc(transcriptLimit + 1));
     const inspection = await inspectScanSource(path, join(directory, "root"));
-    const result = await readTranscript(path, inspection);
+    const result = await readTranscript(path, { inspection });
     assert.equal(result.coverage.status, "unsupported");
     assert.equal(result.coverage.reason, "file-too-large");
     assert.equal((await readTranscript(path)).coverage.status, "too-large");
@@ -141,5 +141,29 @@ await test("CLV-095 bounds reads when an open source grows", async () => {
       Object.defineProperty(prototype, "read", descriptor);
       await handle.close();
     }
+  });
+});
+
+await test("CLV-113 records hashed byte lengths and exact prefix digests for UTF-8 and CRLF", async () => {
+  const first = valid.replace("selected", "é synthetic") + "\r\n";
+  const full = first + valid;
+  await withFiles({ source: full }, async (directory) => {
+    const result = await readTranscript(join(directory, "source"), {
+      prefixBytes: Buffer.byteLength(first),
+    });
+    assert.equal(result.coverage.byteSize, Buffer.byteLength(full));
+    assert.equal(
+      result.prefixDigest,
+      `sha256:${createHash("sha256").update(first).digest("hex")}`,
+    );
+    assert.equal(
+      result.coverage.digest,
+      `sha256:${createHash("sha256").update(full).digest("hex")}`,
+    );
+    assert.equal(
+      (await readTranscript(join(directory, "source"))).prefixDigest,
+      undefined,
+    );
+    assert.notEqual(Buffer.byteLength(first), first.length);
   });
 });

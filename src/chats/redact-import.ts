@@ -1,5 +1,5 @@
-import { constants } from "node:fs";
-import { lstat, open, rm, type FileHandle } from "node:fs/promises";
+import { openInput, readInput } from "./input-file.ts";
+import { lstat, rm, type FileHandle } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createPrivateFile, validateDestination } from "./destination.ts";
 import { parseCorpusRecord, validateCoverage } from "./corpus-input.ts";
@@ -15,40 +15,6 @@ export interface RedactImportRequest {
   readonly workingDirectory: string;
   readonly runtimeDirectory: string | undefined;
   readonly settings: RedactionSettings;
-}
-
-async function openInput(path: string): Promise<FileHandle> {
-  const before = await lstat(path);
-  if (!before.isFile() || before.nlink !== 1) throw new Error("invalid-import");
-  const handle = await open(
-    path,
-    constants.O_RDONLY | constants.O_NONBLOCK | 0x20000000,
-  );
-  try {
-    const opened = await handle.stat();
-    if (
-      !opened.isFile() ||
-      opened.nlink !== 1 ||
-      opened.dev !== before.dev ||
-      opened.ino !== before.ino
-    )
-      throw new Error("invalid-import");
-    return handle;
-  } catch (error) {
-    await handle.close();
-    throw error;
-  }
-}
-
-async function readInput(path: string): Promise<string> {
-  const handle = await openInput(path);
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
-      await handle.readFile(),
-    );
-  } finally {
-    await handle.close();
-  }
 }
 
 async function absent(path: string): Promise<void> {

@@ -56,7 +56,7 @@ for (const replacement of ["file", "directory", "link"] as const) {
         };
         syncBuiltinESMExports();
         try {
-          const result = await readTranscript(path, inspection);
+          const result = await readTranscript(path, { inspection });
           assert.equal(result.coverage.status, "unsupported");
           assert.equal(
             result.coverage.reason,
@@ -84,7 +84,7 @@ await test("CLV-111 refuses canonical containment escapes before opening a sourc
     });
     syncBuiltinESMExports();
     try {
-      const result = await readTranscript(path, inspection);
+      const result = await readTranscript(path, { inspection });
       assert.equal(result.coverage.reason, "outside-root");
       assert.deepEqual(result.records, []);
     } finally {

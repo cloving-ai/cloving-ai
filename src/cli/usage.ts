@@ -119,12 +119,17 @@ Linked components, containment changes and roots in Git repositories are refused
 The file limit is 10 MiB (10,485,760 bytes). Links and nonregular files are refused.
 The total normalized corpus limit is 50 MiB (52,428,800 UTF-8 bytes), including newlines and repeated selections.
 Exceeding that total returns output-failed with exit code 1 and no completed coverage manifest; partial files may remain.
+--previous-import <IMPORT_ID> compares against one explicitly named UUID v4 import before --.
+The earlier coverage and optional revision must be valid, completed private metadata; otherwise previous-import-refused returns exit 1 with no new import.
+A comparison writes private revision.json with ordered selection evidence and six status counts. Matching uses source path and selected root path; repetitions pair in order.
+Byte-verified extensions are extended; shorter sources are truncated. Legacy imports without sizes can establish unchanged digests but cannot prove extension or truncation.
+Missing or truncated evidence makes the import partial. History completeness remains unknown.
 Private corpus.jsonl, structure.json and coverage.json files go into a new import directory under the runtime directory's chats directory.
 The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
 Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
 Structure preserves branches and marks known copies without removing records. History completeness remains unknown.
 Root imports write coverage version 2 and add excluded and pending entry counts; positional-only imports retain coverage version 1.
-Exit codes: 0 for no refused or pending entries (exclusions permit success), 1 for refused or pending entries or output failure, 2 for invalid usage.
+Exit codes: 0 for no refused, pending, missing or truncated entries (exclusions alone permit success without comparison), 1 for partial coverage or processing failure, 2 for invalid usage.
 `;
 
 export const validateUsage = `Usage: cloving workflows validate <manifest-path> [--input <json-file>] [--json]

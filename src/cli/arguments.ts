@@ -18,6 +18,7 @@ export type Invocation =
       readonly paths: readonly string[];
       readonly roots?: readonly string[];
       readonly excludeProjects?: readonly string[];
+      readonly previousImportId?: string;
     }
   | {
       readonly kind: "validate";
@@ -150,6 +151,7 @@ function chatsImport(argumentsList: readonly string[]): Invocation {
     excludeProjects: [],
     literal: false,
     option: undefined,
+    previousImportId: undefined,
   };
   for (const argument of argumentsList) {
     const failure = importArgument(state, argument);
@@ -160,11 +162,20 @@ function chatsImport(argumentsList: readonly string[]): Invocation {
     return error("roots-required");
   if (state.paths.length + state.roots.length === 0)
     return error("missing-argument");
+  return importInvocation(state);
+}
+
+function importInvocation(state: ImportArguments): Invocation {
+  const previous =
+    state.previousImportId === undefined
+      ? {}
+      : { previousImportId: state.previousImportId };
   return state.roots.length === 0
-    ? { kind: "chats-import", paths: state.paths }
+    ? { kind: "chats-import", paths: state.paths, ...previous }
     : {
         kind: "chats-import",
         paths: state.paths,
+        ...previous,
         roots: state.roots,
         excludeProjects: state.excludeProjects,
       };
@@ -174,6 +185,7 @@ interface ImportArguments {
   paths: string[];
   roots: string[];
   excludeProjects: string[];
+  previousImportId: string | undefined;
   literal: boolean;
   option: string | undefined;
 }
@@ -188,7 +200,9 @@ function importArgument(
     state.paths.push(argument);
     return;
   }
-  if (["--root", "--exclude-project"].includes(argument)) {
+  if (argument === "--previous-import" && state.previousImportId !== undefined)
+    return "repeated-previous-import";
+  if (["--root", "--exclude-project", "--previous-import"].includes(argument)) {
     state.option = argument;
     return;
   }
@@ -206,10 +220,25 @@ function importValue(
   argument: string,
 ): string | undefined {
   if (argument === "" || argument.startsWith("-")) return "missing-value";
-  if (state.option === "--root") state.roots.push(argument);
-  else if (validProjectName(argument)) state.excludeProjects.push(argument);
-  else return "invalid-exclusion";
+  const option = state.option;
   state.option = undefined;
+  if (option === "--root") {
+    state.roots.push(argument);
+    return;
+  }
+  if (option === "--exclude-project" && !validProjectName(argument))
+    return "invalid-exclusion";
+  if (option === "--exclude-project") {
+    state.excludeProjects.push(argument);
+    return;
+  }
+  if (
+    !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
+      argument,
+    )
+  )
+    return "invalid-import-id";
+  state.previousImportId = argument;
   return;
 }
 

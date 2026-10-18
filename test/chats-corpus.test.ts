@@ -328,3 +328,38 @@ await test("CLV-111 refuses content states on subtrees and paths outside their s
       );
     }, /invalid-import/);
 });
+
+function sizedManifests(byteSize: unknown) {
+  const size = byteSize === undefined ? {} : { byteSize };
+  const legacy: unknown = JSON.parse(coverage);
+  assert.ok(legacy && typeof legacy === "object");
+  return [
+    { ...legacy, files: [{ ...source, ...size }] },
+    { ...scanCoverage, entries: [{ ...scanCoverage.entries[0], ...size }] },
+  ];
+}
+
+await test("CLV-113 accepts legacy and boundary source sizes in both coverage versions", () => {
+  for (const byteSize of [0, 10_485_760, undefined]) {
+    for (const value of sizedManifests(byteSize))
+      assert.doesNotThrow(() => {
+        validateCoverage(JSON.stringify(value), importId);
+      });
+  }
+});
+
+await test("CLV-113 refuses invalid optional source sizes in both coverage versions", () => {
+  for (const byteSize of [
+    -1,
+    1.5,
+    10_485_761,
+    Number.MAX_SAFE_INTEGER,
+    null,
+    "10",
+  ]) {
+    for (const value of sizedManifests(byteSize))
+      assert.throws(() => {
+        validateCoverage(JSON.stringify(value), importId);
+      }, /invalid-import/);
+  }
+});
