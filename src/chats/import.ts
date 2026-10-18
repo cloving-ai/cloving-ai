@@ -14,6 +14,8 @@ import {
 } from "./destination.ts";
 import { readTranscript, type SelectedTranscript } from "./reader.ts";
 
+const corpusLimit = 52_428_800;
+
 export interface ImportRequest {
   readonly paths: readonly string[];
   readonly workingDirectory: string;
@@ -32,12 +34,20 @@ export interface ImportSummary extends StructureCounts {
   readonly refused: number;
 }
 
+function boundedCorpusLine(record: MessageRecord, previousBytes: number) {
+  const line = `${JSON.stringify(record)}\n`;
+  const bytes = previousBytes + Buffer.byteLength(line);
+  if (bytes > corpusLimit) throw new Error("corpus-too-large");
+  return { line, bytes };
+}
+
 async function writeImport(
   directory: string,
   request: ImportRequest,
 ): Promise<{ files: SelectedTranscript[]; records: MessageRecord[] }> {
   const files: SelectedTranscript[] = [];
   const records: MessageRecord[] = [];
+  let corpusBytes = 0;
   const corpus = await createPrivateFile(join(directory, "corpus.jsonl"));
   try {
     for (const selected of request.paths) {
@@ -46,7 +56,9 @@ async function writeImport(
       );
       files.push(result.coverage);
       for (const record of result.records) {
-        await corpus.writeFile(`${JSON.stringify(record)}\n`);
+        const next = boundedCorpusLine(record, corpusBytes);
+        await corpus.writeFile(next.line);
+        corpusBytes = next.bytes;
         records.push(record);
       }
     }

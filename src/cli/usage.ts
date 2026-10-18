@@ -111,6 +111,8 @@ export const chatsImportUsage = `Usage: cloving chats import [--] <path> [<path>
 Imports only the selected Claude Code JSONL files. Relative paths use the current directory.
 This local command needs no service. It does not expand globs or scan directories.
 The file limit is 10 MiB (10,485,760 bytes). Links and nonregular files are refused.
+The total normalized corpus limit is 50 MiB (52,428,800 UTF-8 bytes), including newlines and repeated selections.
+Exceeding that total returns output-failed with exit code 1 and no completed coverage manifest; partial files may remain.
 Private corpus.jsonl, structure.json and coverage.json files go into a new import directory under the runtime directory's chats directory.
 The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
 Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
