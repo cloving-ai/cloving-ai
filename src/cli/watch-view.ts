@@ -17,6 +17,7 @@ import {
 import { Board, WorkflowList } from "./watch-board-view.ts";
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn } from "./watch-turn.ts";
+import { StartRun } from "./watch-start-view.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -274,6 +275,7 @@ export function Page(props: PageProps): Shown {
   return [
     head,
     down,
+    component(StartRun, { workflows: model.workflows, copying }),
     element("div", {
       class: "workspace",
       children: [

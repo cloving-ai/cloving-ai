@@ -1,5 +1,6 @@
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
+import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
 import {
   Board,
   Card,
@@ -89,6 +90,9 @@ const functions = [
   Command,
   Decision,
   Events,
+  startPrompts,
+  StartCard,
+  StartRun,
   BannerDetail,
   Banner,
   Phases,
@@ -145,6 +149,13 @@ header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding
 .brand svg { width: 30px; height: 30px; color: var(--accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
 h2, h3 { font-family: var(--heading-font); font-weight: 700; }
+.start-run > summary { color: var(--ink); font: 700 20px/1.5 var(--heading-font); }
+.start-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 12px; }
+.start-card { min-width: 0; padding: 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.start-card h3 { margin: 0; }
+.start-card p { margin: 6px 0 12px; }
+.start-card .command { grid-template-columns: minmax(0, 1fr); margin: 0; }
+.start-card button { justify-self: end; }
 .workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; margin-top: 20px; }
 .workflows { display: flex; flex-direction: column; gap: 8px; }
 .workflows a { display: grid; gap: 2px; border-bottom: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
