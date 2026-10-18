@@ -168,16 +168,20 @@ function itemShape(
 
 function inspectItem(
   value: unknown,
-  context: { ids: Set<unknown>; collection: string; codes: Set<AnalysisCode> },
+  context: { ids: Set<string>; collection: string; codes: Set<AnalysisCode> },
 ): void {
   const { ids, collection, codes } = context;
   if (!analysisObject(value)) {
     codes.add("invalid-shape");
     return;
   }
-  if (!text(value["id"]) || !text(value["description"]) || ids.has(value["id"]))
+  const id = value["id"];
+  if (!text(id)) {
     codes.add("invalid-shape");
-  ids.add(value["id"]);
+    return;
+  }
+  if (!text(value["description"]) || ids.has(id)) codes.add("invalid-shape");
+  ids.add(id);
   if (!itemShape(value, { collection, codes })) codes.add("invalid-shape");
 }
 
@@ -185,7 +189,12 @@ function inspectItems(
   process: Record<string, unknown>,
   codes: Set<AnalysisCode>,
 ): void {
-  const ids = new Set<unknown>([process["id"]]);
+  const id = process["id"];
+  if (!text(id)) {
+    codes.add("invalid-shape");
+    return;
+  }
+  const ids = new Set<string>([id]);
   for (const collection of collections) {
     const items = process[collection];
     if (!Array.isArray(items)) {

@@ -24,6 +24,28 @@ for (const process of [null, [], "inert"])
     );
   });
 
+for (const id of [null, 42, {}, [], "", " "]) {
+  await test(`CLV-114 stops dependent shape checks for invalid process ID ${JSON.stringify(id)}`, () => {
+    const invalidProcess = candidate();
+    Reflect.set(invalidProcess.process, "id", id);
+    itemAt(invalidProcess.process.loops).maxIterations = 0;
+    assert.deepEqual(validateAnalysis(invalidProcess, { records, structure }), {
+      accepted: false,
+      codes: ["invalid-shape"],
+    });
+  });
+
+  await test(`CLV-114 stops dependent shape checks for invalid item ID ${JSON.stringify(id)}`, () => {
+    const invalidStage = candidate();
+    Reflect.set(itemAt(invalidStage.process.stages), "id", id);
+    itemAt(invalidStage.process.stages).kind = "unknown";
+    assert.deepEqual(validateAnalysis(invalidStage, { records, structure }), {
+      accepted: false,
+      codes: ["invalid-shape"],
+    });
+  });
+}
+
 const changes = [
   {
     name: "missing inputs",
