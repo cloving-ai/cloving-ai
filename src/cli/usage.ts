@@ -107,9 +107,15 @@ Use npm exec -- cloving ... for a project-local installation.
 `;
 
 export const chatsImportUsage = `Usage: cloving chats import [--] <path> [<path> ...]
+       cloving chats import --root <projects-folder> [--root <projects-folder> ...] [--exclude-project <name> ...] [-- <path> ...]
 
 Imports only the selected Claude Code JSONL files. Relative paths use the current directory.
-This local command needs no service. It does not expand globs or scan directories.
+This local command needs no service. It scans only explicitly named roots and does not expand globs or discover configuration.
+Positional files come first, retaining order and repetitions. Roots sort by canonical path, then entries by relative path in JavaScript string order.
+Exclusions match direct project folder names exactly and prune their children. Exclusions require a root.
+Scans accept lowercase .jsonl filenames, attempt at most 100 eligible files across roots, and stop before entering folders at depth four.
+Later file candidates and depth-limited folders are pending. Select pending files explicitly in a later import.
+Linked components, containment changes and roots in Git repositories are refused. Scan protections require the supported macOS kernel.
 The file limit is 10 MiB (10,485,760 bytes). Links and nonregular files are refused.
 The total normalized corpus limit is 50 MiB (52,428,800 UTF-8 bytes), including newlines and repeated selections.
 Exceeding that total returns output-failed with exit code 1 and no completed coverage manifest; partial files may remain.
@@ -117,7 +123,8 @@ Private corpus.jsonl, structure.json and coverage.json files go into a new impor
 The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
 Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
 Structure preserves branches and marks known copies without removing records. History completeness remains unknown.
-Exit codes: 0 for all selected sources included, 1 for refused sources or output failure, 2 for invalid usage.
+Root imports write coverage version 2 and add excluded and pending entry counts; positional-only imports retain coverage version 1.
+Exit codes: 0 for no refused or pending entries (exclusions permit success), 1 for refused or pending entries or output failure, 2 for invalid usage.
 `;
 
 export const validateUsage = `Usage: cloving workflows validate <manifest-path> [--input <json-file>] [--json]

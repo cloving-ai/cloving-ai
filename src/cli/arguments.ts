@@ -13,7 +13,12 @@ export type Invocation =
   | { readonly kind: "chats-redact-help" }
   | { readonly kind: "chats-redact"; readonly importId: string }
   | { readonly kind: "chats-import-help" }
-  | { readonly kind: "chats-import"; readonly paths: readonly string[] }
+  | {
+      readonly kind: "chats-import";
+      readonly paths: readonly string[];
+      readonly roots?: readonly string[];
+      readonly excludeProjects?: readonly string[];
+    }
   | {
       readonly kind: "validate";
       readonly manifest: string;
@@ -139,18 +144,83 @@ function chatsImport(argumentsList: readonly string[]): Invocation {
     ["--help", "-h"].includes(String(argumentsList[0]))
   )
     return { kind: "chats-import-help" };
-  const paths: string[] = [];
-  let literal = false;
+  const state: ImportArguments = {
+    paths: [],
+    roots: [],
+    excludeProjects: [],
+    literal: false,
+    option: undefined,
+  };
   for (const argument of argumentsList) {
-    if (!literal && argument === "--") literal = true;
-    else if (!literal && argument.startsWith("-"))
-      return error("unexpected-option");
-    else if (argument === "") return error("missing-argument");
-    else paths.push(argument);
+    const failure = importArgument(state, argument);
+    if (failure !== undefined) return error(failure);
   }
-  return paths.length === 0
-    ? error("missing-argument")
-    : { kind: "chats-import", paths };
+  if (state.option !== undefined) return error("missing-value");
+  if (state.excludeProjects.length > 0 && state.roots.length === 0)
+    return error("roots-required");
+  if (state.paths.length + state.roots.length === 0)
+    return error("missing-argument");
+  return state.roots.length === 0
+    ? { kind: "chats-import", paths: state.paths }
+    : {
+        kind: "chats-import",
+        paths: state.paths,
+        roots: state.roots,
+        excludeProjects: state.excludeProjects,
+      };
+}
+
+interface ImportArguments {
+  paths: string[];
+  roots: string[];
+  excludeProjects: string[];
+  literal: boolean;
+  option: string | undefined;
+}
+
+function importArgument(
+  state: ImportArguments,
+  argument: string,
+): string | undefined {
+  if (state.option !== undefined) return importValue(state, argument);
+  if (argument === "") return "missing-argument";
+  if (state.literal) {
+    state.paths.push(argument);
+    return;
+  }
+  if (["--root", "--exclude-project"].includes(argument)) {
+    state.option = argument;
+    return;
+  }
+  if (argument === "--") {
+    state.literal = true;
+    return;
+  }
+  if (argument.startsWith("-")) return "unexpected-option";
+  state.paths.push(argument);
+  return;
+}
+
+function importValue(
+  state: ImportArguments,
+  argument: string,
+): string | undefined {
+  if (argument === "" || argument.startsWith("-")) return "missing-value";
+  if (state.option === "--root") state.roots.push(argument);
+  else if (validProjectName(argument)) state.excludeProjects.push(argument);
+  else return "invalid-exclusion";
+  state.option = undefined;
+  return;
+}
+
+function validProjectName(name: string): boolean {
+  return (
+    name !== "." &&
+    name !== ".." &&
+    !["/", "\\", "\0", "*", "?", "[", "]"].some((character) =>
+      name.includes(character),
+    )
+  );
 }
 
 function parsedArguments(argumentsList: readonly string[]): Parsed | string {

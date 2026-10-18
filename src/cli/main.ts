@@ -51,6 +51,12 @@ export async function main(
   } else if (invocation.kind === "chats-import") {
     const result = await importChats({
       paths: invocation.paths,
+      ...(invocation.roots === undefined
+        ? {}
+        : {
+            roots: invocation.roots,
+            excludeProjects: invocation.excludeProjects ?? [],
+          }),
       workingDirectory: process.cwd(),
       runtimeDirectory: runtimeDirectory(process.env),
     });

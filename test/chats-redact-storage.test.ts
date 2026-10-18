@@ -22,6 +22,9 @@ import {
   record,
 } from "./chats-redact-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { importChats } from "../src/chats/import.ts";
+import { redactImport } from "../src/chats/redact-import.ts";
+import { readRootOutput, syntheticMessage } from "./chats-selection-fixture.ts";
 
 const variants: readonly Readonly<Record<string, string>>[] = [
   {
@@ -43,6 +46,16 @@ const variants: readonly Readonly<Record<string, string>>[] = [
   {
     [`${base}/coverage.json`]: JSON.stringify({
       schemaVersion: 2,
+      importId,
+      roots: ["/synthetic/root"],
+      exclusions: [],
+      limits: {},
+      entries: [],
+    }),
+  },
+  {
+    [`${base}/coverage.json`]: JSON.stringify({
+      schemaVersion: 3,
       importId,
       files: [],
     }),
@@ -294,6 +307,54 @@ await test("CLV-110 redacts mixed versions in order while leaving structure and 
         await readFile(join(directory, base, "coverage.json"), "utf8"),
         coverage,
       );
+    },
+  );
+});
+
+await test("CLV-111 redacts root coverage without reopening sources and leaves every original unchanged", async () => {
+  await withFiles(
+    {
+      "root/project/session.jsonl": syntheticMessage("person@example.test"),
+      "root/skip/sentinel.jsonl": "sentinel",
+    },
+    async (directory) => {
+      const request = {
+        paths: [],
+        roots: ["root"],
+        excludeProjects: ["skip"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      };
+      const imported = await importChats(request);
+      assert.ok(imported.importId);
+      const output = await readRootOutput(directory, imported.importId);
+      const structure = await readFile(
+        join(output.output, "structure.json"),
+        "utf8",
+      );
+      await rm(join(directory, "root"), { recursive: true });
+      const result = await redactImport({
+        importId: imported.importId,
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+        settings: { home: null, privateTexts: [] },
+      });
+      assert.equal(result.code, "redaction-complete");
+      for (const [name, expected] of [
+        ["corpus.jsonl", output.corpus],
+        ["coverage.json", output.coverage],
+        ["structure.json", structure],
+      ])
+        assert.equal(
+          await readFile(join(output.output, String(name)), "utf8"),
+          expected,
+        );
+      const redacted = await readFile(
+        join(output.output, "redacted.jsonl"),
+        "utf8",
+      );
+      assert.doesNotMatch(redacted, /person@example.test/);
+      assert.match(structure, /"historyCompleteness": "unknown"/);
     },
   );
 });

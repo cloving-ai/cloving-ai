@@ -1,12 +1,37 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { withProject } from "./cli-fixture.ts";
 import { parseCorpus } from "../src/chats/corpus-input.ts";
 import { structureImport } from "../src/chats/structure.ts";
 import { parseInvocation } from "../src/cli/arguments.ts";
+import { withFiles } from "./quality/files-fixture.ts";
+import {
+  assertRootScenario,
+  rootScenarioFiles,
+} from "./chats-selection-fixture.ts";
+
+await test("CLV-111 imports roots in canonical order with exclusions and link refusals", async () => {
+  await withFiles(rootScenarioFiles, async (directory) => {
+    await symlink(
+      join(directory, "outside"),
+      join(directory, "B/project-keep/session-z.jsonl"),
+    );
+    for (const roots of [
+      ["B", "A"],
+      ["A", "B"],
+    ]) {
+      const result = importSelected(directory, [
+        ...roots.flatMap((root) => ["--root", root]),
+        "--exclude-project",
+        "project-skip",
+      ]);
+      await assertRootScenario(directory, result);
+    }
+  });
+});
 
 const messages = [
   { type: "user", message: { role: "user", content: "selected private text" } },
@@ -110,7 +135,16 @@ await test("CLV-095 help and invalid import usage leave no artifacts", async () 
     const help = cli(["chats", "import", "--help"]);
     assert.equal(help.status, 0);
     assert.match(help.stdout, /cloving chats import \[--\] <path>/);
-    for (const args of [[], ["--"], ["--json"], ["--input", "secret"], [""]]) {
+    for (const args of [
+      [],
+      ["--"],
+      ["--json"],
+      ["--input", "secret"],
+      [""],
+      ["--root"],
+      ["--root", "secret", "--exclude-project", "../secret"],
+      ["--exclude-project", "secret"],
+    ]) {
       const result = cli(["chats", "import", ...args]);
       assert.equal(result.status, 2);
       assert.equal(result.stdout, "");

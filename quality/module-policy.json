@@ -714,7 +714,13 @@
     "test/chats-redact-storage.test.ts": "test",
     "test/chats-redact-failures.test.ts": "test",
     "test/chats-redact-fixture.ts": "test",
-    "test/chats-redact-isolation.test.ts": "test"
+    "test/chats-redact-isolation.test.ts": "test",
+    "src/chats/selection.ts": "cli",
+    "src/chats/source.ts": "cli",
+    "test/chats-selection.test.ts": "test",
+    "test/chats-selection-fixture.ts": "test",
+    "test/chats-selection-races.test.ts": "test",
+    "test/chats-source.test.ts": "test"
   },
   "allowed": {
     "quality": [
