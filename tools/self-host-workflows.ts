@@ -74,6 +74,7 @@ export async function workflowDeclarations(
 
 export function workflowManifests(
   compiled: WorkflowManifest,
+  declarations: readonly DeclaredWorkflow[] = [],
 ): Readonly<Record<string, HostManifest>> {
   const names = new Set<string>();
   const steps = Object.values(compiled.steps ?? {})
@@ -98,7 +99,9 @@ export function workflowManifests(
             name: basename(file, extname(file)),
             workflowId,
             steps,
-            capabilities: ["claude", "github"],
+            capabilities: declarations.find(
+              (declaration) => declaration.functionName === functionName,
+            )?.capabilities ?? ["claude", "github"],
             resources: [],
             artifacts: "artifacts",
           },

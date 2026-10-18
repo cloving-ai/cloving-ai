@@ -213,18 +213,11 @@ async function registered(): Promise<RegisteredWorkflows> {
     manifests,
   );
   const paths = new Map<string, string>();
-  for (const [functionName, manifest] of Object.entries(manifests)) {
+  for (const [functionName, manifest] of Object.entries(
+    workflowManifests(compiled, declarations),
+  )) {
     const path = join(project, `${manifest.name}.workflow.json`);
-    const declared = declarations.find(
-      (entry) => entry.functionName === functionName,
-    );
-    await writeFile(
-      path,
-      JSON.stringify({
-        ...manifest,
-        capabilities: declared?.capabilities ?? manifest.capabilities,
-      }),
-    );
+    await writeFile(path, JSON.stringify(manifest));
     paths.set(functionName, path);
   }
   return { manifests: Object.fromEntries(paths), declarations };

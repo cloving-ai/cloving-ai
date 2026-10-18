@@ -30,6 +30,23 @@ const manifests = workflowManifests({
   },
 });
 
+await test("CLV-115 admits chats only when explicitly declared", async () => {
+  await withFiles(
+    {
+      "review-run.ts": "export {};",
+      "review-run.declaration.json": JSON.stringify({
+        ...declaration,
+        capabilities: ["chats"],
+      }),
+    },
+    async (directory) => {
+      const declarations = await workflowDeclarations(directory, manifests);
+      assert.deepEqual(declarations[0]?.capabilities, ["chats"]);
+      assert.deepEqual(manifests["review"]?.capabilities, ["claude", "github"]);
+    },
+  );
+});
+
 await test("CLV-089 reads a declaration beside its workflow and binds its function", async () => {
   await withFiles(
     {

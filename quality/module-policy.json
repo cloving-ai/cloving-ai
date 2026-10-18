@@ -746,7 +746,16 @@
     "test/chats-analysis.test.ts": "test",
     "node:tls": "stdlib",
     "node:util/types": "pure",
-    "test/chats-analysis-shape.test.ts": "test"
+    "test/chats-analysis-shape.test.ts": "test",
+    "src/chats/analysis-input.ts": "pure",
+    "src/chats/analysis-proposal.ts": "pure",
+    "src/daemon/chats-files.ts": "daemon",
+    "src/daemon/chats-worker.ts": "daemon",
+    "test/chats-worker.test.ts": "test",
+    "test/chats-worker-fixture.ts": "test",
+    "test/chats-worker-input.test.ts": "test",
+    "test/chats-worker-save.test.ts": "test",
+    "test/chats-worker-storage.test.ts": "test"
   },
   "allowed": {
     "quality": [

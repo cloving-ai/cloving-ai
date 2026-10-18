@@ -4,7 +4,7 @@ import type { SubmissionContract, SubmissionField } from "./submission.ts";
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
-  readonly capabilities: readonly ("claude" | "github")[];
+  readonly capabilities: readonly ("claude" | "github" | "chats")[];
   readonly input: SubmissionContract;
 }
 
@@ -89,7 +89,9 @@ export function isWorkflowDeclaration(
     capabilities.length > 0 &&
     capabilities.every(
       (capability: unknown) =>
-        capability === "claude" || capability === "github",
+        capability === "claude" ||
+        capability === "github" ||
+        capability === "chats",
     ) &&
     isInput(input)
   );
