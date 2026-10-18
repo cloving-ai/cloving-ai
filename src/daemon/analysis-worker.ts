@@ -5,6 +5,7 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
+import { analysisPrompt } from "../chats/analysis-prompt.ts";
 import { isAnalysisSnapshot } from "../chats/analysis-input.ts";
 import { record } from "../protocol.ts";
 import {
@@ -267,7 +268,7 @@ async function deliver(
     key,
     folder,
     directory,
-    prompt: JSON.stringify({ evidence: snapshot }),
+    prompt: analysisPrompt(snapshot),
     token: credential.token,
   });
   return { receipt: key, worker: "claude" };
