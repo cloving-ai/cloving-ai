@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { candidate, itemAt } from "./chats-analysis-fixture.ts";
+import {
+  candidate,
+  itemAt,
+  questionCandidate,
+} from "./chats-analysis-fixture.ts";
 import { analysisCodes } from "../src/chats/analysis-contract.ts";
 import {
   withAnalysis,
@@ -10,6 +14,36 @@ import {
   cycleId,
   analysisIntent,
 } from "./chats-worker-fixture.ts";
+
+for (const mode of ["deliver", "reconcile", "stop"] as const) {
+  await test(`CLV-117 ${mode} cannot finalize an unresolved analysis question`, async () => {
+    await withAnalysis(async (fixture) => {
+      const payload = await fixture.prepare();
+      const value = questionCandidate();
+      value.openQuestion.description =
+        "/synthetic/notes.txt operator@example.invalid @synthetic /question\\w+/g";
+      fixture.payloads.set(
+        "save-analysis",
+        JSON.stringify({ ...payload, reply: JSON.stringify(value) }),
+      );
+      const before = await fixture.files();
+      const result = await fixture.worker[mode](
+        analysisIntent("save-analysis"),
+        new AbortController().signal,
+      );
+      assertRefused(result, "analysis-input-refused");
+      assert.deepEqual(result, {
+        kind: "failed",
+        reason: "analysis-input-refused",
+        result: JSON.stringify({
+          kind: "blocked",
+          codes: ["analysis-input-refused"],
+        }),
+      });
+      assert.deepEqual(await fixture.files(), before);
+    });
+  });
+}
 
 await test("CLV-115 save validation uses captured evidence after files mutate", async () => {
   await withAnalysis(async (f) => {

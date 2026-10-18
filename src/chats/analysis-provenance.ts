@@ -1,4 +1,5 @@
 import type {
+  AnalysisCandidate,
   AnalysisClaim,
   AnalysisCode,
   AnalysisEvidence,
@@ -122,4 +123,45 @@ export function inspectAnalysisSupport(
   return [...process.stages, ...process.gates, ...process.loops].flatMap(
     (claim) => inspectSupport(claim, evidence),
   );
+}
+
+function referenceKey(reference: OccurrenceReference): string {
+  return JSON.stringify([reference.recordIndex, reference.sourceId]);
+}
+
+export function inspectAnalysisQuestion(
+  candidate: AnalysisCandidate,
+  evidence: AnalysisEvidence,
+): readonly AnalysisCode[] {
+  const question = candidate.openQuestion;
+  if (question === undefined) return [];
+  const references = question.sourceRefs.map(referenceKey);
+  if (new Set(references).size !== references.length)
+    return ["invalid-question"];
+  if (
+    question.sourceRefs.some(
+      (reference) => !knownReference(reference, evidence),
+    )
+  )
+    return ["unknown-source"];
+  const process = candidate.process;
+  const claim = [...process.stages, ...process.gates, ...process.loops].find(
+    (claim) => claim.id === question.claimId,
+  );
+  if (claim === undefined) return ["question-without-conflict"];
+  if (!Array.isArray(claim.sourceRefs)) return ["question-without-conflict"];
+  const support = new Set(claim.sourceRefs.map(referenceKey));
+  const counterevidence = new Set(claim.counterevidenceRefs.map(referenceKey));
+  const supports = references.filter((reference) => support.has(reference));
+  const counters = references.filter((reference) =>
+    counterevidence.has(reference),
+  );
+  if (
+    references.some(
+      (reference) => !support.has(reference) && !counterevidence.has(reference),
+    ) ||
+    !supports.some((support) => counters.some((counter) => counter !== support))
+  )
+    return ["question-without-conflict"];
+  return [];
 }

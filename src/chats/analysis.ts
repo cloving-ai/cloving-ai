@@ -11,6 +11,7 @@ import { inspectAnalysisData } from "./analysis-data.ts";
 import {
   matchingAnalysisEvidence,
   inspectAnalysisSupport,
+  inspectAnalysisQuestion,
 } from "./analysis-provenance.ts";
 
 export function validateAnalysis(
@@ -28,6 +29,8 @@ export function validateAnalysis(
   for (const code of inspectAnalysisLinks(candidate.process)) codes.add(code);
   if (matchingAnalysisEvidence(evidence)) {
     for (const code of inspectAnalysisSupport(candidate.process, evidence))
+      codes.add(code);
+    for (const code of inspectAnalysisQuestion(candidate, evidence))
       codes.add(code);
   } else codes.add("invalid-shape");
   if (codes.size > 0)

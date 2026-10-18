@@ -73,14 +73,61 @@ function references(value: unknown): boolean {
   );
 }
 
+function missingSources(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length === 0);
+}
+
+function questionChoices(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 4)
+    return false;
+  const ids = new Set<string>();
+  return value.every((choice: unknown) => {
+    if (
+      !analysisObject(choice) ||
+      !fields(choice, itemFields) ||
+      !text(choice["id"]) ||
+      !text(choice["description"]) ||
+      ids.has(choice["id"])
+    )
+      return false;
+    ids.add(choice["id"]);
+    return true;
+  });
+}
+
+function inspectQuestionShape(
+  candidate: Record<string, unknown>,
+  codes: Set<AnalysisCode>,
+): boolean {
+  if (!Object.hasOwn(candidate, "openQuestion")) return true;
+  const question = candidate["openQuestion"];
+  if (!analysisObject(question)) {
+    codes.add("invalid-question");
+    return false;
+  }
+  if (
+    !fields(question, ["claimId", "description", "sourceRefs", "choices"]) ||
+    !text(question["claimId"]) ||
+    !text(question["description"]) ||
+    !questionChoices(question["choices"])
+  )
+    codes.add("invalid-question");
+  const sources = question["sourceRefs"];
+  if (missingSources(sources)) {
+    codes.add("missing-source");
+    return false;
+  }
+  if (!references(sources)) codes.add("invalid-question");
+  return !codes.has("invalid-question");
+}
+
 function inspectClaim(
   value: Record<string, unknown>,
   codes: Set<AnalysisCode>,
 ): void {
   if (!label(value["kind"], kinds)) codes.add("unknown-kind");
   const source = value["sourceRefs"];
-  if (source === undefined || (Array.isArray(source) && source.length === 0))
-    codes.add("missing-source");
+  if (missingSources(source)) codes.add("missing-source");
   else if (!references(source)) codes.add("invalid-shape");
   if (!references(value["counterevidenceRefs"])) codes.add("invalid-shape");
 }
@@ -221,7 +268,9 @@ export function inspectAnalysisShape(
     return false;
   }
   if (value["schemaVersion"] !== 1) codes.add("unknown-version");
-  if (!fields(value, ["schemaVersion", "process"])) codes.add("invalid-shape");
+  if (!fields(value, ["schemaVersion", "process", "openQuestion"]))
+    codes.add("invalid-shape");
+  const validQuestion = inspectQuestionShape(value, codes);
   const process = value["process"];
   if (!analysisObject(process)) {
     codes.add("invalid-shape");
@@ -233,5 +282,9 @@ export function inspectAnalysisShape(
   )
     codes.add("invalid-shape");
   inspectItems(process, codes);
-  return !codes.has("invalid-shape") && !codes.has("unknown-version");
+  return (
+    validQuestion &&
+    !codes.has("invalid-shape") &&
+    !codes.has("unknown-version")
+  );
 }
