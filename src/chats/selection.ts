@@ -60,17 +60,17 @@ async function scanEntry(
       withFileTypes: true,
     });
     await verifyScanSource(inspection);
-    for (const child of children)
-      entries.push(
-        ...(await scanEntry(
-          {
-            ...inspected,
-            kind: child.isDirectory() ? "subtree" : "file",
-            path: join(entry.path, child.name),
-          },
-          { exclusions, depth: depth + 1 },
-        )),
+    for (const child of children) {
+      const scanned = await scanEntry(
+        {
+          ...inspected,
+          kind: child.isDirectory() ? "subtree" : "file",
+          path: join(entry.path, child.name),
+        },
+        { exclusions, depth: depth + 1 },
       );
+      for (const selected of scanned) entries.push(selected);
+    }
     return entries;
   } catch (error) {
     return [{ ...entry, outcome: outcome(sourceFailure(error)) }];
@@ -138,7 +138,7 @@ export async function selectChatSources(request: SelectionRequest): Promise<{
         relative(root.path, right.path),
       ),
     );
-    entries.push(...scanned);
+    for (const entry of scanned) entries.push(entry);
   }
   let attempts = 0;
   return {

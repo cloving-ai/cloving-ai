@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { selectChatSources } from "../src/chats/selection.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { withLargeScanMetadata } from "./chats-selection-fixture.ts";
 
 await test("CLV-111 parses root-only and mixed literal selections", () => {
   for (const paths of [[], ["--root", "--exclude-project", "--help"]]) {
@@ -311,3 +312,31 @@ await test("CLV-111 reports inaccessible directories and entries without descend
     },
   );
 });
+
+for (const root of ["root/project", "root"]) {
+  await test(`CLV-111 retains large scans selected at ${root} and applies the file budget`, async () => {
+    await withFiles({ "root/project/source.jsonl": "" }, async (directory) => {
+      await withLargeScanMetadata(directory, async (names) => {
+        const result = await selectChatSources({
+          paths: [],
+          roots: [root],
+          workingDirectory: directory,
+        });
+        assert.equal(result.entries.length, names.length);
+        assert.deepEqual(
+          result.entries.map((entry) => entry.path),
+          names.map((name) => join(directory, "root/project", name)),
+        );
+        assert.equal(
+          result.entries.filter((entry) => entry.outcome === undefined).length,
+          100,
+        );
+        for (const entry of result.entries.slice(100))
+          assert.deepEqual(entry.outcome, {
+            status: "pending",
+            reason: "file-limit",
+          });
+      });
+    });
+  });
+}
