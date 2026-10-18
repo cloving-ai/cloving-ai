@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { priceOf, usageOf, type WorkerUsage } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
+import { analysisCommand, analysisEnvironment } from "./analysis-launch.ts";
 
 export type Worker = "claude" | "codex";
 
@@ -23,6 +24,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly mode?: "analysis";
   readonly worker?: Worker;
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -87,6 +89,7 @@ function turnEnvironment(
   configuration: string,
   start: TurnStart,
 ): NodeJS.ProcessEnv {
+  if (start.mode === "analysis") return analysisEnvironment(start.folder);
   const excluded = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -114,7 +117,8 @@ function spawnTurn(start: TurnStart): {
   readonly configuration: string;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const [executable = "", ...fixed] = start.command;
+  const [executable = "", ...fixed] =
+    start.mode === "analysis" ? analysisCommand() : start.command;
   try {
     const child = spawn(executable, fixed, {
       cwd: start.directory,
@@ -132,7 +136,10 @@ function turnOutput(
   start: TurnStart,
   stdout: ChildProcessWithoutNullStreams["stdout"],
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
-  const output = createWriteStream(join(start.folder, "turn.jsonl"));
+  const output =
+    start.mode === "analysis"
+      ? undefined
+      : createWriteStream(join(start.folder, "turn.jsonl"));
   const codex = start.worker === "codex" ? codexStream() : undefined;
   const stream: Stream = { pending: "", result: undefined, model: null };
   const received = (lines: readonly string[]): void => {
@@ -146,12 +153,12 @@ function turnOutput(
     }
   };
   const written = (lines: readonly string[]): void => {
-    for (const line of lines) output.write(`${line}\n`);
+    for (const line of lines) output?.write(`${line}\n`);
     received(lines);
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (codex === undefined) output.write(chunk);
+    if (codex === undefined) output?.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
     if (codex !== undefined) {
@@ -165,14 +172,19 @@ function turnOutput(
       written(codex.line(stream.pending));
       written([codex.result(exitCode)]);
     }
-    await ended(output);
+    if (output !== undefined) await ended(output);
     if (codex === undefined) received([stream.pending]);
     const result = stream.result;
     return result === undefined
       ? undefined
       : {
           ...result,
-          model: result.model ?? stream.model ?? commandModel(start.command),
+          model:
+            result.model ??
+            stream.model ??
+            commandModel(
+              start.mode === "analysis" ? analysisCommand() : start.command,
+            ),
         };
   };
 }
@@ -180,8 +192,9 @@ function turnOutput(
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
-  const errors = createWriteStream(join(start.folder, "turn.stderr.log"));
-  child.stderr.pipe(errors);
+  if (start.mode === "analysis") child.stderr.resume();
+  else
+    child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
   child.stdin.end(start.prompt);
   const closed = new Promise<number | null>((settle) => {

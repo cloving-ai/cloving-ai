@@ -22,14 +22,14 @@ import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 
 const fakeClaude = `
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
 let prompt = "";
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
-appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid }) + "\\n");
+appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: "session-1", num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
@@ -45,6 +45,7 @@ const modes = {
     writeFileSync("loose.txt", "not committed");
     result({});
   },
+  "fixed-reply": () => { process.stderr.write(prompt); result({ result: readFileSync(record + ".reply", "utf8") }); },
   committed: () => {
     writeFileSync("change-" + turn + ".txt", prompt);
     git("add", ".");
@@ -69,6 +70,9 @@ export interface TurnRecord {
   readonly prompt: string;
   readonly directory: string;
   readonly processId: number;
+  readonly arguments: readonly string[];
+  readonly files: readonly string[];
+  readonly environment: Readonly<Record<string, string>>;
 }
 
 export interface Scene {
@@ -181,17 +185,7 @@ export async function withScene<Result>(
     journal: join(directory, "journal"),
     reports,
     turns: () =>
-      readFileSync(turnLog, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line): TurnRecord => {
-          const parsed: unknown = JSON.parse(line);
-          return {
-            prompt: String(field(parsed, "prompt")),
-            directory: String(field(parsed, "directory")),
-            processId: Number(field(parsed, "processId")),
-          };
-        }),
+      readFileSync(turnLog, "utf8").split("\n").filter(Boolean).map(turnRecord),
     worker: (mode, overrides = {}) => {
       const made = claudeWorker({
         repository: scene.repository,
@@ -216,4 +210,53 @@ export async function withScene<Result>(
     for (const made of workers) await made.close();
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+export function installAnalysisCli(
+  scene: Pick<Scene, "directory">,
+  options: {
+    readonly reply: string;
+    readonly mode?: string;
+    readonly version?: string;
+  },
+): () => void {
+  const record = join(scene.directory, "turns.log");
+  if (!existsSync(record)) writeFileSync(record, "", { mode: 0o600 });
+  const mode = options.mode ?? "fixed-reply";
+  const source = fakeClaude.replace(
+    'const [mode = "complete", record = ""] = process.argv.slice(2);',
+    `const mode = ${JSON.stringify(mode)}, record = ${JSON.stringify(record)};`,
+  );
+  const probe = `if (process.argv.includes("--version")) { process.stdout.write(${JSON.stringify(options.version ?? "2.1.302 (Claude Code)")}); process.exit(0); }\nif (process.argv.includes("--help")) { process.stdout.write("--tools --bare --safe-mode --restricted --strict-mcp-config --mcp-config --disallowedTools --disable-slash-commands --setting-sources --settings --system-prompt --no-chrome --no-session-persistence --permission-prompts"); process.exit(0); }\n`;
+  writeFileSync(
+    join(scene.directory, "claude"),
+    `#!${process.execPath}\n${probe}${source}`,
+    { mode: 0o700 },
+  );
+  writeFileSync(`${record}.reply`, options.reply, { mode: 0o600 });
+  const previous = process.env["PATH"];
+  process.env["PATH"] = `${scene.directory}:${previous ?? ""}`;
+  return () => {
+    process.env["PATH"] = previous;
+  };
+}
+
+function turnRecord(line: string): TurnRecord {
+  const parsed: unknown = JSON.parse(line);
+  const texts = (value: unknown): string[] =>
+    Array.isArray(value) ? value.map(String) : [];
+  const environment: unknown = field(parsed, "environment");
+  return {
+    prompt: String(field(parsed, "prompt")),
+    directory: String(field(parsed, "directory")),
+    processId: Number(field(parsed, "processId")),
+    arguments: texts(field(parsed, "arguments")),
+    files: texts(field(parsed, "files")),
+    environment: Object.fromEntries(
+      Object.entries(environment ?? {}).map(([name, value]) => [
+        name,
+        String(value),
+      ]),
+    ),
+  };
 }

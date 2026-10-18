@@ -1,0 +1,9 @@
+{
+  "workflowId": "analyze-chats",
+  "effectLimit": 3,
+  "capabilities": ["chats", "claude"],
+  "input": {
+    "maximumBytes": 4096,
+    "fields": { "importId": { "type": "string" } }
+  }
+}
