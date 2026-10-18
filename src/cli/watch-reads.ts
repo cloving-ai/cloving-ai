@@ -147,6 +147,8 @@ function matchingCompletion(
     status.state === "completed" &&
     status["workflowId"] === "develop-issue" &&
     record(status["outcome"])?.["kind"] === "handoff_requested" &&
+    record(status["outcome"])?.["ticketStatus"] !== "partial" &&
+    record(status["outcome"])?.["issueUpdate"] !== "failed" &&
     typeof ticketId === "string" &&
     ticketIds.has(ticketId)
   );
@@ -258,6 +260,8 @@ function stoppedTicketIds(
     stopped.flatMap((status) => {
       const ticketId = status["ticketId"];
       return status.state === "completed" &&
+        record(status["outcome"])?.["ticketStatus"] !== "partial" &&
+        record(status["outcome"])?.["issueUpdate"] !== "failed" &&
         typeof ticketId === "string" &&
         ticketId !== ""
         ? [ticketId]

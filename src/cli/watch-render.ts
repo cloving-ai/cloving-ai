@@ -106,6 +106,8 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly issueUpdate?: "failed";
+  readonly ticketStatus?: "complete" | "partial";
   readonly estimatedCostUsd: number | null;
   readonly ticketId: string | null;
   readonly title: string | null;
@@ -230,7 +232,15 @@ export function completedDetail(run: WatchRun): string {
     approved: "You approved the work. ",
     denied: "You denied the work. ",
   };
-  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.`;
+  const ticket =
+    run.ticketStatus === undefined
+      ? ""
+      : ` Ticket status: ${run.ticketStatus}.`;
+  const update =
+    run.issueUpdate === "failed"
+      ? " Issue status update failed; check the GitHub operation."
+      : "";
+  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.${ticket}${update}`;
 }
 
 export function phaseTime(phase: WatchPhase, now: string): string {

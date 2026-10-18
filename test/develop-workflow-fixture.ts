@@ -28,7 +28,31 @@ import { authorizeEffect } from ${located("src/effect-authorization.ts")};
 const cases = JSON.parse(process.argv[2]);
 const key = Symbol.for("cloving.step-bridge/v1");
 const unavailable = { kind: "unavailable", reason: "no-scenario-result" };
-const next = (given, request) => given.effects === undefined ? given.turn : given.effects[request.capability + " " + request.method]?.shift() ?? unavailable;
+const next = async (given, request, index) => {
+  if (given.github !== undefined && request.capability === "github" && ["close-issue", "partial-issue"].includes(request.method)) {
+    const { githubWorker } = await import(${located("src/daemon/github-worker.ts")});
+    let reported;
+    const operationId = given.operationPrefix + ":" + index;
+    const worker = githubWorker({
+      ...given.github,
+      document: async () => request.payload,
+      report: async (report) => { if (report.operationId === operationId) reported = report; },
+      operationStatus: async () => "running",
+      runStatus: async () => "running",
+    });
+    await worker.scan();
+    const delivered = await worker.deliver({
+      kind: "protected-effect", runId: given.operationPrefix, operationId,
+      workflow: "sha256:pin", inputDigest: "sha256:input", purpose: "dispatch", leaseGeneration: 1,
+      capability: "github", method: request.method, target: request.target, payload: "sha256:payload",
+    }, new AbortController().signal);
+    if (delivered.kind === "failed") throw new Error(delivered.reason);
+    while (reported === undefined) await new Promise((resolve) => setTimeout(resolve, 5));
+    await worker.close();
+    return { kind: reported.outcome, operationId: reported.operationId, receipt: delivered.receipt, result: reported.result ?? null, reason: reported.reason ?? null };
+  }
+  return given.effects === undefined ? given.turn : given.effects[request.capability + " " + request.method]?.shift() ?? unavailable;
+};
 for (const given of cases) {
   const requests = [];
   let spent = 0;
@@ -42,7 +66,7 @@ for (const given of cases) {
         if (allowed.kind === "rejected") return { kind: "refused", reason: allowed.reason };
         spent = allowed.spent;
       }
-      return next(given, request);
+      return next(given, request, requests.length);
     },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
   };

@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { findingsOf, scoreOf } from "./github-calls.ts";
+import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import { createIssue, discard } from "./github-issue-methods.ts";
 import {
@@ -223,6 +224,8 @@ export type Method = (operation: Operation) => Promise<unknown>;
 
 export const methods: ReadonlyMap<string, Method> = new Map([
   ["prepare", prepare],
+  ["close-issue", closeIssue],
+  ["partial-issue", partialIssue],
   ["label", label],
   ["create-issue", createIssue],
   ["discard", discard],

@@ -9,3 +9,5 @@ export type {
   ProtectedScope,
 } from "./step-bridge.ts";
 export type { CycleOutcome, DevelopmentInput } from "./workflow-contracts.ts";
+
+export { ticketStatus, type TicketStatus } from "./ticket-status.ts";

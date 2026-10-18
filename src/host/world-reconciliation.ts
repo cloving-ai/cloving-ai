@@ -14,6 +14,8 @@ export type ReconciledState = Pick<
 export interface WorkflowOutcome {
   readonly kind: string;
   readonly reason?: string;
+  readonly issueUpdate?: "failed";
+  readonly ticketStatus?: "complete" | "partial";
 }
 
 export interface ReconciliationPorts {
@@ -51,6 +53,12 @@ async function withOutcome(
     : {
         ...world,
         outcome: read.outcome.kind,
+        ...(read.outcome.issueUpdate === "failed"
+          ? { issueUpdate: read.outcome.issueUpdate }
+          : {}),
+        ...(read.outcome.ticketStatus === undefined
+          ? {}
+          : { ticketStatus: read.outcome.ticketStatus }),
         ...(read.outcome.reason === undefined
           ? {}
           : { outcomeReason: read.outcome.reason }),

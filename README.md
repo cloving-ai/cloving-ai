@@ -307,7 +307,7 @@ Claude turns have web research tools by default, an empty GitHub CLI configurati
 
 - It gets a ticket ID as its last argument and prints the text of the ticket.
 - For `develop-issue`, a first line that starts with `# ` gives the title of the pull request. With no such line, the title is `Cloving task <cycle ID>`.
-- For `develop-issue`, a line `GitHub issue: <owner>/<repository>#<number>` makes the pull request close that issue.
+- For `develop-issue`, a line `GitHub issue: <owner>/<repository>#<number>` makes the pull request reference that issue. Cloving closes it after a merge only when the worker reports complete work.
 
 The daemon runs the ticket command when it admits a run. The printed text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop-ticket` is refused with `ticket-source-not-configured`. A ticket ID has letters, digits and the characters `. _ : -` only.
 
@@ -390,9 +390,17 @@ step. The bundled development workflows keep their existing targets.
 
 ### Pull requests of `develop-issue`
 
-A run of `develop-issue` opens no approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title and the closed issue come from the ticket text (see "The ticket command"). Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.
+A run of `develop-issue` opens no approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title and the referenced issue come from the ticket text (see "The ticket command"). The pull request body uses `Refs #N`, so the merge itself does not close the issue. Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.
 
-When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`; a completed merge removes `cloving: in progress`. Operators add `cloving: ready`. Label failures leave the run's outcome unchanged. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
+When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`. Start and blocked label failures leave the run's outcome unchanged. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
+
+The last worker report must end with exactly one line: `Ticket status: complete` or `Ticket status: partial`. A partial report must put `Remaining:` immediately before a list with one `- ` item per line, followed by the status line. Missing, repeated, unknown or malformed status reports count as partial with the remaining item "The worker report has no ticket status line."
+
+After a merge, a protected GitHub operation updates the issue body and labels. Complete work closes the issue with reason `completed` and adds "Completed in pull request #M." to `## Cloving status`. Partial work keeps the issue open and appends `- Pull request #M: partial. Remaining: ...` to that section at the end of the body, preserving earlier partial lines and other body text. Items are separated by semicolons. The issue privacy check runs before new remaining text is written; a refusal uses "Remaining work is in the private run report." instead. No issue comment is posted.
+
+Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial line adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request's existing line after a restart to avoid duplicate writes. The effect limit stays at 20 units: the post-merge status operation replaces the final label operation.
+
+Merged runs retain `handoff_requested` with `ticketStatus: complete` or `partial`, visible in `cloving status` and watch. If the issue update fails, `issueUpdate: failed` is also shown and automatic queue admission stops; inspect the GitHub operation and reconcile the issue before restarting its queue. A later partial run does not mark an earlier blocked ticket as done.
 
 At the confidence score 5/5, the worker merges the pull request with a merge commit, with no human approval. Then it removes the remote branch, the work tree and the local branch. With a lower score, the Claude worker gets the summary and the findings of the review for one more round. After three such rounds, or after 60 minutes with no review, the run stops and the pull request stays open.
 
@@ -411,7 +419,7 @@ In a continuous process, Cloving develops one ticket after the next with `develo
 3. Follow the run on the watch page, or with `cloving status RUN_ID` and `cloving events RUN_ID --follow`.
 4. Check the merge. The run completes when the GitHub worker merges the pull request. The watch page shows the number of the pull request of the run (`PR_NUMBER`). It is also `pullRequest.number` of the run in `http://127.0.0.1:3663/data.json`. The pull request number and the issue number are different.
    - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
-   - Make sure that the issue is closed: `gh issue view ISSUE_NUMBER --json state`.
+   - Check the ticket status and issue: `gh issue view ISSUE_NUMBER --json state,body,labels`. Complete work closes the issue; partial work stays open and requeues until the third partial run blocks it.
 5. Update the local `main`: `git switch main`, then `git pull --ff-only`.
 6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Stop it with Control-C, then start it again with the same settings.
 7. Go to the next issue.
@@ -457,7 +465,7 @@ For each issue:
 3. Follow the run with "cloving status RUN_ID" and "cloving events RUN_ID --follow".
 4. When the run completes, get the number of its pull request (PR_NUMBER). It is pullRequest.number of the run in http://127.0.0.1:3663/data.json, and the watch page shows it too. Then:
    - Make sure that the pull request is merged: gh pr view PR_NUMBER --json state,mergedAt
-   - Make sure that the issue is closed: gh issue view ISSUE_NUMBER --json state
+   - Check the issue state, remaining work and queue labels: gh issue view ISSUE_NUMBER --json state,body,labels
 5. Update the local main branch: git switch main, then git pull --ff-only
 6. If the repository is the Cloving checkout itself, restart the service in its terminal session, so that it runs the new code. Stop it with Control-C, then start it again with the same settings.
 7. Run the checks of the repository on the new main branch.
@@ -482,7 +490,7 @@ Help me write a ticket for Cloving. A Claude Code worker gets the full text of t
 # TITLE
   One line. For develop-issue, it becomes the title of the pull request.
 GitHub issue: OWNER/REPOSITORY#NUMBER
-  Only for develop-issue. The pull request closes this issue.
+  Only for develop-issue. The pull request references this issue; complete work closes it after the merge.
 ## Problem
   What is wrong now, with facts.
 ## Desired outcome

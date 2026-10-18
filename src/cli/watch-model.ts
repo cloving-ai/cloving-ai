@@ -1,3 +1,4 @@
+import { isTicketStatus } from "../ticket-status.ts";
 import { priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
@@ -306,12 +307,17 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
   const ticketId = text(status["ticketId"]);
+  const ticketStatus = record(status["outcome"])["ticketStatus"];
   return {
     runId,
     workflowId,
     ticketId: ticketId === "" ? null : ticketId,
     title: stamp(status["title"]),
     outcome: stamp(record(status["outcome"])["kind"]),
+    ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
+    ...(record(status["outcome"])["issueUpdate"] === "failed"
+      ? { issueUpdate: "failed" as const }
+      : {}),
     latestAt: stamp(status["latestAt"]),
     claudeCostUsd: priceOf(status["claudeCostUsd"]),
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
