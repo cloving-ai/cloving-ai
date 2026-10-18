@@ -89,6 +89,14 @@ Redaction inspects message text, text blocks and nested tool input and result st
 
 Console output contains only fixed codes, counts and the import ID. Exit code `0` means success, `1` means processing failure, and `2` means invalid usage. Originals and metadata remain outside redaction scope. Both originals and outputs remain private runtime data. Redaction makes no model or network call and does not execute transcript instructions. It neither guarantees removal of every private value nor authorizes later model use.
 
+### Validate process analysis data
+
+The pure `validateAnalysis(candidate, { records, structure })` function in `src/chats/analysis.ts` validates one version 1 process candidate against an ordered redacted corpus and its matching pre-redaction, in-memory `ImportStructure`. The evidence object keeps the API within the repository's two-parameter quality limit. Stored sidecar envelopes are not this input type. There is no analysis command or model call.
+
+Candidates declare IDs and descriptions for inputs, ordered stages, branches, bounded loops, artifacts, stopping conditions, gates and non-gates. Branch links use `sourceStageId` and `targetStageId`; loops use ordered `stageIds` and `exhaustedStoppingConditionId`. Stages, gates and loops declare a claim `kind`, `sourceRefs` and `counterevidenceRefs`. References identify exact occurrences by `recordIndex` and `sourceId`. Copies add no support; observed repetition needs two directly cited original source IDs. Routine repair, accidental interruption and tool-imposed confirmation require matching non-gate classifications.
+
+Acceptance returns the candidate plus limitations preserving conflict groups, unknown history and unestablished independence. Refusal returns only fixed, unique codes in declaration order. Candidate fields are closed; authority and executable fields are refused, and descriptions remain inert. Validation does not certify redaction, evidence authenticity, inference quality, publication safety or permission for any action. Evidence content and exact numeric tokens remain unchanged. Full product admission remains pending CLV-002 through CLV-004.
+
 ## Install
 
 The current pilot uses Node 26.9.0 and npm 11.19.1 on macOS 27.0 on arm64. The installation ranges in `package.json` do not qualify other workflow runtimes: workflow admission still requires exactly Node 26.9.0. GitHub-hosted macOS 15 arm64 qualification is pending its CI quality and packed-startup checks. Other platforms and runtime versions are unqualified.
