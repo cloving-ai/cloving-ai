@@ -90,6 +90,10 @@ function preserveJson(...argumentsList: readonly unknown[]): unknown {
   return JSON.rawJSON(context["source"]);
 }
 
+export function parsePreservedJson(text: string): unknown {
+  return JSON.parse(text, preserveJson);
+}
+
 function blocks(
   content: unknown,
   omissions: Omissions,
@@ -154,7 +158,7 @@ export function normalizeTranscript(
   if (lines.at(-1) === "") lines.pop();
   try {
     for (const line of lines) {
-      const parsed: unknown = JSON.parse(line, preserveJson);
+      const parsed: unknown = parsePreservedJson(line);
       const record = message(parsed, {
         sourceId: `${digest}:${String(offset)}`,
         omissions,
