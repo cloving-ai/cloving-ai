@@ -231,3 +231,59 @@ await test("CLV-111 only admits 100 scanned reads, counts failed attempts and ig
     assert.equal(later.records, 1);
   });
 });
+
+await test("CLV-113 revisions read each selected source once and metadata alone cannot select sources", async () => {
+  await withFiles(
+    {
+      "selected.jsonl": fixture["selected.jsonl"],
+      ghost: "synthetic-unselected",
+    },
+    async (directory) => {
+      const request = {
+        paths: ["selected.jsonl"],
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+      };
+      const first = await importChats({
+        ...request,
+        paths: ["selected.jsonl", "ghost"],
+      });
+      assert.ok(first.importId);
+      const second = await importChats({
+        ...request,
+        previousImportId: first.importId,
+      });
+      assert.ok(second.importId);
+      await filesystem.writeFile(
+        join(directory, "selected.jsonl"),
+        fixture["selected.jsonl"] + "\r\n" + fixture["selected.jsonl"],
+      );
+      const opened: string[] = [];
+      const original = filesystem.open;
+      filesystem.open = (path, flags) => {
+        if (typeof flags === "number" && (flags & constants.O_WRONLY) === 0)
+          opened.push(String(path));
+        return original(path, flags, 0o600);
+      };
+      const effects = observeEffects();
+      syncBuiltinESMExports();
+      try {
+        const result = await importChats({
+          ...request,
+          previousImportId: second.importId,
+        });
+        assert.equal(result.code, "import-complete");
+        assert.deepEqual(opened, [
+          join(directory, "runtime/chats", second.importId, "coverage.json"),
+          join(directory, "runtime/chats", second.importId, "revision.json"),
+          join(directory, "selected.jsonl"),
+        ]);
+        assert.deepEqual(effects.attempts, []);
+      } finally {
+        effects.restore();
+        filesystem.open = original;
+        syncBuiltinESMExports();
+      }
+    },
+  );
+});

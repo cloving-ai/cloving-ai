@@ -472,7 +472,6 @@
     "test/world-completion.test.ts": "test",
     "test/service-submission.test.ts": "test",
     "test/service-transport.test.ts": "test",
-    "node:net": "network",
     "node:readline": "stdlib",
     "node:events": "stdlib",
     "test/authority-decision-edges.test.ts": "test",
@@ -720,7 +719,18 @@
     "test/chats-selection.test.ts": "test",
     "test/chats-selection-fixture.ts": "test",
     "test/chats-selection-races.test.ts": "test",
-    "test/chats-source.test.ts": "test"
+    "test/chats-source.test.ts": "test",
+    "src/chats/input-file.ts": "cli",
+    "src/chats/revision.ts": "pure",
+    "src/chats/previous-import.ts": "cli",
+    "src/chats/revision-input.ts": "pure",
+    "test/chats-revision-input.test.ts": "test",
+    "test/chats-revision-arguments.test.ts": "test",
+    "test/chats-revision.test.ts": "test",
+    "test/chats-import-structure.test.ts": "test",
+    "test/chats-revision-fixture.ts": "test",
+    "test/chats-revision-storage.test.ts": "test",
+    "test/chats-revision-import.test.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -326,3 +326,53 @@ async function writeLarge(path: string) {
     await handle.close();
   }
 }
+
+await test("CLV-113 writes private revisions, increments evidence and preserves earlier files", async () => {
+  await withFiles({ "source.jsonl": source }, async (directory) => {
+    const request = {
+      paths: ["source.jsonl"],
+      workingDirectory: directory,
+      runtimeDirectory: "runtime",
+    };
+    const first = await importChats(request);
+    assert.ok(first.importId);
+    const base = join(directory, "runtime/chats", first.importId);
+    const before = await Promise.all(
+      ["corpus.jsonl", "structure.json", "coverage.json"].map((name) =>
+        readFile(join(base, name)),
+      ),
+    );
+    const second = await importChats({
+      ...request,
+      previousImportId: first.importId,
+    });
+    assert.equal(second.code, "import-complete");
+    assert.ok(second.importId);
+    const output = join(directory, "runtime/chats", second.importId);
+    assert.equal((await stat(output)).mode & 0o777, 0o700);
+    assert.equal(
+      (await stat(join(output, "revision.json"))).mode & 0o777,
+      0o600,
+    );
+    assert.deepEqual(
+      await Promise.all(
+        ["corpus.jsonl", "structure.json", "coverage.json"].map((name) =>
+          readFile(join(base, name)),
+        ),
+      ),
+      before,
+    );
+    const third = await importChats({
+      ...request,
+      previousImportId: second.importId,
+    });
+    assert.ok(third.importId);
+    const text = await readFile(
+      join(directory, "runtime/chats", third.importId, "revision.json"),
+      "utf8",
+    );
+    assert.match(text, /"evidenceRevision": 2/);
+    assert.match(text, /"unchanged": 1/);
+    assert.doesNotMatch(text, /synthetic transcript|"text"|"blocks"/);
+  });
+});

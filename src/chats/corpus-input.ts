@@ -143,6 +143,7 @@ function coverageFile(value: unknown): boolean {
     return false;
   if (!optionalText(value["digest"]) || !natural(value["recordCount"]))
     return false;
+  if (!coverageSize(value)) return false;
   const omissions = value["omissions"];
   return (
     object(omissions) &&
@@ -229,6 +230,7 @@ function scanCoverageEntry(value: unknown, roots: readonly string[]): boolean {
         "recordCount",
         "omissions",
       ],
+      optional: ["byteSize"],
     })
   )
     return false;
@@ -322,7 +324,7 @@ function absolutePath(value: unknown): value is string {
   );
 }
 
-function withinRoot(root: string | undefined, path: unknown): boolean {
+export function withinRoot(root: string | undefined, path: unknown): boolean {
   if (root === undefined || !absolutePath(path)) return false;
   const parent = root.split("/").filter(Boolean);
   const child = path.split("/").filter(Boolean);
@@ -355,5 +357,12 @@ function emptyCoverageEntry(value: Record<string, unknown>): boolean {
     object(omissions) &&
     omissions["metadataRecords"] === 0 &&
     omissions["thinkingBlocks"] === 0
+  );
+}
+
+function coverageSize(value: Record<string, unknown>): boolean {
+  return (
+    !Object.hasOwn(value, "byteSize") ||
+    (natural(value["byteSize"]) && value["byteSize"] <= 10_485_760)
   );
 }

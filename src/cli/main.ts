@@ -50,13 +50,7 @@ export async function main(
     await redactionCommand(invocation.importId);
   } else if (invocation.kind === "chats-import") {
     const result = await importChats({
-      paths: invocation.paths,
-      ...(invocation.roots === undefined
-        ? {}
-        : {
-            roots: invocation.roots,
-            excludeProjects: invocation.excludeProjects ?? [],
-          }),
+      ...invocation,
       workingDirectory: process.cwd(),
       runtimeDirectory: runtimeDirectory(process.env),
     });

@@ -25,7 +25,6 @@ import { withFiles } from "./quality/files-fixture.ts";
 import { importChats } from "../src/chats/import.ts";
 import { redactImport } from "../src/chats/redact-import.ts";
 import { readRootOutput, syntheticMessage } from "./chats-selection-fixture.ts";
-
 const variants: readonly Readonly<Record<string, string>>[] = [
   {
     [`${base}/corpus.jsonl`]:
@@ -355,6 +354,47 @@ await test("CLV-111 redacts root coverage without reopening sources and leaves e
       );
       assert.doesNotMatch(redacted, /person@example.test/);
       assert.match(structure, /"historyCompleteness": "unknown"/);
+    },
+  );
+});
+
+await test("CLV-113 redacts size-bearing coverage and leaves revision files untouched without sources", async () => {
+  await withFiles(
+    { "root/source.jsonl": syntheticMessage("synthetic-redaction") },
+    async (directory) => {
+      for (const roots of [[], ["root"]]) {
+        const request = {
+          paths: roots.length === 0 ? ["root/source.jsonl"] : [],
+          roots,
+          workingDirectory: directory,
+          runtimeDirectory: "runtime",
+        };
+        const first = await importChats(request);
+        assert.ok(first.importId);
+        const second = await importChats({
+          ...request,
+          previousImportId: first.importId,
+        });
+        assert.ok(second.importId);
+        const output = join(directory, "runtime/chats", second.importId);
+        const before = await readFile(join(output, "revision.json"));
+        await rename(
+          join(directory, "root/source.jsonl"),
+          join(directory, "moved"),
+        );
+        const result = await redactImport({
+          importId: second.importId,
+          workingDirectory: directory,
+          runtimeDirectory: "runtime",
+          settings: { home: "/synthetic/home", privateTexts: [] },
+        });
+        assert.equal(result.code, "redaction-complete");
+        assert.deepEqual(await readFile(join(output, "revision.json")), before);
+        await rename(
+          join(directory, "moved"),
+          join(directory, "root/source.jsonl"),
+        );
+      }
     },
   );
 });

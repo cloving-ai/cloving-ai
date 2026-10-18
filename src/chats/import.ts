@@ -1,9 +1,11 @@
-import type { MessageRecord } from "./normalize.ts";
+import { readPreviousImport } from "./previous-import.ts";
 import {
-  structureImport,
-  type ImportStructure,
-  type StructureCounts,
-} from "./structure.ts";
+  pairEvidence,
+  compareEvidence,
+  type EvidenceSource,
+} from "./revision.ts";
+import type { MessageRecord } from "./normalize.ts";
+import { structureImport, type StructureCounts } from "./structure.ts";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -23,6 +25,7 @@ const corpusLimit = 52_428_800;
 
 export interface ImportRequest extends SelectionRequest {
   readonly runtimeDirectory: string | undefined;
+  readonly previousImportId?: string;
 }
 
 export interface ImportSummary extends StructureCounts {
@@ -31,7 +34,8 @@ export interface ImportSummary extends StructureCounts {
     | "import-partial"
     | "runtime-directory-unknown"
     | "destination-refused"
-    | "output-failed";
+    | "output-failed"
+    | "previous-import-refused";
   readonly importId: string | null;
   readonly included: number;
   readonly refused: number;
@@ -48,20 +52,42 @@ function boundedCorpusLine(record: MessageRecord, previousBytes: number) {
 
 async function writeImport(
   directory: string,
-  request: ImportRequest,
+  data: {
+    readonly request: ImportRequest;
+    readonly previous: readonly EvidenceSource[];
+  },
 ): Promise<{
   roots: string[];
   files: CoverageEntry[];
   records: MessageRecord[];
+  evidence: EvidenceSource[];
 }> {
+  const { request, previous } = data;
   const selection = await selectChatSources(request);
+  const keys = selection.entries.map((selected) =>
+    selectionKey(selected, selection.roots),
+  );
+  const pairs = pairEvidence({ previous, current: keys });
+  const evidence: EvidenceSource[] = [];
   const files: CoverageEntry[] = [];
   const records: MessageRecord[] = [];
   let corpusBytes = 0;
   const corpus = await createPrivateFile(join(directory, "corpus.jsonl"));
   try {
-    for (const selected of selection.entries) {
-      const result = await readSelected(selected);
+    for (const [index, selected] of selection.entries.entries()) {
+      const matched = pairs[index];
+      const before =
+        matched === null || matched === undefined
+          ? undefined
+          : previous[matched];
+      const result = await readSelected(selected, before?.byteSize);
+      evidence.push({
+        ...selectionKey(selected, selection.roots),
+        ...result.coverage,
+        ...(result.prefixDigest === undefined
+          ? {}
+          : { prefixDigest: result.prefixDigest }),
+      });
       files.push({
         ...result.coverage,
         kind: selected.kind,
@@ -77,7 +103,7 @@ async function writeImport(
   } finally {
     await corpus.close();
   }
-  return { roots: selection.roots, files, records };
+  return { roots: selection.roots, files, records, evidence };
 }
 
 type CoverageEntry = Omit<SelectedTranscript, "status"> & {
@@ -86,7 +112,24 @@ type CoverageEntry = Omit<SelectedTranscript, "status"> & {
   readonly selection: SourceSelection["selection"];
 };
 
-async function readSelected(selected: SourceSelection) {
+function selectionKey(selected: SourceSelection, roots: readonly string[]) {
+  return {
+    path: selected.path,
+    root:
+      selected.selection.kind === "root"
+        ? (roots[selected.selection.index] ?? null)
+        : null,
+  };
+}
+
+async function readSelected(
+  selected: SourceSelection,
+  prefixBytes: number | undefined,
+): Promise<{
+  coverage: Omit<CoverageEntry, "kind" | "selection">;
+  records: readonly MessageRecord[];
+  prefixDigest?: string;
+}> {
   if (selected.outcome !== undefined)
     return {
       coverage: {
@@ -98,14 +141,16 @@ async function readSelected(selected: SourceSelection) {
       },
       records: [],
     };
-  return readTranscript(selected.path, selected.inspection);
+  return readTranscript(selected.path, {
+    ...(selected.inspection === undefined
+      ? {}
+      : { inspection: selected.inspection }),
+    ...(prefixBytes === undefined ? {} : { prefixBytes }),
+  });
 }
 
-async function writeStructure(
-  directory: string,
-  data: ImportStructure & { readonly importId: string },
-): Promise<void> {
-  const handle = await createPrivateFile(join(directory, "structure.json"));
+async function writeMetadata(path: string, data: object): Promise<void> {
+  const handle = await createPrivateFile(path);
   try {
     await handle.writeFile(
       `${JSON.stringify({ schemaVersion: 1, ...data }, null, 2)}\n`,
@@ -145,39 +190,22 @@ export async function importChats(
   if (request.runtimeDirectory === undefined)
     return { ...empty, code: "runtime-directory-unknown" };
   try {
+    const runtime = resolve(request.workingDirectory, request.runtimeDirectory);
+    const previous =
+      request.previousImportId === undefined
+        ? undefined
+        : await readPreviousImport(runtime, request.previousImportId);
     const importId = randomUUID();
-    const directory = await importDirectory(
-      resolve(request.workingDirectory, request.runtimeDirectory),
-      importId,
-    );
-    const { roots, files, records } = await writeImport(directory, request);
-    const structure = structureImport(records);
-    await writeStructure(directory, { importId, ...structure });
-    const totals = importTotals(files);
-    const { refused, pending } = totals;
-    await writeCoverage(
-      directory,
-      coverageManifest({
-        importId,
-        roots,
-        files,
-        exclusions: request.excludeProjects ?? [],
-      }),
-    );
-    return {
-      code: refused + pending === 0 ? "import-complete" : "import-partial",
-      importId,
-      included: totals.included,
-      refused,
-      ...(roots.length === 0 ? {} : { excluded: totals.excluded, pending }),
-      ...structure.counts,
-    };
+    const directory = await importDirectory(runtime, importId);
+    return await completeImport(directory, { request, previous, importId });
   } catch (error) {
     return {
       ...empty,
       code:
-        error instanceof Error && error.message === "destination-refused"
-          ? "destination-refused"
+        error instanceof Error &&
+        (error.message === "destination-refused" ||
+          error.message === "previous-import-refused")
+          ? error.message
           : "output-failed",
     };
   }
@@ -223,6 +251,7 @@ function coverageManifest(data: {
       status: entry.status,
       reason: entry.reason,
       digest: entry.digest,
+      ...(entry.byteSize === undefined ? {} : { byteSize: entry.byteSize }),
       recordCount: entry.recordCount,
       omissions: entry.omissions,
     })),
@@ -237,4 +266,78 @@ function emptyImport(request: ImportRequest) {
     ...((request.roots?.length ?? 0) === 0 ? {} : { excluded: 0, pending: 0 }),
     ...structureImport([]).counts,
   };
+}
+
+type PreviousImport = Awaited<ReturnType<typeof readPreviousImport>>;
+
+async function completeImport(
+  directory: string,
+  data: {
+    readonly request: ImportRequest;
+    readonly previous: PreviousImport | undefined;
+    readonly importId: string;
+  },
+): Promise<ImportSummary> {
+  const { request, previous, importId } = data;
+  const { roots, files, records, evidence } = await writeImport(directory, {
+    request,
+    previous: previous?.entries ?? [],
+  });
+  const structure = structureImport(records);
+  await writeMetadata(join(directory, "structure.json"), {
+    importId,
+    ...structure,
+  });
+  const partial = await writeRevision(directory, {
+    previous,
+    evidence,
+    importId,
+  });
+  const totals = importTotals(files);
+  const { refused, pending } = totals;
+  await writeCoverage(
+    directory,
+    coverageManifest({
+      importId,
+      roots,
+      files,
+      exclusions: request.excludeProjects ?? [],
+    }),
+  );
+  return {
+    code:
+      refused + pending + partial === 0 ? "import-complete" : "import-partial",
+    importId,
+    included: totals.included,
+    refused,
+    ...(roots.length === 0 ? {} : { excluded: totals.excluded, pending }),
+    ...structure.counts,
+  };
+}
+
+async function writeRevision(
+  directory: string,
+  data: {
+    readonly previous: PreviousImport | undefined;
+    readonly evidence: readonly EvidenceSource[];
+    readonly importId: string;
+  },
+): Promise<number> {
+  const { previous, evidence, importId } = data;
+  if (previous === undefined) return 0;
+  const comparison = compareEvidence({
+    previous: previous.entries,
+    current: evidence,
+  });
+  try {
+    await writeMetadata(join(directory, "revision.json"), {
+      importId,
+      previousImportId: previous.importId,
+      evidenceRevision: previous.evidenceRevision,
+      ...comparison,
+    });
+  } catch {
+    throw new Error("output-failed");
+  }
+  return comparison.counts.missing + comparison.counts.truncated;
 }
