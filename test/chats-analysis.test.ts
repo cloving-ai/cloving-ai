@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { validateAnalysis } from "../src/chats/analysis.ts";
 import {
   candidate,
+  questionCandidate,
   itemAt,
   expectedAnnotations,
   records,
@@ -22,6 +23,14 @@ export function refused(input: unknown, codes: readonly string[]) {
     codes,
   });
 }
+
+await test("CLV-117 accepts one optional question on a declared conflict as analysis data", () => {
+  const input = questionCandidate();
+  const validation = validateAnalysis(input, { records, structure });
+  assert.equal(validation.accepted, true);
+  assert.deepEqual(validation.result.openQuestion, input.openQuestion);
+  assert.deepEqual(validation.result.process, input.process);
+});
 
 await test("CLV-114 accepts the independently annotated bounded loop without granting authority", () => {
   const input = candidate();

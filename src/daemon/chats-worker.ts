@@ -162,6 +162,8 @@ async function save(
       validation.codes[0] ?? "analysis-input-refused",
       validation.codes,
     );
+  if (validation.result.openQuestion !== undefined)
+    return refused("analysis-input-refused");
   try {
     const directory = await analysisDirectory(
       settings.runtimeDirectory,

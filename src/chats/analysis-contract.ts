@@ -7,6 +7,8 @@ export const analysisCodes = [
   "invalid-shape",
   "unknown-kind",
   "unknown-decision-type",
+  "invalid-question",
+  "question-without-conflict",
   "missing-source",
   "unknown-source",
   "copy-only",
@@ -77,6 +79,13 @@ export interface AnalysisProcess {
 export interface AnalysisCandidate {
   readonly schemaVersion: 1;
   readonly process: AnalysisProcess;
+  readonly openQuestion?: AnalysisQuestion;
+}
+export interface AnalysisQuestion {
+  readonly claimId: string;
+  readonly description: string;
+  readonly sourceRefs: readonly OccurrenceReference[];
+  readonly choices: readonly AnalysisItem[];
 }
 export interface AnalysisEvidence {
   readonly records: readonly MessageRecord[];

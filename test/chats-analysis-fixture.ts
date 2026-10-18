@@ -217,6 +217,21 @@ export function candidate() {
   return structuredClone(fixedCandidate);
 }
 
+export function questionCandidate() {
+  return {
+    ...candidate(),
+    openQuestion: {
+      claimId: "review",
+      description: "Which review order applies?",
+      sourceRefs: [ref(1), ref(13)],
+      choices: [
+        { id: "earlier", description: "Use the earlier review order." },
+        { id: "later", description: "Use the later review order." },
+      ],
+    },
+  };
+}
+
 export function itemAt<T>(items: readonly T[], index = 0): T {
   const item = items[index];
   if (item === undefined) throw new Error("fixture-index");

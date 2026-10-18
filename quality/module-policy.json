@@ -744,6 +744,7 @@
     "test/chats-analysis-provenance.test.ts": "test",
     "test/chats-analysis-isolation.test.ts": "test",
     "test/chats-analysis.test.ts": "test",
+    "test/chats-analysis-question.test.ts": "test",
     "node:tls": "stdlib",
     "node:util/types": "pure",
     "test/chats-analysis-shape.test.ts": "test",
