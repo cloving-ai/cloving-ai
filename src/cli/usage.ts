@@ -87,6 +87,7 @@ export const usage = `Usage: cloving [--help] [--version]
 
 Commands:
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
+  chats redact  Redact one imported chat corpus into private runtime files.
   chats import  Import explicitly selected Claude Code transcripts into private runtime files.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
@@ -128,4 +129,13 @@ Validation does not admit a run, dispatch effects, import workflow code or call 
 
 Example:
   cloving workflows validate cloving.workflow.json --input input.json
+`;
+
+export const chatsRedactUsage = `Usage: cloving chats redact <IMPORT_ID>
+
+Redact one existing import selected by its UUID v4 import ID. No service is required.
+Write redacted.jsonl and redaction.json beside the original corpus with mode 0600.
+HOME supplies the home folder. CLOVING_PRIVATE_TEXTS is an optional JSON list of nonblank strings.
+Originals and metadata remain private. Redaction does not authorize model use or guarantee removal of every private value.
+Exit codes: 0 complete, 1 processing failure, 2 invalid usage.
 `;

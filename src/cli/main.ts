@@ -1,31 +1,53 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
+import { redactImport } from "../chats/redact-import.ts";
+import { emptyCounts } from "../chats/redaction.ts";
 import { importChats } from "../chats/import.ts";
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { chatsImportUsage, usage, validateUsage } from "./usage.ts";
+import {
+  chatsRedactUsage,
+  chatsImportUsage,
+  usage,
+  validateUsage,
+} from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
+
+const helpTexts = {
+  help: usage,
+  version: `${packageMetadata.version}\n`,
+  "validate-help": validateUsage,
+  "chats-import-help": chatsImportUsage,
+  "chats-redact-help": chatsRedactUsage,
+};
+
+function helpInvocation(
+  invocation: Invocation,
+): invocation is Extract<
+  Invocation,
+  { readonly kind: keyof typeof helpTexts }
+> {
+  return Object.hasOwn(helpTexts, invocation.kind);
+}
 
 export async function main(
   argumentsList: readonly string[],
   watchPr?: WatchPrSettings,
 ): Promise<void> {
   const invocation = parseInvocation(argumentsList);
+  if (helpInvocation(invocation)) {
+    process.stdout.write(helpTexts[invocation.kind]);
+    return;
+  }
 
   if (invocation.kind === "usage-error") {
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
-  } else if (invocation.kind === "version") {
-    process.stdout.write(`${packageMetadata.version}\n`);
-  } else if (invocation.kind === "help") {
-    process.stdout.write(usage);
-  } else if (invocation.kind === "validate-help") {
-    process.stdout.write(validateUsage);
-  } else if (invocation.kind === "chats-import-help") {
-    process.stdout.write(chatsImportUsage);
+  } else if (invocation.kind === "chats-redact") {
+    await redactionCommand(invocation.importId);
   } else if (invocation.kind === "chats-import") {
     const result = await importChats({
       paths: invocation.paths,
@@ -89,4 +111,34 @@ function present(report: ValidationReport, format: "json" | "human"): void {
   }
   for (const error of report.errors)
     process.stderr.write(`${error.code}: ${error.file}: ${error.detail}\n`);
+}
+
+async function redactionCommand(importId: string): Promise<void> {
+  let privateTexts: unknown = [];
+  try {
+    const setting = process.env["CLOVING_PRIVATE_TEXTS"];
+    if (setting !== undefined) privateTexts = JSON.parse(setting);
+    if (
+      !Array.isArray(privateTexts) ||
+      !privateTexts.every(
+        (item: unknown): item is string =>
+          typeof item === "string" && item.trim() !== "",
+      )
+    )
+      throw new Error("invalid-settings");
+  } catch {
+    process.stdout.write(
+      `${JSON.stringify({ code: "invalid-settings", importId, recordCount: 0, counts: emptyCounts(), totalCount: 0 })}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const result = await redactImport({
+    importId,
+    workingDirectory: process.cwd(),
+    runtimeDirectory: runtimeDirectory(process.env),
+    settings: { home: process.env["HOME"] || null, privateTexts },
+  });
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+  process.exitCode = result.code === "redaction-complete" ? 0 : 1;
 }

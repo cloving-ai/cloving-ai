@@ -699,7 +699,18 @@
     "tools/copy-workflow-declarations.ts": "build",
     ".github/workflows/ci.yml": "metadata",
     "test/release.test.ts": "test",
-    "test/release-fixture.ts": "test"
+    "test/release-fixture.ts": "test",
+    "test/chats-corpus.test.ts": "test",
+    "src/chats/redaction.ts": "pure",
+    "src/chats/corpus-input.ts": "pure",
+    "src/chats/redact-import.ts": "cli",
+    "test/chats-redact-streaming.test.ts": "test",
+    "test/chats-redaction.test.ts": "test",
+    "test/chats-redact.test.ts": "test",
+    "test/chats-redact-storage.test.ts": "test",
+    "test/chats-redact-failures.test.ts": "test",
+    "test/chats-redact-fixture.ts": "test",
+    "test/chats-redact-isolation.test.ts": "test"
   },
   "allowed": {
     "quality": [

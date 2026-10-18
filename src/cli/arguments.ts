@@ -10,6 +10,8 @@ export type Invocation =
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
+  | { readonly kind: "chats-redact-help" }
+  | { readonly kind: "chats-redact"; readonly importId: string }
   | { readonly kind: "chats-import-help" }
   | { readonly kind: "chats-import"; readonly paths: readonly string[] }
   | {
@@ -86,6 +88,8 @@ function textValues(argumentsList: readonly string[]): readonly string[] {
 export function parseInvocation(given: readonly string[]): Invocation {
   if (given[0] === "chats" && given[1] === "import")
     return chatsImport(given.slice(2));
+  if (given[0] === "chats" && given[1] === "redact")
+    return chatsRedact(given.slice(2));
   const argumentsList = textValues(given);
   const json = given.includes("--json");
   const parsed = parsedArguments(argumentsList);
@@ -104,6 +108,24 @@ export function parseInvocation(given: readonly string[]): Invocation {
   if (typeof outcome === "string")
     return { kind: "usage-error", code: outcome, json };
   return outcome;
+}
+
+function chatsRedact(argumentsList: readonly string[]): Invocation {
+  if (
+    argumentsList.length === 1 &&
+    ["--help", "-h"].includes(String(argumentsList[0]))
+  )
+    return { kind: "chats-redact-help" };
+  const importId = argumentsList[0];
+  if (
+    argumentsList.length !== 1 ||
+    importId === undefined ||
+    !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
+      importId,
+    )
+  )
+    return { kind: "usage-error", code: "invalid-import-id", json: false };
+  return { kind: "chats-redact", importId };
 }
 
 function chatsImport(argumentsList: readonly string[]): Invocation {

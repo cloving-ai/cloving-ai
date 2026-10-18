@@ -23,6 +23,7 @@ What works now:
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the Claude worker as it occurs.
 - `cloving chats import -- FILE_A FILE_B` imports selected Claude Code transcripts into private runtime files without a service.
+- `cloving chats redact IMPORT_ID` creates a redacted corpus and a separate counts manifest without a service.
 
 What does not work yet:
 
@@ -47,6 +48,22 @@ Each import creates `chats/IMPORT_ID/corpus.jsonl` and `coverage.json` below the
 Corpus records have `schemaVersion: 1` and a `sourceId` of `sha256:HEX:OFFSET`. The digest covers the exact source bytes. The offset is the zero-based byte position of the source line. `text` joins the message's text blocks with a newline; `blocks` retains each supported block's `position`. Tool result content is copied as JSON data. The versioned coverage manifest has one entry per selection, including its resolved path, status, fixed reason code, digest when available, record count and omission counts (`metadataRecords` and `thinkingBlocks`). Refused sources contribute no records. The final manifest appears only after the corpus closes successfully.
 
 Console output contains counts, fixed codes and an opaque import ID. Source paths and transcript text stay in the private files. Exit code `0` means every source was included. Code `1` means partial coverage or an output failure. Code `2` means invalid usage. Importing does not analyze chats, call a model or execute transcript instructions. Full quality admission and release qualification remain pending.
+
+### Redact an imported corpus
+
+```sh
+cloving chats redact IMPORT_ID
+```
+
+Use the UUID v4 import ID printed by `chats import`. This command uses the same runtime directory selection and needs no service. It requires an existing version 1 corpus and coverage manifest. It does not reopen the transcript paths in coverage.
+
+The command writes `redacted.jsonl` and `redaction.json` beside the originals. New files have mode `0600`. Existing outputs are refused. The manifest records rule version `1`, record count, category counts (including zeros), and total replacements. It contains no matched values or replacement map. The manifest is written only after the redacted corpus closes successfully. A failure can leave an incomplete redacted corpus; there is no restart recovery.
+
+`HOME` supplies the home folder. The rules replace home paths (including tilde forms), e-mail addresses, supported GitHub, Anthropic and OpenAI tokens, complete private-key blocks, and URLs with user information. `CLOVING_PRIVATE_TEXTS` adds literal texts with case ignored. For this command, an unset setting or `[]` adds no texts. Malformed lists, non-string entries and blank entries are refused. The issue-posting workflows still require a nonempty private-text list.
+
+Redaction inspects message text, text blocks and nested tool input and result strings, including member names. Overlapping matches count once, with priority given to private keys, credential URLs, home paths, tokens, e-mail addresses, then private texts. Both stored copies of message text count. Source references, metadata, record order and exact number tokens remain intact. Member-name collisions are refused.
+
+Console output contains only fixed codes, counts and the import ID. Exit code `0` means success, `1` means processing failure, and `2` means invalid usage. Originals and metadata remain outside redaction scope. Both originals and outputs remain private runtime data. Redaction makes no model or network call and does not execute transcript instructions. It neither guarantees removal of every private value nor authorizes later model use.
 
 ## Install
 
