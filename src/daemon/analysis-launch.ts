@@ -12,7 +12,6 @@ export const analysisInstruction = [
 ].join("\n\n");
 
 const controls = [
-  "--bare",
   "--safe-mode",
   "--restricted",
   "--strict-mcp-config",
@@ -55,12 +54,20 @@ export function analysisCommand(): readonly string[] {
 export function analysisEnvironment(folder: string): NodeJS.ProcessEnv {
   return {
     PATH: process.env["PATH"],
-    ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"],
     HOME: join(folder, "configuration"),
     CLAUDE_CONFIG_DIR: join(folder, "configuration"),
     TMPDIR: join(folder, "configuration"),
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
   };
+}
+
+function supportedVersion(line: string): boolean {
+  const match = /^2\.(0|[1-9]\d*)\.(0|[1-9]\d*) \(Claude Code\)$/.exec(
+    line.trim(),
+  );
+  if (match?.[1] === undefined || match[2] === undefined) return false;
+  const minor = BigInt(match[1]);
+  return minor > 1n || (minor === 1n && BigInt(match[2]) >= 302n);
 }
 
 export async function analysisAvailable(folder: string): Promise<boolean> {
@@ -73,18 +80,14 @@ export async function analysisAvailable(folder: string): Promise<boolean> {
     });
   try {
     const version = await probe("--version");
-    if (version.stdout.trim() !== "2.1.302 (Claude Code)") return false;
+    if (!supportedVersion(version.stdout)) return false;
     const help = await probe("--help");
-    return [
-      ...controls,
-      "--tools",
-      "--disallowedTools",
-      "--mcp-config",
-      "--setting-sources",
-      "--settings",
-      "--system-prompt",
-      "--permission-prompts",
-    ].every((flag) => help.stdout.includes(flag));
+    const advertised = new Set(
+      help.stdout.match(/--[a-zA-Z][a-zA-Z0-9-]*/g) ?? [],
+    );
+    return analysisCommand()
+      .filter((argument) => argument.startsWith("--"))
+      .every((flag) => advertised.has(flag));
   } catch {
     return false;
   }

@@ -29,7 +29,7 @@ if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
 let prompt = "";
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
-appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
+appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: "session-1", num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
@@ -51,6 +51,12 @@ const modes = {
     git("add", ".");
     git("commit", "-m", "Add the change " + turn);
     result({});
+  },
+  "echo-token": () => {
+    const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    process.stderr.write(token);
+    print({ type: "assistant", text: token });
+    result({ result: token, model: token, session_id: token });
   },
   "error-result": () => result({ subtype: "error_during_execution", is_error: true }),
   "exit-code": () => { result({}); process.exitCode = 3; },
@@ -218,6 +224,7 @@ export function installAnalysisCli(
     readonly reply: string;
     readonly mode?: string;
     readonly version?: string;
+    readonly help?: string;
   },
 ): () => void {
   const record = join(scene.directory, "turns.log");
@@ -227,17 +234,26 @@ export function installAnalysisCli(
     'const [mode = "complete", record = ""] = process.argv.slice(2);',
     `const mode = ${JSON.stringify(mode)}, record = ${JSON.stringify(record)};`,
   );
-  const probe = `if (process.argv.includes("--version")) { process.stdout.write(${JSON.stringify(options.version ?? "2.1.302 (Claude Code)")}); process.exit(0); }\nif (process.argv.includes("--help")) { process.stdout.write("--tools --bare --safe-mode --restricted --strict-mcp-config --mcp-config --disallowedTools --disable-slash-commands --setting-sources --settings --system-prompt --no-chrome --no-session-persistence --permission-prompts"); process.exit(0); }\n`;
+  const probe = `if (process.argv.includes("--version")) { process.stdout.write(${JSON.stringify(options.version ?? "2.1.302 (Claude Code)")}); process.exit(0); }\nif (process.argv.includes("--help")) { process.stdout.write(${JSON.stringify(options.help ?? "--tools --safe-mode --restricted --strict-mcp-config --mcp-config --disallowedTools --disable-slash-commands --setting-sources --settings --system-prompt --no-chrome --no-session-persistence --permission-prompts --print --output-format --verbose --max-turns --max-budget-usd --model")}); process.exit(0); }\n`;
   writeFileSync(
     join(scene.directory, "claude"),
     `#!${process.execPath}\n${probe}${source}`,
     { mode: 0o700 },
   );
   writeFileSync(`${record}.reply`, options.reply, { mode: 0o600 });
+  const tokenCommand = process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"];
+  process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = JSON.stringify([
+    process.execPath,
+    "-e",
+    'process.stdout.write("synthetic-subscription-token\\n")',
+  ]);
   const previous = process.env["PATH"];
   process.env["PATH"] = `${scene.directory}:${previous ?? ""}`;
   return () => {
     process.env["PATH"] = previous;
+    if (tokenCommand === undefined)
+      delete process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"];
+    else process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = tokenCommand;
   };
 }
 
