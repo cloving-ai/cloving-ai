@@ -8,8 +8,14 @@ import {
   type ServiceError,
   type ServiceRequest,
 } from "../protocol.ts";
-import { follow, mutate, send } from "./client.ts";
-import { errorText, eventText, pendingSummary, rendered } from "./render.ts";
+import { follow, listRuns, mutate, send } from "./client.ts";
+import {
+  errorText,
+  eventText,
+  pendingSummary,
+  rendered,
+  runOverview,
+} from "./render.ts";
 import type { RuntimeInvocation } from "./runtime-arguments.ts";
 import { commandUsage } from "./usage.ts";
 import { defaultWatchPort, watchServer } from "./watch-server.ts";
@@ -212,6 +218,16 @@ async function status(
 ): Promise<number> {
   const { runId, limit, after, json } = invocation;
   if (!json && runId === null) await summarized(environment);
+  if (!json && runId === null && limit === null && after === null) {
+    const reply = await listRuns(environment.runtimeDirectory);
+    return presented(environment, {
+      format: { json },
+      reply:
+        reply.kind === "result"
+          ? { kind: "result", result: runOverview(reply.result) }
+          : reply,
+    });
+  }
   return requested(environment, {
     format: { json },
     request: {
