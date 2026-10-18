@@ -67,7 +67,15 @@ function preparedBatch(
   position: AnalysisBatchPosition,
 ): AnalysisBatchPreparation {
   const lines = snapshot.corpus.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-  if (!validPosition(position, lines.length))
+  if (
+    ![position.nextRecordIndex, position.completedBatchCount].every(
+      Number.isSafeInteger,
+    ) ||
+    position.nextRecordIndex < 0 ||
+    position.nextRecordIndex >= lines.length ||
+    position.completedBatchCount < 0 ||
+    position.completedBatchCount > 4
+  )
     return { kind: "refused", code: "analysis-input-refused" };
   if (position.completedBatchCount === 4)
     return { kind: "refused", code: "analysis-batch-limit" };
@@ -79,27 +87,13 @@ function preparedBatch(
   for (let end = position.nextRecordIndex + 1; end <= lines.length; end++) {
     const batch = batchOf(snapshot, { lines, position, end, structure });
     if (
-      batch.launchBytes > analysisDocumentBytes ||
-      Buffer.byteLength(batch.adapterDocument) > analysisDocumentBytes
+      Math.max(batch.launchBytes, Buffer.byteLength(batch.adapterDocument)) >
+      analysisDocumentBytes
     )
       break;
     longest = batch;
   }
   return longest;
-}
-
-function validPosition(
-  position: AnalysisBatchPosition,
-  total: number,
-): boolean {
-  return (
-    Number.isSafeInteger(position.nextRecordIndex) &&
-    position.nextRecordIndex >= 0 &&
-    position.nextRecordIndex < total &&
-    Number.isSafeInteger(position.completedBatchCount) &&
-    position.completedBatchCount >= 0 &&
-    position.completedBatchCount <= 4
-  );
 }
 
 function batchOf(
