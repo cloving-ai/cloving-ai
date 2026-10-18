@@ -75,21 +75,20 @@ function runLine(run: unknown): string {
   return `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
 }
 
-function ended(run: unknown): boolean {
-  return ["completed", "failed", "cancelled"].includes(
-    show(part(run, "state")),
-  );
+function ended(run: Fields): boolean {
+  return ["completed", "failed", "cancelled"].includes(show(run["state"]));
 }
 
-function newest(first: unknown, second: unknown): number {
-  return show(part(second, "latestAt") ?? "").localeCompare(
-    show(part(first, "latestAt") ?? ""),
+function newest(first: Fields, second: Fields): number {
+  return show(second["latestAt"] ?? "").localeCompare(
+    show(first["latestAt"] ?? ""),
   );
 }
 
 export function runOverview(result: Fields): Fields {
-  const runs: readonly unknown[] = Array.isArray(result["runs"])
-    ? result["runs"]
+  const listed = result["runs"];
+  const runs: readonly Fields[] = Array.isArray(listed)
+    ? listed.map(record).filter((run) => run !== undefined)
     : [];
   const active = runs.filter((run) => !ended(run)).toSorted(newest);
   const finished = runs.filter(ended).toSorted(newest);

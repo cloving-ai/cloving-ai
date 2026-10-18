@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { socketAddress } from "../broker/socket-address.ts";
 import {
   parseReplyLine,
+  record,
   requestLine,
   type Fields,
   type Reply,
@@ -120,9 +121,11 @@ export function send(
   return exchange({ runtimeDirectory, request, onEvent: unobserved });
 }
 
-function listedRuns(result: Fields): unknown[] {
+function listedRuns(result: Fields): Fields[] {
   const runs = result["runs"];
-  return Array.isArray(runs) ? runs.map((run: unknown) => run) : [];
+  return Array.isArray(runs)
+    ? runs.map(record).filter((run) => run !== undefined)
+    : [];
 }
 
 export async function listRuns(runtimeDirectory: string): Promise<Reply> {

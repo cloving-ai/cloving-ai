@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { RunStatus } from "../src/authority/transitions.ts";
 import { socketAddress } from "../src/broker/socket-address.ts";
+import { listRuns } from "../src/cli/client.ts";
+import { runOverview } from "../src/cli/render.ts";
 import {
   parseRequest,
   replyLine,
@@ -10,7 +13,7 @@ import {
   type Reply,
   type ServiceRequest,
 } from "../src/protocol.ts";
-import { withHarness } from "./service-fixture.ts";
+import { withHarness, type Harness } from "./service-fixture.ts";
 
 function statusReply(request: ServiceRequest, runs: readonly Fields[]): Reply {
   if (request.operation === "questions")
@@ -33,14 +36,14 @@ function statusReply(request: ServiceRequest, runs: readonly Fields[]): Reply {
   };
 }
 
-async function statusList(
-  runs: readonly Fields[],
-  options: {
-    readonly argumentsList?: readonly string[];
-    readonly pages?: readonly Reply[];
-  } = {},
+async function withRunList<Output>(
+  listing: {
+    readonly runs: readonly Fields[];
+    readonly pages: readonly Reply[];
+  },
+  read: (harness: Harness) => Promise<Output>,
 ) {
-  const { argumentsList = [], pages = [] } = options;
+  const { runs, pages } = listing;
   const requests: ServiceRequest[] = [];
   let page = 0;
   return withHarness(async (harness) => {
@@ -64,7 +67,7 @@ async function statusList(
     });
     await new Promise<void>((ready) => server.listen(address.path, ready));
     try {
-      return { ...(await harness.cli(["status", ...argumentsList])), requests };
+      return { output: await read(harness), requests };
     } finally {
       await new Promise<void>((closed) =>
         server.close(() => {
@@ -73,6 +76,20 @@ async function statusList(
       );
     }
   });
+}
+
+async function statusList(
+  runs: readonly Fields[],
+  options: {
+    readonly argumentsList?: readonly string[];
+    readonly pages?: readonly Reply[];
+  } = {},
+) {
+  const { argumentsList = [], pages = [] } = options;
+  const { output, requests } = await withRunList({ runs, pages }, (harness) =>
+    harness.cli(["status", ...argumentsList]),
+  );
+  return { ...output, requests };
 }
 
 function endedRuns(count: number): Fields[] {
@@ -94,6 +111,14 @@ const active = {
   revision: 2,
   latestAt: "2026-10-17T00:00:00.000Z",
 };
+
+await test("CLV-108 the run overview only selects object entries", () => {
+  const ended = endedRuns(1);
+  assert.deepEqual(
+    runOverview({ runs: [null, [], false, 42, "invalid", ...ended, active] }),
+    { runs: [active, ...ended], hiddenRuns: 0 },
+  );
+});
 
 function runLine(run: Fields): string {
   const latestAt = run["latestAt"];
@@ -128,6 +153,44 @@ await test("CLV-108 fewer than 20 ended runs are all shown without a hidden-runs
     output.stdout,
     "Pending decisions:\n  none\nWorkflows: develop, unused\nRuns:\n" +
       ended.reverse().map(runLine).join(""),
+  );
+});
+
+await test("CLV-108 default status ignores non-object run entries on every page", async () => {
+  const ended = endedRuns(1);
+  const pages: readonly Reply[] = [
+    {
+      kind: "result",
+      result: {
+        kind: "run-list",
+        workflows: ["develop", "unused"],
+        runs: [null, active, "invalid"],
+        next: "run-999",
+      },
+    },
+    {
+      kind: "result",
+      result: { runs: [[], ...ended, 42, false], next: null },
+    },
+  ];
+  const listed = await withRunList({ runs: [], pages }, (harness) =>
+    listRuns(harness.runtimeDirectory),
+  );
+  assert.deepEqual(listed.output, {
+    kind: "result",
+    result: {
+      kind: "run-list",
+      workflows: ["develop", "unused"],
+      runs: [active, ...ended],
+      next: null,
+    },
+  });
+  const output = await statusList([], { pages });
+  assert.equal(output.status, 0, output.stderr);
+  assert.equal(
+    output.stdout,
+    "Pending decisions:\n  none\nWorkflows: develop, unused\nRuns:\n" +
+      [active, ...ended].map(runLine).join(""),
   );
 });
 
@@ -167,10 +230,16 @@ for (const [options, parameters, first, last] of [
   });
 
 await test("CLV-108 all active states sort by latest event time before ended runs, with missing times last", async () => {
+  const states = [
+    "running",
+    "paused",
+    "waiting_gate",
+    "queued",
+  ] satisfies readonly RunStatus[];
   const current = Array.from({ length: 25 }, (_, index) => ({
     ...active,
     runId: `active-${String(index).padStart(3, "0")}`,
-    state: ["running", "paused", "waiting", "queued"][index % 4],
+    state: states[index % states.length],
     latestAt: new Date(Date.UTC(2026, 9, 16, 0, index)).toISOString(),
   }));
   const missing = { ...active, runId: "missing", latestAt: null };
