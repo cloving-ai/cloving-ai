@@ -84,67 +84,47 @@ function isCandidateDeclaration(value: unknown): value is CandidateDeclaration {
   );
 }
 
-function missingExports(input: WorkflowCandidateInput): boolean {
-  return input.analysis.imports.some((entry) => {
-    if (!workflowModules.includes(entry.module)) return false;
-    const names = input.installedExports[entry.module];
-    return (
-      names === undefined || entry.names.some((name) => !names.includes(name))
-    );
-  });
-}
-
-function undeclaredEffects(
-  effects: readonly CandidateEffect[],
-  declaration: CandidateDeclaration,
-): boolean {
-  return effects.some(
-    (effect) =>
-      effect.capability !== null &&
-      effect.method !== null &&
-      (!Object.hasOwn(declaration.methods, effect.capability) ||
-        !declaration.methods[effect.capability]?.includes(effect.method)),
-  );
-}
-
-function countCode(
-  analysis: CandidateAnalysis,
-  limit: number,
-): WorkflowCandidateCode | null {
-  const counts = [analysis.knownCallCount, analysis.knownUnitTotal];
-  if (counts.some((count) => !Number.isSafeInteger(count) || count < 0))
-    return "unsupported-source";
-  return counts.some((count) => count > limit) ? "effect-limit" : null;
-}
-
 export function checkWorkflowCandidate(
   input: WorkflowCandidateInput,
 ): readonly WorkflowCandidateCode[] {
   if (!isCandidateDeclaration(input.declaration))
     return ["invalid-declaration"];
+  const { analysis, declaration, installedExports } = input;
   const codes: WorkflowCandidateCode[] = [];
+  if (analysis.imports.some((entry) => !workflowModules.includes(entry.module)))
+    codes.push("forbidden-import");
   if (
-    input.analysis.imports.some(
-      (entry) => !workflowModules.includes(entry.module),
+    analysis.imports.some((entry) => {
+      if (!workflowModules.includes(entry.module)) return false;
+      const names = installedExports[entry.module];
+      return (
+        names === undefined || entry.names.some((name) => !names.includes(name))
+      );
+    })
+  )
+    codes.push("missing-export");
+  if (
+    analysis.effects.some(
+      (effect) =>
+        effect.capability !== null &&
+        effect.method !== null &&
+        (!Object.hasOwn(declaration.methods, effect.capability) ||
+          !declaration.methods[effect.capability]?.includes(effect.method)),
     )
   )
-    codes.push("forbidden-import");
-  if (missingExports(input)) codes.push("missing-export");
-  if (undeclaredEffects(input.analysis.effects, input.declaration))
     codes.push("undeclared-effect");
   if (
-    input.analysis.effects.some(
+    analysis.effects.some(
       (effect) => effect.capability === null || effect.method === null,
     )
   )
     codes.push("dynamic-effect");
-  const count = countCode(
-    input.analysis,
-    input.declaration.workflow.effectLimit,
-  );
-  if (count !== null) codes.push(count);
-  if (input.analysis.directEffects.length > 0) codes.push("direct-effect");
-  if (input.analysis.unsupportedForms.length > 0)
+  const counts = [analysis.knownCallCount, analysis.knownUnitTotal];
+  if (counts.some((count) => !Number.isSafeInteger(count) || count < 0))
     codes.push("unsupported-source");
+  else if (counts.some((count) => count > declaration.workflow.effectLimit))
+    codes.push("effect-limit");
+  if (analysis.directEffects.length > 0) codes.push("direct-effect");
+  if (analysis.unsupportedForms.length > 0) codes.push("unsupported-source");
   return [...new Set(codes)].sort();
 }
