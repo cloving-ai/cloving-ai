@@ -1,6 +1,7 @@
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { readWorkerHookPolicy } from "./worker-hook-input.ts";
+import { parseCheckTimeFactor } from "./test-execution.ts";
 import type { WorkerHookPolicy } from "./worker-hook-input.ts";
 
 export async function installWorkerHooks(
@@ -8,6 +9,8 @@ export async function installWorkerHooks(
   policy: WorkerHookPolicy,
 ): Promise<{ settings: string; command: string }> {
   const accepted = readWorkerHookPolicy(structuredClone(policy));
+  const timeout =
+    10 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
   const root = join(await realpath(dirname(directory)), basename(directory));
   const workspace = await realpath(accepted.workspace);
   const location = relative(workspace, root);
@@ -23,7 +26,7 @@ export async function installWorkerHooks(
   ]
     .map((value) => `'${value.replaceAll("'", "'\\''")}'`)
     .join(" ");
-  const hook = { type: "command", command, timeout: 10 };
+  const hook = { type: "command", command, timeout };
   const configuration = {
     hooks: {
       PreToolUse: [{ matcher: "Edit|Write|MultiEdit", hooks: [hook] }],

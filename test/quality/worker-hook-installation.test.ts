@@ -6,6 +6,29 @@ import { test } from "node:test";
 import { installWorkerHooks } from "../../quality/worker-hook-installation.ts";
 import { withFiles } from "./files-fixture.ts";
 
+async function installWithFactor(
+  directory: string,
+  factor: string | undefined,
+): Promise<{ settings: string; command: string }> {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  if (factor === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+  else process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+  try {
+    return await installWorkerHooks(
+      join(directory, "trusted hooks' settings"),
+      {
+        workspace: join(directory, "workspace"),
+        editableFiles: ["main.ts"],
+        sourceFiles: ["main.ts"],
+        compilerConfiguration: resolve("tsconfig.json"),
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+}
+
 await test("QG-15 installed hook commands prevent a local worker write before filesystem mutation", async () => {
   await withFiles(
     {
@@ -14,15 +37,7 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
     },
     async (directory) => {
       const workspace = join(directory, "workspace");
-      const installed = await installWorkerHooks(
-        join(directory, "trusted hooks' settings"),
-        {
-          workspace,
-          editableFiles: ["main.ts"],
-          sourceFiles: ["main.ts"],
-          compilerConfiguration: resolve("tsconfig.json"),
-        },
-      );
+      const installed = await installWithFactor(directory, undefined);
       const settings: unknown = JSON.parse(
         await readFile(installed.settings, "utf8"),
       );
@@ -58,6 +73,35 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
       );
     },
   );
+});
+
+await test("CLV-107 keeps installed hook limits above the scaled inner check limit", async () => {
+  for (const [factor, timeout] of [
+    [undefined, 10],
+    ["1", 10],
+    ["3", 30],
+    ["5", 50],
+  ] as const) {
+    await withFiles(
+      { "workspace/main.ts": "export const value = 1;\n" },
+      async (directory) => {
+        const installed = await installWithFactor(directory, factor);
+        const hooks = [
+          { type: "command", command: installed.command, timeout },
+        ];
+        assert.deepEqual(
+          JSON.parse(await readFile(installed.settings, "utf8")),
+          {
+            hooks: {
+              PreToolUse: [{ matcher: "Edit|Write|MultiEdit", hooks }],
+              PostToolUse: [{ matcher: "Edit|Write|MultiEdit", hooks }],
+              Stop: [{ hooks }],
+            },
+          },
+        );
+      },
+    );
+  }
 });
 
 await test("QG-09 hook installation cannot place its policy inside the worker workspace", async () => {

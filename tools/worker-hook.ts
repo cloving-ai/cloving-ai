@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { readWorkerHookInput } from "../quality/worker-hook-stdin.ts";
 import {
   traceWorkerHook,
@@ -10,6 +11,8 @@ traceWorkerHook("start");
 try {
   const policy = process.argv[2];
   if (!policy) throw new Error("missing-worker-hook-policy");
+  const timeout =
+    5000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
   const input = await readWorkerHookInput(process.stdin);
   traceWorkerHook("input:read");
   traceWorkerHook("check:start");
@@ -19,7 +22,7 @@ try {
     {
       input,
       encoding: "utf8",
-      timeout: 5000,
+      timeout,
       maxBuffer: 256 * 1024,
       stdio: ["pipe", "pipe", "pipe", 2],
       env: {
