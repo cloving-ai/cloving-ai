@@ -2,8 +2,12 @@ import { runCommand, type CheckCommand } from "./command.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
+
+export function testConcurrency(cores: number): number {
+  return Math.min(4, Math.max(2, cores - 1));
+}
 
 export function parseCheckTimeFactor(value: string | undefined): number {
   if (value === undefined) return 1;
@@ -107,7 +111,7 @@ export function testCommand(
     arguments: [
       "--test",
       `--test-reporter=${resolve(import.meta.dirname, "test-reporter.ts")}`,
-      "--test-concurrency=2",
+      `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
       ...run.tests,
     ],
     directory,
