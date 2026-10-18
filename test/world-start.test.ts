@@ -60,6 +60,29 @@ print({ types: await eventTypes(runId), world: await tagged(), dispatches: await
 await service.close();
 `;
 
+const delayedStart = `
+process.env.WORKFLOW_OPTIMISTIC_INLINE_START = "1";
+const stepWorld = await getWorld();
+const create = stepWorld.events.create.bind(stepWorld.events);
+const list = stepWorld.events.list.bind(stepWorld.events);
+let releaseStart;
+const ready = new Promise((resolve) => { releaseStart = resolve; });
+stepWorld.events.create = async (...given) => {
+  if (given[1]?.eventType === "step_started") await ready;
+  return await create(...given);
+};
+stepWorld.events.list = async (...given) => {
+  const result = await list(...given);
+  if (stepStarts() === 1) releaseStart();
+  return result;
+};
+const committedStarts = async () => {
+  const [run] = await tagged();
+  const page = await stepWorld.events.list({ runId: run.receipt, resolveData: "none", pagination: { limit: 100, sortOrder: "asc" } });
+  return page.data.filter((event) => event.eventType === "step_started").length;
+};
+`;
+
 await test("CLV-056 a run that the service admits starts one World run through the product host, and the World progress gives the started and the completed transition", () =>
   withConsumer(workflows, async (consumer) => {
     const result = await consumer.run(`${servicePrelude}
@@ -201,16 +224,18 @@ await test("CLV-056 a second recovery enqueue of a World run adds no World run",
   withConsumer(workflows, async (consumer) => {
     const first = await consumer.runUntil(
       "in-work",
-      `${servicePrelude}
+      `${servicePrelude}${delayedStart}
 writeFileSync("hold", "");
 const service = await hosted();
 const runId = await submitted("c-1");
 await until(() => stepStarts() === 1);
 let world = [];
 await until(async () => (world = await tagged()).length === 1);
-await halt("in-work", { runId, world });
+await until(async () => (await committedStarts()) === 1);
+await halt("in-work", { runId, world, committedStarts: await committedStarts() });
 `,
     );
+    assert.equal(field(first.lines[0], "committedStarts"), 1, first.stderr);
     const runId = field(first.lines[0], "runId");
     const [written] = items(field(first.lines[0], "world"));
     const receipt = field(written, "receipt");
@@ -242,6 +267,7 @@ await service.close();
 `,
       { RUN_ID: String(runId) },
     );
+    assert.equal(third.status, 0, third.stderr);
     assert.deepEqual(third.lines, [
       {
         types: completedRun,

@@ -163,6 +163,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     startedAt: text(started["startedAt"]),
     outcome: records.result === null ? "in work" : outcome,
     costUsd: priceOf(report["costUsd"]),
+    estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
     activity: records.lines
       .flatMap(activityOf)
       .map((item) =>
@@ -313,6 +314,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     outcome: stamp(record(status["outcome"])["kind"]),
     latestAt: stamp(status["latestAt"]),
     claudeCostUsd: priceOf(status["claudeCostUsd"]),
+    estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
     usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), workflowId),
     round: roundOf(list(record(value)["events"])),

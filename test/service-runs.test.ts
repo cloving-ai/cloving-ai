@@ -29,6 +29,7 @@ const initialRunDetails = {
   outcome: null,
   title: null,
   claudeCostUsd: null,
+  estimatedCostUsd: null,
   usage: {
     input_tokens: null,
     cache_read_input_tokens: null,

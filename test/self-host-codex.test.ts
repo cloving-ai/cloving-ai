@@ -20,6 +20,36 @@ const usage = {
   output_tokens: 20,
 };
 
+async function checkedWatchUsage(directory: string): Promise<void> {
+  const model = await watchedModel(join(directory, "run"));
+  const run = field(field(model, "runs"), 0);
+  const turn = field(field(run, "turns"), 0);
+  assert.deepEqual(
+    [
+      field(run, "claudeCostUsd"),
+      field(turn, "costUsd"),
+      field(turn, "outcome"),
+    ],
+    [null, null, "completed"],
+  );
+  assert.deepEqual(
+    items(field(turn, "activity")).map((item) => field(item, "text")),
+    [
+      "Bash: git status",
+      "Edit: codex-work.txt",
+      "Working.",
+      "Done.",
+      "Result of the worker (cost Price not known)",
+    ],
+  );
+  assert.deepEqual(field(run, "usage"), usage);
+  assert.deepEqual(field(turn, "usage"), usage);
+  for (const value of [run, turn])
+    assert.ok(
+      Math.abs(Number(field(value, "estimatedCostUsd")) - 0.0003) < 1e-15,
+    );
+}
+
 await test("CLV-083 start selects the Codex command for a develop-ticket worker and retains unknown cost", () =>
   withoutChildren(async () => {
     const { root, directory, runtimeDirectory, start } = await scene();
@@ -28,7 +58,15 @@ await test("CLV-083 start selects the Codex command for a develop-ticket worker 
     const daemon = await start({
       CLOVING_WORKER: "codex",
       CLOVING_CLAUDE_COMMAND: "not JSON",
-      CLOVING_CODEX_COMMAND: JSON.stringify([process.execPath, script]),
+      CLOVING_CODEX_COMMAND: JSON.stringify([
+        process.execPath,
+        script,
+        "--model",
+        "configured",
+      ]),
+      CLOVING_TOKEN_PRICES: JSON.stringify({
+        configured: { input: 2, cachedInput: 0.5, output: 8 },
+      }),
     });
     const admitted = await call(
       { runtimeDirectory },
@@ -55,29 +93,7 @@ await test("CLV-083 start selects the Codex command for a develop-ticket worker 
         )[0],
     );
     assert.match(String(field(decision, "prompt")), /Done\./);
-    const model = await watchedModel(join(directory, "run"));
-    const run = field(field(model, "runs"), 0);
-    const turn = field(field(run, "turns"), 0);
-    assert.deepEqual(
-      [
-        field(run, "claudeCostUsd"),
-        field(turn, "costUsd"),
-        field(turn, "outcome"),
-      ],
-      [null, null, "completed"],
-    );
-    assert.deepEqual(
-      items(field(turn, "activity")).map((item) => field(item, "text")),
-      [
-        "Bash: git status",
-        "Edit: codex-work.txt",
-        "Working.",
-        "Done.",
-        "Result of the worker (cost Price not known)",
-      ],
-    );
-    assert.deepEqual(field(run, "usage"), usage);
-    assert.deepEqual(field(turn, "usage"), usage);
+    await checkedWatchUsage(directory);
     assert.equal(await ended(daemon), 0);
   }));
 

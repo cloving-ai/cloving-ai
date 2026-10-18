@@ -33,6 +33,7 @@ export function sampleTurn(changes: Partial<WatchTurn> = {}): WatchTurn {
     activeAt: at("21:30:20"),
     outcome: "in work",
     costUsd: null,
+    estimatedCostUsd: null,
     activity: [],
     commits: [],
     files: [],
@@ -91,6 +92,7 @@ export function sampleRun(changes: Partial<WatchRun> = {}): WatchRun {
     outcome: null,
     latestAt: null,
     claudeCostUsd: 1.0330776000000002,
+    estimatedCostUsd: null,
     usage: {
       input_tokens: null,
       cache_read_input_tokens: null,

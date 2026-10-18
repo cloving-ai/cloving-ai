@@ -1,4 +1,5 @@
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
+import { parseTokenPrices, type TokenPrices } from "../src/token-prices.ts";
 import { execFileSync, spawn } from "node:child_process";
 import {
   copyFile,
@@ -99,6 +100,7 @@ async function profilesFile(): Promise<TurnProfiles> {
 }
 
 interface Commands {
+  readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
   readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
@@ -315,6 +317,7 @@ async function prepared(): Promise<RegisteredWorkflows> {
   return registered();
 }
 
+const tokenPrices = parseTokenPrices(process.env["CLOVING_TOKEN_PRICES"]);
 const profiles = await profilesFile();
 const worker = selectedWorker();
 const command =
@@ -327,6 +330,7 @@ const queueMilliseconds = queueInterval({ nextCommand, ticketCommand });
 const manifests = await prepared();
 await launchers(
   {
+    tokenPrices,
     worker,
     profiles,
     command,

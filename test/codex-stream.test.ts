@@ -126,6 +126,7 @@ await test("CLV-083 ignores other events, malformed JSON and unrelated item stat
     "42",
     "{}",
     '{"type":"turn.started"}',
+    '{"type":{"toString":null}}',
     '{"type":"item.updated"}',
     '{"type":"item.started","item":{"type":"agent_message","text":"partial"}}',
     completed({ type: "reasoning", text: "thinking" }),

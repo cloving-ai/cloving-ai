@@ -3,10 +3,12 @@ import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { priceOf, usageOf, type WorkerUsage } from "../worker-usage.ts";
+import { commandModel } from "../token-prices.ts";
 
 export type Worker = "claude" | "codex";
 
 export interface StreamResult {
+  readonly model: string | null;
   readonly text: string;
   readonly failed: boolean;
   readonly costUsd: number | null;
@@ -37,6 +39,7 @@ export interface RunningTurn {
 }
 
 interface Stream {
+  model: string | null;
   pending: string;
   result: StreamResult | undefined;
 }
@@ -68,6 +71,7 @@ export function streamResult(line: string): StreamResult | undefined {
     failed: field("is_error") === true,
     costUsd: priceOf(field("total_cost_usd")),
     usage: usageOf(field("usage")),
+    model: textOf(field("model")),
     sessionId: textOf(field("session_id")),
     turns: numberOf(field("num_turns")),
   };
@@ -130,10 +134,20 @@ function turnOutput(
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = createWriteStream(join(start.folder, "turn.jsonl"));
   const codex = start.worker === "codex" ? codexStream() : undefined;
-  const stream: Stream = { pending: "", result: undefined };
+  const stream: Stream = { pending: "", result: undefined, model: null };
+  const received = (lines: readonly string[]): void => {
+    for (const line of lines) {
+      const event = parsed(line);
+      const type: unknown = Reflect.get(Object(event), "type");
+      if (type === "system" || type === "result")
+        stream.model =
+          textOf(Reflect.get(Object(event), "model")) ?? stream.model;
+      stream.result = streamResult(line) ?? stream.result;
+    }
+  };
   const written = (lines: readonly string[]): void => {
     for (const line of lines) output.write(`${line}\n`);
-    stream.result = lines.map(streamResult).findLast(Boolean) ?? stream.result;
+    received(lines);
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
@@ -144,7 +158,7 @@ function turnOutput(
       written(lines.flatMap(codex.line));
       return;
     }
-    stream.result = lines.map(streamResult).findLast(Boolean) ?? stream.result;
+    received(lines);
   });
   return async (exitCode) => {
     if (codex !== undefined) {
@@ -152,9 +166,14 @@ function turnOutput(
       written([codex.result(exitCode)]);
     }
     await ended(output);
-    return codex === undefined
-      ? (streamResult(stream.pending) ?? stream.result)
-      : stream.result;
+    if (codex === undefined) received([stream.pending]);
+    const result = stream.result;
+    return result === undefined
+      ? undefined
+      : {
+          ...result,
+          model: result.model ?? stream.model ?? commandModel(start.command),
+        };
   };
 }
 

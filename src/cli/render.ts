@@ -107,7 +107,7 @@ function outcome(value: unknown): string {
 function workerLines(value: unknown): readonly string[] {
   return (Array.isArray(value) ? value : []).flatMap((turn: unknown) => [
     `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"))}`,
-    `  ${usageText(part(turn, "usage"))}`,
+    `  ${usageText(part(turn, "usage"), part(turn, "estimatedCostUsd"))}`,
   ]);
 }
 
@@ -131,7 +131,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
     `Claude cost${suffix}: ${priceText(part(run, "claudeCostUsd"))}`,
-    `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
+    `Token usage${suffix}: ${usageText(part(run, "usage"), part(run, "estimatedCostUsd"))}`,
     ...workerLines(part(run, "workerTurns")),
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,

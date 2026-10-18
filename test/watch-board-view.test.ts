@@ -99,6 +99,7 @@ function cardPage(
     runId: "run /&1",
     title: "Review the change",
     claudeCostUsd: 1.236,
+    estimatedCostUsd: null,
     usage: {
       input_tokens: null,
       cache_read_input_tokens: null,

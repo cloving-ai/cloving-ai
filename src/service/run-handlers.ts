@@ -159,6 +159,7 @@ function full(view: ShownRun & WorkerTotals): Fields {
     lastConfirmedObservation: view.lastConfirmedObservation,
     recovery: view.recovery,
     claudeCostUsd: view.claudeCostUsd,
+    estimatedCostUsd: view.estimatedCostUsd,
     usage: view.usage,
     workerTurns: view.workerTurns,
     budget: view.budget,
