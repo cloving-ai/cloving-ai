@@ -339,3 +339,26 @@ await test("CLV-103 keeps ordinary identifiers and distinct tool member names", 
     "([TOKEN]) '[TOKEN]' =[TOKEN]",
   );
 });
+
+await test("CLV-110 preserves schema and private identity metadata through redaction", () => {
+  for (const parent of [
+    {},
+    { parentUuid: null },
+    { parentUuid: "person@example.test" },
+  ]) {
+    const record: MessageRecord = {
+      ...message("person@example.test"),
+      schemaVersion: 2,
+      uuid: "ghp_SyntheticId",
+      isSidechain: true,
+      ...parent,
+    };
+    const result = redactRecord(record, settings).record;
+    assert.deepEqual(result, { ...record, text: "[EMAIL]" });
+    assert.equal(
+      Object.hasOwn(result, "parentUuid"),
+      Object.hasOwn(parent, "parentUuid"),
+    );
+    assert.equal(record.text, "person@example.test");
+  }
+});

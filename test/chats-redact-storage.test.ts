@@ -15,6 +15,7 @@ import {
   cli,
   configuredCli,
   corpus,
+  expectedRedacted,
   coverage,
   files,
   importId,
@@ -224,6 +225,71 @@ await test("CLV-103 missing corpus and empty completed imports are distinguished
         "",
       );
       await rm(join(directory, base, "corpus.jsonl"));
+      assert.equal(
+        await readFile(join(directory, base, "coverage.json"), "utf8"),
+        coverage,
+      );
+    },
+  );
+});
+
+const firstRedacted: unknown = JSON.parse(
+  expectedRedacted.split("\n")[0] ?? "",
+);
+assert.ok(
+  firstRedacted &&
+    typeof firstRedacted === "object" &&
+    "text" in firstRedacted &&
+    "blocks" in firstRedacted,
+);
+const redactedContent = {
+  text: firstRedacted.text,
+  blocks: firstRedacted.blocks,
+};
+
+await test("CLV-110 redacts mixed versions in order while leaving structure and identity private", async () => {
+  const identities = [
+    { uuid: "ghp_SyntheticId", isSidechain: true, parentUuid: null },
+    { uuid: null, isSidechain: null },
+    { uuid: "child", isSidechain: false, parentUuid: "person@example.test" },
+  ];
+  const records = [
+    record,
+    ...identities.map((identity) => ({
+      ...record,
+      schemaVersion: 2,
+      ...identity,
+    })),
+  ];
+  const input = records.map((value) => JSON.stringify(value)).join("\n") + "\n";
+  const sidecar = '{"private":"ghp_SyntheticId"}\n';
+  await withFiles(
+    {
+      ...files,
+      [`${base}/corpus.jsonl`]: input,
+      [`${base}/structure.json`]: sidecar,
+    },
+    async (directory) => {
+      const result = cli(directory, ["chats", "redact", importId]);
+      assert.equal(result.status, 0);
+      const output = (
+        await readFile(join(directory, base, "redacted.jsonl"), "utf8")
+      )
+        .trim()
+        .split("\n")
+        .map((line): unknown => JSON.parse(line));
+      assert.deepEqual(
+        output,
+        records.map((value) => ({ ...value, ...redactedContent })),
+      );
+      assert.equal(
+        await readFile(join(directory, base, "corpus.jsonl"), "utf8"),
+        input,
+      );
+      assert.equal(
+        await readFile(join(directory, base, "structure.json"), "utf8"),
+        sidecar,
+      );
       assert.equal(
         await readFile(join(directory, base, "coverage.json"), "utf8"),
         coverage,

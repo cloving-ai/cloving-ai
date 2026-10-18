@@ -13,6 +13,9 @@ const source = JSON.stringify({
 
 for (const [name, operation] of [
   ["corpus.jsonl", "close"],
+  ["structure.json", "create"],
+  ["structure.json", "write"],
+  ["structure.json", "close"],
   ["coverage.json", "write"],
   ["coverage.json", "close"],
 ] as const) {
@@ -22,6 +25,10 @@ for (const [name, operation] of [
       const handles: FileHandle[] = [];
       let injected = false;
       filesystem.open = async (path, flags) => {
+        if (basename(String(path)) === name && operation === "create") {
+          injected = true;
+          throw new Error("private-create-error");
+        }
         const handle = await original(path, flags, 0o600);
         handles.push(handle);
         if (basename(String(path)) === name) {
@@ -69,12 +76,18 @@ await test("CLV-095 opens the final manifest only after the corpus closes", asyn
   await withFiles({ source }, async (directory) => {
     const original = filesystem.open;
     let corpus: FileHandle | undefined;
+    let structure: FileHandle | undefined;
     const closed: boolean[] = [];
+    const corpusClosed: boolean[] = [];
     filesystem.open = async (path, flags) => {
       if (basename(String(path)) === "coverage.json")
-        closed.push(corpus?.fd === -1);
+        closed.push(corpus?.fd === -1 && structure?.fd === -1);
       const handle = await original(path, flags, 0o600);
       if (basename(String(path)) === "corpus.jsonl") corpus = handle;
+      if (basename(String(path)) === "structure.json") {
+        corpusClosed.push(corpus?.fd === -1);
+        structure = handle;
+      }
       return handle;
     };
     syncBuiltinESMExports();
@@ -86,6 +99,7 @@ await test("CLV-095 opens the final manifest only after the corpus closes", asyn
       });
       assert.equal(result.code, "import-complete");
       assert.deepEqual(closed, [true]);
+      assert.deepEqual(corpusClosed, [true]);
     } finally {
       filesystem.open = original;
       syncBuiltinESMExports();

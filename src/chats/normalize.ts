@@ -3,8 +3,7 @@ export interface Omissions {
   thinkingBlocks: number;
 }
 
-export interface MessageRecord {
-  readonly schemaVersion: 1;
+interface MessageFields {
   readonly sourceId: string;
   readonly role: "user" | "assistant";
   readonly timestamp: string | null;
@@ -12,6 +11,17 @@ export interface MessageRecord {
   readonly text: string;
   readonly blocks: readonly Record<string, unknown>[];
 }
+
+export type MessageRecord = MessageFields &
+  (
+    | { readonly schemaVersion: 1 }
+    | {
+        readonly schemaVersion: 2;
+        readonly uuid: string | null;
+        readonly isSidechain: boolean | null;
+        readonly parentUuid?: string | null;
+      }
+  );
 
 export interface NormalizedTranscript {
   readonly status: "included" | "unsupported";
@@ -111,6 +121,19 @@ function blocks(
   });
 }
 
+function identity(value: Record<string, unknown>) {
+  const uuid = value["uuid"];
+  const parent = value["parentUuid"];
+  const sidechain = value["isSidechain"];
+  return {
+    uuid: typeof uuid === "string" && uuid !== "" ? uuid : null,
+    isSidechain: typeof sidechain === "boolean" ? sidechain : null,
+    ...(parent === null || (typeof parent === "string" && parent !== "")
+      ? { parentUuid: parent }
+      : {}),
+  };
+}
+
 function message(
   value: unknown,
   context: { sourceId: string; omissions: Omissions },
@@ -132,7 +155,8 @@ function message(
     throw new Error("unsupported-message");
   const normalized = blocks(envelope["content"], context.omissions);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    ...identity(value),
     sourceId: context.sourceId,
     role: value["type"],
     timestamp: optionalText(value["timestamp"]),
