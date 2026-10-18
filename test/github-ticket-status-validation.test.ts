@@ -194,6 +194,67 @@ await test("CLV-123 a ticket too large for even the short notice is never requeu
   }));
 
 for (const method of ["partial-issue", "close-issue"])
+  await test(`CLV-123 ${method} preserves list-item fences and following requirements`, () =>
+    withGithub(async (scene) => {
+      const examples = [
+        "- ```text\n  example\n  ```",
+        "* ~~~~text\n  ## Cloving status\n  ~~~~",
+        "+ ```text\n  - not another container\n  ```",
+        "1. ```text\n   example\n   ```",
+        "123) ```text\n     ## Cloving status\n     ```",
+        "- Parent\n  - ```text\n    ## Cloving status\n    ```",
+        "1. Parent\n   2. ```text\n      example\n      ```",
+        "- Example\n\n  ```text\n  ## Cloving status\n  ```",
+        "-\t```text\n\texample\n\t```",
+        "-\n\n  ```text\n  example\n  ```",
+        "  -    ```text\n       example\n       ```",
+        "- Parent\n  - Child\n- ```text\n  example\n  ```",
+      ];
+      const worker = scene.worker(settings);
+      for (const example of examples) {
+        const body = `${example}\n\n## Requirements\nKeep this.\n`;
+        scene.plan({ scores: [], issues: [{ ...original, body }] });
+        const report = await scene.perform(worker, { method, payload });
+        assert.equal(
+          report.outcome,
+          "completed",
+          JSON.stringify({
+            example,
+            report,
+          }),
+        );
+        const update =
+          method === "partial-issue"
+            ? "- Pull request #7: partial. Remaining: Finish tests."
+            : "Completed in pull request #7.";
+        assert.equal(
+          scene.state().issues[0]?.["body"],
+          `${body}\n## Cloving status\n${update}\n`,
+        );
+      }
+    }));
+
+for (const method of ["partial-issue", "close-issue"])
+  await test(`CLV-123 ${method} preserves thematic breaks followed by indented code`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker(settings);
+      for (const separator of ["* * *", "- - -", "_ _ _", "***", "   -  - -"]) {
+        const body = `${separator}\n      \`\`\`text\n      Literal code.\n\n## Requirements\nKeep this.\n`;
+        scene.plan({ scores: [], issues: [{ ...original, body }] });
+        const report = await scene.perform(worker, { method, payload });
+        assert.equal(report.outcome, "completed", JSON.stringify(report));
+        const update =
+          method === "partial-issue"
+            ? "- Pull request #7: partial. Remaining: Finish tests."
+            : "Completed in pull request #7.";
+        assert.equal(
+          scene.state().issues[0]?.["body"],
+          `${body}\n## Cloving status\n${update}\n`,
+        );
+      }
+    }));
+
+for (const method of ["partial-issue", "close-issue"])
   await test(`CLV-123 ${method} refuses an unclosed fence without hiding status or duplicating a retry`, () =>
     withGithub(async (scene) => {
       const issue = { ...original, body: "Example:\n```text\nExample content" };

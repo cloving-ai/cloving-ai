@@ -67,27 +67,58 @@ function openingFence(line: string): string | undefined {
   return delimiter;
 }
 
+function expandTabs(line: string): string {
+  let expanded = "";
+  for (const character of line)
+    expanded +=
+      character === "\t" ? " ".repeat(4 - (expanded.length % 4)) : character;
+  return expanded;
+}
+
+function listContent(line: string, indents: number[]): string {
+  const indentation = line.length - line.trimStart().length;
+  while (line !== "" && (indents.at(-1) ?? 0) > indentation) indents.pop();
+  let offset = indents.at(-1) ?? 0;
+  let content = line.slice(offset);
+  let marker;
+  while (
+    !/^ {0,3}([-*_])(?: *\1){2,} *$/.test(content) &&
+    (marker = /^ {0,3}(?:[-+*]|\d{1,9}[.)])( {1,4}(?=\S)| |$)/.exec(
+      content,
+    )) !== null
+  ) {
+    offset += marker[0].length + (marker[1] === "" ? 1 : 0);
+    indents.push(offset);
+    content = content.slice(marker[0].length);
+  }
+  return content;
+}
+
 function markdownHeadings(body: string): readonly {
   readonly index: number;
   readonly end: number;
   readonly text: string;
 }[] {
   const headings = [];
+  const indents: number[] = [];
   let fence: string | undefined;
+  let fenceIndent = 0;
   for (const match of body.matchAll(/[^\n]*(?:\n|$)/g)) {
-    const line = match[0].trimEnd();
+    const source = expandTabs(match[0].trimEnd());
     if (fence !== undefined) {
       if (
         new RegExp(
-          `^ {0,3}${fence.charAt(0)}{${String(fence.length)},}[ \\t]*$`,
-        ).test(line)
+          `^ {${String(fenceIndent)},${String(fenceIndent + 3)}}${fence.charAt(0)}{${String(fence.length)},}[ \\t]*$`,
+        ).test(source)
       )
         fence = undefined;
       continue;
     }
+    const line = listContent(source, indents);
     fence = openingFence(line);
+    fenceIndent = indents.at(-1) ?? 0;
     if (fence !== undefined) continue;
-    if (/^ {0,3}#{1,2} /.test(line))
+    if (indents.length === 0 && /^ {0,3}#{1,2} /.test(line))
       headings.push({
         index: match.index,
         end: match.index + match[0].length,
