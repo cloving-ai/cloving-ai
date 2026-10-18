@@ -9,6 +9,8 @@
     "test/watch-style-fixture.ts": "test",
     "test/watch-style.test.ts": "test",
     "src/chats/normalize.ts": "pure",
+    "src/chats/structure.ts": "pure",
+    "test/chats-structure.test.ts": "test",
     "src/chats/reader.ts": "cli",
     "src/chats/destination.ts": "cli",
     "src/chats/import.ts": "cli",

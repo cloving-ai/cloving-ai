@@ -63,7 +63,7 @@ await test("CLV-095 creates separate private imports and keeps source bytes unch
     ]) {
       assert.equal((await stat(join(directory, path))).mode & 0o777, 0o700);
     }
-    for (const name of ["corpus.jsonl", "coverage.json"])
+    for (const name of ["corpus.jsonl", "structure.json", "coverage.json"])
       assert.equal(
         (await stat(join(chats, first.importId, name))).mode & 0o777,
         0o600,

@@ -55,7 +55,9 @@ const expected = {
   omissions: { metadataRecords: 1, thinkingBlocks: 1 },
   records: [
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      uuid: null,
+      isSidechain: null,
       sourceId: `sha256:digest:${String(offset([first]))}`,
       role: "user",
       timestamp: "2026-10-16T00:00:00Z",
@@ -64,7 +66,9 @@ const expected = {
       blocks: [{ position: 0, type: "text", text: "café 🐈" }],
     },
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      uuid: null,
+      isSidechain: null,
       sourceId: `sha256:digest:${String(offset([first, second]))}`,
       role: "assistant",
       timestamp: null,
@@ -83,7 +87,9 @@ const expected = {
       ],
     },
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      uuid: null,
+      isSidechain: null,
       sourceId: `sha256:digest:${String(offset([first, second, third]))}`,
       role: "user",
       timestamp: null,
@@ -207,5 +213,46 @@ for (const number of [
     const serialized = JSON.stringify(result.records);
     assert.ok(serialized.includes(`"input":{"value":${number}}`));
     assert.ok(serialized.includes(`"content":{"value":${number}}`));
+  });
+}
+
+for (const fields of [
+  { uuid: " exact ID ", parentUuid: null, isSidechain: true },
+  { uuid: "A", parentUuid: " parent ", isSidechain: false },
+  {},
+  { uuid: "", parentUuid: "", isSidechain: "true" },
+  { uuid: 3, parentUuid: false, isSidechain: 0 },
+  { uuid: null, parentUuid: [], isSidechain: null },
+]) {
+  await test("CLV-110 preserves only valid envelope identity without API ID fallback", () => {
+    const result = normalizeTranscript(
+      JSON.stringify({
+        type: "user",
+        ...fields,
+        message: { id: "never-use", role: "user", content: "synthetic" },
+      }),
+      "sha256:digest",
+    );
+    const record = result.records[0];
+    assert.ok(record);
+    assert.equal(record.schemaVersion, 2);
+    assert.equal(
+      "uuid" in record && record.uuid,
+      typeof fields.uuid === "string" && fields.uuid !== ""
+        ? fields.uuid
+        : null,
+    );
+    assert.equal(
+      "isSidechain" in record && record.isSidechain,
+      typeof fields.isSidechain === "boolean" ? fields.isSidechain : null,
+    );
+    const known =
+      fields.parentUuid === null ||
+      (typeof fields.parentUuid === "string" && fields.parentUuid !== "");
+    assert.equal(Object.hasOwn(record, "parentUuid"), known);
+    assert.equal(
+      "parentUuid" in record ? record.parentUuid : undefined,
+      known ? fields.parentUuid : undefined,
+    );
   });
 }

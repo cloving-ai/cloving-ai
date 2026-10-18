@@ -98,6 +98,14 @@ await test("CLV-095 transcript instructions cause no process, extra source read,
             constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
         },
         {
+          path: join(output, "structure.json"),
+          flags:
+            constants.O_WRONLY |
+            constants.O_CREAT |
+            constants.O_EXCL |
+            0x20000000,
+        },
+        {
           path: join(output, "coverage.json"),
           flags:
             constants.O_WRONLY |

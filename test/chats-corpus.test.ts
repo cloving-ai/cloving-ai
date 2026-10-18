@@ -136,3 +136,35 @@ await test("CLV-103 validates partial coverage without reopening or requiring it
     validateCoverage("null", importId);
   }, /invalid-import/);
 });
+
+for (const identity of [
+  { uuid: " exact ID ", isSidechain: true, parentUuid: null },
+  { uuid: "A", isSidechain: false, parentUuid: " parent " },
+  { uuid: null, isSidechain: null },
+]) {
+  await test("CLV-110 accepts version 2 with exact identity and optional parent presence", () => {
+    const value = { ...record, schemaVersion: 2, ...identity };
+    const text = JSON.stringify(value);
+    assert.equal(JSON.stringify(parseCorpus(text)[0]), text);
+  });
+}
+
+const version2 = { ...record, schemaVersion: 2, uuid: "A", isSidechain: null };
+for (const value of [
+  { ...record, uuid: "A", isSidechain: null },
+  { ...record, parentUuid: null },
+  { ...record, schemaVersion: 3 },
+  { ...version2, uuid: "" },
+  { ...version2, uuid: 3 },
+  { ...version2, isSidechain: "true" },
+  { ...version2, parentUuid: "" },
+  { ...version2, parentUuid: false },
+  { ...version2, parentUuid: [] },
+  { ...version2, unexpected: "private" },
+  { ...record, schemaVersion: 2, uuid: "A" },
+  { ...record, schemaVersion: 2, isSidechain: null },
+]) {
+  await test("CLV-110 refuses malformed identity and version-specific field sets", () => {
+    assert.throws(() => parseCorpus(JSON.stringify(value)), /invalid-import/);
+  });
+}

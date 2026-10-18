@@ -57,20 +57,43 @@ function toolResult(value: Record<string, unknown>): boolean {
   );
 }
 
+function identityFields(value: Record<string, unknown>): boolean {
+  return (
+    (value["uuid"] === null ||
+      (typeof value["uuid"] === "string" && value["uuid"] !== "")) &&
+    (value["isSidechain"] === null ||
+      typeof value["isSidechain"] === "boolean") &&
+    (!Object.hasOwn(value, "parentUuid") ||
+      value["parentUuid"] === null ||
+      (typeof value["parentUuid"] === "string" && value["parentUuid"] !== ""))
+  );
+}
+
+function versionFields(value: Record<string, unknown>): boolean {
+  const required = [
+    "schemaVersion",
+    "sourceId",
+    "role",
+    "timestamp",
+    "sessionId",
+    "text",
+    "blocks",
+  ];
+  const version = value["schemaVersion"];
+  if (version !== 1 && version !== 2) return false;
+  const fields =
+    version === 1
+      ? { required }
+      : {
+          required: [...required, "uuid", "isSidechain"],
+          optional: ["parentUuid"],
+        };
+  return keys(value, fields) && (version === 1 || identityFields(value));
+}
+
 function messageFields(value: Record<string, unknown>): boolean {
   return (
-    keys(value, {
-      required: [
-        "schemaVersion",
-        "sourceId",
-        "role",
-        "timestamp",
-        "sessionId",
-        "text",
-        "blocks",
-      ],
-    }) &&
-    value["schemaVersion"] === 1 &&
+    versionFields(value) &&
     typeof value["sourceId"] === "string" &&
     value["sourceId"] !== "" &&
     ["user", "assistant"].includes(String(value["role"])) &&
