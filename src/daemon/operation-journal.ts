@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AdapterOutcome,
@@ -63,11 +63,20 @@ export async function readRecord(
 
 export async function writeRecord(
   folder: string,
-  record: { readonly name: string; readonly value: unknown },
+  record: {
+    readonly name: string;
+    readonly value: unknown;
+    readonly permissions?: "private";
+  },
 ): Promise<void> {
   const path = join(folder, record.name);
   await mkdir(folder, { recursive: true });
-  await writeFile(`${path}.staged`, JSON.stringify(record.value, null, 2));
+  if (record.permissions === "private") await chmod(folder, 0o700);
+  await writeFile(
+    `${path}.staged`,
+    JSON.stringify(record.value, null, 2),
+    record.permissions === "private" ? { mode: 0o600 } : {},
+  );
   await rename(`${path}.staged`, path);
 }
 

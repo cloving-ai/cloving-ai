@@ -1,4 +1,6 @@
 import { join } from "node:path";
+import { analysisWorker } from "./analysis-worker.ts";
+import { analysisMethod } from "./analysis-launch.ts";
 import {
   estimatedCostUsd,
   priceForModel,
@@ -340,11 +342,38 @@ async function stopped(
 export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   if (settings.command.length === 0) throw new Error("invalid-claude-command");
   const parts: Parts = { settings, active: new Map() };
+  const analysis = analysisWorker(settings);
+  const guarded = async (
+    intent: DeliveryIntent,
+    run: () => ReturnType<ClaudeWorker["deliver"]>,
+  ) => {
+    if (
+      !turnIntent(intent) ||
+      Object.hasOwn(settings.profiles ?? {}, "analyze-chats") ||
+      (await runWorkflow(settings, intent.runId)) !== "analyze-chats"
+    )
+      return failure("analysis-worker-unavailable");
+    return run();
+  };
   return {
-    deliver: (intent, signal) => delivered(parts, { intent, signal }),
-    reconcile: (intent) => reconciled(parts, intent),
-    stop: (intent) => stopped(parts, intent),
+    deliver: (intent, signal) =>
+      intent.method === analysisMethod
+        ? guarded(intent, () => analysis.deliver(intent, signal))
+        : delivered(parts, { intent, signal }),
+    reconcile: async (intent, signal) => {
+      if (intent.method !== analysisMethod) return reconciled(parts, intent);
+      const result = await guarded(intent, () =>
+        analysis.reconcile(intent, signal),
+      );
+      return "kind" in result ? result : { kind: "accepted", ...result };
+    },
+    stop: async (intent, signal) => {
+      if (intent.method !== analysisMethod) return stopped(parts, intent);
+      const result = await guarded(intent, () => analysis.stop(intent, signal));
+      return "kind" in result ? result : { kind: "accepted", ...result };
+    },
     close: async () => {
+      await analysis.close();
       await Promise.all(
         [...parts.active.values()].map((active) => halted(parts, active)),
       );

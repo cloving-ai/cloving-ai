@@ -98,17 +98,18 @@ const hosted = async (overrides = {}) => {
     runs: taggedRuns,
     input: (runId) => ports.input(runId),
     document: (digest) => ports.document(digest),
-    workflow: async (runId) => workflows[await ports.workflowId(runId)],
+    workflow: async (runId) => overrides.workflow ?? workflows[await ports.workflowId(runId)],
     cancel: cancelled,
   });
   const runs = (overrides.wrap ?? recording)(product);
-  const routed = (name) => (intent, signal) => (intent.kind === "protected-effect" ? destination : runs)[name](intent, signal);
+  const routed = (name) => (intent, signal) => (intent.kind === "protected-effect" ? (overrides.destination ?? destination) : runs)[name](intent, signal);
   const delivery = { deliver: routed("deliver"), reconcile: routed("reconcile"), stop: runs.stop };
   const opening = await startService({
     stateDirectory,
     runtimeDirectory,
-    workflows: [{ ...fakeRegistration([]), effectLimit: Number(process.env.EFFECT_LIMIT ?? "5") }],
+    workflows: overrides.registrations ?? [{ ...fakeRegistration([]), effectLimit: Number(process.env.EFFECT_LIMIT ?? "5") }],
     delivery,
+    effects: overrides.effects,
     timing: testTiming,
     host: async (given) => {
       ports = given;

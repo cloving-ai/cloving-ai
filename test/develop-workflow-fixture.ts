@@ -36,7 +36,7 @@ for (const given of cases) {
     effect: async (request) => {
       requests.push(["effect", request]);
       if (given.effectLimit !== undefined) {
-        const allowed = authorizeEffect({ capabilities: ["claude", "github"] }, {
+        const allowed = authorizeEffect({ capabilities: ["claude", "github", "chats"] }, {
           budget: { limit: given.effectLimit, spent }, request,
         });
         if (allowed.kind === "rejected") return { kind: "refused", reason: allowed.reason };
@@ -46,7 +46,8 @@ for (const given of cases) {
     },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
   };
-  const develop = given.workflow === "develop-prd" ? developPrd : developTicket;
+  const workflows = { "develop-prd": developPrd, "develop-ticket": developTicket };
+  const develop = given.workflow === "analyze-chats" ? (await import(${located("workflows/analyze-chats.ts")})).analyzeChats : workflows[given.workflow] ?? developTicket;
   const outcome = await develop(given.input, given.decision);
   process.stdout.write(JSON.stringify({ outcome, requests, ...(given.effectLimit === undefined ? {} : { spent }) }) + "\\n");
 }
