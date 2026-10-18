@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { socketAddress } from "../broker/socket-address.ts";
 import {
   parseReplyLine,
+  record,
   requestLine,
   type Fields,
   type Reply,
@@ -118,6 +119,43 @@ export function send(
   request: ServiceRequest,
 ): Promise<Reply> {
   return exchange({ runtimeDirectory, request, onEvent: unobserved });
+}
+
+function listedRuns(result: Fields): Fields[] {
+  const runs = result["runs"];
+  return Array.isArray(runs)
+    ? runs.map(record).filter((run) => run !== undefined)
+    : [];
+}
+
+export async function listRuns(runtimeDirectory: string): Promise<Reply> {
+  const first = await send(runtimeDirectory, {
+    operation: "status",
+    parameters: { limit: 500 },
+  });
+  if (first.kind === "error") return first;
+  const runs = listedRuns(first.result);
+  let next = first.result["next"];
+  let after = "";
+  while (typeof next === "string") {
+    if (next <= after)
+      return {
+        kind: "error",
+        error: {
+          code: "invalid-run-page",
+          detail: "The run-list cursor did not advance.",
+        },
+      };
+    after = next;
+    const page = await send(runtimeDirectory, {
+      operation: "status",
+      parameters: { limit: 500, after },
+    });
+    if (page.kind === "error") return page;
+    runs.push(...listedRuns(page.result));
+    next = page.result["next"];
+  }
+  return { kind: "result", result: { ...first.result, runs, next: null } };
 }
 
 export function mutate(
