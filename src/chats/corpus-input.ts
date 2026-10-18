@@ -93,14 +93,16 @@ function message(value: unknown): value is MessageRecord {
   return true;
 }
 
+export function parseCorpusRecord(line: string): MessageRecord {
+  const value = parsePreservedJson(line);
+  if (!message(value)) throw new Error("invalid-import");
+  return value;
+}
+
 export function parseCorpus(text: string): readonly MessageRecord[] {
   const lines = text.split("\n");
   if (lines.at(-1) === "") lines.pop();
-  return lines.map((line) => {
-    const value = parsePreservedJson(line);
-    if (!message(value)) throw new Error("invalid-import");
-    return value;
-  });
+  return lines.map(parseCorpusRecord);
 }
 
 function coverageFile(value: unknown): boolean {

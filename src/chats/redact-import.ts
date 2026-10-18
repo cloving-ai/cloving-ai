@@ -1,9 +1,8 @@
 import { constants } from "node:fs";
-import { lstat, open, rm } from "node:fs/promises";
+import { lstat, open, rm, type FileHandle } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createPrivateFile, validateDestination } from "./destination.ts";
-import { parseCorpus, validateCoverage } from "./corpus-input.ts";
-import type { MessageRecord } from "./normalize.ts";
+import { parseCorpusRecord, validateCoverage } from "./corpus-input.ts";
 import {
   emptyCounts,
   redactRecord,
@@ -18,7 +17,7 @@ export interface RedactImportRequest {
   readonly settings: RedactionSettings;
 }
 
-async function readInput(path: string): Promise<string> {
+async function openInput(path: string): Promise<FileHandle> {
   const before = await lstat(path);
   if (!before.isFile() || before.nlink !== 1) throw new Error("invalid-import");
   const handle = await open(
@@ -34,6 +33,16 @@ async function readInput(path: string): Promise<string> {
       opened.ino !== before.ino
     )
       throw new Error("invalid-import");
+    return handle;
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function readInput(path: string): Promise<string> {
+  const handle = await openInput(path);
+  try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
       await handle.readFile(),
     );
@@ -53,26 +62,74 @@ async function absent(path: string): Promise<void> {
   throw new Error("outputs-exist");
 }
 
-function redactCorpus(
-  records: readonly MessageRecord[],
+async function* corpusLines(handle: FileHandle): AsyncGenerator<string> {
+  const buffer = Buffer.alloc(65_536);
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  let pending = "";
+  let bytesRead = -1;
+  while (bytesRead !== 0) {
+    ({ bytesRead } = await handle.read({ buffer, position: null }));
+    pending += decoder.decode(buffer.subarray(0, bytesRead), {
+      stream: bytesRead !== 0,
+    });
+    let start = 0;
+    let end = pending.indexOf("\n");
+    while (end !== -1) {
+      yield pending.slice(start, end);
+      start = end + 1;
+      end = pending.indexOf("\n", start);
+    }
+    pending = pending.slice(start);
+  }
+  if (pending !== "") yield pending;
+}
+
+async function redactCorpus(
+  handles: { readonly input: FileHandle; readonly output: FileHandle },
   settings: RedactionSettings,
 ) {
   const counts = emptyCounts();
-  const lines: string[] = [];
-  for (const record of records) {
-    const result = redactRecord(record, settings);
+  let recordCount = 0;
+  for await (const line of corpusLines(handles.input)) {
+    const result = redactRecord(parseCorpusRecord(line), settings);
     for (const category of categories)
       counts[category] += result.counts[category];
-    lines.push(JSON.stringify(result.record) + "\n");
+    await handles.output.writeFile(JSON.stringify(result.record) + "\n");
+    recordCount++;
   }
   return {
-    text: lines.join(""),
-    summary: {
-      counts,
-      recordCount: records.length,
-      totalCount: Object.values(counts).reduce((sum, count) => sum + count, 0),
-    },
+    counts,
+    recordCount,
+    totalCount: Object.values(counts).reduce((sum, count) => sum + count, 0),
   };
+}
+
+async function writeRedactedCorpus(
+  directory: string,
+  settings: RedactionSettings,
+) {
+  const path = join(directory, "redacted.jsonl");
+  let created = false;
+  try {
+    const input = await openInput(join(directory, "corpus.jsonl"));
+    try {
+      const output = await createPrivateFile(path);
+      created = true;
+      try {
+        return await redactCorpus({ input, output }, settings);
+      } finally {
+        await output.close();
+      }
+    } finally {
+      await input.close();
+    }
+  } catch (error) {
+    if (created) {
+      await validateDestination(directory);
+      await rm(path, { force: true });
+    }
+    throw error;
+  }
 }
 
 async function writeManifest(
@@ -130,17 +187,7 @@ export async function redactImport(request: RedactImportRequest) {
       await readInput(join(directory, "coverage.json")),
       request.importId,
     );
-    const result = redactCorpus(
-      parseCorpus(await readInput(join(directory, "corpus.jsonl"))),
-      request.settings,
-    );
-    const handle = await createPrivateFile(join(directory, "redacted.jsonl"));
-    try {
-      await handle.writeFile(result.text);
-    } finally {
-      await handle.close();
-    }
-    const { summary } = result;
+    const summary = await writeRedactedCorpus(directory, request.settings);
     await writeManifest(directory, {
       schemaVersion: 1,
       importId: request.importId,

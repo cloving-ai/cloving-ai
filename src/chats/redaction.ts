@@ -90,7 +90,7 @@ function spans(text: string, settings: RedactionSettings): Span[] {
     },
     {
       pattern:
-        /(?:gh[pousr]_|github_pat_|sk-ant-|sk-(?:proj-|svcacct-)?)[a-z\d_-]+/gi,
+        /(?<![\p{L}\p{N}_])(?:gh[pousr]_|github_pat_|sk-ant-|sk-(?:proj-|svcacct-)?)[a-z\d_-]+/giu,
       category: "token",
     },
     {
@@ -99,7 +99,7 @@ function spans(text: string, settings: RedactionSettings): Span[] {
     },
   ] as const;
   const matches = rules.flatMap((rule) => patternSpans(text, rule));
-  matches.push(...homeSpans(text, settings.home));
+  for (const match of homeSpans(text, settings.home)) matches.push(match);
   for (const privateText of settings.privateTexts) {
     if (privateText.trim() === "") throw new Error("invalid-settings");
     const pattern = new RegExp(`(?=(${escaped(privateText)}))`, "gi");

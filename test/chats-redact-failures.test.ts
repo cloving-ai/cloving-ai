@@ -40,6 +40,9 @@ function injectFailure(
     };
   } else if (operation === "read") {
     handle.readFile = () => Promise.reject(new Error("private-error-sentinel"));
+    Object.defineProperty(handle, "read", {
+      value: () => Promise.reject(new Error("private-error-sentinel")),
+    });
   } else {
     const close = handle.close.bind(handle);
     handle.close = async () => {

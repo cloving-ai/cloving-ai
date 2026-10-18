@@ -261,6 +261,14 @@ await test("CLV-103 merges overlapping occurrences of the same literal text", ()
   );
 });
 
+await test("CLV-103 redacts a large path listing without an argument limit", () => {
+  const count = 200_000;
+  const result = redactRecord(message("~/x ".repeat(count)), settings);
+  assert.equal(result.record.text, "[HOME_PATH] ".repeat(count));
+  assert.equal(result.counts.homePath, count);
+  assert.equal(result.totalCount, count);
+});
+
 await test("CLV-103 redacts complete credential URLs with RFC user-information punctuation", () => {
   const text = "https://user;name:p%40ss@example.test/path?q=x#f";
   assert.equal(
@@ -303,4 +311,31 @@ await test("CLV-103 a root home folder never creates empty matches in benign tex
   });
   assert.equal(result.record.text, "  ordinary  words [HOME_PATH]");
   assert.equal(result.counts.homePath, 1);
+});
+
+await test("CLV-103 keeps ordinary identifiers and distinct tool member names", () => {
+  const text = "task-123 disk-photo ask-proj-example xghp_example _sk-example";
+  assert.equal(redactRecord(message(text), settings).record.text, text);
+  const record = message(text, [
+    { position: 0, type: "text", text },
+    {
+      position: 1,
+      type: "tool_use",
+      id: "call",
+      name: "tool",
+      input: { "task-1": text, "task-2": "disk-photo" },
+    },
+  ]);
+  const result = redactRecord(record, settings);
+  assert.equal(result.record.text, text);
+  assert.deepEqual(result.record, record);
+  assert.equal(result.counts.token, 0);
+  assert.equal(result.totalCount, 0);
+  assert.equal(
+    redactRecord(
+      message("(sk-Synthetic) 'ghp_Synthetic' =github_pat_Synthetic"),
+      settings,
+    ).record.text,
+    "([TOKEN]) '[TOKEN]' =[TOKEN]",
+  );
 });

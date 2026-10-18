@@ -704,6 +704,7 @@
     "src/chats/redaction.ts": "pure",
     "src/chats/corpus-input.ts": "pure",
     "src/chats/redact-import.ts": "cli",
+    "test/chats-redact-streaming.test.ts": "test",
     "test/chats-redaction.test.ts": "test",
     "test/chats-redact.test.ts": "test",
     "test/chats-redact-storage.test.ts": "test",
