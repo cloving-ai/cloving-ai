@@ -691,6 +691,7 @@
     "test/self-update-git-fixture.ts": "test",
     "test/self-update-git.test.ts": "test",
     "test/self-update-host.test.ts": "test",
+    "test/self-update-lock.test.ts": "test",
     "test/self-update.test.ts": "test",
     "test/self-host-processes.test.ts": "test",
     "test/self-host-processes-fixture.ts": "test",

@@ -124,3 +124,57 @@ await test("CLV-085 a lock change asks for manual update once and disables check
     assert.equal(await selfUpdater(fixture.settings).check(), 75);
   });
 });
+
+await test("CLV-109 a root-only lock change fast-forwards and requests restart", async () => {
+  await withUpdate(async (fixture) => {
+    fixture.failures.set(lockCommand, new Error("lock changed"));
+    const installed = { "node_modules/example": { version: "1.0.0" } };
+    fixture.replies["show old:package-lock.json"] = JSON.stringify({
+      version: "1.0.0",
+      packages: { "": { version: "1.0.0" }, ...installed },
+    });
+    fixture.replies["show target:package-lock.json"] = JSON.stringify({
+      version: "1.0.1",
+      packages: { "": { version: "1.0.1" }, ...installed },
+    });
+    assert.equal(await fixture.updater.check(), 75);
+    assert.deepEqual(fixture.errors, []);
+    assert.deepEqual(fixture.actions.slice(-8), [
+      "show old:package-lock.json",
+      "show target:package-lock.json",
+      "stop",
+      statusCommand,
+      "ls-files -v",
+      "symbolic-ref HEAD",
+      "rev-parse HEAD",
+      mergeCommand,
+    ]);
+  });
+});
+
+await test("CLV-109 an installed-package change disables updates without stopping", async () => {
+  await withUpdate(async (fixture) => {
+    fixture.failures.set(lockCommand, new Error("lock changed"));
+    fixture.replies["show old:package-lock.json"] = JSON.stringify({
+      packages: { "node_modules/example": { version: "1.0.0" } },
+    });
+    fixture.replies["show target:package-lock.json"] = JSON.stringify({
+      packages: { "node_modules/example": { version: "2.0.0" } },
+    });
+    assert.equal(await fixture.updater.check(), undefined);
+    assert.deepEqual(fixture.errors, [
+      "Self-update disabled: package-lock.json changed; update and install by hand.\n",
+    ]);
+    assert.deepEqual(fixture.actions.slice(-3), [
+      lockCommand,
+      "show old:package-lock.json",
+      "show target:package-lock.json",
+    ]);
+    assert.equal(fixture.actions.includes("stop"), false);
+    assert.equal(fixture.actions.includes(mergeCommand), false);
+    const actions = [...fixture.actions];
+    assert.equal(await fixture.updater.check(), undefined);
+    assert.deepEqual(fixture.actions, actions);
+    assert.equal(fixture.errors.length, 1);
+  });
+});
