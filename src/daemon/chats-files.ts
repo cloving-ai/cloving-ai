@@ -123,16 +123,14 @@ export async function inspectAnalysisFiles(
     if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
     throw error;
   });
-  if (marker !== undefined) {
-    if (
-      marker !== output.analysis ||
-      (await boundedAnalysisFile(proposal, { permissions: 0o600 })) !==
-        output.proposal
-    )
-      throw new Error("analysis-output-failed");
-    return "complete";
-  }
-  return "absent";
+  if (marker === undefined) return "absent";
+  if (
+    marker !== output.analysis ||
+    (await boundedAnalysisFile(proposal, { permissions: 0o600 })) !==
+      output.proposal
+  )
+    throw new Error("analysis-output-failed");
+  return "complete";
 }
 
 export async function saveAnalysisFiles(

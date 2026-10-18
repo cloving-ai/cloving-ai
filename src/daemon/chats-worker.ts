@@ -11,6 +11,7 @@ import {
   analysisModelInput,
   isAnalysisSnapshot,
   validAnalysisImportId,
+  type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { analysisProposal } from "../chats/analysis-proposal.ts";
 import { operationKey } from "./operation-journal.ts";
@@ -35,7 +36,18 @@ export interface ChatsWorker extends EffectDelivery {
   readonly close: () => Promise<void>;
 }
 
-function completed(intent: DeliveryIntent, result: unknown): AdapterOutcome {
+type ChatsResult =
+  | { readonly snapshot: AnalysisSnapshot }
+  | {
+      readonly kind: "handoff_requested";
+      readonly cycleId: string;
+      readonly promotionId: string;
+    };
+
+function completed(
+  intent: DeliveryIntent,
+  result: ChatsResult,
+): AdapterOutcome {
   return {
     kind: "completed",
     worker: "chats",

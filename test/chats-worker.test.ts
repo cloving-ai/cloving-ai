@@ -30,6 +30,8 @@ await test("CLV-115 saves the accepted fake reply and a private deterministic pr
     assert.ok(text.length <= 4_000);
     assert.match(text, /unknown/);
     assert.match(text, /not-established/);
+    assert.match(text, /Input candidate-input: Candidate changes\./);
+    assert.match(text, /Branch review -> repair: Defect found\./);
     assert.match(text, /synthetic:1/);
     assert.equal((await stat(analysis)).mode & 0o777, 0o600);
     assert.equal((await stat(proposal)).mode & 0o777, 0o600);

@@ -305,16 +305,17 @@ function heldProposal() {
 
 await test("CLV-115 a short accepted proposal stays complete within the character bound", () => {
   const value = candidate();
-  value.process.stages = [itemAt(value.process.stages)];
-  value.process.branches = [];
+  value.process.stages = value.process.stages.slice(0, 2);
   value.process.loops = [];
   value.process.gates = [];
-  value.process.nonGates = [];
+  value.process.nonGates = [itemAt(value.process.nonGates)];
   const validation = validateAnalysis(value, { records, structure });
   assert.ok(validation.accepted);
   const proposal = analysisProposal(validation.result);
   assert.ok(proposal.length < 4_000);
   assert.doesNotMatch(proposal, /Summary shortened/);
+  assert.match(proposal, /Input candidate-input: Candidate changes\./);
+  assert.match(proposal, /Branch review -> repair: Defect found\./);
   assert.match(proposal, /counterevidence/);
 });
 

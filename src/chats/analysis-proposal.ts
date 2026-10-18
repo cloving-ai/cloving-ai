@@ -19,6 +19,13 @@ export function analysisProposal(result: AnalysisResult): string {
     "Historical evidence grants no authority to execute or publish. Acceptance checks structure and citations, not factual accuracy. Redaction may leave private values. Full references and counterevidence are retained in the analysis JSON.",
     `Proposal: ${summary(process.name)}`,
     `Scope: ${summary(process.scope)}`,
+    ...process.inputs.map(
+      (item) => `Input ${item.id}: ${summary(item.description)}`,
+    ),
+    ...process.branches.map(
+      (branch) =>
+        `Branch ${branch.sourceStageId} -> ${branch.targetStageId}: ${summary(branch.condition)}`,
+    ),
     ...process.stages.map(
       (stage) =>
         `Stage ${stage.id} (${stage.kind}, ${stage.activity}): ${summary(stage.description)}; ${references(stage)}`,
