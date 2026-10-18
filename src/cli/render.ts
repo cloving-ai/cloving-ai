@@ -152,6 +152,14 @@ export function runStatus(result: Fields): readonly string[] {
     `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
     `Outcome: ${outcome(part(run, "outcome"))}`,
+    ...(typeof part(part(run, "outcome"), "ticketStatus") === "string"
+      ? [
+          `Ticket status: ${visible(part(part(run, "outcome"), "ticketStatus"))}`,
+        ]
+      : []),
+    ...(part(part(run, "outcome"), "issueUpdate") === "failed"
+      ? ["Issue status update failed; check the GitHub operation."]
+      : []),
     `Condition: ${show(part(run, "condition"))}`,
     `Reason: ${show(part(reason, "code"))}: ${show(part(reason, "detail"))}`,
     `Revision: ${show(part(run, "revision"))}, latest sequence ${show(part(run, "latestSequence"))}`,

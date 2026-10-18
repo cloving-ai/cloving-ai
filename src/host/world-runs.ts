@@ -1,3 +1,4 @@
+import { isTicketStatus } from "../ticket-status.ts";
 import { getRun } from "workflow/api";
 import { getWorld } from "workflow/runtime";
 import type { WorldRun } from "../authority/reconciliation.ts";
@@ -62,7 +63,14 @@ export async function workflowOutcome(
   const kind: unknown = Reflect.get(Object(value), "kind");
   if (typeof kind !== "string") return undefined;
   const reason: unknown = Reflect.get(Object(value), "reason");
-  return { kind, ...(typeof reason === "string" ? { reason } : {}) };
+  const issueUpdate: unknown = Reflect.get(Object(value), "issueUpdate");
+  const ticketStatus: unknown = Reflect.get(Object(value), "ticketStatus");
+  return {
+    kind,
+    ...(typeof reason === "string" ? { reason } : {}),
+    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
+    ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
+  };
 }
 
 export async function cancelled(receipt: string): Promise<string> {

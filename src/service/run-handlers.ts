@@ -182,7 +182,15 @@ async function outcomeOf(
   });
   const kind = event?.payload["outcome"];
   if (kind === undefined) return null;
-  return { kind, reason: event?.payload["outcomeReason"] ?? null };
+  const ticketStatus = event?.payload["ticketStatus"];
+  return {
+    kind,
+    reason: event?.payload["outcomeReason"] ?? null,
+    ...(ticketStatus === undefined ? {} : { ticketStatus }),
+    ...(event?.payload["issueUpdate"] === "failed"
+      ? { issueUpdate: "failed" }
+      : {}),
+  };
 }
 
 function titleOf(input: Fields | undefined, workflowId: string): string | null {

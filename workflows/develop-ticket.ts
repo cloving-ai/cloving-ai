@@ -62,7 +62,7 @@ function instructions(repository: string): string {
     "Use test-driven development: write a test that fails, see it fail, then write the code.",
     "Run the checks of the repository before you finish.",
     "Commit your work on the current branch. Do not push. Do not change a different branch.",
-    "End with a short report: what you changed, the checks that you ran with their results, and what is not done.",
+    "End with a short report: what you changed, the checks that you ran with their results, and what is not done. End the report with exactly one of the lines Ticket status: complete or Ticket status: partial. Before a partial status line, include Remaining: followed by a list with one item on each line, using a dash and a space before each item.",
   ].join("\n");
 }
 
@@ -208,7 +208,7 @@ function pullTitle(input: Ticket): string {
 function pullBody(input: Ticket): string {
   const issue = /^GitHub issue: ([\w.-]+[/][\w.-]+#\d+)/m.exec(input.ticket);
   const about = `Cloving made this change for ${named(input)}. Greptile reviews the pull request, and Cloving merges it when the confidence score is 5/5.`;
-  return issue === null ? about : `Closes ${String(issue[1])}\n\n${about}`;
+  return issue === null ? about : `Refs ${String(issue[1])}\n\n${about}`;
 }
 
 async function stepped(input: Ticket, call: Call): Promise<Stepped> {
@@ -321,7 +321,12 @@ async function pullRequest(input: Ticket): Promise<CycleOutcome> {
     if (score === 5) {
       const result = await merged(input, { round, pull });
       if ("kind" in result)
-        return finishIssue(input, { round, outcome: result });
+        return finishIssue(input, {
+          round,
+          outcome: result,
+          summary: part(turn.result, "summary"),
+          status: turn.result["ticketStatus"],
+        });
       fix = result;
       continue;
     }

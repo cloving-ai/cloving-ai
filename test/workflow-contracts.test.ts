@@ -69,3 +69,25 @@ await test("CLV-005 cycle outcomes must be a known tagged result for the same cy
       reason: "invalid-cycle-outcome",
     });
 });
+
+await test("CLV-123 merged outcomes retain a valid ticket status and reject other status values", () => {
+  const base = {
+    kind: "handoff_requested",
+    cycleId: "cycle-1",
+    promotionId: "pull-request-7",
+  };
+  for (const ticketStatus of ["complete", "partial"])
+    assert.deepEqual(
+      validateCycleOutcome({ ...base, ticketStatus }, { cycleId: "cycle-1" }),
+      {
+        kind: "valid",
+        value: { ...base, ticketStatus },
+      },
+    );
+  for (const ticketStatus of ["unknown", 1, null])
+    assert.equal(
+      validateCycleOutcome({ ...base, ticketStatus }, { cycleId: "cycle-1" })
+        .kind,
+      "invalid",
+    );
+});

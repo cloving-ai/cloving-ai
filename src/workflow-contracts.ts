@@ -1,3 +1,5 @@
+import { isTicketStatus } from "./ticket-status.ts";
+
 export interface DevelopmentInput {
   readonly cycleId: string;
 }
@@ -18,6 +20,8 @@ export type CycleOutcome =
       readonly kind: "handoff_requested";
       readonly cycleId: string;
       readonly promotionId: string;
+      readonly ticketStatus?: "complete" | "partial";
+      readonly issueUpdate?: "failed";
     };
 
 export type Validation<Value> =
@@ -36,6 +40,7 @@ const outcomes: Readonly<
     string,
     {
       readonly keys: readonly string[];
+      readonly optional?: readonly string[];
       readonly parse: (
         fields: Readonly<Record<string, unknown>>,
       ) => CycleOutcome | null;
@@ -76,6 +81,7 @@ const outcomes: Readonly<
   },
   handoff_requested: {
     keys: ["cycleId", "kind", "promotionId"],
+    optional: ["ticketStatus", "issueUpdate"],
     parse: (fields) => {
       const cycleId = textField(fields, {
         key: "cycleId",
@@ -86,7 +92,18 @@ const outcomes: Readonly<
         pattern: identifier,
       });
       if (cycleId === null || promotionId === null) return null;
-      return { kind: "handoff_requested", cycleId, promotionId };
+      const ticketStatus = fields["ticketStatus"];
+      const issueUpdate = fields["issueUpdate"];
+      if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
+      if (ticketStatus !== undefined && !isTicketStatus(ticketStatus))
+        return null;
+      return {
+        kind: "handoff_requested",
+        cycleId,
+        promotionId,
+        ...(issueUpdate === "failed" ? { issueUpdate } : {}),
+        ...(ticketStatus === undefined ? {} : { ticketStatus }),
+      };
     },
   },
 };
@@ -94,7 +111,7 @@ const outcomes: Readonly<
 export function validateDevelopmentInput(
   value: unknown,
 ): Validation<DevelopmentInput> {
-  const fields = exactFields(value, ["cycleId"]);
+  const fields = exactFields(value, { required: ["cycleId"] });
   const cycleId =
     fields && textField(fields, { key: "cycleId", pattern: identifier });
   if (!cycleId) return { kind: "invalid", reason: "invalid-development-input" };
@@ -110,7 +127,12 @@ export function validateCycleOutcome(
     typeof kind === "string" && Object.hasOwn(outcomes, kind)
       ? outcomes[kind]
       : undefined;
-  const fields = contract && exactFields(value, contract.keys);
+  const fields =
+    contract &&
+    exactFields(value, {
+      required: contract.keys,
+      optional: contract.optional ?? [],
+    });
   const outcome = fields && contract.parse(fields);
   if (!outcome || outcome.cycleId !== input.cycleId)
     return { kind: "invalid", reason: "invalid-cycle-outcome" };
@@ -119,13 +141,22 @@ export function validateCycleOutcome(
 
 function exactFields(
   value: unknown,
-  keys: readonly string[] | null,
+  shape: {
+    readonly required: readonly string[];
+    readonly optional?: readonly string[];
+  } | null,
 ): Readonly<Record<string, unknown>> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const fields = Object.fromEntries(Object.entries(value));
+  const keys = shape?.required;
+  const optional = shape?.optional ?? [];
   if (
     keys &&
-    JSON.stringify(Object.keys(fields).sort()) !== JSON.stringify(keys)
+    JSON.stringify(
+      Object.keys(fields)
+        .filter((key) => !optional.includes(key))
+        .sort(),
+    ) !== JSON.stringify(keys)
   )
     return null;
   return fields;

@@ -29,6 +29,7 @@ function scenario(labels: readonly ProtectedResult[]): {
       "github open-pr": [pull(first)],
       "github wait-review": [review(first, 5)],
       "github merge": [merged],
+      "github close-issue": [completed({})],
     },
   };
 }
@@ -56,6 +57,7 @@ await test("CLV-069 failed label steps are requested without changing the merged
       kind: "handoff_requested",
       cycleId,
       promotionId: "pull-request-7",
+      ticketStatus: "complete",
     });
     assert.deepEqual(
       steps(line).map((step) => field(step, 1)),
@@ -66,13 +68,10 @@ await test("CLV-069 failed label steps are requested without changing the merged
         "open-pr",
         "wait-review",
         "merge",
-        "label",
+        "close-issue",
       ],
     );
-    assert.deepEqual(
-      [1, 6].map((index) => field(field(request(line, index), "scope"), "key")),
-      ["start", "done"],
-    );
+    assert.deepEqual(field(field(request(line, 1), "scope"), "key"), "start");
   }
 });
 
@@ -140,7 +139,7 @@ await test("CLV-069 preparation failure and tickets without an issue make no lab
   assert.equal(field(field(lines[1], "outcome"), "kind"), "handoff_requested");
 });
 
-await test("CLV-069 start and done label payloads name the ticket issue and its transitions", async () => {
+await test("CLV-069 start label and completion payloads name the ticket issue", async () => {
   const [line] = await ran([scenario([completed({}), completed({})])]);
   assert.deepEqual(JSON.parse(payloadOf(line, 1)), {
     owner: "cloving-ai",
@@ -153,7 +152,6 @@ await test("CLV-069 start and done label payloads name the ticket issue and its 
     owner: "cloving-ai",
     repository: "cloving-ai",
     number: 63,
-    add: [],
-    remove: ["cloving: in progress"],
+    pullRequest: 7,
   });
 });

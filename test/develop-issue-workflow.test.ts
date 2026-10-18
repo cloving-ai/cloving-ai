@@ -28,6 +28,7 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [turned, turned],
         "github open-pr": [pull(first), pull(second)],
@@ -49,7 +50,7 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
       ["github-open-pr", 2],
       ["github-wait-review", 2],
       ["github-merge", 2],
-      ["github-label", 2],
+      ["github-close-issue", 2],
     ],
   );
   const prompt = payloadOf(line, 6);
@@ -70,6 +71,7 @@ await test("CLV-081 a failed merge check starts a fix turn and reviews the new c
     kind: "handoff_requested",
     cycleId,
     promotionId: "pull-request-7",
+    ticketStatus: "complete",
   });
 });
 
@@ -79,6 +81,7 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [pull(first)],
@@ -91,6 +94,7 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
     kind: "handoff_requested",
     cycleId,
     promotionId: "pull-request-7",
+    ticketStatus: "complete",
   });
   assert.deepEqual(steps(line), [
     ["github", "prepare", "pull-request", "github-prepare", 1, cycleId],
@@ -99,12 +103,9 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
     ["github", "open-pr", "pull-request", "github-open-pr", 1, cycleId],
     ["github", "wait-review", "pull-request", "github-wait-review", 1, cycleId],
     ["github", "merge", "pull-request", "github-merge", 1, cycleId],
-    ["github", "label", "pull-request", "github-label", 1, cycleId],
+    ["github", "close-issue", "pull-request", "github-close-issue", 1, cycleId],
   ]);
-  assert.deepEqual(
-    [1, 6].map((index) => field(field(request(line, index), "scope"), "key")),
-    ["start", "done"],
-  );
+  assert.deepEqual(field(field(request(line, 1), "scope"), "key"), "start");
   assert.equal(payloadOf(line, 0), "{}");
   const prompt = payloadOf(line, 2);
   assert.match(prompt, /^You work on one ticket of this repository\./);
@@ -115,7 +116,7 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
   assert.ok(prompt.endsWith(`The text of the ticket CLV-063:\n\n${ticket}`));
   assert.deepEqual(JSON.parse(payloadOf(line, 3)), {
     title: "CLV-063: Merge the work through a pull request",
-    body: `Closes cloving-ai/cloving-ai#63\n\nCloving made this change for the ticket CLV-063. ${about}`,
+    body: `Refs cloving-ai/cloving-ai#63\n\nCloving made this change for the ticket CLV-063. ${about}`,
   });
   const reviewed = { number: 7, commit: first };
   assert.deepEqual(JSON.parse(payloadOf(line, 4)), reviewed);
@@ -128,6 +129,7 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [turned, turned],
         "github open-pr": [pull(first), pull(second)],
@@ -149,7 +151,7 @@ await test("CLV-063 the issue workflow sends a review under 5/5 back to the work
       ["github-open-pr", 2],
       ["github-wait-review", 2],
       ["github-merge", 2],
-      ["github-label", 2],
+      ["github-close-issue", 2],
     ],
   );
   const fix = payloadOf(line, 5);
@@ -187,6 +189,7 @@ await test("CLV-063 the issue workflow stops after three fix rounds with no scor
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": commits.map(() => turned),
         "github open-pr": commits.map((commit) => pull(commit)),
@@ -231,6 +234,7 @@ await test("CLV-063 the issue workflow ends as blocked with the step and its rea
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [failed("private-path-in-change")],
@@ -241,6 +245,7 @@ await test("CLV-063 the issue workflow ends as blocked with the step and its rea
       input,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [{ kind: "refused", reason: "budget-exhausted" }],
       },
@@ -281,6 +286,7 @@ await test("CLV-063 the issue workflow names a pull request for a task with no t
       input: task,
       effects: {
         "github prepare": [prepared],
+        "github close-issue": [completed({})],
         "github label": [completed({}), completed({})],
         "claude run-turn": [turned],
         "github open-pr": [failed()],
@@ -309,6 +315,7 @@ function mergeScenario(reasons: readonly string[]): unknown {
     effectLimit: registration?.effectLimit,
     effects: {
       "github prepare": [prepared],
+      "github close-issue": [completed({})],
       "github label": [completed({}), completed({})],
       "claude run-turn": commits.map(() => turned),
       "github open-pr": commits.map((commit) => pull(commit)),
