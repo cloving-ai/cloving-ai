@@ -200,12 +200,9 @@ function importArgument(
     state.paths.push(argument);
     return;
   }
+  if (argument === "--previous-import" && state.previousImportId !== undefined)
+    return "repeated-previous-import";
   if (["--root", "--exclude-project", "--previous-import"].includes(argument)) {
-    if (
-      argument === "--previous-import" &&
-      state.previousImportId !== undefined
-    )
-      return "repeated-previous-import";
     state.option = argument;
     return;
   }
@@ -223,18 +220,25 @@ function importValue(
   argument: string,
 ): string | undefined {
   if (argument === "" || argument.startsWith("-")) return "missing-value";
-  if (state.option === "--previous-import") {
-    if (
-      !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
-        argument,
-      )
-    )
-      return "invalid-import-id";
-    state.previousImportId = argument;
-  } else if (state.option === "--root") state.roots.push(argument);
-  else if (validProjectName(argument)) state.excludeProjects.push(argument);
-  else return "invalid-exclusion";
+  const option = state.option;
   state.option = undefined;
+  if (option === "--root") {
+    state.roots.push(argument);
+    return;
+  }
+  if (option === "--exclude-project" && !validProjectName(argument))
+    return "invalid-exclusion";
+  if (option === "--exclude-project") {
+    state.excludeProjects.push(argument);
+    return;
+  }
+  if (
+    !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
+      argument,
+    )
+  )
+    return "invalid-import-id";
+  state.previousImportId = argument;
   return;
 }
 
