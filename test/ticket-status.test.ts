@@ -2,6 +2,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ticketStatus } from "../src/ticket-status.ts";
 
+await test("CLV-123 preserved report fields survive summary shortening and reject malformed data", () => {
+  const complete = { kind: "complete" };
+  const partial = { kind: "partial", remaining: ["Exact first.", "Second."] };
+  assert.deepEqual(ticketStatus("Shortened.", complete), complete);
+  assert.deepEqual(ticketStatus("Shortened.", partial), partial);
+  for (const value of [
+    null,
+    {},
+    { kind: "unknown" },
+    { kind: "partial" },
+    { kind: "partial", remaining: [] },
+    { kind: "partial", remaining: [1] },
+    { kind: "partial", remaining: [" "] },
+    { kind: "partial", remaining: ["Two\nlines"] },
+  ])
+    assert.deepEqual(ticketStatus("Ticket status: complete", value), {
+      kind: "partial",
+      remaining: ["The worker report has no ticket status line."],
+    });
+});
+
 await test("CLV-123 recognizes exactly one final complete or partial status", () => {
   assert.deepEqual(
     ticketStatus("Changed and checked.\nTicket status: complete"),

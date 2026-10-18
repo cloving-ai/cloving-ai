@@ -17,8 +17,32 @@ function parsedStatus(summary: string): TicketStatus | undefined {
   return { kind: "partial", remaining: items.map((line) => line.slice(2)) };
 }
 
-export function ticketStatus(summary: string): TicketStatus {
-  const parsed = parsedStatus(summary);
+function preservedStatus(value: unknown): TicketStatus | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const kind: unknown = Reflect.get(value, "kind");
+  if (kind === "complete") return { kind };
+  const remaining: unknown = Reflect.get(value, "remaining");
+  if (
+    kind !== "partial" ||
+    !Array.isArray(remaining) ||
+    remaining.length === 0 ||
+    remaining.some(
+      (item: unknown) =>
+        typeof item !== "string" || item.trim() === "" || /[\r\n]/.test(item),
+    )
+  )
+    return undefined;
+  return { kind, remaining: remaining.map(String) };
+}
+
+export function ticketStatus(
+  summary: string,
+  preserved?: unknown,
+): TicketStatus {
+  const parsed =
+    preserved === undefined
+      ? parsedStatus(summary)
+      : preservedStatus(preserved);
   if (parsed !== undefined) return parsed;
   return {
     kind: "partial",

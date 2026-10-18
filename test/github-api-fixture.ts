@@ -48,14 +48,21 @@ const actions = {
     const labels = (flag) => args.flatMap((item, index) => item === flag ? args[index + 1].split(",") : []);
     const added = labels("--add-label");
     const removed = labels("--remove-label");
-    for (const name of [...added, ...removed]) {
-      if (!state.labels.some((label) => label.repository === repository && label.name === name)) throw new Error("label does not exist: " + name);
-    }
     const issue = state.issues.find((item) => item.repository === repository && item.number === Number(args[2]));
+    for (const name of [...added, ...removed]) {
+      if (!state.labels.some((label) => label.repository === repository && label.name === name) && !issue?.labels?.includes(name)) throw new Error("label does not exist: " + name);
+    }
     if (!issue) throw new Error("issue does not exist");
     issue.labels = [...new Set([...(issue.labels ?? []).filter((name) => !removed.includes(name)), ...added])];
   },
-  "api GET issue": () => out(state.issues.find((issue) => issue.repository === path.split("/").slice(1, 3).join("/") && issue.number === number)),
+  "api GET issue": () => {
+    const issue = state.issues.find((issue) => issue.repository === path.split("/").slice(1, 3).join("/") && issue.number === number);
+    out(issue);
+    if (state.issueEditAfterRead !== undefined) {
+      Object.assign(issue, state.issueEditAfterRead);
+      delete state.issueEditAfterRead;
+    }
+  },
   "api PATCH issue": () => {
     const issue = state.issues.find((issue) => issue.repository === path.split("/").slice(1, 3).join("/") && issue.number === number);
     for (const name of ["body", "state", "state_reason"]) {

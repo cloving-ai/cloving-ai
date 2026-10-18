@@ -208,9 +208,7 @@ function pullTitle(input: Ticket): string {
 function pullBody(input: Ticket): string {
   const issue = /^GitHub issue: ([\w.-]+[/][\w.-]+#\d+)/m.exec(input.ticket);
   const about = `Cloving made this change for ${named(input)}. Greptile reviews the pull request, and Cloving merges it when the confidence score is 5/5.`;
-  return issue === null
-    ? about
-    : `Refs #${String(issue[1]?.split("#")[1])}\n\n${about}`;
+  return issue === null ? about : `Refs ${String(issue[1])}\n\n${about}`;
 }
 
 async function stepped(input: Ticket, call: Call): Promise<Stepped> {
@@ -327,6 +325,7 @@ async function pullRequest(input: Ticket): Promise<CycleOutcome> {
           round,
           outcome: result,
           summary: part(turn.result, "summary"),
+          status: turn.result["ticketStatus"],
         });
       fix = result;
       continue;

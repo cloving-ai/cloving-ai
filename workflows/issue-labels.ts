@@ -44,6 +44,7 @@ export async function finishIssue(
     readonly round: number;
     readonly outcome: CycleOutcome;
     readonly summary?: string;
+    readonly status?: unknown;
   },
 ): Promise<CycleOutcome> {
   if (ending.outcome.kind === "handoff_requested")
@@ -61,39 +62,35 @@ async function finishMergedIssue(
     readonly round: number;
     readonly outcome: CycleOutcome;
     readonly summary?: string;
+    readonly status?: unknown;
   },
 ): Promise<CycleOutcome> {
   if (ending.outcome.kind !== "handoff_requested") return ending.outcome;
-  const status = ticketStatus(ending.summary ?? "");
+  const status = ticketStatus(ending.summary ?? "", ending.status);
   const method = status.kind === "complete" ? "close-issue" : "partial-issue";
   const issue = /^GitHub issue: ([\w.-]+)\/([\w.-]+)#(\d+)/m.exec(input.ticket);
-  if (issue !== null) {
-    const update = await protectedEffect({
-      scope: {
-        phase: "pull-request",
-        operation: `github-${method}`,
-        round: ending.round,
-      },
-      capability: "github",
-      method,
-      target: input.cycleId,
-      units: 1,
-      payload: JSON.stringify({
-        owner: issue[1],
-        repository: issue[2],
-        number: Number(issue[3]),
-        pullRequest: Number(
-          ending.outcome.promotionId.slice("pull-request-".length),
-        ),
-        ...(status.kind === "partial" ? { remaining: status.remaining } : {}),
-      }),
-    });
-    if (update.kind !== "completed")
-      return {
-        ...ending.outcome,
-        ticketStatus: status.kind,
-        issueUpdate: "failed",
-      };
-  }
-  return { ...ending.outcome, ticketStatus: status.kind };
+  const outcome = { ...ending.outcome, ticketStatus: status.kind };
+  if (issue === null) return outcome;
+  const update = await protectedEffect({
+    scope: {
+      phase: "pull-request",
+      operation: `github-${method}`,
+      round: ending.round,
+    },
+    capability: "github",
+    method,
+    target: input.cycleId,
+    units: 1,
+    payload: JSON.stringify({
+      owner: issue[1],
+      repository: issue[2],
+      number: Number(issue[3]),
+      pullRequest: Number(
+        ending.outcome.promotionId.slice("pull-request-".length),
+      ),
+      ...(status.kind === "partial" ? { remaining: status.remaining } : {}),
+    }),
+  });
+  if (update.kind === "completed") return outcome;
+  return { ...outcome, issueUpdate: "failed" };
 }

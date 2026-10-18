@@ -116,7 +116,7 @@ await test("CLV-063 the issue workflow prepares a work tree, asks for one turn, 
   assert.ok(prompt.endsWith(`The text of the ticket CLV-063:\n\n${ticket}`));
   assert.deepEqual(JSON.parse(payloadOf(line, 3)), {
     title: "CLV-063: Merge the work through a pull request",
-    body: `Refs #63\n\nCloving made this change for the ticket CLV-063. ${about}`,
+    body: `Refs cloving-ai/cloving-ai#63\n\nCloving made this change for the ticket CLV-063. ${about}`,
   });
   const reviewed = { number: 7, commit: first };
   assert.deepEqual(JSON.parse(payloadOf(line, 4)), reviewed);

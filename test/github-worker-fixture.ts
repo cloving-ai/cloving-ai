@@ -39,6 +39,7 @@ export interface Plan {
   readonly mergePollMilliseconds?: number;
   readonly failureText?: string;
   readonly issuePages?: readonly (readonly unknown[])[];
+  readonly issueEditAfterRead?: Readonly<Record<string, unknown>>;
   readonly waitForTrigger?: boolean;
   readonly fail?: string;
   readonly garble?: string;

@@ -1,7 +1,44 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
-import { statusScenario, payloadOf, steps } from "./develop-issue-fixture.ts";
+import {
+  completed,
+  statusScenario,
+  payloadOf,
+  steps,
+} from "./develop-issue-fixture.ts";
+
+await test("CLV-123 merged issues use the preserved ticket status when the summary was shortened", async () => {
+  for (const ticketStatus of [
+    { kind: "complete" },
+    { kind: "partial", remaining: ["Add recovery.", "Verify restart."] },
+  ]) {
+    const given = statusScenario("The shortened report.");
+    const [line] = await ran([
+      {
+        ...given,
+        effects: {
+          ...given.effects,
+          "claude run-turn": [
+            completed({ summary: "The shortened report.", ticketStatus }),
+          ],
+        },
+      },
+    ]);
+    assert.equal(
+      field(field(line, "outcome"), "ticketStatus"),
+      ticketStatus.kind,
+    );
+    assert.equal(
+      field(steps(line).at(-1), 1),
+      ticketStatus.kind === "complete" ? "close-issue" : "partial-issue",
+    );
+    assert.deepEqual(
+      field(JSON.parse(payloadOf(line, 6)), "remaining"),
+      ticketStatus.remaining,
+    );
+  }
+});
 
 await test("CLV-123 a complete report merges before protected closure and cannot auto-close through the PR", async () => {
   const [line] = await ran([
@@ -27,7 +64,7 @@ await test("CLV-123 a complete report merges before protected closure and cannot
   });
   assert.equal(field(field(line, "outcome"), "ticketStatus"), "complete");
   const body = field(JSON.parse(payloadOf(line, 3)), "body");
-  assert.match(String(body), /^Refs #63\n/);
+  assert.match(String(body), /^Refs cloving-ai\/cloving-ai#63\n/);
   assert.doesNotMatch(String(body), /Closes/);
   const prompt = String(field(request(line, 2), "payload"));
   assert.match(
@@ -35,6 +72,32 @@ await test("CLV-123 a complete report merges before protected closure and cannot
     /exactly one.*Ticket status: complete.*Ticket status: partial/,
   );
   assert.match(prompt, /Remaining:.*one item on each line/);
+});
+
+await test("CLV-123 pull request references keep the supplied issue repository", async () => {
+  const given = statusScenario("Ticket status: complete");
+  const [line] = await ran([
+    {
+      ...given,
+      input: {
+        ...given.input,
+        ticket: given.input.ticket.replace(
+          "cloving-ai/cloving-ai#63",
+          "other/project#63",
+        ),
+      },
+    },
+  ]);
+  assert.match(
+    String(field(JSON.parse(payloadOf(line, 3)), "body")),
+    /^Refs other\/project#63\n/,
+  );
+  assert.deepEqual(JSON.parse(payloadOf(line, 6)), {
+    owner: "other",
+    repository: "project",
+    number: 63,
+    pullRequest: 7,
+  });
 });
 
 await test("CLV-123 partial and unknown reports record remaining work after merge and never request closure", async () => {

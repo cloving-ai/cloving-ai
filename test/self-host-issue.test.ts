@@ -119,7 +119,7 @@ async function issueRun(): Promise<void> {
     [pull?.["state"], pull?.["title"], pull?.["base"]],
     ["MERGED", "CLV-900: Add the ticket work", "main"],
   );
-  assert.match(String(pull?.["body"]), /^Refs #900\n\n/);
+  assert.match(String(pull?.["body"]), /^Refs acme\/demo#900\n\n/);
   assert.equal(
     git(origin, ["show", `${String(pull?.["mergedHead"])}:ticket-work.txt`]),
     "the last line of CLV-900\n",

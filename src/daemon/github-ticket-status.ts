@@ -1,6 +1,12 @@
 import { issuePrivacy } from "./github-issue-privacy.ts";
 import { field, text, type Operation } from "./github-operation.ts";
 
+const workflowLabels = [
+  "cloving: ready",
+  "cloving: blocked",
+  "cloving: in progress",
+];
+
 function positiveInteger(operation: Operation, name: string): number {
   const value = operation.payload[name];
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1)
@@ -81,22 +87,42 @@ async function writeIssue(
   operation: Operation,
   update: {
     readonly path: string;
+    readonly originalBody: string;
     readonly body: string;
     readonly labels: readonly string[];
     readonly fields?: readonly string[];
   },
 ): Promise<void> {
   const { path, body, labels } = update;
+  const latest = await readIssue(operation, path);
+  if (latest.body !== update.originalBody)
+    throw new Error("github-issue-conflict");
+  const fields = update.fields ?? [];
+  if (body !== latest.body || fields.length > 0)
+    await operation.calls.gh([
+      "api",
+      "-X",
+      "PATCH",
+      path,
+      "-f",
+      `body=${body}`,
+      ...fields,
+    ]);
+  const add = workflowLabels.filter(
+    (name) => labels.includes(name) && !latest.labels.includes(name),
+  );
+  const remove = workflowLabels.filter(
+    (name) => !labels.includes(name) && latest.labels.includes(name),
+  );
+  if (add.length === 0 && remove.length === 0) return;
   await operation.calls.gh([
-    "api",
-    "-X",
-    "PATCH",
-    path,
-    "-f",
-    `body=${body}`,
-    ...labels.flatMap((name) => ["-f", `labels[]=${name}`]),
-    ...(labels.length === 0 ? ["-F", "labels[]"] : []),
-    ...(update.fields ?? []),
+    "issue",
+    "edit",
+    String(positiveInteger(operation, "number")),
+    "--repo",
+    `${text(operation, "owner")}/${text(operation, "repository")}`,
+    ...add.flatMap((name) => ["--add-label", name]),
+    ...remove.flatMap((name) => ["--remove-label", name]),
   ]);
 }
 
@@ -135,9 +161,13 @@ export async function closeIssue(operation: Operation): Promise<unknown> {
     };
   await writeIssue(operation, {
     path,
+    originalBody: issue.body,
     body,
     labels,
-    fields: ["-f", "state=closed", "-f", "state_reason=completed"],
+    fields:
+      issue.state === "closed" && issue.reason === "completed"
+        ? []
+        : ["-f", "state=closed", "-f", "state_reason=completed"],
   });
   return {
     number: positiveInteger(operation, "number"),
@@ -217,6 +247,7 @@ export async function partialIssue(operation: Operation): Promise<unknown> {
   ]);
   await writeIssue(operation, {
     path,
+    originalBody: issue.body,
     body,
     labels,
   });
