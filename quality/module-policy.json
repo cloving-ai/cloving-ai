@@ -730,7 +730,21 @@
     "test/chats-import-structure.test.ts": "test",
     "test/chats-revision-fixture.ts": "test",
     "test/chats-revision-storage.test.ts": "test",
-    "test/chats-revision-import.test.ts": "test"
+    "test/chats-revision-import.test.ts": "test",
+    "src/chats/analysis-data.ts": "pure",
+    "src/chats/analysis-links.ts": "pure",
+    "src/chats/analysis-shape.ts": "pure",
+    "src/chats/analysis-contract.ts": "pure",
+    "src/chats/analysis-provenance.ts": "pure",
+    "src/chats/analysis.ts": "pure",
+    "test/chats-analysis-data.test.ts": "test",
+    "test/chats-analysis-fixture.ts": "test",
+    "test/chats-analysis-provenance.test.ts": "test",
+    "test/chats-analysis-isolation.test.ts": "test",
+    "test/chats-analysis.test.ts": "test",
+    "node:tls": "stdlib",
+    "node:util/types": "pure",
+    "test/chats-analysis-shape.test.ts": "test"
   },
   "allowed": {
     "quality": [
