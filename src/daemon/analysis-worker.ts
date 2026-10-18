@@ -146,7 +146,7 @@ interface Parts {
   readonly settings: Settings;
   readonly active: Map<string, Active>;
   readonly preparing: Map<string, ReturnType<AnalysisWorker["deliver"]>>;
-  readonly lifecycle: { closed: boolean };
+  readonly stopping: AbortController;
 }
 
 async function reconcile(
@@ -223,7 +223,7 @@ async function begun(
 }
 
 function cancelled(parts: Parts, signal: AbortSignal): boolean {
-  return signal.aborted || parts.lifecycle.closed;
+  return signal.aborted || parts.stopping.signal.aborted;
 }
 
 async function deliver(
@@ -248,17 +248,17 @@ async function deliver(
     await cleaned(folder);
     return failed("analysis-turn-failed");
   }
-  const credential = await analysisToken(folder);
+  const credential = await analysisToken(folder, signal);
+  if (cancelled(parts, signal)) {
+    await cleaned(folder);
+    return failed("analysis-turn-failed");
+  }
   if ("error" in credential) {
     await cleaned(folder);
     return {
       ...failed("analysis-worker-unavailable"),
       result: JSON.stringify({ error: credential.error }),
     };
-  }
-  if (cancelled(parts, signal)) {
-    await cleaned(folder);
-    return failed("analysis-turn-failed");
   }
   const directory = join(folder, "working");
   await mkdir(directory, { mode: 0o700 });
@@ -287,7 +287,8 @@ function delivered(
   const key = call.intent.operationId;
   const known = parts.preparing.get(key);
   if (known !== undefined) return known;
-  const pending = deliver(parts, call).finally(() =>
+  const signal = AbortSignal.any([call.signal, parts.stopping.signal]);
+  const pending = deliver(parts, { ...call, signal }).finally(() =>
     parts.preparing.delete(key),
   );
   parts.preparing.set(key, pending);
@@ -299,7 +300,7 @@ export function analysisWorker(settings: Settings): AnalysisWorker {
     settings,
     active: new Map(),
     preparing: new Map(),
-    lifecycle: { closed: false },
+    stopping: new AbortController(),
   };
   return {
     deliver: (intent, signal) => delivered(parts, { intent, signal }),
@@ -312,7 +313,7 @@ export function analysisWorker(settings: Settings): AnalysisWorker {
       return reconcile(parts, intent);
     },
     close: async () => {
-      parts.lifecycle.closed = true;
+      parts.stopping.abort();
       await Promise.all(parts.preparing.values());
       await Promise.all(
         [...parts.active.values()].map((active) => halted(parts, active)),

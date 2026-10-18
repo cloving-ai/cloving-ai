@@ -34,14 +34,19 @@ function tokenOf(chunks: readonly Buffer[]): AnalysisToken {
 
 function captured(
   command: readonly string[],
-  folder: string,
+  request: {
+    readonly folder: string;
+    readonly signal: AbortSignal | undefined;
+  },
 ): Promise<AnalysisToken> {
   return new Promise((settle) => {
     const [program = "", ...arguments_] = command;
     const child = spawn(program, arguments_, {
-      cwd: folder,
+      cwd: request.folder,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
+      signal: request.signal,
+      killSignal: "SIGKILL",
     });
     const chunks: Buffer[] = [];
     let bytes = 0;
@@ -82,13 +87,16 @@ function captured(
   });
 }
 
-export async function analysisToken(folder: string): Promise<AnalysisToken> {
+export async function analysisToken(
+  folder: string,
+  signal?: AbortSignal,
+): Promise<AnalysisToken> {
   const setting = process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"];
   if (setting === undefined) return failed("unset");
   const command = commandOf(setting);
   if (command === undefined) return failed("invalid");
   try {
-    return await captured(command, folder);
+    return await captured(command, { folder, signal });
   } catch {
     return failed("failed");
   }
