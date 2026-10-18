@@ -125,22 +125,21 @@ function interceptFailure(data: {
     }
     const handle = await original(path, flags, 0o600);
     handles.push(handle);
-    if (output && basename(String(path)) === data.name) {
-      injected.push(data.operation);
-      if (data.operation === "write") {
-        const write = handle.writeFile.bind(handle);
-        handle.writeFile = async () => {
-          await write('{"schemaVersion":1,');
-          throw new Error("private-write-error");
-        };
-      } else {
-        const close = handle.close.bind(handle);
-        handle.close = async () => {
-          await close();
-          throw new Error("private-close-error");
-        };
-      }
+    if (!output || basename(String(path)) !== data.name) return handle;
+    injected.push(data.operation);
+    if (data.operation === "write") {
+      const write = handle.writeFile.bind(handle);
+      handle.writeFile = async () => {
+        await write('{"schemaVersion":1,');
+        throw new Error("private-write-error");
+      };
+      return handle;
     }
+    const close = handle.close.bind(handle);
+    handle.close = async () => {
+      await close();
+      throw new Error("private-close-error");
+    };
     return handle;
   };
   syncBuiltinESMExports();
