@@ -3,6 +3,7 @@ import childProcess from "node:child_process";
 import filesystem from "node:fs";
 import { readdir, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
+import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { runCommand } from "../../quality/command.ts";
@@ -11,8 +12,21 @@ import {
   coverageCommand,
   parseCheckTimeFactor,
   testCommand,
+  testConcurrency,
 } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
+
+await test("CLV-112 bounds test concurrency by available cores", () => {
+  for (const [cores, concurrency] of [
+    [1, 2],
+    [2, 2],
+    [3, 2],
+    [4, 3],
+    [5, 4],
+    [24, 4],
+  ] as const)
+    assert.equal(testConcurrency(cores), concurrency);
+});
 
 await test("CLV-101 bounds retries for transient coverage cleanup errors", async () => {
   const remove = filesystem.rmSync;
@@ -265,7 +279,10 @@ await test("CLV-099 scales the test command bound by the check time factor", () 
       timeFactor,
     });
     assert.equal(command.timeoutMilliseconds, timeout);
-    assert.equal(command.arguments[2], "--test-concurrency=2");
+    assert.equal(
+      command.arguments[2],
+      `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
+    );
   }
 });
 
