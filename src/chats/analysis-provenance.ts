@@ -56,8 +56,9 @@ function validCopy(
 
 export function matchingAnalysisEvidence(evidence: AnalysisEvidence): boolean {
   const { records, structure } = evidence;
+  const historyCompleteness: unknown = structure.historyCompleteness;
   if (
-    !unknownHistory(structure.historyCompleteness) ||
+    historyCompleteness !== "unknown" ||
     structure.occurrences.length !== records.length ||
     structure.counts.records !== records.length
   )
@@ -71,14 +72,6 @@ export function matchingAnalysisEvidence(evidence: AnalysisEvidence): boolean {
       validCopy(occurrence, structure.occurrences)
     );
   });
-}
-
-function unknownHistory(value: unknown): boolean {
-  return value === "unknown";
-}
-
-function sourceList(value: unknown): value is readonly OccurrenceReference[] {
-  return Array.isArray(value);
 }
 
 function knownReference(
@@ -104,7 +97,7 @@ function inspectSupport(
     )
   )
     codes.push("unknown-source");
-  if (!sourceList(sources) || sources.length === 0) return codes;
+  if (!Array.isArray(claim.sourceRefs) || sources.length === 0) return codes;
   if (sources.some((reference) => !knownReference(reference, evidence)))
     return [...codes, "unknown-source"];
   const originals = new Set(
