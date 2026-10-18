@@ -14,6 +14,7 @@ import {
 } from "../token-prices.ts";
 import { startTurn, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
 import { analysisAvailable, analysisMethod } from "./analysis-launch.ts";
+import { analysisToken } from "./analysis-token.ts";
 import {
   located,
   readRecord,
@@ -179,6 +180,7 @@ async function begun(
     readonly key: string;
     readonly directory: string;
     readonly prompt: string;
+    readonly token: string;
   },
 ): Promise<void> {
   const { intent, folder, key, directory, prompt } = opening;
@@ -196,6 +198,7 @@ async function begun(
   await recorded(null);
   const turn = startTurn({
     mode: "analysis",
+    analysisToken: opening.token,
     command: [],
     folder,
     directory,
@@ -219,6 +222,10 @@ async function begun(
   await recorded(turn.processId);
 }
 
+function cancelled(parts: Parts, signal: AbortSignal): boolean {
+  return signal.aborted || parts.lifecycle.closed;
+}
+
 async function deliver(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
@@ -237,7 +244,19 @@ async function deliver(
     await cleaned(folder);
     return failed("analysis-worker-unavailable");
   }
-  if (signal.aborted || parts.lifecycle.closed) {
+  if (cancelled(parts, signal)) {
+    await cleaned(folder);
+    return failed("analysis-turn-failed");
+  }
+  const credential = await analysisToken(folder);
+  if ("error" in credential) {
+    await cleaned(folder);
+    return {
+      ...failed("analysis-worker-unavailable"),
+      result: JSON.stringify({ error: credential.error }),
+    };
+  }
+  if (cancelled(parts, signal)) {
     await cleaned(folder);
     return failed("analysis-turn-failed");
   }
@@ -249,6 +268,7 @@ async function deliver(
     folder,
     directory,
     prompt: JSON.stringify({ evidence: snapshot }),
+    token: credential.token,
   });
   return { receipt: key, worker: "claude" };
 }
@@ -262,7 +282,7 @@ function delivered(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
 ): ReturnType<AnalysisWorker["deliver"]> {
-  if (parts.lifecycle.closed || call.signal.aborted)
+  if (cancelled(parts, call.signal))
     return Promise.resolve(failed("analysis-turn-failed"));
   const key = call.intent.operationId;
   const known = parts.preparing.get(key);

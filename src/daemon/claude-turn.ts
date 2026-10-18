@@ -25,6 +25,7 @@ export interface TurnEnd {
 
 export interface TurnStart {
   readonly mode?: "analysis";
+  readonly analysisToken?: string;
   readonly worker?: Worker;
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -89,7 +90,11 @@ function turnEnvironment(
   configuration: string,
   start: TurnStart,
 ): NodeJS.ProcessEnv {
-  if (start.mode === "analysis") return analysisEnvironment(start.folder);
+  if (start.mode === "analysis")
+    return {
+      ...analysisEnvironment(start.folder),
+      CLAUDE_CODE_OAUTH_TOKEN: start.analysisToken,
+    };
   const excluded = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -189,6 +194,22 @@ function turnOutput(
   };
 }
 
+function withoutAnalysisToken(
+  start: TurnStart,
+  result: StreamResult | undefined,
+): StreamResult | undefined {
+  const token = start.mode === "analysis" ? start.analysisToken : undefined;
+  if (token === undefined || result === undefined) return result;
+  const redact = (value: string | null) =>
+    value === null ? null : value.replaceAll(token, "[redacted]");
+  return {
+    ...result,
+    text: redact(result.text) ?? "",
+    model: redact(result.model),
+    sessionId: redact(result.sessionId),
+  };
+}
+
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
@@ -209,7 +230,7 @@ export function startTurn(start: TurnStart): RunningTurn {
         timers.forEach(clearTimeout);
         return {
           exitCode,
-          result: await output(exitCode),
+          result: withoutAnalysisToken(start, await output(exitCode)),
         };
       })
       .finally(() => {

@@ -66,6 +66,8 @@ await test("CLV-116 replay cleans temporary analysis files before returning a du
 
 await test("CLV-116 fixed Claude analysis removes tools and customization, keeps evidence private, and bypasses git with a Codex development worker", () =>
   withScene(async (scene) => {
+    const apiKey = process.env["ANTHROPIC_API_KEY"];
+    process.env["ANTHROPIC_API_KEY"] = "synthetic-api-key";
     const reply = JSON.stringify(candidate());
     const restore = installAnalysisCli(scene, { reply });
     try {
@@ -117,6 +119,8 @@ await test("CLV-116 fixed Claude analysis removes tools and customization, keeps
       assert.equal(scene.turns().length, 1);
     } finally {
       restore();
+      if (apiKey === undefined) delete process.env["ANTHROPIC_API_KEY"];
+      else process.env["ANTHROPIC_API_KEY"] = apiKey;
     }
   }));
 
@@ -143,8 +147,27 @@ await test("CLV-116 analysis rejects profile overrides and other workflow IDs be
 
 function checkLaunch(turn: TurnRecord): void {
   const flags = turn.arguments;
+  assert.deepEqual(
+    {
+      bare: flags.includes("--bare"),
+      token: turn.environment["CLAUDE_CODE_OAUTH_TOKEN"],
+      apiKey: turn.environment["ANTHROPIC_API_KEY"],
+    },
+    { bare: false, token: "synthetic-subscription-token", apiKey: undefined },
+  );
+  assert.equal(flags[flags.indexOf("--max-turns") + 1], "1");
+  assert.equal(flags[flags.indexOf("--max-budget-usd") + 1], "5");
+  assert.equal(
+    turn.environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"],
+    "1",
+  );
+  assert.equal(turn.environment["HOME"], turn.environment["CLAUDE_CONFIG_DIR"]);
+  assert.equal(
+    turn.environment["TMPDIR"],
+    turn.environment["CLAUDE_CONFIG_DIR"],
+  );
+  assert.notEqual(turn.environment["HOME"], turn.directory);
   for (const flag of [
-    "--bare",
     "--safe-mode",
     "--restricted",
     "--strict-mcp-config",

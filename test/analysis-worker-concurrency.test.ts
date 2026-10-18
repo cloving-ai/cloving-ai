@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   installAnalysisCli,
@@ -62,6 +64,12 @@ await test("CLV-116 close during preparation prevents a later launch", () =>
           return JSON.stringify({ snapshot });
         },
       });
+      const fetched = join(scene.directory, "token-fetched");
+      process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = JSON.stringify([
+        process.execPath,
+        "-e",
+        `require("node:fs").writeFileSync(${JSON.stringify(fetched)}, "fetched"); process.stdout.write("synthetic-token")`,
+      ]);
       const delivery = worker.deliver(analysis, signal);
       await until(() => read);
       const closing = worker.close();
@@ -72,6 +80,7 @@ await test("CLV-116 close during preparation prevents a later launch", () =>
       });
       await closing;
       assert.equal(scene.turns().length, 0);
+      assert.equal(existsSync(fetched), false);
     } finally {
       delayed.resolve(undefined);
       restore();

@@ -766,7 +766,11 @@
     "test/analyze-chats-restart.test.ts": "test",
     "test/analysis-worker-input.test.ts": "test",
     "test/self-host-analysis.test.ts": "test",
-    "test/analysis-worker-concurrency.test.ts": "test"
+    "test/analysis-worker-concurrency.test.ts": "test",
+    "src/daemon/analysis-token.ts": "daemon",
+    "test/analysis-token.test.ts": "test",
+    "test/analysis-launch.test.ts": "test",
+    "test/analysis-token-privacy.test.ts": "test"
   },
   "allowed": {
     "quality": [
