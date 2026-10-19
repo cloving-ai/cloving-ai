@@ -15,6 +15,7 @@ import {
   pendingSummary,
   rendered,
   runOverview,
+  statusJson,
 } from "./render.ts";
 import type { RuntimeInvocation } from "./runtime-arguments.ts";
 import { commandUsage } from "./usage.ts";
@@ -89,7 +90,9 @@ function presented(
   if (reply.kind === "error")
     return failed(environment, { error: reply.error, format });
   environment.terminal.out(
-    format.json ? `${JSON.stringify(reply.result)}\n` : rendered(reply.result),
+    format.json
+      ? `${JSON.stringify(statusJson(reply.result))}\n`
+      : rendered(reply.result),
   );
   return 0;
 }

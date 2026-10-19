@@ -223,7 +223,7 @@ export function waitingDetail(run: WatchRun, now: string): string {
 export function completedDetail(run: WatchRun): string {
   const [first] = run.events;
   const last = run.events.at(-1);
-  const cost = priceText(run.claudeCostUsd);
+  const cost = priceText(run.claudeCostUsd, run.estimatedCostUsd);
   const time =
     first === undefined || last === undefined
       ? ""

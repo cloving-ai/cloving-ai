@@ -9,6 +9,19 @@ export interface TokenPrice {
 
 export type TokenPrices = Readonly<Record<string, TokenPrice>>;
 
+export const builtInPriceTable: {
+  readonly date: string;
+  readonly source: string;
+  readonly prices: TokenPrices;
+} = {
+  date: "2026-10-18",
+  source: "https://openai.com/api/pricing/",
+  prices: {
+    "gpt-6.1-sol": { input: 2, cachedInput: 0.1, output: 10 },
+    "gpt-6-astra": { input: 10, cachedInput: 1, output: 50 },
+  },
+};
+
 function tokenPrice(value: unknown): TokenPrice {
   const fields = record(value);
   const input = priceOf(fields?.["input"]);
@@ -20,16 +33,19 @@ function tokenPrice(value: unknown): TokenPrice {
 }
 
 export function parseTokenPrices(value: string | undefined): TokenPrices {
-  if (value === undefined) return {};
+  if (value === undefined) return { ...builtInPriceTable.prices };
   try {
     const fields = record(JSON.parse(value));
     if (fields === undefined) throw new Error("Invalid CLOVING_TOKEN_PRICES");
-    return Object.fromEntries(
-      Object.entries(fields).map(([model, price]) => [
-        model,
-        tokenPrice(price),
-      ]),
-    );
+    return {
+      ...builtInPriceTable.prices,
+      ...Object.fromEntries(
+        Object.entries(fields).map(([model, price]) => [
+          model,
+          tokenPrice(price),
+        ]),
+      ),
+    };
   } catch {
     throw new Error("Invalid CLOVING_TOKEN_PRICES");
   }

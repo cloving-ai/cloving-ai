@@ -31,7 +31,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list.*10 seconds.*4096.*512.*no default/,
   ],
   ["CLOVING_PROFILES", /JSON file.*profile.*no default/],
-  ["CLOVING_TOKEN_PRICES", /JSON object.*million tokens.*no default/],
+  ["CLOVING_TOKEN_PRICES", /JSON object.*million tokens.*override.*built-in/],
   ["CLOVING_WORKER", /claude.*codex.*default is claude/],
   ["CLOVING_CODEX_COMMAND", /JSON list.*codex exec.*no sandbox/],
   [

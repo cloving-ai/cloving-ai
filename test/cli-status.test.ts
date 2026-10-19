@@ -140,6 +140,7 @@ await test("CLV-094 status text and JSON show separate worker turns and run tota
         usage,
         costUsd: null,
         estimatedCostUsd: null,
+        costDisplay: "Price not known",
       });
     }
     const json = await harness.cli(["status", scene.runId, "--json"]);
@@ -151,7 +152,7 @@ await test("CLV-094 status text and JSON show separate worker turns and run tota
     assert.deepEqual(field(run, "workerTurns"), turns);
     const text = await harness.cli(["status", scene.runId]);
     assert.equal(text.status, 0, text.stderr);
-    assert.match(text.stdout, /Claude cost so far: Price not known/);
+    assert.match(text.stdout, /Cost so far: Price not known/);
     assert.match(
       text.stdout,
       /Token usage so far: Input tokens: 1800 · Cache read tokens: 900 · Output tokens: 170/,
@@ -166,3 +167,36 @@ await test("CLV-094 status text and JSON show separate worker turns and run tota
     }
     assert.doesNotMatch(text.stdout, /0\.00 USD/);
   }));
+
+await test("CLV-133 status JSON exposes the selected cost display and preserves numeric fields", async () => {
+  for (const [costUsd, estimatedCostUsd, costDisplay] of [
+    [null, 7.82, "≈ 7.82 USD (estimate)"],
+    [0, 7.82, "0.00 USD"],
+    [null, null, "Price not known"],
+  ] as const)
+    await withHarness(async (harness) => {
+      const scene = await workerScene(harness);
+      await reportTurn(scene, {
+        round: 1,
+        result: JSON.stringify({
+          usage: scenarioTotal,
+          costUsd,
+          estimatedCostUsd,
+        }),
+      });
+      const json = await harness.cli(["status", scene.runId, "--json"]);
+      assert.equal(json.status, 0, json.stderr);
+      const run = field(parsed(json), "run");
+      assert.equal(field(run, "claudeCostUsd"), costUsd);
+      assert.equal(field(run, "estimatedCostUsd"), estimatedCostUsd);
+      assert.equal(field(run, "costDisplay"), costDisplay);
+      const turns = field(run, "workerTurns");
+      assert.ok(Array.isArray(turns));
+      assert.equal(field(turns[0], "costUsd"), costUsd);
+      assert.equal(field(turns[0], "estimatedCostUsd"), estimatedCostUsd);
+      assert.equal(field(turns[0], "costDisplay"), costDisplay);
+      const text = await harness.cli(["status", scene.runId]);
+      assert.equal(text.status, 0, text.stderr);
+      assert.ok(text.stdout.includes(`Cost so far: ${costDisplay}\n`));
+    });
+});

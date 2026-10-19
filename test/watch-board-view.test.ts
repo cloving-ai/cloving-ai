@@ -186,6 +186,7 @@ await test("CLV-134 cards shorten the run ID, retain the full link title and sho
   const runId = "123456789012-long-run/&";
   const html = cardPage({
     runId,
+    claudeCostUsd: null,
     estimatedCostUsd: 2.2,
     usage: {
       input_tokens: 1800,
@@ -196,13 +197,16 @@ await test("CLV-134 cards shorten the run ID, retain the full link title and sho
   assert.match(html, /<small>123456789012<\/small>/);
   assert.match(html, /title="123456789012-long-run\/&amp;"/);
   assert.match(html, /run=123456789012-long-run%2F%26/);
-  assert.match(html, /≈2\.20 USD estimate/);
+  assert.match(html, /Totals so far · ≈ 2\.20 USD \(estimate\)/);
   assert.equal(html.match(/USD/g)?.length, 1);
   assert.doesNotMatch(
     html,
     /Input tokens|Cache read tokens|Output tokens|card-usage/,
   );
-  assert.match(cardPage({ estimatedCostUsd: 0 }), /≈0\.00 USD estimate/);
+  assert.match(
+    cardPage({ claudeCostUsd: null, estimatedCostUsd: 0 }),
+    /≈ 0\.00 USD \(estimate\)/,
+  );
   assert.match(cardPage({ estimatedCostUsd: null }), /1\.24 USD/);
 });
 

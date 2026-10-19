@@ -1,7 +1,9 @@
 import { priceOf, usageOf } from "../worker-usage.ts";
 
-export function priceText(value: unknown): string {
+export function priceText(value: unknown, estimate?: unknown): string {
   const price = priceOf(value);
+  if (price === null && priceOf(estimate) !== null)
+    return `≈ ${priceText(estimate)} (estimate)`;
   if (price === null) return "Price not known";
   return `${price.toLocaleString("en-US", {
     useGrouping: false,
@@ -10,9 +12,9 @@ export function priceText(value: unknown): string {
   })} USD`;
 }
 
-export function usageText(value: unknown, estimatedCostUsd?: unknown): string {
+export function usageText(value: unknown): string {
   const usage = usageOf(value);
-  const tokens = [
+  return [
     ["Input tokens", usage.input_tokens],
     ["Cache read tokens", usage.cache_read_input_tokens],
     ["Output tokens", usage.output_tokens],
@@ -22,9 +24,6 @@ export function usageText(value: unknown, estimatedCostUsd?: unknown): string {
         `${String(label)}: ${count === null ? "Token usage not known" : String(count)}`,
     )
     .join(" · ");
-  return priceOf(estimatedCostUsd) === null
-    ? tokens
-    : `${tokens} · ≈${priceText(estimatedCostUsd)} estimate`;
 }
 
 export function totalsSuffix(state: unknown): string {

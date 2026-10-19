@@ -187,8 +187,10 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       class: "run-usage",
       children: [
         element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-        element("p", { children: usageText(run.usage, run.estimatedCostUsd) }),
-        element("p", { children: priceText(run.claudeCostUsd) }),
+        element("p", { children: usageText(run.usage) }),
+        element("p", {
+          children: priceText(run.claudeCostUsd, run.estimatedCostUsd),
+        }),
       ],
     }),
     component(Phases, { phases: run.phases, now }),

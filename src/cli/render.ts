@@ -136,9 +136,37 @@ function outcome(value: unknown): string {
 
 function workerLines(value: unknown): readonly string[] {
   return (Array.isArray(value) ? value : []).flatMap((turn: unknown) => [
-    `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"))}`,
-    `  ${usageText(part(turn, "usage"), part(turn, "estimatedCostUsd"))}`,
+    `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"), part(turn, "estimatedCostUsd"))}`,
+    `  ${usageText(part(turn, "usage"))}`,
   ]);
+}
+
+export function statusJson(result: Fields): Fields {
+  const run = record(result["run"]);
+  if (result["kind"] !== "run-status" || run === undefined) return result;
+  const turns = run["workerTurns"];
+  return {
+    ...result,
+    run: {
+      ...run,
+      costDisplay: priceText(run["claudeCostUsd"], run["estimatedCostUsd"]),
+      ...(Array.isArray(turns)
+        ? {
+            workerTurns: turns.map((turn: unknown) => {
+              const fields = record(turn);
+              if (fields === undefined) return turn;
+              return {
+                ...fields,
+                costDisplay: priceText(
+                  fields["costUsd"],
+                  fields["estimatedCostUsd"],
+                ),
+              };
+            }),
+          }
+        : {}),
+    },
+  };
 }
 
 export function runStatus(result: Fields): readonly string[] {
@@ -168,8 +196,8 @@ export function runStatus(result: Fields): readonly string[] {
     `Evidence: ${listing(part(run, "evidence"))}`,
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
-    `Claude cost${suffix}: ${priceText(part(run, "claudeCostUsd"))}`,
-    `Token usage${suffix}: ${usageText(part(run, "usage"), part(run, "estimatedCostUsd"))}`,
+    `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
+    `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,

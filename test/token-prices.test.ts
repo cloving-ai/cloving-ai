@@ -5,6 +5,7 @@ import {
   parseTokenPrices,
   priceForModel,
   commandModel,
+  builtInPriceTable,
 } from "../src/token-prices.ts";
 
 const usage = {
@@ -25,7 +26,24 @@ await test("CLV-105 model prices require an explicit known model and setting", (
   for (const model of [null, "", "missing", "toString", "constructor"])
     assert.equal(priceForModel(prices, model), undefined);
   assert.equal(priceForModel(parseTokenPrices(undefined), "model"), undefined);
-  assert.deepEqual(parseTokenPrices("{}"), {});
+  assert.deepEqual(parseTokenPrices("{}"), parseTokenPrices(undefined));
+});
+
+await test("CLV-133 operator prices replace matching built-in entries and preserve the rest", () => {
+  const prices = parseTokenPrices(JSON.stringify({ "gpt-6.1-sol": price }));
+  assert.deepEqual(priceForModel(prices, "gpt-6.1-sol"), price);
+  assert.deepEqual(priceForModel(prices, "gpt-6-astra"), {
+    input: 10,
+    cachedInput: 1,
+    output: 50,
+  });
+  assert.equal(builtInPriceTable.date, "2026-10-18");
+  assert.equal(builtInPriceTable.source, "https://openai.com/api/pricing/");
+  assert.deepEqual(priceForModel(parseTokenPrices(undefined), "gpt-6.1-sol"), {
+    input: 2,
+    cachedInput: 0.1,
+    output: 10,
+  });
 });
 
 await test("CLV-105 model arguments support long, short and equals forms and stop at the prompt separator", () => {

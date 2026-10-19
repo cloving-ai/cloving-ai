@@ -39,7 +39,7 @@ async function checkedWatchUsage(directory: string): Promise<void> {
       "Edit: codex-work.txt",
       "Working.",
       "Done.",
-      "Result of the worker (cost Price not known)",
+      "Result of the worker (cost ≈ 0.00 USD (estimate))",
     ],
   );
   assert.deepEqual(field(run, "usage"), usage);
