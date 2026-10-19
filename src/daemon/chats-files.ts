@@ -1,5 +1,7 @@
 import { lstat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
+import { record } from "../protocol.ts";
 import { openInput } from "../chats/input-file.ts";
 import {
   createPrivateFile,
@@ -112,10 +114,55 @@ interface AnalysisOutput {
   readonly proposal: string;
 }
 
+async function requireAbsent(directory: string, names: readonly string[]) {
+  for (const name of names) {
+    const exists = await lstat(join(directory, name)).catch(
+      (error: unknown) => {
+        if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+        throw error;
+      },
+    );
+    if (exists !== undefined) throw new Error("analysis-output-failed");
+  }
+}
+
+function outputClaim(
+  directory: string,
+  output: AnalysisOutput | AnalysisDraftInput,
+) {
+  return {
+    path: join(directory, `claim-${output.cycleId}.json`),
+    text:
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: "reply" in output ? "draft" : "final",
+        digest: createHash("sha256")
+          .update(JSON.stringify(output))
+          .digest("hex"),
+      }) + "\n",
+  };
+}
+
+async function inspectOutputClaim(claim: {
+  readonly path: string;
+  readonly text: string;
+}) {
+  const text = await boundedAnalysisFile(claim.path, {
+    permissions: 0o600,
+  }).catch((error: unknown) => {
+    if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+    throw error;
+  });
+  if (text !== undefined && text !== claim.text)
+    throw new Error("analysis-output-failed");
+}
+
 export async function inspectAnalysisFiles(
   directory: string,
   output: AnalysisOutput,
 ): Promise<"complete" | "absent"> {
+  await inspectOutputClaim(outputClaim(directory, output));
+  await requireAbsent(directory, [`draft-${output.cycleId}.json`]);
   const proposal = join(directory, `proposal-${output.cycleId}.txt`);
   const analysis = join(directory, `analysis-${output.cycleId}.json`);
   const marker = await boundedAnalysisFile(analysis, {
@@ -139,8 +186,84 @@ export async function saveAnalysisFiles(
   output: AnalysisOutput,
 ): Promise<void> {
   if ((await inspectAnalysisFiles(directory, output)) === "complete") return;
+  const claim = outputClaim(directory, output);
+  await matchingPrivateFile(claim.path, claim.text);
   const proposal = join(directory, `proposal-${output.cycleId}.txt`);
   const analysis = join(directory, `analysis-${output.cycleId}.json`);
   await matchingPrivateFile(proposal, output.proposal);
   await matchingPrivateFile(analysis, output.analysis);
+}
+
+export interface AnalysisDraftInput {
+  readonly runId: string;
+  readonly cycleId: string;
+  readonly operationId: string;
+  readonly inputDigest: string;
+  readonly snapshotDigest: string;
+  readonly reply: string;
+}
+
+interface AnalysisDraftMetadata {
+  readonly candidateDigest: string;
+  readonly expiresAt: string;
+}
+
+function draftRecord(input: AnalysisDraftInput, expiresAt: string) {
+  return {
+    schemaVersion: 1,
+    ...input,
+    candidateDigest: createHash("sha256").update(input.reply).digest("hex"),
+    expiresAt,
+  };
+}
+
+export async function inspectAnalysisDraft(
+  directory: string,
+  input: AnalysisDraftInput,
+): Promise<AnalysisDraftMetadata | undefined> {
+  await inspectOutputClaim(outputClaim(directory, input));
+  await requireAbsent(directory, [
+    `analysis-${input.cycleId}.json`,
+    `proposal-${input.cycleId}.txt`,
+  ]);
+  const text = await boundedAnalysisFile(
+    join(directory, `draft-${input.cycleId}.json`),
+    { permissions: 0o600 },
+  ).catch((error: unknown) => {
+    if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+    throw error;
+  });
+  if (text === undefined) return undefined;
+  const expiresAt = record(JSON.parse(text))?.["expiresAt"];
+  if (
+    typeof expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(expiresAt)) ||
+    new Date(expiresAt).toISOString() !== expiresAt
+  )
+    throw new Error("analysis-output-failed");
+  const expected = draftRecord(input, expiresAt);
+  if (text !== JSON.stringify(expected) + "\n")
+    throw new Error("analysis-output-failed");
+  return { candidateDigest: expected.candidateDigest, expiresAt };
+}
+
+export async function saveAnalysisDraft(
+  directory: string,
+  saving: { readonly input: AnalysisDraftInput; readonly now: () => string },
+): Promise<AnalysisDraftMetadata> {
+  const { input, now } = saving;
+  const existing = await inspectAnalysisDraft(directory, input);
+  if (existing !== undefined) return existing;
+  const claim = outputClaim(directory, input);
+  await matchingPrivateFile(claim.path, claim.text);
+  const expiresAt = new Date(Date.parse(now()) + 86_400_000).toISOString();
+  const draft = draftRecord(input, expiresAt);
+  const text = JSON.stringify(draft) + "\n";
+  if (Buffer.byteLength(text) > analysisDocumentBytes)
+    throw new Error("analysis-output-failed");
+  await matchingPrivateFile(
+    join(directory, `draft-${input.cycleId}.json`),
+    text,
+  );
+  return { candidateDigest: draft.candidateDigest, expiresAt };
 }

@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/chats-worker-draft.test.ts": "test",
     "test/watch-card-view.test.ts": "test",
     "test/watch-card-browser.test.ts": "test",
     "workflows/ticket-prompts.ts": "workflow",

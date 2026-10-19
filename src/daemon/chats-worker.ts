@@ -3,8 +3,10 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
+import { createHash } from "node:crypto";
 import { record, type Fields } from "../protocol.ts";
 import { validateAnalysis } from "../chats/analysis.ts";
+import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
 import {
   analysisDocumentBytes,
   analysisEvidence,
@@ -20,12 +22,15 @@ import {
   readAnalysisSnapshot,
   saveAnalysisFiles,
   inspectAnalysisFiles,
+  inspectAnalysisDraft,
+  saveAnalysisDraft,
 } from "./chats-files.ts";
 
 export interface ChatsWorkerSettings {
   readonly runtimeDirectory: string;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly workflowId: (runId: string) => Promise<string | undefined>;
+  readonly now?: () => string;
 }
 
 export interface ChatsWorker extends EffectDelivery {
@@ -38,6 +43,13 @@ export interface ChatsWorker extends EffectDelivery {
 
 type ChatsResult =
   | { readonly snapshot: AnalysisSnapshot }
+  | {
+      readonly kind: "analysis_draft";
+      readonly cycleId: string;
+      readonly candidateDigest: string;
+      readonly expiresAt: string;
+      readonly question: AnalysisQuestion;
+    }
   | {
       readonly kind: "handoff_requested";
       readonly cycleId: string;
@@ -144,7 +156,51 @@ function saveInput(payload: Fields) {
   } catch {
     throw new Error("analysis-invalid-json");
   }
-  return { snapshot, cycleId, candidate };
+  return { snapshot, cycleId, candidate, reply: payload["reply"] };
+}
+
+async function saveQuestion(
+  settings: ChatsWorkerSettings,
+  call: {
+    readonly intent: DeliveryIntent;
+    readonly mode: "deliver" | "reconcile";
+    readonly input: ReturnType<typeof saveInput>;
+    readonly question: AnalysisQuestion;
+  },
+): Promise<AdapterOutcome> {
+  try {
+    const { cycleId, snapshot, reply } = call.input;
+    const directory = await analysisDirectory(
+      settings.runtimeDirectory,
+      snapshot.importId,
+    );
+    const draft = {
+      runId: call.intent.runId,
+      cycleId,
+      operationId: call.intent.operationId,
+      inputDigest: call.intent.inputDigest,
+      snapshotDigest: createHash("sha256")
+        .update(JSON.stringify(snapshot))
+        .digest("hex"),
+      reply,
+    };
+    const metadata =
+      call.mode === "reconcile"
+        ? await inspectAnalysisDraft(directory, draft)
+        : await saveAnalysisDraft(directory, {
+            input: draft,
+            now: settings.now ?? (() => new Date().toISOString()),
+          });
+    if (metadata === undefined) return { kind: "absent" };
+    return completed(call.intent, {
+      kind: "analysis_draft",
+      cycleId,
+      ...metadata,
+      question: call.question,
+    });
+  } catch {
+    throw new Error("analysis-output-failed");
+  }
 }
 
 async function save(
@@ -155,7 +211,8 @@ async function save(
     readonly mode: "deliver" | "reconcile";
   },
 ): Promise<AdapterOutcome> {
-  const { snapshot, cycleId, candidate } = saveInput(call.payload);
+  const input = saveInput(call.payload);
+  const { snapshot, cycleId, candidate } = input;
   const validation = validateAnalysis(candidate, analysisEvidence(snapshot));
   if (!validation.accepted)
     return refused(
@@ -163,7 +220,11 @@ async function save(
       validation.codes,
     );
   if (validation.result.openQuestion !== undefined)
-    return refused("analysis-input-refused");
+    return await saveQuestion(settings, {
+      ...call,
+      input,
+      question: validation.result.openQuestion,
+    });
   try {
     const directory = await analysisDirectory(
       settings.runtimeDirectory,
