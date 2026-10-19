@@ -56,6 +56,55 @@ export const combinedCandidateAnalysis: CandidateAnalysis = {
   knownUnitTotal: 1,
 };
 
+export const validCandidateSource = combinedCandidateSource
+  .replace("generateWorkflow, ", "")
+  .replace('"cloving/workflows"', '"cloving/workflows/steps/protected-effect"')
+  .replace('capability: "github"', 'capability: "claude"')
+  .replace('method: "create-pull-request"', 'method: "run-turn"');
+
+export function candidateSource(body: string): string {
+  return `import { protectedEffect } from "cloving/workflows";
+export async function candidate(input: { capability: string; method: string; units: number }) {
+  "use workflow";
+  ${body}
+}`;
+}
+
+export const candidateEffectExpression = `protectedEffect({
+  scope: { phase: "work", operation: "effect", round: 1 },
+  capability: "claude", method: "run-turn", target: "synthetic", payload: "synthetic", units: 1
+})`;
+
+export const unsupportedCandidateSources = {
+  "dynamic-loading": candidateSource('await import("cloving/workflows");'),
+  "commonjs-loading": candidateSource('const load = require; load("fs");'),
+  "re-export": `${validCandidateSource}\nexport { loadCycle } from "cloving/workflows";`,
+  "namespace-import": `${validCandidateSource}\nimport * as helpers from "cloving/workflows";`,
+  "default-import": `${validCandidateSource}\nimport helpers from "cloving/workflows";`,
+  "side-effect-import": `${validCandidateSource}\nimport "cloving/workflows";`,
+  spread: candidateSource(
+    `await ${candidateEffectExpression.replace("scope:", "...{}, scope:")};`,
+  ),
+  "helper-reassignment": candidateSource("protectedEffect = async () => null;"),
+  "helper-escape": candidateSource("const invoke = protectedEffect;"),
+  "indirect-protected-call": candidateSource(
+    `await ${candidateEffectExpression.replace("protectedEffect", "(protectedEffect)")};`,
+  ),
+  "candidate-step": `${validCandidateSource}\nasync function hidden() { "use step"; return 1; }`,
+  "computed-access": candidateSource("return input[input.method];"),
+  "ambient-declaration": `${validCandidateSource}\ndeclare const ambient: string;`,
+  "ambient-reference": `/// <reference path="./ambient.d.ts" />\n${validCandidateSource}`,
+  "missing-workflow": "export async function candidate() { return 1; }",
+  "second-workflow": `${validCandidateSource}\nexport async function other() { "use workflow"; return 1; }`,
+  "non-async-workflow":
+    'export function candidate() { "use workflow"; return 1; }',
+  "unexported-workflow":
+    'async function candidate() { "use workflow"; return 1; }',
+  "object-indirection": candidateSource(
+    "const request = {}; await protectedEffect(request);",
+  ),
+};
+
 export const validCandidateAnalysis: CandidateAnalysis = {
   ...combinedCandidateAnalysis,
   imports: [

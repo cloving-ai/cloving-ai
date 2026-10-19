@@ -13,6 +13,13 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
+import {
+  candidateDeclaration,
+  candidateEffectExpression,
+  candidateSource,
+  combinedCandidateSource,
+  validCandidateSource,
+} from "./workflow-candidate-fixtures.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -164,6 +171,7 @@ async function inventory(root: string): Promise<void> {
     "self-update-host",
     "self-update",
     "workflow-manifest",
+    "admit-workflow",
   ])
     assert.ok(
       (await readFile(join(product, "dist/tools", `${name}.js`))).length > 0,
@@ -191,9 +199,36 @@ async function inventory(root: string): Promise<void> {
     "node_modules",
   ])
     await assert.rejects(lstat(join(product, name)), { code: "ENOENT" });
-  await assert.rejects(
-    readFile(join(root, "node_modules/typescript/package.json")),
-    { code: "ENOENT" },
+  const compiler: unknown = JSON.parse(
+    await readFile(join(root, "node_modules/typescript/package.json"), "utf8"),
+  );
+  assert.equal(field(compiler, "version"), "6.0.3");
+}
+
+async function candidateAdmission(root: string): Promise<void> {
+  await writeFile(
+    join(root, "candidate-admission.mjs"),
+    `
+import assert from "node:assert/strict";
+import { admitWorkflowCandidate } from "./node_modules/cloving/dist/tools/admit-workflow.js";
+const declaration = ${JSON.stringify(candidateDeclaration)};
+const admitted = await admitWorkflowCandidate({ source: ${JSON.stringify(validCandidateSource)}, declaration });
+assert.equal(admitted.kind, "admitted");
+assert.match(admitted.artifactDigest, /^[0-9a-f]{64}$/);
+assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(combinedCandidateSource)}, declaration }), { kind: "refused", codes: ["missing-export", "undeclared-effect"] });
+assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`process.exit(99);\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
+assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`Math.valueOf().random();\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
+const earlyExit = await admitWorkflowCandidate({ source: ${JSON.stringify(candidateSource(`for (let index = 0; index < 3; index++) { await ${candidateEffectExpression}; break; }`).replace('"cloving/workflows"', '"cloving/workflows/steps/protected-effect"'))}, declaration });
+assert.equal(earlyExit.kind, "admitted");
+process.stdout.write("candidate-admission-ok");
+`,
+  );
+  assert.equal(
+    command(process.execPath, {
+      args: ["--no-strip-types", "candidate-admission.mjs"],
+      cwd: root,
+    }),
+    "candidate-admission-ok",
   );
 }
 
@@ -282,6 +317,7 @@ async function running(root: string, executable: string): Promise<void> {
     assert.match(await page.text(), /Cloving/);
     await artifacts(root);
     await inventory(root);
+    await candidateAdmission(root);
     child.kill("SIGTERM");
     assert.equal(await boundedExit(closed), 0);
     assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });

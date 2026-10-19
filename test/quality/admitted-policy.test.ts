@@ -164,7 +164,7 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
   );
 });
 
-await test("CLV-008 only service, command line and test code can import the socket module, only quality, build, daemon, entry and test code can import the process module, and only the daemon and tests reach the service", () => {
+await test("CLV-008 only service, command line and test code can import the socket module, only quality, build, candidate adapter, daemon, entry and test code can import the process module, and only the daemon and tests reach the service", () => {
   const policy = admittedModulePolicy(directory, {
     files,
     roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
@@ -181,6 +181,7 @@ await test("CLV-008 only service, command line and test code can import the sock
   assert.deepEqual(importers("network"), ["cli", "service", "test"]);
   assert.deepEqual(importers("process"), [
     "build",
+    "candidate-adapter",
     "daemon",
     "entry",
     "quality",
@@ -214,7 +215,12 @@ await test("CLV-049 only quality code can import the inspector module, and servi
   assert.equal(policy.roles["node:inspector"], "inspector");
   assert.deepEqual(importers("inspector"), ["quality"]);
   assert.deepEqual(policy.allowed["inspector"], []);
-  assert.deepEqual(importers("metadata"), ["build", "cli", "quality"]);
+  assert.deepEqual(importers("metadata"), [
+    "build",
+    "candidate-adapter",
+    "cli",
+    "quality",
+  ]);
 });
 
 await test("CLV-049 each role with a reachability list cannot reach the inspector role: these are the roles that cannot reach the process role or the network role", () => {
@@ -231,7 +237,7 @@ await test("CLV-049 each role with a reachability list cannot reach the inspecto
       )
       .map(([role]) => role)
       .sort(),
-    ["cli", "pure", "service", "step", "workflow"],
+    ["candidate-adapter", "cli", "pure", "service", "step", "workflow"],
   );
   assert.deepEqual(
     lists

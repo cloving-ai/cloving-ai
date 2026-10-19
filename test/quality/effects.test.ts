@@ -6,6 +6,7 @@ import { withProgram } from "./program-fixture.ts";
 for (const expression of [
   "Date.now()",
   "Math.random()",
+  "(Math.valueOf() as Math).random()",
   "process.env.VALUE",
   "fetch('https://invalid.example')",
   "setTimeout(() => {}, 0)",
@@ -83,6 +84,21 @@ await test("QG-06 checks executable class heritage expressions", async () => {
     },
     (program) => {
       assert.ok(inspectEffects(program, program.getRootFileNames()).length > 0);
+    },
+  );
+});
+
+await test("CLV-121 candidate restrictions preserve existing pure data inspection", async () => {
+  await withProgram(
+    {
+      "main.ts": `export function inspect(value: object) {
+        return [Buffer.byteLength("value"), Reflect.get(value, "key"),
+          Reflect.ownKeys(value), Object.getPrototypeOf(value),
+          Object.getOwnPropertyDescriptor(value, "key")];
+      }`,
+    },
+    (program) => {
+      assert.deepEqual(inspectEffects(program, program.getRootFileNames()), []);
     },
   );
 });
