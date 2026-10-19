@@ -139,9 +139,10 @@ await test("CLV-109 a root-only lock change fast-forwards and requests restart",
     });
     assert.equal(await fixture.updater.check(), 75);
     assert.deepEqual(fixture.errors, []);
-    assert.deepEqual(fixture.actions.slice(-8), [
+    assert.deepEqual(fixture.actions.slice(-9), [
       "show old:package-lock.json",
       "show target:package-lock.json",
+      "journal",
       "stop",
       statusCommand,
       "ls-files -v",

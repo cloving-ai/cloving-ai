@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
@@ -176,11 +176,60 @@ async function submit(
   await pending.save();
 }
 
+function updateHold(directory: string): () => Promise<boolean> {
+  let notice: string | undefined;
+  return async () => {
+    const mark = await readFile(
+      join(directory, "pending-self-update"),
+      "utf8",
+    ).catch((error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return undefined;
+      throw error;
+    });
+    if (mark === undefined) {
+      notice = undefined;
+      return false;
+    }
+    const timestamp = Number(mark);
+    if (!Number.isFinite(timestamp) || timestamp <= 0)
+      throw new Error("invalid-pending-self-update");
+    const holding = Date.now() - timestamp < 30 * 60 * 1000;
+    const line = holding
+      ? "Queue holding for pending self-update\n"
+      : "Queue continuing after pending self-update time limit\n";
+    const key = mark + line;
+    if (notice !== key) process.stderr.write(line);
+    notice = key;
+    return holding;
+  };
+}
+
+async function admission(
+  settings: QueueSettings,
+  attempt: {
+    readonly pending: QueueJournal;
+    readonly holding: () => Promise<boolean>;
+    readonly signal: AbortSignal;
+  },
+): Promise<void> {
+  const file = join(settings.directory, "queue-submission");
+  await writeFile(file, "", { mode: 0o600 });
+  try {
+    if (!(await attempt.holding()) && !attempt.signal.aborted)
+      await submit(settings, attempt.pending);
+  } finally {
+    await rm(file, { force: true });
+  }
+}
+
 async function cycle(
   settings: QueueSettings,
   signal: AbortSignal,
 ): Promise<void> {
   const pending = await journal(settings.directory);
+  const holding = updateHold(settings.directory);
+  await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   while (!stopped()) {
@@ -190,8 +239,9 @@ async function cycle(
     if (stopped()) return;
     if (await completed(settings, pending)) continue;
     if (await active(settings.runtimeDirectory)) continue;
+    if (await holding()) continue;
     if (stopped()) return;
-    await submit(settings, pending);
+    await admission(settings, { pending, holding, signal });
   }
 }
 

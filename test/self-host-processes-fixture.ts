@@ -13,6 +13,14 @@ export async function programs(
   await mkdir(project);
   const program = (name: string): string => `
 import { writeFileSync } from "node:fs";
+${
+  name === "daemon"
+    ? `import { createServer } from "node:net";
+import { mkdirSync } from "node:fs";
+mkdirSync(${JSON.stringify(join(root, "host/run"))}, { recursive: true, mode: 0o700 });
+createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok: true, result: { runs: [], next: null } }) + "\\n"))).listen(${JSON.stringify(join(root, "host/run/control.sock"))}).unref();`
+    : ""
+}
 const timer = setInterval(() => {}, 1000);
 process.on("SIGINT", () => process.emit("SIGTERM"));
 process.on("SIGTERM", () => setTimeout(() => {

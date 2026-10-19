@@ -70,7 +70,7 @@ async function installRequired(
 
 async function candidate(
   settings: SelfUpdateSettings,
-): Promise<UpdateCandidate | undefined> {
+): Promise<UpdateCandidate | "waiting" | undefined> {
   const git = settings.git;
   await git(["fetch", "origin"]);
   await git(["remote", "set-head", "origin", "--auto"]);
@@ -85,8 +85,46 @@ async function candidate(
   if (head === target) return;
   await git(["merge-base", "--is-ancestor", head, target]);
   if (!(await clean(git))) return;
-  if (await settings.active()) return;
+  await markPending(settings.directory);
+  if (await settings.active()) return "waiting";
   return { branch, head, target };
+}
+
+async function markPending(
+  directory: string,
+  publication: "initial" | "renew" = "initial",
+): Promise<void> {
+  if (publication === "renew") {
+    const timestamp = Number(
+      await readFile(join(directory, "pending-self-update"), "utf8"),
+    );
+    if (timestamp > 0 && Date.now() - timestamp < 30 * 60 * 1000) return;
+  }
+  await mkdir(directory, { recursive: true });
+  const temporary = join(directory, `pending-self-update-${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, `${String(Date.now())}\n`, {
+      flag: "wx",
+      mode: 0o600,
+      flush: true,
+    });
+    if (publication === "renew") {
+      await rename(temporary, join(directory, "pending-self-update"));
+      return;
+    }
+    await link(temporary, join(directory, "pending-self-update")).catch(
+      (error: unknown) => {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "EEXIST"
+        )
+          throw error;
+      },
+    );
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 async function failedTargets(directory: string): Promise<readonly string[]> {
@@ -142,8 +180,13 @@ export function selfUpdater(settings: SelfUpdateSettings): {
     check: async () => {
       if (disabled || checking) return;
       checking = true;
+      let waiting = false;
       try {
         const update = await candidate(settings).catch(() => undefined);
+        if (update === "waiting") {
+          waiting = true;
+          return;
+        }
         if (!update) return;
         if (await installRequired(settings.git, update).catch(() => true)) {
           disabled = true;
@@ -156,14 +199,30 @@ export function selfUpdater(settings: SelfUpdateSettings): {
           () => undefined,
         );
         if (!failed || failed.includes(update.target)) return;
+        await markPending(settings.directory, "renew");
+        waiting = await settings.active().catch(() => true);
+        if (waiting) return;
         disabled = true;
         return await updated(settings, update);
       } finally {
         checking = false;
+        if (!waiting)
+          await rm(join(settings.directory, "pending-self-update"), {
+            force: true,
+          });
       }
     },
   };
 }
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  appendFile,
+  link,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
