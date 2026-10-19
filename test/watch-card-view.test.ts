@@ -142,6 +142,11 @@ await test("CLV-135 keyboard guards preserve composition, repeated keys, ordinar
   const event = {
     key: "Enter",
     target: { localName: "input" },
+    currentTarget: new (class {
+      requestSubmit() {
+        calls.push("requestSubmit");
+      }
+    })(),
     preventDefault: () => {
       calls.push("prevent");
     },
@@ -168,11 +173,11 @@ await test("CLV-135 keyboard guards preserve composition, repeated keys, ordinar
   );
   assert.deepEqual(calls, [
     "prevent",
-    "submit",
+    "requestSubmit",
     "prevent",
-    "submit",
+    "requestSubmit",
     "prevent",
-    "submit",
+    "requestSubmit",
   ]);
 });
 

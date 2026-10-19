@@ -107,7 +107,8 @@ globalThis.fetch = async () => { sent++; return { ok: true, json: async () => ({
 const key = (value, extra = {}) => {
   const form = app.all("form")[0];
   const target = app.all("${multiline ? "textarea" : "input"}")[0];
-  return form.listeners.get("keydown")?.call(form, { type: "keydown", key: value, target, preventDefault() {}, ...extra });
+  const currentTarget = new class { requestSubmit() { form.listeners.get("submit").call(form, { type: "submit", preventDefault() {} }); } };
+  return form.listeners.get("keydown")?.call(form, { type: "keydown", key: value, target, currentTarget, preventDefault() {}, ...extra });
 };
 key("a");
 key("Enter", { isComposing: true });
@@ -181,3 +182,60 @@ console.log(JSON.stringify({ labels: app.all("label").map((node) => node.text), 
   assert.deepEqual(result["labels"], ["importId", "topic"]);
   assert.deepEqual(result["inputs"], ["importId", "topic"]);
 });
+
+for (const cleared of ["", " \t "]) {
+  await test(`CLV-135 an optional field cleared to ${JSON.stringify(cleared)} is omitted from the run request`, () => {
+    const form = {
+      workflowId: "analyze-chats",
+      source: "input",
+      fields: [
+        { name: "importId", label: "Import", optional: false },
+        { name: "topic", label: "Topic", optional: true },
+      ],
+    };
+    const result = played(
+      {
+        ...boardModel([], { workflows: [form.workflowId] }),
+        cardForms: [form],
+      },
+      `
+location.hash = "#workflow=analyze-chats";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+app.all("button").find((node) => node.text === "+ Add a card").dispatch("click");
+const change = (name, value) => {
+  const field = app.all("input").find((node) => node.attributes.get("name") === name);
+  field.value = value;
+  field.listeners.get("input").call(field, { type: "input", currentTarget: field });
+};
+change("importId", "import-1");
+change("topic", " analysis ");
+const typed = state.cards["analyze-chats"].fields;
+change("topic", ${JSON.stringify(cleared)});
+change("importId", "");
+const requiredBlank = state.cards["analyze-chats"].fields;
+change("importId", "import-1");
+const submissions = [];
+globalThis.fetch = async (address, options) => {
+  submissions.push(JSON.parse(options.body));
+  return { ok: true, json: async () => ({ kind: "result", result: { runId: "run-optional" } }) };
+};
+const form = app.all("form")[0];
+form.listeners.get("submit").call(form, { type: "submit", preventDefault() {} });
+await settled();
+console.log(JSON.stringify({ typed, requiredBlank, submissions }));
+`,
+    );
+    assert.deepEqual(result["typed"], {
+      importId: "import-1",
+      topic: " analysis ",
+    });
+    assert.deepEqual(result["requiredBlank"], { importId: "" });
+    assert.ok(Array.isArray(result["submissions"]));
+    assert.equal(result["submissions"].length, 1);
+    const submission: unknown = result["submissions"][0];
+    assert.deepEqual(Reflect.get(Object(submission), "fields"), {
+      importId: "import-1",
+    });
+  });
+}

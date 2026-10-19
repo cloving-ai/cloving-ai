@@ -25,6 +25,7 @@ export interface CardKeyEvent {
   readonly ctrlKey?: boolean;
   readonly metaKey?: boolean;
   readonly target?: { readonly localName?: string };
+  readonly currentTarget: object;
   readonly preventDefault: () => void;
 }
 
@@ -46,7 +47,11 @@ export function cardKey(event: CardKeyEvent, controls: CardControls): void {
   if (event.key !== "Enter") return;
   if (!cardSubmitKey(event)) return;
   event.preventDefault();
-  controls.onSubmit();
+  const prototype = Reflect.getPrototypeOf(event.currentTarget);
+  if (prototype === null) return;
+  const requestSubmit: unknown = Reflect.get(prototype, "requestSubmit");
+  if (typeof requestSubmit === "function")
+    Reflect.apply(requestSubmit, event.currentTarget, []);
 }
 
 export function CardInput(props: {

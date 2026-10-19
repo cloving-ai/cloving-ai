@@ -35,7 +35,10 @@ function cardControls(model, workflowId) {
     document.querySelector(".add-card")?.focus();
   },
   onChange(name, value) {
-    state.cards[workflowId] = { ...state.cards[workflowId], fields: { ...state.cards[workflowId].fields, [name]: value } };
+    const fields = { ...state.cards[workflowId].fields, [name]: value };
+    if (form.fields.find((field) => field.name === name)?.optional && !value.trim())
+      delete fields[name];
+    state.cards[workflowId] = { ...state.cards[workflowId], fields };
   }, onSubmit() { submitCard(workflowId); } };
 }
 `;
