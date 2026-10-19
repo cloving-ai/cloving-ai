@@ -2,6 +2,7 @@ import { readFile, readdir, realpath } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripTypeScriptTypes } from "node:module";
+import { setTimeout } from "node:timers/promises";
 import type { Profiler } from "node:inspector";
 import { parse } from "acorn";
 import { convert } from "ast-v8-to-istanbul";
@@ -46,6 +47,19 @@ function script(value: unknown): value is Profiler.ScriptCoverage {
   );
 }
 
+async function coverageRecording(file: string): Promise<unknown> {
+  for (let attempt = 0; ; attempt += 1) {
+    const content = await readFile(file, "utf8");
+    try {
+      const value: unknown = JSON.parse(content);
+      return value;
+    } catch (error) {
+      if (!(error instanceof SyntaxError) || attempt === 9) throw error;
+      await setTimeout(25);
+    }
+  }
+}
+
 async function scriptCoverage(
   directory: string,
   expected: ReadonlySet<string>,
@@ -56,9 +70,7 @@ async function scriptCoverage(
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json"))
       throw new Error("invalid-raw-coverage-entry");
-    const value: unknown = JSON.parse(
-      await readFile(join(directory, entry.name), "utf8"),
-    );
+    const value = await coverageRecording(join(directory, entry.name));
     if (
       !record(value) ||
       !Array.isArray(value["result"]) ||

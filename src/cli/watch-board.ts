@@ -39,7 +39,9 @@ export function completionMarkOf(
         candidate.runId !== run.runId &&
         candidate.workflowId === "develop-issue" &&
         candidate.state === "completed" &&
-        candidate.outcome === "handoff_requested",
+        candidate.outcome === "handoff_requested" &&
+        candidate.ticketStatus !== "partial" &&
+        candidate.issueUpdate !== "failed",
     )
     .map((candidate) => ({
       runId: candidate.runId,

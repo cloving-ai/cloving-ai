@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { ticketStatus } from "../ticket-status.ts";
 import { analysisWorker } from "./analysis-worker.ts";
 import { analysisMethod } from "./analysis-launch.ts";
 import {
@@ -121,9 +122,10 @@ async function resultText(
     readonly result: NonNullable<TurnEnd["result"]>;
     readonly settings: ClaudeWorkerSettings;
   },
-): Promise<string> {
+): Promise<{ readonly text?: string; readonly reason?: string }> {
   const { result, settings } = turn;
   const fields = {
+    ticketStatus: ticketStatus(result.text),
     summary: result.text.slice(0, claudeLimits.summaryCharacters),
     ...(await changes(tree)),
     worktree: tree.path,
@@ -139,9 +141,25 @@ async function resultText(
   };
   const text = JSON.stringify(fields);
   const excess = Buffer.byteLength(text) - claudeLimits.resultBytes;
-  if (excess <= 0) return text;
+  if (excess <= 0) return { text };
   const kept = Math.max(0, fields.summary.length - excess);
-  return JSON.stringify({ ...fields, summary: fields.summary.slice(0, kept) });
+  const shortened = JSON.stringify({
+    ...fields,
+    summary: fields.summary.slice(0, kept),
+  });
+  if (Buffer.byteLength(shortened) <= claudeLimits.resultBytes)
+    return { text: shortened };
+  const metadata = JSON.stringify({
+    ...fields,
+    ticketStatus: undefined,
+    summary: "",
+  });
+  return {
+    reason: "claude-result-too-large",
+    ...(Buffer.byteLength(metadata) <= claudeLimits.resultBytes
+      ? { text: metadata }
+      : {}),
+  };
 }
 
 async function outcome(
@@ -153,16 +171,22 @@ async function outcome(
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
   const { result } = end;
-  const text =
+  const report =
     result === undefined
-      ? undefined
+      ? {}
       : await resultText(running.tree, { result, settings: running.settings });
-  if (text !== undefined && end.exitCode === 0 && result?.failed === false)
+  const { text, reason } = report;
+  if (
+    reason === undefined &&
+    text !== undefined &&
+    end.exitCode === 0 &&
+    result?.failed === false
+  )
     return { outcome: "completed", result: text, endedAt };
   if (running.stopping.requested) return { outcome: "stopped", endedAt };
   return {
     outcome: "failed",
-    reason: "claude-turn-failed",
+    reason: reason ?? "claude-turn-failed",
     ...(text === undefined ? {} : { result: text }),
     endedAt,
   };

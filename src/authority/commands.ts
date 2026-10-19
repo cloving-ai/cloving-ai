@@ -1,3 +1,4 @@
+import { isTicketStatus } from "../ticket-status.ts";
 import { isInstant } from "./instants.ts";
 import { isBlockedReason } from "../workflow-contracts.ts";
 import {
@@ -88,13 +89,20 @@ const shapes: Readonly<Record<string, Shape>> = {
   "resume-run": revised,
   "complete-run": {
     required: ["expectedRevision"],
-    optional: ["outcome", "outcomeReason"],
+    optional: ["outcome", "outcomeReason", "ticketStatus", "issueUpdate"],
     validators: {
       outcome: (value) => value === "handoff_requested" || value === "blocked",
       outcomeReason: isBlockedReason,
+      ticketStatus: isTicketStatus,
+      issueUpdate: (value) => value === "failed",
     },
     consistent: (fields) =>
-      fields["outcomeReason"] === undefined || fields["outcome"] === "blocked",
+      (fields["outcomeReason"] === undefined ||
+        fields["outcome"] === "blocked") &&
+      (fields["ticketStatus"] === undefined ||
+        fields["outcome"] === "handoff_requested") &&
+      (fields["issueUpdate"] === undefined ||
+        fields["outcome"] === "handoff_requested"),
   },
   "fail-run": revised,
   "cancel-run": revised,

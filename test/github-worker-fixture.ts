@@ -39,6 +39,7 @@ export interface Plan {
   readonly mergePollMilliseconds?: number;
   readonly failureText?: string;
   readonly issuePages?: readonly (readonly unknown[])[];
+  readonly issueEditAfterRead?: Readonly<Record<string, unknown>>;
   readonly waitForTrigger?: boolean;
   readonly fail?: string;
   readonly garble?: string;
@@ -296,6 +297,40 @@ export function committed(
 
 export const pullTitle = "CLV-063: Add the change";
 export const pullBody = "Closes #63";
+
+export interface PartialRun {
+  readonly pullRequest: number;
+  readonly remaining: readonly string[];
+}
+
+export function statusBody(
+  body: string,
+  status: {
+    readonly partialRuns: readonly PartialRun[];
+    readonly completedPullRequest?: number | undefined;
+  },
+): string {
+  const { partialRuns, completedPullRequest } = status;
+  const data = {
+    version: 1,
+    partialRuns,
+    ...(completedPullRequest === undefined ? {} : { completedPullRequest }),
+  };
+  const lines = partialRuns.map(
+    (run) =>
+      `- Pull request #${String(run.pullRequest)}: partial. Remaining: ${run.remaining.join("; ")}`,
+  );
+  if (completedPullRequest !== undefined)
+    lines.push(`Completed in pull request #${String(completedPullRequest)}.`);
+  const separator =
+    body === ""
+      ? ""
+      : "\n".repeat(Math.max(0, 2 - (body.match(/\n*$/)?.[0].length ?? 0)));
+  const json = JSON.stringify(data)
+    .replace(/--/g, "\\u002d\\u002d")
+    .replace(/>/g, "\\u003e");
+  return `${body}${separator}## Cloving status\n${lines.join("\n")}\n\n<!-- cloving-status\n${json}\n-->\n`;
+}
 
 export function treeOf(scene: GithubScene): string {
   return join(scene.worktrees, "ticket-one");

@@ -35,7 +35,9 @@ export const prepared = completed({
   branch: `cloving/${cycleId}`,
   base: "main",
 });
-export const turned = completed({ summary: "I made the change." });
+export const turned = completed({
+  summary: "I made the change.\nTicket status: complete",
+});
 export const merged = completed({ number: 7, merged: "f".repeat(40) });
 
 export function pull(commit: string): ProtectedResult {
@@ -74,4 +76,23 @@ export function steps(line: unknown): readonly unknown[] {
 
 export function payloadOf(line: unknown, index: number): string {
   return String(field(request(line, index), "payload"));
+}
+
+export function statusScenario(summary: string): {
+  readonly input: typeof input;
+  readonly effects: Readonly<Record<string, readonly ProtectedResult[]>>;
+} {
+  return {
+    input,
+    effects: {
+      "github prepare": [prepared],
+      "github label": [completed({}), completed({})],
+      "claude run-turn": [completed({ summary })],
+      "github open-pr": [pull(first)],
+      "github wait-review": [review(first, 5)],
+      "github merge": [merged],
+      "github close-issue": [completed({})],
+      "github partial-issue": [completed({})],
+    },
+  };
 }
