@@ -179,6 +179,83 @@ await test("CLV-121 unknown loops and units leave enforcement to runtime", () =>
   );
 });
 
+for (const [name, ending] of [
+  ["break", "break;"],
+  ["return", "return;"],
+  ["throw", 'throw new Error("synthetic");'],
+  ["conditional break", "if (input.units) break;"],
+  ["continue", "continue;"],
+  ["counter assignment", "index = 3;"],
+  ["counter addition", "index += 3;"],
+  ["counter increment", "++index;"],
+  ["counter decrement", "index--;"],
+  ["counter array assignment", "[index] = [3];"],
+  ["counter object assignment", "({ index } = { index: 3 });"],
+  ["nested counter assignment", "while (input.units) { index = 3; }"],
+] as const) {
+  await test(`CLV-121 loops with ${name} leave iteration totals to runtime`, () => {
+    const result = checked(
+      `for (let index = 0; index < 3; index++) { ${effect} ${ending} }`,
+      1,
+    );
+    assert.deepEqual(result.codes, []);
+    assert.equal(result.analysis.knownCallCount, 1);
+    assert.equal(result.analysis.knownUnitTotal, 1);
+  });
+}
+
+for (const ending of ["break;", "return;"]) {
+  await test(`CLV-121 array loops with ${ending} leave iteration totals to runtime`, () => {
+    const result = checked(
+      `for (const value of [1, 2, 3]) { ${effect} ${ending} }`,
+      1,
+    );
+    assert.deepEqual(result.codes, []);
+    assert.equal(result.analysis.knownCallCount, 1);
+    assert.equal(result.analysis.knownUnitTotal, 1);
+  });
+}
+
+await test("CLV-121 assignments to other bindings preserve known loop totals", () => {
+  const result = checked(
+    `for (let index = 0; index < 3; index++) {
+      ${effect}
+      input.units++;
+      { let index = 0; index = 3; }
+    }`,
+    2,
+  );
+  assert.deepEqual(result.codes, ["effect-limit"]);
+  assert.equal(result.analysis.knownCallCount, 3);
+  assert.equal(result.analysis.knownUnitTotal, 3);
+});
+
+for (const declaration of [
+  "var index = 3;",
+  "var [index] = [3];",
+  "var { value: index } = { value: 3 };",
+]) {
+  await test(`CLV-121 initialized counter redeclarations leave totals to runtime: ${declaration}`, () => {
+    const result = checked(
+      `for (var index = 0; index < 3; index++) { ${effect} ${declaration} }`,
+      1,
+    );
+    assert.deepEqual(result.codes, []);
+    assert.equal(result.analysis.knownCallCount, 1);
+    assert.equal(result.analysis.knownUnitTotal, 1);
+  });
+}
+
+await test("CLV-121 uninitialized counter redeclarations preserve known loop totals", () => {
+  const result = checked(
+    `for (var index = 0; index < 3; index++) { ${effect} var index; }`,
+    2,
+  );
+  assert.deepEqual(result.codes, ["effect-limit"]);
+  assert.equal(result.analysis.knownCallCount, 3);
+  assert.equal(result.analysis.knownUnitTotal, 3);
+});
+
 for (const [name, body, limit, expected] of [
   [
     "static array loops",

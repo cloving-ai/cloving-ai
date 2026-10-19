@@ -15,6 +15,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
 import {
   candidateDeclaration,
+  candidateEffectExpression,
+  candidateSource,
   combinedCandidateSource,
   validCandidateSource,
 } from "./workflow-candidate-fixtures.ts";
@@ -215,6 +217,9 @@ assert.equal(admitted.kind, "admitted");
 assert.match(admitted.artifactDigest, /^[0-9a-f]{64}$/);
 assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(combinedCandidateSource)}, declaration }), { kind: "refused", codes: ["missing-export", "undeclared-effect"] });
 assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`process.exit(99);\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
+assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`Math.valueOf().random();\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
+const earlyExit = await admitWorkflowCandidate({ source: ${JSON.stringify(candidateSource(`for (let index = 0; index < 3; index++) { await ${candidateEffectExpression}; break; }`).replace('"cloving/workflows"', '"cloving/workflows/steps/protected-effect"'))}, declaration });
+assert.equal(earlyExit.kind, "admitted");
 process.stdout.write("candidate-admission-ok");
 `,
   );

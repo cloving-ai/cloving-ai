@@ -6,6 +6,7 @@ import { withProgram } from "./program-fixture.ts";
 for (const expression of [
   "Date.now()",
   "Math.random()",
+  "(Math.valueOf() as Math).random()",
   "process.env.VALUE",
   "fetch('https://invalid.example')",
   "setTimeout(() => {}, 0)",

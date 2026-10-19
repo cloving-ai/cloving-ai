@@ -82,6 +82,51 @@ const candidateProperties = new Set([
   "getOwnPropertyDescriptors",
 ]);
 
+const pureMathMembers = new Set([
+  "E",
+  "LN10",
+  "LN2",
+  "LOG10E",
+  "LOG2E",
+  "PI",
+  "SQRT1_2",
+  "SQRT2",
+  "abs",
+  "acos",
+  "acosh",
+  "asin",
+  "asinh",
+  "atan",
+  "atan2",
+  "atanh",
+  "cbrt",
+  "ceil",
+  "clz32",
+  "cos",
+  "cosh",
+  "exp",
+  "expm1",
+  "floor",
+  "fround",
+  "hypot",
+  "imul",
+  "log",
+  "log10",
+  "log1p",
+  "log2",
+  "max",
+  "min",
+  "pow",
+  "round",
+  "sign",
+  "sin",
+  "sinh",
+  "sqrt",
+  "tan",
+  "tanh",
+  "trunc",
+]);
+
 function localBinding(symbol: ts.Symbol): boolean {
   return (symbol.declarations ?? []).some(
     (declaration) =>
@@ -139,7 +184,7 @@ function pureMathAccess(node: ts.Node, parent: ts.Node | undefined): boolean {
     !!parent &&
     ts.isPropertyAccessExpression(parent) &&
     parent.expression === node &&
-    parent.name.text !== "random"
+    pureMathMembers.has(parent.name.text)
   );
 }
 

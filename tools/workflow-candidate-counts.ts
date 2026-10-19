@@ -4,6 +4,7 @@ import {
   propertyName,
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
+import { referenceSymbol } from "./workflow-source-effects.ts";
 
 interface Totals {
   readonly knownCallCount: number;
@@ -146,21 +147,91 @@ function loopContinues(
   return value >= end;
 }
 
-function loopIterations(node: ts.ForStatement): number | undefined {
+interface LoopContext {
+  readonly checker: ts.TypeChecker;
+  readonly counter: ts.Symbol | undefined;
+}
+
+function referencesCounter(node: ts.Node, context: LoopContext): boolean {
+  if (!context.counter) return false;
+  if (
+    ts.isIdentifier(node) &&
+    referenceSymbol(node, { parent: node.parent, checker: context.checker }) ===
+      context.counter
+  )
+    return true;
+  return (
+    ts.forEachChild(node, (child) =>
+      referencesCounter(child, context) ? true : undefined,
+    ) ?? false
+  );
+}
+
+function assignmentTarget(node: ts.Node): ts.Expression | undefined {
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  )
+    return node.left;
+  if (
+    (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+    unaryIncrement(node.operator) !== undefined
+  )
+    return node.operand;
+  return undefined;
+}
+
+function writesCounter(node: ts.Node, context: LoopContext): boolean {
+  if (ts.isVariableDeclaration(node) && node.initializer !== undefined)
+    return referencesCounter(node.name, context);
+  if (ts.isForOfStatement(node) || ts.isForInStatement(node))
+    return referencesCounter(node.initializer, context);
+  const target = assignmentTarget(node);
+  return target !== undefined && referencesCounter(target, context);
+}
+
+function uncertainLoopBody(node: ts.Node, context: LoopContext): boolean {
+  if (
+    ts.isBreakStatement(node) ||
+    ts.isContinueStatement(node) ||
+    ts.isReturnStatement(node) ||
+    ts.isThrowStatement(node) ||
+    writesCounter(node, context)
+  )
+    return true;
+  return (
+    ts.forEachChild(node, (child) =>
+      uncertainLoopBody(child, context) ? true : undefined,
+    ) ?? false
+  );
+}
+
+function loopIterations(
+  node: ts.ForStatement,
+  symbols: CandidateSymbols,
+): number | undefined {
   const { initializer, condition, incrementor } = node;
   const declaration = loopStart(initializer);
   if (!declaration) return undefined;
   if (!condition || !ts.isBinaryExpression(condition)) return undefined;
   if (
     !ts.isIdentifier(condition.left) ||
-    condition.left.text !== declaration.variable
+    condition.left.text !== declaration.variable.text
   )
     return undefined;
   if (!incrementor) return undefined;
   const end = constantNumber(condition.right);
   if (end === undefined) return undefined;
-  const increment = loopIncrement(incrementor, declaration.variable);
+  const increment = loopIncrement(incrementor, declaration.variable.text);
   if (increment === undefined) return undefined;
+  if (
+    uncertainLoopBody(node.statement, {
+      checker: symbols.checker,
+      counter: symbols.checker.getSymbolAtLocation(declaration.variable),
+    })
+  )
+    return undefined;
   return rangeIterations({
     start: declaration.start,
     end,
@@ -171,7 +242,7 @@ function loopIterations(node: ts.ForStatement): number | undefined {
 
 function loopStart(
   initializer: ts.ForInitializer | undefined,
-): { readonly variable: string; readonly start: number } | undefined {
+): { readonly variable: ts.Identifier; readonly start: number } | undefined {
   if (
     !initializer ||
     !ts.isVariableDeclarationList(initializer) ||
@@ -188,7 +259,7 @@ function loopStart(
   const start = constantNumber(declaration.initializer);
   if (start === undefined) return undefined;
   return {
-    variable: declaration.name.text,
+    variable: declaration.name,
     start,
   };
 }
@@ -210,7 +281,7 @@ export function candidateEffectTotals(
         maximum(count(node.whenTrue), count(node.whenFalse)),
       );
     if (ts.isForStatement(node)) {
-      const iterations = loopIterations(node) ?? 1;
+      const iterations = loopIterations(node, symbols) ?? 1;
       const body = count(node.statement);
       const headers = add(
         count(node.initializer),
@@ -226,7 +297,7 @@ export function candidateEffectTotals(
         count(node.expression),
         multiply(
           add(count(node.initializer), count(node.statement)),
-          node.expression.elements.length,
+          arrayIterations(node, symbols),
         ),
       );
     if (ts.isSwitchStatement(node))
@@ -240,6 +311,19 @@ export function candidateEffectTotals(
     return total;
   }
   return count(source);
+}
+
+function arrayIterations(
+  node: ts.ForOfStatement,
+  symbols: CandidateSymbols,
+): number {
+  if (!ts.isArrayLiteralExpression(node.expression)) return 1;
+  return uncertainLoopBody(node.statement, {
+    checker: symbols.checker,
+    counter: undefined,
+  })
+    ? 1
+    : node.expression.elements.length;
 }
 
 function switchTotals(

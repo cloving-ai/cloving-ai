@@ -10,6 +10,8 @@ import { analyzeWorkflowCandidate } from "../tools/workflow-candidate-source.ts"
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
 import {
   candidateDeclaration,
+  candidateEffectExpression,
+  candidateSource,
   combinedCandidateSource,
   validCandidateSource,
 } from "./workflow-candidate-fixtures.ts";
@@ -40,6 +42,32 @@ await test("CLV-121 admission compiles a valid candidate with real SDK handlers 
   assert.equal(result.kind, "admitted");
   assert.deepEqual(Object.keys(result).sort(), ["artifactDigest", "kind"]);
   assert.match(result.artifactDigest, /^[0-9a-f]{64}$/);
+});
+
+for (const ending of ["break;", "return;", "index = 3;"]) {
+  await test(`CLV-121 admission compiles a candidate loop with ${ending}`, async () => {
+    const source = candidateSource(
+      `for (let index = 0; index < 3; index++) { await ${candidateEffectExpression}; ${ending} }`,
+    ).replace(
+      '"cloving/workflows"',
+      '"cloving/workflows/steps/protected-effect"',
+    );
+    const result = await admitWorkflowCandidate({
+      source,
+      declaration: candidateDeclaration,
+    });
+    assert.equal(result.kind, "admitted");
+  });
+}
+
+await test("CLV-121 admission refuses indirect randomness before SDK compilation", async () => {
+  assert.deepEqual(
+    await admitWorkflowCandidate({
+      source: `Math.valueOf().random();\n${validCandidateSource}`,
+      declaration: candidateDeclaration,
+    }),
+    { kind: "refused", codes: ["direct-effect"] },
+  );
 });
 
 await test("CLV-121 a real SDK compiler rejection returns only a fixed compile-failed code", async () => {

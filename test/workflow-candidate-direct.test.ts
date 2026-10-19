@@ -130,6 +130,12 @@ for (const body of [
   "const clock = performance; clock.now();",
   "crypto.randomUUID();",
   "Math.random();",
+  "Math.valueOf().random();",
+  "const math = Math.valueOf(); math.random();",
+  "const { random } = Math.valueOf(); random();",
+  "const valueOf = Math.valueOf; valueOf.call(Math).random();",
+  "Math.toString();",
+  "Math.unknownMember();",
   "const math = Math; math.random();",
   "const { random } = Math; random();",
 ]) {
@@ -143,3 +149,20 @@ for (const body of [
     );
   });
 }
+
+await test("CLV-121 known pure Math members and shadowed Math values pass", () => {
+  for (const body of [
+    "return Math.max(1, Math.PI);",
+    "const absolute = Math.abs; return absolute(-1);",
+    "return Math.hypot(3, 4);",
+    "const Math = { valueOf: () => ({ random: () => 1 }) }; return Math.valueOf().random();",
+  ])
+    assert.deepEqual(
+      checkWorkflowCandidate({
+        declaration: candidateDeclaration,
+        ...analyzeWorkflowCandidate(candidateSource(body)),
+      }),
+      [],
+      body,
+    );
+});
