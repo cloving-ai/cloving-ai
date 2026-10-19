@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { join } from "node:path";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
@@ -96,6 +96,7 @@ for (const cancellation of ["delivery abort", "worker close"]) {
       withScene(async (scene) => {
         const restore = installAnalysisCli(scene, { reply: "{}" });
         const processFile = join(scene.directory, "token-process");
+        writeFileSync(processFile, "");
         process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = JSON.stringify([
           process.execPath,
           "-e",
@@ -109,8 +110,10 @@ for (const cancellation of ["delivery abort", "worker close"]) {
         const delivery = worker.deliver(analysis, controller.signal);
         let processId = 0;
         try {
-          await until(() => existsSync(processFile));
-          processId = Number(readFileSync(processFile, "utf8"));
+          await until(() => {
+            processId = Number(readFileSync(processFile, "utf8"));
+            return Number.isSafeInteger(processId) && processId > 0;
+          });
           assert.ok(alive(processId));
           const closing =
             cancellation === "worker close" ? worker.close() : undefined;
