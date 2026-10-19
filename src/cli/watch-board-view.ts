@@ -3,6 +3,32 @@ import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchCard, WatchWorkflow } from "./watch-render.ts";
 
+export const boardSizing = {
+  minimumColumnWidth: 200,
+  collapsedColumnWidth: 44,
+  gap: 12,
+};
+
+export function boardLayout(input: {
+  readonly contentWidth: number;
+  readonly openColumns: number;
+  readonly collapsedColumns: number;
+}): { readonly columnWidth: number; readonly totalWidth: number } {
+  const { contentWidth, openColumns, collapsedColumns } = input;
+  const fixedWidth =
+    collapsedColumns * boardSizing.collapsedColumnWidth +
+    Math.max(0, openColumns + collapsedColumns - 1) * boardSizing.gap;
+  const columnWidth = Math.max(
+    boardSizing.minimumColumnWidth,
+    (contentWidth - fixedWidth) / Math.max(1, openColumns),
+  );
+  return {
+    columnWidth:
+      openColumns === 0 ? boardSizing.minimumColumnWidth : columnWidth,
+    totalWidth: openColumns * columnWidth + fixedWidth,
+  };
+}
+
 export function cardStep(card: WatchCard, now: string): string {
   if (card.endedAt !== null) return new Date(card.endedAt).toLocaleString();
   const step = card.currentStep;

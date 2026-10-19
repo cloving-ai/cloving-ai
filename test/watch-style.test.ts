@@ -11,27 +11,39 @@ function rule(selector: string): string {
   return rules.slice(start, rules.indexOf("}", start));
 }
 
-await test("CLV-134 the board fills the viewport with independent column and workflow scrolling", () => {
+await test("CLV-140 tabs scroll in one row above a full-width board with flexible columns", () => {
+  assert.match(rule(".workspace"), /display: flex/);
+  assert.match(rule(".workspace"), /width: 100%/);
+  assert.doesNotMatch(rule(".workspace"), /grid-template-columns/);
+  assert.match(rule(".board"), /width: 100%/);
+  assert.match(rule(".workflows"), /flex-direction: row/);
+  assert.match(rule(".workflows"), /flex-shrink: 0/);
+  assert.match(rule(".workflows"), /overflow-x: auto/);
+  assert.match(rule(".workflows"), /overflow-y: hidden/);
+  assert.match(rule(".workflows a"), /flex-shrink: 0/);
+  assert.match(rule(".workflows a"), /white-space: nowrap/);
+  assert.match(rule(".column"), /flex: 1 0 200px/);
+  assert.match(rule(".column"), /min-width: 200px/);
+  assert.match(rule(".column.collapsed"), /flex: 0 0 44px/);
+  assert.match(rule(".column.collapsed"), /min-width: 44px/);
+  assert.match(rule(".columns"), /gap: 12px/);
+});
+
+await test("CLV-134 the board fills the viewport with independent column scrolling", () => {
   assert.match(rule(".board-page"), /height: 100dvh/);
   assert.match(rule(".board-page"), /overflow: hidden/);
   for (const selector of [".workspace", ".board", ".columns"])
     assert.match(rule(selector), /min-height: 0/);
-  assert.match(rule(".workflows"), /overflow-y: auto/);
   assert.match(rule(".columns"), /overflow-x: scroll/);
   assert.match(rule(".columns"), /overflow-y: hidden/);
   assert.match(rule(".columns"), /align-items: flex-start/);
-  assert.match(rule(".column"), /flex: 0 0 260px/);
   assert.match(rule(".column"), /max-height: 100%/);
   assert.match(rule(".column"), /display: flex/);
   assert.match(rule(".column-name"), /flex-shrink: 0/);
   assert.match(rule(".column-cards"), /overflow-y: auto/);
   assert.match(rule(".column-cards"), /min-height: 0/);
-  assert.match(rule(".column.collapsed"), /flex-basis: 44px/);
   assert.match(rule(".collapsed .column-name"), /writing-mode: vertical-rl/);
-  assert.match(
-    css,
-    /@media \(max-width: 700px\)[\s\S]*grid-template-rows: auto minmax\(0, 1fr\)/,
-  );
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*padding-inline: 12px/);
 });
 
 await test("CLV-134 card titles use two lines and step and review metadata each stay on one line", () => {

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { test } from "node:test";
+import { boardLayout } from "../src/cli/watch-board-view.ts";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import { boardEvent, boardModel, boardRun } from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
@@ -102,9 +103,10 @@ function assertHorizontal(
   horizontal: Record<string, unknown>,
   viewport: { readonly width: number; readonly height: number },
 ) {
-  assert.ok(
+  assert.equal(
     Number(horizontal["scrollLeft"]) > Number(horizontal["initialScrollLeft"]),
-    "scroll gestures move the board sideways",
+    viewport.width < 1385,
+    "scroll gestures move the board sideways only when columns overflow",
   );
   assert.equal(horizontal["doneVisible"], true);
   assert.ok(
@@ -116,19 +118,111 @@ function assertHorizontal(
 
 function assertExpanded(
   expanded: Record<string, unknown>,
-  scrolled: Record<string, unknown>,
+  contentWidth: number,
 ) {
-  assert.equal(expanded["width"], 260);
+  const expected = boardLayout({
+    contentWidth,
+    openColumns: 6,
+    collapsedColumns: 1,
+  });
+  assert.ok(Math.abs(Number(expanded["width"]) - expected.columnWidth) < 0.1);
   assert.ok(Number(expanded["scrollTop"]) > 0);
   assert.equal(expanded["lastVisible"], true, "last Done card is reachable");
   assert.equal(expanded["lastId"], "done-19");
   assert.equal(expanded["lastOnScreen"], true);
   assert.equal(expanded["headerVisible"], true);
-  assert.equal(expanded["implementScrollTop"], scrolled["scrollTop"]);
+  assert.ok(Number(expanded["implementScrollTop"]) > 0);
 }
+
+interface LayoutMeasurement {
+  readonly contentWidth: number;
+  readonly openWidths: readonly number[];
+  readonly collapsedWidths: readonly number[];
+  readonly fullWidth: boolean;
+  readonly tabsAbove: boolean;
+  readonly overflow: boolean;
+  readonly allVisible: boolean;
+}
+
+function isWidths(value: unknown): value is readonly number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((width: unknown) => typeof width === "number")
+  );
+}
+
+function isLayout(value: unknown): value is LayoutMeasurement {
+  if (value === null || typeof value !== "object") return false;
+  const layout = fields(value);
+  return (
+    typeof layout["contentWidth"] === "number" &&
+    isWidths(layout["openWidths"]) &&
+    isWidths(layout["collapsedWidths"]) &&
+    typeof layout["fullWidth"] === "boolean" &&
+    typeof layout["tabsAbove"] === "boolean" &&
+    typeof layout["overflow"] === "boolean" &&
+    typeof layout["allVisible"] === "boolean"
+  );
+}
+
+function assertInitialLayout(initial: Record<string, unknown>, width: number) {
+  const layout = initial["layout"];
+  assert.ok(isLayout(layout), "Invalid browser layout");
+  return assertLayout(layout, width);
+}
+
+function assertLayout(layout: LayoutMeasurement, width: number) {
+  const { contentWidth } = layout;
+  const expected = boardLayout({
+    contentWidth,
+    openColumns: 5,
+    collapsedColumns: 2,
+  });
+  assert.equal(layout.openWidths.length, 5);
+  for (const actual of layout.openWidths)
+    assert.ok(Math.abs(actual - expected.columnWidth) < 0.1);
+  assert.deepEqual(layout.collapsedWidths, [44, 44]);
+  assert.equal(layout.fullWidth, true);
+  assert.equal(layout.tabsAbove, true);
+  assert.equal(layout.overflow, width < 1385);
+  assert.equal(layout.allVisible, width === 1385);
+  assert.equal(expected.columnWidth === 200, width < 1385);
+  return contentWidth;
+}
+
+await test("browser layout rejects coercible numeric fields", () => {
+  const layout = {
+    contentWidth: 1353,
+    openWidths: Array.from({ length: 5 }, () => 238.6),
+    collapsedWidths: [44, 44],
+    fullWidth: true,
+    tabsAbove: true,
+    overflow: false,
+    allVisible: true,
+  };
+  assert.equal(assertInitialLayout({ layout }, 1385), 1353);
+  for (const invalid of [
+    { ...layout, contentWidth: "1353" },
+    { ...layout, openWidths: layout.openWidths.map(String) },
+    { ...layout, openWidths: {} },
+    { ...layout, collapsedWidths: ["44", "44"] },
+    { ...layout, fullWidth: "true" },
+    { ...layout, tabsAbove: "true" },
+    { ...layout, overflow: 0 },
+    { ...layout, allVisible: 1 },
+    {},
+    null,
+    "layout",
+  ])
+    assert.throws(
+      () => assertInitialLayout({ layout: invalid }, 1385),
+      /Invalid browser layout/,
+    );
+});
 
 for (const viewport of [
   { width: 1385, height: 989 },
+  { width: 1000, height: 989 },
   { width: 390, height: 844 },
 ]) {
   await test(`CLV-134 real browser reaches overflowing cards and keeps headers and board scrolling visible at ${String(viewport.width)}px`, async () => {
@@ -139,9 +233,15 @@ for (const viewport of [
     const initial = await page.evaluate(scrollScenario);
     assert.deepEqual(initial["viewport"], viewport);
     assert.equal(initial["initiallyCollapsed"], true);
+    const contentWidth = assertInitialLayout(initial, viewport.width);
+    const tabs = await page.evaluate("watchScrolling.tabs()");
+    assert.equal(tabs["overflow"], viewport.width === 390);
+    assert.equal(tabs["boardBefore"], tabs["boardAfter"]);
+    assert.equal(Number(tabs["scrollLeft"]) > 0, viewport.width === 390);
     await page.scroll("watchScrolling.activeGesture()");
     const scrolled = await page.evaluate("watchScrolling.scrolled()");
     assertColumnScroll(initial, scrolled);
+    await page.evaluate("watchScrolling.rewind()");
     await page.scroll("watchScrolling.sidewaysGesture()");
     const horizontal = await page.evaluate("watchScrolling.horizontal()");
     assertHorizontal(horizontal, viewport);
@@ -149,7 +249,13 @@ for (const viewport of [
     await page.scroll("watchScrolling.sidewaysGesture()");
     await page.scroll("watchScrolling.doneGesture()");
     const expanded = await page.evaluate("watchScrolling.expanded()");
-    assertExpanded(expanded, scrolled);
+    assertExpanded(expanded, contentWidth);
+    await page.evaluate("watchScrolling.showActive()");
+    await page.scroll("watchScrolling.activeGesture()");
+    const activeAgain = await page.evaluate("watchScrolling.scrolled()");
+    assert.equal(activeAgain["lastVisible"], true);
+    assert.equal(activeAgain["lastClickable"], true);
+    assert.equal(activeAgain["lastId"], scrolled["lastId"]);
     await page.scroll("watchScrolling.returnGesture()");
     const final = await page.evaluate("watchScrolling.final()");
     assert.equal(final["returned"], 0);

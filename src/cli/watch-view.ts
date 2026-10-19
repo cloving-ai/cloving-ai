@@ -316,13 +316,13 @@ export function BoardPage(
         copying,
         shown: start.shown,
       }),
+      component(WorkflowList, {
+        workflows: model.workflows,
+        selected: workflowId,
+      }),
       element("div", {
         class: "workspace",
         children: [
-          component(WorkflowList, {
-            workflows: model.workflows,
-            selected: workflowId,
-          }),
           workflow === undefined
             ? element("p", {
                 class: "meta",

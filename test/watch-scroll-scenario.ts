@@ -10,11 +10,12 @@ export const scrollScenario = `
   const implement = column("Claude turn");
   board.scrollLeft = implement.getBoundingClientRect().left - board.getBoundingClientRect().left - 6;
   await frame();
-  const initialScrollLeft = board.scrollLeft;
+  let initialScrollLeft = board.scrollLeft;
   const header = implement.querySelector(".column-name");
   const cards = implement.querySelector(".column-cards");
   const last = cards.lastElementChild;
   const done = column("Done");
+  const tabs = document.querySelector(".workflows");
   const rect = (node) => {
     const { top, bottom, left, right, width, height } = node.getBoundingClientRect();
     return { top, bottom, left, right, width, height };
@@ -28,6 +29,22 @@ export const scrollScenario = `
     return { x: area.left + 20, y: area.top + 20, ...distance };
   };
   globalThis.watchScrolling = {
+    tabs: () => {
+      const boardBefore = board.scrollLeft;
+      tabs.scrollLeft = tabs.scrollWidth;
+      return { overflow: tabs.scrollWidth > tabs.clientWidth, scrollLeft: tabs.scrollLeft,
+        boardBefore, boardAfter: board.scrollLeft };
+    },
+    rewind: async () => {
+      board.scrollLeft = 0; initialScrollLeft = 0;
+      await frame(); await frame();
+      return {};
+    },
+    showActive: async () => {
+      board.scrollLeft += rect(implement).left - rect(board).left - 6;
+      await frame(); await frame();
+      return {};
+    },
     activeGesture: () => gesture(cards, { yDistance: -cards.scrollHeight }),
     sidewaysGesture: () => gesture(board, { xDistance: -board.scrollWidth, yDistance: 0 }),
     returnGesture: () => gesture(board, { xDistance: board.scrollWidth, yDistance: 0 }),
@@ -71,6 +88,15 @@ export const scrollScenario = `
     viewport: { width: innerWidth, height: innerHeight },
     before: { header: rect(header), lastVisible: visible(last, cards), scrollTop: cards.scrollTop },
     initiallyCollapsed: done.classList.contains("collapsed"),
+    layout: {
+      contentWidth: board.clientWidth - parseFloat(getComputedStyle(board).paddingLeft) - parseFloat(getComputedStyle(board).paddingRight),
+      openWidths: [...board.querySelectorAll(".column:not(.collapsed)")].map(item => rect(item).width),
+      collapsedWidths: [...board.querySelectorAll(".collapsed")].map(item => rect(item).width),
+      overflow: board.scrollWidth > board.clientWidth,
+      allVisible: [...board.children].every(item => visible(item, board)),
+      fullWidth: rect(board).width === rect(document.querySelector(".workspace")).width,
+      tabsAbove: rect(tabs).top >= rect(document.querySelector("header")).bottom && rect(tabs).bottom <= rect(board).top,
+    },
   };
 })()
 `;

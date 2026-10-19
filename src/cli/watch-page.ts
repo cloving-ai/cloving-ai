@@ -4,6 +4,7 @@ import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
 import {
   Board,
+  boardSizing,
   Card,
   Column,
   columnCollapsed,
@@ -166,23 +167,23 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .start-card p { margin: 6px 0 12px; }
 .start-card .command { grid-template-columns: minmax(0, 1fr); margin: 0; }
 .start-card button { justify-self: end; }
-.workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; margin-top: 12px; flex: 1; min-height: 0; }
-.workflows { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
-.workflows a { display: grid; gap: 2px; border-bottom: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.workspace { display: flex; width: 100%; margin-top: 12px; flex: 1; min-height: 0; }
+.workflows { display: flex; flex-direction: row; flex-shrink: 0; gap: 8px; min-width: 0; margin-top: 12px; padding: 6px; overflow-x: auto; overflow-y: hidden; }
+.workflows a { display: grid; flex-shrink: 0; white-space: nowrap; gap: 2px; border-bottom: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; }
 .workflows a[aria-current="page"] { border-bottom-color: var(--accent); background: var(--surface); border-radius: 8px 8px 0 0; }
 .workflows span, .card small { color: var(--muted); font-size: 12px; }
-.board { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.board { width: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .board h2 { margin: 0 0 8px; font-size: 24px; flex-shrink: 0; }
-.columns { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
+.columns { display: flex; align-items: flex-start; gap: ${String(boardSizing.gap)}px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
 @supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }
 .columns::-webkit-scrollbar { height: 12px; }
 .columns::-webkit-scrollbar-track { background: var(--surface-2); }
 .columns::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 6px; }
-.column { flex: 0 0 260px; min-width: 0; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2); }
+.column { flex: 1 0 ${String(boardSizing.minimumColumnWidth)}px; min-width: ${String(boardSizing.minimumColumnWidth)}px; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2); }
 .column-name { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin: 0; padding: 4px 0 10px; color: var(--muted); font: 500 12px/1.5 var(--code-font); }
 .column-name > span:first-child { flex: 1; }
 .column-cards { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
-.column.collapsed { flex-basis: 44px; padding: 6px; }
+.column.collapsed { flex: 0 0 ${String(boardSizing.collapsedColumnWidth)}px; min-width: ${String(boardSizing.collapsedColumnWidth)}px; padding: 6px; }
 .collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
 .column-name button, .start-toggle { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
 .column-name button:hover, .start-toggle:hover { background: var(--surface); }
@@ -268,7 +269,7 @@ button:hover { background: var(--code-head); }
 .events { margin-top: 18px; padding-bottom: 10px; }
 .events > summary { color: var(--code-fg); }
 .down { font-weight: 600; }
-@media (max-width: 700px) { body { padding-inline: 12px; } .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; } .workflows { flex-direction: row; overflow-x: auto; max-height: 100px; padding: 6px; } .workflows a { flex-shrink: 0; } }
+@media (max-width: 700px) { body { padding-inline: 12px; } }
 `;
 
 export function pageDocument(): string {
