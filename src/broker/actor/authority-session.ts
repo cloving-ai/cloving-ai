@@ -358,24 +358,25 @@ async function healthyReceipt(
   return receipt;
 }
 
-function operationRecords(
+export function operationRecords(
   snapshot: Pick<ProjectionSnapshot, "outbox" | "deliveries">,
 ): readonly OperationRecord[] {
+  const deliveries = Map.groupBy(snapshot.deliveries, (row) => row.operationId);
   return snapshot.outbox.map((row) => ({
     operationId: row.operationId,
     kind: intentKind(row.kind),
     runId: row.runId,
     createdSequence: row.createdSequence,
     releasedSequence: row.releasedSequence,
-    deliveries: snapshot.deliveries
-      .filter((delivery) => delivery.operationId === row.operationId)
-      .map(({ effectId, outcome, receipt, purpose, epoch }) => ({
+    deliveries: (deliveries.get(row.operationId) ?? []).map(
+      ({ effectId, outcome, receipt, purpose, epoch }) => ({
         effectId,
         outcome,
         receipt,
         purpose,
         epoch,
-      })),
+      }),
+    ),
   }));
 }
 

@@ -22,7 +22,7 @@ interface WorkflowJob {
   readonly "timeout-minutes": number;
   readonly steps: readonly WorkflowStep[];
   readonly if?: string;
-  readonly needs?: string;
+  readonly needs?: string | readonly string[];
   readonly permissions?: StringRecord;
   readonly env?: StringRecord;
 }
@@ -32,6 +32,7 @@ export interface ReleaseWorkflow {
   readonly permissions: StringRecord;
   readonly jobs: {
     readonly quality: WorkflowJob;
+    readonly quality_linux: WorkflowJob;
     readonly publish: WorkflowJob;
   };
 }
@@ -97,6 +98,10 @@ function isStep(value: unknown): value is WorkflowStep {
   );
 }
 
+function validNeeds(value: unknown): boolean {
+  return value === undefined || isString(value) || isCommand(value);
+}
+
 function isJob(value: unknown): value is WorkflowJob {
   if (!isRecord(value)) return false;
   return (
@@ -104,9 +109,8 @@ function isJob(value: unknown): value is WorkflowJob {
     typeof value["timeout-minutes"] === "number" &&
     Array.isArray(value["steps"]) &&
     value["steps"].every(isStep) &&
-    ["if", "needs"].every(
-      (name) => value[name] === undefined || isString(value[name]),
-    ) &&
+    (value["if"] === undefined || isString(value["if"])) &&
+    validNeeds(value["needs"]) &&
     ["permissions", "env"].every(
       (name) => value[name] === undefined || isStringRecord(value[name]),
     )
@@ -121,6 +125,7 @@ function isWorkflow(value: unknown): value is ReleaseWorkflow {
     isStringRecord(value["permissions"]) &&
     isRecord(jobs) &&
     isJob(jobs["quality"]) &&
+    isJob(jobs["quality_linux"]) &&
     isJob(jobs["publish"])
   );
 }
@@ -220,8 +225,11 @@ function permits(workflow: ReleaseWorkflow, context: ReleaseContext): boolean {
     "",
   );
   const terms: Readonly<Record<string, boolean>> = {
-    "success()": context.quality === "success",
+    "success()":
+      context.quality === "success" && context.quality_linux === "success",
     "needs.quality.result == 'success'": context.quality === "success",
+    "needs.quality_linux.result == 'success'":
+      context.quality_linux === "success",
     "github.event_name == 'push'": context.github.event_name === "push",
     "github.ref_type == 'tag'": context.github.ref_type === "tag",
     "startsWith(github.ref, 'refs/tags/v')": context.github.ref
@@ -242,6 +250,7 @@ export interface ReleaseContext {
     readonly ref_name: string;
   };
   readonly quality: string;
+  readonly quality_linux: string;
 }
 
 export const tagged: ReleaseContext = {
@@ -252,6 +261,7 @@ export const tagged: ReleaseContext = {
     ref_name: `v${packageVersion}`,
   },
   quality: "success",
+  quality_linux: "success",
 };
 
 const fake = `#!/usr/bin/env node

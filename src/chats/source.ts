@@ -74,8 +74,8 @@ export async function inspectScanSource(
 }
 
 export function noFollowPath(path: string): string {
-  if (process.platform !== "darwin" || !isAbsolute(path))
-    throw new Error("source-unreadable");
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
+  if (!isAbsolute(path)) throw new Error("source-unreadable");
   return `/.nofollow${path}`;
 }
 

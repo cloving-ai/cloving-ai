@@ -35,6 +35,8 @@ What does not work yet:
 
 ### Import selected chats
 
+Chat import, redaction and analysis file operations currently require macOS. On Linux, the chat commands return `platform-unsupported` with exit status `1` before file access. The analysis file adapter also refuses with `platform-unsupported` before reading payloads.
+
 ```sh
 cloving chats import -- TRANSCRIPT_A.jsonl TRANSCRIPT_B.jsonl
 cloving chats import --previous-import IMPORT_ID -- TRANSCRIPT_A.jsonl TRANSCRIPT_B.jsonl
@@ -133,7 +135,7 @@ Acceptance returns the candidate plus limitations preserving conflict groups, un
 
 ## Install
 
-The current pilot uses Node 26.9.0 and npm 11.19.1 on macOS 27.0 on arm64. The installation ranges in `package.json` do not qualify other workflow runtimes: workflow admission still requires exactly Node 26.9.0. GitHub-hosted macOS 15 arm64 qualification is pending its CI quality and packed-startup checks. Other platforms and runtime versions are unqualified.
+Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission still requires exactly Node 26.9.0. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. Chat import and redaction currently require macOS; other platforms return `platform-unsupported` before file access. Windows is unsupported.
 
 A run needs these tools:
 
@@ -462,7 +464,7 @@ Copy a prompt, replace the words in capital letters, and give it to a coding age
 ```text
 Set up Cloving for my repository REPOSITORY_PATH. Ask me for each value that you do not know. Do not push, publish or merge anything in this setup.
 
-1. Check the platform: macOS on arm64, with the Node and npm versions of "engines" in package.json of Cloving. Check that git and the claude command work. If I want develop-issue, check that gh has a login and that Greptile reviews the GitHub repository.
+1. Check the platform: macOS or Linux on arm64 or x64, with the Node and npm versions of "engines" in package.json of Cloving. Check that git and the claude command work. If I want develop-issue, check that gh has a login and that Greptile reviews the GitHub repository.
 2. If I have no Cloving checkout, clone https://github.com/cloving-ai/cloving-ai.git to ~/cloving. In the checkout, run: npm ci --ignore-scripts
 3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link, and do not install the npm package with the name cloving. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
 4. Ask me which tracker has my tickets. Write a ticket command for that tracker in ~/.local/bin. The command gets a ticket ID as its last argument and prints the text of the ticket. For develop-issue, the first line is "# " and the title, and one line is "GitHub issue: OWNER/REPOSITORY#NUMBER". Test the command with one ticket ID, and show me the output.

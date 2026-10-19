@@ -230,6 +230,15 @@ async function delivered(
 }
 
 export function chatsWorker(settings: ChatsWorkerSettings): ChatsWorker {
+  if (process.platform !== "darwin") {
+    const unsupported = () => Promise.resolve(refused("platform-unsupported"));
+    return {
+      deliver: unsupported,
+      reconcile: unsupported,
+      stop: unsupported,
+      close: () => Promise.resolve(),
+    };
+  }
   const active = new Map<string, Promise<AdapterOutcome>>();
   const lifecycle = { closed: false };
   const deliver = (

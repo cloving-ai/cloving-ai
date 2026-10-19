@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { lstat, open, type FileHandle } from "node:fs/promises";
 
 export async function openInput(path: string): Promise<FileHandle> {
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
   const before = await lstat(path);
   if (!before.isFile() || before.nlink !== 1) throw new Error("invalid-import");
   const handle = await open(

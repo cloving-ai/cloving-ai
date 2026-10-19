@@ -19,9 +19,9 @@ async function optionalRevision(path: string): Promise<string | undefined> {
 }
 
 export async function readPreviousImport(runtime: string, importId: string) {
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
   try {
     if (
-      process.platform !== "darwin" ||
       !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
         importId,
       )

@@ -128,11 +128,12 @@ export async function redactImport(request: RedactImportRequest) {
     counts: emptyCounts(),
     totalCount: 0,
   };
+  if (process.platform !== "darwin")
+    return { ...empty, code: "platform-unsupported" };
   if (request.runtimeDirectory === undefined)
     return { ...empty, code: "runtime-directory-unknown" };
   try {
     if (
-      process.platform !== "darwin" ||
       !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
         request.importId,
       )

@@ -33,6 +33,7 @@ export interface ImportSummary extends StructureCounts {
     | "import-complete"
     | "import-partial"
     | "runtime-directory-unknown"
+    | "platform-unsupported"
     | "destination-refused"
     | "output-failed"
     | "previous-import-refused";
@@ -187,6 +188,8 @@ export async function importChats(
   request: ImportRequest,
 ): Promise<ImportSummary> {
   const empty = emptyImport(request);
+  if (process.platform !== "darwin")
+    return { ...empty, code: "platform-unsupported" };
   if (request.runtimeDirectory === undefined)
     return { ...empty, code: "runtime-directory-unknown" };
   try {

@@ -1,3 +1,4 @@
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,54 +18,58 @@ import {
 import { call } from "./service-fixture.ts";
 import { watchedModel } from "./watch-fixture.ts";
 
-await test("CLV-116 a Codex daemon runs declared chat analysis with the restricted Claude CLI and keeps Codex for development", () =>
-  withoutChildren(async () => {
-    const fixture = await scene();
-    const restore = installAnalysisCli(
-      { directory: fixture.root },
-      { reply: JSON.stringify(candidate()) },
-    );
-    const script = join(fixture.root, "codex.mjs");
-    writeFileSync(
-      script,
-      fakeCodex +
-        `
+await test(
+  "CLV-116 a Codex daemon runs declared chat analysis with the restricted Claude CLI and keeps Codex for development",
+  chatPlatformScenario(() =>
+    withoutChildren(async () => {
+      const fixture = await scene();
+      const restore = installAnalysisCli(
+        { directory: fixture.root },
+        { reply: JSON.stringify(candidate()) },
+      );
+      const script = join(fixture.root, "codex.mjs");
+      writeFileSync(
+        script,
+        fakeCodex +
+          `
 writeFileSync(${JSON.stringify(join(fixture.root, "development-environment.json"))}, JSON.stringify({ token: process.env.CLAUDE_CODE_OAUTH_TOKEN }));`,
-    );
-    seedEvidence(fixture.runtimeDirectory);
-    try {
-      const daemon = await fixture.start({
-        CLOVING_SELF_UPDATE_SECONDS: undefined,
-        CLAUDE_CODE_OAUTH_TOKEN: undefined,
-        CLOVING_WORKER: "codex",
-        CLOVING_CLAUDE_COMMAND: "not JSON",
-        CLOVING_CODEX_COMMAND: JSON.stringify([process.execPath, script]),
-      });
-      const output: string[] = [];
-      for (const stream of [daemon.stdout, daemon.stderr])
-        stream?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
-      await assertAnalysis(fixture.runtimeDirectory, fixture.root);
-      await assertDevelopment(fixture.runtimeDirectory);
-      assert.deepEqual(
-        JSON.parse(
-          readFileSync(
-            join(fixture.root, "development-environment.json"),
-            "utf8",
+      );
+      seedEvidence(fixture.runtimeDirectory);
+      try {
+        const daemon = await fixture.start({
+          CLOVING_SELF_UPDATE_SECONDS: undefined,
+          CLAUDE_CODE_OAUTH_TOKEN: undefined,
+          CLOVING_WORKER: "codex",
+          CLOVING_CLAUDE_COMMAND: "not JSON",
+          CLOVING_CODEX_COMMAND: JSON.stringify([process.execPath, script]),
+        });
+        const output: string[] = [];
+        for (const stream of [daemon.stdout, daemon.stderr])
+          stream?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
+        await assertAnalysis(fixture.runtimeDirectory, fixture.root);
+        await assertDevelopment(fixture.runtimeDirectory);
+        assert.deepEqual(
+          JSON.parse(
+            readFileSync(
+              join(fixture.root, "development-environment.json"),
+              "utf8",
+            ),
           ),
-        ),
-        {},
-      );
-      assert.equal(await ended(daemon), 0);
-      assert.equal(
-        (output.join("\n") + runtimeText(fixture.runtimeDirectory)).includes(
-          "synthetic-subscription-token",
-        ),
-        false,
-      );
-    } finally {
-      restore();
-    }
-  }));
+          {},
+        );
+        assert.equal(await ended(daemon), 0);
+        assert.equal(
+          (output.join("\n") + runtimeText(fixture.runtimeDirectory)).includes(
+            "synthetic-subscription-token",
+          ),
+          false,
+        );
+      } finally {
+        restore();
+      }
+    }),
+  ),
+);
 
 async function assertDevelopment(runtimeDirectory: string): Promise<void> {
   const admitted = await call(
@@ -183,44 +188,48 @@ async function analysisStatus(runtimeDirectory: string): Promise<unknown> {
   return status;
 }
 
-await test("CLV-118 failed subscription command blocks the daemon run without exposing output in events, results, journal or console", () =>
-  withoutChildren(async () => {
-    const fixture = await scene();
-    const restore = installAnalysisCli(
-      { directory: fixture.root },
-      { reply: "unused" },
-    );
-    seedEvidence(fixture.runtimeDirectory);
-    const token = "synthetic-subscription-token";
-    try {
-      const daemon = await fixture.start({
-        CLOVING_SELF_UPDATE_SECONDS: undefined,
-        CLAUDE_CODE_OAUTH_TOKEN: undefined,
-        CLOVING_ANALYSIS_TOKEN_COMMAND: JSON.stringify([
-          process.execPath,
-          "-e",
-          `process.stdout.write(${JSON.stringify(token)}); process.stderr.write(${JSON.stringify(token)}); process.exit(8)`,
-        ]),
-      });
-      const output: string[] = [];
-      for (const stream of [daemon.stdout, daemon.stderr])
-        stream?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
-      const status = await analysisStatus(fixture.runtimeDirectory);
-      assert.deepEqual(field(status, "outcome"), {
-        kind: "blocked",
-        reason: "analysis-worker-unavailable",
-      });
-      assert.equal(readFileSync(join(fixture.root, "turns.log"), "utf8"), "");
-      const view = await watchedModel(fixture.runtimeDirectory);
-      assert.equal(JSON.stringify([status, view]).includes(token), false);
-      assert.equal(await ended(daemon), 0);
-      assert.equal(
-        (output.join("\n") + runtimeText(fixture.runtimeDirectory)).includes(
-          token,
-        ),
-        false,
+await test(
+  "CLV-118 failed subscription command blocks the daemon run without exposing output in events, results, journal or console",
+  chatPlatformScenario(() =>
+    withoutChildren(async () => {
+      const fixture = await scene();
+      const restore = installAnalysisCli(
+        { directory: fixture.root },
+        { reply: "unused" },
       );
-    } finally {
-      restore();
-    }
-  }));
+      seedEvidence(fixture.runtimeDirectory);
+      const token = "synthetic-subscription-token";
+      try {
+        const daemon = await fixture.start({
+          CLOVING_SELF_UPDATE_SECONDS: undefined,
+          CLAUDE_CODE_OAUTH_TOKEN: undefined,
+          CLOVING_ANALYSIS_TOKEN_COMMAND: JSON.stringify([
+            process.execPath,
+            "-e",
+            `process.stdout.write(${JSON.stringify(token)}); process.stderr.write(${JSON.stringify(token)}); process.exit(8)`,
+          ]),
+        });
+        const output: string[] = [];
+        for (const stream of [daemon.stdout, daemon.stderr])
+          stream?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
+        const status = await analysisStatus(fixture.runtimeDirectory);
+        assert.deepEqual(field(status, "outcome"), {
+          kind: "blocked",
+          reason: "analysis-worker-unavailable",
+        });
+        assert.equal(readFileSync(join(fixture.root, "turns.log"), "utf8"), "");
+        const view = await watchedModel(fixture.runtimeDirectory);
+        assert.equal(JSON.stringify([status, view]).includes(token), false);
+        assert.equal(await ended(daemon), 0);
+        assert.equal(
+          (output.join("\n") + runtimeText(fixture.runtimeDirectory)).includes(
+            token,
+          ),
+          false,
+        );
+      } finally {
+        restore();
+      }
+    }),
+  ),
+);

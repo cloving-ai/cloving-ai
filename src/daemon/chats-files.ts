@@ -14,6 +14,7 @@ export async function analysisDirectory(
   runtime: string,
   importId: string,
 ): Promise<string> {
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
   const directory = resolve(runtime, "chats", importId);
   await checkedDirectory(directory);
   return directory;

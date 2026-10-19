@@ -19,7 +19,10 @@ await test("CLV-097 installation describes the packaged replacement and pending 
   assert.match(readme, /replaces the older Cloving CLI/);
   assert.match(readme, /Once the operator publishes this package/);
   assert.match(readme, /Node 26\.9\.0 and npm 11\.19\.1/);
-  assert.match(readme, /macOS 15.*qualification.*pending/);
+  assert.match(readme, /supports macOS and Linux on arm64 and x64/);
+  assert.match(readme, /macOS 15 arm64 and Ubuntu 24\.04 x64/);
+  assert.match(readme, /Chat import and redaction currently require macOS/);
+  assert.match(readme, /`platform-unsupported` before file access/);
   assert.match(readme, /without a source checkout/);
   assert.doesNotMatch(
     readme,

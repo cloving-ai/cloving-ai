@@ -1,3 +1,4 @@
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -13,17 +14,20 @@ const valid = JSON.stringify({
   message: { role: "user", content: "selected" },
 });
 
-await test("CLV-111 maps scanned oversized sources to unsupported while preserving positional status", async () => {
-  await withFiles({ "root/project/source.jsonl": "" }, async (directory) => {
-    const path = join(directory, "root/project/source.jsonl");
-    await writeFile(path, Buffer.alloc(transcriptLimit + 1));
-    const inspection = await inspectScanSource(path, join(directory, "root"));
-    const result = await readTranscript(path, { inspection });
-    assert.equal(result.coverage.status, "unsupported");
-    assert.equal(result.coverage.reason, "file-too-large");
-    assert.equal((await readTranscript(path)).coverage.status, "too-large");
-  });
-});
+await test(
+  "CLV-111 maps scanned oversized sources to unsupported while preserving positional status",
+  chatPlatformScenario(async () => {
+    await withFiles({ "root/project/source.jsonl": "" }, async (directory) => {
+      const path = join(directory, "root/project/source.jsonl");
+      await writeFile(path, Buffer.alloc(transcriptLimit + 1));
+      const inspection = await inspectScanSource(path, join(directory, "root"));
+      const result = await readTranscript(path, { inspection });
+      assert.equal(result.coverage.status, "unsupported");
+      assert.equal(result.coverage.reason, "file-too-large");
+      assert.equal((await readTranscript(path)).coverage.status, "too-large");
+    });
+  }),
+);
 
 await test("CLV-095 reads exact bytes and retains stable IDs across repeated reads", async () => {
   await withFiles(

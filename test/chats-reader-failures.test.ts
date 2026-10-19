@@ -1,3 +1,4 @@
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import filesystem, {
   mkdir,
@@ -19,80 +20,87 @@ const source = JSON.stringify({
 });
 
 for (const replacement of ["file", "directory", "link"] as const) {
-  await test(`CLV-111 refuses ${replacement} identity changes before any source bytes`, async () => {
-    await withFiles(
-      { "root/project/source.jsonl": source, "outside/source.jsonl": source },
-      async (directory) => {
-        const path = join(directory, "root/project/source.jsonl");
-        const inspection = await inspectScanSource(
-          path,
-          join(directory, "root"),
-        );
-        const original = filesystem.open;
-        let reads = 0;
-        filesystem.open = async (selectedPath, flags) => {
-          if (replacement === "file") {
-            await rename(path, `${path}.old`);
-            await writeFile(path, source);
-          } else {
-            const project = join(directory, "root/project");
-            await rename(project, `${project}.old`);
-            if (replacement === "link")
-              await symlink(join(directory, "outside"), project);
-            else {
-              await mkdir(project);
-              await writeFile(path, source);
-            }
-          }
-          const handle = await original(selectedPath, flags);
-          Object.defineProperty(handle, "read", {
-            configurable: true,
-            value: () => {
-              reads++;
-              return Promise.reject(new Error("unexpected-source-read"));
-            },
-          });
-          return handle;
-        };
-        syncBuiltinESMExports();
-        try {
-          const result = await readTranscript(path, { inspection });
-          assert.equal(result.coverage.status, "unsupported");
-          assert.equal(
-            result.coverage.reason,
-            replacement === "link" ? "symbolic-link" : "source-changed",
+  await test(
+    `CLV-111 refuses ${replacement} identity changes before any source bytes`,
+    chatPlatformScenario(async () => {
+      await withFiles(
+        { "root/project/source.jsonl": source, "outside/source.jsonl": source },
+        async (directory) => {
+          const path = join(directory, "root/project/source.jsonl");
+          const inspection = await inspectScanSource(
+            path,
+            join(directory, "root"),
           );
-          assert.deepEqual(result.records, []);
-          assert.equal(reads, 0);
-        } finally {
-          filesystem.open = original;
+          const original = filesystem.open;
+          let reads = 0;
+          filesystem.open = async (selectedPath, flags) => {
+            if (replacement === "file") {
+              await rename(path, `${path}.old`);
+              await writeFile(path, source);
+            } else {
+              const project = join(directory, "root/project");
+              await rename(project, `${project}.old`);
+              if (replacement === "link")
+                await symlink(join(directory, "outside"), project);
+              else {
+                await mkdir(project);
+                await writeFile(path, source);
+              }
+            }
+            const handle = await original(selectedPath, flags);
+            Object.defineProperty(handle, "read", {
+              configurable: true,
+              value: () => {
+                reads++;
+                return Promise.reject(new Error("unexpected-source-read"));
+              },
+            });
+            return handle;
+          };
           syncBuiltinESMExports();
-        }
-      },
-    );
-  });
+          try {
+            const result = await readTranscript(path, { inspection });
+            assert.equal(result.coverage.status, "unsupported");
+            assert.equal(
+              result.coverage.reason,
+              replacement === "link" ? "symbolic-link" : "source-changed",
+            );
+            assert.deepEqual(result.records, []);
+            assert.equal(reads, 0);
+          } finally {
+            filesystem.open = original;
+            syncBuiltinESMExports();
+          }
+        },
+      );
+    }),
+  );
 }
 
-await test("CLV-111 refuses canonical containment escapes before opening a source", async () => {
-  await withFiles({ "root/source.jsonl": source }, async (directory) => {
-    const path = join(directory, "root/source.jsonl");
-    const inspection = await inspectScanSource(path, join(directory, "root"));
-    const original = filesystem.realpath;
-    Object.defineProperty(filesystem, "realpath", {
-      configurable: true,
-      value: () => Promise.resolve(join(directory, "root-escape/source.jsonl")),
-    });
-    syncBuiltinESMExports();
-    try {
-      const result = await readTranscript(path, { inspection });
-      assert.equal(result.coverage.reason, "outside-root");
-      assert.deepEqual(result.records, []);
-    } finally {
-      filesystem.realpath = original;
+await test(
+  "CLV-111 refuses canonical containment escapes before opening a source",
+  chatPlatformScenario(async () => {
+    await withFiles({ "root/source.jsonl": source }, async (directory) => {
+      const path = join(directory, "root/source.jsonl");
+      const inspection = await inspectScanSource(path, join(directory, "root"));
+      const original = filesystem.realpath;
+      Object.defineProperty(filesystem, "realpath", {
+        configurable: true,
+        value: () =>
+          Promise.resolve(join(directory, "root-escape/source.jsonl")),
+      });
       syncBuiltinESMExports();
-    }
-  });
-});
+      try {
+        const result = await readTranscript(path, { inspection });
+        assert.equal(result.coverage.reason, "outside-root");
+        assert.deepEqual(result.records, []);
+      } finally {
+        filesystem.realpath = original;
+        syncBuiltinESMExports();
+      }
+    });
+  }),
+);
 
 await test("CLV-095 reports a source replaced by a link before open as unsupported", async () => {
   await withFiles({ source }, async (directory) => {

@@ -37,6 +37,7 @@ export async function main(
   watchPr?: WatchPrSettings,
 ): Promise<void> {
   const invocation = parseInvocation(argumentsList);
+  if (refuseChatPlatform(invocation)) return;
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
     return;
@@ -79,6 +80,16 @@ export async function main(
         }),
     });
   }
+}
+
+function refuseChatPlatform(invocation: Invocation): boolean {
+  if (process.platform === "darwin") return false;
+  if (invocation.kind !== "chats-import" && invocation.kind !== "chats-redact")
+    return false;
+  process.stdout.write(`${JSON.stringify({ code: "platform-unsupported" })}\n`);
+  process.stderr.write("platform-unsupported: Chat commands require macOS.\n");
+  process.exitCode = 1;
+  return true;
 }
 
 function presentUsageError(
