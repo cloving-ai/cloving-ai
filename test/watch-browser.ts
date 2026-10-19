@@ -23,7 +23,7 @@ globalThis.Date = class extends RealDate {
   constructor(...values) { super(...(values.length === 0 ? [fixed] : values)); }
 };
 Object.assign(globalThis, {
-  document: { title: "", body: { scrollHeight: 2000 }, getElementById: () => app },
+  document: { title: "", querySelector: () => null, body: { scrollHeight: 2000 }, getElementById: () => app },
   location: { hash: "#run-1" },
   addEventListener: (type, listener) => { listeners[type] = listener; },
   setInterval: (callback, time) => { timers.push(time); return 0; },
@@ -59,12 +59,15 @@ function fields(value: unknown): Record<string, unknown> {
 export function played(
   model: {
     readonly updatedAt: string;
+    readonly cardForms?: unknown;
     readonly archived?: ReturnType<typeof sampleRun>;
   },
   scriptScenario: string,
 ): Record<string, unknown> {
   const [, script = ""] =
-    /<script type="module">([\s\S]*)<\/script>/.exec(pageDocument()) ?? [];
+    /<script type="module">([\s\S]*)<\/script>/.exec(
+      pageDocument(model.cardForms === undefined ? null : "a".repeat(64)),
+    ) ?? [];
   const library = JSON.stringify(import.meta.resolve("preact"));
   const directory = mkdtempSync(join(tmpdir(), "cloving-watch-page-"));
   const file = join(directory, "page.mjs");

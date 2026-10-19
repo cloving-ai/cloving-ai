@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/watch-card-view.test.ts": "test",
+    "test/watch-card-browser.test.ts": "test",
     "workflows/ticket-prompts.ts": "workflow",
     "src/token-prices.ts": "pure",
     "test/token-prices.test.ts": "test",
@@ -809,7 +811,18 @@
     "test/analysis-worker-capacity.test.ts": "test",
     "test/worker-capacity-recovery.test.ts": "test",
     "test/worker-capacity-stream.test.ts": "test",
-    "test/worker-capacity-failures.test.ts": "test"
+    "test/worker-capacity-failures.test.ts": "test",
+    "src/cli/watch-actions.ts": "cli",
+    "src/cli/watch-run-input.ts": "cli",
+    "src/cli/watch-card-forms.ts": "cli",
+    "src/cli/watch-card-reply.ts": "cli",
+    "src/cli/watch-card-view.ts": "cli",
+    "src/cli/watch-card-client.ts": "cli",
+    "test/watch-actions.test.ts": "test",
+    "test/watch-action-fixture.ts": "test",
+    "test/watch-add-card.test.ts": "test",
+    "test/watch-action-admission.test.ts": "test",
+    "test/watch-card-input.test.ts": "test"
   },
   "allowed": {
     "quality": [

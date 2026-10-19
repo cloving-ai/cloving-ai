@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, start: null, hovered: null, focused: null };
+const state = { model: null, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -60,7 +60,8 @@ function draw() {
   const now = new Date().toISOString();
   const columns = columnControls(model, selected);
   const start = model === null ? undefined : startControls();
-  const page = component(Page, { model, selected, now, stale, copying, columns, start });
+  const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
+  const page = component(Page, { model, selected, now, stale, copying, columns, start, cards });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);

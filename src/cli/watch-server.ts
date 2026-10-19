@@ -1,3 +1,9 @@
+import {
+  watchAction,
+  watchActions,
+  watchHost,
+  type WatchActions,
+} from "./watch-actions.ts";
 import { observedBoard } from "./watch-pr-board.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
 import type { PrObserver } from "./watch-pr-observer.ts";
@@ -19,6 +25,7 @@ import { watchStream, type WatchStream } from "./watch-stream.ts";
 export const defaultWatchPort = 3663;
 
 export interface WatchSettings {
+  readonly actions?: string;
   readonly pullRequests?: WatchPrSettings;
   readonly runtimeDirectory: string;
   readonly port: number;
@@ -35,6 +42,7 @@ interface Reply {
 }
 
 interface Watch {
+  readonly actions: WatchActions | null;
   readonly settings: WatchSettings;
   readonly observer: PrObserver;
   readonly reader: WatchReader;
@@ -42,6 +50,7 @@ interface Watch {
   readonly github: Map<string, GithubRecords>;
 }
 
+const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 function parsed(text: string): unknown {
@@ -131,24 +140,44 @@ async function snapshot(
     turns: journal,
     githubRecords: github,
   });
-  return runId === null ? observedBoard(model, watch.observer) : model;
+  const shown = runId === null ? observedBoard(model, watch.observer) : model;
+  return {
+    ...shown,
+    cardForms:
+      watch.actions?.forms.filter((form) =>
+        shown.workflows.some(
+          (workflow) => workflow.workflowId === form.workflowId,
+        ),
+      ) ?? [],
+  };
 }
 
 async function answered(
   watch: Watch,
-  request: {
-    readonly method?: string | undefined;
-    readonly url?: string | undefined;
-  },
+  request: IncomingMessage,
 ): Promise<Reply> {
+  if (!watchHost(request)) return forbidden;
   const url = new URL(String(request.url), "http://localhost");
+  if (request.method === "GET") return readReply(watch, url);
+  if (
+    request.method !== "POST" ||
+    url.pathname !== "/actions/run" ||
+    watch.actions === null
+  )
+    return notFound;
+  const body = await watchAction(watch.actions, request).catch(() => null);
+  return body === null
+    ? forbidden
+    : { status: 200, type: "application/json", body };
+}
+
+async function readReply(watch: Watch, url: URL): Promise<Reply> {
   const path = url.pathname;
-  if (request.method !== "GET") return notFound;
   if (path === "/")
     return {
       status: 200,
       type: "text/html; charset=utf-8",
-      body: pageDocument(),
+      body: pageDocument(watch.actions?.token ?? null),
     };
   if (path === "/preact.mjs")
     return {
@@ -195,14 +224,12 @@ function subscribed(
 }
 
 export async function watchServer(settings: WatchSettings): Promise<number> {
-  const observer: PrObserver =
-    settings.pullRequests === undefined
-      ? {
-          observe: () => ({ status: "unavailable", failure: "configuration" }),
-          close: () => undefined,
-        }
-      : await watchPrObserver(settings.pullRequests);
+  const observer = await observerFor(settings);
   const watch: Watch = {
+    actions:
+      settings.actions === "off"
+        ? null
+        : await watchActions(settings.runtimeDirectory),
     settings,
     observer,
     reader: watchReader(settings.runtimeDirectory),
@@ -215,7 +242,11 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
     retryMilliseconds: 1000,
   });
   const server = createServer((request, response) => {
-    if (request.method === "GET" && request.url === "/events") {
+    if (
+      watchHost(request) &&
+      request.method === "GET" &&
+      request.url === "/events"
+    ) {
       subscribed(stream, { request, response });
       return;
     }
@@ -247,5 +278,14 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
       settle(0);
     };
     settings.stopped.then(closed, closed);
+  });
+}
+
+function observerFor(settings: WatchSettings): Promise<PrObserver> {
+  if (settings.pullRequests !== undefined)
+    return watchPrObserver(settings.pullRequests);
+  return Promise.resolve({
+    observe: () => ({ status: "unavailable", failure: "configuration" }),
+    close: () => undefined,
   });
 }

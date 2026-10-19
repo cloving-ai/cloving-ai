@@ -1,3 +1,5 @@
+import { AddCard, type CardControls } from "./watch-card-view.ts";
+import type { CardForm } from "./watch-run-input.ts";
 import { priceText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
@@ -176,6 +178,7 @@ export function columnCollapsed(
 
 export function Column(props: {
   readonly column: WatchWorkflow["columns"][number];
+  readonly addCard?: Shown;
   readonly workflowId: string;
   readonly now: string;
   readonly controls?: ColumnControls | undefined;
@@ -212,9 +215,12 @@ export function Column(props: {
         ? null
         : element("div", {
             class: "column-cards",
-            children: column.cards.map((card) =>
-              component(Card, { key: card.runId, card, workflowId, now }),
-            ),
+            children: [
+              column.cards.map((card) =>
+                component(Card, { key: card.runId, card, workflowId, now }),
+              ),
+              props.addCard,
+            ],
           }),
     ],
   });
@@ -222,6 +228,8 @@ export function Column(props: {
 
 export function Board(props: {
   readonly workflow: WatchWorkflow;
+  readonly cardForm?: CardForm | undefined;
+  readonly cards?: CardControls | undefined;
   readonly now: string;
   readonly controls?: ColumnControls | undefined;
 }): Shown {
@@ -232,13 +240,20 @@ export function Board(props: {
       element("h2", { children: workflow.workflowId }),
       element("div", {
         class: "columns",
-        children: workflow.columns.map((column) =>
+        children: workflow.columns.map((column, index) =>
           component(Column, {
             key: column.name,
             column,
             workflowId: workflow.workflowId,
             now,
             controls: props.controls,
+            addCard:
+              index === 0
+                ? component(AddCard, {
+                    form: props.cardForm,
+                    controls: props.cards,
+                  })
+                : null,
           }),
         ),
       }),

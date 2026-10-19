@@ -1,3 +1,11 @@
+import { cardReply } from "./watch-card-reply.ts";
+import { watchCardClient } from "./watch-card-client.ts";
+import {
+  AddCard,
+  CardInput,
+  cardKey,
+  cardSubmitKey,
+} from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
@@ -58,6 +66,11 @@ import {
 } from "./watch-view.ts";
 
 const functions = [
+  cardReply,
+  cardSubmitKey,
+  cardKey,
+  AddCard,
+  CardInput,
   priceOf,
   tokenCount,
   usageOf,
@@ -159,7 +172,7 @@ a { color: var(--accent-strong); }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 22px 0 10px; color: var(--muted); font-size: 12px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 800 26px/1.2 var(--heading-font); }
 .brand svg { width: 30px; height: 30px; color: var(--accent); }
-a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
+a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
 h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .start-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 12px; }
 .start-card { min-width: 0; padding: 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
@@ -187,6 +200,14 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
 .column-name button, .start-toggle { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
 .column-name button:hover, .start-toggle:hover { background: var(--surface); }
+.add-card, .add-card-form button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 4px 8px 4px 0; }
+.add-card { width: 100%; text-align: left; }
+.add-card-form { padding: 8px 0; overflow-wrap: anywhere; }
+.add-card-form label { display: block; color: var(--ink); margin-bottom: 8px; }
+.add-card-form input, .add-card-form textarea { display: block; width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; color: var(--ink); background: var(--surface); }
+.add-card-form textarea { resize: vertical; }
+.add-card-form button:disabled { opacity: 0.6; cursor: default; }
+.add-card-form p { font-size: 12px; margin: 8px 0; }
 .card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--ink); overflow-wrap: anywhere; background: var(--surface); }
 .card:hover { outline: 1px solid var(--accent-strong); }
 .card-run { display: grid; gap: 4px; min-width: 0; color: inherit; text-decoration: none; }
@@ -272,12 +293,14 @@ button:hover { background: var(--code-head); }
 @media (max-width: 700px) { body { padding-inline: 12px; } }
 `;
 
-export function pageDocument(): string {
+export function pageDocument(actionToken: string | null = null): string {
   const icon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${clove.viewBox}">${clove.paths.map((d) => `<path fill="#0BBF64" d="${d}"/>`).join("")}</svg>`;
   const script = [
     'import { h as element, h as component, render } from "./preact.mjs";',
     `const clove = ${JSON.stringify(clove)};`,
+    `const actionToken = ${JSON.stringify(actionToken)};`,
     ...functions.map((item) => item.toString()),
+    watchCardClient,
     watchClient,
   ].join("\n");
   return [
