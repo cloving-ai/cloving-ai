@@ -50,7 +50,11 @@ const settings = {
 const asked = (operation, parameters = {}) => call({ runtimeDirectory }, { operation, parameters });
 const runs = async () => (await asked("status")).runs;
 const shown = async (runId) => (await asked("status", { runId })).run;
-const commands = () => existsSync("queue-commands.json") ? JSON.parse(readFileSync("queue-commands.json", "utf8")) : [];
+const commands = () => {
+  if (!existsSync("queue-commands.json")) return [];
+  const value = JSON.parse(readFileSync("queue-commands.json", "utf8"));
+  return Array.isArray(value) ? value : value.commands;
+};
 const until = async (read) => {
   for (let pass = 0; pass < 300; pass += 1) {
     const value = await read();

@@ -14,8 +14,18 @@ interface QueueSettings {
 
 interface QueueJournal {
   readonly commands: Set<string>;
+  readonly failures: string[];
   readonly save: () => Promise<void>;
   retryCommandId: string | undefined;
+}
+
+function identifiers(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    !value.every((id) => typeof id === "string" && id.length > 0)
+  )
+    throw new Error("invalid-queue-commands");
+  return value.map(String);
 }
 
 async function journal(directory: string): Promise<QueueJournal> {
@@ -26,20 +36,22 @@ async function journal(directory: string): Promise<QueueJournal> {
     throw error;
   });
   const value: unknown = JSON.parse(text);
-  if (
-    !Array.isArray(value) ||
-    !value.every((id) => typeof id === "string" && id.length > 0)
-  )
-    throw new Error("invalid-queue-commands");
-  const commands = new Set(value.map(String));
+  const saved = record(value);
+  const commands = new Set(
+    identifiers(Array.isArray(value) ? value : saved?.["commands"]),
+  );
+  const failures = Array.isArray(value) ? [] : identifiers(saved?.["failures"]);
+  if (failures.length > 3) throw new Error("invalid-queue-commands");
   return {
     commands,
+    failures,
     retryCommandId: undefined,
     save: async () => {
-      await writeFile(`${file}.tmp`, JSON.stringify([...commands]) + "\n", {
-        mode: 0o600,
-        flush: true,
-      });
+      await writeFile(
+        `${file}.tmp`,
+        JSON.stringify({ commands: [...commands], failures }) + "\n",
+        { mode: 0o600, flush: true },
+      );
       await rename(`${file}.tmp`, file);
     },
   };
@@ -85,11 +97,20 @@ function handedOff(run: Fields): boolean {
   );
 }
 
+class QueueFailureLimit extends Error {}
+
+function checkFailureLimit(pending: QueueJournal): void {
+  if (pending.failures.length >= 3)
+    throw new QueueFailureLimit(
+      `3 runs in a row ended without handoff: ${pending.failures.join(", ")}`,
+    );
+}
+
 async function completed(
   settings: QueueSettings,
   pending: QueueJournal,
 ): Promise<boolean> {
-  let failure: string | undefined;
+  checkFailureLimit(pending);
   let pendingRun = false;
   const tracked = [...pending.commands].filter(
     (commandId) => commandId !== pending.retryCommandId,
@@ -101,16 +122,18 @@ async function completed(
       pendingRun = true;
       continue;
     }
-    if (!handedOff(run))
-      failure ??= JSON.stringify({
-        runId: run["runId"],
-        state: run["state"],
-        outcome: run["outcome"] ?? null,
-      });
     pending.commands.delete(commandId);
+    if (handedOff(run)) pending.failures.length = 0;
+    else pending.failures.push(runIdentity(commandId));
     await pending.save();
+    checkFailureLimit(pending);
+    if (!handedOff(run)) {
+      const outcome = record(run["outcome"]);
+      process.stderr.write(
+        `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}: ${runIdentity(commandId)}; continuing\n`,
+      );
+    }
   }
-  if (failure !== undefined) throw new Error(failure);
   return pendingRun;
 }
 
@@ -251,7 +274,9 @@ export function issueQueue(settings: QueueSettings): {
   const stopping = new AbortController();
   const running = cycle(settings, stopping.signal).catch((error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Queue stopped: ${JSON.stringify(reason)}\n`);
+    const diagnostic =
+      error instanceof QueueFailureLimit ? reason : JSON.stringify(reason);
+    process.stderr.write(`Queue stopped: ${diagnostic}\n`);
   });
   return {
     stop: async () => {

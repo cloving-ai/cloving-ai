@@ -142,7 +142,7 @@ process.exit(0);
 await test("CLV-084 empty next results keep polling silently and retire each persisted command", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
-writeFileSync("next.mjs", 'import { appendFileSync, readFileSync } from "node:fs"; const ids = JSON.parse(readFileSync("queue-commands.json", "utf8")); if (ids.length !== 1) process.exit(2); appendFileSync("checks", ids[0] + "\\\\n");');
+writeFileSync("next.mjs", 'import { appendFileSync, readFileSync } from "node:fs"; const saved = JSON.parse(readFileSync("queue-commands.json", "utf8")); const ids = saved.commands; if (ids.length !== 1) process.exit(2); appendFileSync("checks", ids[0] + "\\\\n");');
 const daemon = await launched();
 try {
   await until(() => existsSync("checks") && readFileSync("checks", "utf8").trim().split("\\n").length >= 3);
@@ -202,18 +202,20 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
-await test("CLV-084 a blocked queue run stops further admissions and reports its identity and outcome once", () =>
+await test("CLV-131 a blocked queue run reports continuing and admits the next ready ticket", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
 writeFileSync("ready", "CLV-900");
 const daemon = await launched();
 try {
   const run = await until(async () => (await runs())[0]);
+  const [previous] = commands();
   writeFileSync("ready", "CLV-901");
   writeFileSync("outcome-CLV-900", "blocked");
   await until(async () => (await shown(run.runId)).state === "completed");
-  await delay(250);
-  assert.equal((await runs()).length, 1);
+  await until(() => existsSync("input-CLV-901"));
+  assert.equal((await runs()).length, 2);
+  assert.equal(commands().includes(previous), false);
   print({ runId: run.runId });
 } finally { await daemon.close(); }
 process.exit(0);
@@ -223,10 +225,9 @@ process.exit(0);
     assert.ok(run && typeof run === "object" && "runId" in run);
     const lines = result.stderr
       .split("\n")
-      .filter((line) => line.includes("Queue stopped:"));
+      .filter((line) => line.startsWith("Queue "));
     assert.equal(lines.length, 1, result.stderr);
-    assert.match(
-      String(lines[0]),
-      new RegExp(`${String(run.runId)}.*completed.*blocked`),
-    );
+    assert.deepEqual(lines, [
+      `Queue run ended blocked: ${String(run.runId)}; continuing`,
+    ]);
   }));

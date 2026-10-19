@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
-import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
+import {
+  record,
+  type Fields,
+  type Reply,
+  type ServiceRequest,
+} from "../src/protocol.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { eventually, withHarness } from "./service-fixture.ts";
@@ -18,10 +23,19 @@ const empty: Reply = {
   error: { code: "no-ready-ticket", detail: "No ready ticket." },
 };
 
+async function queueCommands(file: string): Promise<readonly string[]> {
+  const saved: unknown = JSON.parse(await readFile(file, "utf8"));
+  const value = Array.isArray(saved) ? saved : record(saved)?.["commands"];
+  assert.ok(Array.isArray(value));
+  assert.ok(value.every((id): id is string => typeof id === "string"));
+  return value;
+}
+
 async function withQueue(
   options: {
     readonly handle: Handle;
     readonly commands?: readonly string[];
+    readonly failures?: readonly string[];
     readonly intervalMilliseconds?: number;
   },
   body: (scene: {
@@ -32,7 +46,14 @@ async function withQueue(
   return withHarness(async (harness) => {
     const directory = harness.stateDirectory;
     const file = join(directory, "queue-commands.json");
-    await writeFile(file, JSON.stringify(options.commands ?? []));
+    await writeFile(
+      file,
+      JSON.stringify(
+        options.failures === undefined
+          ? (options.commands ?? [])
+          : { commands: options.commands ?? [], failures: options.failures },
+      ),
+    );
     const listener = await listen({
       path: join(harness.runtimeDirectory, "control.sock"),
       handle: options.handle,
@@ -45,12 +66,7 @@ async function withQueue(
     });
     try {
       await body({
-        commands: async (): Promise<readonly string[]> => {
-          const value: unknown = JSON.parse(await readFile(file, "utf8"));
-          assert.ok(Array.isArray(value));
-          assert.ok(value.every((id): id is string => typeof id === "string"));
-          return value;
-        },
+        commands: () => queueCommands(file),
         stop: queue.stop,
       });
     } finally {
@@ -60,10 +76,15 @@ async function withQueue(
   });
 }
 
-function changingRun(counts: { reads: number; submissions: number }): Handle {
+function changingRun(counts: {
+  reads: number;
+  submissions: number;
+  readonly submissionReads: number[];
+}): Handle {
   const runId = runIdentity("prior-command");
   return (request) => {
     if (request.operation === "run") {
+      counts.submissionReads.push(counts.reads);
       counts.submissions += 1;
       return Promise.resolve(empty);
     }
@@ -89,25 +110,27 @@ function changingRun(counts: { reads: number; submissions: number }): Handle {
 }
 
 await test("CLV-084 a tracked run ending between status reads cannot admit another ticket before its outcome is checked", async () => {
-  const counts = { reads: 0, submissions: 0 };
+  const counts = { reads: 0, submissions: 0, submissionReads: [] };
   await withQueue(
     { commands: ["prior-command"], handle: changingRun(counts) },
     async (scene) => {
-      await eventually(() => (counts.reads >= 3 ? true : undefined));
+      await eventually(() => (counts.submissions > 0 ? true : undefined));
       await scene.stop();
-      assert.equal(counts.submissions, 0);
+      assert.ok(counts.submissions > 0);
+      assert.deepEqual([...new Set(counts.submissionReads)], [3]);
       assert.deepEqual(await scene.commands(), []);
     },
   );
 });
 
-await test("CLV-123 failed runs and merged runs with failed issue updates stop the queue", async () => {
+await test("CLV-131 failed, cancelled and failed issue-update runs reach the limit after two blocked runs", async () => {
   for (const state of ["failed", "cancelled", "completed"]) {
     let reads = 0;
     let submissions = 0;
     await withQueue(
       {
         commands: [state],
+        failures: ["blocked-first", "blocked-second"],
         handle: (request) => {
           if (request.operation === "run") submissions += 1;
           reads += 1;

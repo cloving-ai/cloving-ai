@@ -688,6 +688,7 @@
     "test/pending-update-fixture.ts": "test",
     "test/daemon-queue-fixture.ts": "test",
     "test/daemon-queue.test.ts": "test",
+    "test/daemon-queue-streak.test.ts": "test",
     "test/daemon-queue-restart.test.ts": "test",
     "test/cli-start-queue.test.ts": "test",
     "test/daemon-queue-check.test.ts": "test",

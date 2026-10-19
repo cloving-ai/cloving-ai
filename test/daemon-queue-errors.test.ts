@@ -11,6 +11,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { issueQueue } from "./src/daemon/issue-queue.ts";
 import { listen } from "./src/service/transport.ts";
 import { eventually, withHarness } from "./test/service-fixture.ts";
+const commandIds = async (file) => {
+  const value = JSON.parse(await readFile(file, "utf8"));
+  return Array.isArray(value) ? value : value.commands;
+};
 `;
 
 function observation(script: string): { stdout: string; stderr: string } {
@@ -49,7 +53,7 @@ await withHarness(async (harness) => {
     await eventually(() => calls >= replies.length ? true : undefined);
     await delay(50);
     assert.equal(calls, replies.length);
-    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), commands);
+    assert.deepEqual(await commandIds(file), commands);
   } finally {
     await queue.stop();
     await listener.close();
@@ -120,7 +124,14 @@ await test("CLV-084 a tracked run disappearing after recovery stops the queue an
 });
 
 await test("CLV-084 invalid command journals stop polling without replacing the journal", () => {
-  for (const value of [null, [""], [1]]) {
+  for (const value of [
+    null,
+    [""],
+    [1],
+    {},
+    { commands: [], failures: [1] },
+    { commands: [], failures: ["a", "b", "c", "d"] },
+  ]) {
     const stderr = observed(`
 await withHarness(async (harness) => {
   const file = join(harness.stateDirectory, "queue-commands.json");
@@ -169,7 +180,7 @@ await withHarness(async (harness) => {
   try {
     await eventually(() => commandId ? true : undefined);
     await delay(50);
-    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [commandId]);
+    assert.deepEqual(await commandIds(file), [commandId]);
   } finally {
     await queue.stop();
     await listener.close();
@@ -224,7 +235,7 @@ await withHarness(async (harness) => {
         return { kind: "result", result: { run: { state: "running" } } };
       }
       requests.push(request);
-      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      assert.deepEqual(await commandIds(file), [request.parameters.commandId]);
       if (requests.length === 1) {
         refusedAt = performance.now();
         return { kind: "error", error: { code: "next-ticket-not-available", detail: "Retry." } };
@@ -242,7 +253,7 @@ await withHarness(async (harness) => {
     await eventually(() => runReads >= 2 ? true : undefined);
     assert.equal(requests.length, 2);
     assert.equal(admissions, 1);
-    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [requests[0].parameters.commandId]);
+    assert.deepEqual(await commandIds(file), [requests[0].parameters.commandId]);
     process.stdout.write(requests[0].parameters.commandId);
   } finally {
     await queue.stop();
@@ -270,7 +281,7 @@ await withHarness(async (harness) => {
           ? { kind: "result", result: { runs: [], next: null } }
           : { kind: "error", error: { code: "unknown-run", detail: "Not admitted." } };
       requests.push(request);
-      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      assert.deepEqual(await commandIds(file), [request.parameters.commandId]);
       const code = codes[requests.length - 1];
       return { kind: "error", error: { code, detail: code } };
     },
@@ -283,7 +294,7 @@ await withHarness(async (harness) => {
     await delay(60);
     assert.equal(requests.length, codes.length);
     assert.ok(requests.every((request) => JSON.stringify(request) === JSON.stringify(requests[0])));
-    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [requests[0].parameters.commandId]);
+    assert.deepEqual(await commandIds(file), [requests[0].parameters.commandId]);
     process.stdout.write(requests[0].parameters.commandId);
   } finally {
     await queue.stop();
@@ -326,13 +337,13 @@ await withHarness(async (harness) => {
     path: join(harness.runtimeDirectory, "control.sock"),
     handle: async (request) => {
       if (request.operation !== "run" && requests.length === 2) {
-        assert.deepEqual(JSON.parse(await readFile(file, "utf8")), []);
+        assert.deepEqual(await commandIds(file), []);
         retired = true;
       }
       if (request.operation !== "run")
         return { kind: "result", result: { runs: [], next: null } };
       requests.push(request);
-      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), [request.parameters.commandId]);
+      assert.deepEqual(await commandIds(file), [request.parameters.commandId]);
       if (requests.length === 3) await released.promise;
       const code = requests.length === 1 ? "resolver-timeout" : ${JSON.stringify(code)};
       return { kind: "error", error: { code, detail: code } };
