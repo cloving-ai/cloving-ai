@@ -111,6 +111,7 @@ interface Commands {
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
+  readonly resetQueue: boolean;
 }
 
 function queueInterval(
@@ -330,6 +331,7 @@ await launchers(
     ticketCommand,
     nextCommand,
     queueMilliseconds,
+    resetQueue: flags.includes("--reset-queue"),
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     checkCommand: listed("CLOVING_CHECK_COMMAND"),

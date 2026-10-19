@@ -58,6 +58,7 @@ export interface DaemonSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
   readonly checkCommand?: readonly string[];
   readonly privateTexts?: readonly string[];
@@ -293,6 +294,7 @@ async function runningDaemon(
           directory: settings.directory,
           runtimeDirectory: settings.runtimeDirectory,
           intervalMilliseconds: settings.queueMilliseconds,
+          resetQueue: settings.resetQueue ?? false,
         });
   return {
     socket: service.socket,

@@ -10,15 +10,14 @@ const daemon = await launched();
 try {
   const [prior] = await runs();
   await until(async () => (await shown(prior.runId)).state === "completed");
-  await until(() => commands().length === 0);
-  await delay(200);
-  assert.equal((await runs()).length, 1);
+  await until(() => existsSync("input-CLV-901"));
+  assert.equal((await runs()).length, 2);
   print({ runId: prior.runId });
 } finally { await daemon.close(); }
 process.exit(0);
 `;
 
-await test("CLV-084 an active queue run survives a crash and its blocked outcome stops the restarted queue", () =>
+await test("CLV-131 an active queue run survives a crash and its blocked outcome releases the restarted queue", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const first = await consumer.runUntil(
       "active",
@@ -33,7 +32,7 @@ await halt("active");
     assert.deepEqual(first.lines, [{ boundary: "active" }], first.stderr);
     const second = await consumer.run(blockedAfterRestart);
     assert.equal(second.status, 0, second.stderr);
-    assert.match(second.stderr, /Queue stopped:.*run-.*completed.*blocked/);
+    assert.match(second.stderr, /Queue run ended blocked: run-.*; continuing/);
   }));
 
 await test("CLV-084 a command persisted before a lost admission reply recovers its run on restart", () =>
@@ -52,16 +51,18 @@ await halt("lost-reply");
     assert.deepEqual(first.lines, [{ boundary: "lost-reply" }], first.stderr);
     const second = await consumer.run(blockedAfterRestart);
     assert.equal(second.status, 0, second.stderr);
-    assert.match(second.stderr, /Queue stopped:.*completed.*blocked/);
+    assert.match(second.stderr, /Queue run ended blocked: run-.*; continuing/);
   }));
 
 await test("CLV-084 a handled blocked run is removed so the next daemon can admit a ready ticket", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const first = await consumer.run(`${queuePrelude}
 writeFileSync("ready", "CLV-900");
-writeFileSync("outcome-CLV-900", "blocked");
 const daemon = await launched();
 try {
+  await until(() => existsSync("input-CLV-900"));
+  writeFileSync("ready", "");
+  writeFileSync("outcome-CLV-900", "blocked");
   const run = await until(async () => (await runs())[0]);
   await until(async () => (await shown(run.runId)).state === "completed");
   await until(() => commands().length === 0);
@@ -69,7 +70,7 @@ try {
 process.exit(0);
 `);
     assert.equal(first.status, 0, first.stderr);
-    assert.match(first.stderr, /Queue stopped:.*completed.*blocked/);
+    assert.match(first.stderr, /Queue run ended blocked: run-.*; continuing/);
     const second = await consumer.run(`${queuePrelude}
 writeFileSync("ready", "CLV-901");
 const daemon = await launched();

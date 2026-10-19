@@ -55,7 +55,10 @@ const watchCommand: WatchCommandRunner = async (request) => {
   }
 };
 
-function started(runtime: string): Promise<number> {
+function started(
+  runtime: string,
+  argumentsList: readonly string[],
+): Promise<number> {
   const program = join(
     import.meta.dirname,
     "..",
@@ -70,13 +73,17 @@ function started(runtime: string): Promise<number> {
     "--client",
     clientCommand(process.env),
   ];
-  const child = spawn(process.execPath, [program, ...located, ...options], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
+  const child = spawn(
+    process.execPath,
+    [program, ...located, ...argumentsList],
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
+      },
     },
-  });
+  );
   let stopping = false;
   const interrupt = (): void => {
     stopping = true;
@@ -104,8 +111,9 @@ async function start(): Promise<number> {
   }
   const runtime = runtimeDirectory(process.env);
   if (runtime !== undefined) {
-    let status = await started(runtime);
-    while (status === 75) status = await started(runtime);
+    let status = await started(runtime, options);
+    const restarting = options.filter((option) => option !== "--reset-queue");
+    while (status === 75) status = await started(runtime, restarting);
     return status === 0 ? 0 : 1;
   }
   process.stderr.write(

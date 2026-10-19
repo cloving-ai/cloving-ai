@@ -10,7 +10,8 @@ export async function finish(input) {
   writeFileSync(input.repository + "/input-" + input.ticketId, JSON.stringify(input));
   const file = input.repository + "/outcome-" + input.ticketId;
   while (!existsSync(file)) await delay(20);
-  return { kind: readFileSync(file, "utf8"), reason: "fixture result" };
+  const outcome = readFileSync(file, "utf8");
+  return outcome.startsWith("{") ? JSON.parse(outcome) : { kind: outcome, reason: "fixture result" };
 }
 export async function develop(input) {
   "use workflow";
@@ -50,7 +51,11 @@ const settings = {
 const asked = (operation, parameters = {}) => call({ runtimeDirectory }, { operation, parameters });
 const runs = async () => (await asked("status")).runs;
 const shown = async (runId) => (await asked("status", { runId })).run;
-const commands = () => existsSync("queue-commands.json") ? JSON.parse(readFileSync("queue-commands.json", "utf8")) : [];
+const commands = () => {
+  if (!existsSync("queue-commands.json")) return [];
+  const value = JSON.parse(readFileSync("queue-commands.json", "utf8"));
+  return Array.isArray(value) ? value : value.commands;
+};
 const until = async (read) => {
   for (let pass = 0; pass < 300; pass += 1) {
     const value = await read();

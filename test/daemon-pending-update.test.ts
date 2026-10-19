@@ -50,7 +50,11 @@ await test("CLV-138 a pending update holds submissions for 30 minutes and report
           "Queue holding for pending self-update\n",
           "Queue continuing after pending self-update time limit\n",
         ]);
-        assert.deepEqual(JSON.parse(await commands()), []);
+        const journal: unknown = JSON.parse(await commands());
+        assert.ok(
+          journal && typeof journal === "object" && "commands" in journal,
+        );
+        assert.deepEqual(journal.commands, []);
       } finally {
         Date.now = now;
       }
