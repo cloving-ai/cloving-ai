@@ -131,7 +131,9 @@ function shortened(run: WatchRun): WatchRun {
       activity: concise(
         turn.activity.map((item) => {
           const spent =
-            item.kind === "result" ? ` (cost ${priceText(item.costUsd)})` : "";
+            item.kind === "result"
+              ? ` (cost ${priceText(item.costUsd, turn.estimatedCostUsd)})`
+              : "";
           return { kind: item.kind, text: `${cut(item.text)}${spent}` };
         }),
       ).slice(-activityLimit),

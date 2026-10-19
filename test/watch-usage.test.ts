@@ -58,6 +58,31 @@ function scenario() {
   );
 }
 
+await test("CLV-133 result activity uses stored estimates when no reported cost exists", () => {
+  const turn = turnOf({
+    key: "estimated",
+    started: {
+      operationId: JSON.stringify([
+        "cloving-operation",
+        1,
+        "run-1",
+        "work",
+        "claude-turn",
+      ]),
+    },
+    result: {
+      outcome: "completed",
+      result: JSON.stringify({ costUsd: null, estimatedCostUsd: 2.2 }),
+    },
+    lines: ['{"type":"result","result":"Done."}'],
+  });
+  const model = boardModel([{ status: { runId: "run-1" } }], { turns: [turn] });
+  assert.equal(
+    model.runs[0]?.turns[0]?.activity.at(-1)?.text,
+    "Done. (cost ≈ 2.20 USD (estimate))",
+  );
+});
+
 await test("CLV-094 run totals, turn headings and result activity retain tokens while cards show only cost", () => {
   const model = scenario();
   const run = model.runs[0];

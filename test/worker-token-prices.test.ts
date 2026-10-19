@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { Worker } from "../src/daemon/claude-turn.ts";
 import type { TokenPrices } from "../src/token-prices.ts";
+import { parseTokenPrices } from "../src/token-prices.ts";
 import {
   intent,
   resultOf,
@@ -67,6 +68,28 @@ await test("CLV-105 Codex uses its reported model before the command model and r
     });
     assert.equal(report["model"], "reported");
     assert.equal(report["estimatedCostUsd"], 2.2);
+    assert.equal(report["costUsd"], null);
+  }));
+
+await test("CLV-133 a Codex turn estimates from the built-in prices without a setting", () =>
+  withScene(async (scene) => {
+    const report = await pricedTurn(scene, {
+      worker: "codex",
+      model: "gpt-6.1-sol",
+      prices: parseTokenPrices(undefined),
+      events: [
+        {
+          type: "turn.completed",
+          usage: {
+            input_tokens: usage.input_tokens,
+            cached_input_tokens: usage.cache_read_input_tokens,
+            output_tokens: usage.output_tokens,
+          },
+        },
+      ],
+    });
+    assert.equal(report["model"], "gpt-6.1-sol");
+    assert.equal(report["estimatedCostUsd"], 2.24);
     assert.equal(report["costUsd"], null);
   }));
 

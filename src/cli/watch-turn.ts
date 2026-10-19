@@ -49,7 +49,7 @@ export function Turn(props: {
   const { turn, now } = props;
   const groups = groupActivity(turn.activity);
   const working = turn.outcome === "in work";
-  const cost = priceText(turn.costUsd);
+  const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
   const heading = ["Claude turn", turn.outcome, turnTime(turn, now), cost];
   const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
   const activity = groups.map((items, index) =>
@@ -65,7 +65,7 @@ export function Turn(props: {
       element("p", { class: "meta", children: place }),
       element("p", {
         class: "turn-usage",
-        children: usageText(turn.usage, turn.estimatedCostUsd),
+        children: usageText(turn.usage),
       }),
       element("div", { class: "activity", children: activity }),
     ],

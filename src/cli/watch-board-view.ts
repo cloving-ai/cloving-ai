@@ -116,10 +116,7 @@ export function Card(props: {
           component(CardReview, { card, workflowId }),
           element("span", {
             class: "card-cost",
-            children:
-              card.estimatedCostUsd === null
-                ? `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd)}`
-                : `≈${priceText(card.estimatedCostUsd)} estimate`,
+            children: `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`,
           }),
           card.decisionWaiting
             ? element("span", {
