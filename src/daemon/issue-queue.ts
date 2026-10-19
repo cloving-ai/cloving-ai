@@ -215,9 +215,12 @@ async function admission(
 ): Promise<void> {
   const file = join(settings.directory, "queue-submission");
   await writeFile(file, "", { mode: 0o600 });
-  if (!(await attempt.holding()) && !attempt.signal.aborted)
-    await submit(settings, attempt.pending);
-  await rm(file, { force: true });
+  try {
+    if (!(await attempt.holding()) && !attempt.signal.aborted)
+      await submit(settings, attempt.pending);
+  } finally {
+    await rm(file, { force: true });
+  }
 }
 
 async function cycle(

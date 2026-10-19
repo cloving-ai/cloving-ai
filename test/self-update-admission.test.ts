@@ -9,7 +9,7 @@ import { selfUpdater } from "../tools/self-update.ts";
 import { lockCommand, withUpdate } from "./self-update-fixture.ts";
 import { withHarness } from "./service-fixture.ts";
 
-function heldSubmission() {
+function heldSubmission(code = "no-ready-ticket") {
   const submitting = Promise.withResolvers<undefined>();
   const release = Promise.withResolvers<undefined>();
   const handle: Handle = async (request) => {
@@ -19,7 +19,7 @@ function heldSubmission() {
     await release.promise;
     return {
       kind: "error",
-      error: { code: "no-ready-ticket", detail: "No ready ticket." },
+      error: { code, detail: code },
     };
   };
   return { submitting, release, handle };
@@ -104,6 +104,45 @@ await test("CLV-138 an in-flight queue submission prevents updating before its r
         release.resolve(undefined);
         await queue.stop();
         assert.equal(await updater.check(), 75);
+      } finally {
+        release.resolve(undefined);
+        await queue.stop();
+        await listener.close();
+      }
+    });
+  });
+});
+
+await test("CLV-138 a failed queue submission releases its marker so updating can proceed", async () => {
+  await withHarness(async ({ stateDirectory: directory, runtimeDirectory }) => {
+    await withUpdate(async (fixture) => {
+      const { submitting, release, handle } =
+        heldSubmission("invalid-ticket-id");
+      const listener = await listen({
+        path: join(runtimeDirectory, "control.sock"),
+        handle,
+      });
+      const queue = issueQueue({
+        directory,
+        runtimeDirectory,
+        intervalMilliseconds: 5,
+      });
+      try {
+        await submitting.promise;
+        const updater = selfUpdater({
+          ...fixture.settings,
+          directory,
+          active: () => selfUpdateActive({ directory, runtimeDirectory }),
+        });
+        assert.equal(await updater.check(), undefined);
+        assert.equal(fixture.actions.includes("stop"), false);
+        release.resolve(undefined);
+        await queue.stop();
+        await assert.rejects(readFile(join(directory, "queue-submission")), {
+          code: "ENOENT",
+        });
+        assert.equal(await updater.check(), 75);
+        assert.equal(fixture.actions.includes("stop"), true);
       } finally {
         release.resolve(undefined);
         await queue.stop();
