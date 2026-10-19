@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { boardLayout } from "../src/cli/watch-board-view.ts";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchCard, WatchModel } from "../src/cli/watch-render.ts";
 import { Page } from "../src/cli/watch-view.ts";
@@ -22,6 +23,54 @@ function page(model: WatchModel, selected: string): string {
     }),
   );
 }
+
+await test("CLV-140 column widths share the available space and overflow only below the minimum", () => {
+  const wide = boardLayout({
+    contentWidth: 1353,
+    openColumns: 5,
+    collapsedColumns: 2,
+  });
+  assert.equal(wide.columnWidth, 238.6);
+  assert.equal(wide.totalWidth, 1353);
+  const narrow = boardLayout({
+    contentWidth: 1000,
+    openColumns: 5,
+    collapsedColumns: 2,
+  });
+  assert.equal(narrow.columnWidth, 200);
+  assert.ok(narrow.totalWidth > 1000);
+  assert.equal(narrow.totalWidth, 1160);
+  assert.deepEqual(
+    boardLayout({ contentWidth: 1000, openColumns: 0, collapsedColumns: 2 }),
+    { columnWidth: 200, totalWidth: 100 },
+  );
+  assert.deepEqual(
+    boardLayout({ contentWidth: 1000, openColumns: 0, collapsedColumns: 0 }),
+    { columnWidth: 200, totalWidth: 0 },
+  );
+});
+
+await test("CLV-140 workflow tabs sit above the board with names, counts and selection and no sidebar", () => {
+  const html = page(activeBoardModel(), "workflow=develop-issue");
+  assert.match(html, /<nav class="workflows" aria-label="Workflows">/);
+  assert.match(html, /href="#workflow=develop-issue" aria-current="page"/);
+  for (const [name, count] of [
+    ["develop-issue", 7],
+    ["develop-ticket", 1],
+    ["develop-prompt", 0],
+  ])
+    assert.ok(
+      html.includes(
+        `${String(name)}</strong><span>${String(count)} active · 0 waiting`,
+      ),
+    );
+  assert.match(
+    html,
+    /<\/header>[\s\S]*<nav class="workflows"[\s\S]*<\/nav><div class="workspace"><main class="board">/,
+  );
+  const workspace = html.slice(html.indexOf('<div class="workspace">'));
+  assert.doesNotMatch(workspace, /<nav|<aside/);
+});
 
 await test("CLV-091 stopped cards show exact marks with separate encoded original and later links", () => {
   const model = completionScenario({ stopped: "A /&<b>", later: "B /&<em>" });
@@ -57,7 +106,7 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
   );
 });
 
-await test("CLV-079 the workflow list shows counts and selection beside ordered columns and cards", () => {
+await test("CLV-079 the workflow navigation shows counts and selection with ordered columns and cards", () => {
   const model = activeBoardModel();
   const html = page(model, "workflow=develop-issue");
   assert.match(html, /<nav class="workflows" aria-label="Workflows">/);
