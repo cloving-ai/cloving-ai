@@ -87,7 +87,7 @@ syncBuiltinESMExports();
           NODE_TEST_CONTEXT: undefined,
           CLOVING_CHECK_TIME_FACTOR: "3",
         },
-        timeout: 30000,
+        timeout: (scenario.calls * 15000 + 10000) * timeFactor,
       },
     );
     assert.equal(result.error, undefined);
@@ -99,3 +99,48 @@ syncBuiltinESMExports();
     );
   }
 });
+
+for (const factor of ["1", "3"])
+  await test(`CLV-142 the enclosing probe budgets sequential calls at factor ${factor}`, () => {
+    const probe = `
+import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const spawn = childProcess.spawnSync;
+childProcess.spawnSync = (...argumentsList) => {
+  const calls = argumentsList[1].at(-1) === "test/scaffold.test.ts" ? 6 : 1;
+  const minimum = (calls * 15000 + 10000) * Number(process.env.CLOVING_CHECK_TIME_FACTOR);
+  const timeout = argumentsList[2]?.timeout;
+  assert.ok(timeout >= minimum, "enclosing probe timeout " + timeout + " is below " + minimum);
+  process.stdout.write("CLV-142 enclosing probe limit\\n");
+  return spawn(...argumentsList);
+};
+syncBuiltinESMExports();
+`;
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        `data:text/javascript,${encodeURIComponent(probe)}`,
+        "--test",
+        "--test-name-pattern=CLV-142 scales the scaffold",
+        "test/scaffold.test.ts",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_TEST_CONTEXT: undefined,
+          CLOVING_CHECK_TIME_FACTOR: factor,
+        },
+        timeout: 150000 * Number(factor),
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(
+      result.stdout.match(/CLV-142 enclosing probe limit/g)?.length,
+      2,
+      result.stdout + result.stderr,
+    );
+  });

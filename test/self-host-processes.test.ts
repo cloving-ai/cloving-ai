@@ -18,22 +18,19 @@ for (const factor of [undefined, "3"])
           const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
           const spawn = childProcess.spawnSync;
           const kill = Object.getOwnPropertyDescriptor(process, "kill");
-          let timeout: unknown;
+          let timeout: number | undefined;
           process.kill = () => true;
           if (factor === undefined)
             delete process.env["CLOVING_CHECK_TIME_FACTOR"];
           else process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
           Object.defineProperty(childProcess, "spawnSync", {
             configurable: true,
-            value: (...argumentsList: unknown[]) => {
+            value: (...argumentsList: Parameters<typeof spawn>[number][]) => {
               const options = argumentsList[2];
-              if (
-                !options ||
-                typeof options !== "object" ||
-                !("timeout" in options)
-              )
-                throw new Error("missing-spawn-timeout");
-              timeout = options.timeout;
+              timeout =
+                typeof options === "object" && "timeout" in options
+                  ? options.timeout
+                  : undefined;
               return { status: 0 };
             },
           });
