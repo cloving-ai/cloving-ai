@@ -790,7 +790,14 @@
     "src/daemon/analysis-token.ts": "daemon",
     "test/analysis-token.test.ts": "test",
     "test/analysis-launch.test.ts": "test",
-    "test/analysis-token-privacy.test.ts": "test"
+    "test/analysis-token-privacy.test.ts": "test",
+    "src/daemon/retrying-turn.ts": "daemon",
+    "test/worker-capacity.test.ts": "test",
+    "test/claude-worker-capacity.test.ts": "test",
+    "test/analysis-worker-capacity.test.ts": "test",
+    "test/worker-capacity-recovery.test.ts": "test",
+    "test/worker-capacity-stream.test.ts": "test",
+    "test/worker-capacity-failures.test.ts": "test"
   },
   "allowed": {
     "quality": [

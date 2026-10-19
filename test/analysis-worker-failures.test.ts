@@ -30,7 +30,7 @@ const settings = {
     ),
 };
 
-await test("CLV-116 stopping and closing active analysis turns leave fixed failures and no replacement", () =>
+await test("CLV-127 stopping and closing active analysis turns report stopped and launch no replacement", () =>
   withScene(async (scene) => {
     const restore = installAnalysisCli(scene, {
       reply: "unused",
@@ -41,16 +41,17 @@ await test("CLV-116 stopping and closing active analysis turns leave fixed failu
       await worker.deliver(analysis, signal);
       await until(() => scene.turns().length === 1);
       const stopped = await worker.stop(analysis, signal);
-      assert.equal(stopped.kind, "failed");
-      assert.equal(
-        "reason" in stopped ? stopped.reason : null,
-        "analysis-turn-failed",
-      );
+      assert.equal(stopped.kind, "stopped");
+      assert.equal(scene.reports[0]?.outcome, "stopped");
       const another = { ...analysis, operationId: "another" };
       await worker.deliver(another, signal);
       await until(() => scene.turns().length === 2);
       await worker.close();
       assert.equal(scene.reports.length, 2);
+      assert.deepEqual(
+        scene.reports.map((report) => report.outcome),
+        ["stopped", "stopped"],
+      );
       assert.deepEqual(await worker.deliver(another, signal), {
         kind: "failed",
         reason: "analysis-turn-failed",

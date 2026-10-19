@@ -67,6 +67,7 @@ await test("CLV-116 injection evidence cannot change fixed launch configuration 
       assert.deepEqual(JSON.parse(turn.prompt), { evidence });
       const folder = join(scene.journal, journalKey(analysis.operationId));
       assert.deepEqual(readdirSync(folder).sort(), [
+        "attempt-1.json",
         "result.json",
         "started.json",
       ]);

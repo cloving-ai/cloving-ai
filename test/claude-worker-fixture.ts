@@ -22,7 +22,7 @@ import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 
 const fakeClaude = `
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
@@ -69,7 +69,23 @@ const modes = {
   hold: held,
   "ignore-term": held,
 };
-await modes[mode]();
+function capacityTurn() {
+  if (turn !== 1 && mode !== "capacity-always") return laterAttempt();
+  writeFileSync("partial.txt", "retained partial work");
+  if (mode === "overload-once") {
+    print({ type: "assistant", error: "overloaded", parent_tool_use_id: null });
+    return result({ subtype: "error_during_execution", is_error: true, result: "API failed" });
+  }
+  return result({ subtype: "error_during_execution", is_error: true, result: "Selected model is at capacity. Please try a different model." });
+}
+function laterAttempt() {
+  if (mode === "capacity-hold") return held();
+  if (mode === "capacity-no-result") return modes["no-result"]();
+  if (mode === "capacity-unknown") return result({ total_cost_usd: null, usage: { input_tokens: 2 }, num_turns: null });
+  return existsSync(record + ".reply") ? modes["fixed-reply"]() : modes.complete();
+}
+const capacityModes = ["capacity-once", "capacity-always", "overload-once", "capacity-no-result", "capacity-unknown", "capacity-hold"];
+await (capacityModes.includes(mode) ? capacityTurn() : modes[mode]());
 `;
 
 export interface TurnRecord {

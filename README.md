@@ -334,6 +334,8 @@ An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-
 
 ### Review rounds of `develop-ticket` and `develop-prompt`
 
+Worker turns retry an exact Codex capacity refusal or a Claude overload after 60 seconds, then 180 seconds, for at most three attempts. Each retry keeps the work tree, profile, model, budget and limits, and asks the worker to continue from the current work. The step keeps one operation identity and sums usage across attempts. Private turn journals retain each attempt. Stopping during a wait returns `stopped`; a daemon restart fails the recorded operation for existing recovery. The same retry rule applies to the restricted analysis turn in `analyze-chats`. Other failures are not retried.
+
 A run of `develop-ticket` or `develop-prompt` has one to three review rounds. Each round does one Claude Code turn in the work tree of the run, on the branch `cloving/<ticket id>-…`, and then opens one approval. The first round makes the work tree. The approval text has the round, the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you decide. The decision has these results:
 
 - An approval completes the run. It does not merge the branch. Merge the branch yourself.

@@ -18,18 +18,14 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import {
-  startTurn,
-  type RunningTurn,
-  type TurnEnd,
-  type Worker,
-} from "./claude-turn.ts";
+import { type RunningTurn, type TurnEnd, type Worker } from "./claude-turn.ts";
+import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import {
   interrupted,
-  located as locatedIn,
+  located,
   operationKey,
   readRecord as read,
-  replied as repliedWith,
+  replied,
   reportOf,
   writeRecord as written,
   type Located,
@@ -38,7 +34,7 @@ import {
 } from "./operation-journal.ts";
 import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
-export interface ClaudeWorkerSettings {
+export interface ClaudeWorkerSettings extends RetrySettings {
   readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
@@ -66,7 +62,7 @@ export const claudeLimits = {
 const worker = "claude";
 
 interface Active {
-  readonly turn: RunningTurn;
+  readonly turn: Promise<RunningTurn>;
   readonly concluded: Promise<void>;
   readonly stopping: { requested: boolean };
 }
@@ -74,15 +70,12 @@ interface Active {
 interface Parts {
   readonly settings: ClaudeWorkerSettings;
   readonly active: Map<string, Active>;
+  readonly stopping: AbortController;
 }
 
 interface Started extends Located {
   readonly intent: ProtectedIntent;
   readonly tree: WorkTree;
-}
-
-function located(settings: ClaudeWorkerSettings, operationId: string): Located {
-  return locatedIn(settings.journal, operationId);
 }
 
 function alive(processId: unknown): boolean {
@@ -95,17 +88,13 @@ function alive(processId: unknown): boolean {
   }
 }
 
-function replied(key: string, recorded: unknown): AdapterOutcome {
-  return repliedWith({ receipt: key, worker }, recorded);
-}
-
 async function reconciled(
   parts: Parts,
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
-  const { key, folder } = located(parts.settings, intent.operationId);
+  const { key, folder } = located(parts.settings.journal, intent.operationId);
   const result = await read(folder, "result.json");
-  if (result !== undefined) return replied(key, result);
+  if (result !== undefined) return replied({ receipt: key, worker }, result);
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
@@ -113,7 +102,7 @@ async function reconciled(
     return { kind: "unknown", evidence: `claude-turn:${key}` };
   const ending = interrupted("claude-turn-interrupted");
   await written(folder, { name: "result.json", value: ending });
-  return replied(key, ending);
+  return replied({ receipt: key, worker }, ending);
 }
 
 async function resultText(
@@ -192,24 +181,22 @@ async function outcome(
   };
 }
 
-function reported(started: Started, recorded: Recorded): WorkerReport {
-  const { intent, key } = started;
-  return reportOf(
-    { intent, commandId: `claude-turn:${key}`, worker },
-    recorded,
-  );
-}
-
 async function concluded(
   parts: Parts,
-  running: Started & Pick<Active, "turn" | "stopping">,
+  running: Started & {
+    readonly turn: RunningTurn;
+    readonly stopping: Active["stopping"];
+  },
 ): Promise<void> {
+  const { intent, key } = running;
   const recorded = await outcome(
     { ...running, settings: parts.settings },
     await running.turn.ended,
   );
   await written(running.folder, { name: "result.json", value: recorded });
-  await parts.settings.report(reported(running, recorded));
+  await parts.settings.report(
+    reportOf({ intent, commandId: `claude-turn:${key}`, worker }, recorded),
+  );
 }
 
 async function begun(
@@ -217,38 +204,39 @@ async function begun(
   start: Started & { readonly prompt: string; readonly profile: TurnProfile },
 ): Promise<void> {
   const { intent, key, folder, tree, prompt } = start;
-  const record = (processId: number | null): Promise<void> =>
-    written(folder, {
-      name: "started.json",
-      value: {
+  const turn = startRetriedTurn(
+    {
+      worker: parts.settings.worker ?? "claude",
+      command: profileCommand(parts.settings.command, start.profile),
+      environment: start.profile.env ?? {},
+      turnId: `${intent.runId}-${key}`,
+      directory: tree.path,
+      folder,
+      prompt,
+    },
+    {
+      ...parts.settings,
+      metadata: {
         operationId: intent.operationId,
         target: intent.target,
         branch: tree.branch,
         worktree: tree.path,
         startCommit: tree.startCommit,
-        processId,
-        startedAt: new Date().toISOString(),
       },
-    });
-  await record(null);
-  const turn = startTurn({
-    worker: parts.settings.worker ?? "claude",
-    command: profileCommand(parts.settings.command, start.profile),
-    environment: start.profile.env ?? {},
-    turnId: `${intent.runId}-${key}`,
-    directory: tree.path,
-    folder,
-    prompt,
-  });
+    },
+  );
   const stopping = { requested: false };
   parts.active.set(key, {
     turn,
     stopping,
-    concluded: concluded(parts, { ...start, turn, stopping })
+    concluded: turn
+      .then((running) =>
+        concluded(parts, { ...start, turn: running, stopping }),
+      )
       .catch(() => undefined)
       .finally(() => parts.active.delete(key)),
   });
-  await record(turn.processId);
+  await turn;
 }
 
 async function firstTurn(
@@ -324,7 +312,9 @@ async function delivered(
 > {
   const { intent, signal } = call;
   const { settings } = parts;
+  const aborted = (): boolean => signal.aborted;
   if (!turnIntent(intent)) return failure("unsupported-effect");
+  if (aborted()) return failure("claude-start-aborted");
   const known = await reconciled(parts, intent);
   if (known.kind !== "absent") return known;
   const profile = await selectedProfile(settings, intent);
@@ -337,19 +327,19 @@ async function delivered(
     target: intent.target,
     signal,
   }).catch(treeFailure);
-  if (signal.aborted) return failure("claude-start-aborted");
+  if (aborted()) return failure("claude-start-aborted");
   if (typeof tree === "string") return failure(tree);
-  const place = located(settings, intent.operationId);
+  const place = located(settings.journal, intent.operationId);
   const first = await firstTurn(settings, { tree, intent });
+  if (aborted()) return failure("claude-start-aborted");
   await begun(parts, { ...place, intent, tree: first, prompt, profile });
   return { receipt: place.key, worker };
 }
 
 async function halted(parts: Parts, active: Active): Promise<void> {
   active.stopping.requested = true;
-  active.turn.stop(
-    parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
-  );
+  const turn = await active.turn.catch(() => undefined);
+  turn?.stop(parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds);
   await active.concluded;
 }
 
@@ -357,7 +347,7 @@ async function stopped(
   parts: Parts,
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
-  const { key } = located(parts.settings, intent.operationId);
+  const { key } = located(parts.settings.journal, intent.operationId);
   const active = parts.active.get(key);
   if (active !== undefined) await halted(parts, active);
   return reconciled(parts, intent);
@@ -365,7 +355,11 @@ async function stopped(
 
 export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   if (settings.command.length === 0) throw new Error("invalid-claude-command");
-  const parts: Parts = { settings, active: new Map() };
+  const parts: Parts = {
+    settings,
+    active: new Map(),
+    stopping: new AbortController(),
+  };
   const analysis = analysisWorker(settings);
   const guarded = async <T>(intent: DeliveryIntent, run: () => Promise<T>) => {
     if (
@@ -380,7 +374,10 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
     deliver: (intent, signal) =>
       intent.method === analysisMethod
         ? guarded(intent, () => analysis.deliver(intent, signal))
-        : delivered(parts, { intent, signal }),
+        : delivered(parts, {
+            intent,
+            signal: AbortSignal.any([signal, parts.stopping.signal]),
+          }),
     reconcile: (intent, signal) =>
       intent.method === analysisMethod
         ? guarded(intent, () => analysis.reconcile(intent, signal))
@@ -390,6 +387,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
         ? guarded(intent, () => analysis.stop(intent, signal))
         : stopped(parts, intent),
     close: async () => {
+      parts.stopping.abort();
       await analysis.close();
       await Promise.all(
         [...parts.active.values()].map((active) => halted(parts, active)),

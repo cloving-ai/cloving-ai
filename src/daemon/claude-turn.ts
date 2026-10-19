@@ -9,6 +9,8 @@ import { analysisCommand, analysisEnvironment } from "./analysis-launch.ts";
 export type Worker = "claude" | "codex";
 
 export interface StreamResult {
+  readonly subtype?: string;
+  readonly errorType?: string;
   readonly model: string | null;
   readonly text: string;
   readonly failed: boolean;
@@ -19,6 +21,7 @@ export interface StreamResult {
 }
 
 export interface TurnEnd {
+  readonly stopped?: boolean;
   readonly exitCode: number | null;
   readonly result: StreamResult | undefined;
 }
@@ -32,6 +35,7 @@ export interface TurnStart {
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
+  readonly activityFolder?: string;
   readonly prompt: string;
 }
 
@@ -42,6 +46,7 @@ export interface RunningTurn {
 }
 
 interface Stream {
+  errorType: string | null;
   model: string | null;
   pending: string;
   result: StreamResult | undefined;
@@ -64,12 +69,30 @@ function textOf(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+export function capacityRefusal(result: StreamResult | undefined): boolean {
+  return (
+    result?.failed === true &&
+    ["success", "error_during_execution"].includes(
+      result.subtype ?? "error_during_execution",
+    ) &&
+    (result.text ===
+      "Selected model is at capacity. Please try a different model." ||
+      result.errorType === "overloaded")
+  );
+}
+
 export function streamResult(line: string): StreamResult | undefined {
   if (!line.includes('"result"')) return undefined;
   const record: unknown = parsed(line);
   const field = (name: string): unknown => Reflect.get(Object(record), name);
   if (field("type") !== "result") return undefined;
   return {
+    ...(typeof field("subtype") === "string"
+      ? { subtype: String(field("subtype")) }
+      : {}),
+    ...(typeof field("error") === "string"
+      ? { errorType: String(field("error")) }
+      : {}),
     text: textOf(field("result")) ?? "",
     failed: field("is_error") === true,
     costUsd: priceOf(field("total_cost_usd")),
@@ -137,25 +160,50 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
+function receivedLines(stream: Stream, lines: readonly string[]): void {
+  for (const line of lines) {
+    const event = parsed(line);
+    const field = (name: string): unknown => Reflect.get(Object(event), name);
+    const type = field("type");
+    if (type === "assistant" && field("parent_tool_use_id") == null)
+      stream.errorType = textOf(field("error"));
+    if (type === "system" || type === "result")
+      stream.model = textOf(field("model")) ?? stream.model;
+    const result = streamResult(line);
+    if (result !== undefined) {
+      const errorType = result.errorType ?? stream.errorType;
+      stream.result = {
+        ...result,
+        ...(errorType === null ? {} : { errorType }),
+      };
+    }
+  }
+}
+
+function activityOutput(start: TurnStart) {
+  if (start.mode === "analysis") return undefined;
+  const output = createWriteStream(
+    join(start.activityFolder ?? start.folder, "turn.jsonl"),
+    { flags: start.activityFolder === undefined ? "w" : "a" },
+  );
+  if (start.activityFolder !== undefined) output.write("\n");
+  return output;
+}
+
 function turnOutput(
   start: TurnStart,
   stdout: ChildProcessWithoutNullStreams["stdout"],
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
-  const output =
-    start.mode === "analysis"
-      ? undefined
-      : createWriteStream(join(start.folder, "turn.jsonl"));
+  const output = activityOutput(start);
   const codex = start.worker === "codex" ? codexStream() : undefined;
-  const stream: Stream = { pending: "", result: undefined, model: null };
+  const stream: Stream = {
+    pending: "",
+    result: undefined,
+    model: null,
+    errorType: null,
+  };
   const received = (lines: readonly string[]): void => {
-    for (const line of lines) {
-      const event = parsed(line);
-      const type: unknown = Reflect.get(Object(event), "type");
-      if (type === "system" || type === "result")
-        stream.model =
-          textOf(Reflect.get(Object(event), "model")) ?? stream.model;
-      stream.result = streamResult(line) ?? stream.result;
-    }
+    receivedLines(stream, lines);
   };
   const written = (lines: readonly string[]): void => {
     for (const line of lines) output?.write(`${line}\n`);
