@@ -97,19 +97,18 @@ function sourceLoop(projection: WorkflowSourceProjection): string {
     const clvReviewStatus = clvStatus(clvReview);
     if (clvReviewStatus === "complete") clvPassed = true;
     if (clvReviewStatus === "blocked") clvFailure = "worker-blocked";
-    if (clvReviewStatus === "repair") {
-      const clvRepairPayload = clvPayload(clvAsset2, input, clvRound, clvReview);
-      if (clvBytes(JSON.stringify(clvReview)) > 32768 || clvBytes(clvRepairPayload) > 65536) {
-        clvFailure = "review-too-large";
-        continue;
-      }
-      const clvRepair = await protectedEffect({
-        scope: { phase: "clv-generated-1", operation: ${JSON.stringify(repair?.stage.name)}, round: clvRound },
-        capability: "claude", method: "run-turn", units: 1,
-        target: input.cycleId, payload: clvRepairPayload
-      });
-      if (clvStatus(clvRepair) === "blocked") clvFailure = "worker-blocked";
+    if (clvReviewStatus !== "repair") continue;
+    const clvRepairPayload = clvPayload(clvAsset2, input, clvRound, clvReview);
+    if (clvBytes(JSON.stringify(clvReview)) > 32768 || clvBytes(clvRepairPayload) > 65536) {
+      clvFailure = "review-too-large";
+      continue;
     }
+    const clvRepair = await protectedEffect({
+      scope: { phase: "clv-generated-1", operation: ${JSON.stringify(repair?.stage.name)}, round: clvRound },
+      capability: "claude", method: "run-turn", units: 1,
+      target: input.cycleId, payload: clvRepairPayload
+    });
+    if (clvStatus(clvRepair) === "blocked") clvFailure = "worker-blocked";
   }
   if (clvFailure !== null) return clvBlocked(input.cycleId, clvFailure);
   if (!clvPassed) return clvBlocked(input.cycleId, "repair-limit-exhausted");

@@ -141,6 +141,34 @@ clvPayload("unrelated", { cycleId: "cycle-1", repository: "synthetic-workspace",
   );
 });
 
+await test("CLV-122 generated repair uses a guard clause and stays directly in the bounded loop", () => {
+  const { source } = candidateProgram(generatedArtifact().source);
+  const workflow = source.statements.find(
+    (statement) =>
+      ts.isFunctionDeclaration(statement) &&
+      statement.name?.text === "clvFunction1",
+  );
+  assert.ok(workflow && ts.isFunctionDeclaration(workflow));
+  const loop = workflow.body?.statements.find(ts.isForStatement);
+  assert.ok(loop && ts.isBlock(loop.statement));
+  const guard = loop.statement.statements.find(
+    (statement) =>
+      ts.isIfStatement(statement) &&
+      statement.expression.getText(source) === 'clvReviewStatus !== "repair"',
+  );
+  assert.ok(guard && ts.isIfStatement(guard));
+  assert.ok(ts.isContinueStatement(guard.thenStatement));
+  assert.ok(
+    loop.statement.statements.some(
+      (statement) =>
+        ts.isVariableStatement(statement) &&
+        statement.declarationList.declarations.some(
+          (declaration) => declaration.name.getText(source) === "clvRepair",
+        ),
+    ),
+  );
+});
+
 await test("CLV-122 generated declaration loads and real compiled artifact admission accepts the unchanged contract and input envelope", () =>
   withConsumer(generatedArtifact().source, async (consumer) => {
     const artifact = generatedArtifact();
