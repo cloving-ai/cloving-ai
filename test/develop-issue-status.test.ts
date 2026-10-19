@@ -79,6 +79,15 @@ await test("CLV-123 a complete report merges before protected closure and cannot
   assert.match(prompt, /Remaining:.*one item on each line/);
 });
 
+await test("CLV-146 the worker prompt allows blank lines around the remaining list", async () => {
+  const [line] = await ran([statusScenario("Ticket status: complete")]);
+  const prompt = String(field(request(line, 2), "payload"));
+  assert.match(
+    prompt,
+    /Blank lines are allowed around and between list items\./,
+  );
+});
+
 await test("CLV-123 pull request references keep the supplied issue repository", async () => {
   const given = statusScenario("Ticket status: complete");
   const [line] = await ran([

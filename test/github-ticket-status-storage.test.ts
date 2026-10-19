@@ -21,6 +21,92 @@ const original = {
 };
 const settings = { privateTexts: ["private-project"] };
 
+await test("CLV-146 replaces the legacy status section while preserving the issue body", () =>
+  withGithub(async (scene) => {
+    const outside = "Original body.\n\n## Acceptance\nKeep this text.\n\n";
+    const body = `${outside}## Cloving status\n- Old remaining item.\n\nOld details.\n`;
+    for (const method of ["partial-issue", "close-issue"]) {
+      scene.plan({ scores: [], issues: [{ ...original, body }] });
+      const report = await scene.perform(scene.worker(settings), {
+        method,
+        payload,
+      });
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      assert.equal(
+        scene.state().issues[0]?.["body"],
+        statusBody(outside, {
+          partialRuns:
+            method === "partial-issue"
+              ? [{ pullRequest: 7, remaining: payload.remaining }]
+              : [],
+          completedPullRequest: method === "close-issue" ? 7 : undefined,
+        }),
+      );
+    }
+  }));
+
+await test("CLV-146 replaces legacy sections after a triple-backtick inline code span", () =>
+  withGithub(async (scene) => {
+    const outside = "Original.\n\n```example```\n\n";
+    for (const method of ["partial-issue", "close-issue"]) {
+      scene.plan({
+        scores: [],
+        issues: [
+          {
+            ...original,
+            body: `${outside}## Cloving status\n- Earlier update.\n`,
+          },
+        ],
+      });
+      const report = await scene.perform(scene.worker(settings), {
+        method,
+        payload,
+      });
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      assert.equal(
+        scene.state().issues[0]?.["body"],
+        statusBody(outside, {
+          partialRuns:
+            method === "partial-issue"
+              ? [{ pullRequest: 7, remaining: payload.remaining }]
+              : [],
+          completedPullRequest: method === "close-issue" ? 7 : undefined,
+        }),
+      );
+    }
+  }));
+
+await test("CLV-146 replaces legacy sections after list-item code fences", () =>
+  withGithub(async (scene) => {
+    for (const example of [
+      "- ```text\n  example\n  ```",
+      "- Parent\n  - ~~~~text\n    example\n    ~~~~",
+      "1. ```text\n   example\n   ```",
+    ]) {
+      const outside = `Original.\n\n${example}\n\n`;
+      scene.plan({
+        scores: [],
+        issues: [
+          {
+            ...original,
+            body: `${outside}## Cloving status\n- Earlier update.\n`,
+          },
+        ],
+      });
+      const report = await scene.perform(scene.worker(settings), {
+        method: "partial-issue",
+        payload,
+      });
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      assert.equal(
+        scene.state().issues[0]?.["body"],
+        statusBody(outside, {
+          partialRuns: [{ pullRequest: 7, remaining: payload.remaining }],
+        }),
+      );
+    }
+  }));
+
 await test("CLV-123 an incomplete block with 40000 spaces cannot stall the GitHub worker", () =>
   withFiles({}, (directory) => {
     const script = `

@@ -41,7 +41,7 @@ function instructions(repository: string): string {
     "Use test-driven development: write a test that fails, see it fail, then write the code.",
     "Run the checks of the repository before you finish.",
     "Commit your work on the current branch. Do not push. Do not change a different branch.",
-    "End with a short report: what you changed, the checks that you ran with their results, and what is not done. End the report with exactly one of the lines Ticket status: complete or Ticket status: partial. Before a partial status line, include Remaining: followed by a list with one item on each line, using a dash and a space before each item.",
+    "End with a short report: what you changed, the checks that you ran with their results, and what is not done. End the report with exactly one of the lines Ticket status: complete or Ticket status: partial. Before a partial status line, include Remaining: followed by a list with one item on each line, using a dash and a space before each item. Blank lines are allowed around and between list items.",
   ].join("\n");
 }
 

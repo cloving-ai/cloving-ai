@@ -130,11 +130,41 @@ function statusText(history: History): string {
   return `## Cloving status\n${lines.join("\n")}\n\n`;
 }
 
+function legacyFence(line: string): RegExp | undefined {
+  const marker =
+    /^( {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)? {0,3}(`{3,}|~{3,})/.exec(line);
+  if (marker === null || marker[2] === undefined) return undefined;
+  const delimiter = marker[2];
+  if (delimiter.startsWith("`") && line.slice(marker[0].length).includes("`"))
+    return undefined;
+  const indentation = (marker[1]?.length ?? 0) + 3;
+  return new RegExp(
+    `^ {0,${String(indentation)}}${delimiter.charAt(0)}{${String(delimiter.length)},}[ \\t]*\\r?\\n?$`,
+  );
+}
+
+function legacyStatusStart(body: string): number {
+  let fence: RegExp | undefined;
+  let offset = 0;
+  for (const line of body.split(/(?<=\n)/)) {
+    const start = offset;
+    offset += line.length;
+    if (fence !== undefined) {
+      fence = fence.test(line) ? undefined : fence;
+      continue;
+    }
+    if (line.trimEnd() === "## Cloving status") return start;
+    fence = legacyFence(line);
+  }
+  return body.length;
+}
+
 function statusSection(body: string): { outside: string; history: History } {
   const empty: History = { version: 1, partialRuns: [] };
   const marker = /^<!-- cloving-status(?=\s|-->|$)/gm;
   const start = [...body.matchAll(marker)].at(-1)?.index;
-  if (start === undefined) return { outside: body, history: empty };
+  if (start === undefined)
+    return { outside: body.slice(0, legacyStatusStart(body)), history: empty };
   const tail = body.slice(start);
   const end = tail.indexOf("-->");
   if (end !== -1 && tail.slice(end + 3).trim() !== "")

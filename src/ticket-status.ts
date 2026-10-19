@@ -10,10 +10,15 @@ function parsedStatus(summary: string): TicketStatus | undefined {
   if (status === "Ticket status: complete") return { kind: "complete" };
   if (status !== "Ticket status: partial") return undefined;
   const heading = lines.lastIndexOf("Remaining:");
-  if (heading === -1) return undefined;
-  const items = lines.slice(heading + 1);
+  const items =
+    heading === -1
+      ? []
+      : lines.slice(heading + 1).filter((line) => line.trim() !== "");
   if (items.length === 0 || items.some((line) => !/^- \S.*$/.test(line)))
-    return undefined;
+    return {
+      kind: "partial",
+      remaining: ["The worker report has an unreadable Remaining: list."],
+    };
   return { kind: "partial", remaining: items.map((line) => line.slice(2)) };
 }
 

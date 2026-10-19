@@ -63,13 +63,13 @@ await test("CLV-123 invalid status payloads fail before any GitHub call", () =>
   }));
 
 for (const method of ["partial-issue", "close-issue"])
-  await test(`CLV-123 ${method} preserves fenced status examples and following requirements`, () =>
-    withGithub(async (scene) => {
-      for (const fence of ["```markdown", "   ~~~~markdown", "````"])
-        for (const history of [
-          "",
-          "## Cloving status\n- Earlier update.\n\n",
-        ]) {
+  for (const [history, description] of [
+    ["", "no legacy section"],
+    ["## Cloving status\n- Earlier update.\n\n", "a legacy section"],
+  ] as const)
+    await test(`CLV-146 ${method} preserves fenced examples with ${description}`, () =>
+      withGithub(async (scene) => {
+        for (const fence of ["```markdown", "   ~~~~markdown", "````"]) {
           const delimiter = fence.trimStart().replace("markdown", "");
           const body = [
             "Example:",
@@ -91,18 +91,21 @@ for (const method of ["partial-issue", "close-issue"])
           assert.equal(report.outcome, "completed", JSON.stringify(report));
           assert.equal(
             scene.state().issues[0]?.["body"],
-            statusBody(body, {
-              partialRuns:
-                method === "partial-issue"
-                  ? [{ pullRequest: 7, remaining: payload.remaining }]
-                  : [],
-              completedPullRequest: method === "close-issue" ? 7 : undefined,
-            }),
+            statusBody(
+              history === "" ? body : body.slice(0, body.indexOf(history)),
+              {
+                partialRuns:
+                  method === "partial-issue"
+                    ? [{ pullRequest: 7, remaining: payload.remaining }]
+                    : [],
+                completedPullRequest: method === "close-issue" ? 7 : undefined,
+              },
+            ),
           );
         }
-    }));
+      }));
 
-await test("CLV-123 readable status examples without a block remain unchanged", () =>
+await test("CLV-146 a legacy status section without a block is replaced through the end", () =>
   withGithub(async (scene) => {
     const section =
       "## Cloving status\nEarlier text.\n```\n## Example heading\n```\n";
@@ -126,10 +129,9 @@ await test("CLV-123 readable status examples without a block remain unchanged", 
     assert.equal(report.outcome, "completed");
     assert.equal(
       scene.state().issues[0]?.["body"],
-      statusBody(
-        outside.replace("## Requirements", `${section}\n## Requirements`),
-        { partialRuns: [{ pullRequest: 7, remaining: payload.remaining }] },
-      ),
+      statusBody("Original.\n\n", {
+        partialRuns: [{ pullRequest: 7, remaining: payload.remaining }],
+      }),
     );
   }));
 
