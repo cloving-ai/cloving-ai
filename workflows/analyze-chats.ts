@@ -96,6 +96,13 @@ export async function analyzeChats(
   );
   if (save.kind !== "completed")
     return blocked(cycleId, { operation: "save-analysis", result: save });
+  if (fields(save.result)["kind"] !== "handoff_requested")
+    return {
+      kind: "blocked",
+      cycleId,
+      reason: "analysis-input-refused",
+      evidenceId: "save-analysis",
+    };
   return {
     kind: "handoff_requested",
     cycleId,

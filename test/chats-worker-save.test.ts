@@ -18,7 +18,7 @@ import {
 
 for (const mode of ["deliver", "reconcile", "stop"] as const) {
   await test(
-    `CLV-117 ${mode} cannot finalize an unresolved analysis question`,
+    `CLV-117 ${mode} cannot finalize a cycle with an unresolved private draft`,
     chatPlatformScenario(async () => {
       await withAnalysis(async (fixture) => {
         const payload = await fixture.prepare();
@@ -29,18 +29,23 @@ for (const mode of ["deliver", "reconcile", "stop"] as const) {
           "save-analysis",
           JSON.stringify({ ...payload, reply: JSON.stringify(value) }),
         );
+        assert.equal(
+          (await fixture.deliver("save-analysis")).kind,
+          "completed",
+        );
+        fixture.payloads.set("save-analysis", JSON.stringify(payload));
         const before = await fixture.files();
         const result = await fixture.worker[mode](
           analysisIntent("save-analysis"),
           new AbortController().signal,
         );
-        assertRefused(result, "analysis-input-refused");
+        assertRefused(result, "analysis-output-failed");
         assert.deepEqual(result, {
           kind: "failed",
-          reason: "analysis-input-refused",
+          reason: "analysis-output-failed",
           result: JSON.stringify({
             kind: "blocked",
-            codes: ["analysis-input-refused"],
+            codes: ["analysis-output-failed"],
           }),
         });
         assert.deepEqual(await fixture.files(), before);
@@ -141,6 +146,7 @@ await test(
       const first = await f.deliver("save-analysis");
       const path = join(f.directory, `analysis-${cycleId}.json`);
       const before = await stat(path);
+      await rm(join(f.directory, `claim-${cycleId}.json`));
       assert.deepEqual(await f.deliver("save-analysis"), first);
       assert.equal((await stat(path)).ino, before.ino);
       assert.deepEqual(

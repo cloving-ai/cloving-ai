@@ -161,3 +161,31 @@ await test("CLV-116 unusable read and turn results block before later effects", 
     assert.equal(field(field(line, "requests"), "length"), count);
   }
 });
+
+await test("CLV-117 a saved draft cannot report a handoff before question integration", async () => {
+  const given = scenario();
+  const [line] = await ran([
+    {
+      ...given,
+      effects: {
+        ...given.effects,
+        "chats save-analysis": [
+          completed({
+            kind: "analysis_draft",
+            cycleId: input.cycleId,
+            candidateDigest: "opaque",
+            expiresAt: "2026-10-20T10:00:00.000Z",
+          }),
+        ],
+      },
+    },
+  ]);
+  assert.deepEqual(field(line, "outcome"), {
+    kind: "blocked",
+    cycleId: input.cycleId,
+    reason: "analysis-input-refused",
+    evidenceId: "save-analysis",
+  });
+  assert.equal(field(line, "spent"), 3);
+  assert.equal(field(field(line, "requests"), "length"), 3);
+});
