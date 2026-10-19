@@ -18,6 +18,25 @@ interface QueueJournal {
   readonly failures: string[];
   readonly save: () => Promise<void>;
   retryCommandId: string | undefined;
+  selfUpdateHold: SelfUpdateHold | undefined;
+}
+
+interface SelfUpdateHold {
+  readonly mark: string;
+  readonly startedAt: number;
+}
+
+function savedHold(value: unknown): SelfUpdateHold | undefined {
+  if (value === undefined) return undefined;
+  const held = record(value);
+  if (
+    typeof held?.["mark"] !== "string" ||
+    typeof held["startedAt"] !== "number" ||
+    !Number.isFinite(held["startedAt"]) ||
+    held["startedAt"] <= 0
+  )
+    throw new Error("invalid-queue-commands");
+  return { mark: held["mark"], startedAt: held["startedAt"] };
 }
 
 function identifiers(value: unknown): string[] {
@@ -43,19 +62,25 @@ async function journal(directory: string): Promise<QueueJournal> {
   );
   const failures = Array.isArray(value) ? [] : identifiers(saved?.["failures"]);
   if (failures.length > 3) throw new Error("invalid-queue-commands");
-  return {
+  const pending: QueueJournal = {
     commands,
     failures,
     retryCommandId: undefined,
+    selfUpdateHold: savedHold(saved?.["selfUpdateHold"]),
     save: async () => {
       await writeFile(
         `${file}.tmp`,
-        JSON.stringify({ commands: [...commands], failures }) + "\n",
+        JSON.stringify({
+          commands: [...commands],
+          failures,
+          selfUpdateHold: pending.selfUpdateHold,
+        }) + "\n",
         { mode: 0o600, flush: true },
       );
       await rename(`${file}.tmp`, file);
     },
   };
+  return pending;
 }
 
 function terminal(run: Fields): boolean {
@@ -200,7 +225,10 @@ async function submit(
   await pending.save();
 }
 
-function updateHold(directory: string): () => Promise<boolean> {
+function updateHold(
+  directory: string,
+  pending: QueueJournal,
+): () => Promise<boolean> {
   let notice: string | undefined;
   return async () => {
     const mark = await readFile(
@@ -213,12 +241,21 @@ function updateHold(directory: string): () => Promise<boolean> {
     });
     if (mark === undefined) {
       notice = undefined;
+      if (pending.selfUpdateHold !== undefined) {
+        pending.selfUpdateHold = undefined;
+        await pending.save();
+      }
       return false;
     }
     const timestamp = Number(mark);
     if (!Number.isFinite(timestamp) || timestamp <= 0)
       throw new Error("invalid-pending-self-update");
-    const holding = Date.now() - timestamp < 30 * 60 * 1000;
+    if (pending.selfUpdateHold?.mark !== mark) {
+      pending.selfUpdateHold = { mark, startedAt: Date.now() };
+      await pending.save();
+    }
+    const holding =
+      Date.now() - pending.selfUpdateHold.startedAt < 30 * 60 * 1000;
     const line = holding
       ? "Queue holding for pending self-update\n"
       : "Queue continuing after pending self-update time limit\n";
@@ -256,7 +293,7 @@ async function cycle(
     pending.failures.length = 0;
     await pending.save();
   }
-  const holding = updateHold(settings.directory);
+  const holding = updateHold(settings.directory, pending);
   await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
