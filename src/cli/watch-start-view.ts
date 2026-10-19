@@ -76,6 +76,7 @@ export function StartCard(props: {
 export function StartRun(props: {
   readonly workflows: WatchModel["workflows"];
   readonly copying: Copying;
+  readonly shown?: boolean;
 }): Shown {
   const registered = startPrompts().filter((item) =>
     props.workflows.some((workflow) => workflow.workflowId === item.workflowId),
@@ -87,12 +88,11 @@ export function StartRun(props: {
       copying: props.copying,
     }),
   );
-  return element("details", {
+  return element("section", {
     class: "start-run",
-    open: true,
-    children: [
-      element("summary", { children: "Start a run" }),
-      element("div", { class: "start-cards", children: cards }),
-    ],
+    id: "start-run",
+    "aria-label": "Start a run",
+    hidden: props.shown !== true,
+    children: element("div", { class: "start-cards", children: cards }),
   });
 }

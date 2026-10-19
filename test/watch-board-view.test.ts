@@ -15,6 +15,10 @@ function page(model: WatchModel, selected: string): string {
       now: model.updatedAt,
       stale: false,
       copying: noCopy,
+      columns: {
+        choices: { Done: false, Stopped: false },
+        onToggle: () => undefined,
+      },
     }),
   );
 }
@@ -27,6 +31,10 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
     now: model.updatedAt,
     stale: false,
     copying: noCopy,
+    columns: {
+      choices: { Done: false, Stopped: false },
+      onToggle: () => undefined,
+    },
   });
   const html = rendered(shown);
   assert.match(html, /<section class="column stopped">/);
@@ -58,7 +66,7 @@ await test("CLV-079 the workflow list shows counts and selection beside ordered 
   assert.match(html, /develop-ticket<\/strong><span>1 active · 0 waiting/);
   assert.match(html, /develop-prompt<\/strong><span>0 active · 0 waiting/);
   assert.deepEqual(
-    [...html.matchAll(/<h3 class="column-name">(.*?)<\/h3>/g)].map(
+    [...html.matchAll(/<h3 class="column-name"><span>(.*?)<\/span>/g)].map(
       (match) => match[1],
     ),
     [
@@ -75,10 +83,10 @@ await test("CLV-079 the workflow list shows counts and selection beside ordered 
   assert.ok(
     html.indexOf("Title of round-2") < html.indexOf("Title of claude-turn"),
   );
-  assert.match(html, /<h3 class="column-name">Done<\/h3><\/section>/);
+  assert.match(html, /aria-label="Collapse Done"/);
   const ticket = page(model, "workflow=develop-ticket");
   assert.deepEqual(
-    [...ticket.matchAll(/<h3 class="column-name">(.*?)<\/h3>/g)].map(
+    [...ticket.matchAll(/<h3 class="column-name"><span>(.*?)<\/span>/g)].map(
       (match) => match[1],
     ),
     ["Claude turn", "Your review", "Done", "Stopped"],
@@ -125,6 +133,30 @@ function cardPage(
   );
 }
 
+await test("CLV-134 cards shorten the run ID, retain the full link title and show one cost without tokens", () => {
+  const runId = "123456789012-long-run/&";
+  const html = cardPage({
+    runId,
+    estimatedCostUsd: 2.2,
+    usage: {
+      input_tokens: 1800,
+      cache_read_input_tokens: 900,
+      output_tokens: 170,
+    },
+  });
+  assert.match(html, /<small>123456789012<\/small>/);
+  assert.match(html, /title="123456789012-long-run\/&amp;"/);
+  assert.match(html, /run=123456789012-long-run%2F%26/);
+  assert.match(html, /≈2\.20 USD estimate/);
+  assert.equal(html.match(/USD/g)?.length, 1);
+  assert.doesNotMatch(
+    html,
+    /Input tokens|Cache read tokens|Output tokens|card-usage/,
+  );
+  assert.match(cardPage({ estimatedCostUsd: 0 }), /≈0\.00 USD estimate/);
+  assert.match(cardPage({ estimatedCostUsd: null }), /1\.24 USD/);
+});
+
 await test("CLV-079 cards show step time, review progress, cost, decisions and encoded run links", () => {
   const html = cardPage({});
   for (const text of [
@@ -139,7 +171,7 @@ await test("CLV-079 cards show step time, review progress, cost, decisions and e
   assert.match(html, /href="#workflow=develop-issue&amp;run=run%20%2F%261"/);
   const board = /<main class="board">[\s\S]*<\/main>/.exec(html)?.[0];
   assert.ok(board);
-  assert.doesNotMatch(board, /button|draggable/);
+  assert.doesNotMatch(board, /draggable|<input|<form/);
 });
 
 await test("CLV-079 cards omit absent review parts and step time and fall back to the run ID", () => {

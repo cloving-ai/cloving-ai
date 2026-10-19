@@ -79,7 +79,7 @@ await test("CLV-106 the board starts with four registered workflow cards and the
   }
 });
 
-await test("CLV-106 the start section is open above the workflow list and board", () => {
+await test("CLV-134 the start section is hidden by default with a header toggle", () => {
   const model = boardModel([], { workflows: ["develop-issue"] });
   const shown = component(Page, {
     model,
@@ -88,16 +88,74 @@ await test("CLV-106 the start section is open above the workflow list and board"
     stale: false,
     copying: noCopy,
   });
-  const details = found(shown, "details")[0];
-  assert.equal(details?.["open"], true);
-  assert.equal(
-    found(details["children"], "summary")[0]?.["children"],
-    "Start a run",
+  const section = found(shown, "section").find(
+    (item) => item["class"] === "start-run",
   );
+  assert.equal(section?.["hidden"], true);
+  const header = found(shown, "header")[0];
+  const toggle = found(header?.["children"], "button")[0];
+  assert.equal(toggle?.["children"], "Start a run");
+  assert.equal(toggle["aria-expanded"], "false");
+  assert.equal(toggle["aria-controls"], section["id"]);
   const html = rendered(shown);
   assert.ok(html.indexOf("Start a run") < html.indexOf('class="workflows"'));
   assert.ok(html.indexOf("Start a run") < html.indexOf('class="board"'));
 });
+
+await test("CLV-134 the header shows and hides start prompts and remembers a shown state on reload", () => {
+  const result = played(
+    boardModel([], { workflows: ["develop-issue"] }),
+    `
+const saved = new Map();
+globalThis.localStorage = { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+location.hash = "#workflow=develop-issue";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+const toggle = () => app.all("button").find((node) => node.text === "Start a run");
+const hidden = () => app.all("section").find((node) => node.attributes.get("class") === "start-run")?.attributes.has("hidden");
+const initial = hidden();
+toggle().dispatch("click");
+const opened = hidden();
+state.start = null;
+draw();
+const restored = hidden();
+toggle().dispatch("click");
+state.start = null;
+draw();
+console.log(JSON.stringify({ initial, opened, restored, closed: hidden(), expanded: toggle().attributes.get("aria-expanded"), saved: [...saved], requests }));
+`,
+  );
+  assert.equal(result["initial"], true);
+  assert.equal(result["opened"], false);
+  assert.equal(result["restored"], false);
+  assert.equal(result["closed"], true);
+  assert.equal(result["expanded"], "false");
+  assert.deepEqual(result["saved"], [["cloving.watch.start", "false"]]);
+  assert.deepEqual(result["requests"], ["data.json"]);
+});
+
+for (const store of ["missing", "denied", "broken", "invalid", "shown"]) {
+  await test(`CLV-134 start prompts use a safe default for ${store} storage`, () => {
+    const result = played(
+      boardModel([], { workflows: ["develop-issue"] }),
+      `
+const mode = ${JSON.stringify(store)};
+if (mode === "denied") Object.defineProperty(globalThis, "localStorage", { get() { throw new Error("denied"); } });
+if (["broken", "invalid", "shown"].includes(mode)) globalThis.localStorage = { getItem: () => mode === "shown" ? "true" : mode === "broken" ? "{" : '"true"', setItem() { throw new Error("full"); } };
+location.hash = "#workflow=develop-issue";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+const hidden = () => app.all("section").find((node) => node.attributes.get("class") === "start-run")?.attributes.has("hidden");
+const initial = hidden();
+app.all("button").find((node) => node.text === "Start a run")?.dispatch("click");
+draw();
+console.log(JSON.stringify({ initial, changed: hidden() }));
+`,
+    );
+    assert.equal(result["initial"], store !== "shown");
+    assert.equal(result["changed"], store === "shown");
+  });
+}
 
 await test("CLV-106 only develop-issue has a start card when it is the only registered workflow", () => {
   const model = boardModel([], { workflows: ["develop-issue"] });
@@ -127,7 +185,8 @@ const model = JSON.parse(process.env.WATCH_MODEL);
 location.hash = "#workflow=develop-issue";
 replies.push(model);
 await load();
-const buttons = app.all("button");
+app.all("button").find((node) => node.text === "Start a run").dispatch("click");
+const buttons = app.all("button").filter((node) => node.text === "Copy the prompt");
 const labels = [];
 for (const button of buttons) {
   labels.push(button.text);

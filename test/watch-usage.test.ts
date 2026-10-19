@@ -58,7 +58,7 @@ function scenario() {
   );
 }
 
-await test("CLV-094 watch cards, run totals, turn headings and result activity show usage and unknown price", () => {
+await test("CLV-094 run totals, turn headings and result activity retain tokens while cards show only cost", () => {
   const model = scenario();
   const run = model.runs[0];
   const card = model.workflows[0]?.columns.flatMap((column) => column.cards)[0];
@@ -74,13 +74,14 @@ await test("CLV-094 watch cards, run totals, turn headings and result activity s
   );
   for (const html of [cardHtml, runHtml]) {
     assert.match(html, /so far/);
-    assert.match(
-      html,
-      /Input tokens: 1800 · Cache read tokens: 900 · Output tokens: 170/,
-    );
     assert.match(html, /Price not known/);
     assert.doesNotMatch(html, /\d+\.\d+ USD/);
   }
+  assert.doesNotMatch(cardHtml, /Input tokens|Cache read tokens|Output tokens/);
+  assert.match(
+    runHtml,
+    /Input tokens: 1800 · Cache read tokens: 900 · Output tokens: 170/,
+  );
   for (const usage of scenarioUsage)
     assert.ok(
       runHtml.includes(

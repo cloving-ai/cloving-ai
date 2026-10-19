@@ -14,7 +14,11 @@ import {
   type WatchPhase,
   type WatchRun,
 } from "./watch-render.ts";
-import { Board, WorkflowList } from "./watch-board-view.ts";
+import {
+  Board,
+  WorkflowList,
+  type ColumnControls,
+} from "./watch-board-view.ts";
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn } from "./watch-turn.ts";
 import { StartRun } from "./watch-start-view.ts";
@@ -198,9 +202,15 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
 }
 
+export interface StartControls {
+  readonly shown: boolean;
+  readonly onToggle: () => void;
+}
+
 export function Header(props: {
   readonly model: WatchModel | null;
   readonly stale: boolean;
+  readonly start?: StartControls;
 }): Shown {
   const { model, stale } = props;
   const updated = model === null ? "" : `updated ${clockTime(model.updatedAt)}`;
@@ -228,6 +238,16 @@ export function Header(props: {
         ],
       }),
       stamp,
+      props.start === undefined
+        ? null
+        : element("button", {
+            type: "button",
+            class: "start-toggle",
+            "aria-controls": "start-run",
+            "aria-expanded": String(props.start.shown),
+            onClick: props.start.onToggle,
+            children: "Start a run",
+          }),
     ],
   });
 }
@@ -238,6 +258,8 @@ export interface PageProps {
   readonly now: string;
   readonly stale: boolean;
   readonly copying: Copying;
+  readonly columns?: ColumnControls;
+  readonly start?: StartControls;
 }
 
 export function Page(props: PageProps): Shown {
@@ -269,24 +291,46 @@ export function Page(props: PageProps): Shown {
         : component(Run, { key: run.runId, run, now, copying }),
     ];
   }
+  return component(BoardPage, { ...props, model, workflowId, down });
+}
+
+export function BoardPage(
+  props: PageProps & {
+    readonly model: WatchModel;
+    readonly workflowId: string | null;
+    readonly down: Shown;
+  },
+): Shown {
+  const { model, workflowId, down, now, stale, copying } = props;
   const workflow = model.workflows.find(
     (item) => item.workflowId === workflowId,
   );
-  return [
-    head,
-    down,
-    component(StartRun, { workflows: model.workflows, copying }),
-    element("div", {
-      class: "workspace",
-      children: [
-        component(WorkflowList, {
-          workflows: model.workflows,
-          selected: workflowId,
-        }),
-        workflow === undefined
-          ? text("meta", "No workflows registered.")
-          : component(Board, { workflow, now }),
-      ],
-    }),
-  ];
+  const start = props.start ?? { shown: false, onToggle: () => undefined };
+  return element("div", {
+    class: "board-page",
+    children: [
+      component(Header, { model, stale, start }),
+      down,
+      component(StartRun, {
+        workflows: model.workflows,
+        copying,
+        shown: start.shown,
+      }),
+      element("div", {
+        class: "workspace",
+        children: [
+          component(WorkflowList, {
+            workflows: model.workflows,
+            selected: workflowId,
+          }),
+          workflow === undefined
+            ? element("p", {
+                class: "meta",
+                children: "No workflows registered.",
+              })
+            : component(Board, { workflow, now, controls: props.columns }),
+        ],
+      }),
+    ],
+  });
 }

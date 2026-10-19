@@ -1,9 +1,12 @@
+import { watchClient } from "./watch-client.ts";
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
 import {
   Board,
   Card,
+  Column,
+  columnCollapsed,
   CardReview,
   WorkflowList,
   cardReview,
@@ -44,6 +47,7 @@ import {
   clove,
   Banner,
   BannerDetail,
+  BoardPage,
   Header,
   Page,
   Phases,
@@ -68,6 +72,8 @@ const functions = [
   completionMark,
   CardReview,
   Card,
+  Column,
+  columnCollapsed,
   WorkflowList,
   Board,
   counted,
@@ -100,6 +106,7 @@ const functions = [
   Review,
   Run,
   Header,
+  BoardPage,
   Page,
 ];
 
@@ -143,35 +150,49 @@ const style = `
 :root[data-theme="dark"] {${dark}}
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 1800px; padding: 0 20px 96px; }
+body:has(.board-page) { padding-bottom: 0; overflow: hidden; }
+.board-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.board-page > header, .board-page > .down { flex-shrink: 0; }
+.start-run { flex-shrink: 0; max-height: 45dvh; overflow-y: auto; }
 a { color: var(--accent-strong); }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 22px 0 10px; color: var(--muted); font-size: 12px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 800 26px/1.2 var(--heading-font); }
 .brand svg { width: 30px; height: 30px; color: var(--accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
 h2, h3 { font-family: var(--heading-font); font-weight: 700; }
-.start-run > summary { color: var(--ink); font: 700 20px/1.5 var(--heading-font); }
 .start-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 12px; }
 .start-card { min-width: 0; padding: 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .start-card h3 { margin: 0; }
 .start-card p { margin: 6px 0 12px; }
 .start-card .command { grid-template-columns: minmax(0, 1fr); margin: 0; }
 .start-card button { justify-self: end; }
-.workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; margin-top: 20px; }
-.workflows { display: flex; flex-direction: column; gap: 8px; }
+.workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; margin-top: 12px; flex: 1; min-height: 0; }
+.workflows { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
 .workflows a { display: grid; gap: 2px; border-bottom: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 .workflows a[aria-current="page"] { border-bottom-color: var(--accent); background: var(--surface); border-radius: 8px 8px 0 0; }
 .workflows span, .card small { color: var(--muted); font-size: 12px; }
-.board { min-width: 0; }
-.board h2 { margin: 0 0 14px; font-size: 24px; }
-.columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; overflow-x: auto; padding: 6px 6px 24px; }
-.column { min-width: 0; padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2); }
-.column-name { margin: 0 0 10px; padding: 8px 4px; color: var(--muted); font: 500 12px/1.5 var(--code-font); }
+.board { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.board h2 { margin: 0 0 8px; font-size: 24px; flex-shrink: 0; }
+.columns { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
+@supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }
+.columns::-webkit-scrollbar { height: 12px; }
+.columns::-webkit-scrollbar-track { background: var(--surface-2); }
+.columns::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 6px; }
+.column { flex: 0 0 260px; min-width: 0; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2); }
+.column-name { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin: 0; padding: 4px 0 10px; color: var(--muted); font: 500 12px/1.5 var(--code-font); }
+.column-name > span:first-child { flex: 1; }
+.column-cards { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.column.collapsed { flex-basis: 44px; padding: 6px; }
+.collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
+.column-name button, .start-toggle { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
+.column-name button:hover, .start-toggle:hover { background: var(--surface); }
 .card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--ink); overflow-wrap: anywhere; background: var(--surface); }
 .card:hover { outline: 1px solid var(--accent-strong); }
-.card-run { display: grid; gap: 8px; color: inherit; text-decoration: none; }
-.card-run strong { font-family: var(--heading-font); font-weight: 700; }
+.card-run { display: grid; gap: 4px; min-width: 0; color: inherit; text-decoration: none; }
+.card-run strong { font-family: var(--heading-font); font-weight: 700; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .completion-mark { font-size: 12px; }
-.card-step, .card-review, .card-cost, .card-usage, .card small { font: 400 12px/1.6 var(--code-font); font-variant-numeric: tabular-nums; }
+.card-step, .card-review, .card-cost, .card small { font: 400 12px/1.6 var(--code-font); font-variant-numeric: tabular-nums; }
+.card-step, .card-review { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-step { color: var(--muted); }
 .card-step.active { color: var(--accent-strong); }
 .card-review { color: var(--muted); }
@@ -247,77 +268,7 @@ button:hover { background: var(--code-head); }
 .events { margin-top: 18px; padding-bottom: 10px; }
 .events > summary { color: var(--code-fg); }
 .down { font-weight: 600; }
-@media (max-width: 700px) { body { padding-inline: 12px; } .workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; } .workflows { flex-direction: row; overflow-x: auto; padding: 6px; } .workflows a { flex-shrink: 0; } }
-`;
-
-const loader = `
-const state = { model: null, stale: false, copied: "", label: "", run: "", loading: false, again: false };
-function moved(next, followed) {
-  const arrived = next === "waiting_gate" && next !== state.run;
-  state.run = next;
-  if (arrived) scrollTo(0, 0);
-  else if (followed && next === "running") scrollTo(0, document.body.scrollHeight);
-}
-function copy(command) {
-  const shown = (label) => {
-    state.copied = command;
-    state.label = label;
-    draw();
-  };
-  navigator.clipboard.writeText(command).then(
-    () => { shown("Copied"); },
-    () => { shown("Copy failed"); },
-  );
-}
-function draw() {
-  const { model, stale } = state;
-  const selected = location.hash.slice(1);
-  const followed = innerHeight + scrollY >= document.body.scrollHeight - 80;
-  const copying = { command: state.copied, label: state.label, onCopy: copy };
-  const now = new Date().toISOString();
-  const page = component(Page, { model, selected, now, stale, copying });
-  render(page, document.getElementById("app"));
-  if (model === null) return;
-  document.title = watchTitle(model, selected);
-  const { runId } = watchLocation(selected);
-  moved(model.runs.find((run) => run.runId === runId)?.state ?? "", followed);
-}
-async function withSelectedRun(model) {
-  const { runId } = watchLocation(location.hash);
-  if (runId === null || model.runs.some((run) => run.runId === runId)) return model;
-  const detail = await fetch("data.json?runId=" + encodeURIComponent(runId), { cache: "no-store" });
-  if (detail.status === 404) return model;
-  if (!detail.ok) throw new Error("watch-run-not-available");
-  const { run } = await detail.json();
-  if (run?.runId !== runId) throw new Error("watch-run-mismatch");
-  return { ...model, runs: [...model.runs, run] };
-}
-async function load() {
-  state.again = state.loading;
-  if (state.loading) return;
-  state.loading = true;
-  try {
-    const reply = await fetch("data.json", { cache: "no-store" });
-    if (!reply.ok) throw new Error("watch-not-available");
-    state.model = await withSelectedRun(await reply.json());
-    state.stale = false;
-  } catch {
-    state.stale = true;
-  }
-  state.loading = false;
-  draw();
-  if (state.again) load();
-}
-function listen() {
-  const source = new EventSource("events");
-  source.onmessage = () => { load(); };
-  source.onerror = () => { state.stale = true; draw(); };
-}
-addEventListener("hashchange", () => { state.run = ""; draw(); load(); });
-draw();
-listen();
-setInterval(draw, 1000);
-setInterval(load, 15000);
+@media (max-width: 700px) { body { padding-inline: 12px; } .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; } .workflows { flex-direction: row; overflow-x: auto; max-height: 100px; padding: 6px; } .workflows a { flex-shrink: 0; } }
 `;
 
 export function pageDocument(): string {
@@ -326,7 +277,7 @@ export function pageDocument(): string {
     'import { h as element, h as component, render } from "./preact.mjs";',
     `const clove = ${JSON.stringify(clove)};`,
     ...functions.map((item) => item.toString()),
-    loader,
+    watchClient,
   ].join("\n");
   return [
     "<!doctype html>",
