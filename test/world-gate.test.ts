@@ -17,12 +17,12 @@ export async function gateKind() {
   return existsSync("question-gate") ? "question" : "approval";
 }
 
-export async function develop(input: { cycleId: string }, continuation?: { gateId: string; decision: string; answer: string | null }) {
+export async function develop(input: { cycleId: string; expiresAt?: string }, continuation?: { gateId: string; decision: string; answer: string | null }) {
   "use workflow";
   const cycleId = input.cycleId;
   if (continuation !== undefined)
     return { kind: "handoff_requested", cycleId, promotionId: continuation.gateId + ":" + continuation.decision + ":" + String(continuation.answer) };
-  const gate = await decisionGate({ gateId: "review-1", kind: await gateKind(), prompt: "Approve the change of " + cycleId + "?" });
+  const gate = await decisionGate({ gateId: "review-1", kind: await gateKind(), prompt: "Approve the change of " + cycleId + "?", ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }) });
   return { kind: "waiting_for_decision", cycleId, decisionId: gate.kind === "opened" ? gate.decisionId : gate.reason };
 }
 `;
@@ -77,6 +77,48 @@ const pendingApproval = [
   "Approve the change of cycle-1?",
   ["approve", "deny"],
 ];
+
+const deadlineRegistration = `
+const registration = fakeRegistration([]);
+const registrations = [{ ...registration, resolver: {
+  ...registration.resolver,
+  resolve: async () => ({ kind: "resolved", input: { cycleId: "cycle-1", expiresAt: "2099-10-20T10:00:00.000Z" } }),
+} }];
+`;
+
+await test("CLV-117 a compiled question preserves the supplied deadline after a crash before wait registration", () =>
+  withConsumer(workflows, async (consumer) => {
+    await consumer.runUntil(
+      "halted-before-wait",
+      `${servicePrelude}${deadlineRegistration}
+writeFileSync("question-gate", "");
+writeFileSync("halt-before-wait", "");
+const service = await hosted({ registrations });
+await submitted("c-deadline");
+`,
+    );
+    const result = await consumer.run(`${servicePrelude}${decisions}
+rmSync("halt-before-wait");
+const service = await hosted();
+const runId = (await tagged())[0].run;
+await until(async () => (await waits()).every(([, wait]) => wait === "registered"));
+const [pending] = (await asked("questions", { runId })).decisions;
+const decision = await decide(runId, "answer", "earlier");
+await ended(runId);
+print({ expiresAt: pending.expiresAt, decision: decision.reply, segments: await segments(), events: await gateEvents(runId), budget: (await asked("status", { runId })).run.budget });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines, [
+      {
+        expiresAt: "2099-10-20T10:00:00.000Z",
+        decision: "decision-recorded",
+        segments: twoSegments("review-1:answered:earlier"),
+        events: ["gate.opened", "gate.wait-registered", "gate.decided"],
+        budget: null,
+      },
+    ]);
+  }));
 
 await test("CLV-010 a compiled workflow opens an approval gate through the product host, and after the approval the continuation segment completes the run", () =>
   withConsumer(workflows, async (consumer) => {

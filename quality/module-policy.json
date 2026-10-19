@@ -523,6 +523,7 @@
     "test/world-effect.test.ts": "test",
     "test/world-host-fixture.ts": "test",
     "test/service-step-bridge.test.ts": "test",
+    "test/service-gate-deadline.test.ts": "test",
     "test/service-world-status.test.ts": "test",
     "test/world-outcomes.test.ts": "test",
     "test/world-recovery.test.ts": "test",
