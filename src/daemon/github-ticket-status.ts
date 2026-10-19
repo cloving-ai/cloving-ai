@@ -133,9 +133,11 @@ function statusText(history: History): string {
 function legacyFence(line: string): RegExp | undefined {
   const marker =
     /^( {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)? {0,3}(`{3,}|~{3,})/.exec(line);
-  const delimiter = marker?.[2];
-  if (delimiter === undefined) return undefined;
-  const indentation = (marker?.[1]?.length ?? 0) + 3;
+  if (marker === null || marker[2] === undefined) return undefined;
+  const delimiter = marker[2];
+  if (delimiter.startsWith("`") && line.slice(marker[0].length).includes("`"))
+    return undefined;
+  const indentation = (marker[1]?.length ?? 0) + 3;
   return new RegExp(
     `^ {0,${String(indentation)}}${delimiter.charAt(0)}{${String(delimiter.length)},}[ \\t]*\\r?\\n?$`,
   );
@@ -145,11 +147,14 @@ function legacyStatusStart(body: string): number {
   let fence: RegExp | undefined;
   let offset = 0;
   for (const line of body.split(/(?<=\n)/)) {
-    if (fence === undefined) {
-      if (line.trimEnd() === "## Cloving status") return offset;
-      fence = legacyFence(line);
-    } else if (fence.test(line)) fence = undefined;
+    const start = offset;
     offset += line.length;
+    if (fence !== undefined) {
+      fence = fence.test(line) ? undefined : fence;
+      continue;
+    }
+    if (line.trimEnd() === "## Cloving status") return start;
+    fence = legacyFence(line);
   }
   return body.length;
 }

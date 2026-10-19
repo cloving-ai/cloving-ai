@@ -45,6 +45,37 @@ await test("CLV-146 replaces the legacy status section while preserving the issu
     }
   }));
 
+await test("CLV-146 replaces legacy sections after a triple-backtick inline code span", () =>
+  withGithub(async (scene) => {
+    const outside = "Original.\n\n```example```\n\n";
+    for (const method of ["partial-issue", "close-issue"]) {
+      scene.plan({
+        scores: [],
+        issues: [
+          {
+            ...original,
+            body: `${outside}## Cloving status\n- Earlier update.\n`,
+          },
+        ],
+      });
+      const report = await scene.perform(scene.worker(settings), {
+        method,
+        payload,
+      });
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      assert.equal(
+        scene.state().issues[0]?.["body"],
+        statusBody(outside, {
+          partialRuns:
+            method === "partial-issue"
+              ? [{ pullRequest: 7, remaining: payload.remaining }]
+              : [],
+          completedPullRequest: method === "close-issue" ? 7 : undefined,
+        }),
+      );
+    }
+  }));
+
 await test("CLV-146 replaces legacy sections after list-item code fences", () =>
   withGithub(async (scene) => {
     for (const example of [
