@@ -1,15 +1,48 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
+import ts from "typescript";
 
-const definition =
-  /export\s+async\s+function\s+(\w+)\s*\([^)]*\)[^{]*\{\s*["']use step["']/g;
-const directive = /["']use (?:step|workflow)["']/g;
 const conditions = ["workflow", "default", "require", "import", "node"];
 
 interface ProductStep {
   readonly file: string;
   readonly subpath: string;
   readonly names: readonly string[];
+}
+
+function qualifiedStep(node: ts.ExpressionStatement): string | undefined {
+  const block = node.parent;
+  if (!ts.isBlock(block) || block.statements[0] !== node) return undefined;
+  const parent = block.parent;
+  if (!ts.isFunctionDeclaration(parent) || !ts.isSourceFile(parent.parent))
+    return undefined;
+  const modifiers = ts.getCombinedModifierFlags(parent);
+  const required = ts.ModifierFlags.Export | ts.ModifierFlags.Async;
+  if ((modifiers & required) !== required) return undefined;
+  if ((modifiers & ts.ModifierFlags.Default) !== 0 || parent.asteriskToken)
+    return undefined;
+  if (!/^["']use step["']$/.test(node.expression.getText())) return undefined;
+  return parent.name?.text;
+}
+
+function durableDeclarations(file: string, text: string) {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const names: string[] = [];
+  let total = 0;
+  function visit(node: ts.Node): void {
+    if (
+      ts.isExpressionStatement(node) &&
+      ts.isStringLiteral(node.expression) &&
+      ["use step", "use workflow"].includes(node.expression.text)
+    ) {
+      total += 1;
+      const name = qualifiedStep(node);
+      if (name !== undefined) names.push(name);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return { names, total };
 }
 
 async function productSteps(candidate: string): Promise<{
@@ -27,10 +60,7 @@ async function productSteps(candidate: string): Promise<{
     if (!entry.isFile()) continue;
     const file = join(entry.parentPath, entry.name);
     const source = await readFile(file, "utf8");
-    const names = [...source.matchAll(definition)].map((match) =>
-      String(match[1]),
-    );
-    const total = source.match(directive)?.length ?? 0;
+    const { names, total } = durableDeclarations(file, source);
     if (total === 0) continue;
     const path = relative(join(candidate, "src"), file);
     const parts = path.split(sep);

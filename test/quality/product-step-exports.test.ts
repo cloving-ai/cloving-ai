@@ -40,3 +40,42 @@ await test("CLV-016 the admitted step exports of a candidate are the durable ste
     },
   );
 });
+
+await test("CLV-122 candidate source templates and ordinary directive text are inert data", async () => {
+  await withFiles(
+    {
+      "package.json": manifest,
+      "src/generator.ts":
+        'export function source() { return `export async function proposed() { "use workflow"; }`; }\nconst name = "use step";',
+      "src/steps/turn.ts": `${step("turn")}\nconst documentation = '"use workflow"';`,
+    },
+    async (directory) => {
+      assert.deepEqual(await productStepExports(directory), {
+        [join(directory, "src/steps/turn.ts")]: ["turn"],
+      });
+    },
+  );
+});
+
+for (const [name, source] of Object.entries({
+  workflow: 'export async function hidden() { "use workflow"; }',
+  nested: 'export function outer() { async function hidden() { "use step"; } }',
+  arrow: 'export const hidden = async () => { "use step"; };',
+  plain: 'export function hidden() { "use step"; }',
+  escaped: 'export async function hidden() { "use\\u0020step"; }',
+  misplaced: 'export async function hidden() { const value = 1; "use step"; }',
+  top: '"use workflow";',
+  default: 'export default async function turn() { "use step"; }',
+  generator: 'export async function* turn() { "use step"; }',
+}))
+  await test(`CLV-122 actual unqualified ${name} directive is still refused`, async () => {
+    await withFiles(
+      { "package.json": manifest, "src/steps/turn.ts": source },
+      async (directory) => {
+        await assert.rejects(
+          productStepExports(directory),
+          /unqualified-product-durable: steps\/turn\.ts/,
+        );
+      },
+    );
+  });
