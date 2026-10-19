@@ -13,7 +13,8 @@ import {
   priceForModel,
   type TokenPrices,
 } from "../token-prices.ts";
-import { startTurn, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
+import type { RunningTurn, TurnEnd } from "./claude-turn.ts";
+import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import { analysisAvailable, analysisMethod } from "./analysis-launch.ts";
 import { analysisToken } from "./analysis-token.ts";
 import {
@@ -27,7 +28,7 @@ import {
   type WorkerReport,
 } from "./operation-journal.ts";
 
-interface Settings {
+interface Settings extends RetrySettings {
   readonly tokenPrices?: TokenPrices;
   readonly journal: string;
   readonly document: (digest: string) => Promise<string | undefined>;
@@ -98,6 +99,7 @@ async function privateRecord(
 
 function outcome(end: TurnEnd, prices: TokenPrices): Recorded {
   const endedAt = new Date().toISOString();
+  if (end.stopped) return { outcome: "stopped", endedAt };
   const result = end.result;
   if (result === undefined)
     return { ...interrupted("analysis-turn-failed"), endedAt };
@@ -191,20 +193,17 @@ async function begun(
     mode: "analysis",
     startedAt: new Date().toISOString(),
   };
-  const recorded = (processId: number | null) =>
-    privateRecord(folder, {
-      name: "started.json",
-      value: { ...started, processId },
-    });
-  await recorded(null);
-  const turn = startTurn({
-    mode: "analysis",
-    analysisToken: opening.token,
-    command: [],
-    folder,
-    directory,
-    prompt,
-  });
+  const turn = await startRetriedTurn(
+    {
+      mode: "analysis",
+      analysisToken: opening.token,
+      command: [],
+      folder,
+      directory,
+      prompt,
+    },
+    { ...parts.settings, metadata: started },
+  );
   const done = turn.ended
     .then(async (end) => {
       const result = outcome(end, parts.settings.tokenPrices ?? {});
@@ -220,7 +219,6 @@ async function begun(
     .catch(() => undefined)
     .finally(() => parts.active.delete(key));
   parts.active.set(key, { turn, done });
-  await recorded(turn.processId);
 }
 
 function cancelled(parts: Parts, signal: AbortSignal): boolean {

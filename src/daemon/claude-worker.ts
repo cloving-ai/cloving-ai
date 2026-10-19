@@ -18,12 +18,8 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import {
-  startTurn,
-  type RunningTurn,
-  type TurnEnd,
-  type Worker,
-} from "./claude-turn.ts";
+import { type RunningTurn, type TurnEnd, type Worker } from "./claude-turn.ts";
+import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import {
   interrupted,
   located as locatedIn,
@@ -38,7 +34,7 @@ import {
 } from "./operation-journal.ts";
 import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
-export interface ClaudeWorkerSettings {
+export interface ClaudeWorkerSettings extends RetrySettings {
   readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
@@ -217,29 +213,27 @@ async function begun(
   start: Started & { readonly prompt: string; readonly profile: TurnProfile },
 ): Promise<void> {
   const { intent, key, folder, tree, prompt } = start;
-  const record = (processId: number | null): Promise<void> =>
-    written(folder, {
-      name: "started.json",
-      value: {
+  const turn = await startRetriedTurn(
+    {
+      worker: parts.settings.worker ?? "claude",
+      command: profileCommand(parts.settings.command, start.profile),
+      environment: start.profile.env ?? {},
+      turnId: `${intent.runId}-${key}`,
+      directory: tree.path,
+      folder,
+      prompt,
+    },
+    {
+      ...parts.settings,
+      metadata: {
         operationId: intent.operationId,
         target: intent.target,
         branch: tree.branch,
         worktree: tree.path,
         startCommit: tree.startCommit,
-        processId,
-        startedAt: new Date().toISOString(),
       },
-    });
-  await record(null);
-  const turn = startTurn({
-    worker: parts.settings.worker ?? "claude",
-    command: profileCommand(parts.settings.command, start.profile),
-    environment: start.profile.env ?? {},
-    turnId: `${intent.runId}-${key}`,
-    directory: tree.path,
-    folder,
-    prompt,
-  });
+    },
+  );
   const stopping = { requested: false };
   parts.active.set(key, {
     turn,
@@ -248,7 +242,6 @@ async function begun(
       .catch(() => undefined)
       .finally(() => parts.active.delete(key)),
   });
-  await record(turn.processId);
 }
 
 async function firstTurn(

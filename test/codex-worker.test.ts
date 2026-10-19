@@ -93,6 +93,7 @@ await test("CLV-083 the Codex worker records translated activity and a final res
       { kind: "result", text: "Done." },
     ]);
     assert.deepEqual(streamResult(lines.at(-1) ?? ""), {
+      subtype: "success",
       model: null,
       text: "Done.",
       failed: false,
@@ -150,6 +151,7 @@ await test("CLV-087 the Codex worker completes a turn after a reconnect error", 
       .trim()
       .split("\n");
     assert.deepEqual(streamResult(lines.at(-1) ?? ""), {
+      subtype: "success",
       model: null,
       text: "Recovered.",
       failed: false,
