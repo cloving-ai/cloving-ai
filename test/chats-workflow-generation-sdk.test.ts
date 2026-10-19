@@ -13,6 +13,36 @@ function field(value: unknown, name: string): unknown {
   return Reflect.get(Object(value), name);
 }
 
+await test("CLV-122 generated SDK repair receives the completed review findings", () =>
+  withConsumer(generatedArtifact().source, async (consumer) => {
+    const result = await consumer.run(`${generatedPrelude()}
+const payloads = [];
+let review;
+const reviewed = JSON.stringify({ summary: JSON.stringify({ status: "repair", findings: [{ file: "synthetic.ts", defect: "Return the synthetic checked value." }] }) });
+const worker = { ...destination, deliver: async (intent) => {
+  payloads.push(JSON.parse(await ports.document(intent.payload)));
+  const outcome = await destination.deliver(intent);
+  if (payloads.length !== 1) return outcome;
+  review = { ...outcome, operationId: intent.operationId, result: reviewed };
+  return { ...outcome, result: reviewed };
+} };
+const service = await openGenerated({ destination: worker });
+const runId = await submitGenerated();
+await terminal(runId);
+print({ payloads, review, state: await generatedState(runId) });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    const line: unknown = result.lines[0];
+    const payloads: unknown = field(line, "payloads");
+    assert.ok(Array.isArray(payloads));
+    assert.equal(payloads.length, 3, JSON.stringify(line));
+    assert.deepEqual(field(payloads[1], "review"), field(line, "review"));
+    assert.equal(field(field(payloads[1], "asset"), "name"), "clvAsset2");
+    assert.equal(field(payloads[1], "round"), 0);
+    assert.equal(field(field(line, "state"), "state"), "waiting_gate");
+  }));
+
 await test("CLV-122 generated projection without human gates completes after the bounded review", () =>
   withConsumer(generatedArtifact("no-gates").source, async (consumer) => {
     const artifact = generatedArtifact("no-gates");

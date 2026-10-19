@@ -47,8 +47,8 @@ function clvStatus(result: ProtectedResult): "complete" | "repair" | "blocked" {
 function clvBlocked(cycleId: string, reason: string): CycleOutcome {
   return { kind: "blocked", cycleId, reason, evidenceId: "clv-generation-1" };
 }
-function clvPayload(asset: unknown, input: ClvInput, round: number): string {
-  return JSON.stringify({ asset, parameters: { cycleId: input.cycleId, repository: input.repository, input: input.input }, round });
+function clvPayload(asset: typeof clvAsset1 | typeof clvAsset2, input: ClvInput, round: number, review?: ProtectedResult): string {
+  return JSON.stringify({ asset, parameters: { cycleId: input.cycleId, repository: input.repository, input: input.input }, round, review });
 }
 `;
 }
@@ -80,23 +80,22 @@ function sourceLoop(projection: WorkflowSourceProjection): string {
   return `  let clvPassed = false;
   let clvFailure: string | null = null;
   for (let clvRound = 0; clvRound < ${String(projection.maximumIterations)}; clvRound++) {
-    if (!clvPassed && clvFailure === null) {
-      const clvReview = await protectedEffect({
-        scope: { phase: "clv-generated-1", operation: ${JSON.stringify(review?.stage.name)}, round: clvRound },
+    if (clvPassed || clvFailure !== null) continue;
+    const clvReview = await protectedEffect({
+      scope: { phase: "clv-generated-1", operation: ${JSON.stringify(review?.stage.name)}, round: clvRound },
+      capability: "claude", method: "run-turn", units: 1,
+      target: input.cycleId, payload: clvPayload(clvAsset1, input, clvRound)
+    });
+    const clvReviewStatus = clvStatus(clvReview);
+    if (clvReviewStatus === "complete") clvPassed = true;
+    if (clvReviewStatus === "blocked") clvFailure = "worker-blocked";
+    if (clvReviewStatus === "repair") {
+      const clvRepair = await protectedEffect({
+        scope: { phase: "clv-generated-1", operation: ${JSON.stringify(repair?.stage.name)}, round: clvRound },
         capability: "claude", method: "run-turn", units: 1,
-        target: input.cycleId, payload: clvPayload(clvAsset1, input, clvRound)
+        target: input.cycleId, payload: clvPayload(clvAsset2, input, clvRound, clvReview)
       });
-      const clvReviewStatus = clvStatus(clvReview);
-      if (clvReviewStatus === "complete") clvPassed = true;
-      if (clvReviewStatus === "blocked") clvFailure = "worker-blocked";
-      if (clvReviewStatus === "repair") {
-        const clvRepair = await protectedEffect({
-          scope: { phase: "clv-generated-1", operation: ${JSON.stringify(repair?.stage.name)}, round: clvRound },
-          capability: "claude", method: "run-turn", units: 1,
-          target: input.cycleId, payload: clvPayload(clvAsset2, input, clvRound)
-        });
-        if (clvStatus(clvRepair) === "blocked") clvFailure = "worker-blocked";
-      }
+      if (clvStatus(clvRepair) === "blocked") clvFailure = "worker-blocked";
     }
   }
   if (clvFailure !== null) return clvBlocked(input.cycleId, clvFailure);

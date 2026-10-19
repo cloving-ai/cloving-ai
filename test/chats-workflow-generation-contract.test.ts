@@ -130,6 +130,17 @@ await test("CLV-122 source embeds exactly the returned JSON assets, typechecks a
   assert.deepEqual(embeddedAssets(source), result.artifact.assets);
 });
 
+await test("CLV-122 generated prompt payload rejects unrelated asset values at the type boundary", () => {
+  const artifact = generatedArtifact();
+  const { program, source } = candidateProgram(`${artifact.source}
+clvPayload("unrelated", { cycleId: "cycle-1", repository: "synthetic-workspace", input: { clvInput1: "synthetic-task" } }, 0);
+`);
+  assert.deepEqual(
+    program.getSemanticDiagnostics(source).map((diagnostic) => diagnostic.code),
+    [2345],
+  );
+});
+
 await test("CLV-122 generated declaration loads and real compiled artifact admission accepts the unchanged contract and input envelope", () =>
   withConsumer(generatedArtifact().source, async (consumer) => {
     const artifact = generatedArtifact();
