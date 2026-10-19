@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import filesystem from "node:fs/promises";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import timers, { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { collectCoverage } from "../../quality/coverage-report.ts";
 import { withFiles } from "./files-fixture.ts";
@@ -49,23 +49,15 @@ async function requestedCoverage(directory: string): Promise<void> {
 }
 
 for (const unfinished of ["", '{"result":'])
-  await test(`CLV-123 waits for an unfinished raw coverage recording: ${JSON.stringify(unfinished)}`, async () => {
+  await test(`CLV-142 reads a raw coverage recording completed after 600 milliseconds: ${JSON.stringify(unfinished)}`, async () => {
     await withFiles({}, async (directory) => {
       await requestedCoverage(directory);
       const recording = join(directory, "coverage/requested.json");
-      const read = filesystem.readFile;
-      const complete = await read(recording, "utf8");
+      const complete = await readFile(recording, "utf8");
       await writeFile(recording, unfinished);
-      Object.defineProperty(filesystem, "readFile", {
-        configurable: true,
-        value: async (file: string, encoding: "utf8") => {
-          const content = await read(file, encoding);
-          if (file === recording && content === unfinished)
-            await writeFile(recording, complete);
-          return content;
-        },
-      });
-      syncBuiltinESMExports();
+      const completed = setTimeout(600).then(() =>
+        writeFile(recording, complete),
+      );
       try {
         assert.deepEqual(
           await collectCoverage(join(directory, "coverage"), [
@@ -82,10 +74,58 @@ for (const unfinished of ["", '{"result":'])
           ],
         );
       } finally {
-        filesystem.readFile = read;
-        syncBuiltinESMExports();
+        await completed;
       }
     });
+  });
+
+for (const factor of [undefined, "3"])
+  await test(`CLV-142 bounds coverage retries by five seconds times ${factor ?? "the default factor"}`, async () => {
+    await withFiles(
+      { "coverage/unfinished.json": '{"result":' },
+      async (directory) => {
+        const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+        const wait = timers.setTimeout;
+        const clock = Object.getOwnPropertyDescriptor(performance, "now");
+        const delays: number[] = [];
+        let elapsed = 0;
+        Object.defineProperty(performance, "now", {
+          configurable: true,
+          value: () => elapsed,
+        });
+        if (factor === undefined)
+          delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+        else process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+        Object.defineProperty(timers, "setTimeout", {
+          configurable: true,
+          value: (delay: number) => {
+            delays.push(delay);
+            elapsed += delay;
+            return Promise.resolve();
+          },
+        });
+        syncBuiltinESMExports();
+        try {
+          await assert.rejects(
+            collectCoverage(join(directory, "coverage"), []),
+            SyntaxError,
+          );
+          assert.equal(elapsed, 5000 * Number(factor ?? 1));
+          assert.equal(delays[0], 25);
+          assert.ok(delays.length > 2);
+          for (let index = 1; index < delays.length - 1; index += 1)
+            assert.ok((delays[index] ?? 0) > (delays[index - 1] ?? 0));
+        } finally {
+          if (clock) Object.defineProperty(performance, "now", clock);
+          else Reflect.deleteProperty(performance, "now");
+          timers.setTimeout = wait;
+          syncBuiltinESMExports();
+          if (previous === undefined)
+            delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+          else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+        }
+      },
+    );
   });
 
 for (const content of ["", '{"result":'])

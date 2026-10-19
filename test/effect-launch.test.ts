@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import type { Authority } from "../src/broker/actor/authority.ts";
 import {
   deliverUntil,
@@ -180,7 +181,12 @@ await test("CLV-049 the fake worker of the launch tests ends with an error and w
   const worker = spawnSync(
     process.execPath,
     [join(import.meta.dirname, "effect-worker.ts")],
-    { cwd: directory, encoding: "utf8", timeout: 5_000 },
+    {
+      cwd: directory,
+      encoding: "utf8",
+      timeout:
+        5_000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]),
+    },
   );
   assert.equal(worker.status, 1);
   assert.match(worker.stderr, /missing-worker-arguments/);
