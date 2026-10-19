@@ -41,6 +41,26 @@ await test("CLV-134 card titles use two lines and step and review metadata each 
   assert.match(rule(".card-step, .card-review"), /text-overflow: ellipsis/);
 });
 
+await test("CLV-134 custom scrollbar sizing wins over native styling while theme colors remain", () => {
+  assert.match(rule(".columns::-webkit-scrollbar"), /height: 12px/);
+  assert.match(
+    css,
+    /@supports selector\(::-webkit-scrollbar\)\s*\{\s*\.columns\s*\{\s*scrollbar-color: auto;/,
+  );
+  assert.match(
+    rule(".columns"),
+    /scrollbar-color: var\(--muted\) var\(--surface-2\)/,
+  );
+  assert.match(
+    rule(".columns::-webkit-scrollbar-track"),
+    /background: var\(--surface-2\)/,
+  );
+  assert.match(
+    rule(".columns::-webkit-scrollbar-thumb"),
+    /background: var\(--muted\)/,
+  );
+});
+
 await test("CLV-098 every palette token belongs to default, system and explicit theme rules", () => {
   const system = ':root:not([data-theme="light"]):not([data-theme="dark"])';
   for (const [theme, tokens] of Object.entries(palette)) {

@@ -134,19 +134,21 @@ export function WorkflowList(props: {
 }
 
 export interface ColumnControls {
-  readonly choices: unknown;
+  readonly choices: Readonly<Record<string, boolean>> | null;
   readonly onToggle: (name: string) => void;
   readonly onHover?: (name: string | null) => void;
   readonly onFocus?: (name: string | null) => void;
 }
 
-export function columnCollapsed(choices: unknown, name: string): boolean {
-  const values: Readonly<Record<string, unknown>> =
-    typeof choices === "object" && choices !== null ? { ...choices } : {};
-  const value = values[name];
-  return typeof value === "boolean"
-    ? value
-    : ["Done", "Stopped"].includes(name);
+export function columnCollapsed(
+  choices: Readonly<Record<string, boolean>> | null,
+  name: string,
+): boolean {
+  const value =
+    choices !== null && Object.hasOwn(choices, name)
+      ? choices[name]
+      : undefined;
+  return value ?? ["Done", "Stopped"].includes(name);
 }
 
 export function Column(props: {
@@ -156,7 +158,7 @@ export function Column(props: {
   readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { column, workflowId, now, controls } = props;
-  const collapsed = columnCollapsed(controls?.choices, column.name);
+  const collapsed = columnCollapsed(controls?.choices ?? null, column.name);
   const tone = column.name === "Stopped" ? "column stopped" : "column";
   return element("section", {
     class: `${tone}${collapsed ? " collapsed" : ""}`,

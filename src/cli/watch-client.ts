@@ -4,6 +4,11 @@ function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
 }
+function readColumnChoices(key) {
+  const value = readPreference(key);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return Object.fromEntries(Object.entries(value).filter(([, choice]) => typeof choice === "boolean"));
+}
 function savePreference(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch {}
@@ -21,11 +26,10 @@ function columnControls(model, selected) {
   if (workflowId === null) return undefined;
   const key = "cloving.watch.columns:" + workflowId;
   if (!Object.hasOwn(state.columns, workflowId))
-    state.columns = { ...state.columns, [workflowId]: readPreference(key) };
+    state.columns = { ...state.columns, [workflowId]: readColumnChoices(key) };
   const choices = state.columns[workflowId];
   return { choices, onHover(name) { state.hovered = name; }, onFocus(name) { state.focused = name; }, onToggle(name) {
-    const values = typeof choices === "object" && choices !== null ? choices : {};
-    const changed = { ...values, [name]: !columnCollapsed(choices, name) };
+    const changed = { ...choices, [name]: !columnCollapsed(choices, name) };
     state.columns = { ...state.columns, [workflowId]: changed };
     savePreference(key, changed);
     draw();

@@ -174,6 +174,7 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .board { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .board h2 { margin: 0 0 8px; font-size: 24px; flex-shrink: 0; }
 .columns { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
+@supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }
 .columns::-webkit-scrollbar { height: 12px; }
 .columns::-webkit-scrollbar-track { background: var(--surface-2); }
 .columns::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 6px; }

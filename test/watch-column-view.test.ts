@@ -203,3 +203,49 @@ console.log(JSON.stringify({ initial, changed: app.inner }));
     assert.match(String(result["changed"]), /aria-label="Collapse Done"/);
   });
 }
+
+const savedChoices: readonly [
+  string,
+  string,
+  Readonly<Record<string, boolean>> | null,
+][] = [
+  [
+    "mixed map",
+    '{"Done":false,"Stopped":true,"Work tree":true,"bad":"true","empty":null,"nested":{},"list":[]}',
+    { Done: false, Stopped: true, "Work tree": true },
+  ],
+  ["empty map", "{}", {}],
+  ["array", "[false,true]", null],
+  ["string", '"false"', null],
+  ["boolean", "true", null],
+  ["number", "1", null],
+  ["null", "null", null],
+];
+
+for (const [label, saved, expected] of savedChoices) {
+  await test(`CLV-134 ${label} preferences reach views as checked boolean choices`, () => {
+    const result = played(
+      activeBoardModel(),
+      `
+let saved = ${JSON.stringify(saved)};
+globalThis.localStorage = { getItem: () => saved, setItem: (key, value) => { saved = value; } };
+location.hash = "#workflow=develop-issue";
+const model = JSON.parse(process.env.WATCH_MODEL);
+replies.push(model);
+await load();
+const controls = columnControls(model, location.hash);
+const choices = controls.choices;
+controls.onToggle("Done");
+console.log(JSON.stringify({ choices, persisted: JSON.parse(saved), html: app.inner, requests }));
+`,
+    );
+    assert.deepEqual(result["choices"], expected);
+    const collapsed = !(expected?.["Done"] ?? true);
+    assert.deepEqual(result["persisted"], { ...expected, Done: collapsed });
+    assert.match(
+      String(result["html"]),
+      new RegExp(`aria-label="${collapsed ? "Expand" : "Collapse"} Done"`),
+    );
+    assert.deepEqual(result["requests"], ["data.json"]);
+  });
+}
