@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { until } from "./claude-worker-fixture.ts";
+import { alive, until } from "./claude-worker-fixture.ts";
 import { fields } from "./service-fixture.ts";
 import {
   configuredPrWatch,
@@ -101,6 +101,7 @@ await test("CLV-093 CLI terminates a held GitHub command after five seconds", as
         status: "unavailable",
         failure: "timeout",
       });
+      await until(() => !alive(pid));
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     },
   );

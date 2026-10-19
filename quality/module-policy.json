@@ -822,7 +822,16 @@
     "test/watch-action-fixture.ts": "test",
     "test/watch-add-card.test.ts": "test",
     "test/watch-action-admission.test.ts": "test",
-    "test/watch-card-input.test.ts": "test"
+    "test/watch-card-input.test.ts": "test",
+    "test/chats-platform.test.ts": "test",
+    "test/release-ci.test.ts": "test",
+    "test/chats-platform-fixture.ts": "test",
+    "test/chats-darwin-files-fixture.ts": "test",
+    "test/chats-darwin-adapter.test.ts": "test",
+    "test/chats-corpus-limit.test.ts": "test",
+    "test/chats-cli-flow.test.ts": "test",
+    "test/chats-redact-coverage.test.ts": "test",
+    "test/authority-operation-records.test.ts": "test"
   },
   "allowed": {
     "quality": [

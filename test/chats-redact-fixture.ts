@@ -1,3 +1,4 @@
+import { darwinChatFileArguments } from "./chats-platform-fixture.ts";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
@@ -64,7 +65,11 @@ export function configuredCli(
 ) {
   return spawnSync(
     process.execPath,
-    [resolve("src/cli.ts"), ...request.argumentsList],
+    [
+      ...darwinChatFileArguments(),
+      resolve("src/cli.ts"),
+      ...request.argumentsList,
+    ],
     {
       cwd: directory,
       encoding: "utf8",

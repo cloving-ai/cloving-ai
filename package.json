@@ -46,10 +46,12 @@
     "npm": ">=11.19.1 <12"
   },
   "os": [
-    "darwin"
+    "darwin",
+    "linux"
   ],
   "cpu": [
-    "arm64"
+    "arm64",
+    "x64"
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json && node tools/copy-workflow-declarations.ts workflows dist/workflows",

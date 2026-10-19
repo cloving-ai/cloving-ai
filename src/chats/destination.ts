@@ -60,7 +60,7 @@ export async function importDirectory(
   runtime: string,
   importId: string,
 ): Promise<string> {
-  if (process.platform !== "darwin") throw new Error("destination-refused");
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
   let chats: string;
   try {
     chats = await canonical(join(resolve(runtime), "chats"));
@@ -77,6 +77,7 @@ export async function importDirectory(
 }
 
 export async function validateDestination(directory: string): Promise<void> {
+  if (process.platform !== "darwin") throw new Error("platform-unsupported");
   if ((await realpath(directory)) !== directory)
     throw new Error("destination-refused");
   await outsideRepository(directory);

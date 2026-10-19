@@ -1,3 +1,4 @@
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import { initialImport } from "./chats-revision-fixture.ts";
 import assert from "node:assert/strict";
 import filesystem, { readdir, type FileHandle } from "node:fs/promises";
@@ -29,80 +30,88 @@ for (const mode of ["positional", "root", "revision"]) {
     ["coverage.json", "write"],
     ["coverage.json", "close"],
   ] as const) {
-    await test(`CLV-095 ${mode} ${name} ${operation} failure leaves no completed manifest`, async () => {
-      await withFiles(selectedSources, async (directory) => {
-        const previous =
-          mode === "revision" ? await initialImport(directory) : undefined;
-        const observer = interceptFailure({
-          name,
-          operation,
+    await test(
+      `CLV-095 ${mode} ${name} ${operation} failure leaves no completed manifest`,
+      chatPlatformScenario(async () => {
+        await withFiles(selectedSources, async (directory) => {
+          const previous =
+            mode === "revision" ? await initialImport(directory) : undefined;
+          const observer = interceptFailure({
+            name,
+            operation,
+            previousOutput: previous?.output,
+          });
+          try {
+            const result = await importChats({
+              ...(previous === undefined
+                ? {}
+                : { previousImportId: previous.importId }),
+              paths: mode === "root" ? [] : ["source"],
+              roots: mode === "root" ? ["root"] : [],
+              workingDirectory: directory,
+              runtimeDirectory: "runtime",
+            });
+            assert.equal(result.code, "output-failed");
+            assert.equal(result.importId, null);
+            assert.equal(result.included, 0);
+            assert.equal(result.refused, 0);
+            assert.deepEqual(
+              [result.excluded, result.pending],
+              mode === "root" ? [0, 0] : [undefined, undefined],
+            );
+            assert.equal(observer.injected.length, 1);
+            assert.ok(observer.handles.every((handle) => handle.fd === -1));
+            const files = await readdir(join(directory, "runtime"), {
+              recursive: true,
+            });
+            assert.ok(
+              files
+                .filter((file) => !file.includes(previous?.importId ?? "\0"))
+                .every((file) => !file.endsWith("coverage.json")),
+            );
+          } finally {
+            observer.restore();
+          }
+        });
+      }),
+    );
+  }
+}
+
+for (const comparison of [false, true]) {
+  await test(
+    `CLV-113 final manifest follows all closed outputs with comparison ${String(comparison)}`,
+    chatPlatformScenario(async () => {
+      await withFiles({ source }, async (directory) => {
+        const previous = comparison
+          ? await initialImport(directory)
+          : undefined;
+        const observer = observeCompletion({
           previousOutput: previous?.output,
+          required: [
+            "corpus.jsonl",
+            "structure.json",
+            ...(comparison ? ["revision.json"] : []),
+          ],
         });
         try {
           const result = await importChats({
             ...(previous === undefined
               ? {}
               : { previousImportId: previous.importId }),
-            paths: mode === "root" ? [] : ["source"],
-            roots: mode === "root" ? ["root"] : [],
+            paths: ["source"],
             workingDirectory: directory,
             runtimeDirectory: "runtime",
           });
-          assert.equal(result.code, "output-failed");
-          assert.equal(result.importId, null);
-          assert.equal(result.included, 0);
-          assert.equal(result.refused, 0);
-          assert.deepEqual(
-            [result.excluded, result.pending],
-            mode === "root" ? [0, 0] : [undefined, undefined],
-          );
-          assert.equal(observer.injected.length, 1);
-          assert.ok(observer.handles.every((handle) => handle.fd === -1));
-          const files = await readdir(join(directory, "runtime"), {
-            recursive: true,
-          });
-          assert.ok(
-            files
-              .filter((file) => !file.includes(previous?.importId ?? "\0"))
-              .every((file) => !file.endsWith("coverage.json")),
-          );
+          assert.equal(result.code, "import-complete");
+          assert.deepEqual(observer.closed, [true]);
+          assert.deepEqual(observer.corpusClosed, [true]);
         } finally {
           observer.restore();
         }
       });
-    });
-  }
-}
-
-for (const comparison of [false, true]) {
-  await test(`CLV-113 final manifest follows all closed outputs with comparison ${String(comparison)}`, async () => {
-    await withFiles({ source }, async (directory) => {
-      const previous = comparison ? await initialImport(directory) : undefined;
-      const observer = observeCompletion({
-        previousOutput: previous?.output,
-        required: [
-          "corpus.jsonl",
-          "structure.json",
-          ...(comparison ? ["revision.json"] : []),
-        ],
-      });
-      try {
-        const result = await importChats({
-          ...(previous === undefined
-            ? {}
-            : { previousImportId: previous.importId }),
-          paths: ["source"],
-          workingDirectory: directory,
-          runtimeDirectory: "runtime",
-        });
-        assert.equal(result.code, "import-complete");
-        assert.deepEqual(observer.closed, [true]);
-        assert.deepEqual(observer.corpusClosed, [true]);
-      } finally {
-        observer.restore();
-      }
-    });
-  });
+    }),
+  );
 }
 
 function interceptFailure(data: {
@@ -187,36 +196,39 @@ function observeCompletion(data: {
   };
 }
 
-await test("CLV-113 revision destination refusal is an output failure before coverage completion", async () => {
-  await withFiles({ source }, async (directory) => {
-    const previous = await initialImport(directory);
-    const original = filesystem.open;
-    filesystem.open = async (path, flags) => {
-      if (basename(String(path)) === "revision.json")
-        throw Object.assign(new Error("synthetic-create-refusal"), {
-          code: "ELOOP",
-        });
-      return original(path, flags, 0o600);
-    };
-    syncBuiltinESMExports();
-    try {
-      const result = await importChats({
-        paths: ["source"],
-        workingDirectory: directory,
-        runtimeDirectory: "runtime",
-        previousImportId: previous.importId,
-      });
-      assert.equal(result.code, "output-failed");
-      const files = await readdir(join(directory, "runtime/chats"), {
-        recursive: true,
-      });
-      assert.equal(
-        files.filter((file) => file.endsWith("coverage.json")).length,
-        1,
-      );
-    } finally {
-      filesystem.open = original;
+await test(
+  "CLV-113 revision destination refusal is an output failure before coverage completion",
+  chatPlatformScenario(async () => {
+    await withFiles({ source }, async (directory) => {
+      const previous = await initialImport(directory);
+      const original = filesystem.open;
+      filesystem.open = async (path, flags) => {
+        if (basename(String(path)) === "revision.json")
+          throw Object.assign(new Error("synthetic-create-refusal"), {
+            code: "ELOOP",
+          });
+        return original(path, flags, 0o600);
+      };
       syncBuiltinESMExports();
-    }
-  });
-});
+      try {
+        const result = await importChats({
+          paths: ["source"],
+          workingDirectory: directory,
+          runtimeDirectory: "runtime",
+          previousImportId: previous.importId,
+        });
+        assert.equal(result.code, "output-failed");
+        const files = await readdir(join(directory, "runtime/chats"), {
+          recursive: true,
+        });
+        assert.equal(
+          files.filter((file) => file.endsWith("coverage.json")).length,
+          1,
+        );
+      } finally {
+        filesystem.open = original;
+        syncBuiltinESMExports();
+      }
+    });
+  }),
+);

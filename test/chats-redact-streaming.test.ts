@@ -1,3 +1,7 @@
+import {
+  chatPlatformScenario,
+  darwinChatFileArguments,
+} from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -86,52 +90,56 @@ async function createCollection(directory: string) {
   return { digest: expected.digest("hex"), count };
 }
 
-await test("CLV-103 redacts a collection larger than the process heap", async () => {
-  await withFiles(files, async (directory) => {
-    const { digest, count } = await createCollection(directory);
-    const entry = pathToFileURL(resolve("src/chats/redact-import.ts")).href;
-    const request = {
-      importId,
-      workingDirectory: directory,
-      runtimeDirectory: "runtime",
-      settings: { home: null, privateTexts: [] },
-    };
-    const result = spawnSync(
-      process.execPath,
-      [
-        "--max-old-space-size=64",
-        "--input-type=module",
-        "-e",
-        `import { redactImport } from ${JSON.stringify(entry)}; console.log(JSON.stringify(await redactImport(${JSON.stringify(request)})));`,
-      ],
-      { encoding: "utf8", timeout: 30_000 },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stderr, "");
-    assert.deepEqual(JSON.parse(result.stdout), {
-      code: "redaction-complete",
-      importId,
-      recordCount: count,
-      counts: {
-        privateKey: 0,
-        credentialUrl: 0,
-        homePath: 0,
-        token: 0,
-        email: count,
-        privateText: 0,
-      },
-      totalCount: count,
+await test(
+  "CLV-103 redacts a collection larger than the process heap",
+  chatPlatformScenario(async () => {
+    await withFiles(files, async (directory) => {
+      const { digest, count } = await createCollection(directory);
+      const entry = pathToFileURL(resolve("src/chats/redact-import.ts")).href;
+      const request = {
+        importId,
+        workingDirectory: directory,
+        runtimeDirectory: "runtime",
+        settings: { home: null, privateTexts: [] },
+      };
+      const result = spawnSync(
+        process.execPath,
+        [
+          ...darwinChatFileArguments(),
+          "--max-old-space-size=64",
+          "--input-type=module",
+          "-e",
+          `import { redactImport } from ${JSON.stringify(entry)}; console.log(JSON.stringify(await redactImport(${JSON.stringify(request)})));`,
+        ],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stderr, "");
+      assert.deepEqual(JSON.parse(result.stdout), {
+        code: "redaction-complete",
+        importId,
+        recordCount: count,
+        counts: {
+          privateKey: 0,
+          credentialUrl: 0,
+          homePath: 0,
+          token: 0,
+          email: count,
+          privateText: 0,
+        },
+        totalCount: count,
+      });
+      const actual = createHash("sha256");
+      for await (const chunk of createReadStream(
+        join(directory, base, "redacted.jsonl"),
+      )) {
+        assert.ok(Buffer.isBuffer(chunk));
+        actual.update(chunk);
+      }
+      assert.equal(actual.digest("hex"), digest);
     });
-    const actual = createHash("sha256");
-    for await (const chunk of createReadStream(
-      join(directory, base, "redacted.jsonl"),
-    )) {
-      assert.ok(Buffer.isBuffer(chunk));
-      actual.update(chunk);
-    }
-    assert.equal(actual.digest("hex"), digest);
-  });
-});
+  }),
+);
 
 for (const suffix of [
   Buffer.from("\n"),
@@ -139,84 +147,90 @@ for (const suffix of [
   Buffer.from(JSON.stringify({ ...record, schemaVersion: 2 })),
   Buffer.from([0xc3]),
 ]) {
-  await test("CLV-103 late invalid input leaves no outputs or changed originals", async () => {
-    const prefix =
-      JSON.stringify({
-        ...record,
-        text: "benign ".repeat(16_384),
-        blocks: [],
-      }) + "\n";
-    await withFiles(
-      { ...files, [`${base}/corpus.jsonl`]: prefix },
-      async (directory) => {
-        const path = join(directory, base, "corpus.jsonl");
-        await appendFile(path, suffix);
-        const original = await readFile(path);
-        const result = await redactImport({
-          importId,
-          workingDirectory: directory,
-          runtimeDirectory: "runtime",
-          settings: { home: null, privateTexts: [] },
-        });
-        assert.equal(result.code, "redaction-failed");
-        assert.deepEqual((await readdir(join(directory, base))).sort(), [
-          "corpus.jsonl",
-          "coverage.json",
-        ]);
-        assert.deepEqual(await readFile(path), original);
-      },
-    );
-  });
-}
-
-for (const chunkSize of [17, 65_536]) {
-  await test(`CLV-103 streams records through ${String(chunkSize)} byte reads`, async () => {
-    const line = JSON.stringify({
-      ...record,
-      text: "é ~/x ".repeat(300),
-      blocks: [],
-    }).replace(
-      '"blocks":[]',
-      '"blocks":[{"type":"tool_use","position":0,"id":"call","name":"tool","input":1e400}]',
-    );
-    const count = 40;
-    const expected = line.replaceAll("~/x", "[HOME_PATH]");
-    const corpus = (line + "\n").repeat(count - 1) + line;
-    await withFiles(
-      { ...files, [`${base}/corpus.jsonl`]: corpus },
-      async (directory) => {
-        const observer = observeFiles(chunkSize);
-        const { observations } = observer;
-        try {
+  await test(
+    "CLV-103 late invalid input leaves no outputs or changed originals",
+    chatPlatformScenario(async () => {
+      const prefix =
+        JSON.stringify({
+          ...record,
+          text: "benign ".repeat(16_384),
+          blocks: [],
+        }) + "\n";
+      await withFiles(
+        { ...files, [`${base}/corpus.jsonl`]: prefix },
+        async (directory) => {
+          const path = join(directory, base, "corpus.jsonl");
+          await appendFile(path, suffix);
+          const original = await readFile(path);
           const result = await redactImport({
             importId,
             workingDirectory: directory,
             runtimeDirectory: "runtime",
             settings: { home: null, privateTexts: [] },
           });
-          assert.equal(result.code, "redaction-complete");
-          assert.equal(observations.writes.length, count);
-          assert.ok(
-            observations.reads.some((writes) => writes > 0 && writes < count),
-          );
-          assert.ok(
-            observations.writes.every((text) => text === expected + "\n"),
-          );
-          assert.equal(result.recordCount, count);
-          assert.equal(result.counts.homePath, 300 * count);
-          assert.equal(result.totalCount, 300 * count);
-          assert.equal(
-            await readFile(join(directory, base, "redacted.jsonl"), "utf8"),
-            (expected + "\n").repeat(count),
-          );
-          assert.equal(
-            await readFile(join(directory, base, "corpus.jsonl"), "utf8"),
-            corpus,
-          );
-        } finally {
-          observer.restore();
-        }
-      },
-    );
-  });
+          assert.equal(result.code, "redaction-failed");
+          assert.deepEqual((await readdir(join(directory, base))).sort(), [
+            "corpus.jsonl",
+            "coverage.json",
+          ]);
+          assert.deepEqual(await readFile(path), original);
+        },
+      );
+    }),
+  );
+}
+
+for (const chunkSize of [17, 65_536]) {
+  await test(
+    `CLV-103 streams records through ${String(chunkSize)} byte reads`,
+    chatPlatformScenario(async () => {
+      const line = JSON.stringify({
+        ...record,
+        text: "é ~/x ".repeat(300),
+        blocks: [],
+      }).replace(
+        '"blocks":[]',
+        '"blocks":[{"type":"tool_use","position":0,"id":"call","name":"tool","input":1e400}]',
+      );
+      const count = 40;
+      const expected = line.replaceAll("~/x", "[HOME_PATH]");
+      const corpus = (line + "\n").repeat(count - 1) + line;
+      await withFiles(
+        { ...files, [`${base}/corpus.jsonl`]: corpus },
+        async (directory) => {
+          const observer = observeFiles(chunkSize);
+          const { observations } = observer;
+          try {
+            const result = await redactImport({
+              importId,
+              workingDirectory: directory,
+              runtimeDirectory: "runtime",
+              settings: { home: null, privateTexts: [] },
+            });
+            assert.equal(result.code, "redaction-complete");
+            assert.equal(observations.writes.length, count);
+            assert.ok(
+              observations.reads.some((writes) => writes > 0 && writes < count),
+            );
+            assert.ok(
+              observations.writes.every((text) => text === expected + "\n"),
+            );
+            assert.equal(result.recordCount, count);
+            assert.equal(result.counts.homePath, 300 * count);
+            assert.equal(result.totalCount, 300 * count);
+            assert.equal(
+              await readFile(join(directory, base, "redacted.jsonl"), "utf8"),
+              (expected + "\n").repeat(count),
+            );
+            assert.equal(
+              await readFile(join(directory, base, "corpus.jsonl"), "utf8"),
+              corpus,
+            );
+          } finally {
+            observer.restore();
+          }
+        },
+      );
+    }),
+  );
 }

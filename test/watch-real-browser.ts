@@ -48,11 +48,24 @@ function protocol(input: Writable, output: Readable) {
   };
 }
 
+export function browserExecutable(
+  platform: string,
+  override: string | undefined,
+): string {
+  return (
+    override ??
+    (platform === "linux"
+      ? "/usr/bin/google-chrome"
+      : "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+  );
+}
+
 export async function realBrowser() {
   const directory = await mkdtemp(join(tmpdir(), "cloving-watch-chrome-"));
-  const executable =
-    process.env["CLOVING_TEST_BROWSER"] ??
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  const executable = browserExecutable(
+    process.platform,
+    process.env["CLOVING_TEST_BROWSER"],
+  );
   const child = spawn(
     executable,
     [

@@ -1,3 +1,4 @@
+import { browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
@@ -140,3 +141,15 @@ for (const [workflowId, modifiers, form] of [
     assert.equal(result["message"], "Run run-keyboard is admitted");
   });
 }
+
+await test("CLV-136 browser checks select the native Chrome executable and preserve overrides", () => {
+  assert.equal(browserExecutable("linux", undefined), "/usr/bin/google-chrome");
+  assert.equal(
+    browserExecutable("darwin", undefined),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  );
+  assert.equal(
+    browserExecutable("linux", "/synthetic/browser"),
+    "/synthetic/browser",
+  );
+});

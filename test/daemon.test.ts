@@ -1,3 +1,4 @@
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,9 +29,11 @@ export async function develop(input) {
 export async function placeholder() { "use workflow"; return { kind: "blocked", reason: "unused synthetic registration" }; }
 `;
 
-await test("CLV-115 daemon routes both protected chats methods without a model turn", () =>
-  withConsumer(analysisWorkflow, async (consumer) => {
-    const result = await consumer.run(`${queuePrelude}
+await test(
+  "CLV-115 daemon routes both protected chats methods without a model turn",
+  chatPlatformScenario(() =>
+    withConsumer(analysisWorkflow, async (consumer) => {
+      const result = await consumer.run(`${queuePrelude}
 const { mkdirSync } = await import("node:fs");
 const base = runtimeDirectory + "/chats/${importId}";
 mkdirSync(base, { recursive: true, mode: 0o700 });
@@ -57,8 +60,10 @@ try {
 } finally { await daemon.close(); }
 process.exit(0);
 `);
-    assert.equal(result.status, 0, result.stderr);
-  }));
+      assert.equal(result.status, 0, result.stderr);
+    }),
+  ),
+);
 
 await test("CLV-010 the host environment names the Local World of the host directory, its queue bound and the ownership lease", () => {
   assert.deepEqual(hostEnvironment({ directory: "/host", concurrency: 8 }), {
