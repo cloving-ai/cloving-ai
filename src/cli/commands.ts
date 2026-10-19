@@ -28,6 +28,7 @@ export interface Terminal {
 
 export interface CommandEnvironment {
   readonly runtimeDirectory: string | undefined;
+  readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
   readonly client?: string;
   readonly workingDirectory: string;
@@ -353,23 +354,30 @@ function located(
   if (invocation.kind === "run-command")
     return runCommand(environment, invocation);
   if (invocation.kind === "events") return events(environment, invocation);
-  if (invocation.kind === "watch")
-    return watchServer({
-      ...(environment.watchPr === undefined
-        ? {}
-        : { pullRequests: environment.watchPr }),
-      runtimeDirectory: environment.runtimeDirectory,
-      port: invocation.port ?? defaultWatchPort,
-      client: environment.client ?? "cloving",
-      announce: environment.terminal.out,
-      complain: environment.terminal.error,
-      stopped: environment.interrupted(),
-    });
+  if (invocation.kind === "watch") return watch(environment, invocation);
   return requested(environment, {
     format: { json: invocation.json },
     request: {
       operation: "questions",
       parameters: present({ runId: invocation.runId }),
     },
+  });
+}
+
+function watch(
+  environment: Located,
+  invocation: Invoked<"watch">,
+): Promise<number> {
+  return watchServer({
+    actions: environment.watchActions ?? "on",
+    ...(environment.watchPr === undefined
+      ? {}
+      : { pullRequests: environment.watchPr }),
+    runtimeDirectory: environment.runtimeDirectory,
+    port: invocation.port ?? defaultWatchPort,
+    client: environment.client ?? "cloving",
+    announce: environment.terminal.out,
+    complain: environment.terminal.error,
+    stopped: environment.interrupted(),
   });
 }

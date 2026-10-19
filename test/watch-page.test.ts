@@ -71,10 +71,14 @@ await test("CLV-016 the watch page document has the components, a script that ge
       "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space+Grotesk:wght@400..700&amp;display=swap",
     ],
   );
-  assert.doesNotMatch(page, /@import|<form|fetch\([^)]*method:/);
+  assert.doesNotMatch(page, /@import|<form/);
   assert.deepEqual(
     [...page.matchAll(/\bfetch\(([^,\n]+)/g)].map((call) => call[1]),
-    ['"data.json?runId=" + encodeURIComponent(runId)', '"data.json"'],
+    [
+      '"actions/run"',
+      '"data.json?runId=" + encodeURIComponent(runId)',
+      '"data.json"',
+    ],
   );
 });
 

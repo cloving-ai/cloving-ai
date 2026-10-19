@@ -1,3 +1,4 @@
+import type { CardControls } from "./watch-card-view.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
@@ -255,6 +256,7 @@ export function Header(props: {
 }
 
 export interface PageProps {
+  readonly cards?: CardControls;
   readonly model: WatchModel | null;
   readonly selected: string;
   readonly now: string;
@@ -330,7 +332,15 @@ export function BoardPage(
                 class: "meta",
                 children: "No workflows registered.",
               })
-            : component(Board, { workflow, now, controls: props.columns }),
+            : component(Board, {
+                workflow,
+                now,
+                controls: props.columns,
+                cardForm: model.cardForms?.find(
+                  (form) => form.workflowId === workflowId,
+                ),
+                cards: props.cards,
+              }),
         ],
       }),
     ],

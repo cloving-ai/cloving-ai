@@ -131,11 +131,15 @@ await test("CLV-098 board surfaces, state cues, focus and narrow command wrappin
   assert.match(rule(".command code"), /overflow-wrap: anywhere/);
   assert.match(rule(".command code"), /white-space: pre-wrap/);
   assert.match(
-    rule("a:focus-visible, button:focus-visible, summary:focus-visible"),
+    rule(
+      "a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible",
+    ),
     /outline: 3px solid var\(--accent\)/,
   );
   assert.match(
-    rule("a:focus-visible, button:focus-visible, summary:focus-visible"),
+    rule(
+      "a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible",
+    ),
     /0 0 0 6px var\(--code-bg\)/,
   );
 });
@@ -246,4 +250,21 @@ await test("CLV-098 run tones retain green, warning, red and neutral cues and re
   );
   assert.match(rule(".code-window .item.result"), /color: var\(--accent\)/);
   assert.match(rule("button"), /color: var\(--code-fg\)/);
+});
+
+await test("CLV-135 add-card controls use readable theme colors and fields fit narrow columns", () => {
+  assert.match(rule(".add-card, .add-card-form button"), /color: var\(--ink\)/);
+  assert.match(
+    rule(".add-card-form input, .add-card-form textarea"),
+    /width: 100%/,
+  );
+  assert.match(
+    rule(".add-card-form input, .add-card-form textarea"),
+    /color: var\(--ink\)/,
+  );
+  assert.match(
+    rule(".add-card-form input, .add-card-form textarea"),
+    /background: var\(--surface\)/,
+  );
+  assert.match(css, /input:focus-visible, textarea:focus-visible/);
 });

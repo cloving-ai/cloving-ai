@@ -59,6 +59,9 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env),
+      ...(process.env["CLOVING_WATCH_ACTIONS"] === undefined
+        ? {}
+        : { watchActions: process.env["CLOVING_WATCH_ACTIONS"] }),
       ...(watchPr === undefined ? {} : { watchPr }),
       client: clientCommand(process.env),
       workingDirectory: process.cwd(),
