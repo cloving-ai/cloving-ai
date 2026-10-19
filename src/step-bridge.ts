@@ -41,6 +41,7 @@ export interface GateRequest {
   readonly gateId: string;
   readonly kind: "question" | "approval";
   readonly prompt: string;
+  readonly expiresAt?: string;
 }
 
 export type GateResult =

@@ -61,6 +61,7 @@ export interface GateOpening {
   readonly kind: "question" | "approval";
   readonly prompt: string;
   readonly subject: string;
+  readonly expiresAt?: string;
 }
 
 export interface WaitRegistration {
@@ -307,6 +308,9 @@ async function opening(hold: Hold, subject: GateSubject): Promise<GateReceipt> {
     kind,
     prompt,
     subject: `sha256:${createHash("sha256").update(prompt).digest("hex")}`,
+    ...(request.expiresAt === undefined
+      ? {}
+      : { expiresAt: request.expiresAt }),
   });
 }
 

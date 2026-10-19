@@ -39,6 +39,40 @@ const lost: Receipt = { kind: "failed", reason: "storage-failure" };
 const busy: Receipt = { kind: "rejected", reason: "service-busy" };
 const stale: Receipt = { kind: "rejected", reason: "stale-revision" };
 
+await test("CLV-117 the gate step forwards the stored deadline unchanged on opening retries", async () => {
+  const expiresAt = "2026-10-20T10:00:00.000Z";
+  const ports = scene({ opens: [lost, accepted] });
+  const remove = registerStepBridge(stepBridge(ports));
+  try {
+    assert.deepEqual(await decisionGate({ ...request, expiresAt }), opened);
+    assert.deepEqual(ports.sent, [
+      {
+        runId: "run-1",
+        commandId: "sdk:step_01ABC:open:review-1",
+        expectedRevision: 2,
+        ...request,
+        subject,
+        expiresAt,
+      },
+      {
+        runId: "run-1",
+        commandId: "sdk:step_01ABC:open:review-1",
+        expectedRevision: 2,
+        ...request,
+        subject,
+        expiresAt,
+      },
+      {
+        runId: "run-1",
+        commandId: "sdk:step_01ABC:wait:review-1",
+        gateId: "review-1",
+      },
+    ]);
+  } finally {
+    remove();
+  }
+});
+
 function taken<Value>(entries: (Value | Fault)[]): Promise<Value> {
   const entry = entries.length > 1 ? entries.shift() : entries[0];
   return entry === "fault" || entry === undefined
