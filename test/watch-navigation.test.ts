@@ -22,6 +22,7 @@ for (const runId of ["A /&", "B /&"]) {
   location.hash = "#workflow=develop-issue";
   replies.push(model);
   await load();
+  app.all("button").find((node) => node.attributes.get("aria-label") === "Expand Stopped")?.dispatch("click");
   const href = "#workflow=develop-issue&run=" + encodeURIComponent(runId);
   const link = app.all("a").find((item) => item.attributes.get("href") === href && (runId.startsWith("A") || item.inner === "Done in a later run"));
   if (!link) throw new Error("missing run link " + href);

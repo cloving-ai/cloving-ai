@@ -335,7 +335,7 @@ console.log(JSON.stringify({ html: app.inner, requests }));
 `,
   );
   assert.match(String(result["html"]), /class="review-pill">round 2/);
-  assert.match(String(result["html"]), /class="column stopped"/);
+  assert.match(String(result["html"]), /class="column stopped collapsed"/);
   assert.deepEqual(result["requests"], ["data.json"]);
 });
 

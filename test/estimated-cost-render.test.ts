@@ -49,7 +49,7 @@ await test("CLV-105 CLI shows approximate estimates beside total and turn tokens
   );
 });
 
-await test("CLV-105 watch cards and runs show approximate estimates beside total and turn tokens", () => {
+await test("CLV-105 watch cards show one estimate while runs retain total and turn tokens", () => {
   const model = boardModel([{ status: status(2.2) }]);
   const run = model.runs[0];
   const card = model.workflows[0]?.columns.flatMap((column) => column.cards)[0];
@@ -62,10 +62,11 @@ await test("CLV-105 watch cards and runs show approximate estimates beside total
   const cardHtml = rendered(
     component(Card, { card, workflowId: "develop-issue", now: boardTime }),
   );
-  for (const html of [cardHtml, runHtml]) {
-    assert.match(html, /Output tokens: 170 · ≈2\.20 USD estimate/);
-    assert.match(html, /Price not known/);
-  }
+  assert.match(cardHtml, /≈2\.20 USD estimate/);
+  assert.equal(cardHtml.match(/USD/g)?.length, 1);
+  assert.doesNotMatch(cardHtml, /tokens|Price not known/);
+  assert.match(runHtml, /Output tokens: 170 · ≈2\.20 USD estimate/);
+  assert.match(runHtml, /Price not known/);
   assert.equal(runHtml.match(/≈2\.20 USD estimate/g)?.length, 2);
 });
 

@@ -11,6 +11,36 @@ function rule(selector: string): string {
   return rules.slice(start, rules.indexOf("}", start));
 }
 
+await test("CLV-134 the board fills the viewport with independent column and workflow scrolling", () => {
+  assert.match(rule(".board-page"), /height: 100dvh/);
+  assert.match(rule(".board-page"), /overflow: hidden/);
+  for (const selector of [".workspace", ".board", ".columns"])
+    assert.match(rule(selector), /min-height: 0/);
+  assert.match(rule(".workflows"), /overflow-y: auto/);
+  assert.match(rule(".columns"), /overflow-x: scroll/);
+  assert.match(rule(".columns"), /overflow-y: hidden/);
+  assert.match(rule(".columns"), /align-items: flex-start/);
+  assert.match(rule(".column"), /flex: 0 0 260px/);
+  assert.match(rule(".column"), /max-height: 100%/);
+  assert.match(rule(".column"), /display: flex/);
+  assert.match(rule(".column-name"), /flex-shrink: 0/);
+  assert.match(rule(".column-cards"), /overflow-y: auto/);
+  assert.match(rule(".column-cards"), /min-height: 0/);
+  assert.match(rule(".column.collapsed"), /flex-basis: 44px/);
+  assert.match(rule(".collapsed .column-name"), /writing-mode: vertical-rl/);
+  assert.match(
+    css,
+    /@media \(max-width: 700px\)[\s\S]*grid-template-rows: auto minmax\(0, 1fr\)/,
+  );
+});
+
+await test("CLV-134 card titles use two lines and step and review metadata each stay on one line", () => {
+  assert.match(rule(".card-run strong"), /-webkit-line-clamp: 2/);
+  assert.match(rule(".card-run strong"), /overflow: hidden/);
+  assert.match(rule(".card-step, .card-review"), /white-space: nowrap/);
+  assert.match(rule(".card-step, .card-review"), /text-overflow: ellipsis/);
+});
+
 await test("CLV-098 every palette token belongs to default, system and explicit theme rules", () => {
   const system = ':root:not([data-theme="light"]):not([data-theme="dark"])';
   for (const [theme, tokens] of Object.entries(palette)) {
@@ -65,7 +95,7 @@ await test("CLV-098 board surfaces, state cues, focus and narrow command wrappin
   assert.match(rule(".column.stopped"), /var\(--bad-tint\)/);
   assert.match(rule(".stopped .card"), /var\(--bad-tint\)/);
   assert.match(rule(".stopped .column-name"), /color: var\(--bad\)/);
-  assert.match(rule(".columns"), /overflow-x: auto/);
+  assert.match(rule(".columns"), /overflow-x: scroll/);
   assert.match(rule(".command code"), /overflow-wrap: anywhere/);
   assert.match(rule(".command code"), /white-space: pre-wrap/);
   assert.match(

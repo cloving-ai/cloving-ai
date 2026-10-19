@@ -1,4 +1,4 @@
-import { priceText, usageText } from "./usage-render.ts";
+import { priceText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchCard, WatchWorkflow } from "./watch-render.ts";
@@ -75,8 +75,11 @@ export function Card(props: {
       element("a", {
         class: "card-run",
         href: watchHash({ workflowId, runId: card.runId }),
+        title: card.runId,
         children: [
-          element("strong", { children: card.title ?? card.runId }),
+          element("strong", {
+            children: card.title ?? card.runId.slice(0, 12),
+          }),
           element("span", {
             class:
               card.endedAt === null && card.currentStep !== null
@@ -87,11 +90,10 @@ export function Card(props: {
           component(CardReview, { card, workflowId }),
           element("span", {
             class: "card-cost",
-            children: `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd)}`,
-          }),
-          element("span", {
-            class: "card-usage",
-            children: usageText(card.usage, card.estimatedCostUsd),
+            children:
+              card.estimatedCostUsd === null
+                ? `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd)}`
+                : `≈${priceText(card.estimatedCostUsd)} estimate`,
           }),
           card.decisionWaiting
             ? element("span", {
@@ -99,7 +101,7 @@ export function Card(props: {
                 children: "! Decision waiting",
               })
             : null,
-          element("small", { children: card.runId }),
+          element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
       completionMark(card, workflowId),
@@ -131,9 +133,72 @@ export function WorkflowList(props: {
   });
 }
 
+export interface ColumnControls {
+  readonly choices: unknown;
+  readonly onToggle: (name: string) => void;
+  readonly onHover?: (name: string | null) => void;
+  readonly onFocus?: (name: string | null) => void;
+}
+
+export function columnCollapsed(choices: unknown, name: string): boolean {
+  const values: Readonly<Record<string, unknown>> =
+    typeof choices === "object" && choices !== null ? { ...choices } : {};
+  const value = values[name];
+  return typeof value === "boolean"
+    ? value
+    : ["Done", "Stopped"].includes(name);
+}
+
+export function Column(props: {
+  readonly column: WatchWorkflow["columns"][number];
+  readonly workflowId: string;
+  readonly now: string;
+  readonly controls?: ColumnControls | undefined;
+}): Shown {
+  const { column, workflowId, now, controls } = props;
+  const collapsed = columnCollapsed(controls?.choices, column.name);
+  const tone = column.name === "Stopped" ? "column stopped" : "column";
+  return element("section", {
+    class: `${tone}${collapsed ? " collapsed" : ""}`,
+    onMouseEnter: () => controls?.onHover?.(column.name),
+    onMouseLeave: () => controls?.onHover?.(null),
+    onFocusIn: () => controls?.onFocus?.(column.name),
+    onFocusOut: () => controls?.onFocus?.(null),
+    children: [
+      element("h3", {
+        class: "column-name",
+        children: [
+          element("span", { children: column.name }),
+          " ",
+          element("span", {
+            class: "column-count",
+            children: String(column.cards.length),
+          }),
+          element("button", {
+            type: "button",
+            "aria-label": `${collapsed ? "Expand" : "Collapse"} ${column.name}`,
+            "aria-expanded": String(!collapsed),
+            onClick: () => controls?.onToggle(column.name),
+            children: collapsed ? "+" : "−",
+          }),
+        ],
+      }),
+      collapsed
+        ? null
+        : element("div", {
+            class: "column-cards",
+            children: column.cards.map((card) =>
+              component(Card, { key: card.runId, card, workflowId, now }),
+            ),
+          }),
+    ],
+  });
+}
+
 export function Board(props: {
   readonly workflow: WatchWorkflow;
   readonly now: string;
+  readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { workflow, now } = props;
   return element("main", {
@@ -143,20 +208,12 @@ export function Board(props: {
       element("div", {
         class: "columns",
         children: workflow.columns.map((column) =>
-          element("section", {
+          component(Column, {
             key: column.name,
-            class: column.name === "Stopped" ? "column stopped" : "column",
-            children: [
-              element("h3", { class: "column-name", children: column.name }),
-              column.cards.map((card) =>
-                component(Card, {
-                  key: card.runId,
-                  card,
-                  workflowId: workflow.workflowId,
-                  now,
-                }),
-              ),
-            ],
+            column,
+            workflowId: workflow.workflowId,
+            now,
+            controls: props.controls,
           }),
         ),
       }),
