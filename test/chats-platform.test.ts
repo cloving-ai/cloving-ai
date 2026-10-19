@@ -23,9 +23,9 @@ async function withoutChatFileAccess(inspect: () => Promise<void>) {
   assert.ok(platform);
   const attempts: string[] = [];
   const methods = [filesystem, fs].flatMap((target) =>
-    Object.entries(target)
-      .filter(([, value]) => typeof value === "function")
-      .map(([name, value]: [string, unknown]) => ({ target, name, value })),
+    Object.entries<unknown>(target).flatMap(([name, value]) =>
+      typeof value === "function" ? [{ target, name, value }] : [],
+    ),
   );
   for (const { target, name } of methods)
     Object.defineProperty(target, name, {
