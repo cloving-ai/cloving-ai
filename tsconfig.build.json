@@ -9,6 +9,7 @@
     "src/**/*.ts",
     "tools/self-host.ts",
     "tools/compile-workflows.ts",
+    "tools/admit-workflow.ts",
     "workflows/**/*.ts"
   ]
 }

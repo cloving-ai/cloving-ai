@@ -86,3 +86,18 @@ await test("QG-06 checks executable class heritage expressions", async () => {
     },
   );
 });
+
+await test("CLV-121 candidate restrictions preserve existing pure data inspection", async () => {
+  await withProgram(
+    {
+      "main.ts": `export function inspect(value: object) {
+        return [Buffer.byteLength("value"), Reflect.get(value, "key"),
+          Reflect.ownKeys(value), Object.getPrototypeOf(value),
+          Object.getOwnPropertyDescriptor(value, "key")];
+      }`,
+    },
+    (program) => {
+      assert.deepEqual(inspectEffects(program, program.getRootFileNames()), []);
+    },
+  );
+});

@@ -1,102 +1,15 @@
-import ts from "typescript";
+import type ts from "typescript";
+import { sourceEffectNodes } from "../tools/workflow-source-effects.ts";
+
+export {
+  referenceSymbol,
+  type ReferenceContext,
+} from "../tools/workflow-source-effects.ts";
 
 export interface EffectFinding {
   readonly rule: string;
   readonly file: string;
   readonly line: number;
-}
-
-const ambientNames = new Set([
-  "globalThis",
-  "global",
-  "window",
-  "self",
-  "process",
-  "Date",
-  "performance",
-  "fetch",
-  "WebSocket",
-  "Worker",
-  "crypto",
-  "setTimeout",
-  "setInterval",
-  "setImmediate",
-  "queueMicrotask",
-  "eval",
-  "Function",
-  "require",
-  "console",
-  "navigator",
-  "Atomics",
-  "SharedArrayBuffer",
-  "WeakRef",
-  "FinalizationRegistry",
-  "Intl",
-]);
-
-function localBinding(symbol: ts.Symbol): boolean {
-  const declarations = symbol.declarations ?? [];
-  return declarations.some(
-    (declaration) =>
-      !declaration.getSourceFile().isDeclarationFile &&
-      (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Ambient) ===
-        0,
-  );
-}
-
-export interface ReferenceContext {
-  readonly parent: ts.Node | undefined;
-  readonly checker: ts.TypeChecker;
-}
-
-export function referenceSymbol(
-  node: ts.Identifier,
-  context: ReferenceContext,
-): ts.Symbol | undefined {
-  const { parent, checker } = context;
-  if (
-    parent &&
-    (ts.isPropertyAccessExpression(parent) ||
-      ts.isPropertyAssignment(parent)) &&
-    parent.name === node
-  )
-    return;
-  if (parent && ts.isShorthandPropertyAssignment(parent))
-    return checker.getShorthandAssignmentValueSymbol(parent);
-  return checker.getSymbolAtLocation(node);
-}
-
-function ambientReference(node: ts.Node, context: ReferenceContext): boolean {
-  const { parent } = context;
-  if (!ts.isIdentifier(node)) return false;
-  if (!ambientNames.has(node.text) && node.text !== "Math") return false;
-  const symbol = referenceSymbol(node, context);
-  if (!symbol || localBinding(symbol)) return false;
-  if (node.text !== "Math") return true;
-  return (
-    !parent ||
-    !ts.isPropertyAccessExpression(parent) ||
-    parent.expression !== node ||
-    parent.name.text === "random"
-  );
-}
-
-function dynamicCapability(node: ts.Node, checker: ts.TypeChecker): boolean {
-  if (ts.isPropertyAccessExpression(node))
-    return ["constructor", "__proto__", "prototype"].includes(node.name.text);
-  if (!ts.isElementAccessExpression(node)) return false;
-  if (
-    ts.isStringLiteralLike(node.argumentExpression) &&
-    ["constructor", "__proto__", "prototype"].includes(
-      node.argumentExpression.text,
-    )
-  )
-    return true;
-  const target = checker.getTypeAtLocation(node.expression);
-  return (
-    target.getCallSignatures().length > 0 ||
-    target.getConstructSignatures().length > 0
-  );
 }
 
 export function inspectEffects(
@@ -109,29 +22,14 @@ export function inspectEffects(
     const source = program.getSourceFile(file);
     if (!source) throw new Error(`missing-effect-source: ${file}`);
     if (source.isDeclarationFile) continue;
-    const visit = (node: ts.Node, parent?: ts.Node): void => {
-      if (
-        (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node)) ||
-        ts.isInterfaceDeclaration(node) ||
-        ts.isTypeAliasDeclaration(node)
-      )
-        return;
-      if (
-        ambientReference(node, { parent, checker }) ||
-        dynamicCapability(node, checker)
-      )
-        findings.push({
-          rule: "restricted-effect",
-          file,
-          line:
-            source.getLineAndCharacterOfPosition(node.getStart(source)).line +
-            1,
-        });
-      ts.forEachChild(node, (child) => {
-        visit(child, node);
+    for (const node of sourceEffectNodes(source, { checker })) {
+      findings.push({
+        rule: "restricted-effect",
+        file,
+        line:
+          source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
       });
-    };
-    visit(source);
+    }
   }
   return findings;
 }

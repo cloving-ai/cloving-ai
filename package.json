@@ -76,7 +76,6 @@
     "istanbul-lib-coverage": "3.2.2",
     "jscpd": "5.4.0",
     "prettier": "3.9.9",
-    "typescript": "6.0.3",
     "typescript-eslint": "8.71.1"
   },
   "overrides": {
@@ -90,6 +89,7 @@
     "entities": "8.1.0",
     "preact": "11.0.0",
     "solid-objects": "0.17.8",
+    "typescript": "6.0.3",
     "workflow": "5.1.0"
   }
 }

@@ -72,3 +72,18 @@ await test("CLV-008 a service module is production code for the coverage invento
     },
   );
 });
+
+await test("CLV-121 candidate adapters remain in the production coverage inventory", async () => {
+  await withProgram({ "adapter.ts": "export const value = 1;" }, (program) => {
+    const files = program.getRootFileNames();
+    assert.deepEqual(
+      productionInventory(program, {
+        files,
+        roles: Object.fromEntries(
+          files.map((file) => [file, "candidate-adapter"]),
+        ),
+      }).map((file) => basename(file)),
+      ["adapter.ts"],
+    );
+  });
+});

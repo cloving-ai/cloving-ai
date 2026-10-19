@@ -1,0 +1,218 @@
+import ts from "typescript";
+import type { CandidateEffect } from "../src/workflow-candidate.ts";
+import { resolvedSymbol } from "./workflow-candidate-program.ts";
+import { referenceSymbol } from "./workflow-source-effects.ts";
+
+export interface CandidateSymbols {
+  readonly checker: ts.TypeChecker;
+  readonly source: ts.SourceFile;
+  readonly protectedSymbol: ts.Symbol | undefined;
+}
+
+export function propertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  return undefined;
+}
+
+export function protectedCall(
+  node: ts.Node,
+  symbols: CandidateSymbols,
+): node is ts.CallExpression {
+  if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression))
+    return false;
+  return (
+    symbols.protectedSymbol !== undefined &&
+    resolvedSymbol(
+      symbols.checker,
+      symbols.checker.getSymbolAtLocation(node.expression),
+    ) === symbols.protectedSymbol
+  );
+}
+
+function literalField(node: ts.ObjectLiteralExpression, field: string) {
+  const property = node.properties.find(
+    (entry) => entry.name && propertyName(entry.name) === field,
+  );
+  if (!property || !ts.isPropertyAssignment(property)) return null;
+  return ts.isStringLiteral(property.initializer)
+    ? property.initializer.text
+    : null;
+}
+
+export function protectedEffectFact(
+  node: ts.Node,
+  symbols: CandidateSymbols,
+): CandidateEffect | undefined {
+  if (!protectedCall(node, symbols)) return undefined;
+  const argument = node.arguments[0];
+  if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
+  return {
+    capability: literalField(argument, "capability"),
+    method: literalField(argument, "method"),
+  };
+}
+
+function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
+  if (!ts.isIdentifier(node) || !symbols.protectedSymbol) return false;
+  const symbol = resolvedSymbol(
+    symbols.checker,
+    referenceSymbol(node, { parent: node.parent, checker: symbols.checker }),
+  );
+  if (symbol !== symbols.protectedSymbol) return false;
+  if (ts.isImportSpecifier(node.parent)) return false;
+  return (
+    !ts.isCallExpression(node.parent) ||
+    node.parent.expression !== node ||
+    node.parent.questionDotToken !== undefined
+  );
+}
+
+function invalidImport(node: ts.Node): boolean {
+  if (!ts.isImportDeclaration(node)) return false;
+  const clause = node.importClause;
+  return (
+    !clause ||
+    clause.name !== undefined ||
+    !clause.namedBindings ||
+    !ts.isNamedImports(clause.namedBindings) ||
+    node.attributes !== undefined
+  );
+}
+
+function invalidRequest(node: ts.Node, symbols: CandidateSymbols): boolean {
+  if (!protectedCall(node, symbols)) return false;
+  if (!workflowBodyCall(node)) return true;
+  const argument = node.arguments[0];
+  if (
+    node.arguments.length !== 1 ||
+    !argument ||
+    !ts.isObjectLiteralExpression(argument)
+  )
+    return true;
+  const names = argument.properties.map(
+    (entry) => entry.name && propertyName(entry.name),
+  );
+  return (
+    names.includes(undefined) ||
+    new Set(names).size !== names.length ||
+    argument.properties.some((entry) => !ts.isPropertyAssignment(entry))
+  );
+}
+
+function workflowBodyCall(node: ts.Node): boolean {
+  let child = node;
+  let parent = node.parent;
+  while (!ts.isFunctionLike(parent)) {
+    if (ts.isSourceFile(parent) || ts.isClassLike(parent)) return false;
+    child = parent;
+    parent = parent.parent;
+  }
+  if (!ts.isFunctionDeclaration(parent) || !ts.isSourceFile(parent.parent))
+    return false;
+  return (
+    parent.body === child &&
+    (ts.getCombinedModifierFlags(parent) & ts.ModifierFlags.Export) !== 0
+  );
+}
+
+function dynamicLoading(node: ts.Node, symbols: CandidateSymbols): boolean {
+  if (
+    node.kind === ts.SyntaxKind.ImportKeyword ||
+    ts.isImportEqualsDeclaration(node) ||
+    ts.isImportTypeNode(node) ||
+    ts.isMetaProperty(node)
+  )
+    return true;
+  if (!ts.isIdentifier(node) || node.text !== "require") return false;
+  const symbol = symbols.checker.getSymbolAtLocation(node);
+  return !symbol?.declarations?.some(
+    (entry) => entry.getSourceFile() === symbols.source,
+  );
+}
+
+function ambientDeclaration(node: ts.Node): boolean {
+  if (ts.isModuleDeclaration(node)) return true;
+  return (
+    ts.canHaveModifiers(node) &&
+    (ts.getModifiers(node) ?? []).some(
+      (modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword,
+    )
+  );
+}
+
+function computedAccess(node: ts.Node): boolean {
+  if (ts.isComputedPropertyName(node)) return true;
+  return (
+    ts.isElementAccessExpression(node) &&
+    !ts.isStringLiteral(node.argumentExpression) &&
+    !ts.isNumericLiteral(node.argumentExpression)
+  );
+}
+
+export function unsupportedCandidateNode(
+  node: ts.Node,
+  symbols: CandidateSymbols,
+): boolean {
+  const checks = [
+    escapedHelper(node, symbols),
+    invalidImport(node),
+    invalidRequest(node, symbols),
+    dynamicLoading(node, symbols),
+    ambientDeclaration(node),
+    computedAccess(node),
+    ts.isExportDeclaration(node) || ts.isExportAssignment(node),
+    ts.isSpreadAssignment(node) || ts.isSpreadElement(node),
+    node.kind === ts.SyntaxKind.ThisKeyword || ts.isWithStatement(node),
+    ts.isStringLiteral(node) && node.text === "use step",
+  ];
+  return checks.some(Boolean);
+}
+
+export function workflowShape(source: ts.SourceFile): boolean {
+  const exported = source.statements.filter(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      (ts.getModifiers(node) ?? []).some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ),
+  );
+  const candidate = exported[0];
+  if (
+    exported.length !== 1 ||
+    !candidate ||
+    !ts.isFunctionDeclaration(candidate)
+  )
+    return false;
+  if (!workflowFunction(candidate)) return false;
+  const directives: ts.Node[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isStringLiteral(node) && node.text === "use workflow")
+      directives.push(node);
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return directives.length === 1;
+}
+
+function workflowFunction(candidate: ts.FunctionDeclaration): boolean {
+  if (!candidate.name || !candidate.body || candidate.asteriskToken)
+    return false;
+  const modifiers = ts.getModifiers(candidate) ?? [];
+  if (
+    !modifiers.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
+    ) ||
+    modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
+  )
+    return false;
+  const first = candidate.body.statements[0];
+  return first !== undefined && workflowDirective(first);
+}
+
+function workflowDirective(node: ts.Statement): boolean {
+  return (
+    ts.isExpressionStatement(node) &&
+    ts.isStringLiteral(node.expression) &&
+    node.expression.text === "use workflow"
+  );
+}

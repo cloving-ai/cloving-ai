@@ -833,7 +833,18 @@
     "test/chats-corpus-limit.test.ts": "test",
     "test/chats-cli-flow.test.ts": "test",
     "test/chats-redact-coverage.test.ts": "test",
-    "test/authority-operation-records.test.ts": "test"
+    "test/authority-operation-records.test.ts": "test",
+    "tools/admit-workflow.ts": "candidate-adapter",
+    "tools/workflow-candidate-program.ts": "candidate-adapter",
+    "tools/workflow-candidate-source.ts": "candidate-adapter",
+    "tools/workflow-candidate-syntax.ts": "candidate-adapter",
+    "tools/workflow-candidate-counts.ts": "candidate-adapter",
+    "test/workflow-candidate-source.test.ts": "test",
+    "test/workflow-candidate-sdk.test.ts": "test",
+    "test/workflow-candidate-counts.test.ts": "test",
+    "test/workflow-candidate-direct.test.ts": "test",
+    "test/quality/candidate-adapter-policy.test.ts": "test",
+    "tools/workflow-source-effects.ts": "candidate-analysis"
   },
   "allowed": {
     "quality": [
@@ -843,7 +854,8 @@
       "tooling",
       "metadata",
       "process",
-      "inspector"
+      "inspector",
+      "candidate-analysis"
     ],
     "test": [
       "test",
@@ -864,7 +876,8 @@
       "network",
       "host-bridge",
       "daemon",
-      "entry"
+      "entry",
+      "candidate-adapter"
     ],
     "build": [
       "build",
@@ -907,7 +920,18 @@
     "process": [],
     "network": [],
     "inspector": [],
-    "entry": ["cli", "pure", "stdlib", "process"]
+    "entry": ["cli", "pure", "stdlib", "process"],
+    "candidate-adapter": [
+      "candidate-adapter",
+      "pure",
+      "stdlib",
+      "tooling",
+      "metadata",
+      "process",
+      "build",
+      "candidate-analysis"
+    ],
+    "candidate-analysis": ["candidate-analysis", "tooling"]
   },
   "forbiddenReachability": {
     "pure": [
@@ -927,7 +951,9 @@
       "workflow",
       "host-bridge",
       "sdk-runtime",
-      "daemon"
+      "daemon",
+      "candidate-adapter",
+      "candidate-analysis"
     ],
     "broker": [
       "workflow",
@@ -991,6 +1017,19 @@
       "service",
       "inspector",
       "daemon"
+    ],
+    "candidate-adapter": [
+      "broker",
+      "storage",
+      "harness",
+      "network",
+      "service",
+      "daemon",
+      "host-bridge",
+      "sdk-runtime",
+      "workflow",
+      "step",
+      "inspector"
     ]
   },
   "reserved": {
