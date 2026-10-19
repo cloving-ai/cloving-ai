@@ -134,26 +134,91 @@ function assertExpanded(
   assert.ok(Number(expanded["implementScrollTop"]) > 0);
 }
 
-function assertLayout(initial: Record<string, unknown>, width: number) {
-  const layout = fields(initial["layout"]);
-  const contentWidth = Number(layout["contentWidth"]);
+interface LayoutMeasurement {
+  readonly contentWidth: number;
+  readonly openWidths: readonly number[];
+  readonly collapsedWidths: readonly number[];
+  readonly fullWidth: boolean;
+  readonly tabsAbove: boolean;
+  readonly overflow: boolean;
+  readonly allVisible: boolean;
+}
+
+function isWidths(value: unknown): value is readonly number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((width: unknown) => typeof width === "number")
+  );
+}
+
+function isLayout(value: unknown): value is LayoutMeasurement {
+  if (value === null || typeof value !== "object") return false;
+  const layout = fields(value);
+  return (
+    typeof layout["contentWidth"] === "number" &&
+    isWidths(layout["openWidths"]) &&
+    isWidths(layout["collapsedWidths"]) &&
+    typeof layout["fullWidth"] === "boolean" &&
+    typeof layout["tabsAbove"] === "boolean" &&
+    typeof layout["overflow"] === "boolean" &&
+    typeof layout["allVisible"] === "boolean"
+  );
+}
+
+function assertInitialLayout(initial: Record<string, unknown>, width: number) {
+  const layout = initial["layout"];
+  assert.ok(isLayout(layout), "Invalid browser layout");
+  return assertLayout(layout, width);
+}
+
+function assertLayout(layout: LayoutMeasurement, width: number) {
+  const { contentWidth } = layout;
   const expected = boardLayout({
     contentWidth,
     openColumns: 5,
     collapsedColumns: 2,
   });
-  assert.ok(Array.isArray(layout["openWidths"]));
-  assert.equal(layout["openWidths"].length, 5);
-  for (const actual of layout["openWidths"])
-    assert.ok(Math.abs(Number(actual) - expected.columnWidth) < 0.1);
-  assert.deepEqual(layout["collapsedWidths"], [44, 44]);
-  assert.equal(layout["fullWidth"], true);
-  assert.equal(layout["tabsAbove"], true);
-  assert.equal(layout["overflow"], width < 1385);
-  assert.equal(layout["allVisible"], width === 1385);
+  assert.equal(layout.openWidths.length, 5);
+  for (const actual of layout.openWidths)
+    assert.ok(Math.abs(actual - expected.columnWidth) < 0.1);
+  assert.deepEqual(layout.collapsedWidths, [44, 44]);
+  assert.equal(layout.fullWidth, true);
+  assert.equal(layout.tabsAbove, true);
+  assert.equal(layout.overflow, width < 1385);
+  assert.equal(layout.allVisible, width === 1385);
   assert.equal(expected.columnWidth === 200, width < 1385);
   return contentWidth;
 }
+
+await test("browser layout rejects coercible numeric fields", () => {
+  const layout = {
+    contentWidth: 1353,
+    openWidths: Array.from({ length: 5 }, () => 238.6),
+    collapsedWidths: [44, 44],
+    fullWidth: true,
+    tabsAbove: true,
+    overflow: false,
+    allVisible: true,
+  };
+  assert.equal(assertInitialLayout({ layout }, 1385), 1353);
+  for (const invalid of [
+    { ...layout, contentWidth: "1353" },
+    { ...layout, openWidths: layout.openWidths.map(String) },
+    { ...layout, openWidths: {} },
+    { ...layout, collapsedWidths: ["44", "44"] },
+    { ...layout, fullWidth: "true" },
+    { ...layout, tabsAbove: "true" },
+    { ...layout, overflow: 0 },
+    { ...layout, allVisible: 1 },
+    {},
+    null,
+    "layout",
+  ])
+    assert.throws(
+      () => assertInitialLayout({ layout: invalid }, 1385),
+      /Invalid browser layout/,
+    );
+});
 
 for (const viewport of [
   { width: 1385, height: 989 },
@@ -168,7 +233,7 @@ for (const viewport of [
     const initial = await page.evaluate(scrollScenario);
     assert.deepEqual(initial["viewport"], viewport);
     assert.equal(initial["initiallyCollapsed"], true);
-    const contentWidth = assertLayout(initial, viewport.width);
+    const contentWidth = assertInitialLayout(initial, viewport.width);
     const tabs = await page.evaluate("watchScrolling.tabs()");
     assert.equal(tabs["overflow"], viewport.width === 390);
     assert.equal(tabs["boardBefore"], tabs["boardAfter"]);
