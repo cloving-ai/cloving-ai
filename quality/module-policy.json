@@ -844,7 +844,9 @@
     "test/workflow-candidate-counts.test.ts": "test",
     "test/workflow-candidate-direct.test.ts": "test",
     "test/quality/candidate-adapter-policy.test.ts": "test",
-    "tools/workflow-source-effects.ts": "candidate-analysis"
+    "tools/workflow-source-effects.ts": "candidate-analysis",
+    "src/chats/workflow-generation-text.ts": "pure",
+    "test/chats-workflow-generation.test.ts": "test"
   },
   "allowed": {
     "quality": [
