@@ -1,3 +1,7 @@
+import {
+  isWorkflowStages,
+  type WorkflowStages,
+} from "../workflow-declaration.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { activeRun, recentRun } from "./watch-board.ts";
@@ -21,6 +25,7 @@ interface ReadRun {
 export interface WatchRead {
   readonly service: string;
   readonly workflows: readonly string[];
+  readonly workflowStages?: WorkflowStages;
   readonly summaries: readonly ReadStatus[];
   readonly runs: readonly ReadRun[];
   readonly completionCandidates: readonly ReadRun[];
@@ -270,6 +275,14 @@ function stoppedTicketIds(
   );
 }
 
+function stageMetadata(value: unknown): WorkflowStages {
+  return Object.fromEntries(
+    Object.entries(record(value) ?? {}).flatMap(([workflowId, stages]) =>
+      isWorkflowStages(stages) ? [[workflowId, stages]] : [],
+    ),
+  );
+}
+
 async function service(reader: Reader, now: string): Promise<WatchRead> {
   const status = await asked(reader, {
     operation: "status",
@@ -302,6 +315,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     workflows: list(status["workflows"]).filter(
       (value) => typeof value === "string",
     ),
+    workflowStages: stageMetadata(status["workflowStages"]),
     summaries,
     runs,
     completionCandidates,

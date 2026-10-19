@@ -5,12 +5,15 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { ended, field, reached } from "./self-host-fixture.ts";
 import { call, parsed, runCli } from "./service-fixture.ts";
+import { watchReader } from "../src/cli/watch-reads.ts";
+import { boardModel } from "./watch-board-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const declaration = {
   workflowId: "review-run",
   effectLimit: 14,
   capabilities: ["claude"],
+  stages: [{ name: "draft", label: "Draft", operations: ["write-draft"] }],
   input: {
     maximumBytes: 65_536,
     fields: {
@@ -44,6 +47,10 @@ async function start(root: string): Promise<ChildProcess> {
   for (const folder of ["src", "node_modules"])
     await symlink(resolve(folder), join(root, folder));
   await copyFile(resolve("package.json"), join(root, "package.json"));
+  return launch(root);
+}
+
+function launch(root: string): ChildProcess {
   const child = spawn(
     process.execPath,
     [
@@ -67,6 +74,24 @@ async function start(root: string): Promise<ChildProcess> {
     },
   );
   return child;
+}
+
+async function checkListing(root: string): Promise<void> {
+  const runtimeDirectory = join(root, "host/run");
+  const listed = await call(
+    { runtimeDirectory },
+    { operation: "status", parameters: {} },
+  );
+  assert.deepEqual(listed["workflows"], [
+    "develop-ticket",
+    "develop-issue",
+    "develop-prd",
+    "develop-prompt",
+    "review-run",
+  ]);
+  assert.deepEqual(listed["workflowStages"], {
+    "review-run": declaration.stages,
+  });
 }
 
 async function checkRun(root: string): Promise<void> {
@@ -124,6 +149,35 @@ async function checkRun(root: string): Promise<void> {
   });
 }
 
+async function withDaemon(
+  child: ChildProcess,
+  body: () => Promise<void>,
+): Promise<void> {
+  let output = "";
+  for (const stream of [child.stdout, child.stderr])
+    stream?.on("data", (bytes: Buffer) => {
+      output += bytes.toString();
+    });
+  try {
+    await reached(() => {
+      if (child.exitCode !== null) throw new Error(output);
+      return Promise.resolve(
+        output.includes("Cloving runs") ? true : undefined,
+      );
+    });
+    await body();
+    assert.equal(await ended(child), 0);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null)
+      process.kill(-Number(child.pid), "SIGKILL");
+  }
+}
+
+async function readBoards(root: string, now: string) {
+  const read = await watchReader(join(root, "host/run")).read(now);
+  return boardModel(read.runs, { ...read, updatedAt: now }).workflows;
+}
+
 await test("CLV-089 start registers a sidecar workflow and run delivers checked typed input to its compiled function", async () => {
   await withFiles(
     {
@@ -144,25 +198,32 @@ await test("CLV-089 start registers a sidecar workflow and run delivers checked 
   return { kind: JSON.stringify(input) === ${JSON.stringify(JSON.stringify(expected))} ? "handoff_requested" : "blocked" };
 }`,
       );
-      const child = await start(root);
-      let output = "";
-      for (const stream of [child.stdout, child.stderr])
-        stream?.on("data", (bytes: Buffer) => {
-          output += bytes.toString();
-        });
-      try {
-        await reached(() => {
-          if (child.exitCode !== null) throw new Error(output);
-          return Promise.resolve(
-            output.includes("Cloving runs") ? true : undefined,
-          );
-        });
+      let now = "";
+      let before: Awaited<ReturnType<typeof readBoards>> = [];
+      await withDaemon(await start(root), async () => {
+        await checkListing(root);
         await checkRun(root);
-        assert.equal(await ended(child), 0);
-      } finally {
-        if (child.exitCode === null && child.signalCode === null)
-          process.kill(-Number(child.pid), "SIGKILL");
-      }
+        now = new Date().toISOString();
+        before = await readBoards(root, now);
+        const board = before.find((item) => item.workflowId === "review-run");
+        assert.deepEqual(
+          board?.columns.map((column) => column.name),
+          ["Draft", "Other", "Done", "Stopped"],
+        );
+        assert.equal(board.columns[2]?.cards.length, 1);
+        await writeFile(
+          join(root, "workflows/review-run.declaration.json"),
+          "{}",
+        );
+        assert.deepEqual(await readBoards(root, now), before);
+        await writeFile(
+          join(root, "workflows/review-run.declaration.json"),
+          JSON.stringify(declaration),
+        );
+      });
+      await withDaemon(launch(root), async () => {
+        assert.deepEqual(await readBoards(root, now), before);
+      });
     },
   );
 });

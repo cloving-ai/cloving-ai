@@ -1,3 +1,4 @@
+import type { WorkflowStages } from "../workflow-declaration.ts";
 import { isTicketStatus } from "../ticket-status.ts";
 import { priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf } from "../worker-usage.ts";
@@ -17,6 +18,7 @@ import {
   boardsOf,
   currentStepOf,
   roundOf,
+  stagesFor,
   startWorkflowOf,
 } from "./watch-board.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
@@ -206,6 +208,7 @@ export function decisionCommands(
 
 export interface WatchInputs {
   readonly workflows: readonly string[];
+  readonly workflowStages?: WorkflowStages;
   readonly summaries?: readonly unknown[];
   readonly home: string;
   readonly client: string;
@@ -324,7 +327,10 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     claudeCostUsd: priceOf(status["claudeCostUsd"]),
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
     usage: usageOf(status["usage"]),
-    currentStep: currentStepOf(list(record(value)["events"]), workflowId),
+    currentStep: currentStepOf(list(record(value)["events"]), {
+      workflowId,
+      stages: stagesFor(inputs.workflowStages, workflowId),
+    }),
     round: roundOf(list(record(value)["events"])),
     state: text(status["state"]),
     code: text(record(status["reason"])["code"]),

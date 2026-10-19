@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
-import type { DeclaredWorkflow } from "../workflow-declaration.ts";
+import type {
+  DeclaredWorkflow,
+  WorkflowStage,
+} from "../workflow-declaration.ts";
 import type {
   Resolution,
   ResolutionRequest,
@@ -44,6 +47,7 @@ export interface TicketRegistration {
   readonly submission: WorkflowRegistration["submission"];
   readonly effectLimit: number;
   readonly capabilities?: readonly string[];
+  readonly stages?: readonly WorkflowStage[];
 }
 
 async function ticket(
@@ -181,6 +185,9 @@ export function ticketRegistrationTable(
       effectLimit: declaration.effectLimit,
       capabilities: declaration.capabilities,
       submission: declaration.input,
+      ...(declaration.stages === undefined
+        ? {}
+        : { stages: declaration.stages }),
       resolver: declaredResolver(source.repository),
     })),
   ];
@@ -239,6 +246,7 @@ export async function ticketRegistrations(
       effectLimit: row.effectLimit,
       submission: row.submission,
       resolver: row.resolver,
+      ...(row.stages === undefined ? {} : { stages: row.stages }),
     });
   }
   return { kind: "admitted", registrations };

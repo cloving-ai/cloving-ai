@@ -91,6 +91,7 @@ export function watchReplies(options: {
   readonly events?: readonly Fields[];
   readonly eventsByRun?: Readonly<Record<string, readonly Fields[]>>;
   readonly workflows?: readonly string[];
+  readonly workflowStages?: unknown;
 }): {
   readonly requests: ServiceRequest[];
   readonly answer: (request: ServiceRequest) => Reply;
@@ -98,6 +99,10 @@ export function watchReplies(options: {
   const requests: ServiceRequest[] = [];
   const eventsByRun = options.eventsByRun ?? {};
   const defaultEvents = options.events ?? [];
+  const metadata =
+    options.workflowStages === undefined
+      ? {}
+      : { workflowStages: options.workflowStages };
   const answer = (request: ServiceRequest): Reply => {
     requests.push(request);
     const runId = request.parameters["runId"];
@@ -125,6 +130,7 @@ export function watchReplies(options: {
             "develop-ticket",
             "develop-prompt",
           ],
+          ...metadata,
           runs,
           next: remaining.length > 50 ? runs.at(-1)?.["runId"] : null,
         },

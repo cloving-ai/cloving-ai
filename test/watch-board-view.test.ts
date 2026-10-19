@@ -4,7 +4,11 @@ import { boardLayout } from "../src/cli/watch-board-view.ts";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchCard, WatchModel } from "../src/cli/watch-render.ts";
 import { Page } from "../src/cli/watch-view.ts";
-import { activeBoardModel, completionScenario } from "./watch-board-fixture.ts";
+import {
+  activeBoardModel,
+  completionScenario,
+  stagedModel,
+} from "./watch-board-fixture.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { noCopy } from "./watch-sample.ts";
 
@@ -323,4 +327,24 @@ await test("CLV-093 PR marks render as escaped text and preserve original and la
     }),
     /href="#workflow=develop-issue&amp;run=later%20%2F%26">Done in a later run<\/a>/,
   );
+});
+
+await test("CLV-128 declared column labels render in order as escaped text", () => {
+  const model = stagedModel([], {
+    workflowStages: {
+      sample: [
+        {
+          name: "draft",
+          label: '<b>Draft & "input"</b>',
+          operations: ["write-draft"],
+        },
+        { name: "review", label: "Review", gateKinds: ["approval"] },
+      ],
+    },
+  });
+  const html = page(model, "workflow=sample");
+  assert.match(html, /&lt;b&gt;Draft &amp; &quot;input&quot;&lt;\/b&gt;/);
+  assert.doesNotMatch(html, /<b>Draft/);
+  assert.ok(html.indexOf("Draft &amp;") < html.indexOf(">Review<"));
+  assert.ok(html.indexOf(">Review<") < html.indexOf(">Other<"));
 });

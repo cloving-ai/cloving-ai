@@ -54,6 +54,12 @@ await test("CLV-116 accepted candidate uses one turn and three sequential charge
     cycleId: input.cycleId,
     promotionId: `analysis:${importId}:${input.cycleId}`,
   });
+  assert.deepEqual(
+    [0, 1, 2].map((index) =>
+      field(field(request(line, index), "scope"), "operation"),
+    ),
+    ["read-analysis", "turn-analysis", "save-analysis"],
+  );
   assert.equal(field(line, "spent"), 3);
   assert.equal(field(field(line, "requests"), "length"), 3);
   assert.deepEqual(
@@ -100,6 +106,15 @@ await test("CLV-116 submission declares exactly one required import ID and three
   assert.ok(isWorkflowDeclaration(declaration));
   assert.equal(declaration.workflowId, "analyze-chats");
   assert.equal(declaration.effectLimit, 3);
+  assert.deepEqual(declaration.stages, [
+    { name: "read-input", label: "Read input", operations: ["read-analysis"] },
+    { name: "analyze", label: "Analyze", operations: ["turn-analysis"] },
+    {
+      name: "save-result",
+      label: "Save result",
+      operations: ["save-analysis"],
+    },
+  ]);
   assert.deepEqual(declaration.capabilities, ["chats", "claude"]);
   assert.deepEqual(declaration.input.fields, { importId: { type: "string" } });
   for (const submission of [
