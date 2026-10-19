@@ -34,6 +34,7 @@ await test("CLV-091 the rule only marks completed blocked issue runs", () => {
 await test("CLV-091 only a different completed issue run with the exact ticket ID and handoff outcome qualifies", () => {
   const { stopped, later } = scenario();
   const rejected: Partial<WatchRun>[] = [
+    { issueUpdate: "failed" },
     { runId: stopped.runId },
     ...["DEMO-2", "demo-1", " DEMO-1", "DEMO-1 ", "", null].map((ticketId) => ({
       ticketId,
@@ -181,4 +182,12 @@ await test("CLV-091 the pure rule chooses earliest creation then ascending run I
       laterRunId: "a",
     });
   assert.equal(JSON.stringify(candidates), original);
+});
+
+await test("CLV-123 a later partial run does not complete an earlier blocked ticket", () => {
+  const { stopped, later } = scenario();
+  assert.deepEqual(
+    completionMarkOf(stopped, [{ ...later, ticketStatus: "partial" }]),
+    attention,
+  );
 });

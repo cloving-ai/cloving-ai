@@ -76,6 +76,15 @@ async function recover(
   }
 }
 
+function handedOff(run: Fields): boolean {
+  const outcome = record(run["outcome"]);
+  return (
+    run["state"] === "completed" &&
+    outcome?.["kind"] === "handoff_requested" &&
+    outcome["issueUpdate"] !== "failed"
+  );
+}
+
 async function completed(
   settings: QueueSettings,
   pending: QueueJournal,
@@ -92,11 +101,7 @@ async function completed(
       pendingRun = true;
       continue;
     }
-    const outcome = record(run["outcome"]);
-    if (
-      run["state"] !== "completed" ||
-      outcome?.["kind"] !== "handoff_requested"
-    )
+    if (!handedOff(run))
       failure ??= JSON.stringify({
         runId: run["runId"],
         state: run["state"],

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fakeGh, ghState } from "./github-worker-fixture.ts";
+import { fakeGh, ghState, statusBody } from "./github-worker-fixture.ts";
 import {
   ended,
+  fakeClaude,
   field,
   git,
   reached,
@@ -33,14 +34,33 @@ function issueState(scores: readonly number[]): string {
       { repository: "acme/demo", name: "cloving: ready", color: "ededed" },
     ],
     issues: [
-      { repository: "acme/demo", number: 900, labels: ["cloving: ready"] },
+      {
+        repository: "acme/demo",
+        number: 900,
+        state: "open",
+        body: "Original body.",
+        labels: ["cloving: ready"],
+      },
     ],
   });
 }
 
 function assertIssueLabels(file: string, labels: readonly string[]): void {
   assert.deepEqual(record(JSON.parse(readFileSync(file, "utf8")))["issues"], [
-    { repository: "acme/demo", number: 900, labels },
+    {
+      repository: "acme/demo",
+      number: 900,
+      labels,
+      state: labels.length === 0 ? "closed" : "open",
+      body:
+        labels.length === 0
+          ? statusBody("Original body.", {
+              partialRuns: [],
+              completedPullRequest: 1,
+            })
+          : "Original body.",
+      ...(labels.length === 0 ? { state_reason: "completed" } : {}),
+    },
   ]);
 }
 
@@ -80,7 +100,12 @@ function completion(
 }
 
 async function issueRun(): Promise<void> {
-  const work = await scene();
+  const work = await scene(
+    fakeClaude.replace(
+      "I added the file ticket-work.txt.",
+      "I added the file ticket-work.txt.\\nTicket status: complete",
+    ),
+  );
   const { root, repository, origin, runtimeDirectory } = work;
   const stateFile = join(root, "gh-state.json");
   writeFileSync(join(root, "fake-gh.mjs"), fakeGh);
@@ -97,7 +122,7 @@ async function issueRun(): Promise<void> {
     [pull?.["state"], pull?.["title"], pull?.["base"]],
     ["MERGED", "CLV-900: Add the ticket work", "main"],
   );
-  assert.match(String(pull?.["body"]), /^Closes acme\/demo#900\n\n/);
+  assert.match(String(pull?.["body"]), /^Refs acme\/demo#900\n\n/);
   assert.equal(
     git(origin, ["show", `${String(pull?.["mergedHead"])}:ticket-work.txt`]),
     "the last line of CLV-900\n",
@@ -121,7 +146,7 @@ async function issueRun(): Promise<void> {
   assert.equal(await ended(daemon), 0);
 }
 
-await test("CLV-063 the workflow develop-issue makes a work tree from origin, asks the Claude worker for one turn, opens a pull request that closes the issue, merges it at the Greptile score 5/5, and removes the branches and the work tree", () =>
+await test("CLV-063 the workflow develop-issue makes a work tree from origin, asks the Claude worker for one turn, opens a pull request that references the issue and closes it after the merge, merges it at the Greptile score 5/5, and removes the branches and the work tree", () =>
   withoutChildren(issueRun));
 
 function reviewRead(stateFile: string): true | undefined {
@@ -133,7 +158,12 @@ function reviewRead(stateFile: string): true | undefined {
 }
 
 async function restartedReview(): Promise<void> {
-  const work = await scene();
+  const work = await scene(
+    fakeClaude.replace(
+      "I added the file ticket-work.txt.",
+      "I added the file ticket-work.txt.\\nTicket status: complete",
+    ),
+  );
   const stateFile = join(work.root, "gh-state.json");
   writeFileSync(join(work.root, "fake-gh.mjs"), fakeGh);
   writeFileSync(stateFile, issueState([]));
@@ -161,3 +191,73 @@ async function restartedReview(): Promise<void> {
 
 await test("CLV-067 a stop and a start of the daemon while the run waits for the Greptile review do not end the run, and the new daemon continues the wait and merges the pull request at the score 5/5", () =>
   withoutChildren(restartedReview));
+
+function pauseStatusWrite(root: string): { marker: string; command: string } {
+  const marker = join(root, "status-paused");
+  const command = join(root, "paused-gh.mjs");
+  writeFileSync(
+    command,
+    `
+import { writeFileSync } from "node:fs";
+if (process.argv.includes("PATCH")) {
+  writeFileSync(${JSON.stringify(marker)}, "");
+  await new Promise(() => { setInterval(() => undefined, 1000); });
+}
+await import("./fake-gh.mjs");
+`,
+  );
+  return { marker, command };
+}
+
+async function restartedStatus(): Promise<void> {
+  const work = await scene(
+    fakeClaude.replace(
+      "I added the file ticket-work.txt.",
+      "Changed.\\nRemaining:\\n- Test recovery.\\nTicket status: partial",
+    ),
+  );
+  const stateFile = join(work.root, "gh-state.json");
+  const { marker, command } = pauseStatusWrite(work.root);
+  writeFileSync(join(work.root, "fake-gh.mjs"), fakeGh);
+  writeFileSync(stateFile, issueState([5]));
+  const asked: Asked = (operation, parameters) =>
+    call(
+      { runtimeDirectory: work.runtimeDirectory },
+      { operation, parameters },
+    );
+  const environment = githubEnvironment(work);
+  const first = await work.start({
+    ...environment,
+    CLOVING_GH_COMMAND: JSON.stringify([process.execPath, command]),
+  });
+  const runId = await issueStarted(asked);
+  await reached(() => Promise.resolve(existsSync(marker) ? true : undefined));
+  assert.equal(pulls(stateFile)[0]?.["state"], "MERGED");
+  assertIssueLabels(stateFile, ["cloving: in progress"]);
+  assert.equal(await ended(first), 0);
+  const second = await work.start(environment);
+  const run = await completion(asked, runId);
+  assert.equal(field(field(run, "outcome"), "ticketStatus"), "partial");
+  const state = record(JSON.parse(readFileSync(stateFile, "utf8")));
+  const issue = record(field(state["issues"], 0));
+  assert.equal(issue["state"], "open");
+  assert.deepEqual(issue["labels"], ["cloving: ready"]);
+  assert.equal(
+    issue["body"],
+    statusBody("Original body.", {
+      partialRuns: [{ pullRequest: 1, remaining: ["Test recovery."] }],
+    }),
+  );
+  const calls = state["calls"];
+  assert.ok(Array.isArray(calls));
+  assert.equal(
+    calls.filter(
+      (call: unknown) => Array.isArray(call) && call.includes("PATCH"),
+    ).length,
+    1,
+  );
+  assert.equal(await ended(second), 0);
+}
+
+await test("CLV-123 restart after merge and before issue status writes the partial result once", () =>
+  withoutChildren(restartedStatus));

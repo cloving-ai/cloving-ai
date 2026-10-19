@@ -101,8 +101,8 @@ await test("CLV-084 a tracked run ending between status reads cannot admit anoth
   );
 });
 
-await test("CLV-084 failed and cancelled tracked runs stop the queue and retire their commands", async () => {
-  for (const state of ["failed", "cancelled"]) {
+await test("CLV-123 failed runs and merged runs with failed issue updates stop the queue", async () => {
+  for (const state of ["failed", "cancelled", "completed"]) {
     let reads = 0;
     let submissions = 0;
     await withQueue(
@@ -113,7 +113,18 @@ await test("CLV-084 failed and cancelled tracked runs stop the queue and retire 
           reads += 1;
           return Promise.resolve(
             result({
-              run: { runId: runIdentity(state), state, outcome: null },
+              run: {
+                runId: runIdentity(state),
+                state,
+                outcome:
+                  state === "completed"
+                    ? {
+                        kind: "handoff_requested",
+                        ticketStatus: "partial",
+                        issueUpdate: "failed",
+                      }
+                    : null,
+              },
             }),
           );
         },

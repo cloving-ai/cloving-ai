@@ -1,3 +1,4 @@
+import { isTicketStatus } from "../ticket-status.ts";
 import { gateContinuation } from "./gate-reduction.ts";
 import { isBlockedReason } from "../workflow-contracts.ts";
 import { continues } from "./gates.ts";
@@ -15,6 +16,8 @@ export interface WorldRun {
   readonly status: string;
   readonly outcome?: string;
   readonly outcomeReason?: string;
+  readonly issueUpdate?: "failed";
+  readonly ticketStatus?: "complete" | "partial";
   readonly operationId?: string | null;
   readonly createdAt?: string;
 }
@@ -193,7 +196,15 @@ function completionOutcome(world: WorldRun): Readonly<Record<string, string>> {
   const { outcome, outcomeReason } = world;
   if (outcome !== "handoff_requested" && outcome !== "blocked") return {};
   if (outcome !== "blocked" || !isBlockedReason(outcomeReason))
-    return { outcome };
+    return {
+      outcome,
+      ...(outcome === "handoff_requested" && world.issueUpdate === "failed"
+        ? { issueUpdate: world.issueUpdate }
+        : {}),
+      ...(outcome === "handoff_requested" && isTicketStatus(world.ticketStatus)
+        ? { ticketStatus: world.ticketStatus }
+        : {}),
+    };
   return { outcome, outcomeReason };
 }
 

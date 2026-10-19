@@ -41,5 +41,6 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
     "decisionGate",
     "loadCycle",
     "protectedEffect",
+    "ticketStatus",
   ]);
 });

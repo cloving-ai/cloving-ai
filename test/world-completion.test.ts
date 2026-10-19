@@ -104,3 +104,39 @@ await test("CLV-072 the host drops invalid reasons and unknown outcome kinds so 
   for (const outcome of [undefined, { kind: "other", reason: "ignored" }])
     assert.deepEqual(await completed(outcome), [command]);
 });
+
+await test("CLV-123 compiled merged ticket status reaches the completion event and service status", () =>
+  withConsumer(
+    `
+export async function develop(input: { cycleId: string }) {
+  "use workflow";
+  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "pull-request-7", ticketStatus: "partial", issueUpdate: "failed" };
+}
+`,
+    async (consumer) => {
+      const result = await consumer.run(`${servicePrelude}
+const service = await hosted();
+const runId = await submitted("partial");
+await until(async () => (await stateOf(runId)) === "completed");
+const events = await asked("events", { runId, after: 0, limit: 1000 });
+print({ outcome: (await asked("status", { runId })).run.outcome, payload: events.events.findLast((event) => event.type === "run.completed").payload });
+await service.close();
+`);
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.lines, [
+        {
+          outcome: {
+            kind: "handoff_requested",
+            reason: null,
+            ticketStatus: "partial",
+            issueUpdate: "failed",
+          },
+          payload: {
+            outcome: "handoff_requested",
+            ticketStatus: "partial",
+            issueUpdate: "failed",
+          },
+        },
+      ]);
+    },
+  ));
