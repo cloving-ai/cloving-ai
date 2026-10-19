@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import filesystem, { readFile, stat } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
 import { chatsWorker } from "../src/daemon/chats-worker.ts";
+import { inspectAnalysisDraft } from "../src/daemon/chats-files.ts";
 import { candidate, questionCandidate } from "./chats-analysis-fixture.ts";
 import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import {
@@ -23,6 +25,49 @@ async function prepareDraft(
   };
   fixture.payloads.set("save-analysis", JSON.stringify(payload));
   return payload;
+}
+
+for (const name of [
+  `claim-${cycleId}.json`,
+  `analysis-${cycleId}.json`,
+  `draft-${cycleId}.json`,
+]) {
+  await test(
+    `CLV-117 draft inspection propagates a non-Error ENOENT from ${name}`,
+    chatPlatformScenario(async () => {
+      await withAnalysis(async (fixture) => {
+        const before = await fixture.files();
+        const failure = Object.assign(new Error("missing"), { code: "ENOENT" });
+        Object.setPrototypeOf(failure, null);
+        assert.equal(failure instanceof Error, false);
+        const original = filesystem.lstat;
+        Object.defineProperty(filesystem, "lstat", {
+          value: (...args: Parameters<typeof filesystem.lstat>) =>
+            String(args[0]) === join(fixture.directory, name)
+              ? Promise.reject(failure)
+              : original(...args),
+        });
+        syncBuiltinESMExports();
+        try {
+          await assert.rejects(
+            inspectAnalysisDraft(fixture.directory, {
+              runId: cycleId,
+              cycleId,
+              operationId: "save-draft",
+              inputDigest: "input",
+              snapshotDigest: "snapshot",
+              reply: JSON.stringify(questionCandidate()),
+            }),
+            (error) => error === failure,
+          );
+        } finally {
+          filesystem.lstat = original;
+          syncBuiltinESMExports();
+        }
+        assert.deepEqual(await fixture.files(), before);
+      });
+    }),
+  );
 }
 
 await test(

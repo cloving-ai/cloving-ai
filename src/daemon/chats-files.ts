@@ -118,7 +118,12 @@ async function requireAbsent(directory: string, names: readonly string[]) {
   for (const name of names) {
     const exists = await lstat(join(directory, name)).catch(
       (error: unknown) => {
-        if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return undefined;
         throw error;
       },
     );
@@ -150,7 +155,8 @@ async function inspectOutputClaim(claim: {
   const text = await boundedAnalysisFile(claim.path, {
     permissions: 0o600,
   }).catch((error: unknown) => {
-    if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return undefined;
     throw error;
   });
   if (text !== undefined && text !== claim.text)
@@ -230,7 +236,8 @@ export async function inspectAnalysisDraft(
     join(directory, `draft-${input.cycleId}.json`),
     { permissions: 0o600 },
   ).catch((error: unknown) => {
-    if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return undefined;
     throw error;
   });
   if (text === undefined) return undefined;
