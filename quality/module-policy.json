@@ -676,6 +676,8 @@
     "test/authority-opening-scale.benchmark.ts": "test",
     "src/daemon/issue-queue.ts": "daemon",
     "test/self-update-runs.test.ts": "test",
+    "test/self-update-admission.test.ts": "test",
+    "test/self-update-abandoned.test.ts": "test",
     "test/self-update-status.test.ts": "test",
     "test/daemon-pending-update.test.ts": "test",
     "test/pending-update-fixture.ts": "test",

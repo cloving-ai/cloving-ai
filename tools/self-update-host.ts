@@ -39,6 +39,7 @@ async function runPage(
 export async function selfUpdateActive(
   settings: ActivitySettings,
 ): Promise<boolean> {
+  if (await present(join(settings.directory, "queue-submission"))) return true;
   if (await workerTurnActive(settings.directory)) return true;
   let after: string | null = "";
   do {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
@@ -205,12 +205,28 @@ function updateHold(directory: string): () => Promise<boolean> {
   };
 }
 
+async function admission(
+  settings: QueueSettings,
+  attempt: {
+    readonly pending: QueueJournal;
+    readonly holding: () => Promise<boolean>;
+    readonly signal: AbortSignal;
+  },
+): Promise<void> {
+  const file = join(settings.directory, "queue-submission");
+  await writeFile(file, "", { mode: 0o600 });
+  if (!(await attempt.holding()) && !attempt.signal.aborted)
+    await submit(settings, attempt.pending);
+  await rm(file, { force: true });
+}
+
 async function cycle(
   settings: QueueSettings,
   signal: AbortSignal,
 ): Promise<void> {
   const pending = await journal(settings.directory);
   const holding = updateHold(settings.directory);
+  await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   while (!stopped()) {
@@ -222,7 +238,7 @@ async function cycle(
     if (await active(settings.runtimeDirectory)) continue;
     if (await holding()) continue;
     if (stopped()) return;
-    await submit(settings, pending);
+    await admission(settings, { pending, holding, signal });
   }
 }
 

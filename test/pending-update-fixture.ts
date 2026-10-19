@@ -24,7 +24,7 @@ export async function withPendingUpdate(
     const counts = { scans: 0, submissions: 0 };
     const lines: string[] = [];
     const output = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (line: unknown) => {
+    process.stderr.write = (line: string | Uint8Array) => {
       lines.push(String(line));
       return true;
     };
