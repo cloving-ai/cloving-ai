@@ -239,12 +239,12 @@ function updateHold(
         return undefined;
       throw error;
     });
+    if (mark === undefined && pending.selfUpdateHold !== undefined) {
+      pending.selfUpdateHold = undefined;
+      await pending.save();
+    }
     if (mark === undefined) {
       notice = undefined;
-      if (pending.selfUpdateHold !== undefined) {
-        pending.selfUpdateHold = undefined;
-        await pending.save();
-      }
       return false;
     }
     const timestamp = Number(mark);

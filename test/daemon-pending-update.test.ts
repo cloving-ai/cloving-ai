@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import filesystem, { readFile, rm, writeFile } from "node:fs/promises";
+import filesystem, { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -110,7 +110,8 @@ await test("CLV-141 a different mark value starts a fresh hold after the previou
       );
       const heldAt = clock.now + 1;
       clock.now = heldAt;
-      await writeFile(scene.mark, `${String(mark + 1)}\n`);
+      await writeFile(`${scene.mark}.tmp`, `${String(mark + 1)}\n`);
+      await rename(`${scene.mark}.tmp`, scene.mark);
       await eventually(() => (scene.lines.length >= 3 ? true : undefined));
       await scene.stop();
       assert.deepEqual(scene.lines, [
