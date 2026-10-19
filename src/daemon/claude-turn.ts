@@ -35,6 +35,7 @@ export interface TurnStart {
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
+  readonly activityFolder?: string;
   readonly prompt: string;
 }
 
@@ -179,14 +180,21 @@ function receivedLines(stream: Stream, lines: readonly string[]): void {
   }
 }
 
+function activityOutput(start: TurnStart) {
+  if (start.mode === "analysis") return undefined;
+  const output = createWriteStream(
+    join(start.activityFolder ?? start.folder, "turn.jsonl"),
+    { flags: start.activityFolder === undefined ? "w" : "a" },
+  );
+  if (start.activityFolder !== undefined) output.write("\n");
+  return output;
+}
+
 function turnOutput(
   start: TurnStart,
   stdout: ChildProcessWithoutNullStreams["stdout"],
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
-  const output =
-    start.mode === "analysis"
-      ? undefined
-      : createWriteStream(join(start.folder, "turn.jsonl"));
+  const output = activityOutput(start);
   const codex = start.worker === "codex" ? codexStream() : undefined;
   const stream: Stream = {
     pending: "",

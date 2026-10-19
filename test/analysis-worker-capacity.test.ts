@@ -4,8 +4,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { candidate } from "./chats-analysis-fixture.ts";
 import { importId, corpus, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
+  alive,
+  field,
   installAnalysisCli,
   intent,
+  record,
   resultOf,
   until,
   withScene,
@@ -60,6 +63,37 @@ await test("CLV-127 analysis uses the same capacity retries and usage totals", (
         cache_read_input_tokens: 1600,
         output_tokens: 300,
       });
+    } finally {
+      restore();
+    }
+  }));
+
+await test("CLV-127 stopping a running analysis retry reports stopped", () =>
+  withScene(async (scene) => {
+    const restore = installAnalysisCli(scene, {
+      reply: "",
+      mode: "capacity-hold",
+    });
+    try {
+      const worker = scene.worker("unused", {
+        workflowId: () => Promise.resolve("analyze-chats"),
+        document: () => Promise.resolve(JSON.stringify({ snapshot })),
+        retryDelay: (_, stopping) => delay(0, undefined, { signal: stopping }),
+      });
+      await worker.deliver(operation, signal);
+      await until(() => scene.turns().length === 2);
+      const retry = scene.turns()[1];
+      assert.ok(retry);
+      assert.equal(alive(retry.processId), true);
+      assert.equal((await worker.stop(operation, signal)).kind, "stopped");
+      assert.equal(scene.reports.length, 1);
+      assert.equal(scene.reports[0]?.outcome, "stopped");
+      assert.equal(alive(retry.processId), false);
+      assert.equal(scene.turns().length, 2);
+      assert.equal(
+        typeof field(record(scene, "operation-1/attempt-2.json"), "endedAt"),
+        "string",
+      );
     } finally {
       restore();
     }

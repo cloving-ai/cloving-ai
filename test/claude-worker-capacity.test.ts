@@ -17,6 +17,26 @@ const signal = new AbortController().signal;
 const continuation =
   "An earlier attempt stopped because the model was at capacity; continue from the current state of the work tree.\n\n";
 
+function recordedAttempts(folder: string): void {
+  const activity = readFileSync(join(folder, "turn.jsonl"), "utf8");
+  assert.equal(activity.match(/"type":"system"/g)?.length, 2);
+  assert.equal(activity.match(/"type":"result"/g)?.length, 2);
+  assert.match(activity, /Selected model is at capacity/);
+  assert.match(activity, /An earlier attempt stopped/);
+  const attempts = readdirSync(folder).filter((name) =>
+    /^attempt-\d+\.json$/.test(name),
+  );
+  assert.deepEqual(attempts, ["attempt-1.json", "attempt-2.json"]);
+  for (const name of attempts) {
+    const path = join(folder, name);
+    const attempt: unknown = JSON.parse(readFileSync(path, "utf8"));
+    assert.equal(typeof field(attempt, "startedAt"), "string");
+    assert.equal(typeof field(attempt, "endedAt"), "string");
+    assert.equal(field(attempt, "operationId"), "operation-1");
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+  }
+}
+
 await test("CLV-127 capacity then success completes one operation with retained work and summed usage", () =>
   withScene(async (scene) => {
     const waits: number[] = [];
@@ -57,18 +77,7 @@ await test("CLV-127 capacity then success completes one operation with retained 
     assert.equal(result["costUsd"], 0.5);
     assert.equal(result["turns"], 6);
     const folder = join(scene.journal, journalKey("operation-1"));
-    const attempts = readdirSync(folder).filter((name) =>
-      /^attempt-\d+\.json$/.test(name),
-    );
-    assert.deepEqual(attempts, ["attempt-1.json", "attempt-2.json"]);
-    for (const name of attempts) {
-      const path = join(folder, name);
-      const attempt: unknown = JSON.parse(readFileSync(path, "utf8"));
-      assert.equal(typeof field(attempt, "startedAt"), "string");
-      assert.equal(typeof field(attempt, "endedAt"), "string");
-      assert.equal(field(attempt, "operationId"), "operation-1");
-      assert.equal(statSync(path).mode & 0o777, 0o600);
-    }
+    recordedAttempts(folder);
     assert.deepEqual(await worker.deliver(operation, signal), {
       kind: "completed",
       receipt: journalKey("operation-1"),
@@ -86,6 +95,27 @@ await test("CLV-127 the Claude assistant overload type survives the final result
     await worker.deliver(intent(), signal);
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
+    assert.equal(scene.turns().length, 2);
+  }));
+
+await test("CLV-127 the shared activity stream includes a retry while it is running", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("capacity-hold", {
+      retryDelay: () => Promise.resolve(),
+    });
+    await worker.deliver(intent(), signal);
+    await until(() => scene.turns().length === 2);
+    const file = join(scene.journal, journalKey("operation-1"), "turn.jsonl");
+    await until(
+      () => readFileSync(file, "utf8").match(/"type":"system"/g)?.length === 2,
+    );
+    assert.equal(scene.reports.length, 0);
+    assert.equal(
+      field(record(scene, "operation-1/started.json"), "phase"),
+      "running",
+    );
+    assert.equal((await worker.stop(intent(), signal)).kind, "stopped");
+    assert.equal(scene.reports.length, 1);
     assert.equal(scene.turns().length, 2);
   }));
 

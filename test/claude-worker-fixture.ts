@@ -69,16 +69,23 @@ const modes = {
   hold: held,
   "ignore-term": held,
 };
-if (["capacity-once", "capacity-always", "overload-once", "capacity-no-result", "capacity-unknown"].includes(mode)) {
-  if (turn === 1 || mode === "capacity-always") {
-    writeFileSync("partial.txt", "retained partial work");
-    if (mode === "overload-once") print({ type: "assistant", error: "overloaded", parent_tool_use_id: null });
-    result({ subtype: "error_during_execution", is_error: true, result: mode === "overload-once" ? "API failed" : "Selected model is at capacity. Please try a different model." });
-  } else if (mode === "capacity-no-result") modes["no-result"]();
-  else if (mode === "capacity-unknown") result({ total_cost_usd: null, usage: { input_tokens: 2 }, num_turns: null });
-  else if (existsSync(record + ".reply")) modes["fixed-reply"]();
-  else modes.complete();
-} else await modes[mode]();
+function capacityTurn() {
+  if (turn !== 1 && mode !== "capacity-always") return laterAttempt();
+  writeFileSync("partial.txt", "retained partial work");
+  if (mode === "overload-once") {
+    print({ type: "assistant", error: "overloaded", parent_tool_use_id: null });
+    return result({ subtype: "error_during_execution", is_error: true, result: "API failed" });
+  }
+  return result({ subtype: "error_during_execution", is_error: true, result: "Selected model is at capacity. Please try a different model." });
+}
+function laterAttempt() {
+  if (mode === "capacity-hold") return held();
+  if (mode === "capacity-no-result") return modes["no-result"]();
+  if (mode === "capacity-unknown") return result({ total_cost_usd: null, usage: { input_tokens: 2 }, num_turns: null });
+  return existsSync(record + ".reply") ? modes["fixed-reply"]() : modes.complete();
+}
+const capacityModes = ["capacity-once", "capacity-always", "overload-once", "capacity-no-result", "capacity-unknown", "capacity-hold"];
+await (capacityModes.includes(mode) ? capacityTurn() : modes[mode]());
 `;
 
 export interface TurnRecord {

@@ -98,6 +98,7 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   const turn = controlled(attempts, {
     ...start,
     folder,
+    ...(attempt === 1 ? {} : { activityFolder: start.folder }),
     prompt: attempt === 1 ? start.prompt : continuation + start.prompt,
   });
   try {
@@ -117,26 +118,28 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
 
 async function recordedEnd(
   attempts: Attempts,
-  turn: RunningTurn,
+  completion: { readonly processId: number | null; readonly end: TurnEnd },
 ): Promise<void> {
   const { start, ends, options } = attempts;
+  const { processId, end } = completion;
   const attempt = ends.length;
-  const end = ends.at(-1);
   const name = `attempt-${String(attempt)}.json`;
   const started = await readRecord(start.folder, name);
   const startedAt: unknown = Reflect.get(Object(started), "startedAt");
+  if (typeof startedAt !== "string")
+    throw new Error("attempt-start-time-missing");
   await written(start.folder, {
     name,
     value: {
       ...options.metadata,
       attempt,
-      processId: turn.processId,
+      processId,
       startedAt,
       endedAt: new Date().toISOString(),
-      exitCode: end?.exitCode ?? null,
-      capacity: capacityRefusal(end?.result),
-      usage: end?.result?.usage ?? usageOf(null),
-      costUsd: end?.result?.costUsd ?? null,
+      exitCode: end.exitCode,
+      capacity: capacityRefusal(end.result),
+      usage: end.result?.usage ?? usageOf(null),
+      costUsd: end.result?.costUsd ?? null,
     },
   });
 }
@@ -171,7 +174,7 @@ async function finished(
   while (turn !== undefined) {
     const end = await turn.ended;
     ends.push(end);
-    await recordedEnd(attempts, turn);
+    await recordedEnd(attempts, { processId: turn.processId, end });
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
@@ -185,7 +188,7 @@ async function finished(
   }
   return {
     ...combined(ends),
-    ...(turn === undefined ? { stopped: true } : {}),
+    ...(cancelled(attempts) || turn === undefined ? { stopped: true } : {}),
   };
 }
 

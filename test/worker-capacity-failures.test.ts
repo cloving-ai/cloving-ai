@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { startRetriedTurn } from "../src/daemon/retrying-turn.ts";
 import {
   alive,
   field,
@@ -14,6 +15,39 @@ import {
 } from "./claude-worker-fixture.ts";
 
 const signal = new AbortController().signal;
+
+await test("CLV-127 an attempt end refuses an invalid saved start time", () =>
+  withScene(async (scene) => {
+    for (const [index, startedAt] of [undefined, null, 42, {}].entries()) {
+      const folder = join(scene.journal, `invalid-${String(index)}`);
+      const turn = await startRetriedTurn(
+        {
+          command: [
+            process.execPath,
+            join(scene.directory, "fake-claude.mjs"),
+            "hold",
+            join(scene.directory, "turns.log"),
+          ],
+          directory: scene.repository,
+          folder,
+          prompt: "private prompt",
+        },
+        { metadata: {} },
+      );
+      try {
+        await until(() => scene.turns().length === index + 1);
+        writeFileSync(
+          join(folder, "attempt-1.json"),
+          JSON.stringify({ startedAt }),
+        );
+      } finally {
+        turn.stop(0);
+      }
+      await assert.rejects(turn.ended, {
+        message: "attempt-start-time-missing",
+      });
+    }
+  }));
 
 await test("CLV-127 a missing retry result fails once and leaves unknown totals unknown", () =>
   withScene(async (scene) => {

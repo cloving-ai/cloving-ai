@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { capacityRefusal, startTurn } from "../src/daemon/claude-turn.ts";
-import { intent, resultOf, until, withScene } from "./claude-worker-fixture.ts";
+import {
+  intent,
+  journalKey,
+  resultOf,
+  until,
+  withScene,
+} from "./claude-worker-fixture.ts";
 
 const overload = {
   type: "assistant",
@@ -74,6 +80,30 @@ await test("CLV-127 only a terminal parent overload can authorize a stream retry
         JSON.stringify(scenario.events),
       );
     }
+  }));
+
+await test("CLV-127 retry activity separates results without a final newline", () =>
+  withScene(async (scene) => {
+    const program = `
+import { existsSync, writeFileSync } from "node:fs";
+const failed = !existsSync("partial.txt");
+writeFileSync("partial.txt", "retained");
+process.stdin.resume();
+process.stdout.write(JSON.stringify({ type: "result", is_error: failed, result: failed ? "Selected model is at capacity. Please try a different model." : "Done" }));`;
+    const worker = scene.worker("unused", {
+      command: [process.execPath, "--input-type=module", "-e", program],
+      retryDelay: () => Promise.resolve(),
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const file = join(scene.journal, journalKey("operation-1"), "turn.jsonl");
+    const lines = readFileSync(file, "utf8").split("\n").filter(Boolean);
+    assert.equal(lines.length, 2);
+    assert.deepEqual(
+      lines.map((line) => resultOf(line)["is_error"]),
+      [true, false],
+    );
   }));
 
 const codex = `
