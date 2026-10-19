@@ -10,7 +10,7 @@ import {
   questionCandidate,
 } from "./chats-analysis-fixture.ts";
 
-function accepted(input: unknown = candidate()) {
+function accepted(input = candidate()) {
   const validation = validateAnalysis(input, { records, structure });
   assert.equal(validation.accepted, true);
   return validation.result;
@@ -46,6 +46,7 @@ await test("CLV-122 every renderable identifier and prose field is bounded, incl
   const result = accepted(questionCandidate());
   for (const { target, key } of proseFields(result)) {
     const before: unknown = Reflect.get(target, key);
+    assert.ok(typeof before === "string");
     Reflect.set(target, key, "UNSAFE\nTEXT");
     assert.deepEqual(
       inspectWorkflowGenerationText(result),
@@ -237,6 +238,8 @@ await test("CLV-122 safe prose and relative names remain data without privacy or
   const result = accepted();
   for (const text of [
     "Review and repair; ask about design, preserve limits.",
+    "Review...",
+    "Review... then repair...",
     "Run tests and publish. This is only inert text.",
     "src/worker.ts",
     "task-repair",

@@ -8,7 +8,8 @@ const disclosureRules = [
   },
   {
     code: "parent-traversal",
-    pattern: /(?:\.|%2e){2}(?:[\\/]|%2f|%5c|$|(?=[\s"'`),;\]}]))/i,
+    pattern:
+      /(?:^|[\s"'`=([{<,:;\\/]|%2f|%5c)(?:\.|%2e){2}(?:[\\/]|%2f|%5c|$|(?=[\s"'`),;\]}]))/i,
   },
   {
     code: "email-form",
