@@ -13,6 +13,84 @@ function field(value: unknown, name: string): unknown {
   return Reflect.get(Object(value), name);
 }
 
+for (const reviewBytes of [32_768, 32_769])
+  await test(`CLV-122 generated SDK bounds repair context at ${String(reviewBytes)} serialized bytes`, () =>
+    withConsumer(generatedArtifact().source, async (consumer) => {
+      const result = await consumer.run(`${generatedPrelude()}
+const sizes = [];
+let reviewSize;
+const worker = { ...destination, deliver: async (intent) => {
+  sizes.push(Buffer.byteLength(await ports.document(intent.payload)));
+  const outcome = await destination.deliver(intent);
+  if (sizes.length !== 1) return outcome;
+  const reviewed = (findings) => JSON.stringify({ summary: JSON.stringify({ status: "repair", findings }) });
+  const findings = String.fromCodePoint(34, 92, 10, 0x1f9ea).repeat(1000);
+  const empty = { ...outcome, operationId: intent.operationId, result: reviewed(findings) };
+  const result = reviewed(findings + "x".repeat(${String(reviewBytes)} - Buffer.byteLength(JSON.stringify(empty))));
+  reviewSize = Buffer.byteLength(JSON.stringify({ ...empty, result }));
+  return { ...outcome, result };
+} };
+registration.resolver = { ...registration.resolver, resolve: async (request) => {
+  const base = { asset: ${JSON.stringify(generatedArtifact().assets[1])}, parameters: { cycleId: "cycle-1", repository: "", input: request.submission }, round: 2 };
+  return { kind: "resolved", input: { ...base.parameters, repository: "x".repeat(32758 - Buffer.byteLength(JSON.stringify(base))) } };
+} };
+const service = await openGenerated({ destination: worker });
+const submission = { clvInput1: "" };
+submission.clvInput1 = "x".repeat(16384 - Buffer.byteLength(JSON.stringify(submission)));
+const reply = await asked("run", { workflowId: "develop", source: "input", submission, commandId: "bounded" });
+await terminal(reply.runId);
+print({ sizes, reviewSize, state: await generatedState(reply.runId) });
+await service.close();
+`);
+      assert.equal(result.status, 0, result.stderr);
+      const line: unknown = result.lines[0];
+      assert.equal(field(line, "reviewSize"), reviewBytes);
+      const sizes: unknown = field(line, "sizes");
+      assert.ok(Array.isArray(sizes));
+      assert.ok(
+        sizes.every(
+          (size: unknown) => typeof size === "number" && size <= 65_536,
+        ),
+      );
+      const fits = reviewBytes === 32_768;
+      assert.equal(sizes.length, fits ? 3 : 1);
+      assert.deepEqual(sizes.slice(1, 2), fits ? [65_536] : []);
+      const state = field(line, "state");
+      assert.deepEqual(field(state, "budget"), {
+        limit: 6,
+        spent: fits ? 3 : 1,
+      });
+      assert.equal(field(state, "state"), fits ? "waiting_gate" : "completed");
+      const segments: unknown = field(state, "segments");
+      assert.ok(Array.isArray(segments));
+      assert.equal(
+        field(field(segments[0], "output"), "reason"),
+        fits ? undefined : "review-too-large",
+      );
+    }));
+
+await test("CLV-122 generated SDK rejects workspace overhead before requesting effects", () =>
+  withConsumer(generatedArtifact().source, async (consumer) => {
+    const result = await consumer.run(`${generatedPrelude()}
+registration.resolver = { ...registration.resolver, resolve: async (request) => ({ kind: "resolved", input: { cycleId: "cycle-1", repository: "🧪".repeat(9000), input: request.submission } }) };
+const service = await openGenerated();
+const runId = await submitGenerated();
+await terminal(runId);
+print(await generatedState(runId));
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    const line: unknown = result.lines[0];
+    assert.deepEqual(field(line, "budget"), { limit: 6, spent: 0 });
+    assert.equal(field(line, "sends"), 0);
+    const segments: unknown = field(line, "segments");
+    assert.ok(Array.isArray(segments));
+    assert.equal(
+      field(field(segments[0], "output"), "reason"),
+      "invalid-run-input",
+    );
+  }));
+
 await test("CLV-122 generated SDK repair receives the completed review findings", () =>
   withConsumer(generatedArtifact().source, async (consumer) => {
     const result = await consumer.run(`${generatedPrelude()}

@@ -1,3 +1,5 @@
+export const workflowGenerationInputBytes = 16_384;
+
 export interface WorkflowPromptAsset {
   readonly schemaVersion: 1;
   readonly name: string;
@@ -47,6 +49,9 @@ function clvStatus(result: ProtectedResult): "complete" | "repair" | "blocked" {
 function clvBlocked(cycleId: string, reason: string): CycleOutcome {
   return { kind: "blocked", cycleId, reason, evidenceId: "clv-generation-1" };
 }
+function clvBytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
 function clvPayload(asset: typeof clvAsset1 | typeof clvAsset2, input: ClvInput, round: number, review?: ProtectedResult): string {
   return JSON.stringify({ asset, parameters: { cycleId: input.cycleId, repository: input.repository, input: input.input }, round, review });
 }
@@ -66,7 +71,10 @@ function sourceValidation(projection: WorkflowSourceProjection): string {
     typeof value.cycleId === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value.cycleId) &&
     typeof value.repository === "string" && value.repository.trim().length > 0 && fields !== null &&
     JSON.stringify(Object.keys(fields).sort()) === ${JSON.stringify(JSON.stringify([...projection.fields].sort()))} &&
-    Object.values(fields).every((field) => typeof field === "string" && field.trim().length > 0);
+    Object.values(fields).every((field) => typeof field === "string" && field.trim().length > 0) &&
+    clvBytes(JSON.stringify(fields)) <= ${String(workflowGenerationInputBytes)} &&
+    clvBytes(clvPayload(clvAsset1, value, ${String(projection.maximumIterations - 1)})) <= 32758 &&
+    clvBytes(clvPayload(clvAsset2, value, ${String(projection.maximumIterations - 1)})) <= 32758;
 }
 function clvValidContinuation(value: ClvContinuation): boolean {
   const fields = clvRecord(value);
@@ -90,10 +98,15 @@ function sourceLoop(projection: WorkflowSourceProjection): string {
     if (clvReviewStatus === "complete") clvPassed = true;
     if (clvReviewStatus === "blocked") clvFailure = "worker-blocked";
     if (clvReviewStatus === "repair") {
+      const clvRepairPayload = clvPayload(clvAsset2, input, clvRound, clvReview);
+      if (clvBytes(JSON.stringify(clvReview)) > 32768 || clvBytes(clvRepairPayload) > 65536) {
+        clvFailure = "review-too-large";
+        continue;
+      }
       const clvRepair = await protectedEffect({
         scope: { phase: "clv-generated-1", operation: ${JSON.stringify(repair?.stage.name)}, round: clvRound },
         capability: "claude", method: "run-turn", units: 1,
-        target: input.cycleId, payload: clvPayload(clvAsset2, input, clvRound, clvReview)
+        target: input.cycleId, payload: clvRepairPayload
       });
       if (clvStatus(clvRepair) === "blocked") clvFailure = "worker-blocked";
     }

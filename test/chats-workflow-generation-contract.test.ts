@@ -230,3 +230,28 @@ await test("CLV-122 submitted fields resolve to the declared current run envelop
     "repository",
   ]);
 });
+
+await test("CLV-122 submission reserves repair context space and measures serialized UTF-8 bytes", () => {
+  const contract = generatedArtifact().declaration.workflow.input;
+  assert.equal(contract.maximumBytes, 16_384);
+  for (const value of ["x", '"', "\\", "\n", "🧪"]) {
+    const overhead = Buffer.byteLength(JSON.stringify({ clvInput1: "x" }));
+    const width = Buffer.byteLength(JSON.stringify(value)) - 2;
+    const submission = {
+      clvInput1: "x" + value.repeat(Math.floor((16_384 - overhead) / width)),
+    };
+    const request = {
+      workflowId: "clv-generated-1",
+      source: "input",
+      submission,
+    };
+    assert.equal(checkSubmission(contract, request).kind, "valid");
+    assert.equal(
+      checkSubmission(contract, {
+        ...request,
+        submission: { clvInput1: submission.clvInput1 + value },
+      }).kind,
+      "rejected",
+    );
+  }
+});

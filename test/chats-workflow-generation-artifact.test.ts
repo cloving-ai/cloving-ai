@@ -131,7 +131,7 @@ await test("CLV-122 accepted synthetic review projection generates one determini
   assert.deepEqual(result.report.limitations, analysis.limitations);
   assert.deepEqual(result.report.gaps, []);
   assert.deepEqual(result.artifact.declaration.workflow.input, {
-    maximumBytes: 65_536,
+    maximumBytes: 16_384,
     fields: { clvInput1: { type: "string" } },
   });
   assert.equal(result.artifact.assets.length, 2);
