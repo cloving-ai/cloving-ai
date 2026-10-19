@@ -28,6 +28,7 @@ const continuation =
 
 interface Attempts {
   readonly start: TurnStart;
+  readonly startedAt: string;
   readonly options: RetryOptions;
   readonly stopping: AbortController;
   readonly grace: { milliseconds: number };
@@ -87,11 +88,16 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   const entry = {
     ...options.metadata,
     attempt,
-    startedAt: new Date().toISOString(),
+    startedAt: attempt === 1 ? attempts.startedAt : new Date().toISOString(),
   };
   await written(start.folder, {
     name: "started.json",
-    value: { ...entry, phase: "starting", processId: null },
+    value: {
+      ...entry,
+      startedAt: attempts.startedAt,
+      phase: "starting",
+      processId: null,
+    },
   });
   await mkdir(folder, { recursive: true, mode: 0o700 });
   if (attempts.stopping.signal.aborted) return undefined;
@@ -103,7 +109,10 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   });
   try {
     const value = { ...entry, phase: "running", processId: turn.processId };
-    await written(start.folder, { name: "started.json", value });
+    await written(start.folder, {
+      name: "started.json",
+      value: { ...value, startedAt: attempts.startedAt },
+    });
     await written(start.folder, {
       name: `attempt-${String(attempt)}.json`,
       value,
@@ -150,6 +159,7 @@ async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
     name: "started.json",
     value: {
       ...options.metadata,
+      startedAt: attempts.startedAt,
       attempt: ends.length,
       phase: "waiting",
       processId: null,
@@ -202,6 +212,7 @@ export async function startRetriedTurn(
 ): Promise<RunningTurn> {
   const attempts: Attempts = {
     start,
+    startedAt: new Date().toISOString(),
     options,
     stopping: new AbortController(),
     ends: [],

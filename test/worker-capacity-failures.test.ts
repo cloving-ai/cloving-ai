@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
+import filesystem from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { startRetriedTurn } from "../src/daemon/retrying-turn.ts";
 import {
   alive,
@@ -120,4 +123,57 @@ await test("CLV-127 a failed retry clock leaves the operation for recovery witho
     assert.equal(field(recovered, "reason"), "claude-turn-interrupted");
     assert.equal(scene.turns().length, 1);
     assert.equal(scene.reports.length, 0);
+  }));
+
+await test("CLV-127 close waits for a pending launch journal and stops its child", () =>
+  withScene(async (scene) => {
+    const held = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const rename = filesystem.rename;
+    const attempt = join(
+      scene.journal,
+      journalKey("operation-1"),
+      "attempt-1.json",
+    );
+    filesystem.rename = async (source, destination) => {
+      if (destination === attempt) {
+        held.resolve(undefined);
+        await release.promise;
+      }
+      await rename(source, destination);
+    };
+    syncBuiltinESMExports();
+    const worker = scene.worker("hold");
+    const delivering = worker.deliver(intent(), signal);
+    let closed = false;
+    let closing: Promise<void> | undefined;
+    try {
+      await held.promise;
+      await until(() => scene.turns().length === 1);
+      closing = worker.close().then(() => {
+        closed = true;
+      });
+      await nextTurn();
+      assert.equal(closed, false);
+    } finally {
+      release.resolve(undefined);
+      await delivering;
+      await closing;
+      filesystem.rename = rename;
+      syncBuiltinESMExports();
+    }
+    assert.equal(closed, true);
+    assert.equal(
+      alive(
+        Number(field(record(scene, "operation-1/started.json"), "processId")),
+      ),
+      false,
+    );
+    assert.equal(scene.reports[0]?.outcome, "stopped");
+    assert.equal(scene.reports.length, 1);
+    assert.deepEqual(
+      await worker.deliver(intent({ operationId: "after-close" }), signal),
+      { kind: "failed", reason: "claude-start-aborted" },
+    );
+    assert.equal(scene.turns().length, 1);
   }));

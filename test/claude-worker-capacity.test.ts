@@ -145,6 +145,54 @@ await test("CLV-127 three capacity refusals exhaust waits of 60 and 180 seconds"
     );
   }));
 
+await test("CLV-127 the first start time survives both waits and every attempt", () =>
+  withScene(async (scene) => {
+    const waits: unknown[] = [];
+    const resumedAt: number[] = [];
+    const worker = scene.worker("capacity-always", {
+      retryDelay: async () => {
+        waits.push(record(scene, "operation-1/started.json"));
+        const previous = record(
+          scene,
+          `operation-1/attempt-${String(waits.length)}.json`,
+        );
+        const previousStart = field(previous, "startedAt");
+        assert.ok(typeof previousStart === "string");
+        await until(() => Date.now() > Date.parse(previousStart));
+        resumedAt.push(Date.now());
+      },
+    });
+    await worker.deliver(intent(), signal);
+    await until(() => scene.reports.length === 1);
+    const first = field(
+      record(scene, "operation-1/attempt-1.json"),
+      "startedAt",
+    );
+    assert.ok(typeof first === "string");
+    assert.equal(waits.length, 2);
+    for (const waiting of waits) {
+      assert.equal(field(waiting, "phase"), "waiting");
+      assert.equal(field(waiting, "startedAt"), first);
+    }
+    assert.equal(
+      field(record(scene, "operation-1/started.json"), "startedAt"),
+      first,
+    );
+    for (const [index, resumed] of resumedAt.entries()) {
+      const attempt = record(
+        scene,
+        `operation-1/attempt-${String(index + 2)}.json`,
+      );
+      const startedAt = field(attempt, "startedAt");
+      assert.ok(typeof startedAt === "string");
+      assert.ok(Date.parse(startedAt) >= resumed);
+      assert.ok(Date.parse(startedAt) > Date.parse(first));
+    }
+    const endedAt = field(record(scene, "operation-1/result.json"), "endedAt");
+    assert.ok(typeof endedAt === "string");
+    assert.ok(Date.parse(endedAt) > Date.parse(first));
+  }));
+
 await test("CLV-127 a non-capacity failure journals one attempt and never waits", () =>
   withScene(async (scene) => {
     const worker = scene.worker("error-result", {
