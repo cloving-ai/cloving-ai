@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 
 export async function programs(
   root: string,
@@ -42,6 +43,9 @@ interface StalledCheck {
 }
 
 export async function stalledCheck(root: string, options: StalledCheck) {
+  const timeFactor = parseCheckTimeFactor(
+    process.env["CLOVING_CHECK_TIME_FACTOR"],
+  );
   const paths = await programs(root);
   const bin = join(root, "bin");
   await mkdir(bin);
@@ -70,7 +74,7 @@ process.exitCode = await running;`,
     return spawnSync(process.execPath, [entry], {
       env: { ...process.env, PATH: `${bin}:${process.env["PATH"] ?? ""}` },
       encoding: "utf8",
-      timeout: options.signal === "deadline" ? 35000 : 3000,
+      timeout: (options.signal === "deadline" ? 35000 : 3000) * timeFactor,
       killSignal: "SIGKILL",
     });
   } finally {

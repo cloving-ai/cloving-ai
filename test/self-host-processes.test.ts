@@ -1,10 +1,63 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { chmod, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
+import { withFiles } from "./quality/files-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
+
+for (const factor of [undefined, "3"])
+  for (const signal of ["SIGTERM", "deadline"])
+    await test(`CLV-142 stalledCheck scales ${signal} by ${factor ?? "the default factor"}`, async () => {
+      await withFiles(
+        { "git-pid": "1", "daemon-ready": "2", "watch-ready": "3" },
+        async (root) => {
+          const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+          const spawn = childProcess.spawnSync;
+          const kill = Object.getOwnPropertyDescriptor(process, "kill");
+          let timeout: number | undefined;
+          process.kill = () => true;
+          if (factor === undefined)
+            delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+          else process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+          Object.defineProperty(childProcess, "spawnSync", {
+            configurable: true,
+            value: (...argumentsList: Parameters<typeof spawn>[number][]) => {
+              const options = argumentsList[2];
+              timeout =
+                typeof options === "object" && "timeout" in options
+                  ? options.timeout
+                  : undefined;
+              return { status: 0 };
+            },
+          });
+          syncBuiltinESMExports();
+          try {
+            const result = await stalledCheck(root, {
+              repository: root,
+              command: "fetch",
+              signal,
+            });
+            assert.equal(result.status, 0);
+            assert.equal(
+              timeout,
+              (signal === "deadline" ? 35000 : 3000) * Number(factor ?? 1),
+            );
+          } finally {
+            if (kill) Object.defineProperty(process, "kill", kill);
+            else Reflect.deleteProperty(process, "kill");
+            childProcess.spawnSync = spawn;
+            syncBuiltinESMExports();
+            if (previous === undefined)
+              delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+            else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+          }
+        },
+      );
+    });
 
 await test("CLV-085 the host stops and awaits daemon and watch before fast-forwarding", async () => {
   await withUpdateRepository(async ({ root, repository, git, target }) => {

@@ -9,6 +9,7 @@ import { convert } from "ast-v8-to-istanbul";
 import istanbul from "istanbul-lib-coverage";
 import ts from "typescript";
 import { checkSuppressions } from "./suppression-approval.ts";
+import { parseCheckTimeFactor } from "./test-execution.ts";
 import type { CoverageRow } from "./coverage.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -48,14 +49,21 @@ function script(value: unknown): value is Profiler.ScriptCoverage {
 }
 
 async function coverageRecording(file: string): Promise<unknown> {
-  for (let attempt = 0; ; attempt += 1) {
+  const timeFactor = parseCheckTimeFactor(
+    process.env["CLOVING_CHECK_TIME_FACTOR"],
+  );
+  const deadline = performance.now() + 5000 * timeFactor;
+  let delay = 25;
+  for (;;) {
     const content = await readFile(file, "utf8");
     try {
       const value: unknown = JSON.parse(content);
       return value;
     } catch (error) {
-      if (!(error instanceof SyntaxError) || attempt === 9) throw error;
-      await setTimeout(25);
+      const remaining = deadline - performance.now();
+      if (!(error instanceof SyntaxError) || remaining <= 0) throw error;
+      await setTimeout(Math.min(delay, remaining));
+      delay *= 2;
     }
   }
 }
