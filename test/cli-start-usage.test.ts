@@ -46,6 +46,16 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ["CLOVING_PRIVATE_TEXTS", /JSON list of texts .*home folder.*case/],
 ];
 
+await test("CLV-131 start help describes the persistent failure limit and explicit queue recovery", () => {
+  const help = String(commandUsage["start"]);
+  assert.match(help, /Usage: cloving start .*\[--reset-queue\]/);
+  assert.match(help, /three.*runs in a row/);
+  assert.match(help, /successful handoff resets the count/);
+  assert.match(help, /ordinary restarts preserve the count/);
+  assert.match(help, /Stop the service.*--reset-queue.*clear.*failure/);
+  assert.equal(help.includes("unsuccessful run until restart"), false);
+});
+
 await test("CLV-061 the help text of the start command has one line for each setting that the start program reads, with the form and the default of the setting", () => {
   const lines = String(commandUsage["start"]).split("\n");
   const settingLines = (name: string): readonly string[] =>

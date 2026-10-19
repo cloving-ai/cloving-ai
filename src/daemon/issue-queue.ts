@@ -10,6 +10,7 @@ interface QueueSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly intervalMilliseconds: number;
+  readonly resetQueue?: boolean;
 }
 
 interface QueueJournal {
@@ -130,7 +131,7 @@ async function completed(
     if (!handedOff(run)) {
       const outcome = record(run["outcome"]);
       process.stderr.write(
-        `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}: ${runIdentity(commandId)}; continuing\n`,
+        `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}${outcome?.["issueUpdate"] === "failed" ? "; issueUpdate: failed" : ""}: ${runIdentity(commandId)}; continuing\n`,
       );
     }
   }
@@ -251,6 +252,10 @@ async function cycle(
   signal: AbortSignal,
 ): Promise<void> {
   const pending = await journal(settings.directory);
+  if (settings.resetQueue === true) {
+    pending.failures.length = 0;
+    await pending.save();
+  }
   const holding = updateHold(settings.directory);
   await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);

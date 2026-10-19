@@ -49,23 +49,36 @@ if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
   );
 }
 
-async function started(
-  statuses: readonly number[],
-  options: { readonly signal?: string } = {},
-): Promise<{
+interface StartOptions {
+  readonly signal?: string;
+  readonly arguments?: readonly string[];
+}
+
+interface StartObservation {
   readonly status: number | null;
   readonly launches: readonly unknown[];
   readonly expected: {
     readonly arguments: readonly string[];
     readonly marker: string;
   };
-}> {
+}
+
+async function started(
+  statuses: readonly number[],
+  options: StartOptions = {},
+): Promise<StartObservation> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "cloving-start-")));
   try {
     await startTree(root, statuses);
     const result = spawnSync(
       process.execPath,
-      [resolve("src/cli.ts"), "start", "--repository", "chosen"],
+      [
+        resolve("src/cli.ts"),
+        "start",
+        "--repository",
+        "chosen",
+        ...(options.arguments ?? []),
+      ],
       {
         cwd: root,
         env: {
@@ -97,6 +110,7 @@ async function started(
           `CLOVING_RUNTIME_DIR=${join(root, "run")} cloving`,
           "--repository",
           "chosen",
+          ...(options.arguments ?? []),
         ],
         marker: "preserved",
       },
@@ -112,6 +126,19 @@ await test("CLV-085 start restarts exit 75 with the same arguments and environme
   assert.equal(result.launches.length, 2);
   assert.deepEqual(result.launches[0], result.launches[1]);
   assert.deepEqual(result.launches[0], result.expected);
+});
+
+await test("CLV-131 start forwards an explicit queue reset only to the first launch", async () => {
+  const result = await started([75, 0], { arguments: ["--reset-queue"] });
+  assert.equal(result.status, 0);
+  assert.equal(result.launches.length, 2);
+  assert.deepEqual(result.launches[0], result.expected);
+  assert.deepEqual(result.launches[1], {
+    ...result.expected,
+    arguments: result.expected.arguments.filter(
+      (argument) => argument !== "--reset-queue",
+    ),
+  });
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

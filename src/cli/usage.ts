@@ -52,19 +52,23 @@ Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
 the events, the work of the Claude worker and each pending decision.
 The default port is 3663. The page is read only. Stop it with Control-C.
 `,
-  start: `Usage: cloving start [--repository <directory>]
+  start: `Usage: cloving start [--repository <directory>] [--reset-queue]
 
 Starts the Cloving service for one git repository, with the workflow host,
 the Claude worker and the watch page. The default repository is the current
 directory. This command works in a development checkout of Cloving.
 Stop it with Control-C.
 
+The queue continues after unsuccessful runs and stops after three runs in a row
+without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.
+Stop the service, inspect the failures and reconcile affected issues, then start with --reset-queue and the same queue settings to clear the failure streak once. Tracked commands are preserved.
+
 The command reads these settings from the environment:
   CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs and failed runs send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. The setting has no default.
-  CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between develop-issue queue checks; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND. Unset means no queue. The queue stops after a failed, cancelled or unsuccessful run until restart; manual develop-issue submissions are refused with workflow-active while an issue run is active.
+  CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between develop-issue queue checks; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND. Unset means no queue. The queue stops after three runs in a row without a successful handoff; manual develop-issue submissions are refused with workflow-active while an issue run is active.
   CLOVING_SELF_UPDATE_SECONDS      A whole number from 30 to 3600 seconds between checks of the own checkout; unset means no update. An update stops the daemon and restarts with new code. A change of package-lock.json needs the operator to update and install by hand.
   CLOVING_ANALYSIS_TOKEN_COMMAND   A JSON list of a program and its nonempty string arguments, run without a shell just before analysis. It has limits of 10 seconds and 4096 combined stdout/stderr bytes; stdout must be one printable ASCII token without spaces, at most 512 bytes after one final line break. Only analysis receives CLAUDE_CODE_OAUTH_TOKEN; API keys are excluded. There is no default.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.

@@ -15,6 +15,69 @@ const finish = async (ticket, next, outcome) => {
 };
 `;
 
+await test("CLV-131 explicit reset resumes a stopped queue while ordinary restart preserves its failures", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const stopped = await consumer.run(`${sequence}
+const prior = ["run-first", "run-second", "run-third"];
+writeFileSync("queue-commands.json", JSON.stringify({ commands: [], failures: prior }));
+writeFileSync("ready", "CLV-900");
+const daemon = await launched();
+try {
+  await delay(200);
+  assert.deepEqual(failures(), prior);
+  assert.equal((await runs()).length, 0);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(stopped.status, 0, stopped.stderr);
+    assert.match(stopped.stderr, /Queue stopped: 3 runs in a row/);
+    const resumed = await consumer.run(`${sequence}
+const daemon = await launched({ resetQueue: true });
+try {
+  await until(() => existsSync("input-CLV-900"));
+  assert.deepEqual(failures(), []);
+  const first = await finish("CLV-900", "CLV-901", "blocked");
+  assert.deepEqual(failures(), [first]);
+  assert.equal((await runs()).length, 2);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.stderr.includes("Queue stopped:"), false);
+  }));
+
+await test("CLV-131 resetting the failure streak preserves and observes a tracked run after a crash", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const first = await consumer.runUntil(
+      "tracked",
+      `${queuePrelude}
+await launched({ queueMilliseconds: undefined });
+await submitted("tracked-command");
+await until(() => existsSync("input-CLV-900"));
+writeFileSync("queue-commands.json", JSON.stringify({
+  commands: ["tracked-command"], failures: ["run-first", "run-second", "run-third"]
+}));
+await halt("tracked");
+`,
+    );
+    assert.deepEqual(first.lines, [{ boundary: "tracked" }], first.stderr);
+    const second = await consumer.run(`${sequence}
+const daemon = await launched({ resetQueue: true });
+try {
+  await until(() => failures().length === 0);
+  assert.deepEqual(commands(), ["tracked-command"]);
+  assert.equal((await runs()).length, 1);
+  const runId = await finish("CLV-900", "CLV-901", "blocked");
+  assert.equal(runId, runIdentity("tracked-command"));
+  assert.deepEqual(failures(), [runId]);
+  assert.equal((await runs()).length, 2);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(second.stderr.includes("Queue stopped:"), false);
+  }));
+
 await test("CLV-131 handoff resets two blocked runs before two more blocked runs", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${sequence}
@@ -39,6 +102,32 @@ process.exit(0);
       result.stderr.split("\n").filter((line) => line.startsWith("Queue "))
         .length,
       4,
+    );
+  }));
+
+await test("CLV-131 a failed issue update reports its reason while continuing and counts against the limit", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${sequence}
+writeFileSync("ready", "CLV-900");
+const daemon = await launched();
+try {
+  const runId = await finish("CLV-900", "CLV-901", JSON.stringify({
+    kind: "handoff_requested", ticketStatus: "partial", issueUpdate: "failed"
+  }));
+  assert.deepEqual(failures(), [runId]);
+  assert.equal((await runs()).length, 2);
+  print({ runId });
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+    const value = result.lines[0];
+    assert.ok(value && typeof value === "object" && "runId" in value);
+    assert.deepEqual(
+      result.stderr.split("\n").filter((line) => line.startsWith("Queue ")),
+      [
+        `Queue run ended handoff_requested; issueUpdate: failed: ${String(value.runId)}; continuing`,
+      ],
     );
   }));
 

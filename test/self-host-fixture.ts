@@ -45,6 +45,7 @@ export interface Scene {
   readonly runtimeDirectory: string;
   readonly start: (
     environment?: Readonly<NodeJS.ProcessEnv>,
+    argumentsList?: readonly string[],
   ) => Promise<ChildProcess>;
   readonly refused: (
     bound?: string,
@@ -98,8 +99,13 @@ export async function scene(script = fakeClaude): Promise<Scene> {
     repository,
     origin,
     runtimeDirectory: join(directory, "run"),
-    start: async (environment = {}) =>
-      (await launched({ ...settings, environment }, "Cloving runs")).child,
+    start: async (environment = {}, argumentsList = []) =>
+      (
+        await launched(
+          { ...settings, environment, argumentsList },
+          "Cloving runs",
+        )
+      ).child,
     refused: (bound = "8", environment = {}) =>
       refused({ ...settings, bound, environment }),
   };
@@ -134,26 +140,31 @@ async function launched(
     readonly board: readonly string[];
     readonly bound?: string;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
+    readonly argumentsList?: readonly string[];
   },
   expected: string,
 ): Promise<Launch> {
-  const child = spawn(process.execPath, [entry, "start"], {
-    cwd: settings.repository,
-    env: {
-      ...process.env,
-      CLOVING_RUNTIME_DIR: join(settings.directory, "run"),
-      CLOVING_WORKER: undefined,
-      CLOVING_CODEX_COMMAND: undefined,
-      CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
-      CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
-      CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
-      CLOVING_HOST_BOUND: settings.bound ?? "8",
-      CLOVING_WATCH_PORT: "off",
-      ...settings.environment,
+  const child = spawn(
+    process.execPath,
+    [entry, "start", ...(settings.argumentsList ?? [])],
+    {
+      cwd: settings.repository,
+      env: {
+        ...process.env,
+        CLOVING_RUNTIME_DIR: join(settings.directory, "run"),
+        CLOVING_WORKER: undefined,
+        CLOVING_CODEX_COMMAND: undefined,
+        CLOVING_CLAUDE_COMMAND: JSON.stringify(settings.command),
+        CLOVING_TICKET_COMMAND: JSON.stringify(settings.board),
+        CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
+        CLOVING_HOST_BOUND: settings.bound ?? "8",
+        CLOVING_WATCH_PORT: "off",
+        ...settings.environment,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
+  );
   children.push(child);
   const output = { text: "" };
   for (const stream of [child.stdout, child.stderr])

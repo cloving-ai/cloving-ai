@@ -10,7 +10,8 @@ export async function finish(input) {
   writeFileSync(input.repository + "/input-" + input.ticketId, JSON.stringify(input));
   const file = input.repository + "/outcome-" + input.ticketId;
   while (!existsSync(file)) await delay(20);
-  return { kind: readFileSync(file, "utf8"), reason: "fixture result" };
+  const outcome = readFileSync(file, "utf8");
+  return outcome.startsWith("{") ? JSON.parse(outcome) : { kind: outcome, reason: "fixture result" };
 }
 export async function develop(input) {
   "use workflow";
