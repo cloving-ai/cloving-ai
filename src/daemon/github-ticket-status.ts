@@ -75,18 +75,46 @@ function expandTabs(line: string): string {
   return expanded;
 }
 
-function listContent(line: string, indents: number[]): string {
+function thematicBreak(line: string): boolean {
+  return /^ {0,3}([-*_])(?: *\1){2,} *$/.test(line);
+}
+
+function paragraphContent(
+  line: string,
+  previousIndent: number | undefined,
+): boolean {
+  return (
+    line !== "" &&
+    (previousIndent !== undefined || !/^ {4}/.test(line)) &&
+    !/^ {0,3}(?:#{1,6}(?: |$)|(?:=+|-+) *$)/.test(line) &&
+    !thematicBreak(line)
+  );
+}
+
+function listContent(
+  line: string,
+  context: {
+    readonly indents: number[];
+    readonly paragraphIndent: number | undefined;
+  },
+): string {
+  const { indents, paragraphIndent } = context;
   const indentation = line.length - line.trimStart().length;
   while (line !== "" && (indents.at(-1) ?? 0) > indentation) indents.pop();
   let offset = indents.at(-1) ?? 0;
   let content = line.slice(offset);
   let marker;
   while (
-    !/^ {0,3}([-*_])(?: *\1){2,} *$/.test(content) &&
+    !thematicBreak(content) &&
     (marker = /^ {0,3}(?:[-+*]|\d{1,9}[.)])( {1,4}(?=\S)| |$)/.exec(
       content,
     )) !== null
   ) {
+    if (
+      offset === paragraphIndent &&
+      !/^ {0,3}(?:[-+*]|0*1[.)]) +\S/.test(content)
+    )
+      break;
     offset += marker[0].length + (marker[1] === "" ? 1 : 0);
     indents.push(offset);
     content = content.slice(marker[0].length);
@@ -103,6 +131,7 @@ function markdownHeadings(body: string): readonly {
   const indents: number[] = [];
   let fence: string | undefined;
   let fenceIndent = 0;
+  let paragraphIndent: number | undefined;
   for (const match of body.matchAll(/[^\n]*(?:\n|$)/g)) {
     const source = expandTabs(match[0].trimEnd());
     if (fence !== undefined) {
@@ -114,10 +143,13 @@ function markdownHeadings(body: string): readonly {
         fence = undefined;
       continue;
     }
-    const line = listContent(source, indents);
+    const line = listContent(source, { indents, paragraphIndent });
     fence = openingFence(line);
     fenceIndent = indents.at(-1) ?? 0;
+    const paragraph = paragraphContent(line, paragraphIndent);
+    paragraphIndent = undefined;
     if (fence !== undefined) continue;
+    if (paragraph) paragraphIndent = fenceIndent;
     if (indents.length === 0 && /^ {0,3}#{1,2} /.test(line))
       headings.push({
         index: match.index,

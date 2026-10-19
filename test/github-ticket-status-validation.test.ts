@@ -203,7 +203,15 @@ for (const method of ["partial-issue", "close-issue"])
         "1. ```text\n   example\n   ```",
         "123) ```text\n     ## Cloving status\n     ```",
         "- Parent\n  - ```text\n    ## Cloving status\n    ```",
-        "1. Parent\n   2. ```text\n      example\n      ```",
+        "1. Parent\n\n   2. ```text\n      example\n      ```",
+        "Notes:\n1. ```text\n   example\n   ```",
+        "Notes:\n\n2. ```text\n   example\n   ```",
+        "## Notes\n2. ```text\n   example\n   ```",
+        "Notes:\n---\n2. ```text\n   example\n   ```",
+        "Notes:\n===\n2. ```text\n   example\n   ```",
+        "* * *\n2. ```text\n   example\n   ```",
+        "```text\nexample\n```\n2. ```text\n   example\n   ```",
+        "    Indented code.\n2. ```text\n   example\n   ```",
         "- Example\n\n  ```text\n  ## Cloving status\n  ```",
         "-\t```text\n\texample\n\t```",
         "-\n\n  ```text\n  example\n  ```",
@@ -252,6 +260,38 @@ for (const method of ["partial-issue", "close-issue"])
           `${body}\n## Cloving status\n${update}\n`,
         );
       }
+    }));
+
+for (const method of ["partial-issue", "close-issue"])
+  await test(`CLV-123 ${method} preserves numbered paragraph continuations and their fences`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker(settings);
+      for (const marker of ["2.", "2)", "123.", "0."])
+        for (const prefix of ["", "- "]) {
+          const indent = " ".repeat(prefix.length);
+          const body = [
+            `${prefix}Notes:`,
+            `${indent}${marker} example`,
+            `${indent}   \`\`\`text`,
+            `${indent}code`,
+            `${indent}\`\`\``,
+            "",
+            "## Requirements",
+            "Keep this.",
+            "",
+          ].join("\n");
+          scene.plan({ scores: [], issues: [{ ...original, body }] });
+          const report = await scene.perform(worker, { method, payload });
+          assert.equal(report.outcome, "completed", JSON.stringify(report));
+          const update =
+            method === "partial-issue"
+              ? "- Pull request #7: partial. Remaining: Finish tests."
+              : "Completed in pull request #7.";
+          assert.equal(
+            scene.state().issues[0]?.["body"],
+            `${body}\n## Cloving status\n${update}\n`,
+          );
+        }
     }));
 
 for (const method of ["partial-issue", "close-issue"])
