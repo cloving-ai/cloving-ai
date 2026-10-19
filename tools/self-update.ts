@@ -82,11 +82,41 @@ async function candidate(
   if ((await git(["symbolic-ref", "HEAD"])).trim() !== branch) return;
   const head = (await git(["rev-parse", "HEAD"])).trim();
   const target = (await git(["rev-parse", remoteBranch])).trim();
-  if (head === target) return;
+  if (head === target) {
+    await rm(join(settings.directory, "pending-self-update"), { force: true });
+    return;
+  }
   await git(["merge-base", "--is-ancestor", head, target]);
   if (!(await clean(git))) return;
-  if (await settings.active()) return;
+  if (await settings.active()) {
+    await markPending(settings.directory);
+    return;
+  }
   return { branch, head, target };
+}
+
+async function markPending(directory: string): Promise<void> {
+  await mkdir(directory, { recursive: true });
+  const temporary = join(directory, `pending-self-update-${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, `${String(Date.now())}\n`, {
+      flag: "wx",
+      mode: 0o600,
+      flush: true,
+    });
+    await link(temporary, join(directory, "pending-self-update")).catch(
+      (error: unknown) => {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "EEXIST"
+        )
+          throw error;
+      },
+    );
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 async function failedTargets(directory: string): Promise<readonly string[]> {
@@ -120,6 +150,7 @@ async function updated(
       "--no-overwrite-ignore",
       update.target,
     ]);
+    await rm(join(settings.directory, "pending-self-update"), { force: true });
   } catch (error) {
     settings.error(
       `Self-update failed: ${String(error).replace(/[\r\n]+/g, " ")}\n`,
@@ -164,6 +195,14 @@ export function selfUpdater(settings: SelfUpdateSettings): {
     },
   };
 }
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  appendFile,
+  link,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";

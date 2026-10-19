@@ -4,7 +4,7 @@ import { extname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { selfUpdater } from "./self-update.ts";
-import { workerTurnActive } from "./self-update-host.ts";
+import { selfUpdateActive } from "./self-update-host.ts";
 
 export interface HostProcesses {
   readonly project: string;
@@ -90,7 +90,11 @@ async function polled(
     git: updatingGit(settings, lifecycle.stopping),
     active: async () =>
       lifecycle.stopping.aborted ||
-      (await workerTurnActive(settings.directory)),
+      (await selfUpdateActive({
+        directory: settings.directory,
+        runtimeDirectory: settings.runtime,
+        signal: lifecycle.stopping,
+      })),
     stop: async () => {
       if (lifecycle.stopping.aborted) throw new Error("self-update-stopped");
       await lifecycle.stop();
