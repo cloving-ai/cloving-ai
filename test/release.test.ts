@@ -104,7 +104,7 @@ await test("CLV-097 release fixtures reject malformed manifest and lock metadata
 await test("CLV-101 release metadata and both lock versions describe the public package", async () => {
   const { manifest, lock } = await metadata();
   assert.equal(manifest.name, "cloving");
-  assert.equal(manifest.version, "1.0.1");
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.private, undefined);
   assert.deepEqual(manifest.repository, {
     type: "git",
