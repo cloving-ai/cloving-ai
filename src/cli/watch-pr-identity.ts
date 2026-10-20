@@ -15,9 +15,21 @@ export type PrFailure =
   | "rate-limit"
   | "response"
   | "timeout";
-export type PrObservation =
+export type PrReadResult =
   | { readonly status: "merged" | "unmerged" }
-  | { readonly status: "unavailable"; readonly failure: PrFailure };
+  | {
+      readonly status: "unavailable";
+      readonly failure: PrFailure;
+      readonly retryAt?: number;
+    };
+
+export type PrObservation = (PrReadResult | { readonly status: "pending" }) & {
+  readonly retryAt?: number;
+  readonly lastSuccess?: {
+    readonly status: "merged" | "unmerged";
+    readonly readAt: number;
+  };
+};
 
 function responseNames(fields: Fields): readonly unknown[] {
   const repository = record(record(fields["base"])?.["repo"]) ?? {};
@@ -30,10 +42,7 @@ function responseNames(fields: Fields): readonly unknown[] {
   ];
 }
 
-export function prResponse(
-  identity: PrIdentity,
-  value: unknown,
-): PrObservation {
+export function prResponse(identity: PrIdentity, value: unknown): PrReadResult {
   const fields = record(value) ?? {};
   const expected = `https://${identity.host}/${identity.owner}/${identity.repository}`;
   const strings = responseNames(fields);

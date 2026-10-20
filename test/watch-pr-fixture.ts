@@ -42,7 +42,10 @@ export function prOutput(merged: unknown, number = 7): WatchCommandOutput {
       JSON.stringify(prBody(merged, number)),
   };
 }
-export function observing(clock = fakePrClock()) {
+export function observing(
+  clock = fakePrClock(),
+  repository = prRepositoryFixture,
+) {
   const attempts: {
     request: WatchCommandRequest;
     started: number;
@@ -51,7 +54,7 @@ export function observing(clock = fakePrClock()) {
   }[] = [];
   const observer = prObserver({
     clock,
-    repository: prRepositoryFixture,
+    repository,
     directory: "fixture-repository",
     command: ["fake-gh", "fixed-prefix"],
     execute: (request) =>

@@ -2,7 +2,7 @@ import {
   prResponse,
   type PrFailure,
   type PrIdentity,
-  type PrObservation,
+  type PrReadResult,
 } from "./watch-pr-identity.ts";
 
 export interface WatchCommandOutput {
@@ -42,19 +42,59 @@ function commandFailure(output: WatchCommandOutput): PrFailure {
   if (
     status === 429 ||
     /rate limit/i.test(output.stderr) ||
-    /x-ratelimit-remaining: 0\s*$/im.test(output.stdout)
+    headerValues(output.stdout, "x-ratelimit-remaining").includes("0")
   )
     return "rate-limit";
   if (output.status === 4 || [401, 403, 404].includes(status)) return "access";
   return "command";
 }
 
+function headerValues(stdout: string, name: string): readonly string[] {
+  if (!/^HTTP\/[^ ]+ \d{3}/.test(stdout)) return [];
+  const headers = stdout.split(/\r?\n\r?\n/, 1)[0] ?? "";
+  return headers.split(/\r?\n/).flatMap((line) => {
+    const separator = line.indexOf(":");
+    return line.slice(0, separator).toLowerCase() === name
+      ? [line.slice(separator + 1).trim()]
+      : [];
+  });
+}
+
+function millisecondsOf(value: string): readonly number[] {
+  if (!/^\d+$/.test(value)) return [];
+  const milliseconds = Number(value) * 1000;
+  return Number.isSafeInteger(milliseconds) ? [milliseconds] : [];
+}
+
+function retryDeadline(output: WatchCommandOutput, now: number): number {
+  const delays = headerValues(output.stdout, "retry-after")
+    .flatMap(millisecondsOf)
+    .map((delay) => now + delay)
+    .filter(Number.isSafeInteger);
+  const resets = headerValues(output.stdout, "x-ratelimit-remaining").includes(
+    "0",
+  )
+    ? headerValues(output.stdout, "x-ratelimit-reset").flatMap(millisecondsOf)
+    : [];
+  const deadlines = [...delays, ...resets];
+  return deadlines.length === 0 ? now + 60000 : Math.max(now, ...deadlines);
+}
+
 export function prCommandResult(
   identity: PrIdentity,
-  output: WatchCommandOutput,
-): PrObservation {
-  if (output.status !== 0 || output.errorCode !== null)
-    return { status: "unavailable", failure: commandFailure(output) };
+  reply: { readonly output: WatchCommandOutput; readonly now: number },
+): PrReadResult {
+  const { output, now } = reply;
+  if (output.status !== 0 || output.errorCode !== null) {
+    const failure = commandFailure(output);
+    return {
+      status: "unavailable",
+      failure,
+      ...(failure === "rate-limit"
+        ? { retryAt: retryDeadline(output, now) }
+        : {}),
+    };
+  }
   const envelope =
     /^HTTP\/[^ ]+ 200[^\n]*\r?\n[\s\S]*?\r?\n\r?\n([\s\S]*)$/.exec(
       output.stdout,

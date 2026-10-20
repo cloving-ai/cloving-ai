@@ -82,7 +82,9 @@ await test("CLV-093 CLI terminates a held GitHub command after five seconds", as
     async (watch, runtime) => {
       await recordedPrJournal(runtime);
       const first = await watchData(watch.address);
-      assert.equal(stoppedPrCard(first)["pullRequestObservation"], null);
+      assert.deepEqual(stoppedPrCard(first)["pullRequestObservation"], {
+        status: "pending",
+      });
       await ghRequest(runtime);
       const pid = Number(
         await readFile(join(dirname(runtime), "gh-pid"), "utf8"),

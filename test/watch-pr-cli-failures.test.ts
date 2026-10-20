@@ -43,10 +43,19 @@ for (const [failure, output] of [
         );
         const model = await watchData(watch.address);
         assert.equal(model["service"], "up");
-        assert.deepEqual(stoppedPrCard(model)["pullRequestObservation"], {
+        const observation = fields(
+          stoppedPrCard(model)["pullRequestObservation"],
+        );
+        assert.equal(observation["status"], "unavailable");
+        assert.equal(observation["failure"], failure);
+        const retryAt = observation["retryAt"];
+        assert.deepEqual(observation, {
           status: "unavailable",
           failure,
+          ...(failure === "rate-limit" ? { retryAt } : {}),
         });
+        assert.equal(typeof (retryAt ?? 0), "number");
+        assert.ok(failure !== "rate-limit" || Number(retryAt) > Date.now());
         assert.equal(fields(items(model["runs"])[0])["outcome"], "blocked");
         assert.doesNotMatch(JSON.stringify(model), /raw |secret/);
       },
