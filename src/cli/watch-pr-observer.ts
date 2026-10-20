@@ -13,6 +13,7 @@ import {
 } from "./watch-pr-identity.ts";
 
 export interface PrObserver {
+  readonly repository?: PrRepository | null;
   readonly observe: (pullRequest: WatchPullRequest) => PrObservation | null;
   readonly close: () => void;
 }
@@ -206,6 +207,7 @@ export function prObserver(settings: PrObserverSettings): PrObserver {
     return currentObservation(state, entry);
   };
   return {
+    repository: settings.repository,
     observe,
     close: () => {
       state.closed = true;

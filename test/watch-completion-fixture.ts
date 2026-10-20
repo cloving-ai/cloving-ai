@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
 import { fields, items } from "./service-fixture.ts";
-import { watchReplies } from "./watch-service-fixture.ts";
+import { watchReplies, withWatchService } from "./watch-service-fixture.ts";
+import { configuredPrWatch } from "./watch-pr-cli-fixture.ts";
+import { mergedJournal, writeMergeRecords } from "./watch-merge-fixture.ts";
+import type { Watching } from "./watch-fixture.ts";
 
 export const attentionMark = { text: "Needs attention", laterRunId: null };
 export const laterMark = {
-  text: "Done in a later run",
+  text: "Ticket completed by later run",
   laterRunId: "zz-later",
 };
 
@@ -17,6 +20,7 @@ export function completionReplies(
     {
       runId: "a-stopped",
       ticketId: "DEMO-1",
+      issueIdentity: { owner: "fixture", repository: "demo", number: 7 },
       workflowId: "develop-issue",
       state: "completed",
       outcome: { kind: "blocked" },
@@ -26,6 +30,7 @@ export function completionReplies(
     ...Array.from({ length: 50 }, (_, index) => ({
       runId: `done-${String(index).padStart(2, "0")}`,
       ticketId: "OTHER",
+      issueIdentity: { owner: "fixture", repository: "demo", number: 8 },
       workflowId: "develop-issue",
       state: "completed",
       outcome: { kind: "handoff_requested" },
@@ -35,6 +40,7 @@ export function completionReplies(
     {
       runId: "zz-later",
       ticketId: "DEMO-1",
+      issueIdentity: { owner: "fixture", repository: "demo", number: 7 },
       workflowId: "develop-issue",
       state: "completed",
       outcome: { kind: "handoff_requested" },
@@ -116,6 +122,7 @@ export function terminalDetailReplies(times: {
     runId: `changing-${String(index).padStart(2, "0")}`,
     state: "running",
     ticketId: "OTHER",
+    issueIdentity: { owner: "fixture", repository: "demo", number: 8 },
   }));
   const replies = watchReplies({
     runs: [{ ...stopped, latestAt: times.now }, ...changing, later],
@@ -166,4 +173,20 @@ export function interruptedCompletionReplies(failure: {
     return reply;
   };
   return { ...replies, answer };
+}
+
+export function withCompletionService(
+  answer: (request: ServiceRequest) => Reply,
+  body: (watch: Watching, runtime: string) => Promise<void>,
+): Promise<void> {
+  return withWatchService(
+    {
+      answer,
+      configure: async (runtime) => {
+        await writeMergeRecords(runtime, mergedJournal("zz-later"));
+        return configuredPrWatch(runtime);
+      },
+    },
+    body,
+  );
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mergeRepository } from "./watch-merge-fixture.ts";
 import { watchReader } from "../src/cli/watch-reads.ts";
 import { fields, items } from "./service-fixture.ts";
 import {
@@ -8,6 +9,7 @@ import {
   laterMark,
   stoppedMark,
   terminalDetailReplies,
+  withCompletionService,
 } from "./watch-completion-fixture.ts";
 import {
   watchData,
@@ -38,7 +40,7 @@ await test("CLV-091 older completion candidates are not read without a visible b
     ],
   ]) {
     const { answer, requests } = watchReplies({ runs: [...shown, older] });
-    await withWatchService(answer, async (watch) => {
+    await withCompletionService(answer, async (watch) => {
       await watchData(watch.address);
       assert.ok(
         !requests.some(
@@ -58,8 +60,8 @@ await test("CLV-091 older candidates retain compact creation facts and selected 
     payload: { private: "unneeded event content" },
   }));
   const { answer, requests } = watchReplies({ runs, events });
-  await withWatchService(answer, async (_watch, runtimeDirectory) => {
-    const reader = watchReader(runtimeDirectory);
+  await withCompletionService(answer, async (_watch, runtimeDirectory) => {
+    const reader = watchReader(runtimeDirectory, mergeRepository);
     const read = await reader.read(new Date().toISOString());
     const candidate = read.completionCandidates[0];
     assert.ok(candidate);
@@ -99,19 +101,19 @@ await test("CLV-091 older runs without a matching successful ticket need no even
   const later = runs.at(-1);
   assert.ok(later);
   const unrelated = [
-    { ticketId: "OTHER" },
+    { issueIdentity: { owner: "fixture", repository: "demo", number: 8 } },
     { outcome: { kind: "blocked" } },
-    { ticketId: "" },
-    { ticketId: null },
-    { ticketId: 12 },
+    { issueIdentity: {} },
+    { issueIdentity: null },
+    { issueIdentity: { owner: "other", repository: "demo", number: 7 } },
   ].map((changed, index) => ({
     ...later,
     ...changed,
     runId: `zz-later-${String(index)}`,
   }));
   const { answer, requests } = watchReplies({ runs: [...runs, ...unrelated] });
-  await withWatchService(answer, async (_watch, runtimeDirectory) => {
-    const reader = watchReader(runtimeDirectory);
+  await withCompletionService(answer, async (_watch, runtimeDirectory) => {
+    const reader = watchReader(runtimeDirectory, mergeRepository);
     await reader.read(new Date().toISOString());
     for (const run of unrelated)
       assert.ok(
@@ -127,8 +129,8 @@ await test("CLV-091 older runs without a matching successful ticket need no even
 await test("CLV-091 a complete older search without creation evidence caches absence", async () => {
   const { runs } = completionReplies();
   const { answer, requests } = watchReplies({ runs });
-  await withWatchService(answer, async (_watch, runtimeDirectory) => {
-    const reader = watchReader(runtimeDirectory);
+  await withCompletionService(answer, async (_watch, runtimeDirectory) => {
+    const reader = watchReader(runtimeDirectory, mergeRepository);
     const first = await reader.read(new Date().toISOString());
     assert.deepEqual(first.completionCandidates[0]?.events, []);
     const reads = requests.filter(
@@ -150,8 +152,10 @@ await test("CLV-091 terminal detail changes outside retention cannot hide visibl
     "invalid",
   ]) {
     const { answer } = terminalDetailReplies({ now, latestAt });
-    await withWatchService(answer, async (_watch, runtimeDirectory) => {
-      const read = await watchReader(runtimeDirectory).read(now);
+    await withCompletionService(answer, async (_watch, runtimeDirectory) => {
+      const read = await watchReader(runtimeDirectory, mergeRepository).read(
+        now,
+      );
       assert.equal(read.completionCandidates[0]?.status.runId, "zz-later");
     });
   }
@@ -167,7 +171,7 @@ await test("CLV-091 watch searches later status pages and paginated evidence out
     null,
   ]) {
     const { answer, requests } = completionReplies(latestAt);
-    await withWatchService(answer, async (watch) => {
+    await withCompletionService(answer, async (watch) => {
       const model = await watchData(watch.address);
       assert.deepEqual(stoppedMark(model), laterMark);
       const board = fields(items(model["workflows"])[0]);
@@ -214,7 +218,7 @@ await test("CLV-091 each board read recomputes completion when only the later ru
     outcome: null,
     latestSequence: 1000,
   };
-  await withWatchService(answer, async (watch) => {
+  await withCompletionService(answer, async (watch) => {
     assert.deepEqual(
       stoppedMark(await watchData(watch.address)),
       attentionMark,

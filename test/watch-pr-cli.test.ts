@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { until } from "./claude-worker-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
+import { mergedJournal, writeMergeRecords } from "./watch-merge-fixture.ts";
 import {
   configuredPrWatch,
   ghRequest,
@@ -17,6 +18,31 @@ import {
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test("CLV-129 configured local origin validates a local merge before any GitHub read", async () => {
+  const replies = watchReplies({ runs: [stoppedPrRun()] });
+  await withWatchService(
+    {
+      answer: replies.answer,
+      configure: async (runtime) => {
+        await writeMergeRecords(runtime, mergedJournal("stopped"));
+        return configuredPrWatch(runtime);
+      },
+    },
+    async (watch, runtime) => {
+      const model = await watchData(watch.address);
+      assert.deepEqual(stoppedPrCard(model)["completionMark"], {
+        text: "PR merged · #7",
+        laterRunId: null,
+      });
+      assert.equal(stoppedPrCard(model)["pullRequestObservation"], null);
+      assert.equal(fields(items(model["runs"])[0])["outcome"], "blocked");
+      await assert.rejects(readFile(join(dirname(runtime), "gh-request")), {
+        code: "ENOENT",
+      });
+    },
+  );
+});
 
 await test("CLV-093 CLI board returns while configured GitHub waits and a later load sees its merge without local writes or events", async () => {
   const stopped = stoppedPrRun();

@@ -40,7 +40,7 @@ await test("CLV-093 observations decorate retained unresolved cards without chan
     laterRunId: null,
   });
   assert.deepEqual(cards.find((card) => card.runId === "A")?.completionMark, {
-    text: "Done in a later run",
+    text: "Ticket completed by later run",
     laterRunId: "B",
   });
   assert.deepEqual(result.runs, model.runs);

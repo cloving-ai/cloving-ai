@@ -14,7 +14,7 @@ function scenario(): { readonly stopped: WatchRun; readonly later: WatchRun } {
 }
 
 const attention = { text: "Needs attention", laterRunId: null };
-const done = { text: "Done in a later run", laterRunId: "B" };
+const done = { text: "Ticket completed by later run", laterRunId: "B" };
 
 await test("CLV-091 the rule only marks completed blocked issue runs", () => {
   const { stopped, later } = scenario();
@@ -31,14 +31,26 @@ await test("CLV-091 the rule only marks completed blocked issue runs", () => {
   assert.deepEqual(completionMarkOf(stopped, [later]), done);
 });
 
-await test("CLV-091 only a different completed issue run with the exact ticket ID and handoff outcome qualifies", () => {
+await test("CLV-129 a successor needs established issue identity and its own merge proof", () => {
   const { stopped, later } = scenario();
+  const identity = {
+    host: "github.example",
+    owner: "fixture",
+    repository: "demo",
+    number: 7,
+  };
   const rejected: Partial<WatchRun>[] = [
     { issueUpdate: "failed" },
+    { ticketStatus: "partial" },
     { runId: stopped.runId },
-    ...["DEMO-2", "demo-1", " DEMO-1", "DEMO-1 ", "", null].map((ticketId) => ({
-      ticketId,
-    })),
+    { mergeProof: null },
+    { issueIdentity: null },
+    ...[
+      { host: "other.example" },
+      { owner: "other" },
+      { repository: "other" },
+      { number: 8 },
+    ].map((changes) => ({ issueIdentity: { ...identity, ...changes } })),
     ...["develop-ticket", "develop-prompt"].map((workflowId) => ({
       workflowId,
     })),
@@ -55,17 +67,13 @@ await test("CLV-091 only a different completed issue run with the exact ticket I
       attention,
       JSON.stringify(changes),
     );
-  for (const ticketId of [null, ""])
+  for (const issueIdentity of [null])
     assert.deepEqual(
-      completionMarkOf({ ...stopped, ticketId }, [{ ...later, ticketId }]),
+      completionMarkOf({ ...stopped, issueIdentity }, [later]),
       attention,
     );
-  assert.deepEqual(
-    completionMarkOf({ ...stopped, ticketId: " " }, [
-      { ...later, ticketId: " " },
-    ]),
-    done,
-  );
+  for (const ticketId of [null, "", "different", " DEMO-1 "])
+    assert.deepEqual(completionMarkOf({ ...stopped, ticketId }, [later]), done);
 });
 
 await test("CLV-091 event evidence must establish creation strictly after stopped completion", () => {
@@ -178,7 +186,7 @@ await test("CLV-091 the pure rule chooses earliest creation then ascending run I
   const original = JSON.stringify(candidates);
   for (const runs of [candidates, candidates.toReversed()])
     assert.deepEqual(completionMarkOf(frozen(stopped), runs), {
-      text: "Done in a later run",
+      text: "Ticket completed by later run",
       laterRunId: "a",
     });
   assert.equal(JSON.stringify(candidates), original);

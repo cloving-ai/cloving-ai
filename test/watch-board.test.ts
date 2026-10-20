@@ -10,14 +10,14 @@ import {
   workflowIds,
 } from "./watch-board-fixture.ts";
 
-await test("CLV-091 blocked issue cards mark completion in a later local run without merge evidence", () => {
+await test("CLV-129 blocked issue cards require a later local merge and preserve placement", () => {
   const model = completionScenario();
   const board = model.workflows[0];
   const stopped = board?.columns.find((column) => column.name === "Stopped");
   assert.deepEqual(
     stopped?.cards.map((card) => card["completionMark"]),
     [
-      { text: "Done in a later run", laterRunId: "B" },
+      { text: "Ticket completed by later run", laterRunId: "B" },
       { text: "Needs attention", laterRunId: null },
     ],
   );
@@ -29,10 +29,10 @@ await test("CLV-091 blocked issue cards mark completion in a later local run wit
       ?.cards.map((card) => card.runId),
     ["B"],
   );
-  assert.ok(
-    model.runs.every(
-      (run) => run.pullRequest === null && run.mergeCommit === null,
-    ),
+  assert.equal(model.runs.find((run) => run.runId === "A")?.mergeCommit, null);
+  assert.equal(
+    model.runs.find((run) => run.runId === "B")?.mergeCommit,
+    "fixture-commit",
   );
 });
 

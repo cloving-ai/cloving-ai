@@ -885,7 +885,12 @@
     "test/self-host-folders.test.ts": "test",
     "test/operator-startup-fixture.ts": "test",
     "test/self-host-project.test.ts": "test",
-    "test/self-host-launcher.test.ts": "test"
+    "test/self-host-launcher.test.ts": "test",
+    "src/issue-identity.ts": "pure",
+    "src/cli/watch-pull-request.ts": "cli",
+    "test/watch-merge-fixture.ts": "test",
+    "test/watch-completion-reads.test.ts": "test",
+    "test/service-status-issue-identity.test.ts": "test"
   },
   "allowed": {
     "quality": [

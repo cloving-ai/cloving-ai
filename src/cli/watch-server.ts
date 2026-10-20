@@ -134,6 +134,7 @@ async function snapshot(
   ]);
   const model = watchModel({
     ...read,
+    repository: watch.observer.repository ?? null,
     home: homedir(),
     client: watch.settings.client,
     updatedAt,
@@ -232,7 +233,7 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
         : await watchActions(settings.runtimeDirectory),
     settings,
     observer,
-    reader: watchReader(settings.runtimeDirectory),
+    reader: watchReader(settings.runtimeDirectory, observer.repository ?? null),
     streams: new Map(),
     github: new Map(),
   };

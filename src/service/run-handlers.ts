@@ -1,3 +1,4 @@
+import { issueIdentity } from "../issue-identity.ts";
 import {
   runView,
   unresolvedEffects,
@@ -225,6 +226,9 @@ async function metadataOf(
   return {
     ticketId: typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
     title: titleOf(input, source.workflowId),
+    ...(source.workflowId === "develop-issue"
+      ? { issueIdentity: issueIdentity(input?.["ticket"]) }
+      : {}),
   };
 }
 
