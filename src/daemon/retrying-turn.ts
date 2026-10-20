@@ -1,7 +1,20 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import { priceOf, sumUsage, usageOf } from "../worker-usage.ts";
+import {
+  priceOf,
+  sumUsage,
+  usageOf,
+  type WorkerAttemptUsage,
+} from "../worker-usage.ts";
+import {
+  commandModel,
+  replaceCommandModel,
+  estimatedCostUsd,
+  priceForModel,
+  type TokenPrices,
+} from "../token-prices.ts";
+import { analysisCommand } from "./analysis-launch.ts";
 import {
   capacityRefusal,
   startTurn,
@@ -12,6 +25,8 @@ import {
 import { readRecord, writeRecord } from "./operation-journal.ts";
 
 export interface RetrySettings {
+  readonly tokenPrices?: TokenPrices;
+  readonly fallbackModels?: readonly string[];
   readonly retryDelay?: (
     milliseconds: number,
     signal: AbortSignal,
@@ -47,15 +62,18 @@ function total(values: readonly (number | null)[]): number | null {
   return priceOf(values.reduce<number>((sum, value) => sum + (value ?? 0), 0));
 }
 
-function combined(ends: readonly TurnEnd[]): TurnEnd {
+function combined(attempts: Attempts): TurnEnd {
+  const { ends } = attempts;
   const last = ends.at(-1) ?? { exitCode: null, result: undefined };
-  if (ends.length < 2) return last;
   const result = last.result ?? ends.find((end) => end.result)?.result;
   if (result === undefined) return last;
   return {
     ...last,
     result: {
       ...result,
+      attempts: ends.map((end, index) =>
+        attemptUsage(attempts, { end, attempt: index + 1 }),
+      ),
       ...(last.result === undefined ? { failed: true, text: "" } : {}),
       usage: sumUsage(ends.map((end) => end.result?.usage ?? usageOf(null))),
       costUsd: total(ends.map((end) => end.result?.costUsd ?? null)),
@@ -78,15 +96,62 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
   };
 }
 
+function attemptCommand(attempts: Attempts, attempt: number) {
+  const { start, options } = attempts;
+  const original =
+    start.mode === "analysis" ? analysisCommand() : start.command;
+  const fallback =
+    start.mode === "analysis"
+      ? undefined
+      : options.fallbackModels?.[attempt - 3];
+  const command =
+    fallback === undefined ? original : replaceCommandModel(original, fallback);
+  const model = commandModel(command);
+  return {
+    command,
+    model,
+    ...(fallback !== undefined && model === null
+      ? { fallbackReason: "fallback-model-unavailable" }
+      : {}),
+  };
+}
+
+function attemptUsage(
+  attempts: Attempts,
+  completion: { readonly end: TurnEnd; readonly attempt: number },
+): WorkerAttemptUsage {
+  const { end, attempt } = completion;
+  const model = end.result?.model ?? attemptCommand(attempts, attempt).model;
+  const usage = end.result?.usage ?? usageOf(null);
+  return {
+    attempt,
+    model,
+    usage,
+    costUsd: end.result?.costUsd ?? null,
+    estimatedCostUsd: estimatedCostUsd(usage, {
+      worker:
+        attempts.start.mode === "analysis"
+          ? "claude"
+          : (attempts.start.worker ?? "claude"),
+      price: priceForModel(attempts.options.tokenPrices ?? {}, model),
+    }),
+  };
+}
+
 async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   const { start, options, ends } = attempts;
   const attempt = ends.length + 1;
+  const selected = attemptCommand(attempts, attempt);
   const folder =
     start.mode === "analysis" || attempt === 1
       ? start.folder
       : join(start.folder, `attempt-${String(attempt)}`);
   const entry = {
     ...options.metadata,
+    model: selected.model,
+    ...(selected.fallbackReason === undefined
+      ? {}
+      : { fallbackReason: selected.fallbackReason }),
     attempt,
     startedAt: attempt === 1 ? attempts.startedAt : new Date().toISOString(),
   };
@@ -103,6 +168,7 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   if (attempts.stopping.signal.aborted) return undefined;
   const turn = controlled(attempts, {
     ...start,
+    command: selected.command,
     folder,
     ...(attempt === 1 ? {} : { activityFolder: start.folder }),
     prompt: attempt === 1 ? start.prompt : continuation + start.prompt,
@@ -132,6 +198,7 @@ async function recordedEnd(
   const { start, ends, options } = attempts;
   const { processId, end } = completion;
   const attempt = ends.length;
+  const selected = attemptCommand(attempts, attempt);
   const name = `attempt-${String(attempt)}.json`;
   const started = await readRecord(start.folder, name);
   const startedAt: unknown = Reflect.get(Object(started), "startedAt");
@@ -141,14 +208,16 @@ async function recordedEnd(
     name,
     value: {
       ...options.metadata,
+      ...attemptUsage(attempts, { end, attempt }),
+      ...(selected.fallbackReason === undefined
+        ? {}
+        : { fallbackReason: selected.fallbackReason }),
       attempt,
       processId,
       startedAt,
       endedAt: new Date().toISOString(),
       exitCode: end.exitCode,
       capacity: capacityRefusal(end.result),
-      usage: end.result?.usage ?? usageOf(null),
-      costUsd: end.result?.costUsd ?? null,
     },
   });
 }
@@ -193,11 +262,11 @@ async function finished(
     )
       break;
     await waited(attempts, milliseconds);
-    if (cancelled(attempts)) return { ...combined(ends), stopped: true };
+    if (cancelled(attempts)) return { ...combined(attempts), stopped: true };
     turn = await launched(attempts);
   }
   return {
-    ...combined(ends),
+    ...combined(attempts),
     ...(cancelled(attempts) || turn === undefined ? { stopped: true } : {}),
   };
 }

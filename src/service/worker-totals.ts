@@ -2,9 +2,11 @@ import { record, type Fields } from "../protocol.ts";
 import {
   priceOf,
   usageOf,
+  tokenCount,
   workerTotals,
   type WorkerTotals,
   type WorkerTurnUsage,
+  type WorkerAttemptUsage,
 } from "../worker-usage.ts";
 import type { ServiceContext } from "./replies.ts";
 
@@ -14,6 +16,30 @@ function reportFields(text: string | undefined): Fields {
   } catch {
     return {};
   }
+}
+
+function attemptsOf(value: unknown): readonly WorkerAttemptUsage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry: unknown) => {
+    const fields = record(entry) ?? {};
+    const attempt = tokenCount(fields["attempt"]);
+    const model = fields["model"];
+    if (
+      attempt === null ||
+      attempt === 0 ||
+      (model !== null && typeof model !== "string")
+    )
+      return [];
+    return [
+      {
+        attempt,
+        model,
+        usage: usageOf(fields["usage"]),
+        costUsd: priceOf(fields["costUsd"]),
+        estimatedCostUsd: priceOf(fields["estimatedCostUsd"]),
+      },
+    ];
+  });
 }
 
 export async function usageTotals(
@@ -35,7 +61,9 @@ export async function usageTotals(
         ? undefined
         : await queries.document(operation.result),
     );
+    const attempts = attemptsOf(report["attempts"]);
     turns.push({
+      ...(attempts === undefined ? {} : { attempts }),
       operationId: operation.operationId,
       usage: usageOf(report["usage"]),
       costUsd: priceOf(report["costUsd"]),

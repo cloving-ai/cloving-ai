@@ -8,11 +8,7 @@ import type {
 import { analysisPrompt } from "../chats/analysis-prompt.ts";
 import { isAnalysisSnapshot } from "../chats/analysis-input.ts";
 import { record } from "../protocol.ts";
-import {
-  estimatedCostUsd,
-  priceForModel,
-  type TokenPrices,
-} from "../token-prices.ts";
+import { sumPrices } from "../worker-usage.ts";
 import type { RunningTurn, TurnEnd } from "./claude-turn.ts";
 import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import { analysisAvailable, analysisMethod } from "./analysis-launch.ts";
@@ -29,7 +25,6 @@ import {
 } from "./operation-journal.ts";
 
 interface Settings extends RetrySettings {
-  readonly tokenPrices?: TokenPrices;
   readonly journal: string;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
@@ -97,7 +92,7 @@ async function privateRecord(
   await writeRecord(folder, { ...entry, permissions: "private" });
 }
 
-function outcome(end: TurnEnd, prices: TokenPrices): Recorded {
+function outcome(end: TurnEnd): Recorded {
   const endedAt = new Date().toISOString();
   if (end.stopped) return { outcome: "stopped", endedAt };
   const result = end.result;
@@ -107,12 +102,12 @@ function outcome(end: TurnEnd, prices: TokenPrices): Recorded {
     costUsd: result.costUsd,
     usage: result.usage,
     model: result.model,
+    ...(result.attempts === undefined ? {} : { attempts: result.attempts }),
     sessionId: result.sessionId,
     turns: result.turns,
-    estimatedCostUsd: estimatedCostUsd(result.usage, {
-      worker: "claude",
-      price: priceForModel(prices, result.model),
-    }),
+    estimatedCostUsd: sumPrices(
+      (result.attempts ?? []).map((attempt) => attempt.estimatedCostUsd),
+    ),
   };
   if (end.exitCode !== 0 || result.failed)
     return {
@@ -206,7 +201,7 @@ async function begun(
   );
   const done = turn.ended
     .then(async (end) => {
-      const result = outcome(end, parts.settings.tokenPrices ?? {});
+      const result = outcome(end);
       await privateRecord(folder, { name: "result.json", value: result });
       await cleaned(folder);
       await parts.settings.report(

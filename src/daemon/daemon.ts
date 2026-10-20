@@ -43,6 +43,7 @@ import {
 } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
+  readonly fallbackModels?: readonly string[];
   readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
@@ -174,6 +175,7 @@ function adapters(
     effect: Parameters<HostPorts["reportEffect"]>[0],
   ): Promise<unknown> => (await given).reportEffect(effect);
   const worker = claudeWorker({
+    fallbackModels: settings.fallbackModels ?? [],
     tokenPrices: settings.tokenPrices ?? {},
     worker: settings.worker ?? "claude",
     profiles: settings.profiles ?? {},

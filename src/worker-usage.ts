@@ -5,10 +5,19 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly attempts?: readonly WorkerAttemptUsage[];
   readonly estimatedCostUsd: number | null;
   readonly operationId: string;
   readonly usage: WorkerUsage;
   readonly costUsd: number | null;
+}
+
+export interface WorkerAttemptUsage {
+  readonly attempt: number;
+  readonly model: string | null;
+  readonly usage: WorkerUsage;
+  readonly costUsd: number | null;
+  readonly estimatedCostUsd: number | null;
 }
 
 export interface WorkerTotals {
@@ -58,7 +67,7 @@ export function sumUsage(values: readonly WorkerUsage[]): WorkerUsage {
   };
 }
 
-function sumPrices(values: readonly (number | null)[]): number | null {
+export function sumPrices(values: readonly (number | null)[]): number | null {
   const prices = values.map(priceOf);
   if (prices.length === 0 || prices.includes(null)) return null;
   return priceOf(prices.reduce<number>((sum, price) => sum + (price ?? 0), 0));
