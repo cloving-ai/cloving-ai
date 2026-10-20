@@ -16,6 +16,63 @@ import {
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
+function changeAncestorDuringCapture(path: string) {
+  const original = filesystem.open;
+  let changed = false;
+  filesystem.open = async (openingPath, flags) => {
+    if (changed || !String(openingPath).endsWith("/first.ts"))
+      return original(openingPath, flags);
+    changed = true;
+    await writeFile(join(path, "unrelated"), "new");
+    return original(openingPath, flags);
+  };
+  syncBuiltinESMExports();
+  return {
+    get changed() {
+      return changed;
+    },
+    restore: () => {
+      filesystem.open = original;
+      syncBuiltinESMExports();
+    },
+  };
+}
+
+for (const location of [
+  { scope: "project", ancestor: "repo" },
+  { scope: "project", ancestor: "repo/.cloving" },
+  { scope: "user", ancestor: "config" },
+  { scope: "user", ancestor: "config/cloving" },
+] as const) {
+  await test(`CLV-124 unrelated changes in ${location.ancestor} preserve current and later candidates`, () =>
+    withFiles(
+      {
+        ...operatorFiles(location.scope, "first"),
+        ...operatorFiles(location.scope, "second"),
+        "repo/tracked.txt": "repository",
+      },
+      async (directory) => {
+        const capture = changeAncestorDuringCapture(
+          join(directory, location.ancestor),
+        );
+        try {
+          const result = await loadWorkflowFolders(folderInput(directory));
+          assert.equal(capture.changed, true);
+          assert.deepEqual(result.refusals, []);
+          assert.deepEqual(
+            result.candidates.map(({ scope, label }) => ({ scope, label })),
+            [
+              { scope: location.scope, label: "first.ts" },
+              { scope: location.scope, label: "second.ts" },
+            ],
+          );
+        } finally {
+          capture.restore();
+        }
+      },
+    ));
+}
+
 for (const name of [
   "../outside.ts",
   "/outside.ts",
@@ -43,36 +100,62 @@ for (const name of [
     ));
 }
 
+function replaceEntryDuringCapture(location: {
+  path: string;
+  target: string;
+  replacement: "file" | "link";
+}) {
+  const original = filesystem.open;
+  let replaced = false;
+  filesystem.open = async (openingPath, flags) => {
+    if (
+      replaced ||
+      !String(openingPath).endsWith(
+        location.target === "workflows" ? "project.ts" : location.target,
+      )
+    )
+      return original(openingPath, flags);
+
+    replaced = true;
+    const bytes =
+      location.target === "workflows"
+        ? undefined
+        : await readFile(location.path);
+    await rename(location.path, location.path + ".saved");
+    if (location.replacement === "link")
+      await symlink(location.path + ".saved", location.path);
+    else if (bytes) await writeFile(location.path, bytes);
+    else
+      await filesystem.cp(location.path + ".saved", location.path, {
+        recursive: true,
+      });
+    return original(openingPath, flags);
+  };
+  syncBuiltinESMExports();
+  return {
+    get replaced() {
+      return replaced;
+    },
+    restore: () => {
+      filesystem.open = original;
+      syncBuiltinESMExports();
+    },
+  };
+}
+
 for (const target of ["project.ts", "project.declaration.json", "workflows"]) {
   for (const replacement of ["file", "link"] as const) {
     await test(`CLV-124 refuses ${target} replacement by ${replacement} during capture`, () =>
       withFiles(operatorFiles("project", "project"), async (directory) => {
-        const original = filesystem.open;
         const folder = join(directory, "repo/.cloving/workflows");
-        const path = target === "workflows" ? folder : join(folder, target);
-        let replaced = false;
-        filesystem.open = async (openingPath, flags) => {
-          if (
-            !replaced &&
-            String(openingPath).endsWith(
-              target === "workflows" ? "project.ts" : target,
-            )
-          ) {
-            replaced = true;
-            const bytes =
-              target === "workflows" ? undefined : await readFile(path);
-            await rename(path, path + ".saved");
-            if (replacement === "link") await symlink(path + ".saved", path);
-            else if (bytes) await writeFile(path, bytes);
-            else
-              await filesystem.cp(path + ".saved", path, { recursive: true });
-          }
-          return original(openingPath, flags);
-        };
-        syncBuiltinESMExports();
+        const capture = replaceEntryDuringCapture({
+          path: target === "workflows" ? folder : join(folder, target),
+          target,
+          replacement,
+        });
         try {
           const result = await loadWorkflowFolders(folderInput(directory));
-          assert.equal(replaced, true);
+          assert.equal(capture.replaced, true);
           assert.deepEqual(result.candidates, []);
           assert.deepEqual(result.refusals, [
             {
@@ -82,8 +165,7 @@ for (const target of ["project.ts", "project.declaration.json", "workflows"]) {
             },
           ]);
         } finally {
-          filesystem.open = original;
-          syncBuiltinESMExports();
+          capture.restore();
         }
       }));
   }

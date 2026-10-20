@@ -191,21 +191,19 @@ function swapDuringListing(location: {
     configurable: true,
     value: async (...args: Parameters<typeof original>) => {
       const active = isFolderListing(String(args[0]), location.path);
-      if (active) {
-        swapped = true;
-        await rename(location.path, location.path + ".saved");
-        if (location.replacement === "link")
-          await symlink(location.outside, location.path);
-        else await rename(location.outside, location.path);
-      }
+      if (!active) return original(...args);
+
+      swapped = true;
+      await rename(location.path, location.path + ".saved");
+      if (location.replacement === "link")
+        await symlink(location.outside, location.path);
+      else await rename(location.outside, location.path);
       try {
         return await original(...args);
       } finally {
-        if (active) {
-          if (location.replacement === "link") await unlink(location.path);
-          else await rename(location.path, location.outside);
-          await rename(location.path + ".saved", location.path);
-        }
+        if (location.replacement === "link") await unlink(location.path);
+        else await rename(location.path, location.outside);
+        await rename(location.path + ".saved", location.path);
       }
     },
   });

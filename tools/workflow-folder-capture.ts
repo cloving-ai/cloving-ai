@@ -85,7 +85,9 @@ function sameSnapshot(left: BigIntStats, right: BigIntStats): boolean {
 
 async function verifyFolder(folder: WorkflowFolder): Promise<void> {
   for (const component of folder.components) {
-    if (!sameSnapshot(component.stats, await capturedStats(component.path)))
+    const compare =
+      component.path === folder.path ? sameSnapshot : sameIdentity;
+    if (!compare(component.stats, await capturedStats(component.path)))
       throw new Error("workflow-source-changed");
   }
 }
