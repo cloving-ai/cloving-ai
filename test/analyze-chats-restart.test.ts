@@ -76,7 +76,7 @@ const registration = {
   submission: { maximumBytes: 4096, fields: { importId: "string" } },
   resolver: { id: "analysis-fixture", version: "1", resolve: () => Promise.resolve({ kind: "resolved", input: { cycleId: "analysis-cycle", repository: "unused", input: { importId } } }) },
 };
-const service = await hosted({ registrations: [registration], workflow: workflows.analyzeChats, destination: destinationAnalysis, effects: { leaseMilliseconds: 1000 } });
+const service = await hosted({ registrations: [registration], workflow: workflows.analyzeChats, destination: destinationAnalysis, effects: { leaseMilliseconds: testMilliseconds(1000) } });
 const submitAnalysis = async () => (await asked("run", { workflowId: "analyze-chats", source: "input", submission: { importId }, commandId: "analysis-command" })).runId;
 const finished = async (runId) => {
   await until(async () => ["completed", "blocked", "failed"].includes(await stateOf(runId))).catch(async (error) => { print({ diagnostic: (await asked("status", { runId })).run, requests: lines("requests.log"), worlds: await tagged() }); throw error; });

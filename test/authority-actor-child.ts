@@ -1,12 +1,16 @@
+import { testMilliseconds } from "./test-timing.ts";
 import { join } from "node:path";
 import {
-  authorityTiming,
   openAuthority,
   type AuthorityOptions,
 } from "../src/broker/actor/authority.ts";
 import { fileService } from "./authority-actor-service.ts";
 import { recorded } from "./authority-fixture.ts";
-import { manifest, storedGate } from "./authority-store-fixture.ts";
+import {
+  manifest,
+  storedGate,
+  testAuthorityTiming,
+} from "./authority-store-fixture.ts";
 
 const [directory = "", scenario = ""] = process.argv.slice(2);
 const service = join(directory, "external.log");
@@ -26,7 +30,7 @@ function strandFirstCommand(): NonNullable<
       process.stdout.write("activation-lost\n");
     if (event.name !== "solid_objects.message.started") return;
     if (event.attributes["operation"] !== "execute") return;
-    const until = performance.now() + 400;
+    const until = performance.now() + testMilliseconds(400);
     while (performance.now() < until);
   };
 }
@@ -35,13 +39,13 @@ const scenarios: Readonly<Record<string, AuthorityOptions>> = {
   commit: {},
   strand: {
     timing: {
-      ...authorityTiming,
-      leaseMilliseconds: 100,
-      renewalMilliseconds: 30,
-      heartbeatMilliseconds: 50,
-      aliveThresholdMilliseconds: 300,
-      cleanupIntervalMilliseconds: 100,
-      callTimeoutMilliseconds: 5_000,
+      ...testAuthorityTiming,
+      leaseMilliseconds: testMilliseconds(100),
+      renewalMilliseconds: testMilliseconds(30),
+      heartbeatMilliseconds: testMilliseconds(50),
+      aliveThresholdMilliseconds: testMilliseconds(300),
+      cleanupIntervalMilliseconds: testMilliseconds(100),
+      callTimeoutMilliseconds: testMilliseconds(5_000),
     },
     instrumentation: strandFirstCommand(),
   },

@@ -1,10 +1,8 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { after, test } from "node:test";
-import {
-  authorityTiming,
-  type AuthorityOptions,
-} from "../src/broker/actor/authority.ts";
+import type { AuthorityOptions } from "../src/broker/actor/authority.ts";
 import {
   deliverUntil,
   executePinned,
@@ -16,6 +14,7 @@ import {
   removeTemporaryDirectories,
   storedGate,
   temporaryDirectory,
+  testAuthorityTiming,
   withChild,
 } from "./authority-store-fixture.ts";
 
@@ -27,15 +26,18 @@ const start = {
     '["cloving-operation",0,"run-1","admission","start-run",null,null]',
 };
 const timing = {
-  ...authorityTiming,
-  leaseMilliseconds: 100,
-  renewalMilliseconds: 30,
-  heartbeatMilliseconds: 50,
-  aliveThresholdMilliseconds: 300,
-  cleanupIntervalMilliseconds: 100,
-  callTimeoutMilliseconds: 1_000,
+  ...testAuthorityTiming,
+  leaseMilliseconds: testMilliseconds(100),
+  renewalMilliseconds: testMilliseconds(30),
+  heartbeatMilliseconds: testMilliseconds(50),
+  aliveThresholdMilliseconds: testMilliseconds(300),
+  cleanupIntervalMilliseconds: testMilliseconds(100),
+  callTimeoutMilliseconds: testMilliseconds(1_000),
 };
-const recoveringTiming = { ...timing, callTimeoutMilliseconds: 3_000 };
+const recoveringTiming = {
+  ...timing,
+  callTimeoutMilliseconds: testMilliseconds(3_000),
+};
 const lost = "solid_objects.activation.lost";
 
 function count(events: readonly string[], name: string): number {
@@ -55,7 +57,7 @@ function firstTurnsStalled(stall: {
       if (event.attributes["operation"] !== stall.operation) return;
       if (remaining === 0) return;
       remaining -= 1;
-      const until = performance.now() + 400;
+      const until = performance.now() + testMilliseconds(400);
       while (performance.now() < until);
     },
   };
@@ -69,8 +71,8 @@ function eachTurnStalled(
     instrumentation: (event) => {
       if (event.name !== "solid_objects.message.started") return;
       if (event.attributes["operation"] !== operation) return;
-      end ??= performance.now() + 3_000;
-      const until = Math.min(performance.now() + 400, end);
+      end ??= performance.now() + testMilliseconds(3_000);
+      const until = Math.min(performance.now() + testMilliseconds(400), end);
       while (performance.now() < until);
     },
   };
@@ -85,7 +87,7 @@ await test("CLV-052 a command whose turn is longer than the lease is accepted an
   const receipt = await executePinned(authority, admission);
   assert.equal(receipt.kind, "accepted");
   assert.equal(count(events, lost), 1);
-  await delay(timing.callTimeoutMilliseconds + 100);
+  await delay(timing.callTimeoutMilliseconds + testMilliseconds(100));
   assert.equal((await authority.state()).sequence, 1);
   assert.deepEqual(await executePinned(authority, admission), {
     kind: "duplicate",
@@ -124,7 +126,7 @@ await test("CLV-052 a delivery callback whose turn is longer than the lease is a
     (await authority.events()).map((event) => event.type),
     ["run.created", "step.dispatched"],
   );
-  await delay(timing.callTimeoutMilliseconds + 100);
+  await delay(timing.callTimeoutMilliseconds + testMilliseconds(100));
   assert.equal((await authority.state()).sequence, 2);
   await authority.close();
 });
@@ -152,7 +154,7 @@ await test("CLV-052 a delivery callback whose turn is longer than the lease in t
     (await authority.events()).map((event) => event.type),
     ["run.created", "step.dispatched"],
   );
-  await delay(recoveringTiming.callTimeoutMilliseconds + 100);
+  await delay(recoveringTiming.callTimeoutMilliseconds + testMilliseconds(100));
   assert.equal((await authority.state()).sequence, 2);
   await authority.close();
 });
@@ -209,11 +211,11 @@ await test("CLV-052 a delivery callback whose turn is longer than the lease in e
       () => "stopped",
       (error: unknown) => String(error),
     ),
-    delay(5_000, "not detected", { ref: false }),
+    delay(testMilliseconds(5_000), "not detected", { ref: false }),
   ]);
   controller.abort();
   assert.match(outcome, /authority-unavailable: stranded message /);
-  assert.ok(performance.now() - started < 2_500);
+  assert.ok(performance.now() - started < testMilliseconds(2_500));
   await assert.rejects(authority.state(), /authority-unavailable/);
   await authority.close();
   const restarted = await openedAuthority(directory, service.options);
@@ -242,12 +244,12 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
     () => "stopped",
     (error: unknown) => String(error),
   );
-  await delay(400);
+  await delay(testMilliseconds(400));
   const receipt = await executePinned(authority, admission);
   const answered = performance.now();
   const outcome = await Promise.race([
     running,
-    delay(5_000, "not detected", { ref: false }),
+    delay(testMilliseconds(5_000), "not detected", { ref: false }),
   ]);
   const stopped = performance.now();
   controller.abort();
@@ -257,8 +259,11 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
     outcome,
     /^Error: authority-unavailable: (authority failure|stranded message [0-9a-f-]{36})$/,
   );
-  assert.ok(stopped - answered < 250, String(stopped - answered));
-  assert.ok(stopped - started < 2_900);
+  assert.ok(
+    stopped - answered < testMilliseconds(250),
+    String(stopped - answered),
+  );
+  assert.ok(stopped - started < testMilliseconds(2_900));
   await assert.rejects(authority.state(), /authority-unavailable/);
   await authority.close();
 });
@@ -276,7 +281,7 @@ await test("CLV-042 a command stranded by a process that then dies is committed 
   const authority = await openedAuthority(directory, {
     timing: quickCleanupTiming,
   });
-  assert.ok(performance.now() - started < 8_000);
+  assert.ok(performance.now() - started < testMilliseconds(8_000));
   assert.deepEqual(
     (await authority.events()).map((event) => event.commandId),
     ["c-1"],

@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type { Delivery } from "../src/broker/actor/authority.ts";
@@ -131,7 +132,7 @@ await test("CLV-049 an adapter call of a start above its time limit closes its a
   const authority = await openedAuthority(await temporaryDirectory(), {
     delivery,
     timing: fastTiming,
-    effects: { adapterMilliseconds: 80, deliveryAttempts: 1 },
+    effects: { adapterMilliseconds: testMilliseconds(80), deliveryAttempts: 1 },
   });
   try {
     for (const runId of ["run-1", "run-2"]) {

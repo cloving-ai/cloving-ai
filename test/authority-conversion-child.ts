@@ -1,5 +1,6 @@
 import { convertAuthority } from "../src/broker/actor/authority-conversion.ts";
 import { fastTiming } from "./authority-actor-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const [directory = "", barrier = ""] = process.argv.slice(2);
 
@@ -8,7 +9,7 @@ function stop(step: string): void {
 }
 
 function stall(): void {
-  const until = performance.now() + 400;
+  const until = performance.now() + testMilliseconds(400);
   while (performance.now() < until);
 }
 
@@ -24,7 +25,7 @@ const conversion = await convertAuthority(directory, {
     )
       setTimeout(() => {
         stop("adoption-stranded");
-      }, 100);
+      }, testMilliseconds(100));
     if (
       barrier === "adoption-stranded" &&
       event.name === "solid_objects.message.started"

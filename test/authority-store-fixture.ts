@@ -15,19 +15,44 @@ import {
 } from "../src/broker/actor/authority.ts";
 import { pinnedIdentity } from "../src/execution-pin.ts";
 import { answeredGate, recorded } from "./authority-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
+
+export const testAuthorityTiming: AuthorityTiming = {
+  leaseMilliseconds: testMilliseconds(authorityTiming.leaseMilliseconds),
+  renewalMilliseconds: testMilliseconds(authorityTiming.renewalMilliseconds),
+  heartbeatMilliseconds: testMilliseconds(
+    authorityTiming.heartbeatMilliseconds,
+  ),
+  aliveThresholdMilliseconds: testMilliseconds(
+    authorityTiming.aliveThresholdMilliseconds,
+  ),
+  cleanupIntervalMilliseconds: testMilliseconds(
+    authorityTiming.cleanupIntervalMilliseconds,
+  ),
+  callTimeoutMilliseconds: testMilliseconds(
+    authorityTiming.callTimeoutMilliseconds,
+  ),
+  messageRetentionMilliseconds: testMilliseconds(
+    authorityTiming.messageRetentionMilliseconds,
+  ),
+  retentionIntervalMilliseconds: testMilliseconds(
+    authorityTiming.retentionIntervalMilliseconds,
+  ),
+  shutdownMilliseconds: testMilliseconds(authorityTiming.shutdownMilliseconds),
+};
 
 export const quickCleanupTiming: AuthorityTiming = {
-  ...authorityTiming,
-  heartbeatMilliseconds: 100,
-  aliveThresholdMilliseconds: 300,
-  cleanupIntervalMilliseconds: 100,
+  ...testAuthorityTiming,
+  heartbeatMilliseconds: testMilliseconds(100),
+  aliveThresholdMilliseconds: testMilliseconds(300),
+  cleanupIntervalMilliseconds: testMilliseconds(100),
 };
 
 export const fastTiming: AuthorityTiming = {
   ...quickCleanupTiming,
-  leaseMilliseconds: 200,
-  renewalMilliseconds: 50,
-  callTimeoutMilliseconds: 2_000,
+  leaseMilliseconds: testMilliseconds(200),
+  renewalMilliseconds: testMilliseconds(50),
+  callTimeoutMilliseconds: testMilliseconds(2_000),
 };
 
 export const manifest = {

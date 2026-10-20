@@ -1,9 +1,9 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import {
-  authorityTiming,
   openAuthority,
   type AuthorityOptions,
 } from "../src/broker/actor/authority.ts";
@@ -17,18 +17,19 @@ import {
   removeTemporaryDirectories,
   storedGate,
   temporaryDirectory,
+  testAuthorityTiming,
 } from "./authority-store-fixture.ts";
 
 const admission = storedGate[0] ?? {};
 
 const stalledTiming = {
-  ...authorityTiming,
-  leaseMilliseconds: 100,
-  renewalMilliseconds: 30,
-  heartbeatMilliseconds: 50,
-  aliveThresholdMilliseconds: 300,
-  cleanupIntervalMilliseconds: 100,
-  callTimeoutMilliseconds: 1_000,
+  ...testAuthorityTiming,
+  leaseMilliseconds: testMilliseconds(100),
+  renewalMilliseconds: testMilliseconds(30),
+  heartbeatMilliseconds: testMilliseconds(50),
+  aliveThresholdMilliseconds: testMilliseconds(300),
+  cleanupIntervalMilliseconds: testMilliseconds(100),
+  callTimeoutMilliseconds: testMilliseconds(1_000),
 };
 
 function eachEpochTurnStalled(): NonNullable<
@@ -37,7 +38,7 @@ function eachEpochTurnStalled(): NonNullable<
   return (event) => {
     if (event.name !== "solid_objects.message.started") return;
     if (event.attributes["operation"] !== "beginEpoch") return;
-    const until = performance.now() + 400;
+    const until = performance.now() + testMilliseconds(400);
     while (performance.now() < until);
   };
 }
@@ -48,7 +49,7 @@ function stalledFirstTurn(): (event: { readonly name: string }) => void {
     if (event.name !== "solid_objects.message.started") return;
     started += 1;
     if (started !== 1) return;
-    const until = performance.now() + 400;
+    const until = performance.now() + testMilliseconds(400);
     while (performance.now() < until);
   };
 }
@@ -196,9 +197,9 @@ await test("CLV-042 conversion refuses a missing directory, an empty directory a
 await test("CLV-042 an opening or a conversion with an invalid timing is refused and releases the authority", async () => {
   const directory = await temporaryDirectory();
   const timing = {
-    ...authorityTiming,
-    leaseMilliseconds: 100,
-    renewalMilliseconds: 200,
+    ...testAuthorityTiming,
+    leaseMilliseconds: testMilliseconds(100),
+    renewalMilliseconds: testMilliseconds(200),
   };
   for (const attempt of [
     await openAuthority(directory, { timing }),

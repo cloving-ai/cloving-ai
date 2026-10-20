@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type {
@@ -80,7 +81,7 @@ function firstFailureRecordStalled(
     if (event.name !== "solid_objects.message.started") return;
     if (stalled || event.attributes["operation"] !== "deliveryFailed") return;
     stalled = true;
-    const until = performance.now() + 400;
+    const until = performance.now() + testMilliseconds(400);
     while (performance.now() < until);
   };
 }
@@ -127,8 +128,8 @@ await test("CLV-052 a failed delivery whose record turn loses its activation and
     delivery: adapter.delivery,
     timing: {
       ...fastTiming,
-      leaseMilliseconds: 100,
-      renewalMilliseconds: 30,
+      leaseMilliseconds: testMilliseconds(100),
+      renewalMilliseconds: testMilliseconds(30),
     },
     instrumentation: firstFailureRecordStalled(events),
   });

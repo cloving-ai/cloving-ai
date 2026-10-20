@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as turn } from "node:timers/promises";
@@ -22,7 +23,7 @@ await test("CLV-049 a close with a rejected runtime close also closes the databa
     runtime: { registerEffect: () => undefined, close: closing("runtime") },
     database: { close: closing("database") },
     handle: () => Promise.resolve({}),
-    shutdownMilliseconds: 100,
+    shutdownMilliseconds: testMilliseconds(100),
   });
   await assert.rejects(delivery.stop(), /^Error: runtime close failed$/);
   assert.deepEqual(closed, ["runtime", "database"]);
@@ -47,7 +48,7 @@ const parts = {
   epoch: 1,
   unhealthy: (): string | undefined => undefined,
   condition: (): Promise<string | undefined> => Promise.resolve(undefined),
-  watchMilliseconds: 1_000,
+  watchMilliseconds: testMilliseconds(1_000),
   stopLimit: 3,
   recoveryLimit: 3,
   subscribe: (): (() => void) => () => undefined,

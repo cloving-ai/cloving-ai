@@ -1,10 +1,7 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import {
-  authorityTiming,
-  openAuthority,
-  type Delivery,
-} from "../src/broker/actor/authority.ts";
+import { openAuthority, type Delivery } from "../src/broker/actor/authority.ts";
 import {
   deliverUntil,
   executePinned,
@@ -18,6 +15,7 @@ import {
   removeTemporaryDirectories,
   storedGate,
   temporaryDirectory,
+  testAuthorityTiming,
 } from "./authority-store-fixture.ts";
 
 const admission = storedGate[0] ?? {};
@@ -35,9 +33,9 @@ await test("CLV-042 library message retention keeps the permanent domain receipt
   const authority = await openedAuthority(directory, {
     ...service.options,
     timing: {
-      ...authorityTiming,
-      messageRetentionMilliseconds: 1,
-      retentionIntervalMilliseconds: 50,
+      ...testAuthorityTiming,
+      messageRetentionMilliseconds: testMilliseconds(1),
+      retentionIntervalMilliseconds: testMilliseconds(50),
     },
     instrumentation: (event) => {
       if (event.name === "solid_objects.messages.pruned")
