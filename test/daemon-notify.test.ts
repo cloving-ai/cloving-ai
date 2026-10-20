@@ -118,25 +118,38 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
-await test("CLV-090 a notify command failure is one error line and never retried", () =>
+await test("CLV-132 the daemon records a failed attempt and retries the same notification", () =>
   withConsumer(notifyWorkflow, async (consumer) => {
     const result = await consumer.run(`${notifyPrelude}
 appendFileSync("notify.mjs", "process.exitCode = 1;");
+const originalNow = Date.now;
+let now = Date.now();
+Date.now = () => now;
 const daemon = await launched();
 try {
-  await submitNotice("bad-command", { kind: "blocked" });
-  await until(() => notices().length === 1);
+  const runId = await submitNotice("bad-command", { kind: "blocked" });
+  const entry = () => JSON.parse(readFileSync("notify-events.json", "utf8")).entries.find(entry => entry.key === "blocked:" + runId);
+  await until(() => entry()?.state === "failed");
+  assert.equal(entry().attempts, 1);
+  assert.equal(entry().lastFailure, "exit code 1");
   await delay(200);
   assert.equal(notices().length, 1);
-} finally { await daemon.close(); }
+  writeFileSync("notify.mjs", readFileSync("notify.mjs", "utf8").replace("process.exitCode = 1;", ""));
+  now += 60_000;
+  await until(() => entry()?.state === "sent");
+  assert.equal(entry().attempts, 2);
+  assert.equal(notices().length, 2);
+  assert.deepEqual(notices()[0], notices()[1]);
+  await delay(150);
+  assert.equal(notices().length, 2);
+} finally { await daemon.close(); Date.now = originalNow; }
 process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
     const errors = result.stderr
       .split("\n")
-      .filter((line) => line.startsWith("Notify command failed:"));
-    assert.equal(errors.length, 1, result.stderr);
-    assert.match(String(errors[0]), /code 1/);
+      .filter((line) => line.startsWith("Notify "));
+    assert.deepEqual(errors, [], result.stderr);
   }));
 
 await test("CLV-090 notified decisions and blocked outcomes stay quiet after daemon restart", () =>

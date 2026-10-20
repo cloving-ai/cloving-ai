@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, rm, mkdir } from "node:fs/promises";
+import { rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,6 +9,7 @@ import { eventually } from "./service-fixture.ts";
 import {
   blockedRun,
   notifyReply,
+  notificationJournal,
   withNotifier,
 } from "./notify-check-fixture.ts";
 
@@ -126,12 +127,10 @@ for (const latestSequence of [undefined, null, "1", true, {}, []]) {
         0,
       );
       assert.deepEqual(await scene.notices(), []);
-      assert.deepEqual(
-        JSON.parse(
-          await readFile(join(scene.directory, "notify-events.json"), "utf8"),
-        ),
-        [],
-      );
+      assert.deepEqual(await notificationJournal(scene.directory), {
+        version: 1,
+        entries: [],
+      });
       state.runs = [blockedRun];
       await eventually(async () =>
         (await scene.notices()).length === 1 ? true : undefined,
@@ -313,8 +312,8 @@ await test("CLV-090 failed scans cannot consume event keys and a later check rec
       await scene.stop();
       assert.ok(counts.reads > 5);
       assert.deepEqual(
-        JSON.parse(
-          await readFile(join(scene.directory, "notify-events.json"), "utf8"),
+        (await notificationJournal(scene.directory)).entries.map(
+          (entry) => entry["key"],
         ),
         ["blocked:run-blocked"],
       );

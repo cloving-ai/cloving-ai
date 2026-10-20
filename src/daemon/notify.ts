@@ -1,5 +1,9 @@
+import {
+  recordedNotifications,
+  saveNotifications,
+  type DeliveryEntry,
+} from "./notify-journal.ts";
 import { spawn } from "node:child_process";
-import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { send } from "../cli/client.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
@@ -16,6 +20,8 @@ interface NotifySettings {
   readonly command: readonly string[];
   readonly intervalMilliseconds?: number;
 }
+
+const retentionMilliseconds = 7 * 24 * 60 * 60_000;
 
 async function request(
   runtimeDirectory: string,
@@ -42,6 +48,31 @@ type OutcomeCache = Map<
     readonly event: NotifyEvent | undefined;
   }
 >;
+
+interface DeliveryJournal {
+  readonly file: string;
+  readonly entries: Map<string, DeliveryEntry>;
+  readonly retiredKeys: Set<string>;
+  readonly unsaved: Map<string, DeliveryEntry>;
+}
+
+async function flushNotifications(journal: DeliveryJournal): Promise<void> {
+  if (journal.unsaved.size === 0) return;
+  await saveNotifications(journal.file, journal);
+  for (const entry of journal.unsaved.values())
+    if (entry.state === "failed" && entry.attempts === 5)
+      process.stderr.write(`Notify delivery failed: ${entry.key}\n`);
+  journal.unsaved.clear();
+}
+
+async function finishDelivery(
+  journal: DeliveryJournal,
+  entry: DeliveryEntry,
+): Promise<void> {
+  journal.entries.set(entry.key, entry);
+  journal.unsaved.set(entry.key, entry);
+  await flushNotifications(journal);
+}
 
 async function observedOutcome(
   summary: Fields,
@@ -102,27 +133,6 @@ async function events(
   return found;
 }
 
-async function recorded(file: string): Promise<Set<string> | undefined> {
-  const text = await readFile(file, "utf8").catch((error: unknown) => {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return undefined;
-    throw error;
-  });
-  if (text === undefined) return undefined;
-  const value: unknown = JSON.parse(text);
-  if (!Array.isArray(value) || !value.every((key) => typeof key === "string"))
-    throw new Error("invalid-notify-record");
-  return new Set(value.map(String));
-}
-
-async function save(file: string, keys: ReadonlySet<string>): Promise<void> {
-  await writeFile(`${file}.tmp`, JSON.stringify([...keys]) + "\n", {
-    mode: 0o600,
-    flush: true,
-  });
-  await rename(`${file}.tmp`, file);
-}
-
 export function notifyCommand(
   command: readonly string[],
   notification: Notification,
@@ -154,23 +164,104 @@ function report(label: string, error: unknown): void {
   process.stderr.write(`${label}: ${JSON.stringify(reason)}\n`);
 }
 
+function failureReason(error: unknown): string {
+  if (!(error instanceof Error)) return "command error";
+  if ("code" in error && (error.code === "ENOENT" || error.code === "EACCES"))
+    return `spawn ${error.code}`;
+  return /^(?:exit code (?:\d+|null)|signal SIG[A-Z0-9]+)$/.test(error.message)
+    ? error.message
+    : "command error";
+}
+
+async function deliver(
+  settings: NotifySettings,
+  delivery: {
+    readonly journal: DeliveryJournal;
+    readonly entry: DeliveryEntry;
+  },
+): Promise<void> {
+  const { journal, entry } = delivery;
+  if (entry.message === null || entry.state === "sent") return;
+  if (entry.attempts === 5) {
+    if (entry.state === "pending")
+      await finishDelivery(journal, {
+        ...entry,
+        state: "failed",
+        lastFailure: "attempt interrupted",
+      });
+    return;
+  }
+  const backoff = [0, 60_000, 300_000, 900_000, 3_600_000][entry.attempts] ?? 0;
+  if (
+    entry.lastAttemptAt !== null &&
+    Date.now() - entry.lastAttemptAt < backoff
+  )
+    return;
+  const pending: DeliveryEntry = {
+    ...entry,
+    state: "pending",
+    attempts: entry.attempts + 1,
+    lastAttemptAt: Date.now(),
+  };
+  const next = new Map(journal.entries).set(entry.key, pending);
+  await saveNotifications(journal.file, { ...journal, entries: next });
+  journal.entries.set(entry.key, pending);
+  let result: DeliveryEntry;
+  try {
+    await notifyCommand(settings.command, entry.message);
+    result = { ...pending, state: "sent" };
+  } catch (error) {
+    result = {
+      ...pending,
+      state: "failed",
+      lastFailure: failureReason(error),
+    };
+  }
+  await finishDelivery(journal, result);
+}
+
 async function check(
   settings: NotifySettings,
-  journal: {
-    readonly file: string;
-    readonly keys: Set<string>;
+  journal: DeliveryJournal & {
     readonly cache: OutcomeCache;
   },
 ): Promise<void> {
+  await flushNotifications(journal);
+  const retained = new Map(
+    [...journal.entries].filter(
+      ([, entry]) =>
+        entry.state === "pending" ||
+        (entry.state === "failed" && entry.attempts < 5) ||
+        entry.lastAttemptAt === null ||
+        entry.lastAttemptAt >= Date.now() - retentionMilliseconds,
+    ),
+  );
+  if (retained.size !== journal.entries.size) {
+    const retiredKeys = new Set([
+      ...journal.retiredKeys,
+      ...[...journal.entries.keys()].filter((key) => !retained.has(key)),
+    ]);
+    await saveNotifications(journal.file, { entries: retained, retiredKeys });
+    for (const key of journal.entries.keys())
+      if (!retained.has(key)) {
+        journal.entries.delete(key);
+        journal.retiredKeys.add(key);
+      }
+  }
+  for (const entry of journal.entries.values())
+    await deliver(settings, { journal, entry });
   for (const event of await events(settings.runtimeDirectory, journal.cache)) {
-    if (journal.keys.has(event.key)) continue;
-    await save(journal.file, new Set([...journal.keys, event.key]));
-    journal.keys.add(event.key);
-    await notifyCommand(settings.command, event.message).catch(
-      (error: unknown) => {
-        report("Notify command failed", error);
-      },
-    );
+    if (journal.entries.has(event.key) || journal.retiredKeys.has(event.key))
+      continue;
+    const entry: DeliveryEntry = {
+      ...event,
+      state: "pending",
+      attempts: 0,
+      lastAttemptAt: null,
+      lastFailure: null,
+    };
+    journal.entries.set(event.key, entry);
+    await deliver(settings, { journal, entry });
   }
 }
 
@@ -178,14 +269,26 @@ export async function notifyRuns(settings: NotifySettings): Promise<{
   readonly stop: () => Promise<void>;
 }> {
   const file = join(settings.directory, "notify-events.json");
-  const keys = await recorded(file);
+  const recorded = await recordedNotifications(file);
   const cache: OutcomeCache = new Map();
-  const journal = { file, keys: keys ?? new Set<string>(), cache };
-  if (keys === undefined) {
+  const journal = {
+    file,
+    entries: recorded?.entries ?? new Map<string, DeliveryEntry>(),
+    retiredKeys: recorded?.retiredKeys ?? new Set<string>(),
+    cache,
+    unsaved: new Map<string, DeliveryEntry>(),
+  };
+  if (recorded === undefined) {
     for (const event of await events(settings.runtimeDirectory, cache))
-      journal.keys.add(event.key);
-    await save(file, journal.keys);
+      journal.entries.set(event.key, {
+        ...event,
+        state: "sent",
+        attempts: 0,
+        lastAttemptAt: Date.now(),
+        lastFailure: null,
+      });
   }
+  await saveNotifications(file, journal);
   let busy = false;
   let running = Promise.resolve();
   const timer = setInterval(() => {
