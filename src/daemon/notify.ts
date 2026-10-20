@@ -56,6 +56,14 @@ interface DeliveryJournal {
   readonly unsaved: Map<string, DeliveryEntry>;
 }
 
+interface DeliveryProgress {
+  readonly stopping: AbortSignal;
+  active: Promise<void> | undefined;
+  completed: DeliveryEntry | undefined;
+}
+
+type DeliveryAttempt = DeliveryEntry & { readonly message: Notification };
+
 async function flushNotifications(journal: DeliveryJournal): Promise<void> {
   if (journal.unsaved.size === 0) return;
   await saveNotifications(journal.file, journal);
@@ -173,32 +181,27 @@ function failureReason(error: unknown): string {
     : "command error";
 }
 
-async function deliver(
-  settings: NotifySettings,
-  delivery: {
-    readonly journal: DeliveryJournal;
-    readonly entry: DeliveryEntry;
-  },
-): Promise<void> {
-  const { journal, entry } = delivery;
-  if (entry.message === null || entry.state === "sent") return;
-  if (entry.attempts === 5) {
-    if (entry.state === "pending")
-      await finishDelivery(journal, {
-        ...entry,
-        state: "failed",
-        lastFailure: "attempt interrupted",
-      });
-    return;
-  }
+async function prepareDelivery(
+  journal: DeliveryJournal,
+  entry: DeliveryEntry,
+): Promise<DeliveryAttempt | undefined> {
+  if (entry.message === null || entry.state === "sent") return undefined;
+  if (entry.attempts === 5 && entry.state === "pending")
+    await finishDelivery(journal, {
+      ...entry,
+      state: "failed",
+      lastFailure: "attempt interrupted",
+    });
+  if (entry.attempts === 5) return undefined;
   const backoff = [0, 60_000, 300_000, 900_000, 3_600_000][entry.attempts] ?? 0;
   if (
     entry.lastAttemptAt !== null &&
     Date.now() - entry.lastAttemptAt < backoff
   )
-    return;
-  const pending: DeliveryEntry = {
+    return undefined;
+  const pending: DeliveryAttempt = {
     ...entry,
+    message: entry.message,
     state: "pending",
     attempts: entry.attempts + 1,
     lastAttemptAt: Date.now(),
@@ -206,18 +209,64 @@ async function deliver(
   const next = new Map(journal.entries).set(entry.key, pending);
   await saveNotifications(journal.file, { ...journal, entries: next });
   journal.entries.set(entry.key, pending);
-  let result: DeliveryEntry;
+  return pending;
+}
+
+async function deliver(
+  settings: NotifySettings,
+  entry: DeliveryAttempt,
+): Promise<DeliveryEntry> {
   try {
     await notifyCommand(settings.command, entry.message);
-    result = { ...pending, state: "sent" };
+    return { ...entry, state: "sent" };
   } catch (error) {
-    result = {
-      ...pending,
+    return {
+      ...entry,
       state: "failed",
       lastFailure: failureReason(error),
     };
   }
-  await finishDelivery(journal, result);
+}
+
+async function settleDelivery(
+  journal: DeliveryJournal,
+  progress: DeliveryProgress,
+): Promise<void> {
+  if (progress.completed !== undefined) {
+    const entry = progress.completed;
+    progress.completed = undefined;
+    await finishDelivery(journal, entry);
+  }
+  await flushNotifications(journal);
+}
+
+async function scheduleDelivery(
+  settings: NotifySettings,
+  delivery: {
+    readonly journal: DeliveryJournal;
+    readonly progress: DeliveryProgress;
+  },
+): Promise<void> {
+  const { journal, progress } = delivery;
+  const stopped = (): boolean => progress.stopping.aborted;
+  if (
+    stopped() ||
+    progress.active !== undefined ||
+    progress.completed !== undefined ||
+    journal.unsaved.size > 0
+  )
+    return;
+  for (const entry of journal.entries.values()) {
+    if (stopped()) return;
+    const pending = await prepareDelivery(journal, entry);
+    if (pending === undefined) continue;
+    if (stopped()) return;
+    progress.active = deliver(settings, pending).then((completed) => {
+      progress.completed = completed;
+      progress.active = undefined;
+    });
+    return;
+  }
 }
 
 async function check(
@@ -226,7 +275,6 @@ async function check(
     readonly cache: OutcomeCache;
   },
 ): Promise<void> {
-  await flushNotifications(journal);
   const retained = new Map(
     [...journal.entries].filter(
       ([, entry]) =>
@@ -248,8 +296,6 @@ async function check(
         journal.retiredKeys.add(key);
       }
   }
-  for (const entry of journal.entries.values())
-    await deliver(settings, { journal, entry });
   for (const event of await events(settings.runtimeDirectory, journal.cache)) {
     if (journal.entries.has(event.key) || journal.retiredKeys.has(event.key))
       continue;
@@ -261,8 +307,9 @@ async function check(
       lastFailure: null,
     };
     journal.entries.set(event.key, entry);
-    await deliver(settings, { journal, entry });
+    journal.unsaved.set(event.key, entry);
   }
+  await flushNotifications(journal);
 }
 
 export async function notifyRuns(settings: NotifySettings): Promise<{
@@ -291,21 +338,37 @@ export async function notifyRuns(settings: NotifySettings): Promise<{
   await saveNotifications(file, journal);
   let busy = false;
   let running = Promise.resolve();
+  const stopping = new AbortController();
+  const progress: DeliveryProgress = {
+    stopping: stopping.signal,
+    active: undefined,
+    completed: undefined,
+  };
   const timer = setInterval(() => {
     if (busy) return;
     busy = true;
-    running = check(settings, journal)
+    running = settleDelivery(journal, progress)
+      .then(() => check(settings, journal))
       .catch((error: unknown) => {
         report("Notify check failed", error);
+      })
+      .then(() => scheduleDelivery(settings, { journal, progress }))
+      .catch((error: unknown) => {
+        report("Notify delivery failed", error);
       })
       .finally(() => {
         busy = false;
       });
   }, settings.intervalMilliseconds ?? 15_000);
   return {
-    stop: async () => {
+    stop: () => {
+      stopping.abort();
       clearInterval(timer);
-      await running;
+      running = running.then(async () => {
+        await progress.active;
+        await settleDelivery(journal, progress);
+      });
+      return running;
     },
   };
 }
