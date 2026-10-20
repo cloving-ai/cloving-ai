@@ -15,6 +15,101 @@ import {
   structure,
 } from "./chats-analysis-fixture.ts";
 
+await test("CLV-119 merges an artifact-only batch and requires complete cumulative collections", () => {
+  const previousResult = accepted();
+  const next = batch();
+  const candidate = {
+    ...next,
+    process: {
+      ...next.process,
+      inputs: [],
+      stages: [],
+      stoppingConditions: [],
+      artifacts: [{ id: "artifact", description: "Artifact." }],
+    },
+  };
+  const input = { previousResult, candidate, evidence, nextRecordIndex: 6 };
+  const before = structuredClone(input);
+  const result = mergeAnalysisBatch(input);
+  assert.ok(result.accepted);
+  assert.deepEqual(result.result.process, {
+    ...previousResult.process,
+    artifacts: candidate.process.artifacts,
+  });
+  assert.deepEqual(input, before);
+  assert.deepEqual(mergeAnalysisBatch(input), result);
+  assert.deepEqual(mergeAnalysisBatch({ ...input, previousResult: null }), {
+    accepted: false,
+    codes: ["invalid-shape"],
+  });
+});
+
+for (const collection of ["branches", "gates"] as const)
+  await test(`CLV-119 merges a ${collection}-only batch using prior required collections`, () => {
+    const previousResult = accepted(fullCandidate());
+    const next = fullCandidate();
+    const item = next.process[collection][0];
+    assert.ok(item);
+    const candidate = {
+      ...next,
+      process: {
+        ...next.process,
+        inputs: [],
+        stages: [],
+        branches: [],
+        loops: [],
+        artifacts: [],
+        stoppingConditions: [],
+        gates: [],
+        nonGates: [],
+        [collection]: [{ ...item, id: "extra" }],
+      },
+    };
+    const result = mergeAnalysisBatch({
+      previousResult,
+      candidate,
+      evidence,
+      nextRecordIndex: records.length,
+    });
+    assert.ok(result.accepted);
+    assert.deepEqual(result.result.process, {
+      ...previousResult.process,
+      [collection]: [
+        ...previousResult.process[collection],
+        ...candidate.process[collection],
+      ],
+    });
+  });
+
+await test("CLV-119 refuses malformed incoming collections even with a valid prior result", () => {
+  for (const collection of ["stages", "stoppingConditions"] as const) {
+    for (const value of [null, {}, [null], [{ id: 42 }]]) {
+      const candidate = batch();
+      Reflect.set(candidate.process, collection, value);
+      assert.deepEqual(
+        mergeAnalysisBatch({
+          previousResult: accepted(),
+          candidate,
+          evidence,
+          nextRecordIndex: 6,
+        }),
+        { accepted: false, codes: ["invalid-shape"] },
+      );
+    }
+    const candidate = batch();
+    Reflect.set(candidate.process, collection, []);
+    assert.deepEqual(
+      mergeAnalysisBatch({
+        previousResult: null,
+        candidate,
+        evidence,
+        nextRecordIndex: 6,
+      }),
+      { accepted: false, codes: ["invalid-shape"] },
+    );
+  }
+});
+
 await test("CLV-119 revalidates cumulative repetition using original source and copy classes", () => {
   const initial = batch([ref(1), ref(4)]);
   const previousResult = accepted({

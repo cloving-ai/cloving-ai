@@ -9,7 +9,7 @@ import {
 } from "./analysis.ts";
 import type { OccurrenceReference } from "./structure.ts";
 import { inspectAnalysisData } from "./analysis-data.ts";
-import { inspectAnalysisShape } from "./analysis-shape.ts";
+import { inspectAnalysisBatchShape } from "./analysis-shape.ts";
 import { analysisCodes } from "./analysis-contract.ts";
 import { matchingAnalysisEvidence } from "./analysis-provenance.ts";
 
@@ -203,7 +203,7 @@ export function mergeAnalysisBatch(
   const codes = new Set(inspectAnalysisData(input.candidate));
   if (codes.has("not-plain-data"))
     return { accepted: false, codes: ["not-plain-data"] };
-  if (!inspectAnalysisShape(input.candidate, codes) || codes.size > 0)
+  if (!inspectAnalysisBatchShape(input.candidate, codes) || codes.size > 0)
     return {
       accepted: false,
       codes: analysisCodes.filter((code) => codes.has(code)),

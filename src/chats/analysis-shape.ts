@@ -248,18 +248,13 @@ function inspectItems(
       codes.add("invalid-shape");
       continue;
     }
-    if (
-      ["stages", "stoppingConditions"].includes(collection) &&
-      items.length === 0
-    )
-      codes.add("invalid-shape");
     for (const item of items) {
       inspectItem(item, { ids, collection, codes });
     }
   }
 }
 
-export function inspectAnalysisShape(
+export function inspectAnalysisBatchShape(
   value: unknown,
   codes: Set<AnalysisCode>,
 ): value is AnalysisCandidate {
@@ -287,4 +282,19 @@ export function inspectAnalysisShape(
     !codes.has("invalid-shape") &&
     !codes.has("unknown-version")
   );
+}
+
+export function inspectAnalysisShape(
+  value: unknown,
+  codes: Set<AnalysisCode>,
+): value is AnalysisCandidate {
+  if (!inspectAnalysisBatchShape(value, codes)) return false;
+  if (
+    value.process.stages.length === 0 ||
+    value.process.stoppingConditions.length === 0
+  ) {
+    codes.add("invalid-shape");
+    return false;
+  }
+  return true;
 }
