@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { candidateProgram as installedProgram } from "../tools/workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
 import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-workflow.ts";
+import { loadWorkflowFolders as installedFolders } from "../tools/workflow-folders.ts";
 
 const product = join(import.meta.dirname, "..");
 const directory = realpathSync(
@@ -47,4 +48,10 @@ export function admitWorkflowCandidate(
   input: Parameters<typeof installedAdmission>[0],
 ) {
   return installedAdmission(input, { packageRoot: directory });
+}
+
+export function loadWorkflowFolders(
+  input: Parameters<typeof installedFolders>[0],
+) {
+  return installedFolders(input, { packageRoot: directory });
 }

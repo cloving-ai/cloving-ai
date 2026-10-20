@@ -10,6 +10,7 @@
     "tools/self-host.ts",
     "tools/compile-workflows.ts",
     "tools/admit-workflow.ts",
+    "tools/workflow-folders.ts",
     "workflows/**/*.ts"
   ]
 }

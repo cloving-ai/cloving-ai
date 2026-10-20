@@ -1,3 +1,4 @@
+import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
@@ -172,6 +173,8 @@ async function inventory(root: string): Promise<void> {
     "self-update",
     "workflow-manifest",
     "admit-workflow",
+    "workflow-folders",
+    "workflow-folder-capture",
   ])
     assert.ok(
       (await readFile(join(product, "dist/tools", `${name}.js`))).length > 0,
@@ -332,6 +335,7 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
   try {
     command("git", { args: ["init", "-q"], cwd: root });
     await running(root, await installed(root));
+    await packedWorkflowFolders(root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
