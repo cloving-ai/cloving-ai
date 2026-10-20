@@ -5,8 +5,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { admitWorkflowCandidate } from "../tools/admit-workflow.ts";
-import { analyzeWorkflowCandidate } from "../tools/workflow-candidate-source.ts";
+import {
+  admitWorkflowCandidate,
+  analyzeWorkflowCandidate,
+} from "./candidate-package-fixture.ts";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
 import {
   candidateDeclaration,

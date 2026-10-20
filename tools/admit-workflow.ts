@@ -11,13 +11,16 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { findPackageJSON } from "node:module";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   checkWorkflowCandidate,
   type WorkflowCandidateCode,
 } from "../src/workflow-candidate.ts";
-import { candidatePackageRoot } from "./workflow-candidate-program.ts";
+import {
+  candidatePackageRoot,
+  type CandidatePackageOptions,
+} from "./workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate } from "./workflow-candidate-source.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
 
@@ -28,18 +31,19 @@ export type WorkflowCandidateAdmission =
       readonly codes: readonly (WorkflowCandidateCode | "compile-failed")[];
     };
 
-export async function admitWorkflowCandidate(input: {
-  readonly source: string;
-  readonly declaration: unknown;
-}): Promise<WorkflowCandidateAdmission> {
+export async function admitWorkflowCandidate(
+  input: { readonly source: string; readonly declaration: unknown },
+  installed: CandidatePackageOptions = {},
+): Promise<WorkflowCandidateAdmission> {
   const { source, declaration } = input;
   if (Buffer.from(source, "utf8").toString("utf8") !== source)
     return { kind: "refused", codes: ["unsupported-source"] };
   try {
-    const facts = analyzeWorkflowCandidate(source);
+    const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
+    const facts = analyzeWorkflowCandidate(source, { packageRoot });
     const codes = checkWorkflowCandidate({ declaration, ...facts });
     if (codes.length > 0) return { kind: "refused", codes };
-    return await compiledCandidate(source);
+    return await compiledCandidate(source, packageRoot);
   } catch {
     return { kind: "refused", codes: ["compile-failed"] };
   }
@@ -47,12 +51,13 @@ export async function admitWorkflowCandidate(input: {
 
 async function compiledCandidate(
   source: string,
+  packageRoot: string,
 ): Promise<WorkflowCandidateAdmission> {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "cloving-candidate-")),
   );
   try {
-    await prepareCandidateProject(directory, source);
+    await prepareCandidateProject(directory, { source, packageRoot });
     if (!(await compile(directory)))
       return { kind: "refused", codes: ["compile-failed"] };
     const artifactDirectory = join(directory, "artifacts");
@@ -85,11 +90,12 @@ async function compiledCandidate(
 
 async function prepareCandidateProject(
   directory: string,
-  source: string,
+  input: { readonly source: string; readonly packageRoot: string },
 ): Promise<void> {
+  const { source, packageRoot } = input;
   await mkdir(join(directory, "workflows"));
   await mkdir(join(directory, "node_modules"));
-  await symlink(candidatePackageRoot, join(directory, "node_modules/cloving"));
+  await symlink(packageRoot, join(directory, "node_modules/cloving"));
   const runtime = findPackageJSON("workflow", import.meta.url);
   if (!runtime) throw new Error("candidate-runtime-unavailable");
   await symlink(dirname(runtime), join(directory, "node_modules/workflow"));

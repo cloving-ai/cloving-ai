@@ -7,6 +7,10 @@ export const candidatePackageRoot = dirname(
   fileURLToPath(import.meta.resolve("#package")),
 );
 
+export interface CandidatePackageOptions {
+  readonly packageRoot?: string;
+}
+
 export function resolvedSymbol(
   checker: ts.TypeChecker,
   symbol: ts.Symbol | undefined,
@@ -15,16 +19,20 @@ export function resolvedSymbol(
   return checker.getAliasedSymbol(symbol);
 }
 
-export function candidateProgram(text: string): {
+export function candidateProgram(
+  text: string,
+  installed: CandidatePackageOptions = {},
+): {
   readonly program: ts.Program;
   readonly source: ts.SourceFile;
   readonly modules: ReadonlyMap<string, ts.SourceFile>;
 } {
-  const candidate = join(candidatePackageRoot, "candidate.ts");
+  const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
+  const candidate = join(packageRoot, "candidate.ts");
   const entries = new Map(
     Object.entries(metadata.exports).map(([name, entry]) => [
       `cloving${name.slice(1)}`,
-      resolve(candidatePackageRoot, entry.types),
+      resolve(packageRoot, entry.types),
     ]),
   );
   const options: ts.CompilerOptions = {
@@ -36,7 +44,7 @@ export function candidateProgram(text: string): {
     strict: true,
     noEmit: true,
   };
-  const host = trustedHost({ candidate, text, options, entries });
+  const host = trustedHost({ candidate, text, options, entries, packageRoot });
   const program = ts.createProgram(
     [candidate, ...entries.values()],
     options,
@@ -58,10 +66,11 @@ function trustedHost(input: {
   readonly text: string;
   readonly options: ts.CompilerOptions;
   readonly entries: ReadonlyMap<string, string>;
+  readonly packageRoot: string;
 }): ts.CompilerHost {
-  const { candidate, text, options, entries } = input;
+  const { candidate, text, options, entries, packageRoot } = input;
   const libraries = dirname(ts.getDefaultLibFilePath(options)) + sep;
-  const declarations = join(candidatePackageRoot, "dist/src") + sep;
+  const declarations = join(packageRoot, "dist/src") + sep;
   const readFile = (file: string): string | undefined => {
     if (file === candidate) return text;
     const absolute = resolve(file);

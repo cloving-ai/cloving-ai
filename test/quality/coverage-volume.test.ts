@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Parser } from "acorn";
 import { spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
@@ -47,6 +48,62 @@ async function requestedCoverage(directory: string): Promise<void> {
     }),
   );
 }
+
+await test("CLV-122 converts repeated process coverage profiles once per collection and preserves their merged metrics", async () => {
+  await withFiles({}, async (directory) => {
+    await requestedCoverage(directory);
+    const coverage = join(directory, "coverage");
+    const file = join(directory, "main.js");
+    const expected = await collectCoverage(coverage, [file]);
+    const complete = await readFile(join(coverage, "requested.json"), "utf8");
+    for (let index = 0; index < 20; index += 1)
+      await writeFile(
+        join(coverage, `${String(index).padStart(2, "0")}.json`),
+        complete
+          .replace('"scriptId":"1"', `"scriptId":"${String(index + 2)}"`)
+          .replace('"count":1', `"count":${String(index % 2)}`),
+      );
+    const descriptor = Object.getOwnPropertyDescriptor(Parser, "parse");
+    assert.ok(descriptor);
+    const parse = Parser.parse.bind(Parser);
+    let parses = 0;
+    Parser.parse = (input, options) => {
+      parses += 1;
+      return parse(input, options);
+    };
+    try {
+      for (let collection = 1; collection <= 2; collection += 1) {
+        assert.deepEqual(await collectCoverage(coverage, [file]), expected);
+        assert.equal(parses, collection * 2);
+      }
+    } finally {
+      Object.defineProperty(Parser, "parse", descriptor);
+    }
+  });
+});
+
+await test("CLV-122 keeps identical coverage profiles for different source files separate", async () => {
+  await withFiles({}, async (directory) => {
+    await requestedCoverage(directory);
+    const coverage = join(directory, "coverage");
+    const first = join(directory, "main.js");
+    const second = join(directory, "second.js");
+    const [expected] = await collectCoverage(coverage, [first]);
+    assert.ok(expected);
+    await writeFile(second, await readFile(first, "utf8"));
+    await writeFile(
+      join(coverage, "second.json"),
+      (await readFile(join(coverage, "requested.json"), "utf8")).replace(
+        pathToFileURL(first).href,
+        pathToFileURL(second).href,
+      ),
+    );
+    assert.deepEqual(await collectCoverage(coverage, [first, second]), [
+      expected,
+      { ...expected, path: second },
+    ]);
+  });
+});
 
 for (const unfinished of ["", '{"result":'])
   await test(`CLV-142 reads a raw coverage recording completed after 600 milliseconds: ${JSON.stringify(unfinished)}`, async () => {

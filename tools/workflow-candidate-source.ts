@@ -2,6 +2,7 @@ import ts from "typescript";
 import {
   candidateProgram,
   resolvedSymbol,
+  type CandidatePackageOptions,
 } from "./workflow-candidate-program.ts";
 import {
   protectedEffectFact,
@@ -105,11 +106,14 @@ function sourceImport(node: ts.Node): CandidateImport | undefined {
   };
 }
 
-export function analyzeWorkflowCandidate(text: string): {
+export function analyzeWorkflowCandidate(
+  text: string,
+  installed: CandidatePackageOptions = {},
+): {
   readonly analysis: CandidateAnalysis;
   readonly installedExports: InstalledWorkflowExports;
 } {
-  const { program, source, modules } = candidateProgram(text);
+  const { program, source, modules } = candidateProgram(text, installed);
   const checker = program.getTypeChecker();
   const symbols = {
     checker,
