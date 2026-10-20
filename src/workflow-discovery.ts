@@ -1,7 +1,7 @@
 export interface WorkflowReservation {
-  readonly baseName: string;
-  readonly workflowId: string;
-  readonly functionName: string;
+  readonly baseName?: string;
+  readonly workflowId?: string;
+  readonly functionName?: string;
 }
 
 export interface WorkflowDiscoveryIdentity {
@@ -13,9 +13,13 @@ export interface WorkflowDiscoveryIdentity {
 export type WorkflowConflictCode =
   "workflow-conflict" | "bundled-name-reserved";
 
-function identityKeys(identity: WorkflowDiscoveryIdentity): readonly string[] {
+function identityKeys(identity: {
+  readonly baseName?: string | undefined;
+  readonly workflowId?: string | undefined;
+  readonly functionNames: readonly string[];
+}): readonly string[] {
   return [
-    `base:${identity.baseName}`,
+    ...(identity.baseName === undefined ? [] : [`base:${identity.baseName}`]),
     ...(identity.workflowId === undefined ? [] : [`id:${identity.workflowId}`]),
     ...identity.functionNames.map((name) => `function:${name}`),
   ];
@@ -33,7 +37,11 @@ export function workflowConflicts(
   }
   const reserved = new Set(
     bundled.flatMap((entry) =>
-      identityKeys({ ...entry, functionNames: [entry.functionName] }),
+      identityKeys({
+        ...entry,
+        functionNames:
+          entry.functionName === undefined ? [] : [entry.functionName],
+      }),
     ),
   );
   return keys.map((names) => {
@@ -45,3 +53,9 @@ export function workflowConflicts(
     return codes;
   });
 }
+export const bundledWorkflowIds = {
+  ticket: "develop-ticket",
+  issue: "develop-issue",
+  prompt: "develop-prompt",
+  prd: "develop-prd",
+} as const;

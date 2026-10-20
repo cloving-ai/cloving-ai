@@ -159,6 +159,7 @@ async function launched(
         CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
         CLOVING_HOST_BOUND: settings.bound ?? "8",
         CLOVING_WATCH_PORT: "off",
+        XDG_CONFIG_HOME: join(settings.directory, "configuration"),
         ...settings.environment,
       },
       stdio: ["ignore", "pipe", "pipe"],

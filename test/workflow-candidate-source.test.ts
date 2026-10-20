@@ -19,6 +19,35 @@ function check(source: string, declaration: unknown = candidateDeclaration) {
   });
 }
 
+for (const statement of [
+  'throw new Error("SOURCE_SENTINEL");',
+  "export const developTicket = 1;",
+  'const parsed = JSON.parse("SOURCE_SENTINEL");',
+  "while (true) {}",
+  "const { value } = null;",
+  'class Unsafe { static value = JSON.parse("SOURCE_SENTINEL"); }',
+  'const value = { get answer() { throw new Error("SOURCE_SENTINEL"); } };',
+]) {
+  await test(`CLV-124 refuses executable module initialization ${statement}`, () => {
+    assert.deepEqual(check(`${statement}\n${validCandidateSource}`), [
+      "unsupported-source",
+    ]);
+  });
+}
+
+await test("CLV-124 accepts passive module constants, type declarations and deferred function bodies", () => {
+  assert.deepEqual(
+    check(`
+const config = { rounds: [1, -2], label: "ready", enabled: true, empty: null } as const;
+type Input = { value: string };
+interface Output { value: string }
+function deferred() { throw new Error("runtime-only"); }
+const deferredArrow = () => { throw new Error("runtime-only"); };
+${validCandidateSource}`),
+    [],
+  );
+});
+
 await test("CLV-121 the actual combined source produces both refusal codes without execution", () => {
   assert.deepEqual(check(combinedCandidateSource), [
     "missing-export",

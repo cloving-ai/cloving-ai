@@ -1,25 +1,14 @@
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
 import { parseTokenPrices, type TokenPrices } from "../src/token-prices.ts";
-import { execFileSync, spawn } from "node:child_process";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { readFile, realpath, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
-import packageMetadata from "#package" with { type: "json" };
-import { findPackageJSON } from "node:module";
 import { pathToFileURL } from "node:url";
 import {
-  workflowDeclarations,
-  workflowFiles,
-  workflowManifests,
-} from "./self-host-workflows.ts";
-import { isWorkflowManifest } from "./workflow-manifest.ts";
-import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+  preparedProject,
+  type RegisteredWorkflows,
+} from "./self-host-project.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
 
@@ -47,7 +36,9 @@ if (runtimeArgument === undefined)
   throw new Error("The start program needs --runtime. Use: cloving start");
 const runtime = resolve(runtimeArgument);
 const directory = dirname(runtime);
-const repository = topLevel(resolve(flag("--repository") ?? process.cwd()));
+const repository = await realpath(
+  topLevel(resolve(flag("--repository") ?? process.cwd())),
+);
 const updateMilliseconds = await selfUpdateMilliseconds({
   seconds: process.env["CLOVING_SELF_UPDATE_SECONDS"],
   repository,
@@ -143,87 +134,6 @@ function listed(name: string): readonly string[] | undefined {
   return list.map(String);
 }
 
-function record(value: unknown): Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null ? { ...value } : {};
-}
-
-function ended(
-  argumentsList: readonly string[],
-  environment: NodeJS.ProcessEnv,
-): Promise<number> {
-  return new Promise((settle, reject) => {
-    const child = spawn(process.execPath, argumentsList, {
-      cwd: project,
-      env: environment,
-      stdio: "inherit",
-    });
-    for (const signal of ["SIGINT", "SIGTERM"] as const)
-      process.on(signal, () => child.kill(signal));
-    child.once("error", reject);
-    child.once("close", (status) => {
-      settle(status ?? 1);
-    });
-  });
-}
-
-async function linkedPackages(): Promise<void> {
-  const modules = join(project, "node_modules");
-  await mkdir(join(modules, "cloving"), { recursive: true });
-  for (const name of Object.keys(packageMetadata.dependencies)) {
-    const location = findPackageJSON(name, join(product, "package.json"));
-    if (location === undefined)
-      throw new Error(`missing-runtime-dependency: ${name}`);
-    await mkdir(dirname(join(modules, name)), { recursive: true });
-    await symlink(dirname(location), join(modules, name));
-  }
-  const manifest = record(packageMetadata);
-  const exported = Object.keys(record(manifest["exports"])).filter((subpath) =>
-    subpath.startsWith("./workflows"),
-  );
-  await symlink(join(product, "src"), join(modules, "cloving", "src"));
-  await writeFile(
-    join(modules, "cloving", "package.json"),
-    JSON.stringify({
-      name: manifest["name"],
-      version: manifest["version"],
-      type: "module",
-      exports: Object.fromEntries(
-        exported.map((subpath) => [
-          subpath,
-          `./src/${subpath.slice("./workflows/".length) || "workflows"}${extname(import.meta.filename)}`,
-        ]),
-      ),
-    }),
-  );
-}
-
-interface RegisteredWorkflows {
-  readonly manifests: Readonly<Record<string, string>>;
-  readonly declarations: readonly DeclaredWorkflow[];
-}
-
-async function registered(): Promise<RegisteredWorkflows> {
-  const compiled: unknown = JSON.parse(
-    await readFile(join(project, "artifacts/manifest.json"), "utf8"),
-  );
-  if (!isWorkflowManifest(compiled))
-    throw new Error("The compiled workflow manifest is invalid.");
-  const manifests = workflowManifests(compiled);
-  const declarations = await workflowDeclarations(
-    join(product, "workflows"),
-    manifests,
-  );
-  const paths = new Map<string, string>();
-  for (const [functionName, manifest] of Object.entries(
-    workflowManifests(compiled, declarations),
-  )) {
-    const path = join(project, `${manifest.name}.workflow.json`);
-    await writeFile(path, JSON.stringify(manifest));
-    paths.set(functionName, path);
-  }
-  return { manifests: Object.fromEntries(paths), declarations };
-}
-
 function source(file: string): string {
   return JSON.stringify(
     pathToFileURL(
@@ -239,7 +149,6 @@ async function launchers(
   const settings = {
     ...commands,
     directory,
-    repository,
     concurrency,
     runtimeDirectory: runtime,
     ...workflows,
@@ -286,31 +195,6 @@ function guide(): string {
   ].join("\n");
 }
 
-async function prepared(): Promise<RegisteredWorkflows> {
-  await rm(project, { recursive: true, force: true });
-  await mkdir(join(project, "workflows"), { recursive: true });
-  await writeFile(
-    join(project, "package.json"),
-    '{"name":"cloving-self-host","private":true,"type":"module"}',
-  );
-  for (const file of await workflowFiles(join(product, "workflows")))
-    await copyFile(
-      join(product, "workflows", file),
-      join(project, "workflows", file),
-    );
-  await linkedPackages();
-  const compiled = await ended(
-    [
-      join(product, `tools/compile-workflows${extname(import.meta.filename)}`),
-      "workflows",
-      "artifacts",
-    ],
-    process.env,
-  );
-  if (compiled !== 0) throw new Error("The workflows did not compile.");
-  return registered();
-}
-
 const tokenPrices = parseTokenPrices(process.env["CLOVING_TOKEN_PRICES"]);
 const profiles = await profilesFile();
 const worker = selectedWorker();
@@ -321,7 +205,13 @@ const command =
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueMilliseconds = queueInterval({ nextCommand, ticketCommand });
-const manifests = await prepared();
+const manifests = await preparedProject({
+  product,
+  project,
+  repository,
+  home: homedir(),
+  xdgConfigHome: process.env["XDG_CONFIG_HOME"],
+});
 await launchers(
   {
     tokenPrices,
