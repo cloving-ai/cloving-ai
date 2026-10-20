@@ -22,14 +22,18 @@ import {
 import { manifest, quickCleanupTiming } from "./authority-store-fixture.ts";
 
 import { digestOf } from "./digest-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 export { digestOf };
 
 export const testTiming: ServiceTiming = {
   ...serviceTiming,
   authority: quickCleanupTiming,
-  expiryScanMilliseconds: 50,
-  followMilliseconds: 20,
+  expiryScanMilliseconds: testMilliseconds(50),
+  followMilliseconds: testMilliseconds(20),
+  livenessMilliseconds: testMilliseconds(serviceTiming.livenessMilliseconds),
+  resolverMilliseconds: testMilliseconds(serviceTiming.resolverMilliseconds),
+  idleMilliseconds: testMilliseconds(serviceTiming.idleMilliseconds),
 };
 
 export interface CliResult {
@@ -101,7 +105,7 @@ export function runCli(
     });
     const timer = setTimeout(() => {
       stopChild(child).catch(reject);
-    }, 20000);
+    }, testMilliseconds(20_000));
     child.on("close", (code) => {
       clearTimeout(timer);
       settle({ status: code ?? -1, ...output });
@@ -335,7 +339,9 @@ export async function call(
   },
 ): Promise<Readonly<Record<string, unknown>>> {
   const limit = new AbortController();
-  const late = delay(20_000, undefined, { signal: limit.signal }).then(() => {
+  const late = delay(testMilliseconds(20_000), undefined, {
+    signal: limit.signal,
+  }).then(() => {
     throw new Error(`no reply to ${request.operation}`);
   });
   try {
@@ -354,10 +360,14 @@ export async function call(
 export async function eventually<Value>(
   read: () => Promise<Value | undefined> | Value | undefined,
 ): Promise<Value> {
-  for (let waited = 0; waited < 10_000; waited += 20) {
+  for (
+    let waited = 0;
+    waited < testMilliseconds(10_000);
+    waited += testMilliseconds(20)
+  ) {
     const value = await read();
     if (value !== undefined) return value;
-    await delay(20);
+    await delay(testMilliseconds(20));
   }
   throw new Error("condition-not-reached");
 }

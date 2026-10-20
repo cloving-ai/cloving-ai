@@ -1,10 +1,7 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import {
-  authorityTiming,
-  type Authority,
-  type Delivery,
-} from "../src/broker/actor/authority.ts";
+import type { Authority, Delivery } from "../src/broker/actor/authority.ts";
 import {
   executePinned,
   fastTiming,
@@ -16,6 +13,7 @@ import {
   removeTemporaryDirectories,
   storedGate,
   temporaryDirectory,
+  testAuthorityTiming,
 } from "./authority-store-fixture.ts";
 
 const admission = storedGate[0] ?? {};
@@ -92,7 +90,7 @@ await test("CLV-042 a storage failure while a delivery handler outlasts the shut
   const run = gatedDelivery((call) => call.runId === "run-1");
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
-    timing: { ...fastTiming, shutdownMilliseconds: 150 },
+    timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) },
   });
   const delivering = outcome(authority.deliver(new AbortController().signal));
   await run.entered;
@@ -129,7 +127,7 @@ await test("CLV-042 a dead-lettered callback found while another delivery handle
   const run = gatedDelivery((call) => call.count === 2);
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
-    timing: { ...fastTiming, shutdownMilliseconds: 150 },
+    timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) },
   });
   const delivering = outcome(authority.deliver(new AbortController().signal));
   await run.entered;
@@ -167,7 +165,7 @@ await test("CLV-042 a dead-lettered callback found by the watchdog stops admissi
   const dead = Promise.withResolvers<undefined>();
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
-    timing: authorityTiming,
+    timing: testAuthorityTiming,
     instrumentation: (event) => {
       if (event.name === "solid_objects.dead_letter.created")
         dead.resolve(undefined);
@@ -301,7 +299,10 @@ async function deadLetteredWhileStuck(directory: string): Promise<{
   const dead = Promise.withResolvers<undefined>();
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
-    timing: { ...authorityTiming, shutdownMilliseconds: 600 },
+    timing: {
+      ...testAuthorityTiming,
+      shutdownMilliseconds: testMilliseconds(600),
+    },
     instrumentation: (event) => {
       if (event.name === "solid_objects.dead_letter.created")
         dead.resolve(undefined);
@@ -327,7 +328,7 @@ await test("CLV-042 commands after a detected condition are refused at once, wit
         }),
         closedAfterDeadLetter,
       );
-    assert.ok(performance.now() - started < 400);
+    assert.ok(performance.now() - started < testMilliseconds(400));
   } finally {
     run.release();
   }
@@ -363,7 +364,7 @@ await test("CLV-042 after a close that reports the shutdown timeout, the session
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1"]);
   const run = gatedDelivery((call) => call.runId === "run-1");
-  const timing = { ...fastTiming, shutdownMilliseconds: 150 };
+  const timing = { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) };
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
     timing,

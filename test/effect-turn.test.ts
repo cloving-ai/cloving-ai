@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, test } from "node:test";
@@ -146,7 +147,7 @@ await test("CLV-049 a start has a dispatch attempt record with no lease generati
 await test("CLV-049 the promotion uses the capacity setting: at the bound 1 the second operation waits, and its grant event records the bound", async () => {
   const directory = await temporaryDirectory();
   const authority = await openedAuthority(directory, {
-    effects: { capacity: 1, leaseMilliseconds: 60_000 },
+    effects: { capacity: 1, leaseMilliseconds: testMilliseconds(60_000) },
   });
   const send = sender(authority, { now: noon });
   await runningRun(send, { effectLimit: 5 });
@@ -166,7 +167,13 @@ await test("CLV-049 the promotion uses the capacity setting: at the bound 1 the 
       event.payload["capacity"],
       event.payload["expiresAt"],
     ]),
-    [[first.operationId, "1", "2026-10-10T12:01:00.000Z"]],
+    [
+      [
+        first.operationId,
+        "1",
+        new Date(Date.parse(noon) + testMilliseconds(60_000)).toISOString(),
+      ],
+    ],
   );
   const waiting = await authority.effects.operation(second.operationId);
   assert.deepEqual(
@@ -181,7 +188,7 @@ await test("CLV-049 an effect capacity outside 1 to 8 or a lease duration that i
     { capacity: 0 },
     { capacity: 9 },
     { capacity: 1.5 },
-    { leaseMilliseconds: 0 },
+    { leaseMilliseconds: testMilliseconds(0) },
     { stopLimit: 0 },
   ]) {
     const opening = await openAuthority(await temporaryDirectory(), {

@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -74,7 +75,7 @@ async function reopenedWhenReleased(
     if (opening.kind === "opened") return opening.authority;
     assert.equal(opening.reason, "authority-held");
     assert.ok(attempt < 100, "the authority was not released");
-    await delay(20);
+    await delay(testMilliseconds(20));
   }
 }
 
@@ -85,7 +86,7 @@ async function handlersSettled(authority: Authority): Promise<void> {
       () => true,
     );
     if (!refused) return;
-    await delay(20);
+    await delay(testMilliseconds(20));
   }
   assert.fail("the earlier delivery handler did not settle");
 }
@@ -116,7 +117,7 @@ await test("CLV-042 close waits for an in-flight delivery handler, and a reopeni
     closed = true;
   });
   try {
-    await delay(300);
+    await delay(testMilliseconds(300));
     assert.equal(closed, false);
   } finally {
     service.release();
@@ -132,7 +133,7 @@ await test("CLV-042 a close whose delivery handler outlasts the shutdown bound r
   const service = gatedService();
   const options = {
     delivery: service.delivery,
-    timing: { ...fastTiming, shutdownMilliseconds: 400 },
+    timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(400) },
   };
   const authority = await openedAuthority(directory, options);
   const delivering = authority.deliver(new AbortController().signal);
@@ -144,13 +145,13 @@ await test("CLV-042 a close whose delivery handler outlasts the shutdown bound r
         () => "closed",
         (error: unknown) => String(error),
       ),
-      delay(3_000, "still closing", { ref: false }),
+      delay(testMilliseconds(3_000), "still closing", { ref: false }),
     ]);
     assert.equal(
       outcome,
       "Error: authority-close-timeout: in-flight delivery handlers: 1",
     );
-    assert.ok(performance.now() - started < 750);
+    assert.ok(performance.now() - started < testMilliseconds(750));
     await delivering;
     const held = await openAuthority(directory, options);
     assert.equal(held.kind, "refused");
@@ -167,7 +168,7 @@ await test("CLV-042 a delivery run is refused while a handler from an earlier ru
   const service = gatedService();
   const authority = await openedAuthority(directory, {
     delivery: service.delivery,
-    timing: { ...fastTiming, shutdownMilliseconds: 150 },
+    timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) },
   });
   const first = new AbortController();
   const firstRun = authority.deliver(first.signal);
@@ -181,7 +182,7 @@ await test("CLV-042 a delivery run is refused while a handler from an earlier ru
         () => "resolved",
         (error: unknown) => String(error),
       ),
-      delay(1_000, "still running", { ref: false }),
+      delay(testMilliseconds(1_000), "still running", { ref: false }),
     ]);
     assert.equal(secondRun, "Error: delivery-handler-in-flight");
   } finally {
@@ -198,7 +199,7 @@ await test("CLV-049 a delivery run waits, with a bound, until the delivery handl
   const service = gatedService();
   const authority = await openedAuthority(directory, {
     delivery: service.delivery,
-    timing: { ...fastTiming, shutdownMilliseconds: 300 },
+    timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(300) },
   });
   const first = new AbortController();
   const firstRun = authority.deliver(first.signal);

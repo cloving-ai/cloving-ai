@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -72,7 +73,7 @@ export async function deliverUntil(
   try {
     for (let attempt = 0; !(await reached()); attempt += 1) {
       assert.ok(attempt < 250, "delivery did not settle");
-      await delay(20);
+      await delay(testMilliseconds(20));
     }
   } finally {
     controller.abort();

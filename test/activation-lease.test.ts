@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type {
@@ -84,13 +85,13 @@ await test("CLV-051 a continuous sequence of 30 ms turns for five lease times, w
   const events: string[] = [];
   const timing = {
     ...fastTiming,
-    leaseMilliseconds: 300,
-    renewalMilliseconds: 150,
+    leaseMilliseconds: testMilliseconds(300),
+    renewalMilliseconds: testMilliseconds(150),
   };
   const authority = await openedAuthority(await temporaryDirectory(), {
     ...externalService().options,
     timing,
-    instrumentation: slowTurns(events, 30),
+    instrumentation: slowTurns(events, testMilliseconds(30)),
   });
   const { result, failures } = await withDelivery(authority, () =>
     admittedFor(authority, 5 * timing.leaseMilliseconds),

@@ -14,6 +14,7 @@ import {
 import { storedGate } from "./authority-store-fixture.ts";
 import { noon } from "./effect-fixture.ts";
 import { drop } from "./effect-stop-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 export async function stored<Result>(
   directory: string,
@@ -126,9 +127,9 @@ export const steady = {
   ...bounded,
   timing: {
     ...fastTiming,
-    leaseMilliseconds: 2_000,
-    renewalMilliseconds: 500,
-    callTimeoutMilliseconds: 10_000,
+    leaseMilliseconds: testMilliseconds(2_000),
+    renewalMilliseconds: testMilliseconds(500),
+    callTimeoutMilliseconds: testMilliseconds(10_000),
   },
 };
 

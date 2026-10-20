@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { testMilliseconds } from "./test-timing.ts";
 
 export const productRoot = join(import.meta.dirname, "..");
 
@@ -41,6 +42,7 @@ const product = (file: string): string =>
 
 export const servicePrelude = `
 import { mkdirSync } from "node:fs";
+import { testMilliseconds } from ${product("test/test-timing.ts")};
 import { startService } from ${product("src/service/service.ts")};
 import { startDelivery } from ${product("src/host/start-delivery.ts")};
 import { cancelled, workflowOutcome, taggedRun, taggedRuns } from ${product("src/host/world-runs.ts")};
@@ -54,13 +56,13 @@ mkdirSync(runtimeDirectory, { recursive: true, mode: 0o700 });
 const asked = (operation, parameters) => call({ runtimeDirectory }, { operation, parameters });
 const eventTypes = async (runId) => (await asked("events", { after: 0, limit: 1000, runId })).events.map((event) => event.type);
 const stateOf = async (runId) => (await asked("status", { runId })).run.state;
-const until = async (reached) => { for (let pass = 0; pass < 1500; pass += 1) { if (await reached()) return; await delay(20); } throw new Error("The scenario did not reach its state."); };
+const until = async (reached) => { for (let pass = 0; pass < 1500; pass += 1) { if (await reached()) return; await delay(testMilliseconds(20)); } throw new Error("The scenario did not reach its state."); };
 let ports;
 const lines = (file) => (existsSync(file) ? readFileSync(file, "utf8").split("\\n").filter(Boolean) : []);
 const holdAt = async (gate) => {
   if (!existsSync(gate)) return;
   writeFileSync(gate + "-entered", "");
-  while (existsSync(gate)) await delay(10);
+  while (existsSync(gate)) await delay(testMilliseconds(10));
 };
 const effectOutcome = (operationId) => ({ kind: "completed", receipt: "receipt-" + String(lines("destination.log").indexOf(operationId) + 1), result: "effect-result" });
 const destination = {
@@ -70,7 +72,7 @@ const destination = {
       await until(() => lines("requests.log").length > 0);
       await halt("halted-after-effect", { sends: lines("destination.log").length });
     }
-    while (existsSync("hold-effect")) await delay(10);
+    while (existsSync("hold-effect")) await delay(testMilliseconds(10));
     if (existsSync("lose-reply")) throw new Error("the reply is lost");
     return effectOutcome(intent.operationId);
   },
@@ -121,7 +123,7 @@ const hosted = async (overrides = {}) => {
       const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
       if (host.kind !== "started") throw new Error(host.reason);
       globalThis.released = host.host.released;
-      const loop = worldLoop({ ...given, runs: taggedRuns, outcome: workflowOutcome, intervalMilliseconds: 20, ...overrides.loop });
+      const loop = worldLoop({ ...given, runs: taggedRuns, outcome: workflowOutcome, intervalMilliseconds: testMilliseconds(20), ...overrides.loop });
       const requestEffect = async (request) => {
         const reply = await given.requestEffect(request);
         const lost = existsSync("fail-first-reply");
@@ -133,7 +135,7 @@ const hosted = async (overrides = {}) => {
         return { receipt: { kind: "failed", reason: "storage-failure" }, disposition: null, operation: null };
       };
       const stopping = new AbortController();
-      const timing = { lookupTries: 250, pollMilliseconds: 20, retryMilliseconds: 100 };
+      const timing = { lookupTries: 250, pollMilliseconds: testMilliseconds(20), retryMilliseconds: testMilliseconds(100) };
       const registerWait = async (wait) => { if (existsSync("halt-before-wait")) await halt("halted-before-wait"); return await given.registerWait(wait); };
       const remove = registerStepBridge(stepBridge({ ...given, requestEffect, registerWait, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
       return { close: async () => { stopping.abort(); remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
@@ -149,7 +151,7 @@ const hosted = async (overrides = {}) => {
     await until(async () => (await ports.state()).runs[runId].status === "running");
     const prompt = "question of " + runId;
     await opening.service.worker.openGate({ runId, commandId: "open:" + worldRunId, expectedRevision: (await ports.state()).runs[runId].revision, gateId: "design-1", kind: "question", prompt, subject: digestOf(prompt) });
-    while (existsSync("hold-wait")) await delay(10);
+    while (existsSync("hold-wait")) await delay(testMilliseconds(10));
     await opening.service.worker.registerWait({ runId, commandId: "wait:" + worldRunId, gateId: "design-1" });
     return runId + "/design-1";
   };
@@ -205,7 +207,7 @@ function child(
           : { NODE_V8_COVERAGE: undefined }),
       },
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: 45_000,
+      timeout: testMilliseconds(45_000),
     });
     const output = { stdout: "", stderr: "" };
     started.stdout.on("data", (chunk: Buffer) => {

@@ -1,3 +1,4 @@
+import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -60,7 +61,7 @@ async function burst(authority: Authority): Promise<readonly string[]> {
   for (let round = 0; round < 600 && failures.length === 0; round += 1) {
     const open = await openRows(authority).catch(() => -1);
     if (open <= 0) break;
-    await delay(50);
+    await delay(testMilliseconds(50));
   }
   controller.abort();
   await running;
@@ -73,7 +74,7 @@ async function timerTurns(
   const ticks = [performance.now()];
   const timer = setInterval(() => {
     ticks.push(performance.now());
-  }, 20);
+  }, testMilliseconds(20));
   try {
     await action();
   } finally {
@@ -128,6 +129,6 @@ await test("CLV-053 a burst of 1 000 withheld deliveries gives a 20 ms timer of 
   assert.deepEqual(failures, []);
   assert.equal(await openRows(authority), 0);
   assert.ok(timer.turns > 20, String(timer.turns));
-  assert.ok(timer.largestGap < 500, String(timer.largestGap));
+  assert.ok(timer.largestGap < testMilliseconds(500), String(timer.largestGap));
   await authority.close();
 });
