@@ -1,3 +1,8 @@
+import {
+  operatorFiles,
+  operatorRefusals,
+  runOperator,
+} from "./operator-startup-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -167,6 +172,7 @@ async function inventory(root: string): Promise<void> {
   const product = join(root, "node_modules/cloving");
   for (const name of [
     "self-host",
+    "self-host-project",
     "compile-workflows",
     "self-host-processes",
     "self-update-host",
@@ -250,6 +256,7 @@ async function environment(root: string): Promise<NodeJS.ProcessEnv> {
       ),
     ),
     NODE_OPTIONS: "--no-strip-types",
+    XDG_CONFIG_HOME: join(root, "config"),
     CLOVING_RUNTIME_DIR: join(root, "host/run"),
     CLOVING_WATCH_PORT: "0",
     CLOVING_CLAUDE_COMMAND: JSON.stringify([
@@ -285,6 +292,9 @@ function registrations(
     assert.match(status, new RegExp(name));
   const document: unknown = JSON.parse(status);
   assert.deepEqual(field(document, "runs"), []);
+  assert.deepEqual(field(document, "workflowRefusals"), operatorRefusals);
+  for (const workflow of ["project-run", "user-run"])
+    assert.ok(items(field(document, "workflows")).includes(workflow));
 }
 
 function killGroup(child: ChildProcess): void {
@@ -297,6 +307,12 @@ function killGroup(child: ChildProcess): void {
 
 async function running(root: string, executable: string): Promise<void> {
   const env = await environment(root);
+  const fixture = {
+    root,
+    repository: root,
+    runtimeDirectory: join(root, "host/run"),
+  };
+  const files = await operatorFiles(fixture);
   command(executable, { args: ["--help"], cwd: root, env });
   const child = spawn(executable, ["start"], {
     cwd: root,
@@ -315,6 +331,10 @@ async function running(root: string, executable: string): Promise<void> {
   try {
     const address = await ready(child, output);
     registrations(root, { executable, env });
+    await runOperator(fixture, "project-run");
+    await runOperator(fixture, "user-run");
+    for (const [name, bytes] of Object.entries(files))
+      assert.equal(await readFile(name, "utf8"), bytes);
     const page = await fetch(address, { signal: AbortSignal.timeout(5000) });
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Cloving/);

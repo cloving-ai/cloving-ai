@@ -6,6 +6,7 @@ import {
 } from "./workflow-candidate-program.ts";
 import {
   protectedEffectFact,
+  passiveCandidateModule,
   unsupportedCandidateNode,
   workflowShape,
   type CandidateSymbols,
@@ -133,6 +134,9 @@ export function analyzeWorkflowCandidate(
       unsupportedForms: [
         ...facts.unsupportedForms,
         ...(invalid ? ["workflow-shape"] : []),
+        ...(facts.directEffects.length === 0 && !passiveCandidateModule(source)
+          ? ["module-initialization"]
+          : []),
       ],
     },
     installedExports: exportSnapshot(modules, checker),

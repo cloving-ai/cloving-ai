@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import {
   startDelivery,
@@ -28,6 +28,7 @@ import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
 import type { TokenPrices } from "../token-prices.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
+import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Worker } from "./claude-turn.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
@@ -50,6 +51,7 @@ export interface DaemonSettings {
   readonly repository: string;
   readonly manifests: Readonly<Record<string, string | undefined>>;
   readonly declarations?: readonly DeclaredWorkflow[];
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
   readonly command: readonly string[];
@@ -200,10 +202,7 @@ function adapters(
   return { worker, github, runs, chats };
 }
 
-export async function startDaemon(
-  settings: DaemonSettings,
-): Promise<DaemonOpening> {
-  const { directory } = settings;
+async function daemonRegistrations(settings: DaemonSettings) {
   const table = ticketRegistrationTable(
     {
       repository: settings.repository,
@@ -213,6 +212,18 @@ export async function startDaemon(
     settings.declarations,
   );
   const admitted = await ticketRegistrations(settings.manifests, { table });
+  return { table, admitted };
+}
+
+export async function startDaemon(
+  givenSettings: DaemonSettings,
+): Promise<DaemonOpening> {
+  const settings = {
+    ...givenSettings,
+    repository: await realpath(givenSettings.repository),
+  };
+  const { directory } = settings;
+  const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected")
     return {
       kind: "refused",
@@ -229,6 +240,7 @@ export async function startDaemon(
   const opening = await startService({
     stateDirectory: join(directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
+    workflowRefusals: settings.workflowRefusals ?? [],
     workflows: admitted.registrations.map((registration) => ({
       ...registration,
       ...(settings.queueMilliseconds !== undefined &&

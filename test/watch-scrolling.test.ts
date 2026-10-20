@@ -24,10 +24,10 @@ function overflowingBoard() {
   return boardModel([...active, ...done]);
 }
 
-async function watchFixture() {
+async function watchFixture(shown = overflowingBoard()) {
   const preact = await readFile(new URL(import.meta.resolve("preact")));
   const page = pageDocument().replace(/<link rel="stylesheet"[^>]*>/, "");
-  const model = JSON.stringify(overflowingBoard());
+  const model = JSON.stringify(shown);
   const server = createServer((request, response) => {
     if (request.url === "/preact.mjs") {
       response
@@ -65,6 +65,46 @@ async function watchFixture() {
     url: `http://127.0.0.1:${String(address.port)}/#workflow=develop-issue`,
   };
 }
+
+for (const width of [390, 1000])
+  await test(`CLV-124 all refused workflows remain reachable beside the board at ${String(width)}px`, async () => {
+    const shown = {
+      ...overflowingBoard(),
+      workflowRefusals: Array.from({ length: 80 }, (_, index) => ({
+        scope: "user" as const,
+        label: `refused-${String(index).padStart(2, "0")}.ts`,
+        codes: ["invalid-declaration"],
+      })),
+    };
+    await using fixture = await watchFixture(shown);
+    await using browser = await realBrowser();
+    const page = await browser.page({ width, height: 700 });
+    await page.navigate(fixture.url);
+    const result = await page.evaluate(`(async () => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (document.querySelector(".workflow-refusals")) break;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      const list = document.querySelector(".workflow-refusals");
+      const last = list.querySelector("li:last-child");
+      const visible = () => {
+        const rect = last.getBoundingClientRect();
+        const bounds = list.getBoundingClientRect();
+        return rect.top >= bounds.top && rect.bottom <= Math.min(bounds.bottom, innerHeight);
+      };
+      const before = visible();
+      list.scrollTop = list.scrollHeight;
+      const board = document.querySelector(".board").getBoundingClientRect();
+      return { before, after: visible(), scrollTop: list.scrollTop,
+        boardVisible: board.top < innerHeight && board.bottom <= innerHeight && board.height > 0,
+        count: list.querySelectorAll("li").length };
+    })()`);
+    assert.equal(result["count"], 80);
+    assert.equal(result["before"], false);
+    assert.equal(result["after"], true);
+    assert.ok(Number(result["scrollTop"]) > 0);
+    assert.equal(result["boardVisible"], true);
+  });
 
 function fields(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === "object");

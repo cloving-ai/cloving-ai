@@ -216,3 +216,80 @@ function workflowDirective(node: ts.Statement): boolean {
     node.expression.text === "use workflow"
   );
 }
+
+function unwrappedInitializer(node: ts.Expression): ts.Expression | undefined {
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isTypeAssertionExpression(node)
+  )
+    return node.expression;
+  return undefined;
+}
+
+function passiveCompound(node: ts.Expression): boolean {
+  if (ts.isArrayLiteralExpression(node))
+    return node.elements.every(
+      (element) =>
+        ts.isOmittedExpression(element) || passiveInitializer(element),
+    );
+  if (ts.isObjectLiteralExpression(node))
+    return node.properties.every(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        !ts.isComputedPropertyName(property.name) &&
+        passiveInitializer(property.initializer),
+    );
+  return false;
+}
+
+function passiveInitializer(node: ts.Expression | undefined): boolean {
+  if (!node) return false;
+  if (ts.isLiteralExpression(node)) return true;
+  if (
+    [
+      ts.SyntaxKind.TrueKeyword,
+      ts.SyntaxKind.FalseKeyword,
+      ts.SyntaxKind.NullKeyword,
+    ].includes(node.kind)
+  )
+    return true;
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return true;
+  if (ts.isPrefixUnaryExpression(node))
+    return (
+      [ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken].includes(
+        node.operator,
+      ) && ts.isNumericLiteral(node.operand)
+    );
+  const inner = unwrappedInitializer(node);
+  return inner ? passiveInitializer(inner) : passiveCompound(node);
+}
+
+function passiveStatement(node: ts.Statement): boolean {
+  if (ts.isVariableStatement(node))
+    return (
+      (node.declarationList.flags & ts.NodeFlags.Const) !== 0 &&
+      node.declarationList.declarations.every(
+        (declaration) =>
+          (ts.getCombinedModifierFlags(declaration) &
+            ts.ModifierFlags.Export) ===
+            0 &&
+          ts.isIdentifier(declaration.name) &&
+          passiveInitializer(declaration.initializer),
+      )
+    );
+  if (ts.isExpressionStatement(node))
+    return ts.isStringLiteral(node.expression);
+  return (
+    ts.isImportDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isEmptyStatement(node)
+  );
+}
+
+export function passiveCandidateModule(source: ts.SourceFile): boolean {
+  return source.statements.every(passiveStatement);
+}

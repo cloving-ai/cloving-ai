@@ -1,5 +1,6 @@
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { record, type Fields } from "../protocol.ts";
+import { workflowRefusals } from "../workflow-refusals.ts";
 
 function show(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -103,8 +104,18 @@ function runList(result: Fields): readonly string[] {
   const runs = result["runs"];
   const lines = Array.isArray(runs) ? runs.map(runLine) : [];
   const hiddenRuns = result["hiddenRuns"];
+  const refusals = workflowRefusals(result["workflowRefusals"]);
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
+    ...(refusals.length === 0
+      ? []
+      : [
+          "Refused workflows:",
+          ...refusals.map(
+            (entry) =>
+              `  ${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
+          ),
+        ]),
     "Runs:",
     ...(lines.length === 0 ? ["  none"] : lines),
     ...(typeof hiddenRuns === "number" && hiddenRuns > 0

@@ -11,10 +11,11 @@ import type {
   WorkflowRegistration,
 } from "../service/registry.ts";
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
+import { bundledWorkflowIds } from "../workflow-discovery.ts";
 
-export const ticketWorkflow = "develop-ticket";
-export const promptWorkflow = "develop-prompt";
-export const issueWorkflow = "develop-issue";
+export const ticketWorkflow = bundledWorkflowIds.ticket;
+export const promptWorkflow = bundledWorkflowIds.prompt;
+export const issueWorkflow = bundledWorkflowIds.issue;
 export const ticketCapabilities = ["claude", "github"];
 
 const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -166,7 +167,7 @@ export function ticketRegistrationTable(
       resolver: issueResolver(source),
     },
     {
-      workflowId: "develop-prd",
+      workflowId: bundledWorkflowIds.prd,
       functionName: "developPrd",
       effectLimit: 8,
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },

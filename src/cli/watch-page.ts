@@ -62,6 +62,7 @@ import {
   Phases,
   PullRequest,
   Review,
+  RefusedWorkflows,
   Run,
 } from "./watch-view.ts";
 
@@ -120,6 +121,7 @@ const functions = [
   Review,
   Run,
   Header,
+  RefusedWorkflows,
   BoardPage,
   Page,
 ];
@@ -168,6 +170,8 @@ body:has(.board-page) { padding-bottom: 0; overflow: hidden; }
 .board-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .board-page > header, .board-page > .down { flex-shrink: 0; }
 .start-run { flex-shrink: 0; max-height: 45dvh; overflow-y: auto; }
+.workflow-refusals { flex-shrink: 0; max-height: 25dvh; overflow-y: auto; overflow-wrap: anywhere; }
+.workflow-refusals h2 { margin: 8px 0; }
 a { color: var(--accent-strong); }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 22px 0 10px; color: var(--muted); font-size: 12px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 800 26px/1.2 var(--heading-font); }

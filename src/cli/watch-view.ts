@@ -266,6 +266,24 @@ export interface PageProps {
   readonly start?: StartControls;
 }
 
+export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
+  const refusals = props.model.workflowRefusals ?? [];
+  if (refusals.length === 0) return null;
+  return element("section", {
+    class: "workflow-refusals",
+    children: [
+      element("h2", { children: "Refused workflows" }),
+      element("ul", {
+        children: refusals.map((entry) =>
+          element("li", {
+            children: `${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
+          }),
+        ),
+      }),
+    ],
+  });
+}
+
 export function Page(props: PageProps): Shown {
   const { model, selected, now, stale, copying } = props;
   const head = component(Header, { model, stale });
@@ -285,6 +303,7 @@ export function Page(props: PageProps): Shown {
     return [
       head,
       down,
+      component(RefusedWorkflows, { model }),
       element("a", {
         class: "back",
         href: watchHash({ workflowId: back, runId: null }),
@@ -315,6 +334,7 @@ export function BoardPage(
     children: [
       component(Header, { model, stale, start }),
       down,
+      component(RefusedWorkflows, { model }),
       component(StartRun, {
         workflows: model.workflows,
         copying,

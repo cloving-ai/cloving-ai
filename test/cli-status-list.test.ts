@@ -14,6 +14,7 @@ import {
   type ServiceRequest,
 } from "../src/protocol.ts";
 import { withHarness, type Harness } from "./service-fixture.ts";
+import { refusalRecords, refusalText } from "./workflow-refusal-fixture.ts";
 
 function statusReply(request: ServiceRequest, runs: readonly Fields[]): Reply {
   if (request.operation === "questions")
@@ -292,4 +293,33 @@ await test("CLV-108 a repeated run-list cursor fails without reading it again", 
   );
   assert.equal(output.requests.length, 3);
   assert.equal(output.stdout, "Pending decisions:\n  none\n");
+});
+
+await test("CLV-124 default status preserves refusal metadata across run pages", async () => {
+  const pages: readonly Reply[] = [
+    {
+      kind: "result",
+      result: {
+        kind: "run-list",
+        workflows: ["develop"],
+        workflowRefusals: refusalRecords,
+        runs: [active],
+        next: "run-999",
+      },
+    },
+    {
+      kind: "result",
+      result: { runs: [], workflowRefusals: refusalRecords, next: null },
+    },
+  ];
+  const output = await statusList([], { pages });
+  assert.equal(output.status, 0, output.stderr);
+  assert.equal(
+    output.stdout,
+    "Pending decisions:\n  none\nWorkflows: develop\n" +
+      refusalText +
+      "Runs:\n" +
+      runLine(active),
+  );
+  assert.equal(output.requests.length, 3);
 });

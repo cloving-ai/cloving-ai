@@ -8,10 +8,12 @@ import type { Fields, Reply } from "../protocol.ts";
 import type { ChangeSignal } from "./changes.ts";
 import type { Gateway } from "./gateway.ts";
 import type { Registry } from "./registry.ts";
+import type { WorkflowRefusal } from "../workflow-refusals.ts";
 
 export interface ServiceContext {
   readonly authority: Authority;
   readonly registry: Registry;
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly gateway: Gateway;
   readonly clock: () => string;
   readonly livenessMilliseconds: number;

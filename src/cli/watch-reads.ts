@@ -5,6 +5,10 @@ import {
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { activeRun, recentRun } from "./watch-board.ts";
+import {
+  workflowRefusals,
+  type WorkflowRefusal,
+} from "../workflow-refusals.ts";
 
 interface ReadStatus extends Fields {
   readonly runId: string;
@@ -25,6 +29,7 @@ interface ReadRun {
 export interface WatchRead {
   readonly service: string;
   readonly workflows: readonly string[];
+  readonly workflowRefusals: readonly WorkflowRefusal[];
   readonly workflowStages?: WorkflowStages;
   readonly summaries: readonly ReadStatus[];
   readonly runs: readonly ReadRun[];
@@ -52,6 +57,7 @@ interface Reader {
 const unavailable: WatchRead = {
   service: "down",
   workflows: [],
+  workflowRefusals: [],
   summaries: [],
   runs: [],
   completionCandidates: [],
@@ -316,6 +322,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
       (value) => typeof value === "string",
     ),
     workflowStages: stageMetadata(status["workflowStages"]),
+    workflowRefusals: workflowRefusals(status["workflowRefusals"]),
     summaries,
     runs,
     completionCandidates,
