@@ -859,7 +859,20 @@
     "test/chats-workflow-generation-worker.test.ts": "test",
     "test/chats-workflow-generation-sdk-fixture.ts": "test",
     "test/chats-workflow-generation-contract.test.ts": "test",
-    "test/candidate-package-fixture.ts": "test"
+    "test/candidate-package-fixture.ts": "test",
+    "tools/workflow-folders.ts": "candidate-adapter",
+    "tools/workflow-folder-capture.ts": "candidate-adapter",
+    "test/workflow-folders.test.ts": "test",
+    "test/workflow-folder-paths.test.ts": "test",
+    "test/workflow-folder-fixture.ts": "test",
+    "src/workflow-discovery.ts": "pure",
+    "test/workflow-folder-conflicts.test.ts": "test",
+    "test/workflow-folder-capture.test.ts": "test",
+    "test/workflow-folder-refusals.test.ts": "test",
+    "test/workflow-folder-capture-boundary.test.ts": "test",
+    "test/packed-workflow-folders.ts": "test",
+    "test/workflow-folder-review.test.ts": "test",
+    "test/workflow-folder-io.test.ts": "test"
   },
   "allowed": {
     "quality": [
