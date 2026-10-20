@@ -45,6 +45,15 @@ await finished(runId);
 
 function assertCompletedRestart(lines: readonly unknown[]): void {
   const resumed = lines[0];
+  assert.ok(
+    resumed !== null && typeof resumed === "object",
+    "Resumed analysis row must be an object.",
+  );
+  const line = lines[1];
+  assert.ok(
+    line !== null && typeof line === "object",
+    "Completed analysis row must be an object.",
+  );
   for (const key of ["replayed", "receiptMatch", "captured", "draftMatch"])
     assert.equal(field(resumed, key), true, key);
   for (const key of [
@@ -61,7 +70,6 @@ function assertCompletedRestart(lines: readonly unknown[]): void {
     digestOf(JSON.stringify(snapshot)),
   ]);
   assert.equal(field(resumed, "answer"), "earlier");
-  const line = lines[1];
   assert.equal(field(line, "state"), "completed");
   assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
   assert.deepEqual(field(line, "budget"), { limit: 5, spent: 5 });
@@ -75,6 +83,23 @@ function assertCompletedRestart(lines: readonly unknown[]): void {
     "proposal-analysis-cycle.txt",
   ]);
 }
+
+await test("CLV-150 restart assertions reject non-object rows before reading fields", () => {
+  for (const value of [undefined, null, true, 1, "row"]) {
+    assert.throws(
+      () => {
+        assertCompletedRestart([value, {}]);
+      },
+      { message: "Resumed analysis row must be an object." },
+    );
+    assert.throws(
+      () => {
+        assertCompletedRestart([{}, value]);
+      },
+      { message: "Completed analysis row must be an object." },
+    );
+  }
+});
 
 await test(
   "CLV-150 compiled Local World restart after the answer commits delivers one continuation and saves the original snapshot once",
