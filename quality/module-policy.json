@@ -866,13 +866,19 @@
     "test/workflow-folder-paths.test.ts": "test",
     "test/workflow-folder-fixture.ts": "test",
     "src/workflow-discovery.ts": "pure",
+    "src/workflow-refusals.ts": "pure",
     "test/workflow-folder-conflicts.test.ts": "test",
     "test/workflow-folder-capture.test.ts": "test",
     "test/workflow-folder-refusals.test.ts": "test",
     "test/workflow-folder-capture-boundary.test.ts": "test",
     "test/packed-workflow-folders.ts": "test",
     "test/workflow-folder-review.test.ts": "test",
-    "test/workflow-folder-io.test.ts": "test"
+    "test/workflow-folder-io.test.ts": "test",
+    "test/workflow-refusals.test.ts": "test",
+    "test/service-workflow-refusals.test.ts": "test",
+    "test/cli-workflow-refusals.test.ts": "test",
+    "test/watch-workflow-refusals.test.ts": "test",
+    "test/workflow-refusal-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

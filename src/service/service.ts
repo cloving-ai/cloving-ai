@@ -11,6 +11,10 @@ import {
 } from "../broker/actor/authority.ts";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { Reply, ServiceRequest } from "../protocol.ts";
+import {
+  workflowRefusals,
+  type WorkflowRefusal,
+} from "../workflow-refusals.ts";
 import { changeSignal } from "./changes.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
@@ -87,6 +91,7 @@ export interface ServiceOptions {
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly delivery: Delivery;
   readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
   readonly timing?: ServiceTiming;
@@ -198,6 +203,7 @@ async function started(
     handle: dispatcher({
       authority,
       registry,
+      workflowRefusals: workflowRefusals(options.workflowRefusals),
       gateway,
       clock,
       changed: changes.next,

@@ -1,4 +1,8 @@
 import type { WorkflowStages } from "../workflow-declaration.ts";
+import {
+  workflowRefusals,
+  type WorkflowRefusal,
+} from "../workflow-refusals.ts";
 import { isTicketStatus } from "../ticket-status.ts";
 import { priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf } from "../worker-usage.ts";
@@ -208,6 +212,7 @@ export function decisionCommands(
 
 export interface WatchInputs {
   readonly workflows: readonly string[];
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly workflowStages?: WorkflowStages;
   readonly summaries?: readonly unknown[];
   readonly home: string;
@@ -367,6 +372,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   );
   return {
     workflows,
+    workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     startWorkflowId: startWorkflowOf(workflows),
     updatedAt: inputs.updatedAt,
     service: inputs.service,

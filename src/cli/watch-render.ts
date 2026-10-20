@@ -2,6 +2,7 @@ import type { CardForm } from "./watch-run-input.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type { PrObservation } from "./watch-pr-identity.ts";
+import type { WorkflowRefusal } from "../workflow-refusals.ts";
 
 export interface WatchItem {
   readonly kind: string;
@@ -137,6 +138,7 @@ export interface WatchRun {
 }
 
 export interface WatchModel {
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
   readonly workflows: readonly WatchWorkflow[];
   readonly startWorkflowId: string | null;

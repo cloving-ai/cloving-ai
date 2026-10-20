@@ -246,6 +246,7 @@ async function listed(
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
     workflows: context.registry.workflowIds,
+    workflowRefusals: context.workflowRefusals ?? [],
     ...(Object.keys(context.registry.workflowStages).length === 0
       ? {}
       : {
