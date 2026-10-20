@@ -14,10 +14,6 @@ import { basename, join } from "node:path";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
 import { boundedAnalysisFile } from "../src/daemon/chats-files.ts";
-import {
-  analysisPrompt,
-  analysisLaunchBytes,
-} from "../src/chats/analysis-prompt.ts";
 import { analysisProposal } from "../src/chats/analysis-proposal.ts";
 import { validateAnalysis } from "../src/chats/analysis.ts";
 import { structureImport } from "../src/chats/structure.ts";
@@ -34,6 +30,7 @@ import {
   assertRefused,
   cycleId,
   analysisIntent,
+  corpus,
 } from "./chats-worker-fixture.ts";
 import { chatsWorker } from "../src/daemon/chats-worker.ts";
 
@@ -53,33 +50,6 @@ for (const text of [
     }),
   );
 }
-
-await test(
-  "CLV-115 complete escaped model document passes exactly at the byte limit and fails one byte later",
-  chatPlatformScenario(async () => {
-    await withAnalysis(async (f) => {
-      const snapshot = await f.capture();
-      const initial = analysisLaunchBytes(analysisPrompt(snapshot));
-      const corpus = parseCorpus(snapshot.corpus);
-      const first = itemAt(corpus);
-      const padded = [
-        { ...first, text: first.text + "x".repeat(65_536 - initial) },
-        ...corpus.slice(1),
-      ];
-      const text = padded
-        .map((message) => JSON.stringify(message) + "\n")
-        .join("");
-      assert.equal(
-        analysisLaunchBytes(analysisPrompt({ ...snapshot, corpus: text })),
-        65_536,
-      );
-      await f.write("redacted.jsonl", text);
-      await f.capture();
-      await f.write("redacted.jsonl", text + " ");
-      assertRefused(await f.deliver("read-analysis"), "analysis-too-large");
-    });
-  }),
-);
 
 await test(
   "CLV-115 redaction cannot collapse original conflict and copy classifications",
@@ -110,8 +80,7 @@ await test(
   "CLV-115 exact numeric tokens survive the captured snapshot as strings",
   chatPlatformScenario(async () => {
     await withAnalysis(async (f) => {
-      const snapshot = await f.capture();
-      const text = snapshot.corpus
+      const text = corpus
         .replace(
           '"blocks":[',
           '"blocks":[{"type":"tool_use","position":0,"id":"number","name":"synthetic","input":{"n":9007199254740993}},',

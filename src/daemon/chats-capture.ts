@@ -60,6 +60,13 @@ export async function captureAnalysisSnapshot(
     return capture;
   } catch (error) {
     await rm(folder, { recursive: true, force: true });
+    if (
+      Reflect.get(Object(error), "code") === "ENOENT" &&
+      ["redaction.json", "redacted.jsonl"].some((name) =>
+        String(Reflect.get(Object(error), "path")).endsWith(`/${name}`),
+      )
+    )
+      throw new Error("redaction-required", { cause: error });
     throw error;
   }
 }

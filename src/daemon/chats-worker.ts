@@ -16,14 +16,14 @@ import {
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { analysisProposal } from "../chats/analysis-proposal.ts";
+import { prepareAnalysisBatch } from "../chats/analysis-batches.ts";
 import {
-  analysisLaunchBytes,
-  analysisPrompt,
-} from "../chats/analysis-prompt.ts";
+  captureAnalysisSnapshot,
+  readCapturedAnalysisSnapshot,
+} from "./chats-capture.ts";
 import { operationKey } from "./operation-journal.ts";
 import {
   analysisDirectory,
-  readAnalysisSnapshot,
   saveAnalysisFiles,
   inspectAnalysisFiles,
   inspectAnalysisDraft,
@@ -134,13 +134,19 @@ async function read(
       throw new Error("redaction-required", { cause: error });
     throw error;
   }
-  const snapshot = await readAnalysisSnapshot(directory, {
+  const capture = await captureAnalysisSnapshot(directory, {
     importId: call.importId,
+    runId: call.intent.runId,
   });
-  bounded(JSON.stringify(snapshot));
-  if (analysisLaunchBytes(analysisPrompt(snapshot)) > analysisDocumentBytes)
+  const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
+  const batch = prepareAnalysisBatch(snapshot, {
+    nextRecordIndex: 0,
+    completedBatchCount: 0,
+    previousResult: null,
+  });
+  if (batch.kind === "refused") throw new Error(batch.code);
+  if (batch.nextRecordIndex !== batch.totalRecords)
     throw new Error("analysis-too-large");
-  analysisEvidence(snapshot);
   const result = { snapshot };
   bounded(JSON.stringify(result));
   return completed(call.intent, result);

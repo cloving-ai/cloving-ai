@@ -75,6 +75,7 @@ await test(
   chatPlatformScenario(async () => {
     await withAnalysis(async (fixture) => {
       const payload = await fixture.prepare();
+      const capturedFiles = await fixture.files();
       const candidate = questionCandidate();
       candidate.openQuestion.description =
         "/synthetic/notes.txt C:\\synthetic\\notes.txt operator@example.invalid @synthetic /question\\w+/g";
@@ -117,13 +118,14 @@ await test(
         "schemaVersion",
       ]);
       assert.match(String(claim["digest"]), /^[a-f0-9]{64}$/);
-      assert.deepEqual((await fixture.files()).sort(), [
-        `claim-${cycleId}.json`,
-        `draft-${cycleId}.json`,
-        "redacted.jsonl",
-        "redaction.json",
-        "structure.json",
-      ]);
+      assert.deepEqual(
+        (await fixture.files()).sort(),
+        [
+          ...capturedFiles,
+          `claim-${cycleId}.json`,
+          `draft-${cycleId}.json`,
+        ].sort(),
+      );
     });
   }),
 );

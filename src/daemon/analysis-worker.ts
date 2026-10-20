@@ -6,14 +6,15 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import {
-  analysisPrompt,
   analysisFollowUp,
   analysisFollowUpPrompt,
   analysisLaunchBytes,
 } from "../chats/analysis-prompt.ts";
+import { prepareAnalysisBatch } from "../chats/analysis-batches.ts";
 import {
   isAnalysisSnapshot,
   analysisDocumentBytes,
+  type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { record } from "../protocol.ts";
 import { sumPrices } from "../worker-usage.ts";
@@ -77,6 +78,18 @@ function failed(reason: string): AdapterOutcome {
   return { kind: "failed", reason };
 }
 
+function firstBatch(snapshot: AnalysisSnapshot) {
+  const batch = prepareAnalysisBatch(snapshot, {
+    nextRecordIndex: 0,
+    completedBatchCount: 0,
+    previousResult: null,
+  });
+  if (batch.kind === "refused") throw new Error(batch.code);
+  if (batch.nextRecordIndex !== batch.totalRecords)
+    throw new Error("analysis-too-large");
+  return batch;
+}
+
 function promptOf(text: string | undefined, target: string): string {
   if (text !== undefined && Buffer.byteLength(text) > analysisDocumentBytes)
     throw new Error("analysis-too-large");
@@ -87,10 +100,11 @@ function promptOf(text: string | undefined, target: string): string {
     throw new Error("analysis-input-refused");
   const followUp =
     "followUp" in payload ? analysisFollowUp(payload["followUp"]) : undefined;
+  const batch = firstBatch(snapshot);
   const prompt =
     followUp === undefined
-      ? analysisPrompt(snapshot)
-      : analysisFollowUpPrompt(snapshot, followUp);
+      ? batch.prompt
+      : analysisFollowUpPrompt(batch.snapshot, followUp);
   if (analysisLaunchBytes(prompt) > analysisDocumentBytes)
     throw new Error("analysis-too-large");
   return prompt;

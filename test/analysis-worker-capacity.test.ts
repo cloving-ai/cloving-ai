@@ -5,9 +5,9 @@ import { candidate } from "./chats-analysis-fixture.ts";
 import { commandModel } from "../src/token-prices.ts";
 import { analysisCommand } from "../src/daemon/analysis-launch.ts";
 import {
-  analysisLaunchBytes,
-  analysisPrompt,
-} from "../src/chats/analysis-prompt.ts";
+  batchSnapshot,
+  firstAnalysisBatch,
+} from "./chats-analysis-batch-fixture.ts";
 import { importId, corpus, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   alive,
@@ -35,8 +35,8 @@ const snapshot = {
 for (const mode of ["capacity-once", "capacity-always"] as const) {
   await test(`CLV-119 ${mode} keeps every analysis launch at the checked byte boundary`, () =>
     withScene(async (scene) => {
-      const evidence = { ...snapshot };
-      const remaining = 65_536 - analysisLaunchBytes(analysisPrompt(evidence));
+      const evidence = batchSnapshot(["synthetic"]);
+      const remaining = 65_536 - firstAnalysisBatch(evidence).launchBytes;
       evidence.redaction += " ".repeat(remaining);
       assert.ok(
         Buffer.byteLength(JSON.stringify({ snapshot: evidence })) <= 65_536,
@@ -62,8 +62,11 @@ for (const mode of ["capacity-once", "capacity-always"] as const) {
             Buffer.byteLength(instruction) + Buffer.byteLength(turn.prompt),
             65_536,
           );
-          assert.equal(turn.prompt, analysisPrompt(evidence));
-          assert.deepEqual(JSON.parse(turn.prompt), { evidence });
+          assert.equal(turn.prompt, firstAnalysisBatch(evidence).prompt);
+          assert.deepEqual(
+            JSON.parse(turn.prompt),
+            JSON.parse(firstAnalysisBatch(evidence).prompt),
+          );
         }
       } finally {
         restore();

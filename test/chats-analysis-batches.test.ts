@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { prepareAnalysisBatch } from "../src/chats/analysis-batches.ts";
 import { validateAnalysis } from "../src/chats/analysis.ts";
+import { structureImport } from "../src/chats/structure.ts";
 import { parseCorpus } from "../src/chats/corpus-input.ts";
 import { analysisCommand } from "../src/daemon/analysis-launch.ts";
-import { emptyCounts } from "../src/chats/redaction.ts";
-import { structureImport } from "../src/chats/structure.ts";
-import { originalRecords } from "./chats-analysis-fixture.ts";
+import { batchSnapshot as snapshot } from "./chats-analysis-batch-fixture.ts";
 import { candidate, records, structure } from "./chats-analysis-fixture.ts";
 
 const importId = "11111111-1111-4111-8111-111111111111";
@@ -28,38 +27,6 @@ await test("CLV-119 accepts escaped evidence that fits the actual launch without
   );
   assert.ok(Buffer.byteLength(result.adapterDocument) <= 65_536);
 });
-
-function snapshot(texts: readonly string[]) {
-  const records = texts.map((text, index) => ({
-    ...originalRecords[0],
-    schemaVersion: 2 as const,
-    sourceId: `synthetic:${String(index)}`,
-    uuid: `message-${String(index)}`,
-    role: "user" as const,
-    sessionId: null,
-    isSidechain: null,
-    timestamp: null,
-    text,
-    blocks: [],
-  }));
-  return {
-    importId,
-    redaction: JSON.stringify({
-      schemaVersion: 1,
-      ruleVersion: 1,
-      importId,
-      recordCount: records.length,
-      counts: emptyCounts(),
-      totalCount: 0,
-    }),
-    corpus: records.map((record) => JSON.stringify(record) + "\n").join(""),
-    structure: JSON.stringify({
-      schemaVersion: 1,
-      importId,
-      ...structureImport(records),
-    }),
-  };
-}
 
 await test("CLV-119 takes the longest consecutive prefix without splitting records", () => {
   const input = snapshot([

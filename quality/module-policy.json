@@ -818,6 +818,8 @@
     "workflows/analyze-chats.ts": "workflow",
     "workflows/analyze-chats.declaration.json": "metadata",
     "test/analyze-chats-workflow.test.ts": "test",
+    "test/analyze-chats-capture.test.ts": "test",
+    "test/chats-analysis-batch-fixture.ts": "test",
     "test/analyze-chats-workflow-fixture.ts": "test",
     "test/analyze-chats-follow-up.test.ts": "test",
     "test/analyze-chats-sdk-fixture.ts": "test",
