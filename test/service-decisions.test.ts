@@ -362,11 +362,15 @@ await finished(runId);
         answerBound: true,
         promptBound: true,
       });
-      assert.equal(field(result.lines[1], "turns"), 1);
+      assert.equal(field(result.lines[1], "turns"), 2);
       assert.deepEqual(field(result.lines[1], "outputs"), []);
+      assert.deepEqual(field(result.lines[1], "outcome"), {
+        kind: "blocked",
+        reason: "analysis-question-limit",
+      });
       assert.deepEqual(field(result.lines[1], "budget"), {
-        limit: 3,
-        spent: 3,
+        limit: 5,
+        spent: 5,
       });
     }),
   ),

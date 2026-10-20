@@ -66,7 +66,7 @@ const destinationAnalysis = {
 };
 const fake = fakeRegistration([]);
 const registration = {
-  ...fake, workflowId: "analyze-chats", effectLimit: 3,
+  ...fake, workflowId: "analyze-chats", effectLimit: 5,
   manifest: { ...fake.manifest, capabilities: ["chats", "claude"] },
   submission: { maximumBytes: 4096, fields: { importId: "string" } },
   resolver: { id: "analysis-fixture", version: "1", resolve: () => Promise.resolve({ kind: "resolved", input: { cycleId: "analysis-cycle", repository: "unused", input: { importId } } }) },

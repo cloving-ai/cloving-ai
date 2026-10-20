@@ -1,3 +1,4 @@
+import { saveFollowUp } from "./chats-follow-up.ts";
 import type {
   AdapterOutcome,
   DeliveryIntent,
@@ -154,7 +155,11 @@ function saveInput(payload: Fields) {
   try {
     candidate = JSON.parse(payload["reply"]);
   } catch {
-    throw new Error("analysis-invalid-json");
+    throw new Error(
+      "followUp" in payload
+        ? "analysis-follow-up-refused"
+        : "analysis-invalid-json",
+    );
   }
   return { snapshot, cycleId, candidate, reply: payload["reply"] };
 }
@@ -213,6 +218,8 @@ async function save(
 ): Promise<AdapterOutcome> {
   const input = saveInput(call.payload);
   const { snapshot, cycleId, candidate } = input;
+  if ("followUp" in call.payload)
+    return saveFollowUp(settings.runtimeDirectory, { ...call, input });
   const validation = validateAnalysis(candidate, analysisEvidence(snapshot));
   if (!validation.accepted)
     return refused(
@@ -256,6 +263,7 @@ const reasons = new Set([
   "redaction-required",
   "invalid-import-id",
   "analysis-invalid-json",
+  "analysis-follow-up-refused",
   "analysis-input-refused",
   "analysis-output-failed",
   "unsupported-effect",

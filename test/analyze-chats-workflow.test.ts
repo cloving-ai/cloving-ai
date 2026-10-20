@@ -3,49 +3,18 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { checkSubmission } from "../src/submission.ts";
 import { isWorkflowDeclaration } from "../src/workflow-declaration.ts";
-import { candidate, questionCandidate } from "./chats-analysis-fixture.ts";
-import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
+import { questionCandidate } from "./chats-analysis-fixture.ts";
+import { importId } from "./chats-worker-fixture.ts";
+import {
+  input,
+  snapshot,
+  reply,
+  completed,
+  scenario,
+  draftScenario,
+  answeredScenario,
+} from "./analyze-chats-workflow-fixture.ts";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
-
-const input = {
-  cycleId: "analysis-cycle",
-  repository: "unused",
-  input: { importId },
-};
-const snapshot = {
-  importId,
-  redaction: JSON.stringify(manifest),
-  corpus,
-  structure: JSON.stringify(sidecar),
-};
-const reply = JSON.stringify(candidate());
-const completed = (value: unknown) => ({
-  kind: "completed",
-  operationId: "opaque",
-  receipt: "opaque",
-  result: JSON.stringify(value),
-});
-
-function scenario() {
-  return {
-    workflow: "analyze-chats",
-    input,
-    effectLimit: 3,
-    effects: {
-      "chats read-analysis": [completed({ snapshot })],
-      "claude run-turn:analyze-chats": [
-        completed({ reply, usage: { input_tokens: 20 } }),
-      ],
-      "chats save-analysis": [
-        completed({
-          kind: "handoff_requested",
-          cycleId: input.cycleId,
-          promotionId: `analysis:${importId}:${input.cycleId}`,
-        }),
-      ],
-    },
-  };
-}
 
 await test("CLV-116 accepted candidate uses one turn and three sequential charged effects with the captured snapshot", async () => {
   const [line] = await ran([scenario()]);
@@ -96,7 +65,7 @@ await test("CLV-116 accepted candidate uses one turn and three sequential charge
   );
 });
 
-await test("CLV-116 submission declares exactly one required import ID and three effect units", () => {
+await test("CLV-149 submission declares exactly one required import ID and five effect units", () => {
   const declaration: unknown = JSON.parse(
     readFileSync(
       new URL("../workflows/analyze-chats.declaration.json", import.meta.url),
@@ -105,7 +74,7 @@ await test("CLV-116 submission declares exactly one required import ID and three
   );
   assert.ok(isWorkflowDeclaration(declaration));
   assert.equal(declaration.workflowId, "analyze-chats");
-  assert.equal(declaration.effectLimit, 3);
+  assert.equal(declaration.effectLimit, 5);
   assert.deepEqual(declaration.stages, [
     { name: "read-input", label: "Read input", operations: ["read-analysis"] },
     { name: "analyze", label: "Analyze", operations: ["turn-analysis"] },
@@ -177,29 +146,6 @@ await test("CLV-116 unusable read and turn results block before later effects", 
   }
 });
 
-function draftScenario() {
-  const given = scenario();
-  return {
-    ...given,
-    gate: { kind: "opened", decisionId: "analysis-question" },
-    effects: {
-      ...given.effects,
-      "claude run-turn:analyze-chats": [
-        completed({ reply: JSON.stringify(questionCandidate()) }),
-      ],
-      "chats save-analysis": [
-        completed({
-          kind: "analysis_draft",
-          cycleId: input.cycleId,
-          candidateDigest: "a".repeat(64),
-          expiresAt: "2026-10-21T10:00:00.000Z",
-          question: questionCandidate().openQuestion,
-        }),
-      ],
-    },
-  };
-}
-
 await test("CLV-148 a valid private draft opens one candidate-bound question with its stored deadline", async () => {
   const [line, repeated] = await ran([draftScenario(), draftScenario()]);
   assert.deepEqual(field(line, "outcome"), {
@@ -261,32 +207,32 @@ await test("CLV-148 an expired question blocks with analysis-answer-missing and 
   assert.equal(field(field(line, "requests"), "length"), 3);
 });
 
-await test("CLV-148 only exact listed choice IDs reach the pending second-turn boundary", async () => {
-  const answers = [
-    "earlier",
-    "later",
-    " earlier",
-    "earlier ",
-    "EARLIER",
-    "unknown",
-    "",
-    null,
-  ];
-  const lines = await ran(
-    answers.map((answer) => ({
-      ...draftScenario(),
-      decision: { gateId: "analysis-question", decision: "answered", answer },
-    })),
-  );
-  for (const [index, line] of lines.entries()) {
-    assert.deepEqual(field(line, "outcome"), {
-      kind: "blocked",
-      cycleId: input.cycleId,
-      reason: index < 2 ? "analysis-input-refused" : "analysis-answer-invalid",
-      evidenceId: "analysis-question",
-    });
-    assert.equal(field(field(line, "requests"), "length"), 3);
+await test("CLV-149 an exact choice runs one second turn and final save with five units", async () => {
+  const [line, initial] = await ran([answeredScenario(), draftScenario()]);
+  assert.deepEqual(field(line, "outcome"), {
+    kind: "handoff_requested",
+    cycleId: input.cycleId,
+    promotionId: `analysis:${importId}:${input.cycleId}`,
+  });
+  assert.equal(field(line, "spent"), 5);
+  assert.equal(field(field(line, "requests"), "length"), 5);
+  for (const index of [0, 1, 2])
+    assert.deepEqual(request(line, index), request(initial, index));
+  for (const index of [3, 4]) {
+    assert.equal(field(request(line, index), "units"), 1);
+    assert.equal(field(field(request(line, index), "scope"), "round"), 2);
   }
+  assert.deepEqual(JSON.parse(String(field(request(line, 3), "payload"))), {
+    snapshot,
+    followUp: { draft: questionCandidate(), answer: "earlier" },
+  });
+  assert.deepEqual(JSON.parse(String(field(request(line, 4), "payload"))), {
+    importId,
+    cycleId: input.cycleId,
+    snapshot,
+    reply,
+    followUp: { draft: questionCandidate(), answer: "earlier" },
+  });
 });
 
 await test("CLV-148 a continuation for a different gate or without a saved question cannot report accepted output", async () => {
@@ -358,5 +304,35 @@ await test("CLV-148 unusable draft bindings cannot open a question", async () =>
       "analysis-input-refused",
     );
     assert.equal(field(field(line, "requests"), "length"), 3);
+  }
+});
+
+await test("CLV-149 only the exact listed IDs allow a second turn", async () => {
+  for (const answer of ["earlier", "later"]) {
+    const given = answeredScenario();
+    const [line] = await ran([
+      { ...given, decision: { ...given.decision, answer } },
+    ]);
+    assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
+    assert.equal(field(line, "spent"), 5);
+  }
+  for (const answer of [
+    " earlier",
+    "earlier ",
+    "EARLIER",
+    "unknown",
+    "",
+    null,
+  ]) {
+    const given = answeredScenario();
+    const [line] = await ran([
+      { ...given, decision: { ...given.decision, answer } },
+    ]);
+    assert.equal(
+      field(field(line, "outcome"), "reason"),
+      "analysis-answer-invalid",
+    );
+    assert.equal(field(field(line, "requests"), "length"), 3);
+    assert.equal(field(line, "spent"), 3);
   }
 });

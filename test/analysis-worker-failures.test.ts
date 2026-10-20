@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { questionCandidate } from "./chats-analysis-fixture.ts";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   installAnalysisCli,
@@ -20,6 +21,7 @@ const settings = {
   document: () =>
     Promise.resolve(
       JSON.stringify({
+        followUp: { draft: questionCandidate(), answer: "earlier" },
         snapshot: {
           importId,
           corpus,

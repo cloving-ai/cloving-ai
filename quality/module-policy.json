@@ -911,7 +911,11 @@
     "test/fallback-models.test.ts": "test",
     "test/fallback-prices.test.ts": "test",
     "test/fallback-worker-fixture.ts": "test",
-    "test/fallback-worker.test.ts": "test"
+    "test/fallback-worker.test.ts": "test",
+    "src/daemon/chats-follow-up.ts": "daemon",
+    "test/chats-worker-follow-up.test.ts": "test",
+    "test/analyze-chats-follow-up.test.ts": "test",
+    "test/analyze-chats-workflow-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

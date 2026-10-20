@@ -41,7 +41,7 @@ await finished(process.env.RUN_ID);
         "completed",
         JSON.stringify(second.lines),
       );
-      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
       assert.equal(field(line, "turns"), 1);
       assert.equal(field(line, "usageTurns"), 1);
       assert.equal(field(line, "cost"), 0.25);
@@ -94,7 +94,7 @@ await finished(process.env.RUN_ID);
       });
       assert.equal(field(second.lines[0], "turns"), 1);
       assert.deepEqual(field(second.lines[0], "budget"), {
-        limit: 3,
+        limit: 5,
         spent: 2,
       });
       assert.equal(field(field(second.lines[0], "outputs"), "length"), 0);
@@ -138,7 +138,7 @@ await finished(process.env.RUN_ID);`,
       assert.equal(field(line, "gates"), 1);
       assert.equal(field(line, "expiresMatch"), true);
       assert.equal(field(line, "candidateBound"), true);
-      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
       assert.equal(field(line, "turns"), 1);
       assert.equal(field(line, "usageTurns"), 1);
       assert.equal(field(line, "safe"), true);

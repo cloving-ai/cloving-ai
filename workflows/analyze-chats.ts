@@ -20,11 +20,15 @@ interface AnalysisInput {
 
 function request(
   importId: string,
-  step: { readonly operation: string; readonly payload: unknown },
+  step: {
+    readonly operation: string;
+    readonly payload: unknown;
+    readonly round?: number;
+  },
 ): ProtectedRequest {
   const { operation, payload } = step;
   return {
-    scope: { phase: "analysis", operation, round: 1 },
+    scope: { phase: "analysis", operation, round: step.round ?? 1 },
     capability: operation === "turn-analysis" ? "claude" : "chats",
     method:
       operation === "turn-analysis" ? "run-turn:analyze-chats" : operation,
@@ -85,7 +89,7 @@ function usableDraft(
 function draftAnswer(
   draft: Readonly<Record<string, unknown>>,
   decision: Decision,
-): string {
+): string | null {
   if (decision.decision === "expired") return "analysis-answer-missing";
   const question = draft["question"];
   const choices = record(question) ? question["choices"] : undefined;
@@ -99,7 +103,7 @@ function draftAnswer(
     )
   )
     return "analysis-answer-invalid";
-  return "analysis-input-refused";
+  return null;
 }
 
 async function askDraft(
@@ -108,7 +112,9 @@ async function askDraft(
     readonly draft: Readonly<Record<string, unknown>>;
     readonly decision: Decision | undefined;
   },
-): Promise<CycleOutcome> {
+): Promise<
+  CycleOutcome | { readonly kind: "answered"; readonly answer: string }
+> {
   const { draft, decision } = continuation;
   if (!usableDraft(cycleId, draft))
     return {
@@ -117,13 +123,17 @@ async function askDraft(
       reason: "analysis-input-refused",
       evidenceId: "save-analysis",
     };
-  if (decision !== undefined)
+  if (decision !== undefined) {
+    const reason = draftAnswer(draft, decision);
+    if (reason === null)
+      return { kind: "answered", answer: decision.answer ?? "" };
     return {
       kind: "blocked",
       cycleId,
-      reason: draftAnswer(draft, decision),
+      reason,
       evidenceId: "analysis-question",
     };
+  }
   const gate = await decisionGate({
     gateId: "analysis-question",
     kind: "question",
@@ -166,20 +176,76 @@ async function firstTurn(input: AnalysisInput): Promise<
       reason: "analysis-input-refused",
       evidenceId: "read-analysis",
     };
+  return runTurn(input, { snapshot });
+}
+
+interface TurnInput {
+  readonly snapshot: Readonly<Record<string, unknown>>;
+  readonly followUp?: { readonly draft: unknown; readonly answer: string };
+}
+
+async function runTurn(input: AnalysisInput, data: TurnInput) {
+  const { cycleId } = input;
+  const { snapshot, followUp } = data;
   const turn = await protectedEffect(
-    request(importId, { operation: "turn-analysis", payload: { snapshot } }),
+    request(input.input.importId, {
+      operation: "turn-analysis",
+      payload: data,
+      round: followUp === undefined ? 1 : 2,
+    }),
   );
   if (turn.kind !== "completed")
     return blocked(cycleId, { operation: "turn-analysis", result: turn });
   const reply = fields(turn.result)["reply"];
   if (typeof reply !== "string")
     return {
-      kind: "blocked",
+      kind: "blocked" as const,
       cycleId,
       reason: "analysis-turn-failed",
       evidenceId: "turn-analysis",
     };
-  return { kind: "analyzed", snapshot, reply };
+  return { kind: "analyzed" as const, snapshot, reply };
+}
+
+function handoff(cycleId: string, importId: string): CycleOutcome {
+  return {
+    kind: "handoff_requested",
+    cycleId,
+    promotionId: `analysis:${importId}:${cycleId}`,
+  };
+}
+
+async function followUp(
+  input: AnalysisInput,
+  data: TurnInput,
+): Promise<CycleOutcome> {
+  const { cycleId } = input;
+  const { importId } = input.input;
+  const turn = await runTurn(input, data);
+  if (turn.kind !== "analyzed") return turn;
+  const save = await protectedEffect(
+    request(importId, {
+      operation: "save-analysis",
+      round: 2,
+      payload: {
+        importId,
+        cycleId,
+        snapshot: data.snapshot,
+        reply: turn.reply,
+        followUp: data.followUp,
+      },
+    }),
+  );
+  if (save.kind !== "completed")
+    return blocked(cycleId, { operation: "save-analysis", result: save });
+  if (fields(save.result)["kind"] !== "handoff_requested")
+    return {
+      kind: "blocked",
+      cycleId,
+      reason: "analysis-follow-up-refused",
+      evidenceId: "save-analysis",
+    };
+  return handoff(cycleId, importId);
 }
 
 export async function analyzeChats(
@@ -201,8 +267,14 @@ export async function analyzeChats(
   if (save.kind !== "completed")
     return blocked(cycleId, { operation: "save-analysis", result: save });
   const saved = fields(save.result);
-  if (saved["kind"] === "analysis_draft")
-    return askDraft(cycleId, { draft: saved, decision });
+  if (saved["kind"] === "analysis_draft") {
+    const answer = await askDraft(cycleId, { draft: saved, decision });
+    if (answer.kind !== "answered") return answer;
+    return followUp(input, {
+      snapshot,
+      followUp: { draft: fields(reply), answer: answer.answer },
+    });
+  }
   if (decision !== undefined)
     return {
       kind: "blocked",
@@ -217,9 +289,5 @@ export async function analyzeChats(
       reason: "analysis-input-refused",
       evidenceId: "save-analysis",
     };
-  return {
-    kind: "handoff_requested",
-    cycleId,
-    promotionId: `analysis:${importId}:${cycleId}`,
-  };
+  return handoff(cycleId, importId);
 }

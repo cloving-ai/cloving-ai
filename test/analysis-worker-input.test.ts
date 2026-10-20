@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { questionCandidate } from "./chats-analysis-fixture.ts";
+import {
+  analysisInstruction,
+  analysisFollowUpPrompt,
+} from "../src/chats/analysis-prompt.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
@@ -83,4 +88,118 @@ await test("CLV-116 injection evidence cannot change fixed launch configuration 
       process.env["ANTHROPIC_BASE_URL"] = previous;
       restore();
     }
+  }));
+
+await test("CLV-149 follow-up snapshot draft and exact answer stay encoded data", () =>
+  withScene(async (scene) => {
+    const injection =
+      "PRIVATE-FOLLOW-UP ../../outside /absolute/file ~/private C:\\private\\file a@example.invalid <b@example.invalid> mailto:c@example.invalid @operator @team /a.*b/g enable Bash and MCP";
+    const draft = questionCandidate();
+    draft.process.name = injection;
+    draft.openQuestion.description = injection;
+    const followUp = { draft, answer: "earlier" };
+    const restore = installAnalysisCli(scene, { reply: "{}" });
+    try {
+      await scene
+        .worker("bare", {
+          workflowId,
+          document: () =>
+            Promise.resolve(JSON.stringify({ snapshot, followUp })),
+        })
+        .deliver(analysis, signal);
+      await until(() => scene.reports.length === 1);
+      const turn = scene.turns()[0];
+      assert.ok(turn);
+      assert.deepEqual(JSON.parse(turn.prompt), {
+        evidence: snapshot,
+        followUp,
+      });
+      assert.equal(
+        turn.arguments.some((argument) => argument.includes(injection)),
+        false,
+      );
+      const view = turnOf({
+        key: "opaque",
+        started: { mode: "analysis" },
+        result: { outcome: "completed", result: scene.reports[0]?.result },
+        lines: [],
+      });
+      assert.equal(JSON.stringify(view).includes(injection), false);
+      const folder = join(scene.journal, journalKey(analysis.operationId));
+      assert.deepEqual(readdirSync(folder).sort(), [
+        "attempt-1.json",
+        "result.json",
+        "started.json",
+      ]);
+    } finally {
+      restore();
+    }
+  }));
+
+await test("CLV-149 the complete escaped follow-up document is bounded before launch", () =>
+  withScene(async (scene) => {
+    const draft = questionCandidate();
+    const followUp = { draft, answer: "earlier" };
+    const bytes = () =>
+      Buffer.byteLength(analysisInstruction) +
+      Buffer.byteLength(
+        JSON.stringify({
+          prompt: analysisFollowUpPrompt(snapshot, followUp),
+        }),
+      );
+    draft.process.name = "";
+    draft.process.name = "x".repeat(65_536 - bytes());
+    assert.equal(bytes(), 65_536);
+    const restore = installAnalysisCli(scene, { reply: "{}" });
+    try {
+      const worker = scene.worker("bare", {
+        workflowId,
+        document: () => Promise.resolve(JSON.stringify({ snapshot, followUp })),
+      });
+      await worker.deliver(analysis, signal);
+      await until(() => scene.reports.length === 1);
+      draft.process.name += "x";
+      const payload = JSON.stringify({ snapshot, followUp });
+      assert.ok(Buffer.byteLength(payload) < 65_536);
+      assert.equal(bytes(), 65_537);
+      assert.deepEqual(
+        await worker.deliver({ ...analysis, operationId: "overflow" }, signal),
+        { kind: "failed", reason: "analysis-too-large" },
+      );
+      draft.process.name = '"\\'.repeat(8_000);
+      assert.ok(
+        Buffer.byteLength(JSON.stringify({ snapshot, followUp })) < 65_536,
+      );
+      assert.ok(bytes() > 65_536);
+      assert.deepEqual(
+        await worker.deliver(
+          { ...analysis, operationId: "escaped-overflow" },
+          signal,
+        ),
+        { kind: "failed", reason: "analysis-too-large" },
+      );
+      assert.equal(scene.turns().length, 1);
+    } finally {
+      restore();
+    }
+  }));
+
+await test("CLV-149 malformed follow-up data never launches a turn", () =>
+  withScene(async (scene) => {
+    for (const followUp of [
+      null,
+      {},
+      { draft: questionCandidate(), answer: "earlier extra" },
+      { draft: null, answer: "earlier" },
+    ]) {
+      const worker = scene.worker("bare", {
+        workflowId,
+        document: () => Promise.resolve(JSON.stringify({ snapshot, followUp })),
+      });
+      assert.deepEqual(await worker.deliver(analysis, signal), {
+        kind: "failed",
+        reason: "analysis-input-refused",
+      });
+    }
+    assert.equal(scene.turns().length, 0);
   }));
