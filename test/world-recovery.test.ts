@@ -141,12 +141,12 @@ ${finished}`);
 await test("CLV-059 a close of the service while a protected request is in work gives the step no result, and after the reopen the workflow gets the stored result of one send", () =>
   withConsumer(direct, async (consumer) => {
     const first = await consumer.run(`${servicePrelude}${effects}
-writeFileSync("close-at-request", "");
+writeFileSync("hold-request", "");
 const service = await hosted();
-void submitted("c-1").catch(() => undefined);
-await until(() => globalThis.closing !== undefined);
-await globalThis.closing;
-await delay(300);
+const runId = await submitted("c-1");
+await until(() => existsSync("hold-request-entered"));
+await until(async () => (await summary(runId)).effects[0]?.[1] === "completed");
+await service.close();
 const world = await tagged();
 print({ runId: world[0].run, world: world.map((run) => run.status) });
 process.exit(0);
@@ -157,6 +157,7 @@ process.exit(0);
       `${servicePrelude}${effects}
 const service = await hosted();
 const runId = process.env.RUN_ID;
+rmSync("hold-request");
 await until(async () => (await stateOf(runId)) === "completed");
 print({ ...(await summary(runId)), output: (await segments())[0].output.effect.kind });
 await service.close();
@@ -190,10 +191,17 @@ await test("CLV-059 a protected effect after an SDK timer keeps its identity acr
     const first = await consumer.runUntil(
       "halted-in-timer",
       `${servicePrelude}${effects}
+writeFileSync("hold-timer", "");
 const service = await hosted();
+const world = await getWorld();
+const create = world.events.create.bind(world.events);
+world.events.create = async (...given) => {
+  const created = await create(...given);
+  if (given[1]?.eventType === "wait_created") await holdAt("hold-timer");
+  return created;
+};
 const runId = await submitted("c-1");
-await until(async () => (await stateOf(runId)) === "running");
-await delay(500);
+await until(() => existsSync("hold-timer-entered"));
 await halt("halted-in-timer", { runId, sends: lines("destination.log").length });
 `,
     );
@@ -202,6 +210,7 @@ await halt("halted-in-timer", { runId, sends: lines("destination.log").length })
     const second = await consumer.run(
       `${servicePrelude}${effects}
 const service = await hosted();
+rmSync("hold-timer");
 const runId = process.env.RUN_ID;
 ${finished}`,
       { RUN_ID: runId },
