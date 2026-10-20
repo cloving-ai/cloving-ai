@@ -1,5 +1,9 @@
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
-import { parseTokenPrices, type TokenPrices } from "../src/token-prices.ts";
+import {
+  parseFallbackModels,
+  parseTokenPrices,
+  type TokenPrices,
+} from "../src/token-prices.ts";
 import { execFileSync } from "node:child_process";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -91,6 +95,7 @@ async function profilesFile(): Promise<TurnProfiles> {
 }
 
 interface Commands {
+  readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
   readonly worker: ReturnType<typeof selectedWorker>;
@@ -196,6 +201,9 @@ function guide(): string {
 }
 
 const tokenPrices = parseTokenPrices(process.env["CLOVING_TOKEN_PRICES"]);
+const fallbackModels = parseFallbackModels(
+  process.env["CLOVING_FALLBACK_MODELS"],
+);
 const profiles = await profilesFile();
 const worker = selectedWorker();
 const command =
@@ -215,6 +223,7 @@ const manifests = await preparedProject({
 await launchers(
   {
     tokenPrices,
+    fallbackModels,
     worker,
     profiles,
     command,

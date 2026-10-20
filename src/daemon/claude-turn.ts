@@ -2,13 +2,19 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
-import { priceOf, usageOf, type WorkerUsage } from "../worker-usage.ts";
+import {
+  priceOf,
+  usageOf,
+  type WorkerUsage,
+  type WorkerAttemptUsage,
+} from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
 import { analysisCommand, analysisEnvironment } from "./analysis-launch.ts";
 
 export type Worker = "claude" | "codex";
 
 export interface StreamResult {
+  readonly attempts?: readonly WorkerAttemptUsage[];
   readonly subtype?: string;
   readonly errorType?: string;
   readonly model: string | null;

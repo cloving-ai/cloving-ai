@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { candidate } from "./chats-analysis-fixture.ts";
+import { commandModel } from "../src/token-prices.ts";
+import { analysisCommand } from "../src/daemon/analysis-launch.ts";
 import { importId, corpus, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   alive,
@@ -25,6 +27,54 @@ const snapshot = {
   redaction: JSON.stringify(manifest),
   structure: JSON.stringify(sidecar),
 };
+
+await test("CLV-139 analysis retains its fixed model across all capacity retries despite configured fallbacks", () =>
+  withScene(async (scene) => {
+    const restore = installAnalysisCli(scene, {
+      reply: "",
+      mode: "capacity-always",
+    });
+    try {
+      const worker = scene.worker("unused", {
+        workflowId: () => Promise.resolve("analyze-chats"),
+        document: () => Promise.resolve(JSON.stringify({ snapshot })),
+        fallbackModels: ["unused-fallback"],
+        retryDelay: () => Promise.resolve(),
+      });
+      await worker.deliver(operation, signal);
+      await until(() => scene.reports.length === 1);
+      const model = commandModel(analysisCommand());
+      assert.equal(scene.turns().length, 3);
+      for (const turn of scene.turns())
+        assert.equal(commandModel(["claude", ...turn.arguments]), model);
+      for (const attempt of [1, 2, 3])
+        assert.equal(
+          field(
+            record(scene, `operation-1/attempt-${String(attempt)}.json`),
+            "model",
+          ),
+          model,
+        );
+      const result = resultOf(scene.reports[0]?.result);
+      assert.deepEqual(
+        result["attempts"],
+        [1, 2, 3].map((attempt) => ({
+          attempt,
+          model,
+          usage: {
+            input_tokens: 1500,
+            cache_read_input_tokens: 800,
+            output_tokens: 150,
+          },
+          costUsd: 0.25,
+          estimatedCostUsd: null,
+        })),
+      );
+      assert.equal(scene.reports[0]?.outcome, "failed");
+    } finally {
+      restore();
+    }
+  }));
 
 await test("CLV-127 analysis uses the same capacity retries and usage totals", () =>
   withScene(async (scene) => {

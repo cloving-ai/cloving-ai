@@ -51,6 +51,27 @@ export function parseTokenPrices(value: string | undefined): TokenPrices {
   }
 }
 
+export function parseFallbackModels(
+  value: string | undefined,
+): readonly string[] {
+  if (value === undefined) return [];
+  try {
+    const models: unknown = JSON.parse(value);
+    if (
+      Array.isArray(models) &&
+      models.length <= 3 &&
+      models.every(
+        (model: unknown) =>
+          typeof model === "string" && model.trim().length > 0,
+      )
+    )
+      return models.map(String);
+  } catch {
+    throw new Error("The daemon did not start: invalid-fallback-models");
+  }
+  throw new Error("The daemon did not start: invalid-fallback-models");
+}
+
 export function priceForModel(
   prices: TokenPrices,
   model: string | null,
@@ -60,19 +81,40 @@ export function priceForModel(
     : undefined;
 }
 
-export function commandModel(command: readonly string[]): string | null {
-  let model: string | null = null;
-  for (let index = 1; index < command.length; index += 1) {
+function modelIndex(command: readonly string[]): number | undefined {
+  let selected: number | undefined;
+  const separator = command.indexOf("--", 1);
+  const end = separator === -1 ? command.length : separator;
+  for (let index = 1; index < end; index += 1) {
     const argument = command[index] ?? "";
-    if (argument === "--") break;
-    if (argument.startsWith("--model=")) model = argument.slice(8) || null;
-    if (argument === "--model" || argument === "-m") {
+    if (argument.startsWith("--model="))
+      selected = argument.slice(8) ? index : undefined;
+    if (["--model", "-m"].includes(argument)) {
       const next = command[index + 1];
-      model = next && !next.startsWith("-") ? next : null;
+      selected = next && !next.startsWith("-") ? index + 1 : undefined;
       index += 1;
     }
   }
-  return model;
+  return selected;
+}
+
+export function commandModel(command: readonly string[]): string | null {
+  const index = modelIndex(command);
+  if (index === undefined) return null;
+  const argument = command[index] ?? "";
+  return argument.startsWith("--model=") ? argument.slice(8) : argument;
+}
+
+export function replaceCommandModel(
+  command: readonly string[],
+  model: string,
+): readonly string[] {
+  const index = modelIndex(command);
+  if (index === undefined) return command;
+  return command.map((argument, position) => {
+    if (position !== index) return argument;
+    return argument.startsWith("--model=") ? `--model=${model}` : model;
+  });
 }
 
 export function estimatedCostUsd(

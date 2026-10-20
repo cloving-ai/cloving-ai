@@ -70,6 +70,85 @@ await test("CLV-094 totals ended worker operations once across failed reports, r
     await reopened.close();
   }));
 
+await test("CLV-139 status preserves attempt models, token usage and estimates across restart", () =>
+  withHarness(async (harness) => {
+    const scene = await workerScene(harness);
+    const attempts = ["main", "main", "fallback"].map((model, index) => ({
+      attempt: index + 1,
+      model,
+      usage: scenarioTotal,
+      costUsd: null,
+      estimatedCostUsd: index === 2 ? 10 : 2,
+    }));
+    await reportTurn(scene, {
+      round: 1,
+      result: JSON.stringify({
+        usage: scenarioTotal,
+        attempts,
+        estimatedCostUsd: 14,
+      }),
+    });
+    const assertAttempts = async () => {
+      const status = await view(harness, scene.runId);
+      assert.deepEqual(
+        field(field(field(status, "workerTurns"), "0"), "attempts"),
+        attempts,
+      );
+      assert.equal(field(status, "estimatedCostUsd"), 14);
+    };
+    await assertAttempts();
+    await scene.service.close();
+    const reopened = await harness.start(scene.options);
+    await assertAttempts();
+    await reopened.close();
+  }));
+
+await test("CLV-139 status normalizes unknown attempt usage and refuses malformed attempt identities", () =>
+  withHarness(async (harness) => {
+    const scene = await workerScene(harness);
+    await reportTurn(scene, {
+      round: 1,
+      result: JSON.stringify({ attempts: "invalid" }),
+    });
+    await reportTurn(scene, {
+      round: 2,
+      result: JSON.stringify({
+        attempts: [
+          null,
+          "text",
+          {},
+          { attempt: 0, model: "main" },
+          { attempt: -1, model: "main" },
+          { attempt: "1", model: "main" },
+          { attempt: 1, model: {} },
+          {
+            attempt: 2,
+            model: null,
+            usage: { input_tokens: 2, output_tokens: "3" },
+            costUsd: -1,
+            estimatedCostUsd: "4",
+            extra: "private",
+          },
+        ],
+      }),
+    });
+    const turns = field(await view(harness, scene.runId), "workerTurns");
+    assert.equal(field(field(turns, "0"), "attempts"), undefined);
+    assert.deepEqual(field(field(turns, "1"), "attempts"), [
+      {
+        attempt: 2,
+        model: null,
+        usage: {
+          input_tokens: 2,
+          cache_read_input_tokens: null,
+          output_tokens: null,
+        },
+        costUsd: null,
+        estimatedCostUsd: null,
+      },
+    ]);
+  }));
+
 await test("CLV-094 active operations do not contribute and ended operations without a result are unknown", () =>
   withHarness(async (harness) => {
     const scene = await workerScene(harness);

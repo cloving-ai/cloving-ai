@@ -1,12 +1,8 @@
 import { join } from "node:path";
 import { ticketStatus } from "../ticket-status.ts";
+import { sumPrices } from "../worker-usage.ts";
 import { analysisWorker } from "./analysis-worker.ts";
 import { analysisMethod } from "./analysis-launch.ts";
-import {
-  estimatedCostUsd,
-  priceForModel,
-  type TokenPrices,
-} from "../token-prices.ts";
 import {
   profileCommand,
   type TurnProfile,
@@ -35,7 +31,6 @@ import {
 import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings extends RetrySettings {
-  readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
   readonly workflowId?: (runId: string) => Promise<string | undefined>;
@@ -107,12 +102,8 @@ async function reconciled(
 
 async function resultText(
   tree: WorkTree,
-  turn: {
-    readonly result: NonNullable<TurnEnd["result"]>;
-    readonly settings: ClaudeWorkerSettings;
-  },
+  result: NonNullable<TurnEnd["result"]>,
 ): Promise<{ readonly text?: string; readonly reason?: string }> {
-  const { result, settings } = turn;
   const fields = {
     ticketStatus: ticketStatus(result.text),
     summary: result.text.slice(0, claudeLimits.summaryCharacters),
@@ -121,10 +112,10 @@ async function resultText(
     costUsd: result.costUsd,
     usage: result.usage,
     model: result.model,
-    estimatedCostUsd: estimatedCostUsd(result.usage, {
-      worker: settings.worker ?? "claude",
-      price: priceForModel(settings.tokenPrices ?? {}, result.model),
-    }),
+    ...(result.attempts === undefined ? {} : { attempts: result.attempts }),
+    estimatedCostUsd: sumPrices(
+      (result.attempts ?? []).map((attempt) => attempt.estimatedCostUsd),
+    ),
     sessionId: result.sessionId,
     turns: result.turns,
   };
@@ -154,16 +145,13 @@ async function resultText(
 async function outcome(
   running: Started & {
     readonly stopping: Active["stopping"];
-    readonly settings: ClaudeWorkerSettings;
   },
   end: TurnEnd,
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
   const { result } = end;
   const report =
-    result === undefined
-      ? {}
-      : await resultText(running.tree, { result, settings: running.settings });
+    result === undefined ? {} : await resultText(running.tree, result);
   const { text, reason } = report;
   if (
     reason === undefined &&
@@ -189,10 +177,7 @@ async function concluded(
   },
 ): Promise<void> {
   const { intent, key } = running;
-  const recorded = await outcome(
-    { ...running, settings: parts.settings },
-    await running.turn.ended,
-  );
+  const recorded = await outcome(running, await running.turn.ended);
   await written(running.folder, { name: "result.json", value: recorded });
   await parts.settings.report(
     reportOf({ intent, commandId: `claude-turn:${key}`, worker }, recorded),

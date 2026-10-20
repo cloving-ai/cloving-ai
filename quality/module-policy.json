@@ -891,7 +891,12 @@
     "test/watch-merge-fixture.ts": "test",
     "test/watch-completion-reads.test.ts": "test",
     "test/service-status-issue-identity.test.ts": "test",
-    "test/watch-font-fixture.ts": "test"
+    "test/watch-font-fixture.ts": "test",
+    "test/cli-start-fallback-models.test.ts": "test",
+    "test/fallback-models.test.ts": "test",
+    "test/fallback-prices.test.ts": "test",
+    "test/fallback-worker-fixture.ts": "test",
+    "test/fallback-worker.test.ts": "test"
   },
   "allowed": {
     "quality": [
