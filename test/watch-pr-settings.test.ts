@@ -25,7 +25,7 @@ await test("CLV-093 watch parses configured command and reads only the service r
       },
     });
     try {
-      assert.equal(observer.observe(recordedPr), null);
+      assert.deepEqual(observer.observe(recordedPr), { status: "pending" });
       await settleObservation();
       assert.equal(requests.length, 2);
       assert.deepEqual(requests[0]?.command, [
@@ -41,7 +41,10 @@ await test("CLV-093 watch parses configured command and reads only the service r
         configured === undefined ? ["gh"] : ["fake-gh", "prefix with spaces"],
       );
       assert.equal(requests[1].directory, "service-repository");
-      assert.deepEqual(observer.observe(recordedPr), { status: "merged" });
+      const observed = observer.observe(recordedPr);
+      assert.equal(observed?.status, "merged");
+      assert.equal(observed.lastSuccess?.status, "merged");
+      assert.equal(typeof observed.lastSuccess.readAt, "number");
     } finally {
       observer.close();
     }

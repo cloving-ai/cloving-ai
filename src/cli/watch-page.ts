@@ -21,6 +21,8 @@ import {
   cardReview,
   cardStep,
   completionMark,
+  observationText,
+  staleObservation,
 } from "./watch-board-view.ts";
 import {
   boardWorkflow,
@@ -85,6 +87,8 @@ const functions = [
   cardReview,
   cardStep,
   completionMark,
+  observationText,
+  staleObservation,
   CardReview,
   Card,
   Column,

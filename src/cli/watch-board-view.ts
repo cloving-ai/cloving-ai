@@ -73,20 +73,48 @@ export function CardReview(props: {
   });
 }
 
-export function completionMark(card: WatchCard, workflowId: string): Shown {
+export function staleObservation(card: WatchCard, now: string): Shown {
+  const observation = card.pullRequestObservation;
+  const lastSuccess = observation?.lastSuccess;
+  if (
+    observation?.status === "merged" ||
+    lastSuccess?.status !== "unmerged" ||
+    !(Date.parse(now) - lastSuccess.readAt > 120000)
+  )
+    return null;
+  return [
+    " ",
+    element("span", { class: "completion-stale", children: "Stale" }),
+  ];
+}
+
+export function observationText(card: WatchCard, fallback: string): string {
+  if (fallback !== "Needs attention") return fallback;
+  const status = card.pullRequestObservation?.status;
+  if (status === "merged")
+    return `PR merged · #${String(card.pullRequestNumber)}`;
+  if (status === "pending") return "Checking PR";
+  if (status === "unavailable") return "PR status unavailable";
+  return fallback;
+}
+
+export function completionMark(
+  card: WatchCard,
+  context: { readonly workflowId: string; readonly now: string },
+): Shown {
   const mark = card.completionMark;
   if (mark === null) return null;
-  let text = mark.text;
-  const status = card.pullRequestObservation?.status;
-  if (text === "Needs attention" && status === "merged")
-    text = `PR merged #${String(card.pullRequestNumber)}`;
-  if (text === "Needs attention" && status === "unavailable")
-    text = "PR status unavailable";
+  const text = observationText(card, mark.text);
   if (mark.laterRunId === null)
-    return element("span", { class: "completion-mark", children: text });
+    return [
+      element("span", { class: "completion-mark", children: text }),
+      mark.text === "Needs attention"
+        ? staleObservation(card, context.now)
+        : null,
+    ];
   return element("a", {
     class: "completion-mark",
-    href: watchHash({ workflowId, runId: mark.laterRunId }),
+    href: watchHash({ workflowId: context.workflowId, runId: mark.laterRunId }),
     children: mark.text,
   });
 }
@@ -95,6 +123,7 @@ export function Card(props: {
   readonly card: WatchCard;
   readonly workflowId: string;
   readonly now: string;
+  readonly observationNow?: string | undefined;
 }): Shown {
   const { card, workflowId, now } = props;
   return element("article", {
@@ -129,7 +158,7 @@ export function Card(props: {
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
-      completionMark(card, workflowId),
+      completionMark(card, { workflowId, now: props.observationNow ?? now }),
     ],
   });
 }
@@ -181,6 +210,7 @@ export function Column(props: {
   readonly addCard?: Shown;
   readonly workflowId: string;
   readonly now: string;
+  readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { column, workflowId, now, controls } = props;
@@ -217,7 +247,13 @@ export function Column(props: {
             class: "column-cards",
             children: [
               column.cards.map((card) =>
-                component(Card, { key: card.runId, card, workflowId, now }),
+                component(Card, {
+                  key: card.runId,
+                  card,
+                  workflowId,
+                  now,
+                  observationNow: props.observationNow,
+                }),
               ),
               props.addCard,
             ],
@@ -231,6 +267,7 @@ export function Board(props: {
   readonly cardForm?: CardForm | undefined;
   readonly cards?: CardControls | undefined;
   readonly now: string;
+  readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { workflow, now } = props;
@@ -246,6 +283,7 @@ export function Board(props: {
             column,
             workflowId: workflow.workflowId,
             now,
+            observationNow: props.observationNow,
             controls: props.controls,
             addCard:
               index === 0

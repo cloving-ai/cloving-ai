@@ -258,6 +258,7 @@ export function Header(props: {
 export interface PageProps {
   readonly cards?: CardControls;
   readonly model: WatchModel | null;
+  readonly observationNow?: string | undefined;
   readonly selected: string;
   readonly now: string;
   readonly stale: boolean;
@@ -355,6 +356,7 @@ export function BoardPage(
             : component(Board, {
                 workflow,
                 now,
+                observationNow: props.observationNow,
                 controls: props.columns,
                 cardForm: model.cardForms?.find(
                   (form) => form.workflowId === workflowId,

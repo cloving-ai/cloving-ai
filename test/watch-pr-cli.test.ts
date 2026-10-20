@@ -42,7 +42,9 @@ await test("CLV-093 CLI board returns while configured GitHub waits and a later 
         text: "Needs attention",
         laterRunId: null,
       });
-      assert.equal(stoppedPrCard(first)["pullRequestObservation"], null);
+      assert.deepEqual(stoppedPrCard(first)["pullRequestObservation"], {
+        status: "pending",
+      });
       assert.deepEqual(await ghRequest(runtime), [
         "prefix with spaces",
         "api",
@@ -96,7 +98,7 @@ await test("CLV-093 CLI reads the service origin from a relative repository path
     async (watch, runtime) => {
       await recordedPrJournal(runtime);
       const first = stoppedPrCard(await watchData(watch.address));
-      assert.equal(first["pullRequestObservation"], null);
+      assert.deepEqual(first["pullRequestObservation"], { status: "pending" });
       assert.deepEqual(await ghRequest(runtime), [
         "prefix with spaces",
         "api",

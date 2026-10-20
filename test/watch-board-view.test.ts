@@ -304,7 +304,7 @@ await test("CLV-093 PR marks render as escaped text and preserve original and la
     },
     { column: "Stopped" },
   );
-  assert.match(merged, /<span class="completion-mark">PR merged #7<\/span>/);
+  assert.match(merged, /<span class="completion-mark">PR merged · #7<\/span>/);
   assert.match(merged, /&lt;b&gt;PR &amp; run&lt;\/b&gt;/);
   assert.match(merged, /href="#workflow=develop-issue&amp;run=run%20%2F%261"/);
   assert.doesNotMatch(merged, />Needs attention</);

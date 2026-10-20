@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -58,10 +58,11 @@ function draw() {
   const followed = innerHeight + scrollY >= document.body.scrollHeight - 80;
   const copying = { command: state.copied, label: state.label, onCopy: copy };
   const now = new Date().toISOString();
+  const observationNow = model === null ? now : new Date(Date.parse(model.updatedAt) + performance.now() - state.receivedAt).toISOString();
   const columns = columnControls(model, selected);
   const start = model === null ? undefined : startControls();
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
-  const page = component(Page, { model, selected, now, stale, copying, columns, start, cards });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, start, cards });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);
@@ -85,7 +86,10 @@ async function load() {
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
     if (!reply.ok) throw new Error("watch-not-available");
-    state.model = await withSelectedRun(await reply.json());
+    const model = await reply.json();
+    const receivedAt = performance.now();
+    state.model = await withSelectedRun(model);
+    state.receivedAt = receivedAt;
     state.stale = false;
   } catch {
     state.stale = true;
