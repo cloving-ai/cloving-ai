@@ -104,11 +104,14 @@ function anchoredLinuxFiles() {
   filesystem.open = async (path, flags) => {
     let resolved = String(path);
     const match = /^\/proc\/self\/fd\/(\d+)\/(.+)$/.exec(resolved);
-    if (match) {
-      const parent = paths.get(Number(match[1]));
-      if (!parent || !match[2]) throw new Error("Missing fixture anchor.");
-      resolved = join(parent, match[2]);
+    if (!match) {
+      const handle = await open(resolved, flags);
+      paths.set(handle.fd, resolved);
+      return handle;
     }
+    const parent = paths.get(Number(match[1]));
+    if (!parent || !match[2]) throw new Error("Missing fixture anchor.");
+    resolved = join(parent, match[2]);
     const handle = await open(resolved, flags);
     paths.set(handle.fd, resolved);
     return handle;
@@ -117,11 +120,10 @@ function anchoredLinuxFiles() {
     configurable: true,
     value: async (...args: Parameters<typeof readdir>) => {
       const match = /^\/proc\/self\/fd\/(\d+)$/.exec(String(args[0]));
-      if (match) {
-        const path = paths.get(Number(match[1]));
-        if (!path) throw new Error("Missing listing fixture anchor.");
-        args[0] = path;
-      }
+      if (!match) return readdir(...args);
+      const path = paths.get(Number(match[1]));
+      if (!path) throw new Error("Missing listing fixture anchor.");
+      args[0] = path;
       return readdir(...args);
     },
   });

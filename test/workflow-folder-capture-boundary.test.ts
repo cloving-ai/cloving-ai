@@ -12,6 +12,28 @@ import {
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
+function anchoredLinuxOpen(anchored: string[]): typeof filesystem.open {
+  const open = filesystem.open;
+  const paths = new Map<number, string>();
+  return async (path, flags) => {
+    const match = /^\/proc\/self\/fd\/(\d+)\/(.+)$/.exec(String(path));
+    let resolved = String(path);
+    if (!match) {
+      const handle = await open(resolved, flags);
+      paths.set(handle.fd, resolved);
+      return handle;
+    }
+    const parent = paths.get(Number(match[1]));
+    if (!parent || !match[2])
+      throw new Error("Missing fixture descriptor anchor.");
+    resolved = join(parent, match[2]);
+    anchored.push(resolved);
+    const handle = await open(resolved, flags);
+    paths.set(handle.fd, resolved);
+    return handle;
+  };
+}
+
 await test("CLV-124 captures both file identities before reading either file", () =>
   withFiles(operatorFiles("project", "project"), async (directory) => {
     const original = filesystem.open;
@@ -53,22 +75,8 @@ await test("CLV-124 descriptor-anchored capture reads Linux components without f
     const original = filesystem.open;
     const platform = Object.getOwnPropertyDescriptor(process, "platform");
     assert.ok(platform);
-    const paths = new Map<number, string>();
     const anchored: string[] = [];
-    filesystem.open = async (path, flags) => {
-      const match = /^\/proc\/self\/fd\/(\d+)\/(.+)$/.exec(String(path));
-      let resolved = String(path);
-      if (match) {
-        const parent = paths.get(Number(match[1]));
-        if (!parent || !match[2])
-          throw new Error("Missing fixture descriptor anchor.");
-        resolved = join(parent, match[2]);
-        anchored.push(resolved);
-      }
-      const handle = await original(resolved, flags);
-      paths.set(handle.fd, resolved);
-      return handle;
-    };
+    filesystem.open = anchoredLinuxOpen(anchored);
     Object.defineProperty(process, "platform", { value: "linux" });
     syncBuiltinESMExports();
     try {
