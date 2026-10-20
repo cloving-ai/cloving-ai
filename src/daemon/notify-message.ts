@@ -1,3 +1,4 @@
+import { operationalDecision } from "../decision-visibility.ts";
 import { decisionLines, runStatus } from "../cli/render.ts";
 import { record, type Fields } from "../protocol.ts";
 
@@ -41,7 +42,9 @@ export function decisionNotification(
   run: Fields,
   decision: Fields,
 ): NotifyEvent {
-  const lines = decisionLines(decision);
+  const lines = decisionLines(
+    operationalDecision(decision, String(run["workflowId"])),
+  );
   const allowed = decision["allowed"];
   const count = Array.isArray(allowed) ? allowed.length : 0;
   const split = lines.length - count;
