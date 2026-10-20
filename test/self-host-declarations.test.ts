@@ -1,3 +1,4 @@
+import { stopChildGroup } from "./stop-child.ts";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { copyFile, mkdir, symlink, writeFile } from "node:fs/promises";
@@ -178,8 +179,7 @@ async function withDaemon(
     await body();
     assert.equal(await ended(child), 0);
   } finally {
-    if (child.exitCode === null && child.signalCode === null)
-      process.kill(-Number(child.pid), "SIGKILL");
+    await stopChildGroup(child);
   }
 }
 

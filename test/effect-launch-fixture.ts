@@ -71,7 +71,11 @@ async function launched(
       name,
       String(intent.payload),
     ],
-    { detached: true, stdio: "ignore" },
+    {
+      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      detached: true,
+      stdio: "ignore",
+    },
   ).unref();
   for (let waited = 0; waited < 5_000; waited += 10) {
     const outcome = observed(directory, intent);

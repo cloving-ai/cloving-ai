@@ -79,7 +79,9 @@ process.exit(0);
 
 async function recovered(window: string): Promise<readonly unknown[]> {
   return await withConsumer(workflows, async (consumer) => {
-    const first = await consumer.run(servicePrelude + stoppedAt(window));
+    const first = await consumer.run(servicePrelude + stoppedAt(window), {
+      NODE_V8_COVERAGE: undefined,
+    });
     const second = await consumer.run(servicePrelude + restarted);
     const [line] = second.lines;
     const stopped = String(field(first.lines[0], "target"));

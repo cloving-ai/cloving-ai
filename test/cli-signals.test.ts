@@ -6,6 +6,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { stopChild } from "./stop-child.ts";
 import { socketAddress } from "../src/broker/socket-address.ts";
 
 interface Ended {
@@ -51,7 +52,13 @@ async function withSilentService(invocation: {
   child.stderr.on("data", (data: Buffer) => {
     output.stderr += data.toString();
   });
-  const limit = setTimeout(() => child.kill("SIGKILL"), 20000);
+  const limit = setTimeout(() => {
+    stopChild(child).catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : "Child cleanup failed";
+      assert.fail(message);
+    });
+  }, 20000);
   try {
     invocation.onRequest(await requested.promise, child);
     const exited: readonly unknown[] = await once(child, "exit");
@@ -62,7 +69,7 @@ async function withSilentService(invocation: {
     };
   } finally {
     clearTimeout(limit);
-    child.kill("SIGKILL");
+    await stopChild(child);
     for (const socket of sockets) socket.destroy();
     server.close();
     await rm(runtime, { recursive: true, force: true });

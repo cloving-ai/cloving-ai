@@ -1,3 +1,4 @@
+import { stopChildGroup } from "./stop-child.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { chmod, lstat, mkdir, writeFile } from "node:fs/promises";
@@ -99,8 +100,7 @@ async function idleLauncher(root: string, worker: string): Promise<void> {
       await assert.rejects(lstat(join(root, name)), { code: "ENOENT" });
     assert.equal(await ended(child), 0);
   } finally {
-    if (child.exitCode === null && child.signalCode === null)
-      process.kill(-Number(child.pid), "SIGKILL");
+    await stopChildGroup(child);
   }
 }
 

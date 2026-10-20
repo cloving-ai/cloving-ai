@@ -33,7 +33,7 @@ await test("CLV-127 a daemon killed during its capacity wait fails recovery with
     const child = spawn(
       process.execPath,
       ["--input-type=module", "-e", source],
-      { stdio: "ignore" },
+      { env: { ...process.env, NODE_V8_COVERAGE: undefined }, stdio: "ignore" },
     );
     const closed = once(child, "close");
     try {

@@ -1,3 +1,4 @@
+import { stopChildGroup } from "./stop-child.ts";
 import {
   operatorFiles,
   operatorRefusals,
@@ -299,14 +300,6 @@ function registrations(
     assert.ok(items(field(document, "workflows")).includes(workflow));
 }
 
-function killGroup(child: ChildProcess): void {
-  try {
-    process.kill(-Number(child.pid), "SIGKILL");
-  } catch (error) {
-    if (field(error, "code") !== "ESRCH") throw error;
-  }
-}
-
 async function running(root: string, executable: string): Promise<void> {
   const env = await environment(root);
   const fixture = {
@@ -348,7 +341,7 @@ async function running(root: string, executable: string): Promise<void> {
     assert.equal(await boundedExit(closed), 0);
     assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });
   } finally {
-    killGroup(child);
+    await stopChildGroup(child);
     await boundedExit(closed);
   }
 }

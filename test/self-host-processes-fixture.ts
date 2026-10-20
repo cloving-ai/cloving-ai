@@ -72,7 +72,11 @@ process.exitCode = await running;`,
   );
   try {
     return spawnSync(process.execPath, [entry], {
-      env: { ...process.env, PATH: `${bin}:${process.env["PATH"] ?? ""}` },
+      env: {
+        ...process.env,
+        NODE_V8_COVERAGE: undefined,
+        PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+      },
       encoding: "utf8",
       timeout: (options.signal === "deadline" ? 35000 : 3000) * timeFactor,
       killSignal: "SIGKILL",

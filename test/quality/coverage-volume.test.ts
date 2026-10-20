@@ -186,13 +186,15 @@ for (const factor of [undefined, "3"])
   });
 
 for (const content of ["", '{"result":'])
-  await test(`CLV-123 rejects a permanently unfinished recording: ${JSON.stringify(content)}`, async () => {
+  await test(`CLV-145 names a permanently unfinished recording and its process ID: ${JSON.stringify(content)}`, async () => {
     await withFiles({}, async (directory) => {
       await requestedCoverage(directory);
-      await writeFile(join(directory, "coverage/unfinished.json"), content);
+      const filename = "coverage-4242-1792425600000-0.json";
+      await writeFile(join(directory, "coverage", filename), content);
       const result = collected(directory);
       assert.equal(result.status, 1);
       assert.match(result.stderr, /Unexpected end of JSON input/);
+      assert.ok(result.stderr.includes(filename), result.stderr);
     });
   });
 
