@@ -123,6 +123,7 @@ export function Card(props: {
   readonly card: WatchCard;
   readonly workflowId: string;
   readonly now: string;
+  readonly observationNow?: string | undefined;
 }): Shown {
   const { card, workflowId, now } = props;
   return element("article", {
@@ -157,7 +158,7 @@ export function Card(props: {
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
-      completionMark(card, { workflowId, now }),
+      completionMark(card, { workflowId, now: props.observationNow ?? now }),
     ],
   });
 }
@@ -209,6 +210,7 @@ export function Column(props: {
   readonly addCard?: Shown;
   readonly workflowId: string;
   readonly now: string;
+  readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { column, workflowId, now, controls } = props;
@@ -245,7 +247,13 @@ export function Column(props: {
             class: "column-cards",
             children: [
               column.cards.map((card) =>
-                component(Card, { key: card.runId, card, workflowId, now }),
+                component(Card, {
+                  key: card.runId,
+                  card,
+                  workflowId,
+                  now,
+                  observationNow: props.observationNow,
+                }),
               ),
               props.addCard,
             ],
@@ -259,6 +267,7 @@ export function Board(props: {
   readonly cardForm?: CardForm | undefined;
   readonly cards?: CardControls | undefined;
   readonly now: string;
+  readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
 }): Shown {
   const { workflow, now } = props;
@@ -274,6 +283,7 @@ export function Board(props: {
             column,
             workflowId: workflow.workflowId,
             now,
+            observationNow: props.observationNow,
             controls: props.controls,
             addCard:
               index === 0

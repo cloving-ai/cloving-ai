@@ -144,13 +144,15 @@ const observations = new Map<string, PrObservation>([
   ],
 ]);
 
-await test("CLV-129 the embedded browser renders pending, stale, unavailable and merged PR marks", () => {
+function observationModel(
+  values: ReadonlyMap<string, PrObservation>,
+): WatchModel {
   const base = boardModel(
-    [...observations.keys()].map((runId) =>
+    [...values.keys()].map((runId) =>
       boardRun(runId, { state: "completed", outcome: "blocked" }),
     ),
   );
-  const model = {
+  return {
     ...base,
     workflows: base.workflows.map((workflow) => ({
       ...workflow,
@@ -159,14 +161,18 @@ await test("CLV-129 the embedded browser renders pending, stale, unavailable and
         cards: column.cards.map((card) => ({
           ...card,
           pullRequestNumber: 7,
-          pullRequestObservation: observations.get(card.runId) ?? null,
+          pullRequestObservation: values.get(card.runId) ?? null,
         })),
       })),
     })),
   };
+}
+
+await test("CLV-129 the embedded browser renders pending, stale, unavailable and merged PR marks", () => {
   const result = played(
-    model,
+    observationModel(observations),
     `
+Object.defineProperty(globalThis, "performance", { configurable: true, value: { now: () => 0 } });
 location.hash = "#workflow=develop-issue";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
@@ -184,3 +190,70 @@ console.log(JSON.stringify({ html: app.inner }));
   assert.match(html, />PR status unavailable<\/span>/);
   assert.match(html, />PR merged · #7<\/span>/);
 });
+
+const clockSkewScenario = `
+let wallTime = fixed + offset;
+globalThis.Date = class extends RealDate {
+  constructor(...values) { super(...(values.length === 0 ? [wallTime] : values)); }
+};
+let browserElapsed = 5000;
+Object.defineProperty(globalThis, "performance", { configurable: true, value: { now: () => browserElapsed } });
+location.hash = "#workflow=develop-issue";
+const model = JSON.parse(process.env.WATCH_MODEL);
+replies.push(model);
+await load();
+app.all("button").find((node) => node.attributes.get("aria-label") === "Expand Stopped")?.dispatch("click");
+const initial = app.inner;
+browserElapsed += 60000;
+wallTime -= 3600000;
+draw();
+const boundary = app.inner;
+browserElapsed += 1;
+draw();
+const expired = app.inner;
+await load();
+const offline = app.inner;
+const refreshed = structuredClone(model);
+refreshed.updatedAt = new RealDate(fixed + 60001).toISOString();
+for (const workflow of refreshed.workflows) for (const column of workflow.columns) for (const card of column.cards)
+  card.pullRequestObservation.lastSuccess.readAt = fixed + 60001;
+replies.push(refreshed);
+await load();
+const fresh = app.inner;
+browserElapsed += 120000;
+draw();
+const refreshedBoundary = app.inner;
+browserElapsed += 1;
+draw();
+console.log(JSON.stringify({ initial, boundary, expired, offline, fresh, refreshedBoundary, refreshedExpired: app.inner }));
+`;
+
+for (const offset of [-180000, 180000]) {
+  await test(`CLV-129 observation age uses server time when the browser clock differs by ${String(offset)} ms`, () => {
+    const model = observationModel(
+      new Map([
+        [
+          "fresh",
+          {
+            status: "unmerged",
+            lastSuccess: { status: "unmerged", readAt: now - 60000 },
+          },
+        ],
+      ]),
+    );
+    const result = played(
+      model,
+      `const offset = ${String(offset)};\n${clockSkewScenario}`,
+    );
+    for (const key of ["initial", "boundary", "fresh", "refreshedBoundary"])
+      assert.doesNotMatch(
+        String(result[key]),
+        /class="completion-stale">Stale</,
+        key,
+      );
+    for (const key of ["expired", "offline", "refreshedExpired"])
+      assert.match(String(result[key]), /class="completion-stale">Stale</, key);
+    assert.match(String(result["fresh"]), />Needs attention</);
+    assert.match(String(result["offline"]), /The watch tool does not answer/);
+  });
+}
