@@ -39,6 +39,7 @@
     "test/notify-delivery.test.ts": "test",
     "test/notify-journal.test.ts": "test",
     "test/notify-scheduling.test.ts": "test",
+    "test/notify-shutdown.test.ts": "test",
     "test/notify-message.test.ts": "test",
     "test/notify-command.test.ts": "test",
     "src/daemon/notify.ts": "daemon",

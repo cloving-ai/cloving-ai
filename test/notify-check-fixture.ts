@@ -136,8 +136,11 @@ export async function withNotifier(
         notices: () => notices(output),
       });
     } finally {
-      await notifier.stop();
-      await listener.close();
+      try {
+        await notifier.stop();
+      } finally {
+        await listener.close();
+      }
     }
   });
 }

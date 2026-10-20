@@ -245,6 +245,7 @@ async function scheduleDelivery(
   delivery: {
     readonly journal: DeliveryJournal;
     readonly progress: DeliveryProgress;
+    readonly ready: () => void;
   },
 ): Promise<void> {
   const { journal, progress } = delivery;
@@ -260,10 +261,14 @@ async function scheduleDelivery(
     if (stopped()) return;
     const pending = await prepareDelivery(journal, entry);
     if (pending === undefined) continue;
-    if (stopped()) return;
+    if (stopped()) {
+      await finishDelivery(journal, entry);
+      return;
+    }
     progress.active = deliver(settings, pending).then((completed) => {
       progress.completed = completed;
       progress.active = undefined;
+      delivery.ready();
     });
     return;
   }
@@ -336,6 +341,13 @@ export async function notifyRuns(settings: NotifySettings): Promise<{
       });
   }
   await saveNotifications(file, journal);
+  return notificationLoop(settings, journal);
+}
+
+function notificationLoop(
+  settings: NotifySettings,
+  journal: DeliveryJournal & { readonly cache: OutcomeCache },
+): { readonly stop: () => Promise<void> } {
   let busy = false;
   let running = Promise.resolve();
   const stopping = new AbortController();
@@ -344,30 +356,41 @@ export async function notifyRuns(settings: NotifySettings): Promise<{
     active: undefined,
     completed: undefined,
   };
+  const ready = (): void => {
+    if (stopping.signal.aborted) return;
+    running = running
+      .then(() => settleDelivery(journal, progress))
+      .then(() => scheduleDelivery(settings, { journal, progress, ready }))
+      .catch((error: unknown) => {
+        report("Notify delivery failed", error);
+      });
+  };
   const timer = setInterval(() => {
     if (busy) return;
     busy = true;
-    running = settleDelivery(journal, progress)
+    running = running
+      .then(() => settleDelivery(journal, progress))
       .then(() => check(settings, journal))
       .catch((error: unknown) => {
         report("Notify check failed", error);
-      })
-      .then(() => scheduleDelivery(settings, { journal, progress }))
-      .catch((error: unknown) => {
-        report("Notify delivery failed", error);
-      })
-      .finally(() => {
-        busy = false;
       });
+    ready();
+    running = running.finally(() => {
+      busy = false;
+    });
   }, settings.intervalMilliseconds ?? 15_000);
   return {
     stop: () => {
       stopping.abort();
       clearInterval(timer);
-      running = running.then(async () => {
-        await progress.active;
-        await settleDelivery(journal, progress);
-      });
+      running = running
+        .then(async () => {
+          await progress.active;
+          await settleDelivery(journal, progress);
+        })
+        .catch((error: unknown) => {
+          report("Notify delivery failed", error);
+        });
       return running;
     },
   };

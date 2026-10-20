@@ -3,6 +3,32 @@ import { test } from "node:test";
 import { notifyPrelude, notifyWorkflow } from "./daemon-notify-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
+await test("CLV-132 a failed shutdown delivery save still releases the daemon resources", () =>
+  withConsumer(notifyWorkflow, async (consumer) => {
+    const result = await consumer.run(`${notifyPrelude}
+import { mkdirSync } from "node:fs";
+appendFileSync("notify.mjs", \`
+import { existsSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
+while (!existsSync("release")) await setTimeout(5);
+\`);
+const daemon = await launched({ queueMilliseconds: 30 });
+await submitNotice("shutdown", { kind: "blocked" });
+await until(() => notices().length === 1);
+mkdirSync("notify-events.json.tmp");
+const closing = daemon.close();
+writeFileSync("release", "");
+await assert.doesNotReject(closing);
+assert.equal(existsSync(runtimeDirectory + "/control.sock"), false);
+rmSync("notify-events.json.tmp", { recursive: true });
+const reopened = await launched();
+await reopened.close();
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /Notify .*failed: .*EISDIR/);
+  }));
+
 await test("CLV-090 failed notifier initialization releases the daemon so startup can be retried", () =>
   withConsumer(notifyWorkflow, async (consumer) => {
     const result = await consumer.run(`${notifyPrelude}

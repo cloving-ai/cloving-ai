@@ -24,6 +24,40 @@ while (!existsSync("release")) await setTimeout(5);
 appendFileSync("notifications", text);
 `;
 
+await test("CLV-132 ready deliveries drain after one scan without another timer tick", async () => {
+  const interval = globalThis.setInterval;
+  globalThis.setInterval = globalThis.setTimeout;
+  let scans = 0;
+  try {
+    await withNotifier(
+      {
+        record: backlog(),
+        script: heldCommand.replace(
+          'while (!existsSync("release")) await setTimeout(5);',
+          "",
+        ),
+        handle: () => {
+          scans += 1;
+          return notifyReply({ runs: [], next: null, decisions: [] });
+        },
+      },
+      async (scene) => {
+        await eventually(async () =>
+          (await scene.notices()).length === 20 ? true : undefined,
+        );
+        await scene.stop();
+        assert.equal(scans, 2);
+        const entries = (await notificationJournal(scene.directory)).entries;
+        assert.ok(entries.every((entry) => entry["state"] === "sent"));
+        assert.ok(entries.every((entry) => entry["attempts"] === 2));
+        assert.equal(new Set(entries.map((entry) => entry["key"])).size, 20);
+      },
+    );
+  } finally {
+    globalThis.setInterval = interval;
+  }
+});
+
 function backlog(): string {
   return JSON.stringify({
     version: 1,
