@@ -289,17 +289,16 @@ async function check(
         entry.lastAttemptAt >= Date.now() - retentionMilliseconds,
     ),
   );
-  if (retained.size !== journal.entries.size) {
-    const retiredKeys = new Set([
-      ...journal.retiredKeys,
-      ...[...journal.entries.keys()].filter((key) => !retained.has(key)),
-    ]);
+  const removed = [...journal.entries.keys()].filter(
+    (key) => !retained.has(key),
+  );
+  if (removed.length > 0) {
+    const retiredKeys = new Set([...journal.retiredKeys, ...removed]);
     await saveNotifications(journal.file, { entries: retained, retiredKeys });
-    for (const key of journal.entries.keys())
-      if (!retained.has(key)) {
-        journal.entries.delete(key);
-        journal.retiredKeys.add(key);
-      }
+    for (const key of removed) {
+      journal.entries.delete(key);
+      journal.retiredKeys.add(key);
+    }
   }
   for (const event of await events(settings.runtimeDirectory, journal.cache)) {
     if (journal.entries.has(event.key) || journal.retiredKeys.has(event.key))
