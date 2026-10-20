@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { waitReview } from "../src/daemon/github-methods.ts";
+import { waitReview, type ReviewResult } from "../src/daemon/github-methods.ts";
 import type { Operation } from "../src/daemon/github-operation.ts";
 
 export const reviewCommit = "a".repeat(40);
@@ -24,7 +24,7 @@ interface ReviewScene {
   readonly requests: number[];
   readonly reads: number[];
   readonly now: () => number;
-  readonly wait: () => Promise<unknown>;
+  readonly wait: () => Promise<ReviewResult>;
 }
 
 function refused(status: number): Promise<never> {
@@ -52,16 +52,16 @@ function reviewCalls(
   return (parts) => {
     if (parts[0] === "pr") {
       state.requests.push(state.now);
-      if (state.requests.length <= requestFailures) return refused(403);
-      state.accepted++;
-      return Promise.resolve("");
+      const rejected = state.requests.length <= requestFailures;
+      state.accepted += Number(!rejected);
+      return rejected ? refused(403) : Promise.resolve("");
     }
     state.reads.push(state.now);
     if (plan.readFailure === "all") return refused(503);
-    if (parts[1]?.includes("pulls/")) {
-      if (plan.readFailure === "findings") return refused(503);
-      return Promise.resolve("[]");
-    }
+    if (parts[1]?.includes("pulls/"))
+      return plan.readFailure === "findings"
+        ? refused(503)
+        : Promise.resolve("[]");
     if (plan.readFailure === "malformed")
       return Promise.resolve("private token");
     return Promise.resolve(

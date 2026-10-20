@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { githubTiming } from "../src/daemon/github-operation.ts";
@@ -20,6 +20,41 @@ await test("CLV-155 retries a failed review request on the next poll and returns
     });
     assert.deepEqual(scene.requests, [300_000, 330_000]);
   }));
+
+await test("CLV-155 retries failed requests when the diagnostic log cannot be appended", () =>
+  withReview({ requestFailures: 1, reviewAfterRequests: 1 }, async (scene) => {
+    mkdirSync(join(scene.folder, "review-failures.jsonl"));
+    assert.deepEqual(await scene.wait(), {
+      number: 1,
+      commit: reviewCommit,
+      score: 5,
+      summary: reviewSummary,
+      findings: [],
+    });
+    assert.deepEqual(scene.requests, [300_000, 330_000]);
+  }));
+
+await test("CLV-155 preserves timeout diagnostics when failed reads and requests cannot be logged", () =>
+  withReview(
+    { requestFailures: Infinity, readFailure: "all" },
+    async (scene) => {
+      mkdirSync(join(scene.folder, "review-failures.jsonl"));
+      await assert.rejects(scene.wait(), {
+        message: "review-not-received",
+        detail: JSON.stringify({
+          failedReads: 121,
+          requests: 110,
+          acceptedRequests: 0,
+          lastFailure: {
+            call: "read-review",
+            reason: "github-call-failed",
+            status: 503,
+          },
+        }),
+      });
+      assert.equal(scene.now(), githubTiming.limitMilliseconds);
+    },
+  ));
 
 await test("CLV-155 spaces further requests from the confirmed retry and retains its last failure", () =>
   withReview({ requestFailures: 1 }, async (scene) => {

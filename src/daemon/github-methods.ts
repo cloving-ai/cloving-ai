@@ -1,7 +1,12 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
-import { findingsOf, scoreOf } from "./github-calls.ts";
+import {
+  findingsOf,
+  scoreOf,
+  type Finding,
+  type Scored,
+} from "./github-calls.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import { createIssue, discard } from "./github-issue-methods.ts";
@@ -178,10 +183,16 @@ async function openPull(operation: Operation): Promise<unknown> {
   return { number: pull.number, url: pull.url, commit };
 }
 
+export interface ReviewResult extends Scored {
+  readonly number: number;
+  readonly commit: string;
+  readonly findings: readonly Finding[];
+}
+
 async function reviewed(
   operation: Operation,
   pull: { readonly number: number; readonly commit: string },
-): Promise<unknown> {
+): Promise<ReviewResult | undefined> {
   const { number, commit } = pull;
   const read = async (path: string): Promise<unknown> => {
     const value: unknown = JSON.parse(
@@ -267,7 +278,7 @@ async function reviewFailure(
     join(operation.folder, "review-failures.jsonl"),
     JSON.stringify(failure) + "\n",
     { mode: 0o600 },
-  );
+  ).catch(() => undefined);
 }
 
 async function requestReview(
@@ -294,7 +305,7 @@ async function requestReview(
 export async function waitReview(
   operation: Operation,
   clock: ReviewClock = reviewClock,
-): Promise<unknown> {
+): Promise<ReviewResult> {
   const pull = {
     number: integer(operation, "number"),
     commit: text(operation, "commit"),
