@@ -171,7 +171,10 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
     command: selected.command,
     folder,
     ...(attempt === 1 ? {} : { activityFolder: start.folder }),
-    prompt: attempt === 1 ? start.prompt : continuation + start.prompt,
+    prompt:
+      start.mode === "analysis" || attempt === 1
+        ? start.prompt
+        : continuation + start.prompt,
   });
   try {
     const value = { ...entry, phase: "running", processId: turn.processId };
