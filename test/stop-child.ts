@@ -52,11 +52,10 @@ export async function stopChildGroup(
   const grace =
     options.graceMilliseconds ??
     5000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
-  if (!(await groupGone(child.pid, grace))) {
-    signalGroup(child.pid, "SIGKILL");
-    if (!(await groupGone(child.pid, 1000)))
-      throw new Error("test-child-process-group-remains");
-  }
+  const gone = await groupGone(child.pid, grace);
+  if (!gone) signalGroup(child.pid, "SIGKILL");
+  if (!gone && !(await groupGone(child.pid, 1000)))
+    throw new Error("test-child-process-group-remains");
   if (child.exitCode === null && child.signalCode === null)
     await once(child, "exit");
 }

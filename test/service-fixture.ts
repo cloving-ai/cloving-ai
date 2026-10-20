@@ -51,7 +51,7 @@ export interface Harness {
   ) => Promise<ServiceOpening>;
   readonly track: (opening: ServiceOpening) => ServiceOpening;
   readonly cli: (argumentsList: readonly string[]) => Promise<CliResult>;
-  readonly cleanup: (action: () => void) => void;
+  readonly cleanup: (action: () => void | Promise<void>) => void;
 }
 
 export function fakeRegistration(resolved: unknown[]): WorkflowRegistration {
@@ -141,11 +141,11 @@ export async function withHarness<Result>(
 ): Promise<Result> {
   const root = await mkdtemp(join(tmpdir(), "clv-"));
   const openServices = new Set<Service>();
-  const cleanups: (() => void)[] = [];
+  const cleanups: (() => void | Promise<void>)[] = [];
   try {
     return await body(await serviceHarness({ root, openServices, cleanups }));
   } finally {
-    for (const cleanup of cleanups) cleanup();
+    for (const cleanup of cleanups) await cleanup();
     await Promise.all(
       [...openServices].map((service) =>
         service.close().catch(() => undefined),
@@ -173,7 +173,7 @@ function openings(
 async function serviceHarness(scope: {
   readonly root: string;
   readonly openServices: Set<Service>;
-  readonly cleanups: (() => void)[];
+  readonly cleanups: (() => void | Promise<void>)[];
 }): Promise<Harness> {
   const { root, openServices, cleanups } = scope;
   const stateDirectory = join(root, "s");

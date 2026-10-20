@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../src/protocol.ts";
+import { withFiles } from "./quality/files-fixture.ts";
+import { stopChild } from "./stop-child.ts";
 import {
   digestOf,
   eventually,
@@ -27,6 +29,34 @@ const question = {
   prompt,
   subject: digestOf(prompt),
 } as const;
+
+await test("CLV-145 recovery hosts retain complete coverage after harness cleanup", async () => {
+  await withFiles({}, async (directory) => {
+    const previous = process.env["NODE_V8_COVERAGE"];
+    process.env["NODE_V8_COVERAGE"] = directory;
+    try {
+      const identifier = await withHarness(async (harness) => {
+        const first = await host(harness, "hold-continuation");
+        first.process.kill("SIGKILL");
+        await once(first.process, "exit");
+        assert.deepEqual(await readdir(directory), []);
+        return (await host(harness, "deliver")).process.pid;
+      });
+      assert.equal(typeof identifier, "number");
+      const files = (await readdir(directory)).filter((name) =>
+        name.startsWith(`coverage-${String(identifier)}-`),
+      );
+      assert.equal(files.length, 1);
+      const coverage = record(
+        JSON.parse(await readFile(join(directory, String(files[0])), "utf8")),
+      );
+      assert.ok(Array.isArray(coverage?.["result"]));
+    } finally {
+      if (previous === undefined) delete process.env["NODE_V8_COVERAGE"];
+      if (previous !== undefined) process.env["NODE_V8_COVERAGE"] = previous;
+    }
+  });
+});
 
 async function admittedRun(harness: Harness): Promise<string> {
   const admitted = await harness.cli([
@@ -130,13 +160,14 @@ async function host(harness: Harness, mode: string): Promise<Host> {
       mode,
     ],
     {
-      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      env:
+        mode === "deliver"
+          ? process.env
+          : { ...process.env, NODE_V8_COVERAGE: undefined },
       stdio: ["pipe", "pipe", "inherit"],
     },
   );
-  harness.cleanup(() => {
-    child.kill("SIGKILL");
-  });
+  harness.cleanup(() => stopChild(child));
   const lines: string[] = [];
   createInterface({ input: child.stdout }).on("line", (line) =>
     lines.push(line),

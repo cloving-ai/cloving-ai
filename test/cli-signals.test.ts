@@ -54,7 +54,9 @@ async function withSilentService(invocation: {
   });
   const limit = setTimeout(() => {
     stopChild(child).catch((error: unknown) => {
-      assert.fail(String(error));
+      const message =
+        error instanceof Error ? error.message : "Child cleanup failed";
+      assert.fail(message);
     });
   }, 20000);
   try {
