@@ -10,6 +10,7 @@ import { calls } from "./github-calls.ts";
 import {
   methodReasons,
   methods,
+  ReviewTimeout,
   type Method,
   type MethodSettings,
 } from "./github-methods.ts";
@@ -134,6 +135,7 @@ async function outcome(
     return {
       ...interrupted(methodReasons.has(reason) ? reason : "github-call-failed"),
       ...(typeof detail === "string" ? { detail } : {}),
+      ...(error instanceof ReviewTimeout ? { result: error.detail } : {}),
     };
   }
 }

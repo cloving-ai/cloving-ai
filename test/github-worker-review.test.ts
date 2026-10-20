@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { journalKey, resultOf } from "./claude-worker-fixture.ts";
+import { journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import {
   committed,
   githubIntent,
@@ -90,7 +90,33 @@ await test("CLV-063 the GitHub worker stops the wait with a failure when no revi
       [report.outcome, report.reason],
       ["failed", "review-not-received"],
     );
-    assert.deepEqual(scene.state().triggers, [1]);
+    const requests = scene.state().triggers;
+    assert.deepEqual([...new Set(requests)], [1]);
+    assert.ok(requests.length >= 1 && requests.length <= 3);
+    const saved = resultOf(
+      readFileSync(
+        join(scene.journal, journalKey(report.operationId), "result.json"),
+        "utf8",
+      ),
+    );
+    assert.deepEqual(JSON.parse(String(saved["detail"])), {
+      failedReads: 0,
+      requests: requests.length,
+      acceptedRequests: requests.length,
+      lastFailure: null,
+    });
+    assert.equal(report.result, saved["detail"]);
+    await worker.close();
+    scene.reports.length = 0;
+    const restarted = scene.unscanned();
+    await restarted.scan();
+    await until(() =>
+      scene.reports.some((item) => item.operationId === report.operationId),
+    );
+    assert.deepEqual(
+      scene.reports.find((item) => item.operationId === report.operationId),
+      report,
+    );
   }));
 
 await test("CLV-063 the GitHub worker keeps the wait when the trigger comment fails, and does not take the review of an earlier commit for the pushed commit", () =>
