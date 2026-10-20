@@ -127,3 +127,45 @@ export function activeBoardModel(): ReturnType<typeof watchModel> {
     }),
   ]);
 }
+
+export const sampleStages = [
+  { name: "draft", label: "Draft", operations: ["write-draft"] },
+  { name: "review", label: "Review", gateKinds: ["approval"] },
+] as const;
+
+export function stagedModel(
+  events: readonly unknown[] = [],
+  changes: Partial<WatchInputs> = {},
+) {
+  return boardModel(
+    [boardRun("sample-run", { workflowId: "sample", events })],
+    {
+      workflows: ["sample"],
+      workflowStages: { sample: sampleStages },
+      ...changes,
+    },
+  );
+}
+
+export function stageEvent(
+  sequence: number,
+  selector: { readonly operation?: string; readonly gateKind?: string } = {},
+) {
+  return {
+    sequence,
+    recordedAt: `2026-10-14T${String(23 - (sequence % 24)).padStart(2, "0")}:00:00Z`,
+    type: selector.operation === undefined ? "gate.opened" : "effect.requested",
+    payload:
+      selector.operation === undefined
+        ? { gateKind: selector.gateKind }
+        : {
+            operationId: JSON.stringify([
+              "cloving-operation",
+              1,
+              "sample-run",
+              "work",
+              selector.operation,
+            ]),
+          },
+  };
+}

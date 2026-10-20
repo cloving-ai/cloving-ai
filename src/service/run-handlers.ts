@@ -246,6 +246,11 @@ async function listed(
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
     workflows: context.registry.workflowIds,
+    ...(Object.keys(context.registry.workflowStages).length === 0
+      ? {}
+      : {
+          workflowStages: context.registry.workflowStages,
+        }),
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
     worldReports: context.worldReports?.() ?? [],

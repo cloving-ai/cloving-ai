@@ -1,11 +1,21 @@
 import { record, type Fields } from "./protocol.ts";
 import type { SubmissionContract, SubmissionField } from "./submission.ts";
 
+export interface WorkflowStage {
+  readonly name: string;
+  readonly label: string;
+  readonly operations?: readonly string[];
+  readonly gateKinds?: readonly ("approval" | "question")[];
+}
+
+export type WorkflowStages = Readonly<Record<string, readonly WorkflowStage[]>>;
+
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
   readonly capabilities: readonly ("claude" | "github" | "chats")[];
   readonly input: SubmissionContract;
+  readonly stages?: readonly WorkflowStage[];
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -71,13 +81,94 @@ function isInput(value: unknown): value is SubmissionContract {
   );
 }
 
+function selectors(
+  value: unknown,
+  pattern: RegExp,
+): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    Array.from<unknown>(value).every(
+      (item: unknown) => typeof item === "string" && pattern.test(item),
+    )
+  );
+}
+
+function isStageLabel(label: unknown): boolean {
+  return (
+    typeof label === "string" &&
+    /^[^\p{C}\p{Zl}\p{Zp}]{1,40}$/u.test(label) &&
+    label.trim() === label &&
+    !["Other", "Done", "Stopped"].includes(label)
+  );
+}
+
+function isStage(value: unknown): value is WorkflowStage {
+  const stage = record(value);
+  if (
+    stage === undefined ||
+    !keys(stage, ["name", "label", "operations", "gateKinds"])
+  )
+    return false;
+  const { name, label } = stage;
+  const operations = Object.hasOwn(stage, "operations")
+    ? stage["operations"]
+    : [];
+  const gateKinds = Object.hasOwn(stage, "gateKinds") ? stage["gateKinds"] : [];
+  return (
+    typeof name === "string" &&
+    /^[A-Za-z0-9-]{1,64}$/.test(name) &&
+    isStageLabel(label) &&
+    selectors(operations, /^[A-Za-z0-9._:/-]{1,128}$/) &&
+    selectors(gateKinds, /^(approval|question)$/) &&
+    operations.length + gateKinds.length > 0
+  );
+}
+
+function unique(values: readonly string[]): boolean {
+  return new Set(values).size === values.length;
+}
+
+export function isWorkflowStages(
+  value: unknown,
+): value is readonly WorkflowStage[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 12)
+    return false;
+  const stages: readonly unknown[] = Array.from<unknown>(value);
+  if (!stages.every(isStage)) return false;
+  return (
+    unique(stages.map((stage) => stage.name)) &&
+    unique(stages.map((stage) => stage.label)) &&
+    unique(stages.flatMap((stage) => stage.operations ?? [])) &&
+    unique(stages.flatMap((stage) => stage.gateKinds ?? []))
+  );
+}
+
+function isCapabilities(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (capability: unknown) =>
+        capability === "claude" ||
+        capability === "github" ||
+        capability === "chats",
+    )
+  );
+}
+
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
   const declaration = record(value);
   if (
     declaration === undefined ||
-    !keys(declaration, ["workflowId", "effectLimit", "capabilities", "input"])
+    !keys(declaration, [
+      "workflowId",
+      "effectLimit",
+      "capabilities",
+      "input",
+      "stages",
+    ])
   )
     return false;
   const { workflowId, effectLimit, capabilities, input } = declaration;
@@ -85,14 +176,9 @@ export function isWorkflowDeclaration(
     typeof workflowId === "string" &&
     /^[A-Za-z0-9-]{1,64}$/.test(workflowId) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
-    Array.isArray(capabilities) &&
-    capabilities.length > 0 &&
-    capabilities.every(
-      (capability: unknown) =>
-        capability === "claude" ||
-        capability === "github" ||
-        capability === "chats",
-    ) &&
-    isInput(input)
+    isCapabilities(capabilities) &&
+    isInput(input) &&
+    (!Object.hasOwn(declaration, "stages") ||
+      isWorkflowStages(declaration["stages"]))
   );
 }

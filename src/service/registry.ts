@@ -1,3 +1,4 @@
+import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { workflowPin } from "../broker/workflow-pin.ts";
 import type { SubmissionContract } from "../submission.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
@@ -30,6 +31,7 @@ export interface WorkflowRegistration {
   readonly submission: SubmissionContract;
   readonly resolver: Resolver;
   readonly effectLimit?: number;
+  readonly stages?: readonly WorkflowStage[];
   readonly admission?: "when-idle";
 }
 
@@ -39,6 +41,7 @@ export interface Registered extends WorkflowRegistration {
 
 export interface Registry {
   readonly workflowIds: readonly string[];
+  readonly workflowStages: WorkflowStages;
   readonly byId: (workflowId: string) => Registered | undefined;
   readonly byPin: (pin: string) => Registered | undefined;
   readonly available: (
@@ -55,6 +58,13 @@ export function workflowRegistry(
   }));
   return {
     workflowIds: registered.map((workflow) => workflow.workflowId),
+    workflowStages: Object.fromEntries(
+      registered.flatMap((workflow) =>
+        workflow.stages === undefined
+          ? []
+          : [[workflow.workflowId, workflow.stages]],
+      ),
+    ),
     byId: (workflowId) =>
       registered.find((workflow) => workflow.workflowId === workflowId),
     byPin: (pin) => registered.find((workflow) => workflow.pin === pin),

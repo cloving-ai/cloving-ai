@@ -1,3 +1,4 @@
+import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { record } from "../protocol.ts";
 import { isInstant } from "../authority/instants.ts";
 import { issueSteps } from "./watch-phases.ts";
@@ -67,7 +68,21 @@ export function recentRun(latestAt: string | null, now: string): boolean {
   return age >= 0 && age <= weekMilliseconds;
 }
 
-function stepNames(workflowId: string): readonly string[] {
+export function stagesFor(
+  metadata: WorkflowStages | undefined,
+  workflowId: string,
+): readonly WorkflowStage[] | undefined {
+  return metadata !== undefined && Object.hasOwn(metadata, workflowId)
+    ? metadata[workflowId]
+    : undefined;
+}
+
+function stepNames(
+  workflowId: string,
+  stages?: readonly WorkflowStage[],
+): readonly string[] {
+  if (workflowId !== "develop-issue" && stages !== undefined)
+    return [...stages.map((stage) => stage.label), "Other"];
   return workflowId === "develop-issue"
     ? issueSteps.map((step) => step.name)
     : ["Claude turn", "Your review"];
@@ -105,10 +120,42 @@ function chronological(events: readonly unknown[]): readonly unknown[] {
   );
 }
 
+function declaredStep(
+  events: readonly unknown[],
+  stages: readonly WorkflowStage[],
+): WatchStep {
+  const event = events
+    .filter((item) =>
+      ["effect.requested", "gate.opened"].includes(
+        String(record(item)?.["type"]),
+      ),
+    )
+    .toSorted(
+      (first, second) =>
+        Number(record(second)?.["sequence"]) -
+        Number(record(first)?.["sequence"]),
+    )[0];
+  const payload = record(record(event)?.["payload"]);
+  const selector =
+    record(event)?.["type"] === "effect.requested" ? "operations" : "gateKinds";
+  const value =
+    selector === "operations" ? operationOf(event)[4] : payload?.["gateKind"];
+  const stage = stages.find((item) =>
+    item[selector]?.some((name) => name === value),
+  );
+  return { name: stage?.label ?? "Other", startedAt: startedAt(event) };
+}
+
 export function currentStepOf(
   events: readonly unknown[],
-  workflowId: string,
+  workflow: {
+    readonly workflowId: string;
+    readonly stages: readonly WorkflowStage[] | undefined;
+  },
 ): WatchStep {
+  const { workflowId, stages } = workflow;
+  if (workflowId !== "develop-issue" && stages !== undefined)
+    return declaredStep(events, stages);
   const event = chronological(events).findLast(
     (item) => stepName(item, workflowId) !== undefined,
   );
@@ -167,6 +214,7 @@ function stepOrder(first: WatchCard, second: WatchCard): number {
 
 interface BoardInputs {
   readonly workflows: readonly string[];
+  readonly workflowStages?: WorkflowStages;
   readonly updatedAt: string;
   readonly summaries?: readonly unknown[];
   readonly completionCandidates?: readonly WatchRun[];
@@ -212,25 +260,27 @@ export function boardsOf(
         : inputs.summaries
             .filter((value) => record(value)?.["workflowId"] === workflowId)
             .map(summaryOf);
-    const columns = [...stepNames(workflowId), "Done", "Stopped"].map(
-      (name) => {
-        const cards = own
-          .filter((run) => columnOf(run, inputs.updatedAt) === name)
-          .map((run) => cardOf(run, inputs.completionCandidates ?? runs));
-        return {
-          name,
-          cards: ["Done", "Stopped"].includes(name)
-            ? cards
-                .toSorted(
-                  (first, second) =>
-                    Date.parse(second.endedAt ?? "") -
-                    Date.parse(first.endedAt ?? ""),
-                )
-                .slice(0, 20)
-            : cards.toSorted(stepOrder),
-        };
-      },
-    );
+    const columns = [
+      ...stepNames(workflowId, stagesFor(inputs.workflowStages, workflowId)),
+      "Done",
+      "Stopped",
+    ].map((name) => {
+      const cards = own
+        .filter((run) => columnOf(run, inputs.updatedAt) === name)
+        .map((run) => cardOf(run, inputs.completionCandidates ?? runs));
+      return {
+        name,
+        cards: ["Done", "Stopped"].includes(name)
+          ? cards
+              .toSorted(
+                (first, second) =>
+                  Date.parse(second.endedAt ?? "") -
+                  Date.parse(first.endedAt ?? ""),
+              )
+              .slice(0, 20)
+          : cards.toSorted(stepOrder),
+      };
+    });
     return {
       workflowId,
       activeCount: summaries.filter((run) => activeRun(run.state)).length,
