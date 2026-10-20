@@ -57,6 +57,11 @@ const stateOf = async (runId) => (await asked("status", { runId })).run.state;
 const until = async (reached) => { for (let pass = 0; pass < 1500; pass += 1) { if (await reached()) return; await delay(20); } throw new Error("The scenario did not reach its state."); };
 let ports;
 const lines = (file) => (existsSync(file) ? readFileSync(file, "utf8").split("\\n").filter(Boolean) : []);
+const holdAt = async (gate) => {
+  if (!existsSync(gate)) return;
+  writeFileSync(gate + "-entered", "");
+  while (existsSync(gate)) await delay(10);
+};
 const effectOutcome = (operationId) => ({ kind: "completed", receipt: "receipt-" + String(lines("destination.log").indexOf(operationId) + 1), result: "effect-result" });
 const destination = {
   deliver: async (intent) => {
@@ -118,12 +123,10 @@ const hosted = async (overrides = {}) => {
       globalThis.released = host.host.released;
       const loop = worldLoop({ ...given, runs: taggedRuns, outcome: workflowOutcome, intervalMilliseconds: 20, ...overrides.loop });
       const requestEffect = async (request) => {
-        const closes = existsSync("close-at-request");
-        const pending = given.requestEffect(request);
-        if (closes) { rmSync("close-at-request"); globalThis.closing = opening.service.close(); }
-        const reply = await pending;
+        const reply = await given.requestEffect(request);
         const lost = existsSync("fail-first-reply");
         appendFileSync("requests.log", JSON.stringify([reply.operation?.operationId ?? null, reply.operation?.inputDigest ?? null, request.commandId, lost ? "failed" : reply.receipt.kind]) + "\\n");
+        await holdAt("hold-request");
         if (!lost) return reply;
         rmSync("fail-first-reply");
         if (existsSync("halt-after-failed")) setTimeout(() => halt("halted-after-failed-receipt"), 0);
