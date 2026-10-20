@@ -3,6 +3,7 @@ import {
   operatorRefusals,
   runOperator,
 } from "./operator-startup-fixture.ts";
+import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -107,6 +108,7 @@ async function installed(root: string): Promise<string> {
     ],
     cwd: root,
   });
+  await packagedFontFiles(join(root, "node_modules/cloving"));
   return join(root, "node_modules/.bin/cloving");
 }
 
@@ -338,6 +340,7 @@ async function running(root: string, executable: string): Promise<void> {
     const page = await fetch(address, { signal: AbortSignal.timeout(5000) });
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Cloving/);
+    await servedFonts(address, join(root, "node_modules/cloving"));
     await artifacts(root);
     await inventory(root);
     await candidateAdmission(root);

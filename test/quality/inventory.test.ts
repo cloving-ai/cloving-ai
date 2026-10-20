@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { symlink } from "node:fs/promises";
+import { mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { inspectInventory } from "../../quality/inventory.ts";
@@ -119,4 +119,56 @@ await test("QG-07 reads a git work tree, whose root has a git file in place of t
       );
     },
   );
+});
+
+await test("CLV-130 admits exactly the nine packaged watch fonts", async () => {
+  const fonts = [
+    "fira-code-latin-400-normal.woff2",
+    "fira-code-latin-500-normal.woff2",
+    "heebo-latin-500-normal.woff2",
+    "heebo-latin-700-normal.woff2",
+    "heebo-latin-800-normal.woff2",
+    "space-grotesk-latin-400-normal.woff2",
+    "space-grotesk-latin-500-normal.woff2",
+    "space-grotesk-latin-600-normal.woff2",
+    "space-grotesk-latin-700-normal.woff2",
+  ];
+  const files = Object.fromEntries(
+    fonts.map((name) => [`assets/watch-fonts/${name}`, "font bytes"]),
+  );
+  await withFiles(
+    { "src/main.ts": "export {};", ...files },
+    async (directory) => {
+      const inventory = await inspectInventory(directory, {});
+      assert.deepEqual(inventory.metadata, Object.keys(files).sort());
+      assert.deepEqual(inventory.generated, []);
+    },
+  );
+});
+
+await test("CLV-130 rejects unlisted WOFF2 paths and font symlinks", async () => {
+  for (const path of [
+    "assets/watch-fonts/other.woff2",
+    "assets/watch-fonts/heebo-latin-400-normal.woff2",
+    "nested/assets/watch-fonts/fira-code-latin-400-normal.woff2",
+    "fira-code-latin-400-normal.woff2",
+    "assets/watch-fonts/Fira-Code-latin-400-normal.woff2",
+  ])
+    await withFiles(
+      { "src/main.ts": "export {};", [path]: "font" },
+      async (directory) => {
+        await assert.rejects(inspectInventory(directory, {}), {
+          message: `unsupported-inventory-file: ${path}`,
+        });
+      },
+    );
+  await withFiles({ "src/main.ts": "export {};" }, async (directory) => {
+    const folder = join(directory, "assets/watch-fonts");
+    await mkdir(folder, { recursive: true });
+    await symlink(
+      join(directory, "src/main.ts"),
+      join(folder, "fira-code-latin-400-normal.woff2"),
+    );
+    await assert.rejects(inspectInventory(directory, {}), /inventory-symlink/);
+  });
 });

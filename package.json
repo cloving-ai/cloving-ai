@@ -39,7 +39,20 @@
   "files": [
     "dist/src",
     "dist/tools",
-    "dist/workflows"
+    "dist/workflows",
+    "assets/watch-fonts/fira-code-latin-400-normal.woff2",
+    "assets/watch-fonts/fira-code-latin-500-normal.woff2",
+    "assets/watch-fonts/fira-code-OFL.md",
+    "assets/watch-fonts/heebo-latin-500-normal.woff2",
+    "assets/watch-fonts/heebo-latin-700-normal.woff2",
+    "assets/watch-fonts/heebo-latin-800-normal.woff2",
+    "assets/watch-fonts/heebo-OFL.md",
+    "assets/watch-fonts/space-grotesk-latin-400-normal.woff2",
+    "assets/watch-fonts/space-grotesk-latin-500-normal.woff2",
+    "assets/watch-fonts/space-grotesk-latin-600-normal.woff2",
+    "assets/watch-fonts/space-grotesk-latin-700-normal.woff2",
+    "assets/watch-fonts/space-grotesk-OFL.md",
+    "assets/watch-fonts/manifest.json"
   ],
   "engines": {
     "node": ">=26.9.0 <27",

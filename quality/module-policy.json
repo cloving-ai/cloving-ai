@@ -890,7 +890,8 @@
     "src/cli/watch-pull-request.ts": "cli",
     "test/watch-merge-fixture.ts": "test",
     "test/watch-completion-reads.test.ts": "test",
-    "test/service-status-issue-identity.test.ts": "test"
+    "test/service-status-issue-identity.test.ts": "test",
+    "test/watch-font-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

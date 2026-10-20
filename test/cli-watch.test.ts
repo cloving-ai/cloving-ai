@@ -1,3 +1,5 @@
+import { fontNames, rawFontStatus, servedFonts } from "./watch-font-fixture.ts";
+import { withWatchService, watchReplies } from "./watch-service-fixture.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -86,12 +88,14 @@ function githubJournal(runtimeDirectory: string, runId: string): void {
 async function served(address: string): Promise<void> {
   const page = await fetch(address);
   assert.match(String(page.headers.get("content-type")), /^text\/html/);
+  assert.equal(page.headers.get("cache-control"), "no-store");
   assert.match(await page.text(), /function Page\(/);
   const library = await fetch(`${address}preact.mjs`);
   assert.match(
     String(library.headers.get("content-type")),
     /^text\/javascript/,
   );
+  assert.equal(library.headers.get("cache-control"), "no-store");
   assert.equal(
     await library.text(),
     readFileSync(fileURLToPath(import.meta.resolve("preact")), "utf8"),
@@ -135,9 +139,9 @@ await test("CLV-016 cloving watch serves the page, the Preact file of the instal
     const watch = await watching(harness.runtimeDirectory);
     try {
       await served(watch.address);
-      const first: unknown = await (
-        await fetch(`${watch.address}data.json`)
-      ).json();
+      const data = await fetch(`${watch.address}data.json`);
+      assert.equal(data.headers.get("cache-control"), "no-store");
+      const first: unknown = await data.json();
       const second: unknown = await (
         await fetch(`${watch.address}data.json?again`)
       ).json();
@@ -248,6 +252,7 @@ await test("CLV-016 cloving watch has an event stream that sends one message at 
         String(response.headers.get("content-type")),
         /^text\/event-stream/,
       );
+      assert.equal(response.headers.get("cache-control"), "no-store");
       assert.ok(response.body);
       const reader = response.body.getReader();
       assert.match(await nextMessage(reader), /data: change\n\n/);
@@ -295,4 +300,88 @@ await test("CLV-016 cloving start with no known runtime directory starts nothing
     started.stderr,
     /^runtime-directory-unknown: Set CLOVING_RUNTIME_DIR /,
   );
+});
+
+await test("CLV-130 fixed font GETs serve packaged bytes without a service operation", async () => {
+  const replies = watchReplies({ runs: [] });
+  await withWatchService(replies.answer, async (watch) => {
+    await servedFonts(watch.address, join(import.meta.dirname, ".."));
+    assert.ok(replies.requests.length > 0);
+    for (const operation of replies.requests)
+      assert.deepEqual(operation, {
+        operation: "events",
+        parameters:
+          operation.parameters["follow"] === true
+            ? { after: 2500, follow: true }
+            : { limit: 1 },
+      });
+  });
+  await withHarness(async (harness) => {
+    const watch = await watching(harness.runtimeDirectory, {
+      directory: harness.projectDirectory,
+    });
+    try {
+      await servedFonts(watch.address, join(import.meta.dirname, ".."));
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+  });
+});
+
+await test("CLV-130 raw asset targets reject methods, queries, encoded names and traversal aliases", async () => {
+  await withHarness(async (harness) => {
+    const watch = await watching(harness.runtimeDirectory);
+    try {
+      for (const name of fontNames) {
+        const path = `/watch-fonts-v1/${name}`;
+        for (const method of [
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "HEAD",
+          "OPTIONS",
+        ])
+          assert.equal(
+            await rawFontStatus(watch.address, { path, method }),
+            404,
+          );
+        for (const target of [
+          path + "?",
+          path + "?v=1",
+          path.replace("-latin", "%2dlatin"),
+          path.replace("watch-fonts", "%77atch-fonts"),
+          `/other/..${path}`,
+          `/other/%2e%2e${path}`,
+          `/watch-fonts-v1/../watch-fonts-v1/${name}`,
+          `/watch-fonts-v1/%2e%2e/watch-fonts-v1/${name}`,
+          `/watch-fonts-v1%2f${name}`,
+          `/watch-fonts-v1/%2e%2e%2f${name}`,
+          `/${path}`,
+          path + "#fragment",
+        ])
+          assert.equal(
+            await rawFontStatus(watch.address, { path: target }),
+            404,
+            target,
+          );
+      }
+      for (const target of [
+        "/watch-fonts-v1",
+        "/watch-fonts-v1/",
+        "/watch-fonts-v1/unknown.woff2",
+        "/watch-fonts-v1/../package.json",
+        "/watch-fonts-v1/%2e%2e%2fpackage.json",
+        "/watch-fonts-v1/fira-code-OFL.md",
+        "/watch-fonts-v1/manifest.json",
+      ])
+        assert.equal(
+          await rawFontStatus(watch.address, { path: target }),
+          404,
+          target,
+        );
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+  });
 });
