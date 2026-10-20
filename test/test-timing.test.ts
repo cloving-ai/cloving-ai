@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import { testMilliseconds } from "./test-timing.ts";
+import { withConsumer } from "./world-host-fixture.ts";
 
 await test("CLV-147 test durations follow the check time factor and reject invalid factors", () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
@@ -87,4 +88,24 @@ await test("CLV-147 shared authority timings scale every duration with the check
       callTimeoutMilliseconds: 6_000,
     },
   });
+});
+
+await test("CLV-147 a scaled workflow scenario can finish after the unscaled child timeout", async () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  try {
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+    await withConsumer(
+      'export async function develop() { "use workflow"; return "ended"; }',
+      async (consumer) => {
+        const ended = await consumer.run(
+          `await delay(${String(testMilliseconds(16_000))}); print({ kind: "ended" });`,
+        );
+        assert.equal(ended.status, 0, ended.stderr);
+        assert.deepEqual(ended.lines, [{ kind: "ended" }]);
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
 });

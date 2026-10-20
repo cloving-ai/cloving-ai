@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { testMilliseconds } from "./test-timing.ts";
 
 export const productRoot = join(import.meta.dirname, "..");
 
@@ -206,7 +207,7 @@ function child(
           : { NODE_V8_COVERAGE: undefined }),
       },
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: 45_000,
+      timeout: testMilliseconds(45_000),
     });
     const output = { stdout: "", stderr: "" };
     started.stdout.on("data", (chunk: Buffer) => {
