@@ -1,5 +1,12 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { findingsOf, scoreOf } from "./github-calls.ts";
+import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  findingsOf,
+  scoreOf,
+  type Finding,
+  type Scored,
+} from "./github-calls.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import { createIssue, discard } from "./github-issue-methods.ts";
@@ -19,6 +26,7 @@ export type { GithubTiming, MethodSettings } from "./github-operation.ts";
 import { workTree } from "./work-tree.ts";
 
 const triggerText = "@greptileai";
+const maximumReviewRequests = 3;
 
 export const methodReasons: ReadonlySet<string> = new Set([
   "draft-not-available",
@@ -175,10 +183,16 @@ async function openPull(operation: Operation): Promise<unknown> {
   return { number: pull.number, url: pull.url, commit };
 }
 
+export interface ReviewResult extends Scored {
+  readonly number: number;
+  readonly commit: string;
+  readonly findings: readonly Finding[];
+}
+
 async function reviewed(
   operation: Operation,
   pull: { readonly number: number; readonly commit: string },
-): Promise<unknown> {
+): Promise<ReviewResult | undefined> {
   const { number, commit } = pull;
   const read = async (path: string): Promise<unknown> => {
     const value: unknown = JSON.parse(
@@ -195,29 +209,134 @@ async function reviewed(
   return { number, commit, ...scored, findings: findingsOf(lines, commit) };
 }
 
-async function waitReview(operation: Operation): Promise<unknown> {
+interface ReviewFailure {
+  readonly call: "read-review" | "request-review";
+  readonly reason: "github-call-failed" | "invalid-review-response";
+  readonly status?: number;
+}
+
+interface ReviewClock {
+  readonly now: () => number;
+  readonly sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+}
+
+const reviewClock: ReviewClock = {
+  now: () => Date.now(),
+  sleep: async (milliseconds, signal) => {
+    await delay(milliseconds, undefined, { signal });
+  },
+};
+
+interface ReviewWait {
+  readonly clock: ReviewClock;
+  failedReads: number;
+  requests: number;
+  acceptedRequests: number;
+  requestedAt: number;
+  lastFailure: ReviewFailure | null;
+}
+
+export class ReviewTimeout extends Error {
+  readonly detail: string;
+
+  constructor(wait: ReviewWait) {
+    super("review-not-received");
+    this.detail = JSON.stringify({
+      failedReads: wait.failedReads,
+      requests: wait.requests,
+      acceptedRequests: wait.acceptedRequests,
+      lastFailure: wait.lastFailure,
+    });
+  }
+}
+
+async function reviewFailure(
+  operation: Operation,
+  failed: {
+    readonly wait: ReviewWait;
+    readonly call: ReviewFailure["call"];
+    readonly error: unknown;
+  },
+): Promise<void> {
+  const { wait, call, error } = failed;
+  const status = field(error, "status");
+  const failure: ReviewFailure = {
+    call,
+    reason:
+      error instanceof SyntaxError
+        ? "invalid-review-response"
+        : "github-call-failed",
+    ...(typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= 400 &&
+    status <= 599
+      ? { status }
+      : {}),
+  };
+  wait.lastFailure = failure;
+  await appendFile(
+    join(operation.folder, "review-failures.jsonl"),
+    JSON.stringify(failure) + "\n",
+    { mode: 0o600 },
+  ).catch(() => undefined);
+}
+
+async function requestReview(
+  operation: Operation,
+  request: { readonly wait: ReviewWait; readonly number: number },
+): Promise<void> {
+  const { wait, number } = request;
+  wait.requests++;
+  try {
+    await operation.calls.gh([
+      "pr",
+      "comment",
+      String(number),
+      "--body",
+      triggerText,
+    ]);
+    wait.acceptedRequests++;
+    wait.requestedAt = wait.clock.now();
+  } catch (error) {
+    await reviewFailure(operation, { wait, call: "request-review", error });
+  }
+}
+
+export async function waitReview(
+  operation: Operation,
+  clock: ReviewClock = reviewClock,
+): Promise<ReviewResult> {
   const pull = {
     number: integer(operation, "number"),
     commit: text(operation, "commit"),
   };
   const timing = operation.settings.timing ?? githubTiming;
-  const startedAt = Date.now();
-  let triggered = false;
+  const startedAt = clock.now();
+  const wait: ReviewWait = {
+    clock,
+    failedReads: 0,
+    requests: 0,
+    acceptedRequests: 0,
+    requestedAt: startedAt,
+    lastFailure: null,
+  };
   for (;;) {
-    const review = await reviewed(operation, pull).catch(() => undefined);
+    const review = await reviewed(operation, pull).catch(
+      async (error: unknown) => {
+        wait.failedReads++;
+        await reviewFailure(operation, { wait, call: "read-review", error });
+        return undefined;
+      },
+    );
     if (review !== undefined) return review;
-    const waited = Date.now() - startedAt;
-    if (waited >= timing.limitMilliseconds)
-      throw new Error("review-not-received");
-    if (!triggered && waited >= timing.triggerMilliseconds) {
-      triggered = true;
-      await operation.calls
-        .gh(["pr", "comment", String(pull.number), "--body", triggerText])
-        .catch(() => undefined);
-    }
-    await delay(timing.pollMilliseconds, undefined, {
-      signal: operation.signal,
-    });
+    const waited = clock.now() - startedAt;
+    if (waited >= timing.limitMilliseconds) throw new ReviewTimeout(wait);
+    if (
+      wait.acceptedRequests < maximumReviewRequests &&
+      clock.now() - wait.requestedAt >= timing.triggerMilliseconds
+    )
+      await requestReview(operation, { wait, number: pull.number });
+    await clock.sleep(timing.pollMilliseconds, operation.signal);
   }
 }
 
