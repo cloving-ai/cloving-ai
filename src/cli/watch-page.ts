@@ -156,6 +156,15 @@ const dark = `
 `;
 
 const style = `
+@font-face { font-family: "Fira Code"; font-style: normal; font-weight: 400; font-display: swap; src: url("/watch-fonts-v1/fira-code-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fira Code"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/fira-code-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 700; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Heebo"; font-style: normal; font-weight: 800; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-800-normal.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-700-normal.woff2") format("woff2"); }
 :root {${light}
   --heading-font: "Heebo", system-ui, sans-serif;
   --body-font: "Space Grotesk", system-ui, sans-serif;
@@ -315,7 +324,6 @@ export function pageDocument(actionToken: string | null = null): string {
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title>',
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
-    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space+Grotesk:wght@400..700&amp;display=swap" media="print" onload="this.media=\'all\'">',
     `<style>${style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,

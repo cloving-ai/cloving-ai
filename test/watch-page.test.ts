@@ -67,9 +67,7 @@ await test("CLV-016 the watch page document has the components, a script that ge
   );
   assert.deepEqual(
     [...new Set(outside.filter((url) => url !== "http://www.w3.org/2000/svg"))],
-    [
-      "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space+Grotesk:wght@400..700&amp;display=swap",
-    ],
+    [],
   );
   assert.doesNotMatch(page, /@import|<form/);
   assert.deepEqual(
@@ -279,33 +277,36 @@ await test("CLV-098 themes default to light, follow system dark only without a v
   for (const theme of ["light", "dark"]) {
     assert.ok(page.includes(`:root[data-theme="${theme}"]`));
   }
-  assert.match(
-    page,
-    /<link rel="stylesheet" href="https:\/\/fonts.googleapis.com\/css2\?family=Fira\+Code:wght@400;500&amp;family=Heebo:wght@500;700;800&amp;family=Space\+Grotesk:wght@400\.\.700&amp;display=swap"[^>]*>/,
-  );
+  assert.doesNotMatch(page, /<link rel="stylesheet"/);
   assert.equal([...page.matchAll(/<style>/g)].length, 1);
   assert.doesNotMatch(page, /light-dark\(|color-scheme: light dark/);
 });
 
-await test("CLV-098 optional fonts do not block screen rendering while pending and apply after loading", () => {
+await test("CLV-130 nine packaged Latin font faces use fixed local URLs and swap while loading", () => {
   const page = pageDocument();
-  const links = [...page.matchAll(/<link rel="stylesheet"[^>]*>/g)];
-  assert.equal(links.length, 1);
-  const link = links[0]?.[0];
-  assert.ok(link);
-  assert.match(link, / media="print"/);
-  assert.doesNotMatch(page, /blocking="render"/);
-  const handler = / onload="([^"]+)"/.exec(link)?.[1];
-  assert.ok(handler);
-  const result = played(
-    sampleModel([]),
-    `
-const stylesheet = { media: "print", loaded() { ${handler}; } };
-stylesheet.loaded();
-console.log(JSON.stringify({ media: stylesheet.media }));
-`,
+  const rules = [...page.matchAll(/@font-face\s*\{([^}]+)\}/g)];
+  const expected = [
+    ["Fira Code", "fira-code", [400, 500]],
+    ["Heebo", "heebo", [500, 700, 800]],
+    ["Space Grotesk", "space-grotesk", [400, 500, 600, 700]],
+  ] as const;
+  assert.equal(rules.length, 9);
+  const declarations = rules.map((rule) =>
+    rule[1]?.replace(/\s+/g, " ").trim(),
   );
-  assert.equal(result["media"], "all");
+  assert.deepEqual(
+    declarations,
+    expected.flatMap(([family, file, weights]) =>
+      weights.map(
+        (weight) =>
+          `font-family: "${family}"; font-style: normal; font-weight: ${String(weight)}; font-display: swap; src: url("/watch-fonts-v1/${file}-latin-${String(weight)}-normal.woff2") format("woff2");`,
+      ),
+    ),
+  );
+  assert.doesNotMatch(
+    page,
+    /local\(|fonts\.googleapis|fonts\.gstatic|media="print"|onload=|blocking="render"/,
+  );
 });
 
 await test("CLV-098 the embedded favicon uses the header clove shape with a fixed green fill", () => {

@@ -23,6 +23,15 @@ const metadataNames = new Set([
   ".npmrc",
   "LICENSE",
   ".github/workflows/ci.yml",
+  "assets/watch-fonts/fira-code-latin-400-normal.woff2",
+  "assets/watch-fonts/fira-code-latin-500-normal.woff2",
+  "assets/watch-fonts/heebo-latin-500-normal.woff2",
+  "assets/watch-fonts/heebo-latin-700-normal.woff2",
+  "assets/watch-fonts/heebo-latin-800-normal.woff2",
+  "assets/watch-fonts/space-grotesk-latin-400-normal.woff2",
+  "assets/watch-fonts/space-grotesk-latin-500-normal.woff2",
+  "assets/watch-fonts/space-grotesk-latin-600-normal.woff2",
+  "assets/watch-fonts/space-grotesk-latin-700-normal.woff2",
 ]);
 
 async function discover(directory: string, prefix = ""): Promise<string[]> {

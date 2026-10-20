@@ -38,7 +38,8 @@ export interface WatchSettings {
 interface Reply {
   readonly status: number;
   readonly type: string;
-  readonly body: string;
+  readonly body: string | Uint8Array;
+  readonly cache?: string;
 }
 
 interface Watch {
@@ -52,6 +53,22 @@ interface Watch {
 
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
+const fontFiles = new Map(
+  [
+    "fira-code-latin-400-normal.woff2",
+    "fira-code-latin-500-normal.woff2",
+    "heebo-latin-500-normal.woff2",
+    "heebo-latin-700-normal.woff2",
+    "heebo-latin-800-normal.woff2",
+    "space-grotesk-latin-400-normal.woff2",
+    "space-grotesk-latin-500-normal.woff2",
+    "space-grotesk-latin-600-normal.woff2",
+    "space-grotesk-latin-700-normal.woff2",
+  ].map((name) => [
+    `/watch-fonts-v1/${name}`,
+    new URL(`assets/watch-fonts/${name}`, import.meta.resolve("#package")),
+  ]),
+);
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 function parsed(text: string): unknown {
   try {
@@ -153,11 +170,26 @@ async function snapshot(
   };
 }
 
+async function fontReply(request: IncomingMessage): Promise<Reply | null> {
+  const fontFile = fontFiles.get(request.url ?? "");
+  if (fontFile === undefined)
+    return request.url?.startsWith("/watch-fonts-v1/") ? notFound : null;
+  if (request.method !== "GET") return notFound;
+  return {
+    status: 200,
+    type: "font/woff2",
+    body: await readFile(fontFile),
+    cache: "public, max-age=31536000, immutable",
+  };
+}
+
 async function answered(
   watch: Watch,
   request: IncomingMessage,
 ): Promise<Reply> {
   if (!watchHost(request)) return forbidden;
+  const font = await fontReply(request);
+  if (font !== null) return font;
   const url = new URL(String(request.url), "http://localhost");
   if (request.method === "GET") return readReply(watch, url);
   if (
@@ -200,7 +232,7 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
 function replied(response: ServerResponse, reply: Reply): void {
   response.writeHead(reply.status, {
     "content-type": reply.type,
-    "cache-control": "no-store",
+    "cache-control": reply.cache ?? "no-store",
   });
   response.end(reply.body);
 }
