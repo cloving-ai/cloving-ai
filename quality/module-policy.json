@@ -848,7 +848,15 @@
     "src/chats/workflow-generation-text.ts": "pure",
     "test/chats-workflow-generation.test.ts": "test",
     "test/watch-stages.test.ts": "test",
-    "test/watch-stages-read.test.ts": "test"
+    "test/watch-stages-read.test.ts": "test",
+    "src/chats/workflow-generation.ts": "pure",
+    "src/chats/workflow-generation-source.ts": "pure",
+    "src/chats/workflow-generation-projection.ts": "pure",
+    "test/chats-workflow-generation-fixture.ts": "test",
+    "test/chats-workflow-generation-artifact.test.ts": "test",
+    "test/chats-workflow-generation-sdk.test.ts": "test",
+    "test/chats-workflow-generation-sdk-fixture.ts": "test",
+    "test/chats-workflow-generation-contract.test.ts": "test"
   },
   "allowed": {
     "quality": [
