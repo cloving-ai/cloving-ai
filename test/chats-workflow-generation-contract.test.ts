@@ -7,7 +7,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import ts from "typescript";
 import { generateWorkflow } from "../src/chats/workflow-generation.ts";
-import { candidateProgram } from "../tools/workflow-candidate-program.ts";
+import { candidateProgram } from "./candidate-package-fixture.ts";
 import {
   workflowDeclarations,
   workflowManifests,

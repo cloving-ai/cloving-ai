@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeWorkflowCandidate } from "../tools/workflow-candidate-source.ts";
+import {
+  analyzeWorkflowCandidate,
+  admitWorkflowCandidate,
+} from "./candidate-package-fixture.ts";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
-import { admitWorkflowCandidate } from "../tools/admit-workflow.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 import {
   generatedArtifact,

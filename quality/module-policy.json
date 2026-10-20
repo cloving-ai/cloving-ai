@@ -856,7 +856,8 @@
     "test/chats-workflow-generation-artifact.test.ts": "test",
     "test/chats-workflow-generation-sdk.test.ts": "test",
     "test/chats-workflow-generation-sdk-fixture.ts": "test",
-    "test/chats-workflow-generation-contract.test.ts": "test"
+    "test/chats-workflow-generation-contract.test.ts": "test",
+    "test/candidate-package-fixture.ts": "test"
   },
   "allowed": {
     "quality": [
