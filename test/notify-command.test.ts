@@ -26,6 +26,9 @@ await test("CLV-090 notify commands that ignore termination are killed after the
   await assert.rejects(
     notifyCommand(
       [
+        "env",
+        "-u",
+        "NODE_V8_COVERAGE",
         process.execPath,
         "-e",
         'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);',

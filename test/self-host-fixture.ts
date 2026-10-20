@@ -1,3 +1,4 @@
+import { stopChildGroup } from "./stop-child.ts";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -211,9 +212,7 @@ export function items(value: unknown): readonly unknown[] {
 }
 
 export function withoutChildren(scene: () => Promise<void>): Promise<void> {
-  return scene().finally(() => {
-    for (const child of children)
-      if (child.exitCode === null && child.signalCode === null)
-        process.kill(-Number(child.pid), "SIGKILL");
+  return scene().finally(async () => {
+    for (const child of children) await stopChildGroup(child);
   });
 }

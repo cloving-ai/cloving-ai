@@ -479,6 +479,8 @@
     "test/resolver-child.ts": "test",
     "test/service-resolver-timer.test.ts": "test",
     "test/service-fixture.ts": "test",
+    "test/stop-child.ts": "test",
+    "test/stop-child.test.ts": "test",
     "test/service-gate-identity.test.ts": "test",
     "test/service-host.ts": "test",
     "test/service-runs.test.ts": "test",

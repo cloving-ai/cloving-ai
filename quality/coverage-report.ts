@@ -61,7 +61,14 @@ async function coverageRecording(file: string): Promise<unknown> {
       return value;
     } catch (error) {
       const remaining = deadline - performance.now();
-      if (!(error instanceof SyntaxError) || remaining <= 0) throw error;
+      if (!(error instanceof SyntaxError)) throw error;
+      if (remaining <= 0)
+        throw new SyntaxError(
+          `Invalid raw coverage ${file}: ${error.message}`,
+          {
+            cause: error,
+          },
+        );
       await setTimeout(Math.min(delay, remaining));
       delay *= 2;
     }

@@ -200,6 +200,9 @@ function child(
         ...process.env,
         PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
         ...options.environment,
+        ...(options.boundary === undefined
+          ? {}
+          : { NODE_V8_COVERAGE: undefined }),
       },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 45_000,

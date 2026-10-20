@@ -129,7 +129,10 @@ async function host(harness: Harness, mode: string): Promise<Host> {
       join(harness.stateDirectory, "deliveries.jsonl"),
       mode,
     ],
-    { stdio: ["pipe", "pipe", "inherit"] },
+    {
+      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      stdio: ["pipe", "pipe", "inherit"],
+    },
   );
   harness.cleanup(() => {
     child.kill("SIGKILL");

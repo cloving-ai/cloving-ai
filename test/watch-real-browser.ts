@@ -79,7 +79,10 @@ export async function realBrowser() {
       "--disable-sync",
       "--disable-extensions",
     ],
-    { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] },
+    {
+      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
+    },
   );
   const exited = new Promise<void>((resolve) => {
     child.once("close", () => {

@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { stopChild } from "./stop-child.ts";
 import {
   call,
   digestOf,
@@ -379,7 +380,7 @@ await test("CLV-008 events prints one event object on each line, an explicit gap
       const exited: readonly unknown[] = await once(follower, "exit");
       assert.equal(exited[0], 0);
     } finally {
-      follower.kill("SIGKILL");
+      await stopChild(follower);
     }
     await service.close();
   }));

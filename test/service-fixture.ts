@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { stopChild } from "./stop-child.ts";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -81,7 +82,7 @@ export function runCli(
   argumentsList: readonly string[],
   environment: { readonly directory: string; readonly runtime: string },
 ): Promise<CliResult> {
-  return new Promise((settle) => {
+  return new Promise((settle, reject) => {
     const child = spawn(
       process.execPath,
       [resolve("src/cli.ts"), ...argumentsList],
@@ -98,7 +99,9 @@ export function runCli(
     child.stderr.on("data", (data: Buffer) => {
       output.stderr += data.toString();
     });
-    const timer = setTimeout(() => child.kill("SIGKILL"), 20000);
+    const timer = setTimeout(() => {
+      stopChild(child).catch(reject);
+    }, 20000);
     child.on("close", (code) => {
       clearTimeout(timer);
       settle({ status: code ?? -1, ...output });

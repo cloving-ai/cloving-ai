@@ -185,7 +185,10 @@ function startChild(
   const child = spawn(
     process.execPath,
     [join(import.meta.dirname, script), ...parameters],
-    { stdio: ["pipe", "pipe", "pipe"] },
+    {
+      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      stdio: ["pipe", "pipe", "pipe"],
+    },
   );
   const { lines, waiters, errors } = collect(child);
   const exited = new Promise<{ code: number | null; signal: string | null }>(

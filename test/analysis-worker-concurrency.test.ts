@@ -98,6 +98,9 @@ for (const cancellation of ["delivery abort", "worker close"]) {
         const processFile = join(scene.directory, "token-process");
         writeFileSync(processFile, "");
         process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = JSON.stringify([
+          "env",
+          "-u",
+          "NODE_V8_COVERAGE",
           process.execPath,
           "-e",
           `require("node:fs").writeFileSync(${JSON.stringify(processFile)}, String(process.pid)); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)`,
