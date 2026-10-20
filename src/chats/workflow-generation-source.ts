@@ -41,7 +41,7 @@ function clvStatus(result: ProtectedResult): "complete" | "repair" | "blocked" {
   try {
     const envelope = clvRecord(JSON.parse(result.result));
     const summary = envelope?.["summary"];
-    if (typeof summary !== "string") return "blocked";
+    if (typeof summary !== "string" || clvBytes(summary) > 16000) return "blocked";
     const status = clvRecord(JSON.parse(summary))?.["status"];
     return status === "complete" || status === "repair" ? status : "blocked";
   } catch { return "blocked"; }
@@ -52,8 +52,8 @@ function clvBlocked(cycleId: string, reason: string): CycleOutcome {
 function clvBytes(value: string): number {
   return new TextEncoder().encode(value).length;
 }
-function clvPayload(asset: typeof clvAsset1 | typeof clvAsset2, input: ClvInput, round: number, review?: ProtectedResult): string {
-  return JSON.stringify({ asset, parameters: { cycleId: input.cycleId, repository: input.repository, input: input.input }, round, review });
+function clvPayload(asset: typeof clvAsset1 | typeof clvAsset2, input: ClvInput, round: number, review?: ProtectedResult, decision?: ClvContinuation): string {
+  return JSON.stringify({ asset, parameters: { cycleId: input.cycleId, repository: input.repository, input: input.input }, round, review, decision });
 }
 `;
 }
@@ -87,18 +87,28 @@ function sourceLoop(projection: WorkflowSourceProjection): string {
   const [review, repair] = projection.assets;
   return `  let clvPassed = false;
   let clvFailure: string | null = null;
+  let clvDecision: ClvContinuation | undefined;
   for (let clvRound = 0; clvRound < ${String(projection.maximumIterations)}; clvRound++) {
     if (clvPassed || clvFailure !== null) continue;
+    const clvReviewPayload = clvPayload(clvAsset1, input, clvRound, undefined, clvDecision);
+    if (clvBytes(clvReviewPayload) > 65536) {
+      clvFailure = "decision-too-large";
+      continue;
+    }
     const clvReview = await protectedEffect({
       scope: { phase: "clv-generated-1", operation: ${JSON.stringify(review?.stage.name)}, round: clvRound },
       capability: "claude", method: "run-turn", units: 1,
-      target: input.cycleId, payload: clvPayload(clvAsset1, input, clvRound)
+      target: input.cycleId, payload: clvReviewPayload
     });
     const clvReviewStatus = clvStatus(clvReview);
+    if (clvReviewStatus === "complete" && continuation?.decision === "answered" && clvDecision === undefined) {
+      clvDecision = continuation;
+      continue;
+    }
     if (clvReviewStatus === "complete") clvPassed = true;
     if (clvReviewStatus === "blocked") clvFailure = "worker-blocked";
     if (clvReviewStatus !== "repair") continue;
-    const clvRepairPayload = clvPayload(clvAsset2, input, clvRound, clvReview);
+    const clvRepairPayload = clvPayload(clvAsset2, input, clvRound, clvReview, clvDecision);
     if (clvBytes(JSON.stringify(clvReview)) > 32768 || clvBytes(clvRepairPayload) > 65536) {
       clvFailure = "review-too-large";
       continue;

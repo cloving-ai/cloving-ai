@@ -22,10 +22,15 @@ export function generatedArtifact(gateType = "design-decision") {
 export function generatedPrelude(gateType = "design-decision"): string {
   const artifact = generatedArtifact(gateType);
   return (
-    servicePrelude.replace(
-      'result: "effect-result"',
-      "result: generatedResult(operationId)",
-    ) +
+    servicePrelude
+      .replace(
+        'result: "effect-result"',
+        "result: generatedResult(operationId)",
+      )
+      .replace(
+        'appendFileSync("destination.log", intent.operationId + "\\n");',
+        'appendFileSync("payloads.log", await ports.document(intent.payload) + "\\n"); appendFileSync("destination.log", intent.operationId + "\\n");',
+      ) +
     `
 const generatedResult = (operationId) => {
   if (process.env.MODE === "malformed") return JSON.stringify({ summary: "missing status" });

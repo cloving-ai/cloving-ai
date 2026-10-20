@@ -30,16 +30,16 @@ function durableDeclarations(file: string, text: string) {
   const names: string[] = [];
   let total = 0;
   function visit(node: ts.Node): void {
-    if (
-      ts.isExpressionStatement(node) &&
-      ts.isStringLiteral(node.expression) &&
-      ["use step", "use workflow"].includes(node.expression.text)
-    ) {
-      total += 1;
-      const name = qualifiedStep(node);
-      if (name !== undefined) names.push(name);
-    }
     ts.forEachChild(node, visit);
+    if (
+      !ts.isExpressionStatement(node) ||
+      !ts.isStringLiteral(node.expression) ||
+      !["use step", "use workflow"].includes(node.expression.text)
+    )
+      return;
+    total += 1;
+    const name = qualifiedStep(node);
+    if (name !== undefined) names.push(name);
   }
   visit(source);
   return { names, total };

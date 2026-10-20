@@ -15,6 +15,31 @@ function field(value: unknown, name: string): unknown {
   return Reflect.get(Object(value), name);
 }
 
+function assertResumed(line: unknown): void {
+  assert.deepEqual(field(line, "budget"), { limit: 6, spent: 4 });
+  assert.equal(field(line, "sends"), 4);
+  assert.equal(field(line, "effects"), 4);
+  const payloads: unknown = field(line, "payloads");
+  assert.ok(Array.isArray(payloads));
+  assert.deepEqual(field(payloads[3], "decision"), {
+    gateId: "clv-gate-1",
+    decision: "answered",
+    answer: "Use the current design.",
+  });
+  assert.equal(field(payloads[3], "round"), 2);
+  const segments: unknown = field(line, "segments");
+  assert.ok(Array.isArray(segments));
+  assert.deepEqual(
+    segments.map((segment: unknown) => field(segment, "kind")),
+    ["start-run", "continue-run"],
+  );
+  assert.equal(field(segments[1], "status"), "completed");
+  assert.equal(
+    field(field(segments[1], "output"), "kind"),
+    "handoff_requested",
+  );
+}
+
 for (const reviewBytes of [32_768, 32_769])
   await test(`CLV-122 generated SDK bounds repair context at ${String(reviewBytes)} serialized bytes`, () =>
     withConsumer(generatedArtifact().source, async (consumer) => {
@@ -25,10 +50,10 @@ const worker = { ...destination, deliver: async (intent) => {
   sizes.push(Buffer.byteLength(await ports.document(intent.payload)));
   const outcome = await destination.deliver(intent);
   if (sizes.length !== 1) return outcome;
-  const reviewed = (findings) => JSON.stringify({ summary: JSON.stringify({ status: "repair", findings }) });
+  const reviewed = (findings, padding = "") => JSON.stringify({ summary: JSON.stringify({ status: "repair", findings }), padding });
   const findings = String.fromCodePoint(34, 92, 10, 0x1f9ea).repeat(1000);
   const empty = { ...outcome, operationId: intent.operationId, result: reviewed(findings) };
-  const result = reviewed(findings + "x".repeat(${String(reviewBytes)} - Buffer.byteLength(JSON.stringify(empty))));
+  const result = reviewed(findings, "x".repeat(${String(reviewBytes)} - Buffer.byteLength(JSON.stringify(empty))));
   reviewSize = Buffer.byteLength(JSON.stringify({ ...empty, result }));
   return { ...outcome, result };
 } };
@@ -209,25 +234,11 @@ const service = await openGenerated();
 const runId = ${JSON.stringify(runId)};
 await until(async () => (await stateOf(runId)) === "completed");
 await terminal(runId);
-print(await generatedState(runId));
+print({ ...await generatedState(runId), payloads: lines("payloads.log").map((line) => JSON.parse(line)) });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
-    const line: unknown = result.lines[0];
-    assert.deepEqual(field(line, "budget"), { limit: 6, spent: 3 });
-    assert.equal(field(line, "sends"), 3);
-    assert.equal(field(line, "effects"), 3);
-    const segments: unknown = field(line, "segments");
-    assert.ok(Array.isArray(segments));
-    assert.deepEqual(
-      segments.map((segment: unknown) => field(segment, "kind")),
-      ["start-run", "continue-run"],
-    );
-    assert.equal(field(segments[1], "status"), "completed");
-    assert.equal(
-      Reflect.get(Object(Reflect.get(Object(segments[1]), "output")), "kind"),
-      "handoff_requested",
-    );
+    assertResumed(result.lines[0]);
   }));
 
 for (const [mode, spent, reason] of [
