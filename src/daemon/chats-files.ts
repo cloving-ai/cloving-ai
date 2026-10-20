@@ -108,10 +108,11 @@ export async function matchingPrivateFile(
   }
 }
 
-interface AnalysisOutput {
+export interface AnalysisOutput {
   readonly cycleId: string;
   readonly analysis: string;
   readonly proposal: string;
+  readonly draft?: AnalysisDraftInput;
 }
 
 async function requireAbsent(directory: string, names: readonly string[]) {
@@ -136,7 +137,10 @@ function outputClaim(
   output: AnalysisOutput | AnalysisDraftInput,
 ) {
   return {
-    path: join(directory, `claim-${output.cycleId}.json`),
+    path: join(
+      directory,
+      `${"draft" in output ? "final-claim" : "claim"}-${output.cycleId}.json`,
+    ),
     text:
       JSON.stringify({
         schemaVersion: 1,
@@ -168,7 +172,12 @@ export async function inspectAnalysisFiles(
   output: AnalysisOutput,
 ): Promise<"complete" | "absent"> {
   await inspectOutputClaim(outputClaim(directory, output));
-  await requireAbsent(directory, [`draft-${output.cycleId}.json`]);
+  if (output.draft === undefined)
+    await requireAbsent(directory, [`draft-${output.cycleId}.json`]);
+  else if (
+    (await inspectAnalysisDraftRecord(directory, output.draft)) === undefined
+  )
+    throw new Error("analysis-output-failed");
   const proposal = join(directory, `proposal-${output.cycleId}.txt`);
   const analysis = join(directory, `analysis-${output.cycleId}.json`);
   const marker = await boundedAnalysisFile(analysis, {
@@ -227,11 +236,18 @@ export async function inspectAnalysisDraft(
   directory: string,
   input: AnalysisDraftInput,
 ): Promise<AnalysisDraftMetadata | undefined> {
-  await inspectOutputClaim(outputClaim(directory, input));
   await requireAbsent(directory, [
     `analysis-${input.cycleId}.json`,
     `proposal-${input.cycleId}.txt`,
   ]);
+  return inspectAnalysisDraftRecord(directory, input);
+}
+
+export async function inspectAnalysisDraftRecord(
+  directory: string,
+  input: AnalysisDraftInput,
+): Promise<AnalysisDraftMetadata | undefined> {
+  await inspectOutputClaim(outputClaim(directory, input));
   const text = await boundedAnalysisFile(
     join(directory, `draft-${input.cycleId}.json`),
     { permissions: 0o600 },

@@ -320,7 +320,7 @@ await finished(runId);
         kind: "blocked",
         reason: "analysis-answer-invalid",
       });
-      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
       assert.equal(field(line, "turns"), 1);
       assert.equal(field(line, "gates"), 1);
       assert.equal(field(line, "expiresMatch"), true);
@@ -364,7 +364,7 @@ await finished(runId);
         kind: "blocked",
         reason: "analysis-answer-missing",
       });
-      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
       assert.equal(field(line, "turns"), 1);
       assert.equal(field(line, "gates"), 1);
       assert.equal(field(line, "expiresMatch"), true);

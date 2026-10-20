@@ -5,8 +5,16 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import { analysisPrompt } from "../chats/analysis-prompt.ts";
-import { isAnalysisSnapshot } from "../chats/analysis-input.ts";
+import {
+  analysisPrompt,
+  analysisFollowUp,
+  analysisFollowUpPrompt,
+  analysisLaunchBytes,
+} from "../chats/analysis-prompt.ts";
+import {
+  isAnalysisSnapshot,
+  analysisDocumentBytes,
+} from "../chats/analysis-input.ts";
 import { record } from "../protocol.ts";
 import { sumPrices } from "../worker-usage.ts";
 import type { RunningTurn, TurnEnd } from "./claude-turn.ts";
@@ -69,12 +77,23 @@ function failed(reason: string): AdapterOutcome {
   return { kind: "failed", reason };
 }
 
-function snapshotOf(text: string | undefined): unknown {
-  try {
-    return record(JSON.parse(text ?? "null"))?.["snapshot"];
-  } catch {
-    return undefined;
-  }
+function promptOf(text: string | undefined, target: string): string {
+  if (text !== undefined && Buffer.byteLength(text) > analysisDocumentBytes)
+    throw new Error("analysis-too-large");
+  const payload = record(JSON.parse(text ?? "null"));
+  if (payload === undefined) throw new Error("analysis-input-refused");
+  const snapshot = payload["snapshot"];
+  if (!isAnalysisSnapshot(snapshot) || snapshot.importId !== target)
+    throw new Error("analysis-input-refused");
+  const followUp =
+    "followUp" in payload ? analysisFollowUp(payload["followUp"]) : undefined;
+  const prompt =
+    followUp === undefined
+      ? analysisPrompt(snapshot)
+      : analysisFollowUpPrompt(snapshot, followUp);
+  if (analysisLaunchBytes(JSON.stringify({ prompt })) > analysisDocumentBytes)
+    throw new Error("analysis-too-large");
+  return prompt;
 }
 
 async function cleaned(folder: string): Promise<void> {
@@ -230,9 +249,16 @@ async function deliver(
   if (known.kind !== "absent") return known;
   const { key, folder } = located(parts.settings.journal, intent.operationId);
   const text = await parts.settings.document(intent.payload);
-  const snapshot = snapshotOf(text);
-  if (!isAnalysisSnapshot(snapshot) || snapshot.importId !== intent.target)
-    return failed("analysis-input-refused");
+  let prompt: string;
+  try {
+    prompt = promptOf(text, intent.target);
+  } catch (error) {
+    return failed(
+      error instanceof Error && error.message === "analysis-too-large"
+        ? "analysis-too-large"
+        : "analysis-input-refused",
+    );
+  }
   await mkdir(join(folder, "configuration"), { recursive: true, mode: 0o700 });
   if (!(await analysisAvailable(folder))) {
     await cleaned(folder);
@@ -261,7 +287,7 @@ async function deliver(
     key,
     folder,
     directory,
-    prompt: analysisPrompt(snapshot),
+    prompt,
     token: credential.token,
   });
   return { receipt: key, worker: "claude" };
