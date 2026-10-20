@@ -1,7 +1,7 @@
 import type { CardForm } from "./watch-run-input.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
-import type { PrObservation } from "./watch-pr-identity.ts";
+import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 
 export interface WatchItem {
@@ -108,6 +108,8 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly mergeProof?: PrIdentity | null;
+  readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";
   readonly ticketStatus?: "complete" | "partial";
   readonly estimatedCostUsd: number | null;

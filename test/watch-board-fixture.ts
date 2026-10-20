@@ -1,3 +1,4 @@
+import { mergeRepository, mergedJournal } from "./watch-merge-fixture.ts";
 import { watchModel, type WatchInputs } from "../src/cli/watch-model.ts";
 
 export const boardTime = "2026-10-14T12:00:00.000Z";
@@ -35,6 +36,7 @@ export function boardRun(
     readonly latestAt?: string | null;
     readonly outcome?: string;
     readonly ticketId?: unknown;
+    readonly issueIdentity?: unknown;
     readonly events?: readonly unknown[];
   } = {},
 ): Record<string, unknown> {
@@ -45,6 +47,7 @@ export function boardRun(
       state: options.state ?? "running",
       title: `Title of ${runId}`,
       ticketId: options.ticketId,
+      issueIdentity: options.issueIdentity,
       latestAt: options.latestAt ?? boardTime,
       outcome: options.outcome === undefined ? null : { kind: options.outcome },
       claudeCostUsd: 1.25,
@@ -59,16 +62,22 @@ export function completionScenario(
   const completed = (runId: string, ticketId: string) =>
     boardRun(runId, {
       ticketId,
+      issueIdentity: {
+        owner: "fixture",
+        repository: "demo",
+        number: ticketId === "DEMO-1" ? 7 : 8,
+      },
       state: "completed",
       outcome: "blocked",
       latestAt: "2026-10-14T10:05:00Z",
       events: [{ type: "run.completed", recordedAt: "2026-10-14T10:00:00Z" }],
     });
-  return boardModel(
+  const model = boardModel(
     [
-      completed(ids.stopped ?? "A", "DEMO-1"),
-      boardRun(ids.later ?? "B", {
+      completed("A", "DEMO-1"),
+      boardRun("B", {
         ticketId: "DEMO-1",
+        issueIdentity: { owner: "fixture", repository: "demo", number: 7 },
         state: "completed",
         outcome: "handoff_requested",
         latestAt: "2026-10-14T10:30:00Z",
@@ -79,8 +88,45 @@ export function completionScenario(
       }),
       completed("C", "DEMO-2"),
     ],
-    { updatedAt: "2026-10-14T10:31:00Z" },
+    {
+      updatedAt: "2026-10-14T10:31:00Z",
+      repository: mergeRepository,
+      githubRecords: mergedJournal("B"),
+    },
   );
+  return renamedScenario(model, { A: ids.stopped ?? "A", B: ids.later ?? "B" });
+}
+
+function renamedScenario(
+  model: ReturnType<typeof watchModel>,
+  names: Readonly<Record<string, string>>,
+): ReturnType<typeof watchModel> {
+  const rename = (runId: string): string => names[runId] ?? runId;
+  return {
+    ...model,
+    runs: model.runs.map((run) => ({
+      ...run,
+      runId: rename(run.runId),
+      title: `Title of ${rename(run.runId)}`,
+    })),
+    workflows: model.workflows.map((workflow) => ({
+      ...workflow,
+      columns: workflow.columns.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => ({
+          ...card,
+          runId: rename(card.runId),
+          title: `Title of ${rename(card.runId)}`,
+          completionMark: card.completionMark?.laterRunId
+            ? {
+                ...card.completionMark,
+                laterRunId: rename(card.completionMark.laterRunId),
+              }
+            : card.completionMark,
+        })),
+      })),
+    })),
+  };
 }
 
 export function boardModel(

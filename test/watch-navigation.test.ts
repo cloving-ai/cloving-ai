@@ -24,7 +24,7 @@ for (const runId of ["A /&", "B /&"]) {
   await load();
   app.all("button").find((node) => node.attributes.get("aria-label") === "Expand Stopped")?.dispatch("click");
   const href = "#workflow=develop-issue&run=" + encodeURIComponent(runId);
-  const link = app.all("a").find((item) => item.attributes.get("href") === href && (runId.startsWith("A") || item.inner === "Done in a later run"));
+  const link = app.all("a").find((item) => item.attributes.get("href") === href && (runId.startsWith("A") || item.inner === "Ticket completed by later run"));
   if (!link) throw new Error("missing run link " + href);
   link.dispatch("click");
   location.hash = link.attributes.get("href");
@@ -41,7 +41,7 @@ console.log(JSON.stringify({ pages }));
   assert.match(pages, /run=B%20%2F%26/);
   assert.match(pages, /A \/&amp;/);
   assert.match(pages, /B \/&amp;/);
-  assert.doesNotMatch(pages, /Done in a later run|Needs attention/);
+  assert.doesNotMatch(pages, /Ticket completed by later run|Needs attention/);
 });
 
 await test("CLV-079 absent and unknown workflows show the starting board without changing the hash", () => {

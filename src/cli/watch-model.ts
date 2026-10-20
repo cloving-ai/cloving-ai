@@ -13,8 +13,6 @@ import type {
   WatchFeedback,
   WatchItem,
   WatchModel,
-  WatchPullRequest,
-  WatchReview,
   WatchRun,
   WatchTurn,
 } from "./watch-render.ts";
@@ -26,6 +24,10 @@ import {
   startWorkflowOf,
 } from "./watch-board.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
+
+import { pullOf, type GithubRecords } from "./watch-pull-request.ts";
+export type { GithubRecords } from "./watch-pull-request.ts";
+import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 
 import { displayRun } from "./watch-paths.ts";
 
@@ -211,6 +213,7 @@ export function decisionCommands(
 }
 
 export interface WatchInputs {
+  readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly workflowStages?: WorkflowStages;
@@ -224,74 +227,6 @@ export interface WatchInputs {
   readonly decisions: readonly unknown[];
   readonly turns: readonly WatchTurn[];
   readonly githubRecords: readonly GithubRecords[];
-}
-
-export interface GithubRecords {
-  readonly started: unknown;
-  readonly result: unknown;
-}
-
-interface GithubResult {
-  readonly runId: string;
-  readonly round: number;
-  readonly method: string;
-  readonly report: Fields;
-}
-
-function githubOf(records: GithubRecords): GithubResult {
-  const started = record(records.started);
-  const operation = list(parsed(text(started["operationId"])));
-  const result = record(records.result);
-  const completed = result["outcome"] === "completed";
-  return {
-    runId: text(operation[2]),
-    round: Number(operation[1]),
-    method: text(started["method"]),
-    report: completed ? record(parsed(text(result["result"]))) : {},
-  };
-}
-
-function pullRequestOf(
-  results: readonly GithubResult[],
-): WatchPullRequest | null {
-  const opened = results
-    .filter((item) => item.method === "open-pr")
-    .map((item) => item.report)
-    .findLast((report) => text(report["url"]).startsWith("https://"));
-  if (opened === undefined) return null;
-  return { number: Number(opened["number"]), url: text(opened["url"]) };
-}
-
-function reviewsOf(results: readonly GithubResult[]): WatchReview[] {
-  return results
-    .filter((item) => item.method === "wait-review")
-    .flatMap(({ round, report }) => {
-      const score = count(report["score"]);
-      if (score === null) return [];
-      return [{ round, commit: text(report["commit"]), score }];
-    });
-}
-
-function mergeCommitOf(results: readonly GithubResult[]): string | null {
-  const merged = results
-    .filter((item) => item.method === "merge")
-    .map((item) => stamp(item.report["merged"]));
-  return merged.find((commit) => commit !== null) ?? null;
-}
-
-function pullOf(
-  inputs: WatchInputs,
-  runId: string,
-): Pick<WatchRun, "pullRequest" | "reviews" | "mergeCommit"> {
-  const results = inputs.githubRecords
-    .map(githubOf)
-    .filter((item) => item.runId === runId)
-    .toSorted((first, second) => first.round - second.round);
-  return {
-    pullRequest: pullRequestOf(results),
-    reviews: reviewsOf(results),
-    mergeCommit: mergeCommitOf(results),
-  };
 }
 
 function feedbackOf(value: unknown): WatchFeedback {
@@ -318,10 +253,15 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const budget = record(status["budget"]);
   const ticketId = text(status["ticketId"]);
   const ticketStatus = record(status["outcome"])["ticketStatus"];
+  const issue =
+    workflowId === "develop-issue"
+      ? establishedIssue(inputs.repository ?? null, status["issueIdentity"])
+      : null;
   return {
     runId,
     workflowId,
     ticketId: ticketId === "" ? null : ticketId,
+    ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),
     outcome: stamp(record(status["outcome"])["kind"]),
     ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
@@ -350,7 +290,14 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     phases: phasesOf(list(record(value)["events"]), workflowId),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),
-    ...pullOf(inputs, runId),
+    ...pullOf(
+      {
+        records: inputs.githubRecords,
+        repository:
+          workflowId === "develop-issue" ? (inputs.repository ?? null) : null,
+      },
+      runId,
+    ),
   };
 }
 

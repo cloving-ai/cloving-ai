@@ -5,6 +5,7 @@ import {
   interruptedCompletionReplies,
   laterMark,
   stoppedMark,
+  withCompletionService,
 } from "./watch-completion-fixture.ts";
 import {
   interruptedReplies,
@@ -36,7 +37,7 @@ const completionFailures = [
 for (const failure of completionFailures)
   await test(`CLV-091 required search failure ${JSON.stringify(failure)} returns failed and retries complete evidence`, async () => {
     const replies = interruptedCompletionReplies(failure);
-    await withWatchService(replies.answer, async (watch) => {
+    await withCompletionService(replies.answer, async (watch) => {
       const failed = await fetch(`${watch.address}data.json`);
       assert.equal(failed.status, 500, JSON.stringify(failure));
       assert.equal(await failed.text(), "failed");

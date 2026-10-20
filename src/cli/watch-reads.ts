@@ -1,3 +1,4 @@
+import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 import {
   isWorkflowStages,
   type WorkflowStages,
@@ -43,6 +44,7 @@ export interface WatchReader {
 }
 
 interface Reader {
+  readonly repository: PrRepository | null;
   readonly runtimeDirectory: string;
   readonly completions: Map<
     string,
@@ -151,17 +153,20 @@ async function creationOf(
 
 function matchingCompletion(
   status: ReadStatus,
-  ticketIds: ReadonlySet<string>,
+  context: {
+    readonly issues: ReadonlySet<string>;
+    readonly repository: PrRepository | null;
+  },
 ): boolean {
-  const ticketId = status["ticketId"];
+  const issue = establishedIssue(context.repository, status["issueIdentity"]);
   return (
     status.state === "completed" &&
     status["workflowId"] === "develop-issue" &&
     record(status["outcome"])?.["kind"] === "handoff_requested" &&
     record(status["outcome"])?.["ticketStatus"] !== "partial" &&
     record(status["outcome"])?.["issueUpdate"] !== "failed" &&
-    typeof ticketId === "string" &&
-    ticketIds.has(ticketId)
+    issue !== null &&
+    context.issues.has(JSON.stringify(issue))
   );
 }
 
@@ -169,7 +174,7 @@ async function completionOf(
   reader: Reader,
   search: {
     readonly summary: ReadStatus;
-    readonly ticketIds: ReadonlySet<string>;
+    readonly issues: ReadonlySet<string>;
   },
 ): Promise<ReadRun | null> {
   const { runId, latestSequence } = search.summary;
@@ -188,12 +193,19 @@ async function completionOf(
         state: status.state,
         workflowId: status["workflowId"],
         ticketId: status["ticketId"],
+        issueIdentity: status["issueIdentity"],
         outcome: status["outcome"],
       },
     };
     reader.completions.set(runId, known);
   }
-  if (!matchingCompletion(known.status, search.ticketIds)) return null;
+  if (
+    !matchingCompletion(known.status, {
+      issues: search.issues,
+      repository: reader.repository,
+    })
+  )
+    return null;
   const creation =
     known.creation === undefined
       ? await creationOf(reader, runId)
@@ -248,15 +260,15 @@ async function decisionsOf(reader: Reader): Promise<readonly unknown[]> {
   return list(questions["decisions"]);
 }
 
-function stoppedTicketIds(
+function stoppedIssues(
   runs: readonly ReadRun[],
-  now: string,
+  context: { readonly now: string; readonly repository: PrRepository | null },
 ): ReadonlySet<string> {
   const stopped = runs
     .map((run) => run.status)
     .filter(
       (status) =>
-        recentRun(status.latestAt, now) &&
+        recentRun(status.latestAt, context.now) &&
         status["workflowId"] === "develop-issue" &&
         (["failed", "cancelled"].includes(status.state) ||
           (status.state === "completed" &&
@@ -269,13 +281,12 @@ function stoppedTicketIds(
     .slice(0, 20);
   return new Set(
     stopped.flatMap((status) => {
-      const ticketId = status["ticketId"];
-      return status.state === "completed" &&
-        record(status["outcome"])?.["ticketStatus"] !== "partial" &&
-        record(status["outcome"])?.["issueUpdate"] !== "failed" &&
-        typeof ticketId === "string" &&
-        ticketId !== ""
-        ? [ticketId]
+      const issue = establishedIssue(
+        context.repository,
+        status["issueIdentity"],
+      );
+      return status.state === "completed" && issue !== null
+        ? [JSON.stringify(issue)]
         : [];
     }),
   );
@@ -302,9 +313,9 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     (summary) => activeRun(summary.state) || recentRun(summary.latestAt, now),
   );
   for (const summary of current) runs.push(await detailed(reader, summary));
-  const ticketIds = stoppedTicketIds(runs, now);
+  const issues = stoppedIssues(runs, { now, repository: reader.repository });
   const older =
-    ticketIds.size === 0
+    issues.size === 0
       ? []
       : summaries.filter(
           (summary) =>
@@ -313,7 +324,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
             summary.state === "completed",
         );
   for (const summary of older) {
-    const candidate = await completionOf(reader, { summary, ticketIds });
+    const candidate = await completionOf(reader, { summary, issues });
     if (candidate !== null) completionCandidates.push(candidate);
   }
   return {
@@ -352,9 +363,13 @@ async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
   };
 }
 
-export function watchReader(runtimeDirectory: string): WatchReader {
+export function watchReader(
+  runtimeDirectory: string,
+  repository: PrRepository | null = null,
+): WatchReader {
   const reader: Reader = {
     runtimeDirectory,
+    repository,
     details: new Map(),
     completions: new Map(),
   };

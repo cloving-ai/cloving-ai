@@ -74,6 +74,45 @@ export function prResponse(identity: PrIdentity, value: unknown): PrReadResult {
 
 export type PrRepository = Omit<PrIdentity, "number">;
 
+export function establishedIssue(
+  repository: PrRepository | null,
+  value: unknown,
+): PrIdentity | null {
+  const fields = record(value) ?? {};
+  const number = fields["number"];
+  if (
+    repository === null ||
+    typeof number !== "number" ||
+    !Number.isSafeInteger(number) ||
+    number <= 0
+  )
+    return null;
+  const owner = fields["owner"];
+  const name = fields["repository"];
+  if (
+    typeof owner !== "string" ||
+    typeof name !== "string" ||
+    owner.toLowerCase() !== repository.owner ||
+    name.toLowerCase() !== repository.repository
+  )
+    return null;
+  return { ...repository, number };
+}
+
+export function sameIssue(
+  first: PrIdentity | null | undefined,
+  second: PrIdentity | null | undefined,
+): boolean {
+  return (
+    first != null &&
+    second != null &&
+    first.host === second.host &&
+    first.owner === second.owner &&
+    first.repository === second.repository &&
+    first.number === second.number
+  );
+}
+
 export function prRepository(origin: string): PrRepository | null {
   const address = origin
     .replace(/^git@([^:/]+):/, "ssh://git@$1/")

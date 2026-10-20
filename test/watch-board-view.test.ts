@@ -91,7 +91,7 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
   });
   const html = rendered(shown);
   assert.match(html, /<section class="column stopped">/);
-  assert.match(html, />Done in a later run<\/a>/);
+  assert.match(html, />Ticket completed by later run<\/a>/);
   assert.match(html, />Needs attention<\/span>/);
   assert.match(html, /Title of A \/&amp;&lt;b&gt;/);
   const links = found(shown, "a");
@@ -106,7 +106,7 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
   assert.ok(links.every((link) => found(link["children"], "a").length === 0));
   assert.doesNotMatch(
     page(model, "workflow=develop-issue&run=A%20%2F%26%3Cb%3E"),
-    /Done in a later run|Needs attention/,
+    /Ticket completed by later run|Needs attention/,
   );
 });
 
@@ -322,10 +322,13 @@ await test("CLV-093 PR marks render as escaped text and preserve original and la
     );
   assert.match(
     cardPage({
-      completionMark: { text: "Done in a later run", laterRunId: "later /&" },
+      completionMark: {
+        text: "Ticket completed by later run",
+        laterRunId: "later /&",
+      },
       pullRequestObservation: { status: "merged" },
     }),
-    /href="#workflow=develop-issue&amp;run=later%20%2F%26">Done in a later run<\/a>/,
+    /href="#workflow=develop-issue&amp;run=later%20%2F%26">Ticket completed by later run<\/a>/,
   );
 });
 

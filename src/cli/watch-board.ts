@@ -2,6 +2,7 @@ import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { record } from "../protocol.ts";
 import { isInstant } from "../authority/instants.ts";
 import { issueSteps } from "./watch-phases.ts";
+import { sameIssue } from "./watch-pr-identity.ts";
 import type {
   WatchCard,
   WatchCompletionMark,
@@ -30,13 +31,17 @@ export function completionMarkOf(
     run.outcome !== "blocked"
   )
     return null;
+  if (run.mergeProof != null)
+    return {
+      text: `PR merged · #${String(run.mergeProof.number)}`,
+      laterRunId: null,
+    };
   const completedAt = eventTime(run, "run.completed");
   const later = candidates
     .filter(
       (candidate) =>
-        typeof run.ticketId === "string" &&
-        run.ticketId !== "" &&
-        candidate.ticketId === run.ticketId &&
+        sameIssue(run.issueIdentity, candidate.issueIdentity) &&
+        candidate.mergeProof != null &&
         candidate.runId !== run.runId &&
         candidate.workflowId === "develop-issue" &&
         candidate.state === "completed" &&
@@ -56,7 +61,7 @@ export function completionMarkOf(
     )[0];
   return later === undefined
     ? { text: "Needs attention", laterRunId: null }
-    : { text: "Done in a later run", laterRunId: later.runId };
+    : { text: "Ticket completed by later run", laterRunId: later.runId };
 }
 
 export function activeRun(state: string): boolean {
