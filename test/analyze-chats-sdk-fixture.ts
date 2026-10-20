@@ -50,6 +50,8 @@ const chats = {
   deliver: async (intent, signal) => {
     if (intent.method === "read-analysis") await holdAt("hold-analysis-read");
     const outcome = await privateChats.deliver(intent, signal);
+    const payload = JSON.parse(await document(intent.payload));
+    appendFileSync("analysis-effects.log", JSON.stringify({ method: intent.method, operationId: intent.operationId, snapshotDigest: payload.snapshot ? digestOf(JSON.stringify(payload.snapshot)) : null, followUp: payload.followUp !== undefined, outcome: outcome.kind }) + "\\n");
     if (intent.method === "save-analysis" && outcome.kind === "completed" && existsSync("halt-after-draft")) {
       writeFileSync(directory + "/redacted.jsonl", "changed after draft save");
       const metadata = JSON.parse(outcome.result);
@@ -71,7 +73,14 @@ const registration = {
   submission: { maximumBytes: 4096, fields: { importId: "string" } },
   resolver: { id: "analysis-fixture", version: "1", resolve: () => Promise.resolve({ kind: "resolved", input: { cycleId: "analysis-cycle", repository: "unused", input: { importId } } }) },
 };
-const service = await hosted({ clock: analysisClock, registrations: [registration], workflow: workflows.analyzeChats, destination: destinationAnalysis, effects: { leaseMilliseconds: testMilliseconds(1000) } });
+const analysisRunWrap = (product) => ({ ...recording(product), deliver: async (intent) => {
+  if (intent.kind === "continue-run") {
+    await holdAt("hold-analysis-continuation");
+    appendFileSync("analysis-continuations.log", intent.operationId + "\\n");
+  }
+  return await product.deliver(intent);
+} });
+const service = await hosted({ clock: analysisClock, registrations: [registration], workflow: workflows.analyzeChats, destination: destinationAnalysis, wrap: analysisRunWrap, effects: { leaseMilliseconds: testMilliseconds(1000) } });
 const submitAnalysis = async () => (await asked("run", { workflowId: "analyze-chats", source: "input", submission: { importId }, commandId: "analysis-command" })).runId;
 const finished = async (runId) => {
   await until(async () => ["completed", "blocked", "failed", "waiting_gate"].includes(await stateOf(runId))).catch(async (error) => { print({ diagnostic: (await asked("status", { runId })).run, requests: lines("requests.log"), worlds: await tagged() }); throw error; });
