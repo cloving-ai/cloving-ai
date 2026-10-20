@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { checkSubmission } from "../src/submission.ts";
 import { isWorkflowDeclaration } from "../src/workflow-declaration.ts";
-import { candidate } from "./chats-analysis-fixture.ts";
+import { candidate, questionCandidate } from "./chats-analysis-fixture.ts";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
 
@@ -177,30 +177,186 @@ await test("CLV-116 unusable read and turn results block before later effects", 
   }
 });
 
-await test("CLV-117 a saved draft cannot report a handoff before question integration", async () => {
+function draftScenario() {
   const given = scenario();
+  return {
+    ...given,
+    gate: { kind: "opened", decisionId: "analysis-question" },
+    effects: {
+      ...given.effects,
+      "claude run-turn:analyze-chats": [
+        completed({ reply: JSON.stringify(questionCandidate()) }),
+      ],
+      "chats save-analysis": [
+        completed({
+          kind: "analysis_draft",
+          cycleId: input.cycleId,
+          candidateDigest: "a".repeat(64),
+          expiresAt: "2026-10-21T10:00:00.000Z",
+          question: questionCandidate().openQuestion,
+        }),
+      ],
+    },
+  };
+}
+
+await test("CLV-148 a valid private draft opens one candidate-bound question with its stored deadline", async () => {
+  const [line, repeated] = await ran([draftScenario(), draftScenario()]);
+  assert.deepEqual(field(line, "outcome"), {
+    kind: "waiting_for_decision",
+    cycleId: input.cycleId,
+    decisionId: "analysis-question",
+  });
+  assert.equal(field(line, "spent"), 3);
+  assert.equal(field(field(line, "requests"), "length"), 4);
+  const gate = request(line, 3);
+  assert.equal(field(gate, "gateId"), "analysis-question");
+  assert.equal(field(gate, "kind"), "question");
+  assert.equal(field(gate, "expiresAt"), "2026-10-21T10:00:00.000Z");
+  assert.deepEqual(gate, request(repeated, 3));
+  const prompt = String(field(gate, "prompt"));
+  assert.ok(prompt.includes("a".repeat(64)));
+  for (const choice of questionCandidate().openQuestion.choices) {
+    assert.ok(prompt.includes(choice.id));
+    assert.ok(prompt.includes(choice.description));
+  }
+});
+
+await test("CLV-148 an answer with text beyond the listed ID blocks without another question or turn", async () => {
   const [line] = await ran([
     {
-      ...given,
-      effects: {
-        ...given.effects,
-        "chats save-analysis": [
-          completed({
-            kind: "analysis_draft",
-            cycleId: input.cycleId,
-            candidateDigest: "opaque",
-            expiresAt: "2026-10-20T10:00:00.000Z",
-          }),
-        ],
+      ...draftScenario(),
+      decision: {
+        gateId: "analysis-question",
+        decision: "answered",
+        answer: "earlier with extra text",
       },
     },
   ]);
   assert.deepEqual(field(line, "outcome"), {
     kind: "blocked",
     cycleId: input.cycleId,
-    reason: "analysis-input-refused",
-    evidenceId: "save-analysis",
+    reason: "analysis-answer-invalid",
+    evidenceId: "analysis-question",
   });
-  assert.equal(field(line, "spent"), 3);
   assert.equal(field(field(line, "requests"), "length"), 3);
+  assert.equal(field(line, "spent"), 3);
+});
+
+await test("CLV-148 an expired question blocks with analysis-answer-missing and opens no later question", async () => {
+  const [line] = await ran([
+    {
+      ...draftScenario(),
+      decision: {
+        gateId: "analysis-question",
+        decision: "expired",
+        answer: null,
+      },
+    },
+  ]);
+  assert.equal(
+    field(field(line, "outcome"), "reason"),
+    "analysis-answer-missing",
+  );
+  assert.equal(field(field(line, "requests"), "length"), 3);
+});
+
+await test("CLV-148 only exact listed choice IDs reach the pending second-turn boundary", async () => {
+  const answers = [
+    "earlier",
+    "later",
+    " earlier",
+    "earlier ",
+    "EARLIER",
+    "unknown",
+    "",
+    null,
+  ];
+  const lines = await ran(
+    answers.map((answer) => ({
+      ...draftScenario(),
+      decision: { gateId: "analysis-question", decision: "answered", answer },
+    })),
+  );
+  for (const [index, line] of lines.entries()) {
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "blocked",
+      cycleId: input.cycleId,
+      reason: index < 2 ? "analysis-input-refused" : "analysis-answer-invalid",
+      evidenceId: "analysis-question",
+    });
+    assert.equal(field(field(line, "requests"), "length"), 3);
+  }
+});
+
+await test("CLV-148 a continuation for a different gate or without a saved question cannot report accepted output", async () => {
+  const lines = await ran([
+    {
+      ...draftScenario(),
+      decision: { gateId: "other", decision: "answered", answer: "earlier" },
+    },
+    {
+      ...scenario(),
+      decision: {
+        gateId: "analysis-question",
+        decision: "answered",
+        answer: "earlier",
+      },
+    },
+  ]);
+  for (const line of lines) {
+    assert.equal(
+      field(field(line, "outcome"), "reason"),
+      "analysis-answer-invalid",
+    );
+    assert.equal(field(field(line, "requests"), "length"), 3);
+  }
+});
+
+await test("CLV-148 refused or unavailable question gates block without a later effect", async () => {
+  const lines = await ran(
+    ["refused", "unavailable"].map((kind) => ({
+      ...draftScenario(),
+      gate: { kind, reason: "gate-unavailable" },
+    })),
+  );
+  for (const line of lines) {
+    assert.equal(field(field(line, "outcome"), "reason"), "gate-unavailable");
+    assert.equal(field(field(line, "requests"), "length"), 4);
+    assert.equal(field(line, "spent"), 3);
+  }
+});
+
+await test("CLV-148 unusable draft bindings cannot open a question", async () => {
+  for (const changed of [
+    { cycleId: "different-cycle" },
+    { candidateDigest: "opaque" },
+    { expiresAt: null },
+    { question: null },
+  ]) {
+    const given = draftScenario();
+    const [line] = await ran([
+      {
+        ...given,
+        effects: {
+          ...given.effects,
+          "chats save-analysis": [
+            completed({
+              kind: "analysis_draft",
+              cycleId: input.cycleId,
+              candidateDigest: "a".repeat(64),
+              expiresAt: "2026-10-21T10:00:00.000Z",
+              question: questionCandidate().openQuestion,
+              ...changed,
+            }),
+          ],
+        },
+      },
+    ]);
+    assert.equal(
+      field(field(line, "outcome"), "reason"),
+      "analysis-input-refused",
+    );
+    assert.equal(field(field(line, "requests"), "length"), 3);
+  }
 });

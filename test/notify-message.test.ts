@@ -59,3 +59,15 @@ await test("CLV-090 decisions without allowed commands stay bounded and subjects
   assert.doesNotMatch(notice.message.subject, /[\n\r]/);
   assert.doesNotMatch(notice.message.body, /cloving answer/);
 });
+
+await test("CLV-148 automatic analysis notifications keep question text private and retain the answer binding", () => {
+  const prompt = "private synthetic analysis question";
+  const notification = decisionNotification(
+    { ...run, workflowId: "analyze-chats" },
+    { ...question, prompt, feedback: [{ text: prompt }] },
+  );
+  assert.equal(JSON.stringify(notification).includes(prompt), false);
+  assert.match(notification.message.body, /cloving questions/);
+  assert.match(notification.message.body, /--subject-digest subject/);
+  assert.match(notification.message.body, /cloving answer Q1/);
+});

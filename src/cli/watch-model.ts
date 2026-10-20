@@ -1,3 +1,4 @@
+import { operationalDecision } from "../decision-visibility.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
 import {
   workflowRefusals,
@@ -284,7 +285,12 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     limit: count(budget["limit"]),
     decisions: inputs.decisions
       .filter((decision) => record(decision)["runId"] === runId)
-      .map((decision) => decisionCommands(decision, inputs.client)),
+      .map((decision) =>
+        decisionCommands(
+          operationalDecision(record(decision), workflowId),
+          inputs.client,
+        ),
+      ),
     events: list(record(value)["events"]).map(eventOf),
     turns: statusTurns(inputs.turns, status),
     phases: phasesOf(list(record(value)["events"]), workflowId),

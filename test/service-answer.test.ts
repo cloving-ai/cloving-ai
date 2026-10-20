@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../src/protocol.ts";
 import { withFiles } from "./quality/files-fixture.ts";
-import { stopChild } from "./stop-child.ts";
 import {
   digestOf,
   eventually,
@@ -20,7 +17,19 @@ import {
   type Harness,
 } from "./service-fixture.ts";
 
-const prompt = "Which parser is correct for the input format?";
+import {
+  analysisSource,
+  analysisQuestionSetup,
+} from "./analyze-chats-sdk-fixture.ts";
+import { withConsumer } from "./world-host-fixture.ts";
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
+
+import {
+  host,
+  continuations,
+  openedQuestion,
+  prompt,
+} from "./service-answer-fixture.ts";
 const question = {
   commandId: "w-open",
   expectedRevision: 2,
@@ -139,96 +148,6 @@ await test("CLV-008 an answer sent twice with the same command ID across a servi
     );
     await service.close();
   }));
-
-interface Host {
-  readonly process: ChildProcess;
-  readonly lines: string[];
-  readonly submit: (
-    command: Readonly<Record<string, unknown>>,
-    documents?: readonly string[],
-  ) => Promise<unknown>;
-}
-
-async function host(harness: Harness, mode: string): Promise<Host> {
-  const child = spawn(
-    process.execPath,
-    [
-      resolve("test/service-host.ts"),
-      harness.stateDirectory,
-      harness.runtimeDirectory,
-      join(harness.stateDirectory, "deliveries.jsonl"),
-      mode,
-    ],
-    {
-      env:
-        mode === "deliver"
-          ? process.env
-          : { ...process.env, NODE_V8_COVERAGE: undefined },
-      stdio: ["pipe", "pipe", "inherit"],
-    },
-  );
-  harness.cleanup(() => stopChild(child));
-  const lines: string[] = [];
-  createInterface({ input: child.stdout }).on("line", (line) =>
-    lines.push(line),
-  );
-  await eventually(() => (lines.includes("ready") ? true : undefined));
-  return {
-    process: child,
-    lines,
-    submit: async (command, documents = []) => {
-      const before = lines.filter((line) => line.startsWith("result ")).length;
-      child.stdin.write(`${JSON.stringify({ command, documents })}\n`);
-      return eventually(() => {
-        const results = lines.filter((line) => line.startsWith("result "));
-        const [line] = results.slice(before);
-        return line === undefined
-          ? undefined
-          : record(JSON.parse(line.slice("result ".length)));
-      });
-    },
-  };
-}
-
-async function continuations(harness: Harness): Promise<readonly unknown[]> {
-  const lines = await readFile(
-    join(harness.stateDirectory, "deliveries.jsonl"),
-    "utf8",
-  ).catch(() => "");
-  return lines
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line): unknown => JSON.parse(line))
-    .filter((intent) => field(intent, "kind") === "continue-run");
-}
-
-async function openedQuestion(first: Host, runId: string): Promise<void> {
-  await first.submit({
-    kind: "mark-started",
-    runId,
-    commandId: "w-started",
-    expectedRevision: 1,
-  });
-  await first.submit(
-    {
-      kind: "open-gate",
-      runId,
-      commandId: "w-open",
-      expectedRevision: 2,
-      gateId: "design-1",
-      gateKind: "question",
-      subject: digestOf(prompt),
-      prompt: digestOf(prompt),
-    },
-    [prompt],
-  );
-  await first.submit({
-    kind: "register-wait",
-    runId,
-    commandId: "w-wait",
-    gateId: "design-1",
-  });
-}
 
 await test("CLV-008 a service killed after it commits an answer and before delivery delivers one continuation after the restart", () =>
   withHarness(async (harness) => {
@@ -375,3 +294,82 @@ await test("CLV-008 a paused run whose start was in flight at a kill is reconcil
     second.process.kill("SIGTERM");
     await once(second.process, "exit");
   }));
+
+await test(
+  "CLV-148 the generic service durably records added answer text and the analysis continuation rejects it",
+  chatPlatformScenario(() =>
+    withConsumer(analysisSource, async (consumer) => {
+      const result = await consumer.run(`${analysisQuestionSetup}
+writeFileSync(directory + "/redacted.jsonl", "changed after captured snapshot");
+const response = await answer("earlier with extra text");
+await until(async () => (await tagged()).length === 2);
+await until(async () => (await tagged()).every((run) => run.status === "completed"));
+const gate = Object.values((await ports.state()).gates).find((gate) => gate.runId === runId);
+print({ recorded: response.kind, retained: await ports.document(gate.outcome.answer), runBound: gate.runId === runId, gateBound: gate.gateId === "analysis-question" });
+await finished(runId);
+`);
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.lines[0], {
+        recorded: "decision-recorded",
+        retained: "earlier with extra text",
+        runBound: true,
+        gateBound: true,
+      });
+      const line = result.lines[1];
+      assert.deepEqual(field(line, "outcome"), {
+        kind: "blocked",
+        reason: "analysis-answer-invalid",
+      });
+      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.equal(field(line, "turns"), 1);
+      assert.equal(field(line, "gates"), 1);
+      assert.equal(field(line, "expiresMatch"), true);
+      assert.equal(field(line, "candidateBound"), true);
+      assert.equal(field(line, "safe"), true);
+      assert.deepEqual(field(line, "outputs"), []);
+    }),
+  ),
+);
+
+await test(
+  "CLV-148 an unanswered analysis expires at its original draft deadline without reopening",
+  chatPlatformScenario(() =>
+    withConsumer(analysisSource, async (consumer) => {
+      const result = await consumer.run(`${analysisQuestionSetup}
+const before = (await asked("status", { runId })).run;
+const deadline = question.expiresAt;
+analysisNow = "2026-10-21T09:59:59.999Z";
+const pending = (await asked("questions", { runId })).decisions.length;
+analysisNow = deadline;
+const late = await answer("earlier");
+await until(async () => (await tagged()).length === 2);
+await until(async () => (await tagged()).every((run) => run.status === "completed"));
+const settled = await answer("earlier", { commandId: "after-expiry" });
+print({ before: before.state, pending, late: late.code, settled: settled.code, deadline });
+await finished(runId);
+`);
+      assert.equal(result.status, 0, result.stderr);
+      const observed = result.lines[0];
+      assert.equal(field(observed, "before"), "waiting_gate");
+      assert.equal(field(observed, "pending"), 1);
+      assert.ok(
+        ["decision-expired", "decision-not-pending"].includes(
+          String(field(observed, "late")),
+        ),
+      );
+      assert.equal(field(observed, "settled"), "decision-not-pending");
+      assert.equal(field(observed, "deadline"), "2026-10-21T10:00:00.000Z");
+      const line = result.lines[1];
+      assert.deepEqual(field(line, "outcome"), {
+        kind: "blocked",
+        reason: "analysis-answer-missing",
+      });
+      assert.deepEqual(field(line, "budget"), { limit: 3, spent: 3 });
+      assert.equal(field(line, "turns"), 1);
+      assert.equal(field(line, "gates"), 1);
+      assert.equal(field(line, "expiresMatch"), true);
+      assert.equal(field(line, "safe"), true);
+      assert.deepEqual(field(line, "outputs"), []);
+    }),
+  ),
+);
