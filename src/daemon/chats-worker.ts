@@ -11,12 +11,15 @@ import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
 import {
   analysisDocumentBytes,
   analysisEvidence,
-  analysisModelInput,
   isAnalysisSnapshot,
   validAnalysisImportId,
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { analysisProposal } from "../chats/analysis-proposal.ts";
+import {
+  analysisLaunchBytes,
+  analysisPrompt,
+} from "../chats/analysis-prompt.ts";
 import { operationKey } from "./operation-journal.ts";
 import {
   analysisDirectory,
@@ -131,9 +134,12 @@ async function read(
       throw new Error("redaction-required", { cause: error });
     throw error;
   }
-  const snapshot = await readAnalysisSnapshot(directory, call.importId);
+  const snapshot = await readAnalysisSnapshot(directory, {
+    importId: call.importId,
+  });
   bounded(JSON.stringify(snapshot));
-  bounded(JSON.stringify({ prompt: analysisModelInput(snapshot) }));
+  if (analysisLaunchBytes(analysisPrompt(snapshot)) > analysisDocumentBytes)
+    throw new Error("analysis-too-large");
   analysisEvidence(snapshot);
   const result = { snapshot };
   bounded(JSON.stringify(result));

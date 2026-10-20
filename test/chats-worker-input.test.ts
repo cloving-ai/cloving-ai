@@ -11,7 +11,10 @@ import { syncBuiltinESMExports } from "node:module";
 import { basename, join } from "node:path";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
-import { analysisModelInput } from "../src/chats/analysis-input.ts";
+import {
+  analysisPrompt,
+  analysisLaunchBytes,
+} from "../src/chats/analysis-prompt.ts";
 import {
   withAnalysis,
   assertRefused,
@@ -210,7 +213,7 @@ await test(
         snapshot.corpus.split("\n").slice(1).join("\n");
       assert.ok(Buffer.byteLength(text) < 65_536);
       assert.ok(
-        Buffer.byteLength(analysisModelInput({ ...snapshot, corpus: text })) >
+        analysisLaunchBytes(analysisPrompt({ ...snapshot, corpus: text })) >
           65_536,
       );
       await f.write("redacted.jsonl", text);

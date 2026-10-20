@@ -6,6 +6,8 @@ import { questionCandidate } from "./chats-analysis-fixture.ts";
 import {
   analysisInstruction,
   analysisFollowUpPrompt,
+  analysisPrompt,
+  analysisLaunchBytes,
 } from "../src/chats/analysis-prompt.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
@@ -26,6 +28,50 @@ const snapshot = {
   structure: JSON.stringify(sidecar),
 };
 const workflowId = () => Promise.resolve("analyze-chats");
+
+for (const character of ["x", "é", "😀", '"', "\\"]) {
+  await test(`CLV-119 actual analysis launch uses the exact UTF-8 boundary for ${character}`, () =>
+    withScene(async (scene) => {
+      const evidence = { ...snapshot, corpus: "" };
+      const remaining = 65_536 - analysisLaunchBytes(analysisPrompt(evidence));
+      const unit = Buffer.byteLength(JSON.stringify(character)) - 2;
+      evidence.corpus =
+        character.repeat(Math.floor(remaining / unit)) +
+        "x".repeat(remaining % unit);
+      const restore = installAnalysisCli(scene, { reply: "{}" });
+      try {
+        const worker = scene.worker("bare", {
+          workflowId,
+          document: () =>
+            Promise.resolve(JSON.stringify({ snapshot: evidence })),
+        });
+        const delivered = await worker.deliver(analysis, signal);
+        assert.ok("receipt" in delivered, JSON.stringify(delivered));
+        await until(() => scene.reports.length === 1);
+        const turn = scene.turns()[0];
+        assert.ok(turn);
+        assert.equal(turn.prompt, analysisPrompt(evidence));
+        const instruction =
+          turn.arguments[turn.arguments.indexOf("--system-prompt") + 1];
+        assert.ok(instruction);
+        assert.equal(
+          Buffer.byteLength(instruction) + Buffer.byteLength(turn.prompt),
+          65_536,
+        );
+        evidence.corpus += "x";
+        assert.deepEqual(
+          await worker.deliver(
+            { ...analysis, operationId: "overflow" },
+            signal,
+          ),
+          { kind: "failed", reason: "analysis-too-large" },
+        );
+        assert.equal(scene.turns().length, 1);
+      } finally {
+        restore();
+      }
+    }));
+}
 
 await test("CLV-116 malformed private turn payloads return a fixed refusal", () =>
   withScene(async (scene) => {
@@ -142,11 +188,7 @@ await test("CLV-149 the complete escaped follow-up document is bounded before la
     const followUp = { draft, answer: "earlier" };
     const bytes = () =>
       Buffer.byteLength(analysisInstruction) +
-      Buffer.byteLength(
-        JSON.stringify({
-          prompt: analysisFollowUpPrompt(snapshot, followUp),
-        }),
-      );
+      Buffer.byteLength(analysisFollowUpPrompt(snapshot, followUp));
     draft.process.name = "";
     draft.process.name = "x".repeat(65_536 - bytes());
     assert.equal(bytes(), 65_536);
@@ -156,7 +198,8 @@ await test("CLV-149 the complete escaped follow-up document is bounded before la
         workflowId,
         document: () => Promise.resolve(JSON.stringify({ snapshot, followUp })),
       });
-      await worker.deliver(analysis, signal);
+      const delivered = await worker.deliver(analysis, signal);
+      assert.ok("receipt" in delivered, JSON.stringify(delivered));
       await until(() => scene.reports.length === 1);
       draft.process.name += "x";
       const payload = JSON.stringify({ snapshot, followUp });
@@ -166,7 +209,8 @@ await test("CLV-149 the complete escaped follow-up document is bounded before la
         await worker.deliver({ ...analysis, operationId: "overflow" }, signal),
         { kind: "failed", reason: "analysis-too-large" },
       );
-      draft.process.name = '"\\'.repeat(8_000);
+      draft.process.name = "";
+      draft.process.name = '"\\'.repeat(Math.ceil((65_537 - bytes()) / 4));
       assert.ok(
         Buffer.byteLength(JSON.stringify({ snapshot, followUp })) < 65_536,
       );

@@ -14,7 +14,10 @@ import { basename, join } from "node:path";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
 import { boundedAnalysisFile } from "../src/daemon/chats-files.ts";
-import { analysisModelInput } from "../src/chats/analysis-input.ts";
+import {
+  analysisPrompt,
+  analysisLaunchBytes,
+} from "../src/chats/analysis-prompt.ts";
 import { analysisProposal } from "../src/chats/analysis-proposal.ts";
 import { validateAnalysis } from "../src/chats/analysis.ts";
 import { structureImport } from "../src/chats/structure.ts";
@@ -56,9 +59,7 @@ await test(
   chatPlatformScenario(async () => {
     await withAnalysis(async (f) => {
       const snapshot = await f.capture();
-      const initial = Buffer.byteLength(
-        JSON.stringify({ prompt: analysisModelInput(snapshot) }),
-      );
+      const initial = analysisLaunchBytes(analysisPrompt(snapshot));
       const corpus = parseCorpus(snapshot.corpus);
       const first = itemAt(corpus);
       const padded = [
@@ -69,11 +70,7 @@ await test(
         .map((message) => JSON.stringify(message) + "\n")
         .join("");
       assert.equal(
-        Buffer.byteLength(
-          JSON.stringify({
-            prompt: analysisModelInput({ ...snapshot, corpus: text }),
-          }),
-        ),
+        analysisLaunchBytes(analysisPrompt({ ...snapshot, corpus: text })),
         65_536,
       );
       await f.write("redacted.jsonl", text);

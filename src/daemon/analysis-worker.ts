@@ -91,7 +91,7 @@ function promptOf(text: string | undefined, target: string): string {
     followUp === undefined
       ? analysisPrompt(snapshot)
       : analysisFollowUpPrompt(snapshot, followUp);
-  if (analysisLaunchBytes(JSON.stringify({ prompt })) > analysisDocumentBytes)
+  if (analysisLaunchBytes(prompt) > analysisDocumentBytes)
     throw new Error("analysis-too-large");
   return prompt;
 }

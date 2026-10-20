@@ -34,6 +34,9 @@ await test("CLV-136 Darwin chat adapter control flow uses isolated filesystem su
       "test/chats-worker-input.test.ts",
       "test/chats-worker-save.test.ts",
       "test/chats-worker-storage.test.ts",
+      "test/chats-analysis-capture.test.ts",
+      "test/chats-analysis-capture-failures.test.ts",
+      "test/chats-analysis-save-bounds.test.ts",
     ],
     {
       encoding: "utf8",
