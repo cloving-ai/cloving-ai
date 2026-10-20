@@ -113,15 +113,6 @@ function mergeCommitOf(results: readonly GithubResult[]): string | null {
   return merged.find((commit) => commit !== null) ?? null;
 }
 
-function validMerge(report: Fields, number: number): boolean {
-  return (
-    report["number"] === number &&
-    typeof report["merged"] === "string" &&
-    report["merged"].trim() !== "" &&
-    !Object.hasOwn(report, "reason")
-  );
-}
-
 function mergeProofOf(
   results: readonly GithubResult[],
   context: {
@@ -159,7 +150,13 @@ function mergeProofOf(
   );
   if (
     merged.length === 0 ||
-    merged.some(({ report }) => !validMerge(report, identity.number))
+    merged.some(
+      ({ report }) =>
+        report["number"] !== identity.number ||
+        typeof report["merged"] !== "string" ||
+        report["merged"].trim() === "" ||
+        Object.hasOwn(report, "reason"),
+    )
   )
     return null;
   return new Set(merged.map(({ report }) => report["merged"])).size === 1
