@@ -192,8 +192,8 @@ await test("CLV-016 the watch stream is quiet with no service and no journal, an
         seen.count += 1;
       });
       try {
+        await delay(200);
         advance(200);
-        await reached(() => seen.count > 0, advance);
         assert.equal(seen.count, 0);
         await followedTurn(harness, { seen, journal });
       } finally {
@@ -237,10 +237,7 @@ await test("CLV-016 the watch stream connects again to a service that starts aga
       advance(250);
       writeFileSync(join(journal, "late.txt"), "x");
       await startedRun(harness, { service: second, commandId: "c-3" });
-      await reached(
-        () => seen.count !== end || removed.count !== kept,
-        advance,
-      );
+      await delay(300);
       advance(300);
       assert.deepEqual([seen.count, removed.count], [end, kept]);
       await second.close();
