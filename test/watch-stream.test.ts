@@ -1,42 +1,121 @@
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { throttled, watchStream } from "../src/cli/watch-stream.ts";
 import { startedRun, withHarness, type Harness } from "./service-fixture.ts";
 
-async function reached(condition: () => boolean): Promise<boolean> {
-  for (let waited = 0; waited < 400 && !condition(); waited += 1)
+type Advance = (milliseconds: number) => void;
+
+async function advancing(
+  result: Promise<void>,
+  advance: Advance,
+): Promise<void> {
+  const state = { finished: false };
+  result.then(
+    () => {
+      state.finished = true;
+    },
+    () => {
+      state.finished = true;
+    },
+  );
+  const deadline = performance.now() + 60_000;
+  while (!state.finished) {
+    if (performance.now() >= deadline)
+      throw new Error("watch-stream-io-timeout");
     await delay(10);
+    advance(10);
+  }
+  await result;
+}
+
+async function withClock(
+  body: (advance: Advance) => Promise<void> | void,
+): Promise<void> {
+  const timeout = globalThis.setTimeout;
+  const clear = globalThis.clearTimeout;
+  const scheduled = new Map<NodeJS.Timeout, { at: number; run: () => void }>();
+  let now = 0;
+  mock.method(globalThis, "setTimeout", (run: () => void, milliseconds = 1) => {
+    const handle = timeout(() => undefined, 1);
+    clear(handle);
+    scheduled.set(handle, { at: now + milliseconds, run });
+    return handle;
+  });
+  mock.method(
+    globalThis,
+    "clearTimeout",
+    (handle: NodeJS.Timeout | undefined) => {
+      if (handle) scheduled.delete(handle);
+      clear(handle);
+    },
+  );
+  const advance: Advance = (milliseconds) => {
+    const end = now + milliseconds;
+    for (;;) {
+      const next = [...scheduled].sort(
+        ([, first], [, second]) => first.at - second.at,
+      )[0];
+      if (!next || next[1].at > end) break;
+      const [handle, timer] = next;
+      now = timer.at;
+      scheduled.delete(handle);
+      timer.run();
+    }
+    now = end;
+  };
+  try {
+    const result = body(advance);
+    if (result) await advancing(result, advance);
+  } finally {
+    mock.restoreAll();
+  }
+}
+
+async function reached(
+  condition: () => boolean,
+  advance: Advance,
+): Promise<boolean> {
+  for (let waited = 0; waited < 400 && !condition(); waited += 1) {
+    await delay(10);
+    advance(10);
+  }
   return condition();
 }
 
 interface Counter {
   count: number;
+  readonly advance: Advance;
 }
 
 async function more(counter: Counter, action: () => unknown): Promise<boolean> {
-  await delay(250);
+  counter.advance(250);
   const before = counter.count;
   await action();
-  return reached(() => counter.count > before);
+  return reached(() => counter.count > before, counter.advance);
 }
 
-await test("CLV-016 a burst of changes of the watch stream gives one notification at once and one more at the end of the interval", async () => {
-  const calls: number[] = [];
-  const notify = throttled(() => calls.push(calls.length), 60);
-  notify();
-  notify();
-  notify();
-  assert.equal(calls.length, 1);
-  await delay(150);
-  assert.equal(calls.length, 2);
-  notify();
-  assert.equal(calls.length, 3);
-  await delay(150);
-  assert.equal(calls.length, 3);
-});
+await test("CLV-016 a burst of changes of the watch stream gives one notification at once and one more at the end of the interval", () =>
+  withClock((advance) => {
+    const calls: number[] = [];
+    const notify = throttled(() => calls.push(calls.length), 60);
+    notify();
+    notify();
+    notify();
+    assert.equal(calls.length, 1);
+    advance(59);
+    assert.equal(calls.length, 1);
+    advance(1);
+    assert.equal(calls.length, 2);
+    advance(60);
+    assert.equal(calls.length, 2);
+    notify();
+    assert.equal(calls.length, 3);
+    advance(120);
+    assert.equal(calls.length, 3);
+  }));
 
 async function followedTurn(
   harness: Harness,
@@ -100,61 +179,70 @@ async function followedTurn(
 }
 
 await test("CLV-016 the watch stream is quiet with no service and no journal, and it gives a notification when the service answers, when the service commits a change, when a turn starts, at each line of the stream file of a turn in work, when a turn ends and when the service stops, and not for a folder with no start file", () =>
-  withHarness(async (harness) => {
-    const journal = join(dirname(harness.runtimeDirectory), "journal");
-    const stream = watchStream({
-      runtimeDirectory: harness.runtimeDirectory,
-      journal,
-      retryMilliseconds: 30,
-    });
-    const seen: Counter = { count: 0 };
-    stream.subscribe(() => {
-      seen.count += 1;
-    });
-    try {
-      await delay(200);
-      assert.equal(seen.count, 0);
-      await followedTurn(harness, { seen, journal });
-    } finally {
-      stream.close();
-    }
-  }));
+  withClock((advance) =>
+    withHarness(async (harness) => {
+      const journal = join(dirname(harness.runtimeDirectory), "journal");
+      const stream = watchStream({
+        runtimeDirectory: harness.runtimeDirectory,
+        journal,
+        retryMilliseconds: 30,
+      });
+      const seen: Counter = { count: 0, advance };
+      stream.subscribe(() => {
+        seen.count += 1;
+      });
+      try {
+        advance(200);
+        await reached(() => seen.count > 0, advance);
+        assert.equal(seen.count, 0);
+        await followedTurn(harness, { seen, journal });
+      } finally {
+        stream.close();
+      }
+    }),
+  ));
 
 await test("CLV-016 the watch stream connects again to a service that starts again, and a closed stream and a removed listener give no notification", () =>
-  withHarness(async (harness) => {
-    const journal = join(dirname(harness.runtimeDirectory), "journal");
-    mkdirSync(journal, { recursive: true });
-    const first = await harness.start();
-    const stream = watchStream({
-      runtimeDirectory: harness.runtimeDirectory,
-      journal,
-      retryMilliseconds: 30,
-    });
-    const seen: Counter = { count: 0 };
-    const removed: Counter = { count: 0 };
-    stream.subscribe(() => {
-      seen.count += 1;
-    });
-    const remove = stream.subscribe(() => {
-      removed.count += 1;
-    });
-    assert.ok(await reached(() => removed.count > 0));
-    remove();
-    await first.close();
-    const second = await harness.start();
-    assert.ok(
-      await more(seen, () =>
-        startedRun(harness, { service: second, commandId: "c-2" }),
-      ),
-      "a change of the second service",
-    );
-    const kept = removed.count;
-    stream.close();
-    await delay(250);
-    const end = seen.count;
-    writeFileSync(join(journal, "late.txt"), "x");
-    await startedRun(harness, { service: second, commandId: "c-3" });
-    await delay(300);
-    assert.deepEqual([seen.count, removed.count], [end, kept]);
-    await second.close();
-  }));
+  withClock((advance) =>
+    withHarness(async (harness) => {
+      const journal = join(dirname(harness.runtimeDirectory), "journal");
+      mkdirSync(journal, { recursive: true });
+      const first = await harness.start();
+      const stream = watchStream({
+        runtimeDirectory: harness.runtimeDirectory,
+        journal,
+        retryMilliseconds: 30,
+      });
+      const seen: Counter = { count: 0, advance };
+      const removed: Counter = { count: 0, advance };
+      stream.subscribe(() => {
+        seen.count += 1;
+      });
+      const remove = stream.subscribe(() => {
+        removed.count += 1;
+      });
+      assert.ok(await reached(() => removed.count > 0, advance));
+      remove();
+      const kept = removed.count;
+      await first.close();
+      const second = await harness.start();
+      assert.ok(
+        await more(seen, () =>
+          startedRun(harness, { service: second, commandId: "c-2" }),
+        ),
+        "a change of the second service",
+      );
+      const end = seen.count;
+      stream.close();
+      advance(250);
+      writeFileSync(join(journal, "late.txt"), "x");
+      await startedRun(harness, { service: second, commandId: "c-3" });
+      await reached(
+        () => seen.count !== end || removed.count !== kept,
+        advance,
+      );
+      advance(300);
+      assert.deepEqual([seen.count, removed.count], [end, kept]);
+      await second.close();
+    }),
+  ));
