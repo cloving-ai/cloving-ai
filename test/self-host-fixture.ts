@@ -65,7 +65,10 @@ function withOrigin(root: string, repository: string): string {
   return origin;
 }
 
-export async function scene(script = fakeClaude): Promise<Scene> {
+export async function scene(
+  script = fakeClaude,
+  entryPoint = entry,
+): Promise<Scene> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "cloving-self-")));
   process.on("exit", () => {
     rmSync(root, { recursive: true, force: true });
@@ -89,6 +92,7 @@ export async function scene(script = fakeClaude): Promise<Scene> {
   await writeFile(join(root, "fake-claude.mjs"), script);
   await writeFile(join(root, "fake-board.mjs"), fakeBoard);
   const settings = {
+    entryPoint,
     directory,
     repository,
     command: [process.execPath, join(root, "fake-claude.mjs")],
@@ -135,6 +139,7 @@ async function refused(
 
 async function launched(
   settings: {
+    readonly entryPoint: string;
     readonly directory: string;
     readonly repository: string;
     readonly command: readonly string[];
@@ -147,7 +152,7 @@ async function launched(
 ): Promise<Launch> {
   const child = spawn(
     process.execPath,
-    [entry, "start", ...(settings.argumentsList ?? [])],
+    [settings.entryPoint, "start", ...(settings.argumentsList ?? [])],
     {
       cwd: settings.repository,
       env: {

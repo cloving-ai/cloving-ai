@@ -699,9 +699,51 @@ After startup, `cloving status` lists the declared ID. Submit JSON with `cloving
 
 Startup retains each complete compiled project under `workflow-bundles` in private daemon state, beside the generated `project` directory. Each content-addressed snapshot includes workflow sources, declarations, registration manifests, all compiler artifacts, and the installed dependency graph and Node identity. Snapshots bind to the canonical repository and survive later source edits or removal. Storage lookup validates every captured file and returns `pinned-workflow-unavailable` for missing or changed bytes; startup refuses reuse of a matching damaged snapshot without repairing it. No retained generation is deleted automatically. Routing pinned runs through these stored generations remains pending.
 
+### Project and user workflows
+
+At daemon startup, Cloving also checks these folders on both macOS and Linux:
+
+- Project: `.cloving/workflows` under the repository selected by `cloving start --repository REPOSITORY` (the current repository by default).
+- User: `$XDG_CONFIG_HOME/cloving/workflows` when `XDG_CONFIG_HOME` is absolute; otherwise `$HOME/.config/cloving/workflows`. macOS uses these same XDG rules.
+
+Missing folders are left absent. Discovery reads top-level `.ts` files, excluding `.d.ts`, and requires a matching `<name>.declaration.json`. Unlike the bundled declaration above, an operator declaration wraps the workflow metadata and lists the effect methods it may request:
+
+```json
+{
+  "workflow": {
+    "workflowId": "project-review",
+    "effectLimit": 1,
+    "capabilities": ["claude"],
+    "input": {
+      "maximumBytes": 1024,
+      "fields": { "task": { "type": "string" } }
+    }
+  },
+  "methods": { "claude": ["run-turn"] }
+}
+```
+
+Use one exported async workflow function with `"use workflow"` and the public `cloving/workflows` helpers. Each capability requires a nonempty list of distinct method names. Declaration, source and actual SDK compilation must pass admission before registration. Declaring a method grants no execution authority; the broker still enforces each run's capabilities and budget. Submit inputs with `cloving run project-review --input input.json`.
+
+Admitted project and user workflows appear beside the bundled registrations. A refused neighbor does not stop valid workflows from loading. `cloving status --json` exposes `workflowRefusals`; status and watch show each refusal's scope, safe file label and codes without its source text. These codes identify the failed check:
+
+| Codes | Meaning |
+| --- | --- |
+| `invalid-declaration` | Missing, malformed or invalid declaration. |
+| `forbidden-import`, `missing-export` | Import outside the public helper surface, or an unavailable named export. |
+| `unsupported-source`, `dynamic-effect`, `direct-effect` | Unsupported source form, a nonliteral effect request, or a direct effect outside helpers. |
+| `undeclared-effect`, `effect-limit` | Requested method absent from the declaration, or statically known work exceeding the limit. |
+| `workflow-conflict`, `bundled-name-reserved` | Conflicting basename, workflow ID or function name across operator files, or collision with a bundled registration. |
+| `unsafe-workflow-path`, `workflow-read-failed`, `workflow-source-changed` | Unsafe file or folder path, unreadable input, or input changed during capture. |
+| `compile-failed` | Candidate analysis or SDK compilation could not complete. |
+
+Project and user files form one conflict set; neither scope overrides the other. Sources and declarations are captured at startup. Edits take effect on the next start, when new runs use the newly admitted version. A restored question retains its original prompt and decision identity. **Continuation after a source edit is not supported yet:** retained bundle storage exists, but daemon routing through old executable generations is still pending under CLV-153. Do not edit workflows with unfinished runs expecting their answers to execute the retained version.
+
+Every operator run binds to the daemon's canonical repository, including workflows loaded from the user folder. Its top-level `repository` input comes from the daemon; an input field also named `repository` remains ordinary submitted data under `input.repository`. A repository alias resolves to the same canonical binding. Retained snapshots are repository-bound and cannot be reused for another repository.
+
 Candidate policy checking is available internally through `checkWorkflowCandidate` in `src/workflow-candidate.ts`. It takes serializable analysis facts, an export snapshot and a candidate declaration containing `workflow` and `methods`. Each declared capability requires a nonempty list of distinct method names. The existing workflow sidecar format is unchanged. Results are sorted, unique refusal codes; an empty list grants no admission or execution authority.
 
-The caller supplies imported symbol names, literal effect pairs (`null` represents a dynamic value), direct-effect and unsupported-form findings, and known call and unit totals. Unknown portions of a total still require runtime budget enforcement. This pure checker does not analyze source or verify these facts. Source-to-facts analysis, SDK candidate compilation and the installed candidate admission adapter remain unimplemented.
+The caller supplies imported symbol names, literal effect pairs (`null` represents a dynamic value), direct-effect and unsupported-form findings, and known call and unit totals. Unknown portions of a total still require runtime budget enforcement. This pure checker does not analyze source or verify these facts. The installed admission adapter in `tools/admit-workflow.ts` derives those facts from source and performs SDK compilation; the pure checker alone cannot admit or authorize a run.
 
 ## Development of Cloving
 
