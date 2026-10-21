@@ -17,7 +17,7 @@ import {
   batchSetup,
   inspectBatchCheckpoints,
 } from "./analyze-chats-batches-fixture.ts";
-import { questionBatch } from "./chats-analysis-merge-fixture.ts";
+import { batch, questionBatch } from "./chats-analysis-merge-fixture.ts";
 import { parseCorpus } from "../src/chats/corpus-input.ts";
 
 const sizeStop = parseCorpus(batchCorpus())
@@ -27,6 +27,59 @@ const sizeStop = parseCorpus(batchCorpus())
     ),
   )
   .join("\n");
+
+for (const { size, count } of [
+  { size: 2_000, count: 3 },
+  { size: 700, count: 1 },
+]) {
+  await test(
+    `CLV-159 full-size escaped replies save ${String(count)} near-full batches through the capture`,
+    chatPlatformScenario(() =>
+      withConsumer(analysisSource, async (consumer) => {
+        const candidate = batch();
+        const reply = {
+          ...candidate,
+          process: { ...candidate.process, scope: 'quoted"\\\t😀'.repeat(600) },
+        };
+        const result =
+          await consumer.run(`${batchSetup({ reply, corpus: batchCorpus(size) })}
+const reply = readFileSync("batch-reply.json", "utf8");
+writeFileSync("batch-reply.json", reply + "\\t".repeat(16_000 - Buffer.byteLength(reply)));
+installAnalysisCli({ directory: process.cwd() }, { reply: readFileSync("batch-reply.json", "utf8"), mode: "fixed-reply" });
+const runId = await submitAnalysis();
+await until(async () => ["completed", "blocked", "failed"].includes(await stateOf(runId)));
+${inspectBatchCheckpoints}
+await finished(runId);
+`);
+        assert.equal(result.status, 0, result.stderr);
+        const outcome = result.lines[1];
+        assert.equal(
+          field(field(outcome, "outcome"), "kind"),
+          "handoff_requested",
+          JSON.stringify(result.lines),
+        );
+        assert.deepEqual(field(outcome, "budget"), {
+          limit: 11,
+          spent: 1 + count * 2,
+        });
+        assert.equal(field(outcome, "turns"), count);
+        assert.equal(field(outcome, "usageTurns"), count);
+        assert.equal(field(outcome, "cost"), count * 0.25);
+        const checkpoints = field(result.lines[0], "checkpoints");
+        assert.ok(Array.isArray(checkpoints));
+        assert.equal(checkpoints.length, count + 1);
+        assert.deepEqual(checkpoints.at(-1), {
+          status: "complete",
+          covered: 16,
+          uncovered: 0,
+          completedBatchCount: count,
+          total: 16,
+          hasResult: true,
+        });
+      }),
+    ),
+  );
+}
 const stopCases = [
   {
     name: "merge conflict",
@@ -241,7 +294,6 @@ await test("CLV-159 commits each of three batches before starting the next restr
     assert.deepEqual(JSON.parse(String(field(save, "payload"))), {
       importId,
       cycleId: input.cycleId,
-      snapshot: batch.snapshot,
       reply,
       batch: batch.batch,
     });

@@ -42,8 +42,9 @@ interface CheckpointInput {
 
 interface FinalizeInput {
   readonly runId: string;
+  readonly importId: string;
   readonly cycleId: string;
-  readonly snapshot: AnalysisSnapshot;
+  readonly snapshot: AnalysisSnapshot | undefined;
   readonly candidate: unknown;
   readonly mode: "deliver" | "reconcile";
   readonly batch?: unknown;
@@ -129,7 +130,7 @@ async function commitAnalysisBatch(
 async function boundBatch(directory: string, input: FinalizeInput) {
   const capture = await findAnalysisCapture(directory, {
     runId: input.runId,
-    importId: input.snapshot.importId,
+    importId: input.importId,
   });
   if (capture === undefined) throw new Error("analysis-output-failed");
   const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
@@ -151,8 +152,9 @@ async function boundBatch(directory: string, input: FinalizeInput) {
   });
   if (prepared.kind === "refused") throw new Error("analysis-output-failed");
   if (
+    input.snapshot !== undefined &&
     JSON.stringify(input.batch === undefined ? snapshot : prepared.snapshot) !==
-    JSON.stringify(input.snapshot)
+      JSON.stringify(input.snapshot)
   )
     throw new Error("analysis-output-failed");
   if (

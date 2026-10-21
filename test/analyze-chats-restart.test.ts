@@ -8,8 +8,6 @@ import {
   analysisSetup as setup,
   analysisQuestionSetup,
 } from "./analyze-chats-sdk-fixture.ts";
-import { snapshot } from "./analyze-chats-workflow-fixture.ts";
-import { digestOf } from "./service-fixture.ts";
 import {
   firstCheckpointFiles,
   assertBatchRestart,
@@ -185,10 +183,7 @@ function assertCompletedRestart(lines: readonly unknown[]): void {
   ])
     assert.equal(field(resumed, key), 1, key);
   assert.deepEqual(field(resumed, "segments"), ["continue-run", "start-run"]);
-  assert.deepEqual(field(resumed, "savedSnapshots"), [
-    digestOf(JSON.stringify(snapshot)),
-    digestOf(JSON.stringify(snapshot)),
-  ]);
+  assert.deepEqual(field(resumed, "savedSnapshots"), [null, null]);
   assert.equal(field(resumed, "answer"), "earlier");
   assert.equal(field(line, "state"), "completed");
   assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");

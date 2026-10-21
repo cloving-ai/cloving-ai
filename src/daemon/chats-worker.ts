@@ -11,7 +11,7 @@ import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
 import {
   analysisDocumentBytes,
   analysisEvidence,
-  isAnalysisSnapshot,
+  analysisSaveInput,
   validAnalysisImportId,
 } from "../chats/analysis-input.ts";
 import {
@@ -21,6 +21,7 @@ import {
 import {
   captureAnalysisSnapshot,
   readCapturedAnalysisSnapshot,
+  findAnalysisCapture,
 } from "./chats-capture.ts";
 import { finalizeAnalysis } from "./chats-checkpoints.ts";
 import { operationKey } from "./operation-journal.ts";
@@ -125,19 +126,17 @@ async function read(
   settings: ChatsWorkerSettings,
   call: { readonly intent: DeliveryIntent; readonly importId: string },
 ): Promise<AdapterOutcome> {
+  const { importId } = call;
   let directory: string;
   try {
-    directory = await analysisDirectory(
-      settings.runtimeDirectory,
-      call.importId,
-    );
+    directory = await analysisDirectory(settings.runtimeDirectory, importId);
   } catch (error) {
     if (Reflect.get(Object(error), "code") === "ENOENT")
       throw new Error("redaction-required", { cause: error });
     throw error;
   }
   const capture = await captureAnalysisSnapshot(directory, {
-    importId: call.importId,
+    importId,
     runId: call.intent.runId,
   });
   const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
@@ -152,28 +151,20 @@ async function read(
   return completed(call.intent, result);
 }
 
-function saveInput(payload: Fields) {
-  const snapshot = payload["snapshot"];
-  const cycleId = payload["cycleId"];
-  if (
-    !isAnalysisSnapshot(snapshot) ||
-    snapshot.importId !== payload["importId"] ||
-    typeof cycleId !== "string" ||
-    !/^[A-Za-z0-9_-]{1,128}$/.test(cycleId) ||
-    typeof payload["reply"] !== "string"
-  )
-    throw new Error("analysis-input-refused");
-  let candidate: unknown;
-  try {
-    candidate = JSON.parse(payload["reply"]);
-  } catch {
-    throw new Error(
-      "followUp" in payload
-        ? "analysis-follow-up-refused"
-        : "analysis-invalid-json",
-    );
-  }
-  return { snapshot, cycleId, candidate, reply: payload["reply"] };
+async function saveInput(settings: ChatsWorkerSettings, call: SaveCall) {
+  if ("snapshot" in call.payload) return analysisSaveInput(call.payload);
+  const importId = String(call.payload["importId"]);
+  const directory = await analysisDirectory(
+    settings.runtimeDirectory,
+    importId,
+  );
+  const capture = await findAnalysisCapture(directory, {
+    runId: call.intent.runId,
+    importId,
+  });
+  if (capture === undefined) throw new Error("analysis-output-failed");
+  const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
+  return analysisSaveInput({ ...call.payload, snapshot });
 }
 
 async function saveQuestion(
@@ -181,7 +172,7 @@ async function saveQuestion(
   call: {
     readonly intent: DeliveryIntent;
     readonly mode: "deliver" | "reconcile";
-    readonly input: ReturnType<typeof saveInput>;
+    readonly input: ReturnType<typeof analysisSaveInput>;
     readonly question: AnalysisQuestion;
   },
 ): Promise<AdapterOutcome> {
@@ -230,7 +221,7 @@ async function save(
   settings: ChatsWorkerSettings,
   call: SaveCall,
 ): Promise<AdapterOutcome> {
-  const input = saveInput(call.payload);
+  const input = await saveInput(settings, call);
   const { snapshot, candidate } = input;
   if ("followUp" in call.payload)
     return saveFollowUp(settings.runtimeDirectory, { ...call, input });
@@ -243,33 +234,35 @@ async function save(
     "batch" in call.payload
       ? undefined
       : validateAnalysis(candidate, analysisEvidence(snapshot));
-  if (validation !== undefined) {
-    if (!validation.accepted)
-      return refused(
-        validation.codes[0] ?? "analysis-input-refused",
-        validation.codes,
-      );
-    const question = validation.result.openQuestion;
-    if (question !== undefined)
-      return await saveQuestion(settings, { ...call, input, question });
-  }
+  if (validation === undefined)
+    return saveAccepted(settings, { ...call, input });
+  if (!validation.accepted)
+    return refused(
+      validation.codes[0] ?? "analysis-input-refused",
+      validation.codes,
+    );
+  const question = validation.result.openQuestion;
+  if (question !== undefined)
+    return saveQuestion(settings, { ...call, input, question });
   return saveAccepted(settings, { ...call, input });
 }
 
 async function saveAccepted(
   settings: ChatsWorkerSettings,
-  call: SaveCall & { readonly input: ReturnType<typeof saveInput> },
+  call: SaveCall & { readonly input: ReturnType<typeof analysisSaveInput> },
 ): Promise<AdapterOutcome> {
   const { snapshot, cycleId, candidate } = call.input;
+  const { importId } = snapshot;
   try {
     const directory = await analysisDirectory(
       settings.runtimeDirectory,
-      snapshot.importId,
+      importId,
     );
     const saved = await finalizeAnalysis(directory, {
       runId: call.intent.runId,
+      importId,
       cycleId,
-      snapshot,
+      snapshot: "snapshot" in call.payload ? snapshot : undefined,
       candidate,
       mode: call.mode,
       batch: call.payload["batch"],
@@ -296,7 +289,7 @@ async function saveAccepted(
   return completed(call.intent, {
     kind: "handoff_requested",
     cycleId,
-    promotionId: `analysis:${snapshot.importId}:${cycleId}`,
+    promotionId: `analysis:${importId}:${cycleId}`,
   });
 }
 

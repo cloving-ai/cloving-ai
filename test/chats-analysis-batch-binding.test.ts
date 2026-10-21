@@ -29,7 +29,6 @@ await test(
       const base = {
         importId,
         cycleId,
-        snapshot,
         batch: binding,
         reply: JSON.stringify(batch()),
       };
@@ -59,17 +58,21 @@ await test(
           before,
         );
       }
-      const { batch: omitted, ...unbound } = base;
-      assert.ok(omitted);
+      const unbound = { importId, cycleId, reply: base.reply };
       fixture.payloads.set("save-analysis", JSON.stringify(unbound));
       assertRefused(
         await fixture.deliver("save-analysis"),
-        "analysis-input-refused",
+        "analysis-output-failed",
       );
       assert.deepEqual(await readdir(join(fixture.directory, folder)), before);
       fixture.payloads.set("save-analysis", JSON.stringify(base));
       const saved = await fixture.deliver("save-analysis");
       assert.equal(saved.kind, "completed");
+      assert.deepEqual(await fixture.deliver("save-analysis"), saved);
+      fixture.payloads.set(
+        "save-analysis",
+        JSON.stringify({ ...base, snapshot }),
+      );
       assert.deepEqual(await fixture.deliver("save-analysis"), saved);
     }),
   ),

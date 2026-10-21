@@ -52,7 +52,6 @@ await test("CLV-116 accepted candidate uses one turn and three sequential charge
   assert.deepEqual(JSON.parse(String(field(request(line, 2), "payload"))), {
     importId,
     cycleId: input.cycleId,
-    snapshot,
     reply,
   });
   assert.equal(
@@ -229,7 +228,6 @@ await test("CLV-149 an exact choice runs one second turn and final save with fiv
   assert.deepEqual(JSON.parse(String(field(request(line, 4), "payload"))), {
     importId,
     cycleId: input.cycleId,
-    snapshot,
     reply,
     followUp: { draft: questionCandidate(), answer: "earlier" },
   });

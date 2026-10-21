@@ -251,7 +251,6 @@ async function followUp(
       payload: {
         importId,
         cycleId,
-        snapshot: data.snapshot,
         reply: turn.reply,
         followUp: data.followUp,
       },
@@ -279,7 +278,7 @@ export async function analyzeChats(
   let analyzed = await firstTurn(input);
   while (analyzed.kind === "analyzed") {
     const { data, reply } = analyzed;
-    const { snapshot, batch } = data;
+    const { batch } = data;
     const save = await protectedEffect(
       request(importId, {
         operation: "save-analysis",
@@ -287,7 +286,6 @@ export async function analyzeChats(
         payload: {
           importId,
           cycleId,
-          snapshot,
           reply,
           ...(batch === undefined ? {} : { batch }),
         },
