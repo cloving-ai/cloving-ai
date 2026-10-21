@@ -926,7 +926,9 @@
     "test/chats-analysis-capture.test.ts": "test",
     "test/chats-analysis-capture-fixture.ts": "test",
     "test/chats-analysis-save-bounds.test.ts": "test",
-    "test/chats-analysis-capture-failures.test.ts": "test"
+    "test/chats-analysis-capture-failures.test.ts": "test",
+    "test/chats-analysis-capture-crash-fixture.ts": "test",
+    "test/chats-analysis-capture-restart.test.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, rm } from "node:fs/promises";
+import { lstat, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { record } from "../protocol.ts";
 import {
@@ -31,35 +31,29 @@ export async function captureAnalysisSnapshot(
   const key = captureKey(binding);
   const folder = join(directory, `capture-${key}`);
   await validateDestination(directory);
+  const existing = await publishedCapture(directory, binding);
+  if (existing !== undefined) return existing;
+  const temporary = await mkdtemp(join(directory, `.capture-${key}-`));
   try {
-    await mkdir(folder, { mode: 0o700 });
-  } catch (error) {
-    if (Reflect.get(Object(error), "code") !== "EEXIST") throw error;
-    const capture = await capturedReference(folder, binding);
-    await readCapturedAnalysisSnapshot(directory, capture);
-    return capture;
-  }
-  try {
-    const snapshot = await copiedSnapshot(directory, {
-      folder,
-      importId: binding.importId,
+    const capture = await writeCapture(directory, {
+      ...binding,
+      folder: temporary,
     });
-    const evidence = analysisEvidence(snapshot);
-    const capture: AnalysisCapture = {
-      schemaVersion: 1,
-      key,
-      runId: binding.runId,
-      importId: binding.importId,
-      digest: snapshotDigest(snapshot),
-      totalRecords: evidence.records.length,
-    };
-    await matchingPrivateFile(
-      join(folder, "capture.json"),
-      JSON.stringify(capture) + "\n",
-    );
+    try {
+      await rename(temporary, folder);
+    } catch (error) {
+      if (
+        !["EEXIST", "ENOTEMPTY"].includes(
+          String(Reflect.get(Object(error), "code")),
+        )
+      )
+        throw error;
+      const published = await publishedCapture(directory, binding);
+      if (published === undefined) throw error;
+      return published;
+    }
     return capture;
   } catch (error) {
-    await rm(folder, { recursive: true, force: true });
     if (
       Reflect.get(Object(error), "code") === "ENOENT" &&
       ["redaction.json", "redacted.jsonl"].some((name) =>
@@ -68,7 +62,52 @@ export async function captureAnalysisSnapshot(
     )
       throw new Error("redaction-required", { cause: error });
     throw error;
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
   }
+}
+
+async function publishedCapture(
+  directory: string,
+  binding: { readonly runId: string; readonly importId: string },
+): Promise<AnalysisCapture | undefined> {
+  const folder = join(directory, `capture-${captureKey(binding)}`);
+  const stats = await lstat(folder).catch((error: unknown) => {
+    if (Reflect.get(Object(error), "code") !== "ENOENT") throw error;
+    return undefined;
+  });
+  if (stats === undefined) return undefined;
+  const capture = await capturedReference(folder, binding);
+  await readCapturedAnalysisSnapshot(directory, capture);
+  return capture;
+}
+
+async function writeCapture(
+  directory: string,
+  input: {
+    readonly folder: string;
+    readonly runId: string;
+    readonly importId: string;
+  },
+): Promise<AnalysisCapture> {
+  const snapshot = await copiedSnapshot(directory, {
+    folder: input.folder,
+    importId: input.importId,
+  });
+  const evidence = analysisEvidence(snapshot);
+  const capture: AnalysisCapture = {
+    schemaVersion: 1,
+    key: captureKey(input),
+    runId: input.runId,
+    importId: input.importId,
+    digest: snapshotDigest(snapshot),
+    totalRecords: evidence.records.length,
+  };
+  await matchingPrivateFile(
+    join(input.folder, "capture.json"),
+    JSON.stringify(capture) + "\n",
+  );
+  return capture;
 }
 
 export async function readCapturedAnalysisSnapshot(
