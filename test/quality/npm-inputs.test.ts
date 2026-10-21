@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkNpmInputs } from "../../quality/npm-inputs.ts";
 import { withFiles } from "./files-fixture.ts";
+import type { CheckTiming } from "../../quality/command.ts";
 
 const manifest = {
   name: "fixture",
@@ -23,6 +24,27 @@ const installed = {
 await test("QG-20 accepts matching declarations and a complete installed npm graph", async () => {
   await withFiles(installed, async (directory) => {
     await assert.doesNotReject(checkNpmInputs(directory));
+  });
+});
+
+await test("CLV-152 records the npm inventory command and its unchanged limit", async () => {
+  await withFiles(installed, async (directory) => {
+    const timings: CheckTiming[] = [];
+    let tick = 0;
+    await checkNpmInputs(directory, {
+      timings,
+      clock: () => {
+        tick += 100;
+        return tick;
+      },
+    });
+    assert.deepEqual(timings, [
+      {
+        check: "npm-inputs",
+        elapsedMilliseconds: 100,
+        timeoutMilliseconds: 60000,
+      },
+    ]);
   });
 });
 

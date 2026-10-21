@@ -173,6 +173,7 @@
     "test/quality/parameter-count.test.ts": "test",
     "test/quality/program-fixture.ts": "test",
     "test/quality/project.test.ts": "test",
+    "test/quality/quality-output.test.ts": "test",
     "test/quality/protected-entry.test.ts": "test",
     "test/quality/static-project.test.ts": "test",
     "test/quality/production-inventory.test.ts": "test",

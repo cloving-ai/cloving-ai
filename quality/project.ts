@@ -12,12 +12,32 @@ export const requiredChecks = [
 ] as const;
 
 export interface ProjectOptions extends SourceOptions {
+  readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly trustedCompilerConfiguration?: string;
   readonly architecture: DependencyPolicy;
   readonly stepExports: Readonly<Record<string, readonly string[]>>;
   readonly suppressionApprovals?: readonly SuppressionApproval[];
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface ProjectReport {
+  readonly files: string[];
+  readonly completed: string[];
+  readonly timings: CheckTiming[];
+  readonly warnings: string[];
+}
+
+export function writeProjectReport(
+  report: Pick<ProjectReport, "timings" | "warnings">,
+  output: {
+    readonly stdout: { write: (text: string) => boolean };
+    readonly stderr: { write: (text: string) => boolean };
+  } = process,
+): void {
+  output.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  for (const warning of report.warnings)
+    output.stderr.write(`Warning: ${warning}\n`);
 }
 
 export function assertCheckCoverage(completed: readonly string[]): void {
@@ -28,15 +48,20 @@ export function assertCheckCoverage(completed: readonly string[]): void {
 export async function checkProject(
   directory: string,
   options: ProjectOptions,
-): Promise<{ files: string[]; completed: string[] }> {
+): Promise<ProjectReport> {
+  const timings = options.commandOptions?.timings ?? [];
+  const measured = {
+    ...options,
+    commandOptions: { ...options.commandOptions, timings },
+  };
   const { program, files, completed } = await checkProjectSources(
     directory,
-    options,
+    measured,
   );
-  checkProjectTests(directory, { program, files, options });
+  checkProjectTests(directory, { program, files, options: measured });
   completed.push("tests");
   assertCheckCoverage(completed);
-  return { files, completed };
+  return { files, completed, timings, warnings: checkTimeWarnings(timings) };
 }
 
 export async function checkProjectSources(
@@ -88,7 +113,7 @@ export async function checkProjectSources(
       `Structure failed:\n${JSON.stringify(structural, null, 2)}`,
     );
   completed.push("structure");
-  const clones = await inspectClones(files);
+  const clones = await inspectClones(files, options.commandOptions);
   if (clones.length > 0)
     throw new Error(
       `Clone threshold exceeded:\n${JSON.stringify(clones, null, 2)}`,
@@ -112,6 +137,9 @@ function checkProjectTests(
   });
   checkTests(directory, {
     files,
+    ...(options.commandOptions
+      ? { commandOptions: options.commandOptions }
+      : {}),
     timeFactor: options.timeFactor ?? 1,
     ...(production.length > 0 ? { coverageFiles: production } : {}),
     ...(options.requiredTests ? { requiredTests: options.requiredTests } : {}),
@@ -131,3 +159,8 @@ import { checkArchitecture } from "./architecture.ts";
 import { inspectWorkflowBoundaries } from "./workflow-boundaries.ts";
 import { productionInventory } from "./production-inventory.ts";
 import type { SuppressionApproval } from "./suppression-approval.ts";
+import {
+  checkTimeWarnings,
+  type CheckTiming,
+  type CommandOptions,
+} from "./command.ts";

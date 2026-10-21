@@ -6,6 +6,7 @@ import {
   assertCheckCoverage,
   checkProject,
   requiredChecks,
+  writeProjectReport,
 } from "../../quality/project.ts";
 import { withFiles } from "./files-fixture.ts";
 
@@ -14,8 +15,20 @@ const valid =
 const testSource =
   'import assert from "node:assert/strict"; import { test } from "node:test"; import { double } from "./main.ts"; await test("doubles", () => { assert.equal(double(2), 4); });';
 
-async function checkFixture(directory: string) {
+async function checkFixture(
+  directory: string,
+  timing?: {
+    readonly clock: () => number;
+    readonly timeFactor?: number;
+  },
+) {
   return await checkProject(directory, {
+    ...(timing
+      ? {
+          commandOptions: { clock: timing.clock },
+          timeFactor: timing.timeFactor ?? 1,
+        }
+      : {}),
     architecture: {
       roles: {
         [resolve(directory, "main.ts")]: "pure",
@@ -53,6 +66,111 @@ await test("QG-01 executes every analyzer and the actual fixture test suite", as
     assert.equal(result.files.length, 2);
     assert.deepEqual(result.completed, requiredChecks);
   });
+});
+
+await test("CLV-152 reports a near-limit test run without failing the gate", async () => {
+  await withFiles(await fixtureFiles(valid), async (directory) => {
+    const ticks = [0, 100, 100, 520100, 520100, 520200];
+    const result = await checkFixture(directory, {
+      clock: () => {
+        const tick = ticks.shift();
+        assert.notEqual(tick, undefined);
+        return tick ?? 0;
+      },
+    });
+    assert.deepEqual(result.timings, [
+      { check: "clones", elapsedMilliseconds: 100, timeoutMilliseconds: 30000 },
+      {
+        check: "tests",
+        elapsedMilliseconds: 520000,
+        timeoutMilliseconds: 600000,
+      },
+      {
+        check: "coverage",
+        elapsedMilliseconds: 100,
+        timeoutMilliseconds: 60000,
+      },
+    ]);
+    assert.deepEqual(result.warnings, [
+      "tests used 520 s of 600 s (87 percent)",
+    ]);
+    assert.deepEqual(result.completed, requiredChecks);
+    assert.deepEqual(ticks, []);
+  });
+});
+
+for (const [timeFactor, tests, coverage, warnings] of [
+  [1, 300000, 100, []],
+  [1, 300000, 52000, ["coverage used 52 s of 60 s (87 percent)"]],
+  [3, 1560000, 100, ["tests used 1560 s of 1800 s (87 percent)"]],
+] as const) {
+  await test(`CLV-152 reports tests at ${String(tests)} ms and coverage at ${String(coverage)} ms with factor ${String(timeFactor)}`, async () => {
+    await withFiles(await fixtureFiles(valid), async (directory) => {
+      const ticks = [
+        0,
+        100,
+        100,
+        100 + tests,
+        100 + tests,
+        100 + tests + coverage,
+      ];
+      const result = await checkFixture(directory, {
+        timeFactor,
+        clock: () => {
+          const tick = ticks.shift();
+          assert.notEqual(tick, undefined);
+          return tick ?? 0;
+        },
+      });
+      assert.deepEqual(result.timings, [
+        {
+          check: "clones",
+          elapsedMilliseconds: 100,
+          timeoutMilliseconds: 30000,
+        },
+        {
+          check: "tests",
+          elapsedMilliseconds: tests,
+          timeoutMilliseconds: 600000 * timeFactor,
+        },
+        {
+          check: "coverage",
+          elapsedMilliseconds: coverage,
+          timeoutMilliseconds: 60000 * timeFactor,
+        },
+      ]);
+      assert.deepEqual(result.warnings, warnings);
+      assert.deepEqual(result.completed, requiredChecks);
+      assert.deepEqual(ticks, []);
+    });
+  });
+}
+
+await test("CLV-152 prints time warnings after the machine-readable report", () => {
+  const warnings = ["tests used 520 s of 600 s (87 percent)"];
+  const report = { files: [], completed: [], timings: [], warnings };
+  const output: string[] = [];
+  const writer = {
+    stdout: {
+      write: (text: string) => {
+        output.push(`stdout:${text}`);
+        return true;
+      },
+    },
+    stderr: {
+      write: (text: string) => {
+        output.push(`stderr:${text}`);
+        return true;
+      },
+    },
+  };
+  writeProjectReport(report, writer);
+  writeProjectReport({ ...report, warnings: [] }, writer);
+  assert.deepEqual(output, [
+    `stdout:${JSON.stringify(report, null, 2)}\n`,
+    `stderr:Warning: ${String(warnings[0])}\n`,
+    `stdout:${JSON.stringify({ ...report, warnings: [] }, null, 2)}\n`,
+  ]);
 });
 
 for (const [name, addition, message] of [
