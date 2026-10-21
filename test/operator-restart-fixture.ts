@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { record } from "../src/protocol.ts";
 import { call } from "./service-fixture.ts";
 import { field, items, reached } from "./self-host-fixture.ts";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
@@ -81,8 +82,9 @@ export async function operatorInventory(
     signal: AbortSignal.timeout(5000),
   });
   assert.equal(response.status, 200);
-  const model: unknown = await response.json();
-  assert.deepEqual(field(model, "workflowRefusals"), restartRefusals);
+  const model = record(await response.json());
+  assert.ok(model, "Operator watch data must be a JSON object.");
+  assert.deepEqual(model["workflowRefusals"], restartRefusals);
   assert.doesNotMatch(
     JSON.stringify([status, model]),
     /PRIVATE_SOURCE_SENTINEL/,
@@ -124,14 +126,16 @@ export async function settledOperatorSegments(fixture: OperatorRestart) {
     const files = (await readdir(folder)).filter((name) =>
       name.endsWith(".json"),
     );
-    const runs: unknown[] = await Promise.all(
-      files.map(
-        async (file) =>
-          JSON.parse(await readFile(join(folder, file), "utf8")) as unknown,
-      ),
+    const runs = await Promise.all(
+      files.map(async (file) => {
+        const run = record(
+          JSON.parse(await readFile(join(folder, file), "utf8")),
+        );
+        assert.ok(run, "Operator run must be a JSON object.");
+        return run;
+      }),
     );
-    return runs.length > 0 &&
-      runs.every((run) => field(run, "status") === "completed")
+    return runs.length > 0 && runs.every((run) => run["status"] === "completed")
       ? runs
       : undefined;
   });
