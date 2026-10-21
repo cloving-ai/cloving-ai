@@ -77,7 +77,7 @@ await test("CLV-016 the ticket workflow asks the Claude worker for one turn with
   );
   assert.match(
     payload,
-    /Run the checks of the repository before you finish\. Commit your work, then run npm run check:clean before the report\./,
+    /Run the checks of the repository before you finish\. Commit your work before the report\. If the repository provides npm run check:clean, run it after committing\./,
   );
   assert.match(
     payload,
