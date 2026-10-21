@@ -71,6 +71,7 @@
     "build:workflows": "node tools/compile-workflows.ts",
     "check:setup": "tsc --project tsconfig.json --noEmit",
     "check:quality": "node tools/check-quality.ts",
+    "check:clean": "node tools/check-clean.ts",
     "check:lint": "eslint src tools quality test eslint.config.mjs --max-warnings 0",
     "check:format": "prettier --check src tools quality test eslint.config.mjs package.json tsconfig.json tsconfig.build.json",
     "test:quality": "node --test test/quality/*.test.ts",

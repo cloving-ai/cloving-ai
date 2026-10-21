@@ -39,7 +39,7 @@ function instructions(repository: string): string {
     `If this work tree has no node_modules folder and the main repository has one, make a copy-on-write clone: cp -c -R ${repository}/node_modules node_modules`,
     "Follow the instructions of the repository (AGENTS.md and CLAUDE.md).",
     "Use test-driven development: write a test that fails, see it fail, then write the code.",
-    "Run the checks of the repository before you finish.",
+    "Run the checks of the repository before you finish. Commit your work before the report. If the repository provides npm run check:clean, run it after committing.",
     "Commit your work on the current branch. Do not push. Do not change a different branch.",
     "End with a short report: what you changed, the checks that you ran with their results, and what is not done. End the report with exactly one of the lines Ticket status: complete or Ticket status: partial. Before a partial status line, include Remaining: followed by a list with one item on each line, using a dash and a space before each item. Blank lines are allowed around and between list items.",
   ].join("\n");
