@@ -226,7 +226,7 @@ await finished(runId);
 }
 
 await test(
-  "CLV-159 questions across batches stop before accepting a checkpoint",
+  "CLV-160 a question in batch one pauses before accepting a checkpoint",
   chatPlatformScenario(() =>
     withConsumer(analysisSource, async (consumer) => {
       const result =
@@ -237,7 +237,7 @@ ${inspectBatchCheckpoints}
 await finished(runId);
 `);
       assert.equal(result.status, 0, result.stderr);
-      assert.equal(field(field(result.lines[1], "outcome"), "kind"), "blocked");
+      assert.equal(field(result.lines[1], "state"), "waiting_gate");
       assert.equal(field(field(result.lines[0], "checkpoints"), "length"), 1);
       assert.equal(field(result.lines[1], "turns"), 1);
     }),

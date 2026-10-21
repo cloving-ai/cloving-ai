@@ -37,9 +37,16 @@ export interface AnalysisFollowUp {
 
 export function analysisFollowUpPrompt(
   snapshot: AnalysisSnapshot,
-  followUp: AnalysisFollowUp,
+  input: AnalysisFollowUp & {
+    readonly context?: Readonly<Record<string, unknown>>;
+  },
 ): string {
-  return JSON.stringify({ evidence: snapshot, followUp });
+  const { context, ...followUp } = input;
+  return JSON.stringify({
+    evidence: snapshot,
+    ...(context === undefined ? {} : { context }),
+    followUp,
+  });
 }
 
 function listedAnswer(
