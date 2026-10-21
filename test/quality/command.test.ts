@@ -13,6 +13,26 @@ const command = {
   timeoutMilliseconds: 1000,
 };
 
+await test("CLV-156 forwards test concurrency to check subprocesses", () => {
+  const previous = process.env["CLOVING_TEST_CONCURRENCY"];
+  process.env["CLOVING_TEST_CONCURRENCY"] = "3";
+  try {
+    assert.equal(
+      runCommand({
+        ...command,
+        arguments: [
+          "-e",
+          "process.stdout.write(process.env.CLOVING_TEST_CONCURRENCY ?? 'unset')",
+        ],
+      }),
+      "3",
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_TEST_CONCURRENCY"];
+    else process.env["CLOVING_TEST_CONCURRENCY"] = previous;
+  }
+});
+
 await test("QG-10 gives a check its explicit isolated home directory", async () => {
   await withFiles({}, (directory) => {
     const options = {
