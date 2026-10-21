@@ -8,6 +8,8 @@ import {
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { validateDestination } from "../chats/destination.ts";
+import { initialAnalysisCheckpoint } from "../chats/analysis-checkpoint.ts";
+import { checkpointProposal } from "../chats/analysis-proposal.ts";
 import {
   boundedAnalysisFile,
   matchingPrivateFile,
@@ -32,7 +34,7 @@ export async function captureAnalysisSnapshot(
   const folder = join(directory, `capture-${key}`);
   await validateDestination(directory);
   await reclaimAbandonedCaptures(directory);
-  const existing = await publishedCapture(directory, binding);
+  const existing = await findAnalysisCapture(directory, binding);
   if (existing !== undefined) return existing;
   const temporary = await mkdtemp(
     join(directory, `.capture-${key}-${String(process.pid)}-`),
@@ -51,7 +53,7 @@ export async function captureAnalysisSnapshot(
         (error.code === "EEXIST" || error.code === "ENOTEMPTY")
       ))
         throw error;
-      const published = await publishedCapture(directory, binding);
+      const published = await findAnalysisCapture(directory, binding);
       if (published === undefined) throw error;
       return published;
     }
@@ -102,7 +104,7 @@ function absentCaptureOwner(name: string): boolean {
   }
 }
 
-async function publishedCapture(
+export async function findAnalysisCapture(
   directory: string,
   binding: { readonly runId: string; readonly importId: string },
 ): Promise<AnalysisCapture | undefined> {
@@ -143,6 +145,15 @@ async function writeCapture(
     join(input.folder, "capture.json"),
     JSON.stringify(capture) + "\n",
   );
+  const checkpoint = initialAnalysisCheckpoint(capture);
+  await matchingPrivateFile(
+    join(input.folder, "checkpoint-0.json"),
+    JSON.stringify(checkpoint) + "\n",
+  );
+  await matchingPrivateFile(
+    join(input.folder, "proposal-0.txt"),
+    checkpointProposal(checkpoint),
+  );
   return capture;
 }
 
@@ -170,7 +181,26 @@ export async function readCapturedAnalysisSnapshot(
     evidence.records.length !== capture.totalRecords
   )
     throw new Error("analysis-input-refused");
+  await inspectInitialCheckpoint(folder, capture);
   return snapshot;
+}
+
+async function inspectInitialCheckpoint(
+  folder: string,
+  capture: AnalysisCapture,
+) {
+  const checkpoint = initialAnalysisCheckpoint(capture);
+  for (const [name, expected] of [
+    ["checkpoint-0.json", JSON.stringify(checkpoint) + "\n"],
+    ["proposal-0.txt", checkpointProposal(checkpoint)],
+  ] as const) {
+    if (
+      (await boundedAnalysisFile(join(folder, name), {
+        permissions: 0o600,
+      })) !== expected
+    )
+      throw new Error("analysis-output-failed");
+  }
 }
 
 function captureKey(binding: {

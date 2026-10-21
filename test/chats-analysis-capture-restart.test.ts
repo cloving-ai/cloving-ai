@@ -64,7 +64,13 @@ await test(
   }),
 );
 
-for (const boundary of ["redaction.json", "redacted.jsonl", "capture.json"]) {
+for (const boundary of [
+  "redaction.json",
+  "redacted.jsonl",
+  "capture.json",
+  "checkpoint-0.json",
+  "proposal-0.txt",
+]) {
   await test(
     `CLV-119 retries capture after process termination at ${boundary}`,
     chatPlatformScenario(async () => {

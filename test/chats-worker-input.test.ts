@@ -177,10 +177,14 @@ await test(
           "structure.json",
           "structure.json",
           "capture.json",
+          "checkpoint-0.json",
+          "proposal-0.txt",
           "capture.json",
           "redaction.json",
           "redacted.jsonl",
           "structure.json",
+          "checkpoint-0.json",
+          "proposal-0.txt",
         ]);
       } finally {
         filesystem.open = original;

@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { candidate, records, structure } from "./chats-analysis-fixture.ts";
-import { validateAnalysis } from "../src/chats/analysis.ts";
+import { mergeAnalysisBatch } from "../src/chats/analysis-merge.ts";
 import { analysisProposal } from "../src/chats/analysis-proposal.ts";
 import { withAnalysis, importId, cycleId } from "./chats-worker-fixture.ts";
 
@@ -22,7 +22,12 @@ await test(
         cycleId,
         promotionId: `analysis:${importId}:${cycleId}`,
       });
-      const validation = validateAnalysis(candidate(), { records, structure });
+      const validation = mergeAnalysisBatch({
+        previousResult: null,
+        candidate: candidate(),
+        evidence: { records, structure },
+        nextRecordIndex: records.length,
+      });
       assert.ok(validation.accepted);
       const analysis = join(fixture.directory, `analysis-${cycleId}.json`);
       const result: unknown = JSON.parse(await readFile(analysis, "utf8"));

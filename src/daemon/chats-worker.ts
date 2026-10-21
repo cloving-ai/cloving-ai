@@ -15,17 +15,15 @@ import {
   validAnalysisImportId,
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
-import { analysisProposal } from "../chats/analysis-proposal.ts";
 import { prepareAnalysisBatch } from "../chats/analysis-batches.ts";
 import {
   captureAnalysisSnapshot,
   readCapturedAnalysisSnapshot,
 } from "./chats-capture.ts";
+import { finalizeAnalysis } from "./chats-checkpoints.ts";
 import { operationKey } from "./operation-journal.ts";
 import {
   analysisDirectory,
-  saveAnalysisFiles,
-  inspectAnalysisFiles,
   inspectAnalysisDraft,
   saveAnalysisDraft,
 } from "./chats-files.ts";
@@ -249,17 +247,16 @@ async function save(
       settings.runtimeDirectory,
       snapshot.importId,
     );
-    const output = {
+    const saved = await finalizeAnalysis(directory, {
+      runId: call.intent.runId,
       cycleId,
-      analysis: JSON.stringify(validation.result) + "\n",
-      proposal: analysisProposal(validation.result),
-    };
-    if (
-      call.mode === "reconcile" &&
-      (await inspectAnalysisFiles(directory, output)) === "absent"
-    )
-      return { kind: "absent" };
-    if (call.mode === "deliver") await saveAnalysisFiles(directory, output);
+      snapshot,
+      candidate,
+      mode: call.mode,
+    });
+    if (saved.kind === "absent") return { kind: "absent" };
+    if (saved.kind === "refused")
+      return refused(saved.codes[0] ?? "analysis-input-refused", saved.codes);
   } catch {
     throw new Error("analysis-output-failed");
   }

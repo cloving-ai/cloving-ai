@@ -117,7 +117,7 @@ await test(
       const privateFiles = files.filter(
         (name) => name.includes("capture-") && !name.endsWith(capture.key),
       );
-      assert.equal(privateFiles.length, 4);
+      assert.equal(privateFiles.length, 6);
       for (const name of privateFiles) {
         const path = join(fixture.directory, name);
         assert.equal((await stat(path)).mode & 0o777, 0o600);
