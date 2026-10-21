@@ -15,7 +15,7 @@ import {
 } from "./chats-platform-fixture.ts";
 import { withAnalysis, importId } from "./chats-worker-fixture.ts";
 
-async function interruptCapture(directory: string, boundary: string) {
+async function pausedCapture(directory: string, boundary: string) {
   const child = fork(
     join(import.meta.dirname, "chats-analysis-capture-crash-fixture.ts"),
     [directory, "capture-restart", importId, boundary],
@@ -27,10 +27,18 @@ async function interruptCapture(directory: string, boundary: string) {
       await once(child, "message", { signal: AbortSignal.timeout(10_000) }),
       ["capture-write-paused", undefined],
     );
-  } finally {
+  } catch (error) {
     child.kill("SIGKILL");
-    assert.deepEqual(await exited, [null, "SIGKILL"]);
+    await exited;
+    throw error;
   }
+  return { child, exited };
+}
+
+async function interruptCapture(directory: string, boundary: string) {
+  const { child, exited } = await pausedCapture(directory, boundary);
+  child.kill("SIGKILL");
+  assert.deepEqual(await exited, [null, "SIGKILL"]);
 }
 
 await test(
@@ -89,7 +97,64 @@ for (const boundary of ["redaction.json", "redacted.jsonl", "capture.json"]) {
           await captureAnalysisSnapshot(fixture.directory, binding),
           capture,
         );
+        assert.deepEqual(
+          (await fixture.files()).filter((name) => name.includes("capture-")),
+          [`capture-${capture.key}`],
+        );
       });
     }),
   );
 }
+
+await test(
+  "CLV-119 preserves an active capture and reclaims it after its owner exits even with a publication",
+  chatPlatformScenario(async () => {
+    await withAnalysis(async (fixture) => {
+      const { child, exited } = await pausedCapture(
+        fixture.directory,
+        "redacted.jsonl",
+      );
+      const binding = { runId: "capture-restart", importId };
+      try {
+        const staged = (await fixture.files()).find((name) =>
+          name.startsWith(".capture-"),
+        );
+        assert.ok(staged);
+        const capture = await captureAnalysisSnapshot(
+          fixture.directory,
+          binding,
+        );
+        assert.ok((await fixture.files()).includes(staged));
+        assert.deepEqual(
+          await readCapturedAnalysisSnapshot(fixture.directory, capture),
+          await readAnalysisSnapshot(fixture.directory, { importId }),
+        );
+      } finally {
+        child.kill("SIGKILL");
+        assert.deepEqual(await exited, [null, "SIGKILL"]);
+      }
+      const capture = await captureAnalysisSnapshot(fixture.directory, binding);
+      assert.deepEqual(
+        (await fixture.files()).filter((name) => name.includes("capture-")),
+        [`capture-${capture.key}`],
+      );
+    });
+  }),
+);
+
+await test(
+  "CLV-119 reclaims abandoned captures when a different analysis run starts",
+  chatPlatformScenario(async () => {
+    await withAnalysis(async (fixture) => {
+      await interruptCapture(fixture.directory, "redacted.jsonl");
+      const capture = await captureAnalysisSnapshot(fixture.directory, {
+        runId: "later-analysis",
+        importId,
+      });
+      assert.deepEqual(
+        (await fixture.files()).filter((name) => name.includes("capture-")),
+        [`capture-${capture.key}`],
+      );
+    });
+  }),
+);
