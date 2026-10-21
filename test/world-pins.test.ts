@@ -47,6 +47,7 @@ await service.close();
 `);
     assert.equal(first.status, 0, first.stderr);
     const runId: unknown = Reflect.get(Object(first.lines[0]), "runId");
+    assert.ok(typeof runId === "string");
     assert.deepEqual(first.lines, [{ runId, budget: { limit: 5, spent: 1 } }]);
     const second = await consumer.run(
       `${servicePrelude}${versions}
@@ -62,7 +63,7 @@ const outputs = (await segments()).map((segment) => segment.output.promotionId ?
 print({ answers: [answer.kind, duplicate.kind], outputs, effects: lines("destination.log").length, budgets: [await budget(runId), await budget(edited)], workflows: (await asked("status", {})).workflows });
 await service.close();
 `,
-      { RUN_ID: String(runId) },
+      { RUN_ID: runId },
     );
     assert.equal(second.status, 0, second.stderr);
     assert.deepEqual(second.lines, [
