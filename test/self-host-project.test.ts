@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { preparedProject } from "../tools/self-host-project.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import {
   candidateDeclaration,
   validCandidateSource,
@@ -14,10 +22,11 @@ async function project(root: string, compiler: string) {
   await mkdir(join(product, "tools"), { recursive: true });
   await mkdir(join(product, "workflows"));
   await symlink(resolve("node_modules"), join(product, "node_modules"));
-  await writeFile(
+  await copyFile(
+    join(candidatePackageRoot, "package.json"),
     join(product, "package.json"),
-    '{"name":"synthetic-product","type":"module"}',
   );
+  await symlink(join(candidatePackageRoot, "dist"), join(product, "dist"));
   await writeFile(
     join(product, "workflows/bundled.ts"),
     'export async function bundled() {\n "use workflow";\n return 1;\n}',
@@ -35,6 +44,8 @@ async function project(root: string, compiler: string) {
 function manifestCompiler(manifest: unknown): string {
   return `import { mkdir, writeFile } from "node:fs/promises";
 await mkdir("artifacts", { recursive: true });
+for (const name of ["client.mjs", "flow.mjs", "steps.mjs", "flow.mjs.__wf_tmp.js.debug.json", "steps.mjs.debug.json"])
+  await writeFile("artifacts/" + name, "synthetic compiled artifact");
 await writeFile("artifacts/manifest.json", ${JSON.stringify(JSON.stringify(manifest))});`;
 }
 
