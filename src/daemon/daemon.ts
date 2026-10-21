@@ -23,7 +23,9 @@ import {
   type HostPorts,
   type Service,
   type ServiceHost,
+  type WorkflowRegistration,
 } from "../service/service.ts";
+import { workflowPin } from "../broker/workflow-pin.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
 import type { TokenPrices } from "../token-prices.ts";
@@ -162,12 +164,19 @@ function adapters(
   options: {
     readonly given: Promise<HostPorts>;
     readonly table: readonly TicketRegistration[];
+    readonly registrations: readonly WorkflowRegistration[];
   },
 ): Adapters {
   const { directory, repository, command } = settings;
-  const { given, table } = options;
-  const workflows = Object.fromEntries(
+  const { given, table, registrations } = options;
+  const functions = Object.fromEntries(
     table.map((row) => [row.workflowId, settings.workflows[row.functionName]]),
+  );
+  const workflows = Object.fromEntries(
+    registrations.map((registration) => [
+      workflowPin(registration.manifest),
+      functions[registration.workflowId],
+    ]),
   );
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
@@ -198,8 +207,7 @@ function adapters(
     runs: taggedRuns,
     cancel: cancelled,
     input: async (runId) => (await given).input(runId),
-    workflow: async (runId) =>
-      workflows[String(await (await given).workflowId(runId))],
+    workflow: ({ workflow }) => Promise.resolve(workflows[workflow]),
   });
   return { worker, github, runs, chats };
 }
@@ -236,6 +244,7 @@ export async function startDaemon(
   const { worker, github, runs, chats } = adapters(settings, {
     given: given.promise,
     table,
+    registrations: admitted.registrations,
   });
   await mkdir(join(directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });

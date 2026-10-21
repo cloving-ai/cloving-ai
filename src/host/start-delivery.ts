@@ -16,6 +16,7 @@ export interface RunIntent extends Partial<Continuation> {
   readonly kind: string;
   readonly runId: string;
   readonly operationId: string;
+  readonly workflow: string;
 }
 
 export type RunOutcome =
@@ -30,7 +31,9 @@ export interface StartParts {
   readonly runs: () => Promise<readonly OperationRun[]>;
   readonly input: (runId: string) => Promise<string | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
-  readonly workflow: (runId: string) => Promise<WorkflowFunction | undefined>;
+  readonly workflow: (
+    intent: RunIntent,
+  ) => Promise<WorkflowFunction | undefined>;
   readonly cancel: (receipt: string) => Promise<string>;
 }
 
@@ -87,7 +90,7 @@ async function delivered(
   intent: RunIntent,
 ): Promise<{ readonly receipt: string }> {
   const continued = await continuation(parts, intent);
-  const workflow = await parts.workflow(intent.runId);
+  const workflow = await parts.workflow(intent);
   const input = await parts.input(intent.runId);
   if (workflow === undefined || input === undefined)
     throw new Error(`start-not-available: ${intent.runId}`);

@@ -50,6 +50,7 @@ const chats = {
   deliver: async (intent, signal) => {
     if (intent.method === "read-analysis") await holdAt("hold-analysis-read");
     const outcome = await privateChats.deliver(intent, signal);
+    if (intent.method === "save-analysis") await holdAt("hold-analysis-save");
     const payload = JSON.parse(await document(intent.payload));
     appendFileSync("analysis-effects.log", JSON.stringify({ method: intent.method, operationId: intent.operationId, snapshotDigest: payload.snapshot ? digestOf(JSON.stringify(payload.snapshot)) : null, followUp: payload.followUp !== undefined, outcome: outcome.kind }) + "\\n");
     if (intent.method === "save-analysis" && outcome.kind === "completed" && existsSync("halt-after-draft")) {

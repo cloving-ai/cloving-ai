@@ -51,26 +51,33 @@ export interface Registry {
 
 export function workflowRegistry(
   workflows: readonly WorkflowRegistration[],
+  retainedWorkflows: readonly WorkflowRegistration[] = [],
 ): Registry {
-  const registered = workflows.map((workflow) => ({
+  const current = workflows.map((workflow) => ({
     ...workflow,
     pin: workflowPin(workflow.manifest),
   }));
+  const registered = [
+    ...current,
+    ...retainedWorkflows.map((workflow) => ({
+      ...workflow,
+      pin: workflowPin(workflow.manifest),
+    })),
+  ].filter((workflow) => workflow.availability === "available");
+  const byPin = (pin: string): Registered | undefined =>
+    registered.find((workflow) => workflow.pin === pin);
   return {
-    workflowIds: registered.map((workflow) => workflow.workflowId),
+    workflowIds: current.map((workflow) => workflow.workflowId),
     workflowStages: Object.fromEntries(
-      registered.flatMap((workflow) =>
+      current.flatMap((workflow) =>
         workflow.stages === undefined
           ? []
           : [[workflow.workflowId, workflow.stages]],
       ),
     ),
     byId: (workflowId) =>
-      registered.find((workflow) => workflow.workflowId === workflowId),
-    byPin: (pin) => registered.find((workflow) => workflow.pin === pin),
-    available: (pinned) =>
-      registered.find(
-        (workflow) => workflow.manifest.workflowId === pinned.workflowId,
-      )?.manifest,
+      current.find((workflow) => workflow.workflowId === workflowId),
+    byPin,
+    available: (pinned) => byPin(workflowPin(pinned))?.manifest,
   };
 }
