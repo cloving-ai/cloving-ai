@@ -13,6 +13,10 @@ import {
 } from "../chats/analysis-input.ts";
 import { mergeAnalysisBatch } from "../chats/analysis-merge.ts";
 import {
+  prepareAnalysisBatch,
+  type AnalysisBatchPreparation,
+} from "../chats/analysis-batches.ts";
+import {
   analysisProposal,
   checkpointProposal,
 } from "../chats/analysis-proposal.ts";
@@ -38,55 +42,152 @@ interface CheckpointInput {
 
 interface FinalizeInput {
   readonly runId: string;
+  readonly importId: string;
   readonly cycleId: string;
-  readonly snapshot: AnalysisSnapshot;
+  readonly snapshot: AnalysisSnapshot | undefined;
   readonly candidate: unknown;
   readonly mode: "deliver" | "reconcile";
+  readonly batch?: unknown;
 }
 
 export async function finalizeAnalysis(
   directory: string,
   input: FinalizeInput,
-) {
-  const capture = await findAnalysisCapture(directory, {
-    runId: input.runId,
-    importId: input.snapshot.importId,
-  });
-  if (
-    capture === undefined ||
-    JSON.stringify(await readCapturedAnalysisSnapshot(directory, capture)) !==
-      JSON.stringify(input.snapshot)
-  )
-    throw new Error("analysis-output-failed");
-  const batch = {
-    capture,
-    candidate: input.candidate,
-    batchIndex: 0,
-    nextRecordIndex: capture.totalRecords,
-  };
+): Promise<
+  | (Awaited<ReturnType<typeof saveAnalysisCheckpoint>> & {
+      readonly next?: AnalysisBatchPreparation | undefined;
+    })
+  | { readonly kind: "absent" }
+> {
+  const { capture, batch, snapshot } = await boundBatch(directory, input);
   const inspected = await saveAnalysisCheckpoint(directory, {
     ...batch,
+    capture,
+    candidate: input.candidate,
     mode: "reconcile",
   });
   if (inspected.kind === "refused") return inspected;
-  if (!("checkpoint" in inspected)) return { kind: "absent" as const };
+  if (!("checkpoint" in inspected)) {
+    if (input.mode === "reconcile") return { kind: "absent" as const };
+    return saveAnalysisCheckpoint(directory, {
+      ...batch,
+      capture,
+      candidate: input.candidate,
+      mode: "deliver",
+    });
+  }
+  return commitAnalysisBatch(directory, {
+    input,
+    batch: { ...batch, capture, candidate: input.candidate, mode: input.mode },
+    snapshot,
+    inspected,
+  });
+}
+
+interface PreparedCommit {
+  readonly input: FinalizeInput;
+  readonly batch: CheckpointInput;
+  readonly snapshot: AnalysisSnapshot;
+  readonly inspected: Awaited<ReturnType<typeof persistCheckpoint>>;
+}
+
+async function commitAnalysisBatch(
+  directory: string,
+  prepared: PreparedCommit,
+) {
+  const { input, batch, snapshot, inspected } = prepared;
   const output = {
     cycleId: input.cycleId,
     analysis: JSON.stringify(inspected.checkpoint.result) + "\n",
     proposal: analysisProposal(inspected.checkpoint.result),
   };
-  const legacy = await inspectAnalysisFiles(directory, output);
-  if (input.mode === "reconcile")
-    return inspected.kind === "absent" || legacy === "absent"
-      ? { kind: "absent" as const }
-      : inspected;
+  const complete = inspected.checkpoint.status === "complete";
+  const legacy = complete
+    ? await inspectAnalysisFiles(directory, output)
+    : "present";
+  if (
+    input.mode === "reconcile" &&
+    (inspected.kind === "absent" || legacy === "absent")
+  )
+    return { kind: "absent" as const };
   const saved = await saveAnalysisCheckpoint(directory, {
     ...batch,
-    mode: "deliver",
+    mode: input.mode,
   });
   if (saved.kind !== "committed") return saved;
-  await saveAnalysisFiles(directory, output);
-  return saved;
+  if (complete && input.mode === "deliver")
+    await saveAnalysisFiles(directory, output);
+  const next = complete
+    ? undefined
+    : prepareAnalysisBatch(snapshot, {
+        nextRecordIndex: saved.checkpoint.nextRecordIndex,
+        completedBatchCount: saved.checkpoint.completedBatchCount,
+        previousResult: saved.checkpoint.result,
+      });
+  return { ...saved, next };
+}
+
+async function boundBatch(directory: string, input: FinalizeInput) {
+  const capture = await findAnalysisCapture(directory, {
+    runId: input.runId,
+    importId: input.importId,
+  });
+  if (capture === undefined) throw new Error("analysis-output-failed");
+  const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
+  const binding = record(input.batch);
+  const batchIndex = binding?.["batchIndex"] ?? 0;
+  if (typeof batchIndex !== "number") throw new Error("analysis-output-failed");
+  const previous = await previousCheckpoint(
+    join(directory, `capture-${capture.key}`),
+    {
+      capture,
+      batchIndex,
+      snapshot,
+    },
+  );
+  const prepared = prepareAnalysisBatch(snapshot, {
+    nextRecordIndex: previous.nextRecordIndex,
+    completedBatchCount: previous.completedBatchCount,
+    previousResult: previous.result,
+  });
+  if (prepared.kind === "refused") throw new Error("analysis-output-failed");
+  if (
+    input.snapshot !== undefined &&
+    JSON.stringify(input.batch === undefined ? snapshot : prepared.snapshot) !==
+      JSON.stringify(input.snapshot)
+  )
+    throw new Error("analysis-output-failed");
+  if (
+    !matchingBatchBinding(input.batch, {
+      capturedDigest: capture.digest,
+      batchIndex,
+      nextRecordIndex: prepared.nextRecordIndex,
+      totalRecords: capture.totalRecords,
+    })
+  )
+    throw new Error("analysis-output-failed");
+  return {
+    capture,
+    snapshot,
+    batch: { batchIndex, nextRecordIndex: prepared.nextRecordIndex },
+  };
+}
+
+function matchingBatchBinding(
+  binding: unknown,
+  expected: {
+    readonly capturedDigest: string;
+    readonly batchIndex: number;
+    readonly nextRecordIndex: number;
+    readonly totalRecords: number;
+  },
+): boolean {
+  if (binding === undefined)
+    return expected.nextRecordIndex === expected.totalRecords;
+  const fields = record(binding);
+  return ["capturedDigest", "batchIndex", "nextRecordIndex"].every(
+    (name) => fields?.[name] === Reflect.get(expected, name),
+  );
 }
 
 export async function saveAnalysisCheckpoint(

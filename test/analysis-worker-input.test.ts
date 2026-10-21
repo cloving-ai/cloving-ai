@@ -12,6 +12,9 @@ import {
   firstAnalysisBatch,
 } from "./chats-analysis-batch-fixture.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
+import { prepareAnalysisBatch } from "../src/chats/analysis-batches.ts";
+import { batchCorpus } from "./analyze-chats-batches-fixture.ts";
+import { accepted } from "./chats-analysis-merge-fixture.ts";
 import { corpus, importId, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   installAnalysisCli,
@@ -30,6 +33,86 @@ const snapshot = {
   structure: JSON.stringify(sidecar),
 };
 const workflowId = () => Promise.resolve("analyze-chats");
+
+await test("CLV-159 a later restricted turn receives its exact prepared batch and earlier accepted inference", () =>
+  withScene(async (scene) => {
+    const batch = prepareAnalysisBatch(
+      { ...snapshot, corpus: batchCorpus() },
+      {
+        nextRecordIndex: 7,
+        completedBatchCount: 1,
+        previousResult: accepted(),
+      },
+    );
+    assert.ok(batch.kind === "batch");
+    const restore = installAnalysisCli(scene, { reply: "{}" });
+    try {
+      const worker = scene.worker("bare", {
+        workflowId,
+        document: () => Promise.resolve(batch.adapterDocument),
+      });
+      await worker.deliver(analysis, signal);
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.turns().length, 1);
+      const turn = scene.turns()[0];
+      assert.ok(turn);
+      assert.equal(turn.prompt, batch.prompt);
+      assert.deepEqual(turn.arguments.slice(-2), [
+        "--system-prompt",
+        analysisInstruction,
+      ]);
+      assert.equal(
+        turn.arguments[turn.arguments.indexOf("--max-budget-usd") + 1],
+        "5",
+      );
+      assert.equal(
+        turn.environment["CLAUDE_CODE_OAUTH_TOKEN"],
+        "synthetic-subscription-token",
+      );
+      assert.equal(turn.environment["ANTHROPIC_API_KEY"], undefined);
+    } finally {
+      restore();
+    }
+  }));
+
+await test("CLV-159 malformed and oversized batch contexts cannot launch another turn", () =>
+  withScene(async (scene) => {
+    const valid = {
+      batchIndex: 1,
+      firstRecordIndex: 7,
+      previousResult: accepted(),
+    };
+    for (const context of [
+      null,
+      {},
+      { ...valid, extra: true },
+      { ...valid, batchIndex: "1" },
+      { ...valid, batchIndex: -1 },
+      { ...valid, batchIndex: 4 },
+      { ...valid, firstRecordIndex: -1 },
+      { ...valid, firstRecordIndex: 0.5 },
+      { ...valid, previousResult: "unvalidated" },
+    ]) {
+      const worker = scene.worker("bare", {
+        workflowId,
+        document: () => Promise.resolve(JSON.stringify({ snapshot, context })),
+      });
+      assert.deepEqual(await worker.deliver(analysis, signal), {
+        kind: "failed",
+        reason: "analysis-input-refused",
+      });
+    }
+    const context = { ...valid, previousResult: { text: "x".repeat(65_536) } };
+    const worker = scene.worker("bare", {
+      workflowId,
+      document: () => Promise.resolve(JSON.stringify({ snapshot, context })),
+    });
+    assert.deepEqual(await worker.deliver(analysis, signal), {
+      kind: "failed",
+      reason: "analysis-too-large",
+    });
+    assert.equal(scene.turns().length, 0);
+  }));
 
 for (const character of ["x", "é", "😀", '"', "\\"]) {
   await test(`CLV-119 actual analysis launch uses the exact UTF-8 boundary for ${character}`, () =>

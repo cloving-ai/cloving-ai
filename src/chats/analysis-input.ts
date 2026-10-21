@@ -1,4 +1,4 @@
-import { record } from "../protocol.ts";
+import { record, type Fields } from "../protocol.ts";
 import { parseCorpus } from "./corpus-input.ts";
 import type { AnalysisEvidence } from "./analysis-contract.ts";
 import { structureImport, type ImportStructure } from "./structure.ts";
@@ -61,6 +61,30 @@ export function isAnalysisSnapshot(value: unknown): value is AnalysisSnapshot {
       (key) => typeof fields[key] === "string",
     )
   );
+}
+
+export function analysisSaveInput(payload: Fields) {
+  const snapshot = payload["snapshot"];
+  const cycleId = payload["cycleId"];
+  if (
+    !isAnalysisSnapshot(snapshot) ||
+    snapshot.importId !== payload["importId"] ||
+    typeof cycleId !== "string" ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(cycleId) ||
+    typeof payload["reply"] !== "string"
+  )
+    throw new Error("analysis-input-refused");
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(payload["reply"]);
+  } catch {
+    throw new Error(
+      "followUp" in payload
+        ? "analysis-follow-up-refused"
+        : "analysis-invalid-json",
+    );
+  }
+  return { snapshot, cycleId, candidate, reply: payload["reply"] };
 }
 
 function canonical(value: unknown): string {

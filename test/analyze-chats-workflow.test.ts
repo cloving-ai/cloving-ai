@@ -52,7 +52,6 @@ await test("CLV-116 accepted candidate uses one turn and three sequential charge
   assert.deepEqual(JSON.parse(String(field(request(line, 2), "payload"))), {
     importId,
     cycleId: input.cycleId,
-    snapshot,
     reply,
   });
   assert.equal(
@@ -65,7 +64,7 @@ await test("CLV-116 accepted candidate uses one turn and three sequential charge
   );
 });
 
-await test("CLV-149 submission declares exactly one required import ID and five effect units", () => {
+await test("CLV-149 submission declares exactly one required import ID and eleven effect units", () => {
   const declaration: unknown = JSON.parse(
     readFileSync(
       new URL("../workflows/analyze-chats.declaration.json", import.meta.url),
@@ -74,7 +73,7 @@ await test("CLV-149 submission declares exactly one required import ID and five 
   );
   assert.ok(isWorkflowDeclaration(declaration));
   assert.equal(declaration.workflowId, "analyze-chats");
-  assert.equal(declaration.effectLimit, 5);
+  assert.equal(declaration.effectLimit, 11);
   assert.deepEqual(declaration.stages, [
     { name: "read-input", label: "Read input", operations: ["read-analysis"] },
     { name: "analyze", label: "Analyze", operations: ["turn-analysis"] },
@@ -229,7 +228,6 @@ await test("CLV-149 an exact choice runs one second turn and final save with fiv
   assert.deepEqual(JSON.parse(String(field(request(line, 4), "payload"))), {
     importId,
     cycleId: input.cycleId,
-    snapshot,
     reply,
     followUp: { draft: questionCandidate(), answer: "earlier" },
   });

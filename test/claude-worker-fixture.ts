@@ -27,6 +27,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFil
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
 let prompt = "";
+process.stdin.setEncoding("utf8");
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
 appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
@@ -45,6 +46,9 @@ const modes = {
     writeFileSync("loose.txt", "not committed");
     result({});
   },
+  "hold-second": () => turn === 2 ? held() : modes["fixed-reply"](),
+  "conflict-second": () => { const candidate = JSON.parse(readFileSync(record + ".reply", "utf8")); if (turn === 2) candidate.process.scope = "Conflicting scope."; result({ result: JSON.stringify(candidate) }); },
+  "invalid-second": () => result({ result: turn === 2 ? "{}" : readFileSync(record + ".reply", "utf8") }),
   "fixed-reply": () => { process.stderr.write(prompt); result({ result: readFileSync(record + ".reply", "utf8") }); },
   committed: () => {
     writeFileSync("change-" + turn + ".txt", prompt);

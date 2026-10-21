@@ -120,7 +120,7 @@ async function assertAnalysis(
     kind: "handoff_requested",
     reason: null,
   });
-  assert.deepEqual(field(status, "budget"), { limit: 5, spent: 3 });
+  assert.deepEqual(field(status, "budget"), { limit: 11, spent: 3 });
   assert.equal(items(field(status, "workerTurns")).length, 1);
   const turns = readFileSync(join(root, "turns.log"), "utf8")
     .trim()

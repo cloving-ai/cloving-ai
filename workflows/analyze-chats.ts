@@ -157,7 +157,7 @@ async function firstTurn(input: AnalysisInput): Promise<
   | CycleOutcome
   | {
       readonly kind: "analyzed";
-      readonly snapshot: Readonly<Record<string, unknown>>;
+      readonly data: TurnInput;
       readonly reply: string;
     }
 > {
@@ -168,7 +168,8 @@ async function firstTurn(input: AnalysisInput): Promise<
   );
   if (read.kind !== "completed")
     return blocked(cycleId, { operation: "read-analysis", result: read });
-  const snapshot = fields(read.result)["snapshot"];
+  const captured = fields(read.result);
+  const snapshot = captured["snapshot"];
   if (!record(snapshot) || snapshot["importId"] !== importId)
     return {
       kind: "blocked",
@@ -176,22 +177,42 @@ async function firstTurn(input: AnalysisInput): Promise<
       reason: "analysis-input-refused",
       evidenceId: "read-analysis",
     };
-  return runTurn(input, { snapshot });
+  return runTurn(input, batchData(captured, snapshot));
 }
 
 interface TurnInput {
   readonly snapshot: Readonly<Record<string, unknown>>;
+  readonly context?: Readonly<Record<string, unknown>>;
+  readonly batch?: Readonly<Record<string, unknown>>;
   readonly followUp?: { readonly draft: unknown; readonly answer: string };
+}
+
+function batchData(
+  value: Readonly<Record<string, unknown>>,
+  snapshot: Readonly<Record<string, unknown>>,
+): TurnInput {
+  const context = value["context"];
+  const batch = value["batch"];
+  return {
+    snapshot,
+    ...(record(context) ? { context } : {}),
+    ...(record(batch) ? { batch } : {}),
+  };
 }
 
 async function runTurn(input: AnalysisInput, data: TurnInput) {
   const { cycleId } = input;
-  const { snapshot, followUp } = data;
+  const { snapshot, followUp, context, batch } = data;
   const turn = await protectedEffect(
     request(input.input.importId, {
       operation: "turn-analysis",
-      payload: data,
-      round: followUp === undefined ? 1 : 2,
+      payload: {
+        snapshot,
+        ...(context === undefined ? {} : { context }),
+        ...(followUp === undefined ? {} : { followUp }),
+      },
+      round:
+        followUp === undefined ? Number(batch?.["batchIndex"] ?? 0) + 1 : 2,
     }),
   );
   if (turn.kind !== "completed")
@@ -204,7 +225,7 @@ async function runTurn(input: AnalysisInput, data: TurnInput) {
       reason: "analysis-turn-failed",
       evidenceId: "turn-analysis",
     };
-  return { kind: "analyzed" as const, snapshot, reply };
+  return { kind: "analyzed" as const, data, reply };
 }
 
 function handoff(cycleId: string, importId: string): CycleOutcome {
@@ -230,7 +251,6 @@ async function followUp(
       payload: {
         importId,
         cycleId,
-        snapshot: data.snapshot,
         reply: turn.reply,
         followUp: data.followUp,
       },
@@ -255,18 +275,58 @@ export async function analyzeChats(
   "use workflow";
   const { cycleId } = input;
   const { importId } = input.input;
-  const analyzed = await firstTurn(input);
-  if (analyzed.kind !== "analyzed") return analyzed;
-  const { snapshot, reply } = analyzed;
-  const save = await protectedEffect(
-    request(importId, {
-      operation: "save-analysis",
-      payload: { importId, cycleId, snapshot, reply },
-    }),
-  );
-  if (save.kind !== "completed")
-    return blocked(cycleId, { operation: "save-analysis", result: save });
-  const saved = fields(save.result);
+  let analyzed = await firstTurn(input);
+  while (analyzed.kind === "analyzed") {
+    const { data, reply } = analyzed;
+    const { batch } = data;
+    const save = await protectedEffect(
+      request(importId, {
+        operation: "save-analysis",
+        round: Number(batch?.["batchIndex"] ?? 0) + 1,
+        payload: {
+          importId,
+          cycleId,
+          reply,
+          ...(batch === undefined ? {} : { batch }),
+        },
+      }),
+    );
+    if (save.kind !== "completed")
+      return blocked(cycleId, { operation: "save-analysis", result: save });
+    const saved = fields(save.result);
+    if (saved["kind"] !== "analysis_batch")
+      return finishBatch(input, { saved, data, reply, decision });
+    const nextSnapshot = saved["snapshot"];
+    if (!record(nextSnapshot) || nextSnapshot["importId"] !== importId)
+      return blocked(cycleId, {
+        operation: "save-analysis",
+        result: { kind: "refused", reason: "analysis-input-refused" },
+      });
+    analyzed = await runTurn(input, batchData(saved, nextSnapshot));
+  }
+  return analyzed;
+}
+
+async function finishBatch(
+  input: AnalysisInput,
+  result: {
+    readonly saved: Readonly<Record<string, unknown>>;
+    readonly data: TurnInput;
+    readonly reply: string;
+    readonly decision: Decision | undefined;
+  },
+): Promise<CycleOutcome> {
+  const { cycleId } = input;
+  const { importId } = input.input;
+  const { saved, data, reply, decision } = result;
+  const { snapshot } = data;
+  if (saved["kind"] === "analysis_partial")
+    return {
+      kind: "blocked",
+      cycleId,
+      reason: String(saved["reason"]),
+      evidenceId: "save-analysis",
+    };
   if (saved["kind"] === "analysis_draft") {
     const answer = await askDraft(cycleId, { draft: saved, decision });
     if (answer.kind !== "answered") return answer;

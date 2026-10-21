@@ -50,7 +50,7 @@ await finished(runId);
 );
 
 await test(
-  "CLV-119 analyzeChats captures a multi-batch import and refuses before a turn or save",
+  "CLV-159 analyzeChats captures a multi-batch import once and retains the initial partial output on invalid inference",
   chatPlatformScenario(() =>
     withConsumer(analysisSource, async (consumer) => {
       const corpus = parseCorpus(snapshot.corpus)
@@ -79,12 +79,16 @@ print({ captures: captures.length, corpusDigest: captures.length === 1 ? digestO
       assert.equal(result.status, 0, result.stderr);
       assert.equal(field(result.lines[1], "captures"), 1);
       assert.equal(field(result.lines[1], "corpusDigest"), digestOf(corpus));
-      assert.deepEqual(field(result.lines[1], "effects"), ["read-analysis"]);
+      assert.deepEqual(
+        field(result.lines[1], "effects"),
+        ["read-analysis"],
+        JSON.stringify(result.lines),
+      );
       assert.deepEqual(field(result.lines[0], "outcome"), {
         kind: "blocked",
-        reason: "analysis-too-large",
+        reason: "unknown-source",
       });
-      assert.equal(field(result.lines[0], "turns"), 0);
+      assert.equal(field(result.lines[0], "turns"), 1);
       assert.deepEqual(field(result.lines[0], "outputs"), []);
     }),
   ),
