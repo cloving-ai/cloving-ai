@@ -29,7 +29,7 @@ export interface ProjectReport {
 }
 
 export function writeProjectReport(
-  report: ProjectReport,
+  report: Pick<ProjectReport, "timings" | "warnings">,
   output: {
     readonly stdout: { write: (text: string) => boolean };
     readonly stderr: { write: (text: string) => boolean };
