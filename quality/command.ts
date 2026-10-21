@@ -1,4 +1,5 @@
 export interface CheckCommand {
+  readonly check?: string;
   readonly executable: string;
   readonly arguments: readonly string[];
   readonly directory: string;
@@ -8,12 +9,51 @@ export interface CheckCommand {
   readonly homeDirectory?: string;
 }
 
-export function runCommand(command: CheckCommand): string {
+export interface CheckTiming {
+  readonly check: string;
+  readonly elapsedMilliseconds: number;
+  readonly timeoutMilliseconds: number;
+}
+
+export interface CommandOptions {
+  readonly clock?: () => number;
+  readonly timings?: CheckTiming[];
+}
+
+export function checkTimeWarnings(timings: readonly CheckTiming[]): string[] {
+  return timings
+    .filter(
+      (entry) => entry.elapsedMilliseconds > entry.timeoutMilliseconds * 0.8,
+    )
+    .map(
+      (entry) =>
+        `${entry.check} used ${String(entry.elapsedMilliseconds / 1000)} s of ${String(entry.timeoutMilliseconds / 1000)} s (${String(Math.round((entry.elapsedMilliseconds / entry.timeoutMilliseconds) * 100))} percent)`,
+    );
+}
+
+export function runCommand(
+  command: CheckCommand,
+  options: CommandOptions = {},
+): string {
   if (
     !Number.isFinite(command.timeoutMilliseconds) ||
     command.timeoutMilliseconds <= 0
   )
     throw new Error("Check command requires a finite positive timeout");
+  const clock = options.clock ?? (() => performance.now());
+  const started = clock();
+  try {
+    return executeCommand(command);
+  } finally {
+    options.timings?.push({
+      check: command.check ?? command.executable,
+      elapsedMilliseconds: Math.round(clock() - started),
+      timeoutMilliseconds: command.timeoutMilliseconds,
+    });
+  }
+}
+
+function executeCommand(command: CheckCommand): string {
   const result = spawnSync(command.executable, command.arguments, {
     cwd: command.directory,
     encoding: "utf8",
@@ -32,9 +72,12 @@ export function runCommand(command: CheckCommand): string {
     },
   });
   if (result.error)
-    throw new Error(`Check execution failed: ${command.executable}`, {
-      cause: result.error,
-    });
+    throw new Error(
+      `Check execution failed: ${command.check ?? command.executable} (limit ${String(command.timeoutMilliseconds)} ms)`,
+      {
+        cause: result.error,
+      },
+    );
   if (
     result.status === null ||
     !(command.acceptedExitCodes ?? [0]).includes(result.status)

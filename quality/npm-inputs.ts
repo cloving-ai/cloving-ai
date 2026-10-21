@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCommand } from "./command.ts";
+import { runCommand, type CommandOptions } from "./command.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -20,7 +20,10 @@ function canonical(value: unknown): string | undefined {
   );
 }
 
-export async function checkNpmInputs(directory: string): Promise<void> {
+export async function checkNpmInputs(
+  directory: string,
+  options?: CommandOptions,
+): Promise<void> {
   const manifest: unknown = JSON.parse(
     await readFile(join(directory, "package.json"), "utf8"),
   );
@@ -53,7 +56,7 @@ export async function checkNpmInputs(directory: string): Promise<void> {
       throw new Error(`manifest-lock-mismatch: ${field}`);
   }
   await checkInstalledVersions(directory, lock["packages"]);
-  await checkInstalledTree(directory);
+  await checkInstalledTree(directory, options);
 }
 
 async function checkInstalledVersions(
@@ -77,27 +80,34 @@ async function checkInstalledVersions(
   }
 }
 
-async function checkInstalledTree(directory: string): Promise<void> {
+async function checkInstalledTree(
+  directory: string,
+  options?: CommandOptions,
+): Promise<void> {
   const cache = await mkdtemp(join(tmpdir(), "cloving-npm-inventory-"));
   try {
-    runCommand({
-      executable: "npm",
-      arguments: [
-        "ls",
-        "--all",
-        "--json",
-        "--ignore-scripts",
-        "--offline",
-        "--include=dev",
-        "--include=optional",
-        "--include=peer",
-        "--cache",
-        cache,
-      ],
-      directory,
-      timeoutMilliseconds: 60000,
-      homeDirectory: cache,
-    });
+    runCommand(
+      {
+        check: "npm-inputs",
+        executable: "npm",
+        arguments: [
+          "ls",
+          "--all",
+          "--json",
+          "--ignore-scripts",
+          "--offline",
+          "--include=dev",
+          "--include=optional",
+          "--include=peer",
+          "--cache",
+          cache,
+        ],
+        directory,
+        timeoutMilliseconds: 60000,
+        homeDirectory: cache,
+      },
+      options,
+    );
   } finally {
     await rm(cache, { recursive: true });
   }

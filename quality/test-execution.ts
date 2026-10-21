@@ -1,4 +1,8 @@
-import { runCommand, type CheckCommand } from "./command.ts";
+import {
+  runCommand,
+  type CheckCommand,
+  type CommandOptions,
+} from "./command.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -19,6 +23,7 @@ export function parseCheckTimeFactor(value: string | undefined): number {
 }
 
 export interface TestExecutionOptions {
+  readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly coverageFiles?: readonly string[];
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
@@ -107,6 +112,7 @@ export function testCommand(
   },
 ): CheckCommand {
   return {
+    check: "tests",
     executable: process.execPath,
     arguments: [
       "--test",
@@ -131,6 +137,7 @@ export function coverageCommand(
   },
 ): CheckCommand {
   return {
+    check: "coverage",
     executable: process.execPath,
     arguments: [
       resolve(import.meta.dirname, "coverage-command.ts"),
@@ -157,6 +164,7 @@ function executeTests(
       timeFactor: options.timeFactor ?? 1,
       ...(options.coverageFiles ? { coverageDirectory: temporary } : {}),
     }),
+    options.commandOptions,
   );
   const report: unknown = JSON.parse(output);
   if (!report || typeof report !== "object")
@@ -173,6 +181,7 @@ function executeTests(
         files: options.coverageFiles,
         timeFactor: options.timeFactor ?? 1,
       }),
+      options.commandOptions,
     ),
   );
   checkCoverage(coverage, options.coverageFiles);

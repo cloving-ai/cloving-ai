@@ -10,11 +10,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { cloneArguments } from "./clone-arguments.ts";
 import { parseCloneReport, type CloneFinding } from "./clone-report.ts";
-import { runCommand } from "./command.ts";
+import { runCommand, type CommandOptions } from "./command.ts";
 import { assertCloneSyntax } from "./clone-syntax.ts";
 
 export async function inspectClones(
   files: readonly string[],
+  options?: CommandOptions,
 ): Promise<CloneFinding[]> {
   if (files.length === 0)
     throw new Error("Cannot scan an empty clone inventory");
@@ -31,17 +32,21 @@ export async function inspectClones(
   try {
     const config = join(directory, "configuration.json");
     await writeFile(config, "{}");
-    runCommand({
-      executable: process.execPath,
-      arguments: [
-        ...cloneArguments(inputs, { report: directory, maximumBytes }),
-        "--config",
-        config,
-      ],
-      directory,
-      timeoutMilliseconds: 30000,
-      acceptedExitCodes: [0, 1],
-    });
+    runCommand(
+      {
+        check: "clones",
+        executable: process.execPath,
+        arguments: [
+          ...cloneArguments(inputs, { report: directory, maximumBytes }),
+          "--config",
+          config,
+        ],
+        directory,
+        timeoutMilliseconds: 30000,
+        acceptedExitCodes: [0, 1],
+      },
+      options,
+    );
     const raw: unknown = JSON.parse(
       await readFile(join(directory, "jscpd-report.json"), "utf8"),
     );

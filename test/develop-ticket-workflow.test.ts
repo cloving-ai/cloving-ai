@@ -77,6 +77,10 @@ await test("CLV-016 the ticket workflow asks the Claude worker for one turn with
   );
   assert.match(
     payload,
+    /Treat a check time warning as work to do in the same ticket when your change made the check slower\./,
+  );
+  assert.match(
+    payload,
     /Run the checks of the repository before you finish\. Commit your work before the report\. If the repository provides npm run check:clean, run it after committing\./,
   );
   assert.match(
