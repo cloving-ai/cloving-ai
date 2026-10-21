@@ -62,6 +62,7 @@ function executeCommand(command: CheckCommand): string {
     env: {
       PATH: process.env["PATH"],
       CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
+      CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
       TZ: "UTC",
       CI: "true",
       NODE_DISABLE_COMPILE_CACHE: "1",

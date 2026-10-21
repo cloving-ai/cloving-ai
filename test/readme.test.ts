@@ -95,7 +95,11 @@ function readmeFindings(text: string): readonly string[] {
       .filter(
         (name) =>
           !settings.has(name) &&
-          !["CLOVING_TURN_ID", "CLOVING_CHECK_TIME_FACTOR"].includes(name),
+          ![
+            "CLOVING_TURN_ID",
+            "CLOVING_CHECK_TIME_FACTOR",
+            "CLOVING_TEST_CONCURRENCY",
+          ].includes(name),
       )
       .map((name) => `unknown-setting: ${name}`),
     ...distinct(named)
@@ -125,6 +129,17 @@ await test("CLV-073 the README names only known settings and commands, has no pa
 
 await test("CLV-073 the README checks accept options, the package path and a path in the home folder of the reader", () => {
   assert.deepEqual(readmeFindings(valid), []);
+});
+
+await test("CLV-156 the README recognizes and documents test concurrency", () => {
+  assert.deepEqual(
+    readmeFindings(`${valid}Set CLOVING_TEST_CONCURRENCY to 3.\n`),
+    [],
+  );
+  assert.match(
+    readme,
+    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 8.*default rule/,
+  );
 });
 
 await test("CLV-073 the README checks reject a setting that the help of cloving start does not name", () => {

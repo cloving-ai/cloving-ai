@@ -13,6 +13,18 @@ export function testConcurrency(cores: number): number {
   return Math.min(4, Math.max(2, cores - 1));
 }
 
+export function parseTestConcurrency(
+  value: string | undefined,
+  cores: number,
+): number {
+  if (value === undefined) return testConcurrency(cores);
+  if (!/^[1-8]$/.test(value))
+    throw new Error(
+      "CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 8",
+    );
+  return Number(value);
+}
+
 export function parseCheckTimeFactor(value: string | undefined): number {
   if (value === undefined) return 1;
   if (!/^[1-5]$/.test(value))
@@ -117,7 +129,7 @@ export function testCommand(
     arguments: [
       "--test",
       `--test-reporter=${resolve(import.meta.dirname, "test-reporter.ts")}`,
-      `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
+      `--test-concurrency=${String(parseTestConcurrency(process.env["CLOVING_TEST_CONCURRENCY"], availableParallelism()))}`,
       ...run.tests,
     ],
     directory,

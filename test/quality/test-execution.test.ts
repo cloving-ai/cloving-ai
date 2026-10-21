@@ -11,6 +11,7 @@ import {
   checkTests,
   coverageCommand,
   parseCheckTimeFactor,
+  parseTestConcurrency,
   testCommand,
   testConcurrency,
 } from "../../quality/test-execution.ts";
@@ -26,6 +27,21 @@ await test("CLV-112 bounds test concurrency by available cores", () => {
     [24, 4],
   ] as const)
     assert.equal(testConcurrency(cores), concurrency);
+});
+
+await test("CLV-156 accepts only whole test concurrency settings from 1 to 8", () => {
+  for (const cores of [1, 3, 4, 24])
+    assert.equal(
+      parseTestConcurrency(undefined, cores),
+      testConcurrency(cores),
+    );
+  for (const value of ["1", "2", "3", "4", "5", "6", "7", "8"])
+    assert.equal(parseTestConcurrency(value, 3), Number(value));
+  for (const value of ["0", "9", "x", "2.5", "-1", "", " 3", "3 ", "03", "3\n"])
+    assert.throws(
+      () => parseTestConcurrency(value, 3),
+      /CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 8/,
+    );
 });
 
 await test("CLV-101 bounds retries for transient coverage cleanup errors", async () => {
@@ -269,20 +285,42 @@ await test("CLV-044 the developer gate gives its test command a 600 s bound", ()
   assert.equal(command.directory, "/project");
 });
 
-await test("CLV-099 scales the test command bound by the check time factor", () => {
-  for (const [timeFactor, timeout] of [
-    [1, 600000],
-    [3, 1800000],
-  ] as const) {
+await test("CLV-156 the test command uses the configured worker count", () => {
+  const previous = process.env["CLOVING_TEST_CONCURRENCY"];
+  process.env["CLOVING_TEST_CONCURRENCY"] = "3";
+  try {
     const command = testCommand("/project", {
       tests: ["/project/main.test.ts"],
-      timeFactor,
     });
-    assert.equal(command.timeoutMilliseconds, timeout);
-    assert.equal(
-      command.arguments[2],
-      `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
-    );
+    assert.ok(command.arguments.includes("--test-concurrency=3"));
+    assert.equal(command.timeoutMilliseconds, 600000);
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_TEST_CONCURRENCY"];
+    else process.env["CLOVING_TEST_CONCURRENCY"] = previous;
+  }
+});
+
+await test("CLV-099 scales the test command bound by the check time factor", () => {
+  const previous = process.env["CLOVING_TEST_CONCURRENCY"];
+  delete process.env["CLOVING_TEST_CONCURRENCY"];
+  try {
+    for (const [timeFactor, timeout] of [
+      [1, 600000],
+      [3, 1800000],
+    ] as const) {
+      const command = testCommand("/project", {
+        tests: ["/project/main.test.ts"],
+        timeFactor,
+      });
+      assert.equal(command.timeoutMilliseconds, timeout);
+      assert.equal(
+        command.arguments[2],
+        `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
+      );
+    }
+  } finally {
+    if (previous !== undefined)
+      process.env["CLOVING_TEST_CONCURRENCY"] = previous;
   }
 });
 
