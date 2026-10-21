@@ -278,10 +278,12 @@ await test("CLV-078 aborts an unfinished merge even when HEAD is still reviewed 
     git(treeOf(scene), ["fetch", "--quiet", "origin"]);
     git(treeOf(scene), ["merge", "--no-ff", "--no-commit", "origin/main"]);
     assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
-    const folder = leftMerge(scene, commit);
+    leftMerge(scene, commit);
     const restarted = scene.unscanned({ check: [process.execPath, "-e", ""] });
     await restarted.scan();
-    await until(() => existsSync(join(folder, "result.json")));
+    await until(() =>
+      scene.reports.some((report) => report.operationId === "merge-left"),
+    );
     const report = scene.reports.find(
       (report) => report.operationId === "merge-left",
     );
