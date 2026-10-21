@@ -9,6 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { record } from "../src/protocol.ts";
 import { candidateProgram as installedProgram } from "../tools/workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
 import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-workflow.ts";
@@ -18,6 +20,7 @@ const product = join(import.meta.dirname, "..");
 const directory = realpathSync(
   mkdtempSync(join(tmpdir(), "cloving-candidate-package-")),
 );
+export const candidatePackageRoot = directory;
 process.once("exit", () => {
   rmSync(directory, { recursive: true, force: true });
 });
@@ -54,4 +57,27 @@ export function loadWorkflowFolders(
   input: Parameters<typeof installedFolders>[0],
 ) {
   return installedFolders(input, { packageRoot: directory });
+}
+
+export function preparedProject(input: {
+  readonly project: string;
+  readonly repository: string;
+  readonly home: string;
+  readonly xdgConfigHome: string;
+}) {
+  const entry = pathToFileURL(join(directory, "tools/self-host-project.ts"));
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { preparedProject } from ${JSON.stringify(entry.href)};
+process.stdout.write(JSON.stringify(await preparedProject(${JSON.stringify({ ...input, product: directory })})));`,
+    ],
+    { cwd: directory, timeout: 30_000, encoding: "utf8", stdio: "pipe" },
+  );
+  const parsed: unknown = JSON.parse(output);
+  const result = record(parsed);
+  if (!result) throw new Error("invalid-project-result");
+  return result;
 }

@@ -31,6 +31,11 @@ import {
   type WorkflowFolderCandidate,
 } from "./workflow-folders.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
+import { retainWorkflowBundle } from "./workflow-bundles.ts";
+import {
+  workflowBundleDependencies,
+  workflowPackageRoot,
+} from "./workflow-bundle-dependencies.ts";
 
 interface ProjectSettings {
   readonly product: string;
@@ -194,6 +199,53 @@ function operatorDeclaration(
   };
 }
 
+async function copyWorkflow(
+  settings: ProjectSettings,
+  file: string,
+): Promise<void> {
+  const { product, project } = settings;
+  await copyFile(
+    join(product, "workflows", file),
+    join(project, "workflows", file),
+  );
+  const sidecar = `${basename(file, extname(file))}.declaration.json`;
+  const declaration = await readFile(join(product, "workflows", sidecar)).catch(
+    (error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return undefined;
+      throw error;
+    },
+  );
+  if (declaration !== undefined)
+    await writeFile(join(project, "workflows", sidecar), declaration);
+}
+
+async function retainProjectBundle(
+  settings: ProjectSettings,
+  bundle: {
+    readonly repository: string;
+    readonly declarations: readonly DeclaredWorkflow[];
+  },
+): Promise<void> {
+  const { project, product } = settings;
+  await writeFile(
+    join(project, "declarations.json"),
+    JSON.stringify(bundle.declarations),
+  );
+  await writeFile(
+    join(project, "dependencies.json"),
+    await workflowBundleDependencies({
+      product,
+      packages: Object.keys(packageMetadata.dependencies),
+    }),
+  );
+  await retainWorkflowBundle({
+    project,
+    repository: bundle.repository,
+    directory: join(dirname(project), "workflow-bundles"),
+  });
+}
+
 export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
@@ -205,22 +257,21 @@ export async function preparedProject(
     '{"name":"cloving-self-host","private":true,"type":"module"}',
   );
   const files = await workflowFiles(join(product, "workflows"));
-  for (const file of files)
-    await copyFile(
-      join(product, "workflows", file),
-      join(project, "workflows", file),
-    );
+  for (const file of files) await copyWorkflow(settings, file);
   await linkedPackages(settings);
   let compiled = await compile(settings);
   const bundled = workflowManifests(compiled);
   const declarations = await workflowDeclarations(
-    join(product, "workflows"),
+    join(project, "workflows"),
     bundled,
   );
-  const folders = await loadWorkflowFolders({
-    ...settings,
-    bundled: reservations({ files, manifests: bundled, declarations }),
-  });
+  const folders = await loadWorkflowFolders(
+    {
+      ...settings,
+      bundled: reservations({ files, manifests: bundled, declarations }),
+    },
+    { packageRoot: await workflowPackageRoot(product) },
+  );
   const staged = await stageCandidates(project, folders.candidates);
   if (staged.length > 0) compiled = await compile(settings);
   const combined = [
@@ -240,6 +291,10 @@ export async function preparedProject(
       enumerable: true,
     });
   }
+  await retainProjectBundle(settings, {
+    repository: folders.repository,
+    declarations: combined,
+  });
   return {
     repository: folders.repository,
     manifests,
