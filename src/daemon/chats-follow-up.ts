@@ -11,6 +11,7 @@ import {
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
 import { validateAnalysis } from "../chats/analysis.ts";
+import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
 import { analysisProposal } from "../chats/analysis-proposal.ts";
 import { analysisBatchData } from "../chats/analysis-batches.ts";
 import { finalizeAnalysis } from "./chats-checkpoints.ts";
@@ -23,6 +24,23 @@ import {
   saveAnalysisFiles,
   type AnalysisDraftInput,
 } from "./chats-files.ts";
+
+export type ChatsResult =
+  | ReturnType<typeof analysisBatchData>
+  | ({ readonly kind: "analysis_batch" } & ReturnType<typeof analysisBatchData>)
+  | { readonly kind: "analysis_partial"; readonly reason: string }
+  | {
+      readonly kind: "analysis_draft";
+      readonly cycleId: string;
+      readonly candidateDigest: string;
+      readonly expiresAt: string;
+      readonly question: AnalysisQuestion;
+    }
+  | {
+      readonly kind: "handoff_requested";
+      readonly cycleId: string;
+      readonly promotionId: string;
+    };
 
 interface FollowUpSave {
   readonly intent: DeliveryIntent;
@@ -118,37 +136,47 @@ export async function saveFollowUp(
   runtime: string,
   call: FollowUpSave,
 ): Promise<AdapterOutcome> {
-  const { snapshot, cycleId, candidate } = call.input;
+  const { snapshot, candidate } = call.input;
   try {
-    if ("batch" in call.payload) {
-      if (Object.hasOwn(record(candidate) ?? {}, "openQuestion"))
-        return refused("analysis-question-limit");
-      const directory = await analysisDirectory(runtime, snapshot.importId);
-      const draft = await boundDraft(directory, call);
-      return await saveAcceptedAnalysis(runtime, { ...call, draft });
-    }
-    const validation = validateAnalysis(candidate, analysisEvidence(snapshot));
-    if (!validation.accepted)
-      return refused("analysis-follow-up-refused", validation.codes);
-    if (validation.result.openQuestion !== undefined)
+    if (
+      "batch" in call.payload &&
+      Object.hasOwn(record(candidate) ?? {}, "openQuestion")
+    )
       return refused("analysis-question-limit");
+    if (!("batch" in call.payload))
+      return await saveSnapshotFollowUp(runtime, call);
     const directory = await analysisDirectory(runtime, snapshot.importId);
     const draft = await boundDraft(directory, call);
-    const output = {
-      cycleId,
-      draft,
-      analysis: JSON.stringify(validation.result) + "\n",
-      proposal: analysisProposal(validation.result),
-    };
-    if (
-      call.mode === "reconcile" &&
-      (await inspectAnalysisFiles(directory, output)) === "absent"
-    )
-      return { kind: "absent" };
-    if (call.mode === "deliver") await saveAnalysisFiles(directory, output);
+    return await saveAcceptedAnalysis(runtime, { ...call, draft });
   } catch {
     return refused("analysis-follow-up-refused");
   }
+}
+
+async function saveSnapshotFollowUp(
+  runtime: string,
+  call: FollowUpSave,
+): Promise<AdapterOutcome> {
+  const { snapshot, cycleId, candidate } = call.input;
+  const validation = validateAnalysis(candidate, analysisEvidence(snapshot));
+  if (!validation.accepted)
+    return refused("analysis-follow-up-refused", validation.codes);
+  if (validation.result.openQuestion !== undefined)
+    return refused("analysis-question-limit");
+  const directory = await analysisDirectory(runtime, snapshot.importId);
+  const draft = await boundDraft(directory, call);
+  const output = {
+    cycleId,
+    draft,
+    analysis: JSON.stringify(validation.result) + "\n",
+    proposal: analysisProposal(validation.result),
+  };
+  if (
+    call.mode === "reconcile" &&
+    (await inspectAnalysisFiles(directory, output)) === "absent"
+  )
+    return { kind: "absent" };
+  if (call.mode === "deliver") await saveAnalysisFiles(directory, output);
   return {
     kind: "completed",
     worker: "chats",
@@ -224,7 +252,7 @@ function savedOutcome(
         : (saved.codes[0] ?? "analysis-input-refused"),
       saved.codes,
     );
-  let result: unknown = {
+  let result: ChatsResult = {
     kind: "handoff_requested",
     cycleId,
     promotionId: `analysis:${importId}:${cycleId}`,

@@ -1,6 +1,9 @@
 import { saveQuestion } from "./chats-question.ts";
-import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
-import { saveAcceptedAnalysis, saveFollowUp } from "./chats-follow-up.ts";
+import {
+  saveAcceptedAnalysis,
+  saveFollowUp,
+  type ChatsResult,
+} from "./chats-follow-up.ts";
 import type {
   AdapterOutcome,
   DeliveryIntent,
@@ -40,23 +43,6 @@ export interface ChatsWorker extends EffectDelivery {
   ) => Promise<AdapterOutcome>;
   readonly close: () => Promise<void>;
 }
-
-type ChatsResult =
-  | ReturnType<typeof analysisBatchData>
-  | ({ readonly kind: "analysis_batch" } & ReturnType<typeof analysisBatchData>)
-  | { readonly kind: "analysis_partial"; readonly reason: string }
-  | {
-      readonly kind: "analysis_draft";
-      readonly cycleId: string;
-      readonly candidateDigest: string;
-      readonly expiresAt: string;
-      readonly question: AnalysisQuestion;
-    }
-  | {
-      readonly kind: "handoff_requested";
-      readonly cycleId: string;
-      readonly promotionId: string;
-    };
 
 function completed(
   intent: DeliveryIntent,
