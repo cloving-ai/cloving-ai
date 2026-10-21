@@ -91,6 +91,7 @@ export interface ServiceOptions {
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
+  readonly retainedWorkflows?: readonly WorkflowRegistration[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly delivery: Delivery;
   readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
@@ -255,7 +256,10 @@ export async function startService(
   const path = await endpoint(options.runtimeDirectory);
   if (typeof path !== "string") return path;
   const timing = options.timing ?? serviceTiming;
-  const registry = workflowRegistry(options.workflows);
+  const registry = workflowRegistry(
+    options.workflows,
+    options.retainedWorkflows,
+  );
   const opening = await openAuthority(options.stateDirectory, {
     delivery: options.delivery,
     timing: timing.authority,

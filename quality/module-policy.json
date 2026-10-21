@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/world-pins.test.ts": "test",
     "test/test-timing.ts": "test",
     "test/test-timing.test.ts": "test",
     "test/watch-pr-retry.test.ts": "test",

@@ -164,6 +164,7 @@ await test("CLV-056 the product adapter reconciles a start with its operation ID
     kind: "start-run",
     runId: "run-1",
     operationId: "operation-1",
+    workflow: "sha256:pin",
   };
   const tagged = (receipt: string, operationId: string | null) => ({
     runId: "run-1",
@@ -294,6 +295,7 @@ await test("CLV-057 the product adapter cancels each World run of an operation t
     kind: "continue-run",
     runId: "run-1",
     operationId: "operation-1",
+    workflow: "sha256:pin",
   };
   const stopped = async (
     statuses: readonly string[],
