@@ -1,5 +1,8 @@
 {
   "roles": {
+    "test/operator-restart-fixture.ts": "test",
+    "test/operator-restart.test.ts": "test",
+    "test/packed-daemon-fixture.ts": "test",
     "test/world-pins.test.ts": "test",
     "test/test-timing.ts": "test",
     "test/test-timing.test.ts": "test",
