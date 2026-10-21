@@ -21,8 +21,11 @@ await test(
       assert.ok(batch.kind === "batch");
       assert.equal(batch.nextRecordIndex, batch.totalRecords);
       const result = await consumer.run(`${analysisSetup}
+writeFileSync("hold-analysis-save", "");
 const runId = await submitAnalysis();
-await until(() => readdirSync(directory).some((name) => name.startsWith("analysis-")) || lines("analysis-effects.log").some((line) => JSON.parse(line).outcome === "failed"));
+await until(() => existsSync("hold-analysis-save-entered"));
+rmSync("hold-analysis-save");
+await until(() => lines("analysis-effects.log").some((line) => { const effect = JSON.parse(line); return effect.method === "save-analysis" && effect.outcome === "completed"; }));
 const captures = readdirSync(directory).filter((name) => name.startsWith("capture-"));
 const captured = captures.length === 1 ? directory + "/" + captures[0] : undefined;
 const turn = lines("turns.log").map((line) => JSON.parse(line))[0];
