@@ -52,8 +52,18 @@ export interface RegisteredWorkflows {
   readonly workflowRefusals: readonly WorkflowRefusal[];
 }
 
-async function linkedPackages(settings: ProjectSettings): Promise<void> {
+async function initializeProject(
+  settings: ProjectSettings,
+): Promise<readonly string[]> {
   const { project, product } = settings;
+  await rm(project, { recursive: true, force: true });
+  await mkdir(join(project, "workflows"), { recursive: true, mode: 0o700 });
+  await writeFile(
+    join(project, "package.json"),
+    '{"name":"cloving-self-host","private":true,"type":"module"}',
+  );
+  const files = await workflowFiles(join(product, "workflows"));
+  for (const file of files) await copyWorkflow(settings, file);
   const modules = join(project, "node_modules");
   await mkdir(join(modules, "cloving"), { recursive: true });
   for (const name of Object.keys(packageMetadata.dependencies)) {
@@ -80,6 +90,7 @@ async function linkedPackages(settings: ProjectSettings): Promise<void> {
       ),
     }),
   );
+  return files;
 }
 
 async function compile(settings: ProjectSettings) {
@@ -220,45 +231,11 @@ async function copyWorkflow(
     await writeFile(join(project, "workflows", sidecar), declaration);
 }
 
-async function retainProjectBundle(
-  settings: ProjectSettings,
-  bundle: {
-    readonly repository: string;
-    readonly declarations: readonly DeclaredWorkflow[];
-  },
-): Promise<void> {
-  const { project, product } = settings;
-  await writeFile(
-    join(project, "declarations.json"),
-    JSON.stringify(bundle.declarations),
-  );
-  await writeFile(
-    join(project, "dependencies.json"),
-    await workflowBundleDependencies({
-      product,
-      packages: Object.keys(packageMetadata.dependencies),
-    }),
-  );
-  await retainWorkflowBundle({
-    project,
-    repository: bundle.repository,
-    directory: join(dirname(project), "workflow-bundles"),
-  });
-}
-
 export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
   const { product, project } = settings;
-  await rm(project, { recursive: true, force: true });
-  await mkdir(join(project, "workflows"), { recursive: true, mode: 0o700 });
-  await writeFile(
-    join(project, "package.json"),
-    '{"name":"cloving-self-host","private":true,"type":"module"}',
-  );
-  const files = await workflowFiles(join(product, "workflows"));
-  for (const file of files) await copyWorkflow(settings, file);
-  await linkedPackages(settings);
+  const files = await initializeProject(settings);
   let compiled = await compile(settings);
   const bundled = workflowManifests(compiled);
   const declarations = await workflowDeclarations(
@@ -291,9 +268,18 @@ export async function preparedProject(
       enumerable: true,
     });
   }
-  await retainProjectBundle(settings, {
+  await writeFile(join(project, "declarations.json"), JSON.stringify(combined));
+  await writeFile(
+    join(project, "dependencies.json"),
+    await workflowBundleDependencies({
+      product,
+      packages: Object.keys(packageMetadata.dependencies),
+    }),
+  );
+  await retainWorkflowBundle({
+    project,
     repository: folders.repository,
-    declarations: combined,
+    directory: join(dirname(project), "workflow-bundles"),
   });
   return {
     repository: folders.repository,
