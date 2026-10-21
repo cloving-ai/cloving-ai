@@ -1,10 +1,12 @@
+import { packedDaemon, packedEnvironment } from "./packed-daemon-fixture.ts";
+import { operatorRestart } from "./operator-restart-fixture.ts";
+import { withFiles } from "./quality/files-fixture.ts";
 import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
 import {
   packedDevelopTemplate,
   packedTemplateSources,
 } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
-import { stopChildGroup } from "./stop-child.ts";
 import {
   operatorFiles,
   operatorRefusals,
@@ -13,7 +15,6 @@ import {
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
-import { startPackedHost, ready, boundedExit } from "./packed-host-fixture.ts";
 import {
   packedPollingFiles,
   startPackedPolling,
@@ -21,7 +22,6 @@ import {
 } from "./packed-sleep-polling.ts";
 import {
   packedDecisionFiles,
-  packedNotifyCommand,
   runPackedDecision,
 } from "./packed-decision-wait.ts";
 import assert from "node:assert/strict";
@@ -218,47 +218,14 @@ async function inventory(root: string): Promise<void> {
     "node_modules",
   ])
     await assert.rejects(lstat(join(product, name)), { code: "ENOENT" });
+  for (const name of ["eslint", "prettier", "jscpd", "typescript-eslint"])
+    await assert.rejects(lstat(join(root, "node_modules", name)), {
+      code: "ENOENT",
+    });
   const compiler: unknown = JSON.parse(
     await readFile(join(root, "node_modules/typescript/package.json"), "utf8"),
   );
   assert.equal(field(compiler, "version"), "6.0.3");
-}
-
-async function environment(root: string): Promise<NodeJS.ProcessEnv> {
-  await writeFile(
-    join(root, "fake-worker.mjs"),
-    `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(join(root, "worker-called"))}, "called"); process.exit(1);`,
-  );
-  return {
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(
-        ([name]) =>
-          !name.startsWith("CLOVING_") &&
-          name !== "NODE_OPTIONS" &&
-          name !== "NODE_PATH",
-      ),
-    ),
-    NODE_OPTIONS: "--no-strip-types",
-    XDG_CONFIG_HOME: join(root, "config"),
-    CLOVING_RUNTIME_DIR: join(root, "host/run"),
-    CLOVING_WATCH_PORT: "0",
-    CLOVING_CLAUDE_COMMAND: JSON.stringify([
-      process.execPath,
-      join(root, "fake-worker.mjs"),
-    ]),
-    CLOVING_GH_COMMAND: JSON.stringify([
-      process.execPath,
-      join(root, "fake-worker.mjs"),
-    ]),
-    CLOVING_NOTIFY_COMMAND: packedNotifyCommand(root),
-    CLOVING_NEXT_COMMAND: "[]",
-    CLOVING_TICKET_COMMAND: "[]",
-    CLOVING_CHECK_COMMAND: "[]",
-    CLOVING_COMMANDS: JSON.stringify({
-      "approval-status": [process.execPath, join(root, "approval-status.cjs")],
-    }),
-    CLOVING_COMMAND_SECONDS: "10",
-  };
 }
 
 function registrations(
@@ -307,7 +274,7 @@ async function phoneStatus(
 }
 
 async function running(root: string, executable: string): Promise<void> {
-  const env = await environment(root);
+  const env = await packedEnvironment(root);
   const fixture = {
     root,
     repository: root,
@@ -317,9 +284,9 @@ async function running(root: string, executable: string): Promise<void> {
   await packedDecisionFiles(root);
   await packedPollingFiles(root);
   command(executable, { args: ["--help"], cwd: root, env });
-  const { child, closed, output } = startPackedHost({ root, executable, env });
+  const daemon = await packedDaemon(root, { executable, env });
   try {
-    const address = await ready(child, output);
+    const { address } = daemon;
     registrations(root, { executable, env });
     await phoneStatus(root, { executable, env });
     await runOperator(fixture, "project-run");
@@ -335,13 +302,10 @@ async function running(root: string, executable: string): Promise<void> {
     await inventory(root);
     await packedCandidateAdmission(root);
     const polling = await startPackedPolling(root);
-    child.kill("SIGTERM");
-    assert.equal(await boundedExit(closed), 0);
-    assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });
+    await daemon.stop();
     await resumePackedPolling(root, { executable, env, checkpoint: polling });
   } finally {
-    await stopChildGroup(child);
-    await boundedExit(closed);
+    await daemon.stop();
   }
 }
 
@@ -352,6 +316,21 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
     const executable = await installed(root);
     await packedDoctor(root);
     await running(root, executable);
+    await withFiles({}, async (directory) => {
+      command("git", { args: ["init", "-q"], cwd: directory });
+      const env = await packedEnvironment(directory);
+      await operatorRestart(
+        {
+          root: directory,
+          repository: directory,
+          runtimeDirectory: join(directory, "host/run"),
+        },
+        () => packedDaemon(directory, { executable, env }),
+      );
+      await assert.rejects(readFile(join(directory, "worker-called")), {
+        code: "ENOENT",
+      });
+    });
     await packedWorkflowFolders(root);
     await packedWorkflowTesting(root);
   } finally {
