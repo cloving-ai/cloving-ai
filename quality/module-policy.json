@@ -938,7 +938,14 @@
     "test/chats-analysis-save-bounds.test.ts": "test",
     "test/chats-analysis-capture-failures.test.ts": "test",
     "test/chats-analysis-capture-crash-fixture.ts": "test",
-    "test/chats-analysis-capture-restart.test.ts": "test"
+    "test/chats-analysis-capture-restart.test.ts": "test",
+    "src/chats/analysis-checkpoint.ts": "pure",
+    "src/daemon/chats-checkpoints.ts": "daemon",
+    "test/chats-analysis-checkpoints.test.ts": "test",
+    "test/chats-checkpoint-conflicts.test.ts": "test",
+    "test/chats-checkpoint-fixture.ts": "test",
+    "test/chats-checkpoint-storage.test.ts": "test",
+    "test/chats-checkpoint-failures.test.ts": "test"
   },
   "allowed": {
     "quality": [

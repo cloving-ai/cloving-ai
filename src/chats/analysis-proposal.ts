@@ -1,4 +1,17 @@
 import type { AnalysisResult, AnalysisClaim } from "./analysis-contract.ts";
+import type { AnalysisCheckpoint } from "./analysis-checkpoint.ts";
+
+export function checkpointProposal(checkpoint: AnalysisCheckpoint): string {
+  const { status, total, covered, uncovered, result } = checkpoint;
+  const heading = `Status: ${status}; total ${String(total)}; covered ${String(covered)}; uncovered ${String(uncovered)}.\n`;
+  const text = heading + (result === null ? "" : analysisProposal(result));
+  return text.length <= 4_000
+    ? text
+    : (
+        text.slice(0, 3_950) +
+        "\n[Summary shortened; see complete analysis JSON.]\n"
+      ).toWellFormed();
+}
 
 function summary(text: string): string {
   return text.length <= 240 ? text : text.slice(0, 237) + "...";
