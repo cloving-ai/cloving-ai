@@ -93,7 +93,7 @@ export async function saveAnalysisCheckpoint(
   directory: string,
   input: CheckpointInput,
 ) {
-  const { capture, candidate, mode } = input;
+  const { capture, candidate } = input;
   const snapshot = await readCapturedAnalysisSnapshot(directory, capture);
   const folder = join(directory, `capture-${capture.key}`);
   const previous = await previousCheckpoint(folder, { ...input, snapshot });
@@ -112,20 +112,18 @@ export async function saveAnalysisCheckpoint(
   });
   if (!merged.accepted && !merged.codes.includes("analysis-merge-conflict"))
     return { kind: "refused" as const, codes: merged.codes };
-  await bindBatch(folder, input);
-  if (!merged.accepted) {
-    if (
-      merged.codes.includes("analysis-merge-conflict") &&
-      (await retainConflict(folder, { ...input, previous })) === "absent"
-    )
-      return { kind: "absent" as const };
+  if (
+    !merged.accepted &&
+    (await retainConflict(folder, { ...input, previous })) === "absent"
+  )
+    return { kind: "absent" as const };
+  if (!merged.accepted)
     return { kind: "refused" as const, codes: merged.codes };
-  }
   const checkpoint = batchAnalysisCheckpoint(capture, {
     ...input,
     result: merged.result,
   });
-  return persistCheckpoint(folder, { checkpoint, mode });
+  return persistCheckpoint(folder, { ...input, checkpoint });
 }
 
 async function bindBatch(folder: string, input: CheckpointInput) {
@@ -149,9 +147,8 @@ async function bindBatch(folder: string, input: CheckpointInput) {
 
 async function persistCheckpoint(
   folder: string,
-  input: {
+  input: CheckpointInput & {
     readonly checkpoint: ReturnType<typeof batchAnalysisCheckpoint>;
-    readonly mode: CheckpointInput["mode"];
   },
 ) {
   const { checkpoint, mode } = input;
@@ -161,6 +158,7 @@ async function persistCheckpoint(
     proposal: checkpointProposal(checkpoint),
   };
   const state = await inspectAnalysisFiles(folder, output);
+  await bindBatch(folder, input);
   if (mode === "deliver") await saveAnalysisFiles(folder, output);
   return {
     kind:
@@ -203,6 +201,7 @@ async function retainConflict(
     }) + "\n";
   const path = join(folder, `conflict-${String(batchIndex)}.json`);
   const incomingPath = join(folder, incomingFile);
+  await bindBatch(folder, input);
   if (mode === "reconcile") {
     const variant = await inspectMatchingPrivateFile(
       incomingPath,

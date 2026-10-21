@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { captureAnalysisSnapshot } from "../src/daemon/chats-capture.ts";
+import {
+  captureAnalysisSnapshot,
+  readCapturedAnalysisSnapshot,
+} from "../src/daemon/chats-capture.ts";
 import { records } from "./chats-analysis-fixture.ts";
 import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import { withAnalysis, importId, cycleId } from "./chats-worker-fixture.ts";
@@ -10,6 +13,68 @@ import { record } from "../src/protocol.ts";
 import { saveAnalysisCheckpoint } from "../src/daemon/chats-checkpoints.ts";
 import { batch } from "./chats-analysis-merge-fixture.ts";
 import { ref } from "./chats-analysis-fixture.ts";
+
+await test(
+  "CLV-158 legacy captures recover initial checkpoints from verified evidence and still save",
+  chatPlatformScenario(async () => {
+    await withAnalysis(async (fixture) => {
+      const { snapshot } = await fixture.prepare();
+      const binding = { runId: cycleId, importId };
+      const capture = await captureAnalysisSnapshot(fixture.directory, binding);
+      const folder = join(fixture.directory, `capture-${capture.key}`);
+      const original = new Map<string, { bytes: string; inode: number }>();
+      const evidenceNames = [
+        "capture.json",
+        "redaction.json",
+        "redacted.jsonl",
+        "structure.json",
+      ];
+      for (const name of [
+        ...evidenceNames,
+        "checkpoint-0.json",
+        "proposal-0.txt",
+      ]) {
+        const path = join(folder, name);
+        original.set(name, {
+          bytes: await readFile(path, "utf8"),
+          inode: (await stat(path)).ino,
+        });
+      }
+      for (const name of ["checkpoint-0.json", "proposal-0.txt"])
+        await rm(join(folder, name));
+      await fixture.write("redacted.jsonl", "changed source");
+      assert.deepEqual(
+        await readCapturedAnalysisSnapshot(fixture.directory, capture),
+        snapshot,
+      );
+      assert.deepEqual(
+        await captureAnalysisSnapshot(fixture.directory, binding),
+        capture,
+      );
+      for (const [name, before] of original) {
+        const path = join(folder, name);
+        assert.equal(await readFile(path, "utf8"), before.bytes);
+        assert.equal((await stat(path)).mode & 0o777, 0o600);
+      }
+      for (const name of evidenceNames)
+        assert.equal(
+          (await stat(join(folder, name))).ino,
+          original.get(name)?.inode,
+        );
+      const saved = await fixture.deliver("save-analysis");
+      assert.equal(saved.kind, "completed");
+      assert.deepEqual(await fixture.deliver("save-analysis"), saved);
+      const checkpoint = record(
+        JSON.parse(
+          await readFile(join(folder, "analysis-checkpoint-1.json"), "utf8"),
+        ),
+      );
+      assert.ok(checkpoint);
+      assert.equal(checkpoint["status"], "complete");
+      assert.equal(checkpoint["covered"], records.length);
+    });
+  }),
+);
 
 await test(
   "CLV-158 capture publishes an initial private partial checkpoint and counts-first proposal",

@@ -145,15 +145,7 @@ async function writeCapture(
     join(input.folder, "capture.json"),
     JSON.stringify(capture) + "\n",
   );
-  const checkpoint = initialAnalysisCheckpoint(capture);
-  await matchingPrivateFile(
-    join(input.folder, "checkpoint-0.json"),
-    JSON.stringify(checkpoint) + "\n",
-  );
-  await matchingPrivateFile(
-    join(input.folder, "proposal-0.txt"),
-    checkpointProposal(checkpoint),
-  );
+  await ensureInitialCheckpoint(input.folder, capture);
   return capture;
 }
 
@@ -181,11 +173,11 @@ export async function readCapturedAnalysisSnapshot(
     evidence.records.length !== capture.totalRecords
   )
     throw new Error("analysis-input-refused");
-  await inspectInitialCheckpoint(folder, capture);
+  await ensureInitialCheckpoint(folder, capture);
   return snapshot;
 }
 
-async function inspectInitialCheckpoint(
+async function ensureInitialCheckpoint(
   folder: string,
   capture: AnalysisCapture,
 ) {
@@ -194,12 +186,7 @@ async function inspectInitialCheckpoint(
     ["checkpoint-0.json", JSON.stringify(checkpoint) + "\n"],
     ["proposal-0.txt", checkpointProposal(checkpoint)],
   ] as const) {
-    if (
-      (await boundedAnalysisFile(join(folder, name), {
-        permissions: 0o600,
-      })) !== expected
-    )
-      throw new Error("analysis-output-failed");
+    await matchingPrivateFile(join(folder, name), expected);
   }
 }
 

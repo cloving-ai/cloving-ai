@@ -25,6 +25,32 @@ import {
 
 const binding = { runId: "capture-failures", importId };
 
+await test(
+  "CLV-158 legacy checkpoint recovery verifies captured evidence before writing",
+  chatPlatformScenario(async () => {
+    await withAnalysis(async (fixture) => {
+      const capture = await captureAnalysisSnapshot(fixture.directory, binding);
+      const folder = join(fixture.directory, `capture-${capture.key}`);
+      for (const name of ["checkpoint-0.json", "proposal-0.txt"])
+        await rm(join(folder, name));
+      const path = join(folder, "redacted.jsonl");
+      const damaged = corpus.replace("At most", "At least");
+      await writeFile(path, damaged);
+      const before = await readdir(folder);
+      await assert.rejects(
+        readCapturedAnalysisSnapshot(fixture.directory, capture),
+        { message: "analysis-input-refused" },
+      );
+      await assert.rejects(
+        captureAnalysisSnapshot(fixture.directory, binding),
+        { message: "analysis-input-refused" },
+      );
+      assert.deepEqual(await readdir(folder), before);
+      assert.equal(await readFile(path, "utf8"), damaged);
+    });
+  }),
+);
+
 for (const name of ["checkpoint-0.json", "proposal-0.txt"]) {
   await test(
     `CLV-158 refuses capture replay with a damaged initial ${name}`,
