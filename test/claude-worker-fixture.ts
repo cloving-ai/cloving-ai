@@ -49,6 +49,7 @@ const modes = {
   "hold-second": () => turn === 2 ? held() : modes["fixed-reply"](),
   "conflict-second": () => { const candidate = JSON.parse(readFileSync(record + ".reply", "utf8")); if (turn === 2) candidate.process.scope = "Conflicting scope."; result({ result: JSON.stringify(candidate) }); },
   "invalid-second": () => result({ result: turn === 2 ? "{}" : readFileSync(record + ".reply", "utf8") }),
+  "planned-replies": () => { const replies = JSON.parse(readFileSync(record + ".reply", "utf8")); result({ result: JSON.stringify(replies[Math.min(turn - 1, replies.length - 1)]) }); },
   "fixed-reply": () => { process.stderr.write(prompt); result({ result: readFileSync(record + ".reply", "utf8") }); },
   committed: () => {
     writeFileSync("change-" + turn + ".txt", prompt);

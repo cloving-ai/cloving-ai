@@ -1,13 +1,13 @@
-import { saveFollowUp } from "./chats-follow-up.ts";
+import { saveQuestion } from "./chats-question.ts";
+import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
+import { saveAcceptedAnalysis, saveFollowUp } from "./chats-follow-up.ts";
 import type {
   AdapterOutcome,
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
-import { createHash } from "node:crypto";
 import { record, type Fields } from "../protocol.ts";
 import { validateAnalysis } from "../chats/analysis.ts";
-import type { AnalysisQuestion } from "../chats/analysis-contract.ts";
 import {
   analysisDocumentBytes,
   analysisEvidence,
@@ -23,13 +23,8 @@ import {
   readCapturedAnalysisSnapshot,
   findAnalysisCapture,
 } from "./chats-capture.ts";
-import { finalizeAnalysis } from "./chats-checkpoints.ts";
 import { operationKey } from "./operation-journal.ts";
-import {
-  analysisDirectory,
-  inspectAnalysisDraft,
-  saveAnalysisDraft,
-} from "./chats-files.ts";
+import { analysisDirectory } from "./chats-files.ts";
 
 export interface ChatsWorkerSettings {
   readonly runtimeDirectory: string;
@@ -167,50 +162,6 @@ async function saveInput(settings: ChatsWorkerSettings, call: SaveCall) {
   return analysisSaveInput({ ...call.payload, snapshot });
 }
 
-async function saveQuestion(
-  settings: ChatsWorkerSettings,
-  call: {
-    readonly intent: DeliveryIntent;
-    readonly mode: "deliver" | "reconcile";
-    readonly input: ReturnType<typeof analysisSaveInput>;
-    readonly question: AnalysisQuestion;
-  },
-): Promise<AdapterOutcome> {
-  try {
-    const { cycleId, snapshot, reply } = call.input;
-    const directory = await analysisDirectory(
-      settings.runtimeDirectory,
-      snapshot.importId,
-    );
-    const draft = {
-      runId: call.intent.runId,
-      cycleId,
-      operationId: call.intent.operationId,
-      inputDigest: call.intent.inputDigest,
-      snapshotDigest: createHash("sha256")
-        .update(JSON.stringify(snapshot))
-        .digest("hex"),
-      reply,
-    };
-    const metadata =
-      call.mode === "reconcile"
-        ? await inspectAnalysisDraft(directory, draft)
-        : await saveAnalysisDraft(directory, {
-            input: draft,
-            now: settings.now ?? (() => new Date().toISOString()),
-          });
-    if (metadata === undefined) return { kind: "absent" };
-    return completed(call.intent, {
-      kind: "analysis_draft",
-      cycleId,
-      ...metadata,
-      question: call.question,
-    });
-  } catch {
-    throw new Error("analysis-output-failed");
-  }
-}
-
 interface SaveCall {
   readonly intent: DeliveryIntent;
   readonly payload: Fields;
@@ -229,67 +180,21 @@ async function save(
     "batch" in call.payload &&
     Object.hasOwn(record(candidate) ?? {}, "openQuestion")
   )
-    return refused("analysis-input-refused");
+    return saveQuestion(settings, { ...call, input });
   const validation =
     "batch" in call.payload
       ? undefined
       : validateAnalysis(candidate, analysisEvidence(snapshot));
   if (validation === undefined)
-    return saveAccepted(settings, { ...call, input });
+    return saveAcceptedAnalysis(settings.runtimeDirectory, { ...call, input });
   if (!validation.accepted)
     return refused(
       validation.codes[0] ?? "analysis-input-refused",
       validation.codes,
     );
   const question = validation.result.openQuestion;
-  if (question !== undefined)
-    return saveQuestion(settings, { ...call, input, question });
-  return saveAccepted(settings, { ...call, input });
-}
-
-async function saveAccepted(
-  settings: ChatsWorkerSettings,
-  call: SaveCall & { readonly input: ReturnType<typeof analysisSaveInput> },
-): Promise<AdapterOutcome> {
-  const { snapshot, cycleId, candidate } = call.input;
-  const { importId } = snapshot;
-  try {
-    const directory = await analysisDirectory(
-      settings.runtimeDirectory,
-      importId,
-    );
-    const saved = await finalizeAnalysis(directory, {
-      runId: call.intent.runId,
-      importId,
-      cycleId,
-      snapshot: "snapshot" in call.payload ? snapshot : undefined,
-      candidate,
-      mode: call.mode,
-      batch: call.payload["batch"],
-    });
-    if (saved.kind === "absent") return { kind: "absent" };
-    if (saved.kind === "refused")
-      return refused(saved.codes[0] ?? "analysis-input-refused", saved.codes);
-    if (saved.next === undefined)
-      return completed(call.intent, {
-        kind: "handoff_requested",
-        cycleId,
-        promotionId: `analysis:${importId}:${cycleId}`,
-      });
-    if (saved.next.kind === "refused")
-      return completed(call.intent, {
-        kind: "analysis_partial",
-        reason: saved.next.code,
-      });
-    return completed(call.intent, {
-      kind: "analysis_batch",
-      ...analysisBatchData(saved.next, {
-        digest: saved.checkpoint.capturedDigest,
-      }),
-    });
-  } catch {
-    throw new Error("analysis-output-failed");
-  }
+  if (question !== undefined) return saveQuestion(settings, { ...call, input });
+  return saveAcceptedAnalysis(settings.runtimeDirectory, { ...call, input });
 }
 
 const reasons = new Set([

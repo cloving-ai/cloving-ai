@@ -268,6 +268,7 @@ export interface AnalysisDraftInput {
   readonly inputDigest: string;
   readonly snapshotDigest: string;
   readonly reply: string;
+  readonly batch?: unknown;
 }
 
 interface AnalysisDraftMetadata {
