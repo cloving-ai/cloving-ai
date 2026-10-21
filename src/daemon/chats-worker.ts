@@ -270,27 +270,26 @@ async function saveAccepted(
     if (saved.kind === "absent") return { kind: "absent" };
     if (saved.kind === "refused")
       return refused(saved.codes[0] ?? "analysis-input-refused", saved.codes);
-    if (saved.next !== undefined) {
-      if (saved.next.kind === "refused")
-        return completed(call.intent, {
-          kind: "analysis_partial",
-          reason: saved.next.code,
-        });
+    if (saved.next === undefined)
       return completed(call.intent, {
-        kind: "analysis_batch",
-        ...analysisBatchData(saved.next, {
-          digest: saved.checkpoint.capturedDigest,
-        }),
+        kind: "handoff_requested",
+        cycleId,
+        promotionId: `analysis:${importId}:${cycleId}`,
       });
-    }
+    if (saved.next.kind === "refused")
+      return completed(call.intent, {
+        kind: "analysis_partial",
+        reason: saved.next.code,
+      });
+    return completed(call.intent, {
+      kind: "analysis_batch",
+      ...analysisBatchData(saved.next, {
+        digest: saved.checkpoint.capturedDigest,
+      }),
+    });
   } catch {
     throw new Error("analysis-output-failed");
   }
-  return completed(call.intent, {
-    kind: "handoff_requested",
-    cycleId,
-    promotionId: `analysis:${importId}:${cycleId}`,
-  });
 }
 
 const reasons = new Set([
