@@ -4,6 +4,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { candidate } from "./chats-analysis-fixture.ts";
 import { commandModel } from "../src/token-prices.ts";
 import { analysisCommand } from "../src/daemon/analysis-launch.ts";
+import {
+  batchSnapshot,
+  firstAnalysisBatch,
+} from "./chats-analysis-batch-fixture.ts";
 import { importId, corpus, manifest, sidecar } from "./chats-worker-fixture.ts";
 import {
   alive,
@@ -27,6 +31,48 @@ const snapshot = {
   redaction: JSON.stringify(manifest),
   structure: JSON.stringify(sidecar),
 };
+
+for (const mode of ["capacity-once", "capacity-always"] as const) {
+  await test(`CLV-119 ${mode} keeps every analysis launch at the checked byte boundary`, () =>
+    withScene(async (scene) => {
+      const evidence = batchSnapshot(["synthetic"]);
+      const remaining = 65_536 - firstAnalysisBatch(evidence).launchBytes;
+      evidence.redaction += " ".repeat(remaining);
+      assert.ok(
+        Buffer.byteLength(JSON.stringify({ snapshot: evidence })) <= 65_536,
+      );
+      const restore = installAnalysisCli(scene, { reply: "{}", mode });
+      try {
+        const worker = scene.worker("unused", {
+          workflowId: () => Promise.resolve("analyze-chats"),
+          document: () =>
+            Promise.resolve(JSON.stringify({ snapshot: evidence })),
+          retryDelay: () => Promise.resolve(),
+        });
+        const delivered = await worker.deliver(operation, signal);
+        assert.ok("receipt" in delivered, JSON.stringify(delivered));
+        await until(() => scene.reports.length === 1);
+        const turns = scene.turns();
+        assert.equal(turns.length, mode === "capacity-once" ? 2 : 3);
+        for (const turn of turns) {
+          const instruction =
+            turn.arguments[turn.arguments.indexOf("--system-prompt") + 1];
+          assert.ok(instruction);
+          assert.equal(
+            Buffer.byteLength(instruction) + Buffer.byteLength(turn.prompt),
+            65_536,
+          );
+          assert.equal(turn.prompt, firstAnalysisBatch(evidence).prompt);
+          assert.deepEqual(
+            JSON.parse(turn.prompt),
+            JSON.parse(firstAnalysisBatch(evidence).prompt),
+          );
+        }
+      } finally {
+        restore();
+      }
+    }));
+}
 
 await test("CLV-139 analysis retains its fixed model across all capacity retries despite configured fallbacks", () =>
   withScene(async (scene) => {
@@ -100,11 +146,7 @@ await test("CLV-127 analysis uses the same capacity retries and usage totals", (
       assert.ok(second);
       assert.equal(second.directory, first.directory);
       assert.deepEqual(second.environment, first.environment);
-      assert.equal(
-        second.prompt,
-        "An earlier attempt stopped because the model was at capacity; continue from the current state of the work tree.\n\n" +
-          first.prompt,
-      );
+      assert.equal(second.prompt, first.prompt);
       const result = resultOf(scene.reports[0].result);
       assert.equal(result["reply"], reply);
       assert.equal(result["costUsd"], 0.5);

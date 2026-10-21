@@ -818,6 +818,8 @@
     "workflows/analyze-chats.ts": "workflow",
     "workflows/analyze-chats.declaration.json": "metadata",
     "test/analyze-chats-workflow.test.ts": "test",
+    "test/analyze-chats-capture.test.ts": "test",
+    "test/chats-analysis-batch-fixture.ts": "test",
     "test/analyze-chats-workflow-fixture.ts": "test",
     "test/analyze-chats-follow-up.test.ts": "test",
     "test/analyze-chats-sdk-fixture.ts": "test",
@@ -919,7 +921,14 @@
     "test/fallback-models.test.ts": "test",
     "test/fallback-prices.test.ts": "test",
     "test/fallback-worker-fixture.ts": "test",
-    "test/fallback-worker.test.ts": "test"
+    "test/fallback-worker.test.ts": "test",
+    "src/daemon/chats-capture.ts": "daemon",
+    "test/chats-analysis-capture.test.ts": "test",
+    "test/chats-analysis-capture-fixture.ts": "test",
+    "test/chats-analysis-save-bounds.test.ts": "test",
+    "test/chats-analysis-capture-failures.test.ts": "test",
+    "test/chats-analysis-capture-crash-fixture.ts": "test",
+    "test/chats-analysis-capture-restart.test.ts": "test"
   },
   "allowed": {
     "quality": [

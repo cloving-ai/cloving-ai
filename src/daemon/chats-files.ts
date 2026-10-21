@@ -1,4 +1,4 @@
-import { lstat } from "node:fs/promises";
+import { lstat, type FileHandle } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { record } from "../protocol.ts";
@@ -11,6 +11,50 @@ import {
   analysisDocumentBytes,
   type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
+import { analysisCaptureBytes } from "../chats/analysis-batches.ts";
+
+export async function readAnalysisCorpus(
+  path: string,
+  options: { readonly output?: string; readonly permissions?: number } = {},
+): Promise<string> {
+  const handle = await openInput(path);
+  let output: FileHandle | undefined;
+  try {
+    if (
+      options.permissions !== undefined &&
+      ((await handle.stat()).mode & 0o777) !== options.permissions
+    )
+      throw new Error("analysis-output-failed");
+    if (options.output !== undefined)
+      output = await createPrivateFile(options.output);
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    const buffer = Buffer.alloc(65_536);
+    const chunks: string[] = [];
+    let size = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read({
+        buffer,
+        length: Math.min(buffer.length, analysisCaptureBytes + 1 - size),
+      });
+      if (bytesRead === 0) break;
+      size += bytesRead;
+      if (size > analysisCaptureBytes) throw new Error("analysis-too-large");
+      if (output !== undefined)
+        await output.writeFile(buffer.subarray(0, bytesRead));
+      chunks.push(
+        decoder.decode(buffer.subarray(0, bytesRead), { stream: true }),
+      );
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    try {
+      await handle.close();
+    } finally {
+      await output?.close();
+    }
+  }
+}
 
 export async function analysisDirectory(
   runtime: string,
@@ -70,11 +114,14 @@ export async function boundedAnalysisFile(
 
 export async function readAnalysisSnapshot(
   directory: string,
-  importId: string,
+  input: { readonly importId: string; readonly permissions?: number },
 ): Promise<AnalysisSnapshot> {
+  const { importId, ...options } = input;
   const required = async (name: string): Promise<string> => {
     try {
-      return await boundedAnalysisFile(join(directory, name));
+      return name === "redacted.jsonl"
+        ? await readAnalysisCorpus(join(directory, name), options)
+        : await boundedAnalysisFile(join(directory, name), options);
     } catch (error) {
       if (Reflect.get(Object(error), "code") === "ENOENT")
         throw new Error("redaction-required", { cause: error });
@@ -85,7 +132,10 @@ export async function readAnalysisSnapshot(
     importId,
     redaction: await required("redaction.json"),
     corpus: await required("redacted.jsonl"),
-    structure: await boundedAnalysisFile(join(directory, "structure.json")),
+    structure: await boundedAnalysisFile(
+      join(directory, "structure.json"),
+      options,
+    ),
   };
 }
 
@@ -171,6 +221,8 @@ export async function inspectAnalysisFiles(
   directory: string,
   output: AnalysisOutput,
 ): Promise<"complete" | "absent"> {
+  if (Buffer.byteLength(JSON.stringify(output)) > analysisDocumentBytes)
+    throw new Error("analysis-too-large");
   await inspectOutputClaim(outputClaim(directory, output));
   if (output.draft === undefined)
     await requireAbsent(directory, [`draft-${output.cycleId}.json`]);

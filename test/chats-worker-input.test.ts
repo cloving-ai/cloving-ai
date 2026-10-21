@@ -10,8 +10,18 @@ import filesystem, {
 import { syncBuiltinESMExports } from "node:module";
 import { basename, join } from "node:path";
 import { test } from "node:test";
+import { analysisIntent } from "./chats-worker-fixture.ts";
+import {
+  batchSnapshot,
+  firstAnalysisBatch,
+} from "./chats-analysis-batch-fixture.ts";
+import { parseCorpus } from "../src/chats/corpus-input.ts";
+import { itemAt } from "./chats-analysis-fixture.ts";
 import { record } from "../src/protocol.ts";
-import { analysisModelInput } from "../src/chats/analysis-input.ts";
+import {
+  analysisPrompt,
+  analysisLaunchBytes,
+} from "../src/chats/analysis-prompt.ts";
 import {
   withAnalysis,
   assertRefused,
@@ -147,19 +157,27 @@ for (const kind of [
 }
 
 await test(
-  "CLV-115 opens only the three permitted evidence files",
+  "CLV-119 opens only permitted evidence and private capture files",
   chatPlatformScenario(async () => {
     await withAnalysis(async (f) => {
       const opened: string[] = [];
       const original = filesystem.open;
       filesystem.open = (path, flags) => {
         opened.push(basename(String(path)));
-        return original(path, flags);
+        return original(path, flags, 0o600);
       };
       syncBuiltinESMExports();
       try {
         await f.capture();
         assert.deepEqual(opened, [
+          "redaction.json",
+          "redaction.json",
+          "redacted.jsonl",
+          "redacted.jsonl",
+          "structure.json",
+          "structure.json",
+          "capture.json",
+          "capture.json",
           "redaction.json",
           "redacted.jsonl",
           "structure.json",
@@ -178,15 +196,13 @@ for (const content of [
   JSON.stringify({ schemaVersion: 1 }) + "\n",
 ]) {
   await test(
-    `CLV-115 bounds corpus input ${String(Buffer.byteLength(content))}`,
+    `CLV-119 refuses invalid captured corpus of ${String(Buffer.byteLength(content))} bytes`,
     chatPlatformScenario(async () => {
       await withAnalysis(async (f) => {
         await f.write("redacted.jsonl", content);
         assertRefused(
           await f.deliver("read-analysis"),
-          Buffer.byteLength(content) > 65_536
-            ? "analysis-too-large"
-            : "analysis-input-refused",
+          "analysis-input-refused",
         );
       });
     }),
@@ -197,7 +213,12 @@ await test(
   "CLV-115 preflights complete serialized model input including escape overhead",
   chatPlatformScenario(async () => {
     await withAnalysis(async (f) => {
-      const snapshot = await f.capture();
+      const snapshot = {
+        importId,
+        corpus,
+        redaction: JSON.stringify(manifest),
+        structure: JSON.stringify(sidecar),
+      };
       const filler = '\\"'.repeat(8_000);
       const padded = record(
         JSON.parse(snapshot.corpus.split("\n")[0] ?? "null"),
@@ -210,7 +231,7 @@ await test(
         snapshot.corpus.split("\n").slice(1).join("\n");
       assert.ok(Buffer.byteLength(text) < 65_536);
       assert.ok(
-        Buffer.byteLength(analysisModelInput({ ...snapshot, corpus: text })) >
+        analysisLaunchBytes(analysisPrompt({ ...snapshot, corpus: text })) >
           65_536,
       );
       await f.write("redacted.jsonl", text);
@@ -268,6 +289,51 @@ await test(
       await rm(chats, { recursive: true });
       await symlink(join(f.runtimeDirectory, "missing"), chats);
       assertRefused(await f.deliver("read-analysis"), "analysis-input-refused");
+    });
+  }),
+);
+
+await test(
+  "CLV-115 complete escaped model document passes exactly at the byte limit and fails one byte later",
+  chatPlatformScenario(async () => {
+    await withAnalysis(async (f) => {
+      const snapshot = batchSnapshot(["synthetic"]);
+      const batch = firstAnalysisBatch(snapshot);
+      const initial = batch.launchBytes;
+      await f.write("redaction.json", snapshot.redaction);
+      await f.write("structure.json", snapshot.structure);
+      const messages = parseCorpus(snapshot.corpus);
+      const first = itemAt(messages);
+      const padded = [
+        { ...first, text: first.text + "x".repeat(65_536 - initial) },
+        ...messages.slice(1),
+      ];
+      const text = padded
+        .map((message) => JSON.stringify(message) + "\n")
+        .join("");
+      assert.equal(
+        analysisLaunchBytes(
+          analysisPrompt(
+            { ...batch.snapshot, corpus: text },
+            { batchIndex: 0, firstRecordIndex: 0, previousResult: null },
+          ),
+        ),
+        65_536,
+      );
+      await f.write("redacted.jsonl", text);
+      await f.capture();
+      await f.write(
+        "redacted.jsonl",
+        text.replace('"text":"synthetic', '"text":"syntheticx'),
+      );
+      const intent = {
+        ...analysisIntent("read-analysis"),
+        runId: "overflow-run",
+      };
+      assertRefused(
+        await f.worker.deliver(intent, new AbortController().signal),
+        "analysis-too-large",
+      );
     });
   }),
 );
