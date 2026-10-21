@@ -84,7 +84,71 @@ await test("CLV-153 retaining an existing damaged generation refuses without rep
       message: "pinned-workflow-unavailable",
     });
     assert.equal(await readFile(path, "utf8"), "damaged");
-    assert.deepEqual(await readdir(input.directory), [id]);
+    assert.deepEqual((await readdir(input.directory)).sort(), [".history", id]);
+  }));
+
+await test("CLV-153 a deleted retained generation cannot be rebuilt from unchanged source", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const directory = join(input.directory, id);
+    await rm(directory, { recursive: true });
+    await assert.rejects(retainWorkflowBundle(input), {
+      message: "pinned-workflow-unavailable",
+    });
+    await assert.rejects(lstat(directory), { code: "ENOENT" });
+    assert.deepEqual(
+      await readRetainedWorkflowBundle({ ...input, id }),
+      unavailable,
+    );
+  }));
+
+await test("CLV-153 a missing retention receipt fails closed without rewriting the history", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const receipt = join(input.directory, ".history", id, "bundle.json");
+    await rm(receipt);
+    await assert.rejects(retainWorkflowBundle(input), {
+      message: "pinned-workflow-unavailable",
+    });
+    await assert.rejects(lstat(receipt), { code: "ENOENT" });
+  }));
+
+await test("CLV-153 damaged retention history refuses with the pinned availability code", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const history = join(input.directory, ".history");
+    await rm(history, { recursive: true });
+    await writeFile(history, "damaged");
+    await assert.rejects(retainWorkflowBundle(input), {
+      message: "pinned-workflow-unavailable",
+    });
+    assert.equal(await readFile(history, "utf8"), "damaged");
+    assert.equal(
+      (await readRetainedWorkflowBundle({ ...input, id })).kind,
+      "available",
+    );
+  }));
+
+await test("CLV-153 inaccessible retention history refuses with the pinned availability code", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const history = join(input.directory, ".history");
+    await chmod(history, 0);
+    try {
+      await assert.rejects(retainWorkflowBundle(input), {
+        message: "pinned-workflow-unavailable",
+      });
+    } finally {
+      await chmod(history, 0o700);
+    }
+    assert.equal(
+      (await readRetainedWorkflowBundle({ ...input, id })).kind,
+      "available",
+    );
   }));
 
 await test("CLV-153 concurrent retention commits one complete generation and leaves no staging directories", () =>
@@ -95,7 +159,17 @@ await test("CLV-153 concurrent retention commits one complete generation and lea
       retainWorkflowBundle(input),
     ]);
     assert.equal(ids[0], ids[1]);
-    assert.deepEqual(await readdir(input.directory), [ids[0]]);
+    assert.deepEqual((await readdir(input.directory)).sort(), [
+      ".history",
+      ids[0],
+    ]);
+    const history = join(input.directory, ".history");
+    assert.deepEqual(await readdir(history), [ids[0]]);
+    assert.equal((await lstat(history)).mode & 0o077, 0);
+    assert.equal(
+      (await lstat(join(history, ids[0], "bundle.json"))).mode & 0o077,
+      0,
+    );
     assert.equal((await lstat(input.directory)).mode & 0o077, 0);
     assert.equal(
       (await lstat(join(input.directory, ids[0], "bundle.json"))).mode & 0o077,
@@ -106,6 +180,55 @@ await test("CLV-153 concurrent retention commits one complete generation and lea
       "available",
     );
   }));
+
+await test("CLV-153 existing valid bundles acquire history and reuse immutable receipts", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const history = join(input.directory, ".history");
+    await rm(history, { recursive: true });
+    assert.equal(await retainWorkflowBundle(input), id);
+    const path = join(history, id, "bundle.json");
+    const original = await lstat(path);
+    const contents = await readFile(path, "utf8");
+    assert.equal(
+      contents,
+      await readFile(join(input.directory, id, "bundle.json"), "utf8"),
+    );
+    assert.equal(await retainWorkflowBundle(input), id);
+    assert.equal((await lstat(path)).ino, original.ino);
+    assert.equal(await readFile(path, "utf8"), contents);
+    assert.deepEqual(await readdir(history), [id]);
+  }));
+
+for (const damage of ["changed", "linked", "pipe", "directory"]) {
+  await test(`CLV-153 retention rejects an invalid receipt without substitution: ${damage}`, () =>
+    withFiles(files, async (root) => {
+      const input = settings(root);
+      const id = await retainWorkflowBundle(input);
+      const path = join(input.directory, ".history", id, "bundle.json");
+      await rm(path);
+      switch (damage) {
+        case "changed":
+          await writeFile(path, "damaged");
+          break;
+        case "linked":
+          await symlink(join(input.directory, id, "bundle.json"), path);
+          break;
+        case "pipe":
+          execFileSync("mkfifo", [path]);
+          break;
+        case "directory":
+          await mkdir(path);
+          break;
+      }
+      const original = await lstat(path);
+      await assert.rejects(retainWorkflowBundle(input), {
+        message: "pinned-workflow-unavailable",
+      });
+      assert.equal((await lstat(path)).ino, original.ino);
+    }));
+}
 
 await test("CLV-153 an incomplete compiler bundle never becomes a retained generation", () =>
   withFiles(files, async (root) => {

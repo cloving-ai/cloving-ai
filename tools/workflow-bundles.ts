@@ -132,6 +132,66 @@ async function validatedId(input: BundleLookup): Promise<string> {
   return input.id;
 }
 
+async function existingEntry(path: string) {
+  return lstat(path).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return undefined;
+    throw error;
+  });
+}
+
+async function retainedBefore(
+  input: BundleLookup,
+  contents: string,
+): Promise<boolean> {
+  try {
+    const history = join(input.directory, ".history");
+    await mkdir(history, { recursive: true, mode: 0o700 });
+    if (!(await lstat(history)).isDirectory())
+      throw new Error("pinned-workflow-unavailable");
+    const directory = join(history, input.id);
+    const entry = await existingEntry(directory);
+    if (entry === undefined) return false;
+    if (!entry.isDirectory()) throw new Error("pinned-workflow-unavailable");
+    const receipt = await regularFile(join(directory, "bundle.json"));
+    if (receipt.toString("utf8") !== contents)
+      throw new Error("pinned-workflow-unavailable");
+    return true;
+  } catch {
+    throw new Error("pinned-workflow-unavailable");
+  }
+}
+
+async function rememberBundle(
+  input: BundleLookup,
+  contents: string,
+): Promise<void> {
+  const history = join(input.directory, ".history");
+  const temporary = await mkdtemp(join(history, ".pending-"));
+  try {
+    await writeFile(join(temporary, "bundle.json"), contents, {
+      flag: "wx",
+      mode: 0o600,
+    });
+    await publishDirectory(temporary, join(history, input.id));
+    await retainedBefore(input, contents);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+}
+
+async function publishDirectory(from: string, to: string): Promise<void> {
+  await rename(from, to).catch((error: unknown) => {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      ["ENOTEMPTY", "EEXIST"].includes(String(error.code))
+    )
+      return;
+    throw error;
+  });
+}
+
 export async function retainWorkflowBundle(
   input: BundleInput,
 ): Promise<string> {
@@ -141,13 +201,15 @@ export async function retainWorkflowBundle(
   const id = digest(contents);
   await mkdir(input.directory, { recursive: true, mode: 0o700 });
   const destination = join(input.directory, id);
+  const lookup = { ...input, id };
   if (
-    await lstat(destination).then(
-      () => true,
-      () => false,
-    )
-  )
-    return validatedId({ ...input, id });
+    (await retainedBefore(lookup, contents)) ||
+    (await existingEntry(destination))
+  ) {
+    await validatedId(lookup);
+    await rememberBundle(lookup, contents);
+    return id;
+  }
   const temporary = await mkdtemp(join(input.directory, ".pending-"));
   try {
     for (const { name, bytes } of files) {
@@ -159,17 +221,11 @@ export async function retainWorkflowBundle(
       flag: "wx",
       mode: 0o600,
     });
-    await rename(temporary, destination).catch((error: unknown) => {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        ["ENOTEMPTY", "EEXIST"].includes(String(error.code))
-      )
-        return;
-      throw error;
-    });
+    await publishDirectory(temporary, destination);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
-  return validatedId({ ...input, id });
+  await validatedId(lookup);
+  await rememberBundle(lookup, contents);
+  return id;
 }
