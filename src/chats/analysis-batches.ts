@@ -6,7 +6,11 @@ import {
   validAnalysisImportId,
   type AnalysisSnapshot,
 } from "./analysis-input.ts";
-import { analysisLaunchBytes, analysisPrompt } from "./analysis-prompt.ts";
+import {
+  analysisLaunchBytes,
+  analysisPrompt,
+  type AnalysisBatchContext,
+} from "./analysis-prompt.ts";
 import type { ImportStructure } from "./structure.ts";
 
 export interface AnalysisBatchPosition {
@@ -25,6 +29,7 @@ export interface AnalysisBatch {
   readonly prompt: string;
   readonly launchBytes: number;
   readonly adapterDocument: string;
+  readonly context: AnalysisBatchContext;
 }
 
 export type AnalysisBatchPreparation =
@@ -38,6 +43,23 @@ export type AnalysisBatchPreparation =
     };
 
 export const analysisCaptureBytes = 52_428_800;
+
+export function analysisBatchData(
+  batch: AnalysisBatch,
+  capture: { readonly digest: string; readonly snapshot?: AnalysisSnapshot },
+) {
+  if (batch.batchIndex === 0 && batch.nextRecordIndex === batch.totalRecords)
+    return { snapshot: capture.snapshot ?? batch.snapshot };
+  return {
+    snapshot: batch.snapshot,
+    context: batch.context,
+    batch: {
+      batchIndex: batch.batchIndex,
+      nextRecordIndex: batch.nextRecordIndex,
+      capturedDigest: capture.digest,
+    },
+  };
+}
 
 export function prepareAnalysisBatch(
   snapshot: AnalysisSnapshot,
@@ -127,6 +149,7 @@ function batchOf(
     prompt,
     launchBytes: analysisLaunchBytes(prompt),
     adapterDocument: JSON.stringify({ snapshot: batchSnapshot, context }),
+    context,
   };
 }
 

@@ -1,5 +1,8 @@
 {
   "roles": {
+    "test/chats-analysis-batch-binding.test.ts": "test",
+    "test/analyze-chats-batches.test.ts": "test",
+    "test/analyze-chats-batches-fixture.ts": "test",
     "test/world-pins.test.ts": "test",
     "test/test-timing.ts": "test",
     "test/test-timing.test.ts": "test",

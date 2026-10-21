@@ -1,6 +1,6 @@
 {
   "workflowId": "analyze-chats",
-  "effectLimit": 5,
+  "effectLimit": 11,
   "capabilities": ["chats", "claude"],
   "stages": [
     {

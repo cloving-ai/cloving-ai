@@ -100,14 +100,38 @@ function promptOf(text: string | undefined, target: string): string {
     throw new Error("analysis-input-refused");
   const followUp =
     "followUp" in payload ? analysisFollowUp(payload["followUp"]) : undefined;
-  const batch = firstBatch(snapshot);
   const prompt =
     followUp === undefined
-      ? batch.prompt
-      : analysisFollowUpPrompt(batch.snapshot, followUp);
+      ? batchPrompt(snapshot, payload)
+      : analysisFollowUpPrompt(firstBatch(snapshot).snapshot, followUp);
   if (analysisLaunchBytes(prompt) > analysisDocumentBytes)
     throw new Error("analysis-too-large");
   return prompt;
+}
+
+function batchPrompt(
+  snapshot: AnalysisSnapshot,
+  payload: Readonly<Record<string, unknown>>,
+): string {
+  if (!("context" in payload)) return firstBatch(snapshot).prompt;
+  const context = record(payload["context"]);
+  if (context === undefined || Object.keys(context).length !== 3)
+    throw new Error("analysis-input-refused");
+  const position = [context["batchIndex"], context["firstRecordIndex"]];
+  if (
+    !position.every(
+      (value) =>
+        typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+    ) ||
+    Number(position[0]) > 3
+  )
+    throw new Error("analysis-input-refused");
+  if (
+    context["previousResult"] !== null &&
+    record(context["previousResult"]) === undefined
+  )
+    throw new Error("analysis-input-refused");
+  return JSON.stringify({ evidence: snapshot, context });
 }
 
 async function cleaned(folder: string): Promise<void> {

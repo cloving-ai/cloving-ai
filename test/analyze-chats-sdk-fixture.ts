@@ -29,7 +29,7 @@ if (!existsSync(directory + "/redaction.json")) {
   writeFileSync(directory + "/structure.json", ${JSON.stringify(JSON.stringify(sidecar))}, { mode: 0o600 });
 }
 writeFileSync("turns.log", existsSync("turns.log") ? readFileSync("turns.log") : "");
-installAnalysisCli({ directory: process.cwd() }, { reply: existsSync("draft-question") ? ${JSON.stringify(JSON.stringify(draftCandidate))} : ${JSON.stringify(JSON.stringify(candidate()))}, mode: existsSync("interrupt") ? "hold" : "fixed-reply" });
+installAnalysisCli({ directory: process.cwd() }, { reply: existsSync("batch-reply.json") ? readFileSync("batch-reply.json", "utf8") : existsSync("draft-question") ? ${JSON.stringify(JSON.stringify(draftCandidate))} : ${JSON.stringify(JSON.stringify(candidate()))}, mode: existsSync("batch-turn-mode") ? readFileSync("batch-turn-mode", "utf8") : existsSync("interrupt") ? "hold" : "fixed-reply" });
 let analysisNow = "2026-10-20T10:00:00.000Z";
 const analysisClock = () => existsSync("clock-analysis") ? analysisNow : new Date().toISOString();
 const document = async (digest) => ports.document(digest);
@@ -37,7 +37,7 @@ const workflowId = async (runId) => ports.workflowId(runId);
 const analysis = claudeWorker({
   worker: "codex", command: ["false"], repository: "unused", worktrees: process.cwd() + "/worktrees", journal: process.cwd() + "/journal", document, workflowId,
   report: async (report) => {
-    if (existsSync("halt-before-report")) {
+    if (existsSync("halt-before-report") || (existsSync("halt-before-report-batch-2") && lines("turns.log").length === 2)) {
       writeFileSync(directory + "/redacted.jsonl", "changed after capture");
       await halt("completed-private-result");
     }
@@ -58,6 +58,7 @@ const chats = {
       const metadata = JSON.parse(outcome.result);
       await halt("saved-private-draft", { expiresAt: metadata.expiresAt, candidateDigest: metadata.candidateDigest });
     }
+    if (intent.method === "save-analysis" && outcome.kind === "completed" && existsSync("halt-after-batch-1")) await halt("committed-batch-one");
     return outcome;
   },
 };
@@ -69,7 +70,7 @@ const destinationAnalysis = {
 };
 const fake = fakeRegistration([]);
 const registration = {
-  ...fake, workflowId: "analyze-chats", effectLimit: 5,
+  ...fake, workflowId: "analyze-chats", effectLimit: Number(process.env.ANALYSIS_EFFECT_LIMIT ?? (existsSync("batch-reply.json") ? "11" : "5")),
   manifest: { ...fake.manifest, capabilities: ["chats", "claude"] },
   submission: { maximumBytes: 4096, fields: { importId: "string" } },
   resolver: { id: "analysis-fixture", version: "1", resolve: () => Promise.resolve({ kind: "resolved", input: { cycleId: "analysis-cycle", repository: "unused", input: { importId } } }) },

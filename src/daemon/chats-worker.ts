@@ -13,9 +13,11 @@ import {
   analysisEvidence,
   isAnalysisSnapshot,
   validAnalysisImportId,
-  type AnalysisSnapshot,
 } from "../chats/analysis-input.ts";
-import { prepareAnalysisBatch } from "../chats/analysis-batches.ts";
+import {
+  analysisBatchData,
+  prepareAnalysisBatch,
+} from "../chats/analysis-batches.ts";
 import {
   captureAnalysisSnapshot,
   readCapturedAnalysisSnapshot,
@@ -44,7 +46,9 @@ export interface ChatsWorker extends EffectDelivery {
 }
 
 type ChatsResult =
-  | { readonly snapshot: AnalysisSnapshot }
+  | ReturnType<typeof analysisBatchData>
+  | ({ readonly kind: "analysis_batch" } & ReturnType<typeof analysisBatchData>)
+  | { readonly kind: "analysis_partial"; readonly reason: string }
   | {
       readonly kind: "analysis_draft";
       readonly cycleId: string;
@@ -143,9 +147,7 @@ async function read(
     previousResult: null,
   });
   if (batch.kind === "refused") throw new Error(batch.code);
-  if (batch.nextRecordIndex !== batch.totalRecords)
-    throw new Error("analysis-too-large");
-  const result = { snapshot };
+  const result = analysisBatchData(batch, { digest: capture.digest, snapshot });
   bounded(JSON.stringify(result));
   return completed(call.intent, result);
 }
@@ -218,30 +220,47 @@ async function saveQuestion(
   }
 }
 
+interface SaveCall {
+  readonly intent: DeliveryIntent;
+  readonly payload: Fields;
+  readonly mode: "deliver" | "reconcile";
+}
+
 async function save(
   settings: ChatsWorkerSettings,
-  call: {
-    readonly intent: DeliveryIntent;
-    readonly payload: Fields;
-    readonly mode: "deliver" | "reconcile";
-  },
+  call: SaveCall,
 ): Promise<AdapterOutcome> {
   const input = saveInput(call.payload);
-  const { snapshot, cycleId, candidate } = input;
+  const { snapshot, candidate } = input;
   if ("followUp" in call.payload)
     return saveFollowUp(settings.runtimeDirectory, { ...call, input });
-  const validation = validateAnalysis(candidate, analysisEvidence(snapshot));
-  if (!validation.accepted)
-    return refused(
-      validation.codes[0] ?? "analysis-input-refused",
-      validation.codes,
-    );
-  if (validation.result.openQuestion !== undefined)
-    return await saveQuestion(settings, {
-      ...call,
-      input,
-      question: validation.result.openQuestion,
-    });
+  if (
+    "batch" in call.payload &&
+    Object.hasOwn(record(candidate) ?? {}, "openQuestion")
+  )
+    return refused("analysis-input-refused");
+  const validation =
+    "batch" in call.payload
+      ? undefined
+      : validateAnalysis(candidate, analysisEvidence(snapshot));
+  if (validation !== undefined) {
+    if (!validation.accepted)
+      return refused(
+        validation.codes[0] ?? "analysis-input-refused",
+        validation.codes,
+      );
+    const question = validation.result.openQuestion;
+    if (question !== undefined)
+      return await saveQuestion(settings, { ...call, input, question });
+  }
+  return saveAccepted(settings, { ...call, input });
+}
+
+async function saveAccepted(
+  settings: ChatsWorkerSettings,
+  call: SaveCall & { readonly input: ReturnType<typeof saveInput> },
+): Promise<AdapterOutcome> {
+  const { snapshot, cycleId, candidate } = call.input;
   try {
     const directory = await analysisDirectory(
       settings.runtimeDirectory,
@@ -253,10 +272,24 @@ async function save(
       snapshot,
       candidate,
       mode: call.mode,
+      batch: call.payload["batch"],
     });
     if (saved.kind === "absent") return { kind: "absent" };
     if (saved.kind === "refused")
       return refused(saved.codes[0] ?? "analysis-input-refused", saved.codes);
+    if (saved.next !== undefined) {
+      if (saved.next.kind === "refused")
+        return completed(call.intent, {
+          kind: "analysis_partial",
+          reason: saved.next.code,
+        });
+      return completed(call.intent, {
+        kind: "analysis_batch",
+        ...analysisBatchData(saved.next, {
+          digest: saved.checkpoint.capturedDigest,
+        }),
+      });
+    }
   } catch {
     throw new Error("analysis-output-failed");
   }
@@ -275,6 +308,7 @@ const reasons = new Set([
   "analysis-follow-up-refused",
   "analysis-input-refused",
   "analysis-output-failed",
+  "analysis-batch-limit",
   "unsupported-effect",
   "workflow-not-allowed",
   "payload-not-available",

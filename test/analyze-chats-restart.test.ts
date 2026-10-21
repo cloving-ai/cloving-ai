@@ -10,6 +10,126 @@ import {
 } from "./analyze-chats-sdk-fixture.ts";
 import { snapshot } from "./analyze-chats-workflow-fixture.ts";
 import { digestOf } from "./service-fixture.ts";
+import {
+  firstCheckpointFiles,
+  assertBatchRestart,
+  batchSetup,
+  inspectBatchCheckpoints,
+} from "./analyze-chats-batches-fixture.ts";
+
+await test(
+  "CLV-159 interruption of batch two never launches a replacement and leaves batch one partial",
+  chatPlatformScenario(() =>
+    withConsumer(source, async (consumer) => {
+      const first = await consumer.runUntil(
+        "interrupted-batch-two",
+        `${batchSetup({ mode: "hold-second" })}
+const runId = await submitAnalysis();
+await until(() => lines("turns.log").length === 2);
+process.kill(JSON.parse(lines("turns.log")[1]).processId, "SIGKILL");
+await halt("interrupted-batch-two", { runId });
+`,
+      );
+      assert.equal(
+        field(first.lines[0], "boundary"),
+        "interrupted-batch-two",
+        first.stderr,
+      );
+      const second = await consumer.run(
+        `${setup}
+await until(async () => ["completed", "blocked", "failed"].includes(await stateOf(process.env.RUN_ID)));
+${inspectBatchCheckpoints}
+await finished(process.env.RUN_ID);
+`,
+        { RUN_ID: String(field(first.lines[0], "runId")) },
+      );
+      assert.equal(
+        second.status,
+        0,
+        second.stderr + JSON.stringify(second.lines),
+      );
+      const checkpoints = field(second.lines[0], "checkpoints");
+      assert.ok(Array.isArray(checkpoints));
+      assert.equal(checkpoints.length, 2);
+      assert.deepEqual(checkpoints[1], {
+        status: "partial",
+        covered: 7,
+        uncovered: 9,
+        completedBatchCount: 1,
+        total: 16,
+        hasResult: true,
+      });
+      const outcome = second.lines[1];
+      assert.deepEqual(field(outcome, "outcome"), {
+        kind: "blocked",
+        reason: "analysis-turn-failed",
+      });
+      assert.deepEqual(field(outcome, "budget"), { limit: 11, spent: 4 });
+      assert.equal(field(outcome, "turns"), 2);
+      assert.equal(field(outcome, "usageTurns"), 2);
+      assert.deepEqual(field(outcome, "outputs"), []);
+    }),
+  ),
+);
+
+await test(
+  "CLV-159 compiled Local World restarts between batches and before the second reply report without repeating effects or usage",
+  chatPlatformScenario(() =>
+    withConsumer(source, async (consumer) => {
+      const first = await consumer.runUntil(
+        "committed-batch-one",
+        `
+writeFileSync("halt-after-batch-1", "");
+${batchSetup()}
+const runId = await submitAnalysis();
+writeFileSync("batch-run", runId);
+print({ runId });
+`,
+      );
+      assert.equal(
+        field(first.lines[1], "boundary"),
+        "committed-batch-one",
+        first.stderr,
+      );
+      const original = await firstCheckpointFiles(consumer.directory);
+      const runId = String(field(first.lines[0], "runId"));
+      const second = await consumer.runUntil(
+        "completed-private-result",
+        `
+rmSync("halt-after-batch-1");
+writeFileSync("halt-before-report-batch-2", "");
+${setup}
+await finished(readFileSync("batch-run", "utf8"));
+`,
+      );
+      assert.equal(
+        field(second.lines[0], "boundary"),
+        "completed-private-result",
+        second.stderr,
+      );
+      const third = await consumer.run(
+        `
+rmSync("halt-before-report-batch-2");
+${setup}
+await until(async () => ["completed", "blocked", "failed"].includes(await stateOf(process.env.RUN_ID)));
+const folder = directory + "/" + readdirSync(directory).find((name) => name.startsWith("capture-"));
+const checkpoints = readdirSync(folder).filter((name) => name.startsWith("analysis-checkpoint-")).sort().map((name) => JSON.parse(readFileSync(folder + "/" + name, "utf8")));
+const turns = lines("turns.log").map((line) => JSON.parse(JSON.parse(line).prompt));
+const effects = lines("analysis-effects.log").map((line) => JSON.parse(line));
+print({ checkpoints: checkpoints.map(({ status, covered, uncovered, completedBatchCount, total }) => ({ status, covered, uncovered, completedBatchCount, total })), contexts: turns.map((turn) => turn.context), previousResultsMatch: turns.slice(1).every((turn, index) => JSON.stringify(turn.context.previousResult) === JSON.stringify(checkpoints[index].result)), recordsDigest: digestOf(turns.flatMap((turn) => turn.evidence.corpus.match(/[^\\n]+/g)).join("\\n")), saves: new Set(effects.filter((effect) => effect.method === "save-analysis" && effect.outcome === "completed").map((effect) => effect.operationId)).size });
+await finished(process.env.RUN_ID);
+`,
+        { RUN_ID: runId },
+      );
+      assert.equal(third.status, 0, third.stderr + JSON.stringify(third.lines));
+      assertBatchRestart(third.lines);
+      assert.deepEqual(
+        await firstCheckpointFiles(consumer.directory),
+        original,
+      );
+    }),
+  ),
+);
 
 const committedAnswer = `
 writeFileSync("hold-analysis-continuation", "");
