@@ -201,6 +201,24 @@ await test("CLV-153 existing valid bundles acquire history and reuse immutable r
     assert.deepEqual(await readdir(history), [id]);
   }));
 
+await test("CLV-153 valid retained bundles reuse readable history without write permission", () =>
+  withFiles(files, async (root) => {
+    const input = settings(root);
+    const id = await retainWorkflowBundle(input);
+    const history = join(input.directory, ".history");
+    await chmod(history, 0o500);
+    try {
+      assert.equal(await retainWorkflowBundle(input), id);
+      assert.deepEqual(await readdir(history), [id]);
+      assert.equal(
+        (await readRetainedWorkflowBundle({ ...input, id })).kind,
+        "available",
+      );
+    } finally {
+      await chmod(history, 0o700);
+    }
+  }));
+
 for (const damage of ["changed", "linked", "pipe", "directory"]) {
   await test(`CLV-153 retention rejects an invalid receipt without substitution: ${damage}`, () =>
     withFiles(files, async (root) => {

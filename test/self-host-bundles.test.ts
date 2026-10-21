@@ -145,7 +145,7 @@ await test("CLV-153 startup cannot reconstruct a missing generation but can reta
     assert.notEqual(current, original);
     await assert.rejects(lstat(retained), { code: "ENOENT" });
     assert.deepEqual(
-      await readdir(join(store, ".history")),
+      (await readdir(join(store, ".history"))).sort(),
       [original, current].sort(),
     );
   }));

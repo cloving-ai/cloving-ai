@@ -202,10 +202,8 @@ export async function retainWorkflowBundle(
   await mkdir(input.directory, { recursive: true, mode: 0o700 });
   const destination = join(input.directory, id);
   const lookup = { ...input, id };
-  if (
-    (await retainedBefore(lookup, contents)) ||
-    (await existingEntry(destination))
-  ) {
+  if (await retainedBefore(lookup, contents)) return validatedId(lookup);
+  if (await existingEntry(destination)) {
     await validatedId(lookup);
     await rememberBundle(lookup, contents);
     return id;
