@@ -20,7 +20,14 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
   assert.equal(job(workflow, "quality").if, undefined);
   assert.equal(job(workflow, "quality").permissions, undefined);
   for (const [name, runner, architecture] of [
-    ["quality", "macos-15", "arm64"],
+    [
+      "quality",
+      localOr(
+        `fromJSON('["self-hosted","macOS","ARM64","cloving-ci"]')`,
+        "'macos-15'",
+      ),
+      "arm64",
+    ],
     [
       "quality_linux",
       localOr(
@@ -76,7 +83,8 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.equal(job(workflow, "quality")["timeout-minutes"], 60);
   assert.deepEqual(job(workflow, "quality").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: "3",
+    CLOVING_TEST_CONCURRENCY: localOr("'8'", "'3'"),
+    CLOVING_CI_MACOS_VERSION: localOr("'*'", "'15.*'"),
   });
   const commands = steps(workflow, "quality")
     .map((step) => step.run)
@@ -89,7 +97,10 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.match(qualification, /process\.version.*v26\.9\.0/);
   assert.match(qualification, /process\.platform.*darwin/);
   assert.match(qualification, /process\.arch.*arm64/);
-  assert.match(qualification, /sw_vers -productVersion/);
+  assert.match(
+    qualification,
+    /case "\$\(sw_vers -productVersion\)" in \$CLOVING_CI_MACOS_VERSION\)/,
+  );
   assert.match(qualification, /npm --version/);
   const linuxCommands = steps(workflow, "quality_linux")
     .map((step) => step.run)
