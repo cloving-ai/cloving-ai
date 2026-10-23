@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { record } from "../src/protocol.ts";
 import { candidateProgram as installedProgram } from "../tools/workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
@@ -17,6 +18,8 @@ import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-wor
 import { loadWorkflowFolders as installedFolders } from "../tools/workflow-folders.ts";
 
 const product = join(import.meta.dirname, "..");
+const childTimeout =
+  30_000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
 const directory = realpathSync(
   mkdtempSync(join(tmpdir(), "cloving-candidate-package-")),
 );
@@ -36,7 +39,7 @@ execFileSync(
     "--project",
     "tsconfig.build.json",
   ],
-  { cwd: directory, timeout: 30_000, encoding: "utf8", stdio: "pipe" },
+  { cwd: directory, timeout: childTimeout, encoding: "utf8", stdio: "pipe" },
 );
 
 export function candidateProgram(source: string) {
@@ -74,7 +77,7 @@ export function preparedProject(input: {
       `import { preparedProject } from ${JSON.stringify(entry.href)};
 process.stdout.write(JSON.stringify(await preparedProject(${JSON.stringify({ ...input, product: directory })})));`,
     ],
-    { cwd: directory, timeout: 30_000, encoding: "utf8", stdio: "pipe" },
+    { cwd: directory, timeout: childTimeout, encoding: "utf8", stdio: "pipe" },
   );
   const parsed: unknown = JSON.parse(output);
   const result = record(parsed);

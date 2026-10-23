@@ -18,7 +18,8 @@ async function failuresOf(events: readonly TestEvent[]): Promise<string[]> {
   for await (const chunk of reportTests(eventSource(events)))
     output.push(chunk);
   const report: unknown = JSON.parse(output.join(""));
-  const failures: unknown = Reflect.get(Object(report), "failures");
+  assert.ok(report !== null && typeof report === "object");
+  const failures: unknown = Reflect.get(report, "failures");
   assert.ok(Array.isArray(failures));
   return failures.map(String);
 }

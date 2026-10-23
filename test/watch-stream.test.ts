@@ -9,6 +9,10 @@ import { startedRun, withHarness, type Harness } from "./service-fixture.ts";
 
 type Advance = (milliseconds: number) => void;
 
+const timeFactor = parseCheckTimeFactor(
+  process.env["CLOVING_CHECK_TIME_FACTOR"],
+);
+
 async function advancing(
   result: Promise<void>,
   advance: Advance,
@@ -22,7 +26,7 @@ async function advancing(
       state.finished = true;
     },
   );
-  const deadline = performance.now() + 60_000;
+  const deadline = performance.now() + 60_000 * timeFactor;
   while (!state.finished) {
     if (performance.now() >= deadline)
       throw new Error("watch-stream-io-timeout");
@@ -76,8 +80,7 @@ async function withClock(
 }
 
 const quietAttempts = 400;
-const noticeAttempts =
-  3_000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
+const noticeAttempts = 3_000 * timeFactor;
 
 interface Waiting {
   readonly advance: Advance;
