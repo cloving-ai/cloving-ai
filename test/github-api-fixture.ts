@@ -80,6 +80,8 @@ const actions = {
     out(created.html_url);
   },
   "repo view": () => out({ nameWithOwner: "acme/demo" }),
+  "api GET check-runs": () => out([{ check_runs: [{ id: 101, name: "quality_linux", app: { slug: "github-actions" }, status: "completed", conclusion: "success", details_url: null }] }]),
+  "run view": () => out(args.includes("--log-failed") ? "Failed assertion" : { jobs: [{ databaseId: 101, name: "quality_linux", steps: [{ name: "Run quality", conclusion: "failure" }] }] }),
   "api GET issues": () => {
     const pages = state.issuePages ?? [state.issues];
     if (option("--jq")) {
@@ -137,7 +139,7 @@ const actions = {
   },
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
-const kind = /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
+const kind = path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (state.fail === name) {
   process.stderr.write(state.failureText ?? "the fake gh refused " + name);

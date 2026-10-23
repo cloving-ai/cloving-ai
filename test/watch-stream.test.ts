@@ -91,6 +91,7 @@ interface Counter {
 }
 
 async function more(counter: Counter, action: () => unknown): Promise<boolean> {
+  await delay(250);
   counter.advance(250);
   const before = counter.count;
   await action();

@@ -83,6 +83,7 @@ export function ghState(plan: Plan): string {
 }
 
 export const fastTiming = {
+  ciGraceMilliseconds: 0,
   pollMilliseconds: 10,
   triggerMilliseconds: 150,
   limitMilliseconds: 600,

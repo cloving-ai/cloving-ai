@@ -8,6 +8,8 @@ export interface GithubTiming {
   readonly pollMilliseconds: number;
   readonly triggerMilliseconds: number;
   readonly limitMilliseconds: number;
+  readonly ciLimitMilliseconds?: number;
+  readonly ciGraceMilliseconds?: number;
 }
 
 export const githubTiming: GithubTiming = {

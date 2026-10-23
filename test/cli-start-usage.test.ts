@@ -47,6 +47,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ["CLOVING_HOST_BOUND", /The default is 8\./],
   ["CLOVING_GH_COMMAND", /JSON list .*pull requests.* The default is gh\./],
   ["CLOVING_CHECK_COMMAND", /JSON list .*before a merge.* no default/],
+  [
+    "CLOVING_REQUIRED_CHECKS",
+    /JSON list .*check run names.*GitHub Actions.*90 minutes/,
+  ],
   ["CLOVING_PRIVATE_TEXTS", /JSON list of texts .*home folder.*case/],
 ];
 

@@ -134,6 +134,11 @@ async function merged(
       cycleId: input.cycleId,
       promotionId: `pull-request-${String(number)}`,
     };
+  if (merge.result["reason"] === "ci-pending")
+    return blocked(input.cycleId, {
+      reason: `The merge has the result ci-pending: ${part(merge.result, "output")}. The pull request stays open: ${done.pull.url}`,
+      evidenceId: "github-merge",
+    });
   if (done.round > lastFix)
     return blocked(input.cycleId, {
       reason: `The merge has the result ${merge.result["reason"]} in round ${String(done.round)}, and a run has at most ${String(lastFix)} fix rounds. The pull request stays open: ${done.pull.url}`,
