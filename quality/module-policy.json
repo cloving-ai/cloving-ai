@@ -957,7 +957,11 @@
     "test/chats-checkpoint-conflicts.test.ts": "test",
     "test/chats-checkpoint-fixture.ts": "test",
     "test/chats-checkpoint-storage.test.ts": "test",
-    "test/chats-checkpoint-failures.test.ts": "test"
+    "test/chats-checkpoint-failures.test.ts": "test",
+    "src/chats/reference-mapping.ts": "pure",
+    "test/chats-reference-mapping-fixture.ts": "test",
+    "test/chats-reference-mapping.test.ts": "test",
+    "test/chats-reference-mapping-refusals.test.ts": "test"
   },
   "allowed": {
     "quality": [
