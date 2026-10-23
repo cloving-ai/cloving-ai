@@ -1,4 +1,4 @@
-import { darwinChatFileArguments } from "./chats-platform-fixture.ts";
+import { darwinChatFileArguments } from "./chats-darwin-emulation.ts";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";

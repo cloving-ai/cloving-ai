@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { darwinChatFileArguments } from "./chats-darwin-emulation.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 export const productRoot = join(import.meta.dirname, "..");
@@ -343,14 +344,14 @@ export async function withConsumer<Result>(
       world,
       run: async (script, overrides = {}) => {
         await scenario(script);
-        return await child(["scenario.mjs"], {
+        return await child([...darwinChatFileArguments(), "scenario.mjs"], {
           directory,
           environment: { ...environment, ...overrides },
         });
       },
       runUntil: async (boundary, script) => {
         await scenario(script);
-        return await child(["scenario.mjs"], {
+        return await child([...darwinChatFileArguments(), "scenario.mjs"], {
           directory,
           environment,
           boundary,

@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
+import { testMilliseconds } from "./test-timing.ts";
 
 function fields(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === "object");
@@ -34,7 +35,7 @@ function protocol(input: Writable, output: Readable) {
         (resolve, reject) => {
           timer = setTimeout(() => {
             reject(new Error(`Chrome timed out: ${method}`));
-          }, 15000);
+          }, testMilliseconds(15_000));
           pending.set(id, resolve);
           input.write(JSON.stringify({ id, method, ...options }) + "\0");
         },
@@ -109,6 +110,27 @@ export async function realBrowser() {
   };
 }
 
+const settledScroll = `new Promise((resolve) => {
+  const positions = () => JSON.stringify([
+    [scrollX, scrollY],
+    ...[...document.querySelectorAll("*")]
+      .filter((node) => node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight)
+      .map((node) => [node.scrollLeft, node.scrollTop]),
+  ]);
+  let previous = positions();
+  let still = 0;
+  let frames = 0;
+  const step = () => {
+    const current = positions();
+    still = current === previous ? still + 1 : 0;
+    previous = current;
+    frames += 1;
+    if (still >= 3 || frames >= 600) resolve({});
+    else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+})`;
+
 async function browserPage(
   command: ReturnType<typeof protocol>,
   viewport: { readonly width: number; readonly height: number },
@@ -151,9 +173,7 @@ async function browserPage(
         sessionId,
         params: { ...gesture, speed: 10000, gestureSourceType: "mouse" },
       });
-      await evaluate(
-        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve({}))))",
-      );
+      await evaluate(settledScroll);
     },
   };
 }

@@ -56,6 +56,7 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.equal(job(workflow, "quality_linux")["timeout-minutes"], 60);
   assert.deepEqual(job(workflow, "quality_linux").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
+    CLOVING_TEST_CONCURRENCY: "4",
   });
   assert.equal(job(workflow, "quality")["timeout-minutes"], 60);
   assert.deepEqual(job(workflow, "quality").env, {

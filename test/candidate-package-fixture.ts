@@ -15,8 +15,10 @@ import { candidateProgram as installedProgram } from "../tools/workflow-candidat
 import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
 import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-workflow.ts";
 import { loadWorkflowFolders as installedFolders } from "../tools/workflow-folders.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const product = join(import.meta.dirname, "..");
+const childTimeout = testMilliseconds(30_000);
 const directory = realpathSync(
   mkdtempSync(join(tmpdir(), "cloving-candidate-package-")),
 );
@@ -36,7 +38,7 @@ execFileSync(
     "--project",
     "tsconfig.build.json",
   ],
-  { cwd: directory, timeout: 30_000, encoding: "utf8", stdio: "pipe" },
+  { cwd: directory, timeout: childTimeout, encoding: "utf8", stdio: "pipe" },
 );
 
 export function candidateProgram(source: string) {
@@ -74,7 +76,7 @@ export function preparedProject(input: {
       `import { preparedProject } from ${JSON.stringify(entry.href)};
 process.stdout.write(JSON.stringify(await preparedProject(${JSON.stringify({ ...input, product: directory })})));`,
     ],
-    { cwd: directory, timeout: 30_000, encoding: "utf8", stdio: "pipe" },
+    { cwd: directory, timeout: childTimeout, encoding: "utf8", stdio: "pipe" },
   );
   const parsed: unknown = JSON.parse(output);
   const result = record(parsed);

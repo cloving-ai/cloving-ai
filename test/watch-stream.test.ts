@@ -5,6 +5,7 @@ import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { throttled, watchStream } from "../src/cli/watch-stream.ts";
 import { startedRun, withHarness, type Harness } from "./service-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 type Advance = (milliseconds: number) => void;
 
@@ -21,7 +22,7 @@ async function advancing(
       state.finished = true;
     },
   );
-  const deadline = performance.now() + 60_000;
+  const deadline = performance.now() + testMilliseconds(60_000);
   while (!state.finished) {
     if (performance.now() >= deadline)
       throw new Error("watch-stream-io-timeout");
@@ -74,13 +75,21 @@ async function withClock(
   }
 }
 
+const quietAttempts = 400;
+const noticeAttempts = testMilliseconds(30_000) / 10;
+
+interface Waiting {
+  readonly advance: Advance;
+  readonly attempts: number;
+}
+
 async function reached(
   condition: () => boolean,
-  advance: Advance,
+  waiting: Waiting,
 ): Promise<boolean> {
-  for (let waited = 0; waited < 400 && !condition(); waited += 1) {
+  for (let waited = 0; waited < waiting.attempts && !condition(); waited += 1) {
     await delay(10);
-    advance(10);
+    waiting.advance(10);
   }
   return condition();
 }
@@ -90,12 +99,29 @@ interface Counter {
   readonly advance: Advance;
 }
 
-async function more(counter: Counter, action: () => unknown): Promise<boolean> {
+async function changed(
+  counter: Counter,
+  wait: { readonly action: () => unknown; readonly attempts: number },
+): Promise<boolean> {
   await delay(250);
   counter.advance(250);
   const before = counter.count;
-  await action();
-  return reached(() => counter.count > before, counter.advance);
+  await wait.action();
+  return reached(() => counter.count > before, {
+    advance: counter.advance,
+    attempts: wait.attempts,
+  });
+}
+
+function more(counter: Counter, action: () => unknown): Promise<boolean> {
+  return changed(counter, { action, attempts: noticeAttempts });
+}
+
+async function quiet(
+  counter: Counter,
+  action: () => unknown,
+): Promise<boolean> {
+  return !(await changed(counter, { action, attempts: quietAttempts }));
 }
 
 await test("CLV-016 a burst of changes of the watch stream gives one notification at once and one more at the end of the interval", () =>
@@ -139,11 +165,10 @@ async function followedTurn(
   const unstartedLines = join(journal, "targets", "turn.jsonl");
   mkdirSync(dirname(unstartedLines), { recursive: true });
   writeFileSync(unstartedLines, "{}\n");
-  assert.equal(
-    await more(seen, () => {
+  assert.ok(
+    await quiet(seen, () => {
       appendFileSync(unstartedLines, "{}\n");
     }),
-    false,
     "the stream file of a folder with no start file gets a line",
   );
   const turn = join(journal, "a1");
@@ -169,11 +194,10 @@ async function followedTurn(
     }),
     "a turn ends",
   );
-  assert.equal(
-    await more(seen, () => {
+  assert.ok(
+    await quiet(seen, () => {
       appendFileSync(lines, "{}\n");
     }),
-    false,
     "the stream file of a turn at its end",
   );
   assert.ok(await more(seen, () => service.close()), "the service stops");
@@ -222,7 +246,12 @@ await test("CLV-016 the watch stream connects again to a service that starts aga
       const remove = stream.subscribe(() => {
         removed.count += 1;
       });
-      assert.ok(await reached(() => removed.count > 0, advance));
+      assert.ok(
+        await reached(() => removed.count > 0, {
+          advance,
+          attempts: noticeAttempts,
+        }),
+      );
       remove();
       const kept = removed.count;
       await first.close();
