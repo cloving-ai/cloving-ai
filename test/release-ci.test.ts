@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { job, releaseWorkflow, script, steps } from "./release-fixture.ts";
 
+const sameRepositoryPullRequest =
+  "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository";
+
+function localOr(local: string, hosted: string): string {
+  return `\${{ ${sameRepositoryPullRequest} && ${local} || ${hosted} }}`;
+}
+
 await test("CLV-097 CI checks every push, pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
   assert.deepEqual(workflow.on, {
@@ -14,7 +21,14 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
   assert.equal(job(workflow, "quality").permissions, undefined);
   for (const [name, runner, architecture] of [
     ["quality", "macos-15", "arm64"],
-    ["quality_linux", "ubuntu-24.04", "x64"],
+    [
+      "quality_linux",
+      localOr(
+        `fromJSON('["self-hosted","Linux","ARM64","cloving-ci"]')`,
+        "'ubuntu-24.04'",
+      ),
+      "${{ env.CLOVING_CI_ARCHITECTURE }}",
+    ],
     ["publish", "macos-15", "arm64"],
   ] as const) {
     assert.equal(job(workflow, name)["runs-on"], runner);
@@ -56,7 +70,8 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.equal(job(workflow, "quality_linux")["timeout-minutes"], 60);
   assert.deepEqual(job(workflow, "quality_linux").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: "4",
+    CLOVING_TEST_CONCURRENCY: localOr("'8'", "'4'"),
+    CLOVING_CI_ARCHITECTURE: localOr("'arm64'", "'x64'"),
   });
   assert.equal(job(workflow, "quality")["timeout-minutes"], 60);
   assert.deepEqual(job(workflow, "quality").env, {
@@ -84,7 +99,10 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.ok(typeof linuxQualification === "string");
   assert.match(linuxQualification, /process\.version.*v26\.9\.0/);
   assert.match(linuxQualification, /process\.platform.*linux/);
-  assert.match(linuxQualification, /process\.arch.*x64/);
+  assert.match(
+    linuxQualification,
+    /process\.arch, process\.env\.CLOVING_CI_ARCHITECTURE/,
+  );
   assert.match(linuxQualification, /npm --version/);
   assert.deepEqual(linuxCommands.slice(2), commands.slice(2));
   assert.deepEqual(commands.slice(2), [
