@@ -5,6 +5,7 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import { isTicketStatus } from "../ticket-status.ts";
+import { isPromotionId } from "../workflow-contracts.ts";
 import { priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
@@ -247,13 +248,25 @@ function eventOf(value: unknown): WatchEvent {
   };
 }
 
+function outcomeOf(
+  value: unknown,
+): Pick<WatchRun, "outcome" | "promotionId" | "ticketStatus" | "issueUpdate"> {
+  const fields = record(value);
+  const { promotionId, ticketStatus, issueUpdate } = fields;
+  return {
+    outcome: stamp(fields["kind"]),
+    ...(isPromotionId(promotionId) ? { promotionId } : {}),
+    ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
+    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
+  };
+}
+
 function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
   const ticketId = text(status["ticketId"]);
-  const ticketStatus = record(status["outcome"])["ticketStatus"];
   const issue =
     workflowId === "develop-issue"
       ? establishedIssue(inputs.repository ?? null, status["issueIdentity"])
@@ -264,11 +277,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ticketId: ticketId === "" ? null : ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),
-    outcome: stamp(record(status["outcome"])["kind"]),
-    ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
-    ...(record(status["outcome"])["issueUpdate"] === "failed"
-      ? { issueUpdate: "failed" as const }
-      : {}),
+    ...outcomeOf(status["outcome"]),
     latestAt: stamp(status["latestAt"]),
     claudeCostUsd: priceOf(status["claudeCostUsd"]),
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),

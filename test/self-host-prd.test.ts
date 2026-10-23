@@ -91,6 +91,7 @@ await test("CLV-075 the compiled PRD workflow posts an issue and completes witho
     assert.equal(field(result.run, "state"), "completed");
     assert.deepEqual(field(result.run, "outcome"), {
       kind: "handoff_requested",
+      promotionId: "issue-1",
       reason: null,
     });
     assert.equal(issueCount(result.state), 1);

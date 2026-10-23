@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/promotion-status.test.ts": "test",
     "test/chats-analysis-batch-question-fixture.ts": "test",
     "test/chats-analysis-batch-question.test.ts": "test",
     "test/analyze-chats-batch-question-privacy.test.ts": "test",

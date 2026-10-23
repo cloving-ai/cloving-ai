@@ -42,7 +42,13 @@ await service.close();
   ));
 
 async function completed(
-  outcome: { readonly kind: string; readonly reason?: string } | undefined,
+  outcome:
+    | {
+        readonly kind: string;
+        readonly reason?: string;
+        readonly promotionId?: string;
+      }
+    | undefined,
 ): Promise<unknown> {
   const commands: unknown[] = [];
   const result = await reconcileWorld({
@@ -105,6 +111,23 @@ await test("CLV-072 the host drops invalid reasons and unknown outcome kinds so 
     assert.deepEqual(await completed(outcome), [command]);
 });
 
+await test("CLV-168 reconciliation preserves valid promotion IDs only for handoff outcomes", async () => {
+  for (const promotionId of ["pull-request-7", "x".repeat(128)])
+    assert.deepEqual(
+      await completed({ kind: "handoff_requested", promotionId }),
+      [{ ...command, outcome: "handoff_requested", promotionId }],
+    );
+  for (const promotionId of ["", "x".repeat(129), "bad/id", "trailing\n"])
+    assert.deepEqual(
+      await completed({ kind: "handoff_requested", promotionId }),
+      [{ ...command, outcome: "handoff_requested" }],
+    );
+  assert.deepEqual(
+    await completed({ kind: "blocked", promotionId: "pull-request-7" }),
+    [{ ...command, outcome: "blocked" }],
+  );
+});
+
 await test("CLV-123 compiled merged ticket status reaches the completion event and service status", () =>
   withConsumer(
     `
@@ -127,12 +150,14 @@ await service.close();
         {
           outcome: {
             kind: "handoff_requested",
+            promotionId: "pull-request-7",
             reason: null,
             ticketStatus: "partial",
             issueUpdate: "failed",
           },
           payload: {
             outcome: "handoff_requested",
+            promotionId: "pull-request-7",
             ticketStatus: "partial",
             issueUpdate: "failed",
           },

@@ -1,6 +1,6 @@
 import { isTicketStatus } from "../ticket-status.ts";
 import { gateContinuation } from "./gate-reduction.ts";
-import { isBlockedReason } from "../workflow-contracts.ts";
+import { isBlockedReason, isPromotionId } from "../workflow-contracts.ts";
 import { continues } from "./gates.ts";
 import { startOperation } from "./reduction.ts";
 import {
@@ -15,6 +15,7 @@ export interface WorldRun {
   readonly receipt: string;
   readonly status: string;
   readonly outcome?: string;
+  readonly promotionId?: string;
   readonly outcomeReason?: string;
   readonly issueUpdate?: "failed";
   readonly ticketStatus?: "complete" | "partial";
@@ -194,18 +195,24 @@ function moved(
 
 function completionOutcome(world: WorldRun): Readonly<Record<string, string>> {
   const { outcome, outcomeReason } = world;
-  if (outcome !== "handoff_requested" && outcome !== "blocked") return {};
-  if (outcome !== "blocked" || !isBlockedReason(outcomeReason))
+  if (outcome === "blocked")
     return {
       outcome,
-      ...(outcome === "handoff_requested" && world.issueUpdate === "failed"
-        ? { issueUpdate: world.issueUpdate }
-        : {}),
-      ...(outcome === "handoff_requested" && isTicketStatus(world.ticketStatus)
-        ? { ticketStatus: world.ticketStatus }
-        : {}),
+      ...(isBlockedReason(outcomeReason) ? { outcomeReason } : {}),
     };
-  return { outcome, outcomeReason };
+  if (outcome !== "handoff_requested") return {};
+  return {
+    outcome,
+    ...(isPromotionId(world.promotionId)
+      ? { promotionId: world.promotionId }
+      : {}),
+    ...(world.issueUpdate === "failed"
+      ? { issueUpdate: world.issueUpdate }
+      : {}),
+    ...(isTicketStatus(world.ticketStatus)
+      ? { ticketStatus: world.ticketStatus }
+      : {}),
+  };
 }
 
 function noted(

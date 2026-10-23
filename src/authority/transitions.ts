@@ -115,6 +115,7 @@ export const textFields = [
   "worker",
   "outcome",
   "outcomeReason",
+  "promotionId",
   "ticketStatus",
   "issueUpdate",
   "result",

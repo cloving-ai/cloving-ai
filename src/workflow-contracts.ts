@@ -31,6 +31,10 @@ export type Validation<Value> =
 const identifier = /^[A-Za-z0-9._:-]{1,128}$/;
 const reason = /^\S[\s\S]{0,255}$/;
 
+export function isPromotionId(value: unknown): value is string {
+  return typeof value === "string" && identifier.test(value);
+}
+
 export function isBlockedReason(value: unknown): value is string {
   return typeof value === "string" && reason.test(value);
 }
