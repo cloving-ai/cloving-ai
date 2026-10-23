@@ -614,6 +614,8 @@ A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
+For `handoff_requested`, the daemon retains the workflow's `promotionId` in the completion event. `cloving status <runId>` shows it as `Promotion:`, JSON status includes `run.outcome.promotionId`, and watch retains it in the run model and completed-run details. This identifier is an opaque reference and grants no authority.
+
 ```ts
 import type { CycleOutcome } from "cloving/workflows";
 import { decisionGate } from "cloving/workflows/steps/decision-gate";

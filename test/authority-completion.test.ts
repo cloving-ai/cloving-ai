@@ -55,6 +55,8 @@ await test("CLV-072 handoff and old completions replay without changing the run 
   for (const outcome of [
     {},
     { outcome: "handoff_requested" },
+    { outcome: "handoff_requested", promotionId: "pull-request-7" },
+    { outcome: "handoff_requested", promotionId: "x".repeat(128) },
     { outcome: "blocked" },
   ]) {
     const result = execute(state, {
@@ -76,6 +78,11 @@ await test("CLV-072 completion rejects unknown outcomes and reasons outside the 
     { outcome: 7 },
     { outcomeReason: "Blocked" },
     { outcome: "handoff_requested", outcomeReason: "Blocked" },
+    { promotionId: "pull-request-7" },
+    { outcome: "blocked", promotionId: "pull-request-7" },
+    ...["", "x".repeat(129), "bad/id", "trailing\n", 7, null].map(
+      (promotionId) => ({ outcome: "handoff_requested", promotionId }),
+    ),
     ...[
       "x".repeat(257),
       `${"x".repeat(256)}\n`,

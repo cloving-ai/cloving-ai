@@ -104,7 +104,7 @@ await service.close();
       world: [oneWorldRun({ runId, receipt, status: "completed" })],
       dispatches: [receipt],
       calls: ["reconcile absent", "deliver"],
-      outcome: { kind: "handoff_requested" },
+      outcome: { kind: "handoff_requested", promotionId: "promotion-1" },
     });
     assert.equal(result.status, 0, result.stderr);
   }));
@@ -308,7 +308,10 @@ await opening.host.close();
           ["run-f", null, "completed"],
         ],
         whole: 6,
-        kinds: [{ kind: "handoff_requested" }, null],
+        kinds: [
+          { kind: "handoff_requested", promotionId: "promotion-1" },
+          null,
+        ],
       },
     ]);
   }));

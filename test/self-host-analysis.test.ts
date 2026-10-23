@@ -118,6 +118,7 @@ async function assertAnalysis(
   const status = await analysisStatus(runtimeDirectory);
   assert.deepEqual(field(status, "outcome"), {
     kind: "handoff_requested",
+    promotionId: `analysis:${importId}:task-99f793a7ab65`,
     reason: null,
   });
   assert.deepEqual(field(status, "budget"), { limit: 11, spent: 3 });

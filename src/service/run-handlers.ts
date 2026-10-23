@@ -181,16 +181,16 @@ async function outcomeOf(
     runId: view.runId,
     atOrBefore: view.latestSequence,
   });
-  const kind = event?.payload["outcome"];
+  const payload = event?.payload ?? {};
+  const kind = payload["outcome"];
   if (kind === undefined) return null;
-  const ticketStatus = event?.payload["ticketStatus"];
+  const { ticketStatus, promotionId, outcomeReason, issueUpdate } = payload;
   return {
     kind,
-    reason: event?.payload["outcomeReason"] ?? null,
+    reason: outcomeReason ?? null,
+    ...(promotionId === undefined ? {} : { promotionId }),
     ...(ticketStatus === undefined ? {} : { ticketStatus }),
-    ...(event?.payload["issueUpdate"] === "failed"
-      ? { issueUpdate: "failed" }
-      : {}),
+    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
   };
 }
 

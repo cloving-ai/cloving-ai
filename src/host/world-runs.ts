@@ -1,4 +1,5 @@
 import { isTicketStatus } from "../ticket-status.ts";
+import { isPromotionId } from "../workflow-contracts.ts";
 import { getRun } from "workflow/api";
 import { getWorld } from "workflow/runtime";
 import type { WorldRun } from "../authority/reconciliation.ts";
@@ -65,8 +66,12 @@ export async function workflowOutcome(
   const reason: unknown = Reflect.get(Object(value), "reason");
   const issueUpdate: unknown = Reflect.get(Object(value), "issueUpdate");
   const ticketStatus: unknown = Reflect.get(Object(value), "ticketStatus");
+  const promotionId: unknown = Reflect.get(Object(value), "promotionId");
   return {
     kind,
+    ...(kind === "handoff_requested" && isPromotionId(promotionId)
+      ? { promotionId }
+      : {}),
     ...(typeof reason === "string" ? { reason } : {}),
     ...(issueUpdate === "failed" ? { issueUpdate } : {}),
     ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),

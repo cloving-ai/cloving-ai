@@ -112,6 +112,7 @@ export interface WatchRun {
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";
   readonly ticketStatus?: "complete" | "partial";
+  readonly promotionId?: string;
   readonly estimatedCostUsd: number | null;
   readonly ticketId: string | null;
   readonly title: string | null;
@@ -246,7 +247,9 @@ export function completedDetail(run: WatchRun): string {
     run.issueUpdate === "failed"
       ? " Issue status update failed; check the GitHub operation."
       : "";
-  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.${ticket}${update}`;
+  const promotion =
+    run.promotionId === undefined ? "" : ` Promotion: ${run.promotionId}.`;
+  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.${promotion}${ticket}${update}`;
 }
 
 export function phaseTime(phase: WatchPhase, now: string): string {

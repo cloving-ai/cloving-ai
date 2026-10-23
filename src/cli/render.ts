@@ -138,11 +138,22 @@ function feedbackLines(value: unknown): readonly string[] {
   );
 }
 
-function outcome(value: unknown): string {
-  if (record(value) === undefined) return "none";
+function outcomeLines(value: unknown): readonly string[] {
+  if (record(value) === undefined) return ["Outcome: none"];
   const reason = part(value, "reason");
   const kind = visible(part(value, "kind"));
-  return typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind;
+  return [
+    `Outcome: ${typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind}`,
+    ...(typeof part(value, "promotionId") === "string"
+      ? [`Promotion: ${visible(part(value, "promotionId"))}`]
+      : []),
+    ...(typeof part(value, "ticketStatus") === "string"
+      ? [`Ticket status: ${visible(part(value, "ticketStatus"))}`]
+      : []),
+    ...(part(value, "issueUpdate") === "failed"
+      ? ["Issue status update failed; check the GitHub operation."]
+      : []),
+  ];
 }
 
 function workerLines(value: unknown): readonly string[] {
@@ -190,15 +201,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
     `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
-    `Outcome: ${outcome(part(run, "outcome"))}`,
-    ...(typeof part(part(run, "outcome"), "ticketStatus") === "string"
-      ? [
-          `Ticket status: ${visible(part(part(run, "outcome"), "ticketStatus"))}`,
-        ]
-      : []),
-    ...(part(part(run, "outcome"), "issueUpdate") === "failed"
-      ? ["Issue status update failed; check the GitHub operation."]
-      : []),
+    ...outcomeLines(part(run, "outcome")),
     `Condition: ${show(part(run, "condition"))}`,
     `Reason: ${show(part(reason, "code"))}: ${show(part(reason, "detail"))}`,
     `Revision: ${show(part(run, "revision"))}, latest sequence ${show(part(run, "latestSequence"))}`,
