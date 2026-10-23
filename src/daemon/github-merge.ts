@@ -293,20 +293,18 @@ async function readyHead(
       commit: pull.commit,
       recorded,
     });
-    if (updated !== pull.commit) {
-      if (recorded !== updated)
-        await writeRecord(operation.folder, {
-          name: "updated-head.json",
-          value: { commit: pull.commit, updated },
-        });
-      if (remote !== updated)
-        await operation.calls.git(tree.path, [
-          "push",
-          "--quiet",
-          "origin",
-          `${updated}:refs/heads/${tree.branch}`,
-        ]);
-    }
+    if (updated !== pull.commit && recorded !== updated)
+      await writeRecord(operation.folder, {
+        name: "updated-head.json",
+        value: { commit: pull.commit, updated },
+      });
+    if (updated !== pull.commit && remote !== updated)
+      await operation.calls.git(tree.path, [
+        "push",
+        "--quiet",
+        "origin",
+        `${updated}:refs/heads/${tree.branch}`,
+      ]);
     const ci = await waitForCi(operation, updated);
     if (ci !== undefined) return ci;
     const newest = await fetched(operation, await defaultBranch(operation));

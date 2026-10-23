@@ -190,19 +190,6 @@ function requiredChecks(operation: Operation): Set<string> | undefined {
   return new Set(names);
 }
 
-function ciTiming(operation: Operation): {
-  readonly poll: number;
-  readonly grace: number;
-  readonly limit: number;
-} {
-  const timing = operation.settings.timing ?? githubTiming;
-  return {
-    poll: timing.pollMilliseconds,
-    grace: timing.ciGraceMilliseconds ?? 60_000,
-    limit: timing.ciLimitMilliseconds ?? 5_400_000,
-  };
-}
-
 function pendingChecks(
   checks: readonly CheckRun[],
   names: ReadonlySet<string>,
@@ -219,7 +206,16 @@ export async function waitForCi(
   operation: Operation,
   commit: string,
 ): Promise<CiResult | undefined> {
-  const timing = ciTiming(operation);
+  const {
+    pollMilliseconds: poll,
+    ciGraceMilliseconds: grace,
+    ciLimitMilliseconds: limit,
+  } = {
+    ...githubTiming,
+    ciGraceMilliseconds: 60_000,
+    ciLimitMilliseconds: 5_400_000,
+    ...operation.settings.timing,
+  };
   const started = Date.now();
   const required = requiredChecks(operation);
   const names = new Set(required);
@@ -240,16 +236,16 @@ export async function waitForCi(
       pending.length === 0 &&
       (required !== undefined ||
         names.size > 0 ||
-        Date.now() - started >= timing.grace)
+        Date.now() - started >= grace)
     )
       return undefined;
-    const remaining = timing.limit - (Date.now() - started);
+    const remaining = limit - (Date.now() - started);
     if (remaining <= 0)
       return {
         reason: "ci-pending",
         output: `CI wait limit reached for ${commit}. Pending checks: ${pending.join(", ") || "waiting for GitHub Actions checks"}`,
       };
-    await delay(Math.min(timing.poll, remaining), undefined, {
+    await delay(Math.min(poll, remaining), undefined, {
       signal: operation.signal,
     });
   }
