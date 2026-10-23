@@ -216,7 +216,7 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .column.collapsed { flex: 0 0 ${String(boardSizing.collapsedColumnWidth)}px; min-width: ${String(boardSizing.collapsedColumnWidth)}px; padding: 6px; }
 .collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
 .column-name button, .start-toggle { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
-.column-name button:hover, .start-toggle:hover { background: var(--surface); }
+.column-name button:hover, .start-toggle:hover, .add-card:hover, .add-card-form button:hover { background: var(--surface); }
 .add-card, .add-card-form button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 4px 8px 4px 0; }
 .add-card { width: 100%; text-align: left; }
 .add-card-form { padding: 8px 0; overflow-wrap: anywhere; }
