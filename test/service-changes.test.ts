@@ -143,7 +143,8 @@ await test("CLV-016 a follow of the events gets a new event at once through the 
     await delay(300);
     const started = Date.now();
     await startedRun(harness, { service, commandId: "c-1" });
-    while (seen.length < 2 && Date.now() - started < 5_000) await delay(10);
+    while (!seen.includes("run.started") && Date.now() - started < 5_000)
+      await delay(10);
     stop.resolve(undefined);
     await following;
     assert.ok(seen.includes("run.created"), JSON.stringify(seen));

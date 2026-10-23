@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
+import { testMilliseconds } from "./test-timing.ts";
 
 function fields(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === "object");
@@ -34,7 +35,7 @@ function protocol(input: Writable, output: Readable) {
         (resolve, reject) => {
           timer = setTimeout(() => {
             reject(new Error(`Chrome timed out: ${method}`));
-          }, 15000);
+          }, testMilliseconds(15_000));
           pending.set(id, resolve);
           input.write(JSON.stringify({ id, method, ...options }) + "\0");
         },

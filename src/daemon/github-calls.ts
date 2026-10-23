@@ -71,22 +71,42 @@ function failureDetail(
 ): { readonly detail: string; readonly status: number } {
   const stderr = field(error, "stderr");
   const text = typeof stderr === "string" ? stderr : "";
-  const secrets = Object.entries(place.environment)
+  return {
+    detail: githubText(text, place).slice(-2_000),
+    status: Number(/\(HTTP (\d{3})\)/.exec(text)?.[1]),
+  };
+}
+
+export function githubText(
+  text: string,
+  settings: {
+    readonly environment?: NodeJS.ProcessEnv;
+    readonly privateTexts?: readonly string[];
+  },
+): string {
+  const environment = { ...process.env, ...settings.environment };
+  const secrets = Object.entries(environment)
     .filter(([name]) => /TOKEN|SECRET|PASSWORD|KEY/i.test(name))
     .map(([, value]) => value);
-  const hidden = [...secrets, ...place.privateTexts]
+  const privateTexts = [
+    ...(settings.privateTexts ?? []),
+    ...privateEnvironment(environment),
+  ];
+  const hidden = [...secrets, ...privateTexts]
     .filter(
       (value): value is string => typeof value === "string" && value !== "",
     )
     .sort((left, right) => right.length - left.length);
-  const detail = hidden.reduce(
-    (redacted, value) => redacted.replaceAll(value, "[hidden]"),
+  return hidden.reduce(
+    (redacted, value) =>
+      redacted.replaceAll(
+        privateTexts.includes(value)
+          ? new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")
+          : value,
+        "[hidden]",
+      ),
     text,
   );
-  return {
-    detail: detail.slice(-2_000),
-    status: Number(/\(HTTP (\d{3})\)/.exec(text)?.[1]),
-  };
 }
 
 async function output(

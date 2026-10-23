@@ -103,6 +103,7 @@ async function changed(
   counter: Counter,
   wait: { readonly action: () => unknown; readonly attempts: number },
 ): Promise<boolean> {
+  await delay(250);
   counter.advance(250);
   const before = counter.count;
   await wait.action();

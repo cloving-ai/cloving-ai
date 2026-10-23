@@ -268,3 +268,32 @@ await test("CLV-135 add-card controls use readable theme colors and fields fit n
   );
   assert.match(css, /input:focus-visible, textarea:focus-visible/);
 });
+
+function hoverBackground(selector: string): string {
+  const own = [...rules.matchAll(/\n([^{}\n]+) \{([^}]*)\}/g)]
+    .filter(([, selectors]) => selectors?.split(", ").includes(selector))
+    .map(
+      ([, , body]) => /background: var\(--([a-z0-9-]+)\)/.exec(body ?? "")?.[1],
+    )
+    .findLast((token) => token !== undefined);
+  const general = /background: var\(--([a-z0-9-]+)\)/.exec(
+    rule("button:hover"),
+  )?.[1];
+  const token = own ?? general;
+  assert.ok(token !== undefined, selector);
+  return token;
+}
+
+await test("CLV-135 add-card buttons keep readable text on hover in both themes", () => {
+  for (const selector of [".add-card:hover", ".add-card-form button:hover"]) {
+    const token = hoverBackground(selector);
+    for (const [theme, tokens] of Object.entries(palette)) {
+      const background: unknown = Reflect.get(tokens, token);
+      assert.ok(typeof background === "string", `${selector} ${token}`);
+      assert.ok(
+        contrast(rgb(tokens.ink), rgb(background)) >= 4.5,
+        `${selector} in the ${theme} theme: ink on ${token}`,
+      );
+    }
+  }
+});
