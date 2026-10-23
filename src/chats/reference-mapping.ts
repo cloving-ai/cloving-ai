@@ -204,15 +204,14 @@ function mapSelection(data: {
     const matched = index === undefined ? undefined : after.occurrences[index];
     if (matched === undefined || index === undefined)
       throw new Error("analysis-reference-map-refused");
-    if (revision.status === "extended") {
-      const next = after.occurrences[index + 1];
-      if (
-        before.byteSize === undefined ||
+    const next = after.occurrences[index + 1];
+    if (
+      revision.status === "extended" &&
+      (before.byteSize === undefined ||
         next === undefined ||
-        next.offset > before.byteSize
-      )
-        return [];
-    }
+        next.offset > before.byteSize)
+    )
+      return [];
     return [{ previous: item.reference, current: matched.reference }];
   });
 }
