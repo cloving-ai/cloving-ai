@@ -204,6 +204,7 @@
     "test/quality/suppression-approval.test.ts": "test",
     "test/quality/suppressions.test.ts": "test",
     "test/quality/test-execution.test.ts": "test",
+    "test/quality/test-reporter.test.ts": "test",
     "test/quality/test-integrity.test.ts": "test",
     "test/quality/tuple-results.test.ts": "test",
     "test/quality/typed-correctness.test.ts": "test",

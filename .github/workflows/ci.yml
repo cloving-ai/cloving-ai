@@ -66,7 +66,8 @@
       "runs-on": "ubuntu-24.04",
       "timeout-minutes": 60,
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "3"
+        "CLOVING_CHECK_TIME_FACTOR": "3",
+        "CLOVING_TEST_CONCURRENCY": "4"
       },
       "steps": [
         {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { test } from "node:test";
+import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 
 await test("CLV-136 Darwin chat adapter control flow uses isolated filesystem substitutes on Linux", () => {
   const result = spawnSync(
@@ -36,11 +37,20 @@ await test("CLV-136 Darwin chat adapter control flow uses isolated filesystem su
       "test/chats-worker-storage.test.ts",
       "test/chats-analysis-capture.test.ts",
       "test/chats-analysis-capture-failures.test.ts",
+      "test/chats-analysis-capture-restart.test.ts",
       "test/chats-analysis-save-bounds.test.ts",
+      "test/chats-analysis-checkpoints.test.ts",
+      "test/chats-checkpoint-storage.test.ts",
+      "test/chats-checkpoint-failures.test.ts",
+      "test/chats-checkpoint-conflicts.test.ts",
+      "test/chats-analysis-batch-binding.test.ts",
+      "test/chats-analysis-batch-question.test.ts",
     ],
     {
       encoding: "utf8",
-      timeout: 120_000,
+      timeout:
+        120_000 *
+        parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]),
       maxBuffer: 4_194_304,
       env: Object.fromEntries(
         Object.entries(process.env).filter(

@@ -109,6 +109,27 @@ export async function realBrowser() {
   };
 }
 
+const settledScroll = `new Promise((resolve) => {
+  const positions = () => JSON.stringify([
+    [scrollX, scrollY],
+    ...[...document.querySelectorAll("*")]
+      .filter((node) => node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight)
+      .map((node) => [node.scrollLeft, node.scrollTop]),
+  ]);
+  let previous = positions();
+  let still = 0;
+  let frames = 0;
+  const step = () => {
+    const current = positions();
+    still = current === previous ? still + 1 : 0;
+    previous = current;
+    frames += 1;
+    if (still >= 3 || frames >= 600) resolve({});
+    else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+})`;
+
 async function browserPage(
   command: ReturnType<typeof protocol>,
   viewport: { readonly width: number; readonly height: number },
@@ -151,9 +172,7 @@ async function browserPage(
         sessionId,
         params: { ...gesture, speed: 10000, gestureSourceType: "mouse" },
       });
-      await evaluate(
-        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve({}))))",
-      );
+      await evaluate(settledScroll);
     },
   };
 }
