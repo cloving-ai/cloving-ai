@@ -1,3 +1,7 @@
+import { calls } from "../src/daemon/github-calls.ts";
+import { merge } from "../src/daemon/github-merge.ts";
+import { git } from "./claude-worker-fixture.ts";
+import { opened, type GithubScene } from "./github-worker-fixture.ts";
 import { waitForCi } from "../src/daemon/github-ci.ts";
 import type {
   GithubTiming,
@@ -91,4 +95,62 @@ export function runningRunReply(parts: readonly string[]): string {
   throw Object.assign(new Error("github-call-failed"), {
     detail: "run 88 is still in progress",
   });
+}
+
+export async function movingCiScenario(
+  scene: GithubScene,
+  options: { readonly moves: number; readonly conclusion: string },
+) {
+  const commit = await opened(scene, scene.worker());
+  const signal = new AbortController().signal;
+  const settings = {
+    repository: scene.repository,
+    worktrees: scene.worktrees,
+    gh: ["fake-gh"],
+    check: ["fake-check"],
+  };
+  const checked: string[] = [];
+  const ci: string[] = [];
+  let base = "";
+  const operation = {
+    target: "ticket/one",
+    payload: {},
+    folder: `${scene.directory}/merge`,
+    signal,
+    settings,
+    calls: {
+      ...calls(settings, signal),
+      gh: (parts: readonly string[]) => {
+        const endpoint = parts.find((part) => part.includes("/check-runs"));
+        if (endpoint === undefined) return Promise.resolve(scene.gh(parts));
+        ci.push(endpoint);
+        if (ci.length <= options.moves) {
+          git(scene.repository, [
+            "commit",
+            "-qm",
+            "Move during CI",
+            "--allow-empty",
+          ]);
+          git(scene.repository, ["push", "--quiet", "origin", "main"]);
+          base = git(scene.repository, ["rev-parse", "HEAD"]);
+        }
+        const check = checkRun({
+          conclusion: ci.length === 1 ? "success" : options.conclusion,
+          details_url: null,
+        });
+        return Promise.resolve(JSON.stringify([{ check_runs: [check] }]));
+      },
+      run: (_command: readonly string[], directory: string) => {
+        checked.push(git(directory, ["rev-parse", "HEAD"]));
+        return Promise.resolve("");
+      },
+    },
+  };
+  return {
+    result: await merge(operation, { number: 1, commit }),
+    commit,
+    base,
+    checked,
+    ci,
+  };
 }

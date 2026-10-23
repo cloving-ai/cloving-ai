@@ -283,27 +283,43 @@ async function readyHead(
     readonly recorded: string | undefined;
     readonly remote: string;
   },
-): Promise<string> {
+): Promise<string | CiResult> {
   const tree = existingTree(operation);
-  const updated = await refreshed(operation, {
-    tree,
-    commit: pull.commit,
-    recorded: pull.recorded,
-  });
-  if (updated === pull.commit) return updated;
-  if (pull.recorded !== updated)
-    await writeRecord(operation.folder, {
-      name: "updated-head.json",
-      value: { commit: pull.commit, updated },
+  let recorded = pull.recorded;
+  let remote = pull.remote;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const updated = await refreshed(operation, {
+      tree,
+      commit: pull.commit,
+      recorded,
     });
-  if (pull.remote !== updated)
-    await operation.calls.git(tree.path, [
-      "push",
-      "--quiet",
-      "origin",
-      `${updated}:refs/heads/${tree.branch}`,
-    ]);
-  return updated;
+    if (updated !== pull.commit) {
+      if (recorded !== updated)
+        await writeRecord(operation.folder, {
+          name: "updated-head.json",
+          value: { commit: pull.commit, updated },
+        });
+      if (remote !== updated)
+        await operation.calls.git(tree.path, [
+          "push",
+          "--quiet",
+          "origin",
+          `${updated}:refs/heads/${tree.branch}`,
+        ]);
+    }
+    const ci = await waitForCi(operation, updated);
+    if (ci !== undefined) return ci;
+    const newest = await fetched(operation, await defaultBranch(operation));
+    if (
+      (
+        await operation.calls.git(tree.path, ["merge-base", updated, newest])
+      ).trim() === newest
+    )
+      return updated;
+    recorded = updated;
+    remote = updated;
+  }
+  throw new Error("base-moved");
 }
 
 function checkOutput(cause: unknown): string {
@@ -352,11 +368,8 @@ async function completedMerge(
     known.merged === undefined
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
       : (recorded ?? pull.commit);
+  if (typeof updated !== "string") return updated;
   const mergeCall = updated === pull.commit ? mergedNow : mergeUpdated;
-  if (known.merged === undefined) {
-    const ci = await waitForCi(operation, updated);
-    if (ci !== undefined) return ci;
-  }
   const merged =
     known.merged ?? (await mergeCall(operation, { ...pull, commit: updated }));
   await removed(operation, place);

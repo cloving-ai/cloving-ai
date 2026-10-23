@@ -1,3 +1,4 @@
+import { githubText } from "../src/daemon/github-calls.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -110,3 +111,13 @@ await test("CLV-082 redacts environment secrets and private texts before retaini
       /example-token|private phrase|\[hidden\]/,
     );
   }));
+
+await test("CLV-163 configured private texts ignore case while tokens match exactly", () => {
+  assert.equal(
+    githubText("ACME Acme extended exacttoken ExactToken", {
+      privateTexts: ["Acme", "Acme extended"],
+      environment: { API_TOKEN: "ExactToken", CLOVING_PRIVATE_TEXTS: "[]" },
+    }),
+    "[hidden] [hidden] exacttoken [hidden]",
+  );
+});

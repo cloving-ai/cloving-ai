@@ -10,6 +10,16 @@ await test("CLV-163 malformed check-run pages fail closed instead of qualifying 
     [{}],
     [{ check_runs: "wrong" }],
     [{ check_runs: [{}] }],
+    ...[
+      { conclusion: 42 },
+      { details_url: 42 },
+      { app: { slug: 42 } },
+      { conclusion: undefined },
+      { details_url: undefined },
+      { app: undefined },
+    ]
+      .map((overrides) => ({ check_runs: [checkRun(overrides)] }))
+      .map((page) => [page]),
   ])
     await assert.rejects(
       ciScenario({ snapshots: [], pages, timing: { ciGraceMilliseconds: 0 } }),

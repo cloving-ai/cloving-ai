@@ -12,26 +12,46 @@ export interface CiResult {
   readonly output: string;
 }
 
+interface CheckRun {
+  readonly id: number;
+  readonly name: string;
+  readonly status: string;
+  readonly conclusion: string | null;
+  readonly app: { readonly slug: string } | null;
+  readonly details_url: string | null;
+}
+
+function isCheckRun(value: unknown): value is CheckRun {
+  const conclusion = field(value, "conclusion");
+  const details = field(value, "details_url");
+  const app = field(value, "app");
+  return (
+    typeof field(value, "id") === "number" &&
+    typeof field(value, "name") === "string" &&
+    typeof field(value, "status") === "string" &&
+    (conclusion === null || typeof conclusion === "string") &&
+    (details === null || typeof details === "string") &&
+    (app === null || typeof field(app, "slug") === "string")
+  );
+}
+
 const passing = new Set(["success", "neutral", "skipped"]);
 
 function latestRuns(
-  checks: readonly unknown[],
+  checks: readonly CheckRun[],
   required: ReadonlySet<string> | undefined,
-): readonly unknown[] {
-  const latest = new Map<string, unknown>();
+): readonly CheckRun[] {
+  const latest = new Map<string, CheckRun>();
   for (const check of checks) {
-    const name = String(field(check, "name"));
+    const name = check.name;
     if (
       required === undefined
-        ? field(field(check, "app"), "slug") !== "github-actions"
+        ? check.app?.slug !== "github-actions"
         : !required.has(name)
     )
       continue;
     const previous = latest.get(name);
-    if (
-      previous === undefined ||
-      Number(field(check, "id")) > Number(field(previous, "id"))
-    )
+    if (previous === undefined || check.id > previous.id)
       latest.set(name, check);
   }
   return [...latest.values()];
@@ -44,7 +64,7 @@ function list(value: unknown): readonly unknown[] {
 async function checkRuns(
   operation: Operation,
   commit: string,
-): Promise<readonly unknown[]> {
+): Promise<readonly CheckRun[]> {
   const pages: unknown = JSON.parse(
     await operation.calls.gh([
       "api",
@@ -57,16 +77,9 @@ async function checkRuns(
     throw new Error("github-call-failed");
   return list(pages).flatMap((page) => {
     const checks = field(page, "check_runs");
-    if (!Array.isArray(checks)) throw new Error("github-call-failed");
-    return list(checks).map((check) => {
-      if (
-        typeof field(check, "name") !== "string" ||
-        typeof field(check, "id") !== "number" ||
-        typeof field(check, "status") !== "string"
-      )
-        throw new Error("github-call-failed");
-      return check;
-    });
+    if (!Array.isArray(checks) || !checks.every(isCheckRun))
+      throw new Error("github-call-failed");
+    return checks;
   });
 }
 
@@ -101,12 +114,12 @@ async function failedSteps(
 
 async function failedCheck(
   operation: Operation,
-  check: unknown,
+  check: CheckRun,
 ): Promise<{ readonly summary: string; readonly log: string }> {
   const summary = [
-    `Failed check: ${String(field(check, "name"))} (${String(field(check, "conclusion"))})`,
+    `Failed check: ${check.name} (${check.conclusion ?? "null"})`,
   ];
-  const details = String(field(check, "details_url"));
+  const details = check.details_url ?? "";
   const run = /\/actions\/runs\/(\d+)/.exec(details)?.[1];
   let log = "Failed log unavailable.";
   if (run !== undefined) {
@@ -143,7 +156,7 @@ async function failedLog(
 
 async function failedOutput(
   operation: Operation,
-  checks: readonly unknown[],
+  checks: readonly CheckRun[],
 ): Promise<string> {
   const reports = [];
   for (const check of checks) reports.push(await failedCheck(operation, check));
@@ -169,11 +182,12 @@ function requiredChecks(operation: Operation): Set<string> | undefined {
   if (
     !Array.isArray(names) ||
     !names.every(
-      (name: unknown) => typeof name === "string" && name.trim() !== "",
+      (name: unknown): name is string =>
+        typeof name === "string" && name.trim() !== "",
     )
   )
     throw new Error("invalid-payload");
-  return new Set(list(names).map(String));
+  return new Set(names);
 }
 
 function ciTiming(operation: Operation): {
@@ -190,29 +204,14 @@ function ciTiming(operation: Operation): {
 }
 
 function pendingChecks(
-  checks: readonly unknown[],
+  checks: readonly CheckRun[],
   names: ReadonlySet<string>,
 ): readonly string[] {
   return [...names].filter(
     (name) =>
       !checks.some(
-        (check) =>
-          field(check, "name") === name &&
-          field(check, "status") === "completed",
+        (check) => check.name === name && check.status === "completed",
       ),
-  );
-}
-
-function checksComplete(
-  pending: readonly string[],
-  state: {
-    readonly names: ReadonlySet<string>;
-    readonly required: ReadonlySet<string> | undefined;
-  },
-): boolean {
-  return (
-    pending.length === 0 &&
-    (state.required !== undefined || state.names.size > 0)
   );
 }
 
@@ -226,11 +225,10 @@ export async function waitForCi(
   const names = new Set(required);
   for (;;) {
     const checks = latestRuns(await checkRuns(operation, commit), required);
-    for (const check of checks) names.add(String(field(check, "name")));
+    for (const check of checks) names.add(check.name);
     const failed = checks.filter(
       (check) =>
-        field(check, "status") === "completed" &&
-        !passing.has(String(field(check, "conclusion"))),
+        check.status === "completed" && !passing.has(check.conclusion ?? ""),
     );
     if (failed.length > 0)
       return {
@@ -238,11 +236,11 @@ export async function waitForCi(
         output: await failedOutput(operation, failed),
       };
     const pending = pendingChecks(checks, names);
-    if (checksComplete(pending, { names, required })) return undefined;
     if (
-      required === undefined &&
-      names.size === 0 &&
-      Date.now() - started >= timing.grace
+      pending.length === 0 &&
+      (required !== undefined ||
+        names.size > 0 ||
+        Date.now() - started >= timing.grace)
     )
       return undefined;
     const remaining = timing.limit - (Date.now() - started);

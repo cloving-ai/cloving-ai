@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resultOf } from "./claude-worker-fixture.ts";
+import { git, resultOf } from "./claude-worker-fixture.ts";
 import { advancedBase, mergeCalls } from "./github-merge-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
-import { checkRun } from "./github-ci-fixture.ts";
+import { checkRun, movingCiScenario } from "./github-ci-fixture.ts";
 
 await test("CLV-163 required green CI merges the checked SHA after pushing an updated head", () =>
   withGithub(async (scene) => {
@@ -83,3 +83,52 @@ await test("CLV-163 no CI merges after the grace period and a missing required c
       assert.equal(mergeCalls(scene).length, required ? 0 : 1);
     });
 });
+
+await test("CLV-163 a base advance during CI repeats local checks and CI before merging", () =>
+  withGithub(async (scene) => {
+    const { result, commit, base, checked, ci } = await movingCiScenario(
+      scene,
+      {
+        moves: 1,
+        conclusion: "success",
+      },
+    );
+    assert.ok("updated" in result);
+    assert.notEqual(result.updated, commit);
+    assert.equal(git(scene.origin, ["merge-base", result.updated, base]), base);
+    assert.deepEqual(checked, [commit, result.updated]);
+    assert.deepEqual(
+      ci,
+      [commit, result.updated].map(
+        (head) =>
+          `repos/{owner}/{repo}/commits/${head}/check-runs?filter=all&per_page=100`,
+      ),
+    );
+    assert.ok(mergeCalls(scene)[0]?.includes(`sha=${result.updated}`));
+  }));
+
+await test("CLV-163 CI failure on the refreshed head prevents merging", () =>
+  withGithub(async (scene) => {
+    const { result, checked, ci } = await movingCiScenario(scene, {
+      moves: 1,
+      conclusion: "failure",
+    });
+    assert.ok("reason" in result);
+    assert.equal(result.reason, "ci-failed");
+    assert.match(result.output, /quality_linux/);
+    assert.equal(checked.length, 2);
+    assert.equal(ci.length, 2);
+    assert.deepEqual(mergeCalls(scene), []);
+  }));
+
+await test("CLV-163 repeated base advances during CI stop after three attempts", () =>
+  withGithub(async (scene) => {
+    await assert.rejects(
+      movingCiScenario(scene, {
+        moves: 3,
+        conclusion: "success",
+      }),
+      /base-moved/,
+    );
+    assert.deepEqual(mergeCalls(scene), []);
+  }));

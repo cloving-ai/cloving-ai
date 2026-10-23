@@ -88,17 +88,23 @@ export function githubText(
   const secrets = Object.entries(environment)
     .filter(([name]) => /TOKEN|SECRET|PASSWORD|KEY/i.test(name))
     .map(([, value]) => value);
-  const hidden = [
-    ...secrets,
+  const privateTexts = [
     ...(settings.privateTexts ?? []),
     ...privateEnvironment(environment),
-  ]
+  ];
+  const hidden = [...secrets, ...privateTexts]
     .filter(
       (value): value is string => typeof value === "string" && value !== "",
     )
     .sort((left, right) => right.length - left.length);
   return hidden.reduce(
-    (redacted, value) => redacted.replaceAll(value, "[hidden]"),
+    (redacted, value) =>
+      redacted.replaceAll(
+        privateTexts.includes(value)
+          ? new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")
+          : value,
+        "[hidden]",
+      ),
     text,
   );
 }

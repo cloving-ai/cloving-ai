@@ -91,3 +91,30 @@ await test("CLV-163 failed checks in one run retain separate job log tails", asy
   assert.match(result.output, /other-failure-tail/);
   assert.ok(result.output.length <= 6000);
 });
+
+await test("CLV-163 CI diagnostics hide private texts in every letter case", async () => {
+  const { result } = await ciScenario({
+    snapshots: [[checkRun({ name: "ACME[OPS]", conclusion: "failure" })]],
+    environment: {
+      API_TOKEN: "ExactToken",
+      CLOVING_PRIVATE_TEXTS: '["Acme[Ops]"]',
+    },
+    reply: (parts) =>
+      parts.includes("--json")
+        ? JSON.stringify({
+            jobs: [
+              {
+                databaseId: 101,
+                steps: [{ name: "Build acme[ops]", conclusion: "failure" }],
+              },
+            ],
+          })
+        : "Failed AcMe[OpS] ExactToken exacttoken",
+  });
+  assert.ok(result);
+  assert.equal(result.reason, "ci-failed");
+  assert.doesNotMatch(result.output, /acme\[ops\]/i);
+  assert.match(result.output, /Failed check: \[hidden\]/);
+  assert.match(result.output, /Failed step: Build \[hidden\]/);
+  assert.match(result.output, /Failed \[hidden\] \[hidden\] exacttoken/);
+});
