@@ -10,16 +10,15 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { record } from "../src/protocol.ts";
 import { candidateProgram as installedProgram } from "../tools/workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
 import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-workflow.ts";
 import { loadWorkflowFolders as installedFolders } from "../tools/workflow-folders.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const product = join(import.meta.dirname, "..");
-const childTimeout =
-  30_000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
+const childTimeout = testMilliseconds(30_000);
 const directory = realpathSync(
   mkdtempSync(join(tmpdir(), "cloving-candidate-package-")),
 );

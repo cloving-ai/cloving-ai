@@ -1,7 +1,5 @@
-import {
-  chatPlatformScenario,
-  darwinChatFileArguments,
-} from "./chats-platform-fixture.ts";
+import { darwinChatFileArguments } from "./chats-darwin-emulation.ts";
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

@@ -138,7 +138,7 @@ await test("CLV-156 the README recognizes and documents test concurrency", () =>
   );
   assert.match(
     readme,
-    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 8.*default rule/,
+    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 8.*Ubuntu CI sets it to 4/,
   );
 });
 

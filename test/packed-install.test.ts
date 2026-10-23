@@ -21,6 +21,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import {
   candidateDeclaration,
   candidateEffectExpression,
@@ -117,7 +118,7 @@ async function ready(
   child: ChildProcess,
   output: { text: string },
 ): Promise<string> {
-  for (let count = 0; count < 1500; count += 1) {
+  for (let count = 0; count < testMilliseconds(30_000) / 20; count += 1) {
     assert.equal(
       child.exitCode,
       null,

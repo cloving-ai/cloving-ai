@@ -9,10 +9,8 @@ import {
   readCapturedAnalysisSnapshot,
 } from "../src/daemon/chats-capture.ts";
 import { readAnalysisSnapshot } from "../src/daemon/chats-files.ts";
-import {
-  chatPlatformScenario,
-  darwinChatFileArguments,
-} from "./chats-platform-fixture.ts";
+import { darwinChatFileArguments } from "./chats-darwin-emulation.ts";
+import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import { withAnalysis, importId } from "./chats-worker-fixture.ts";
 
 async function pausedCapture(directory: string, boundary: string) {

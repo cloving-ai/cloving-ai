@@ -3,15 +3,11 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { throttled, watchStream } from "../src/cli/watch-stream.ts";
 import { startedRun, withHarness, type Harness } from "./service-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 type Advance = (milliseconds: number) => void;
-
-const timeFactor = parseCheckTimeFactor(
-  process.env["CLOVING_CHECK_TIME_FACTOR"],
-);
 
 async function advancing(
   result: Promise<void>,
@@ -26,7 +22,7 @@ async function advancing(
       state.finished = true;
     },
   );
-  const deadline = performance.now() + 60_000 * timeFactor;
+  const deadline = performance.now() + testMilliseconds(60_000);
   while (!state.finished) {
     if (performance.now() >= deadline)
       throw new Error("watch-stream-io-timeout");
@@ -80,7 +76,7 @@ async function withClock(
 }
 
 const quietAttempts = 400;
-const noticeAttempts = 3_000 * timeFactor;
+const noticeAttempts = testMilliseconds(30_000) / 10;
 
 interface Waiting {
   readonly advance: Advance;

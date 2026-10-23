@@ -65,11 +65,3 @@ async function assertChatPlatformRefusal(): Promise<void> {
     },
   );
 }
-
-export function darwinChatFileArguments(): readonly string[] {
-  if (process.env["CLOVING_TEST_DARWIN_FILES"] !== "1") return [];
-  return [
-    "--import",
-    join(import.meta.dirname, "chats-darwin-files-fixture.ts"),
-  ];
-}

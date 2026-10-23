@@ -5,6 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { testMilliseconds } from "./test-timing.ts";
 
 const entry = join(import.meta.dirname, "../src/cli.ts");
 
@@ -173,7 +174,7 @@ async function launched(
     stream.on("data", (chunk: Buffer) => {
       output.text += chunk.toString();
     });
-  for (let waited = 0; waited < 1_500; waited += 1) {
+  for (let waited = 0; waited < testMilliseconds(30_000) / 20; waited += 1) {
     if (output.text.includes(expected)) return { child, output };
     await delay(20);
   }
