@@ -141,6 +141,15 @@ export function turnPrompt(input: Ticket, fix: Fix | null): string {
           "Reassess each remaining item before reporting Ticket status: complete. Keep every unfinished item in the next Remaining: list.",
         ].join("\n");
   const ticket = pullPrompt(input) + continuation;
+  if (review["reason"] === "ci-failed")
+    return [
+      ticket,
+      "",
+      `This is round ${String(round)}. The CI checks of the pull request ${pull.url} failed.`,
+      "Fix the failed CI checks, including failures that the pull request did not cause, and commit the fix.",
+      "",
+      part(review, "output"),
+    ].join("\n");
   if (typeof review["reason"] === "string")
     return [
       ticket,

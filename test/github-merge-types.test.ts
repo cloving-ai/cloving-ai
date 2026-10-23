@@ -15,7 +15,8 @@ await test("CLV-081 exposes concrete success and repair merge results", () => {
         readonly merged: string;
       }
     | {
-        readonly reason: "check-failed" | "merge-conflict";
+        readonly reason:
+          "check-failed" | "merge-conflict" | "ci-failed" | "ci-pending";
         readonly output: string;
       }
   > = merge;

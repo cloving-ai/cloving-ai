@@ -13,6 +13,7 @@ import {
   type Place,
 } from "./github-operation.ts";
 import { treePlace } from "./work-tree.ts";
+import { waitForCi, type CiResult } from "./github-ci.ts";
 
 interface ReviewedPull {
   readonly number: number;
@@ -31,7 +32,7 @@ interface MergeRepair {
   readonly output: string;
 }
 
-export type MergeResult = SuccessfulMerge | MergeRepair;
+export type MergeResult = SuccessfulMerge | MergeRepair | CiResult;
 
 function commitOf(value: unknown, name: string): string {
   if (typeof value !== "object" || value === null)
@@ -337,7 +338,7 @@ export async function merge(
 async function completedMerge(
   operation: Operation,
   pull: ReviewedPull,
-): Promise<SuccessfulMerge> {
+): Promise<SuccessfulMerge | CiResult> {
   const place = treePlace({
     worktrees: operation.settings.worktrees,
     target: operation.target,
@@ -352,6 +353,10 @@ async function completedMerge(
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
       : (recorded ?? pull.commit);
   const mergeCall = updated === pull.commit ? mergedNow : mergeUpdated;
+  if (known.merged === undefined) {
+    const ci = await waitForCi(operation, updated);
+    if (ci !== undefined) return ci;
+  }
   const merged =
     known.merged ?? (await mergeCall(operation, { ...pull, commit: updated }));
   await removed(operation, place);
