@@ -80,7 +80,7 @@ const actions = {
     out(created.html_url);
   },
   "repo view": () => out({ nameWithOwner: "acme/demo" }),
-  "api GET check-runs": () => out([{ check_runs: [{ id: 101, name: "quality_linux", app: { slug: "github-actions" }, status: "completed", conclusion: "success" }] }]),
+  "api GET check-runs": () => out([{ check_runs: [{ id: 101, name: "quality_linux", app: { slug: "github-actions" }, status: "completed", conclusion: "success", details_url: null }] }]),
   "run view": () => out(args.includes("--log-failed") ? "Failed assertion" : { jobs: [{ databaseId: 101, name: "quality_linux", steps: [{ name: "Run quality", conclusion: "failure" }] }] }),
   "api GET issues": () => {
     const pages = state.issuePages ?? [state.issues];
