@@ -6,6 +6,18 @@ import { test } from "node:test";
 import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
 
+await test("CLV-194 preserves the failure reason when the gh executable is missing", () =>
+  withGithub(async (scene) => {
+    const commit = await opened(scene, scene.worker());
+    const worker = scene.worker({ gh: [join(scene.directory, "missing-gh")] });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "failed");
+    assert.equal(report.reason, "github-call-failed");
+  }));
+
 await test("CLV-082 journals failed gh stderr without sending it to the service", () =>
   withGithub(async (scene) => {
     const worker = scene.worker();

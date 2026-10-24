@@ -34,6 +34,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "post-uncertain",
   "private-texts-not-set",
   "github-call-failed",
+  "github-network-failed",
   "github-issue-conflict",
   "git-call-failed",
   "check-failed",

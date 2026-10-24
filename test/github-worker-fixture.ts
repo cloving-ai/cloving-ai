@@ -26,10 +26,16 @@ export interface GithubState {
   readonly issues: readonly Readonly<Record<string, unknown>>[];
   readonly prs: readonly Readonly<Record<string, unknown>>[];
   readonly calls: readonly (readonly string[])[];
+  readonly callTimes: readonly number[];
   readonly triggers: readonly number[];
 }
 
 export interface Plan {
+  readonly failures?: readonly {
+    readonly call: string;
+    readonly detail: string;
+    readonly after?: boolean;
+  }[];
   readonly labels?: readonly Readonly<Record<string, unknown>>[];
   readonly issues?: readonly Readonly<Record<string, unknown>>[];
   readonly scores: readonly number[];
@@ -163,6 +169,7 @@ function stateOf(file: string): GithubState {
     issues: listOf(fields["issues"]).map(record),
     prs: listOf(fields["prs"]).map(record),
     calls: listOf(fields["calls"]).map((call) => listOf(call).map(String)),
+    callTimes: listOf(fields["callTimes"]).map(Number),
     triggers: listOf(fields["triggers"]).map(Number),
   };
 }
