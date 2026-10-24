@@ -41,6 +41,28 @@ const intent = {
   leaseGeneration: 2,
 };
 
+await test("CLV-182 retry requires a current lease, pin, budget and running source", () => {
+  const { operation, lease, budget } = read;
+  assert.ok(operation);
+  assert.ok(lease);
+  assert.ok(budget);
+  const recovering = {
+    ...read,
+    operation: { ...operation, status: "recovering" },
+  };
+  const check = { intent, now: noon, mode: "retry" as const };
+  assert.equal(dispatchDecision(recovering, check), "send");
+  for (const changed of [
+    { ...recovering, lease: { ...lease, expiresAt: noon } },
+    { ...recovering, runStatus: "cancelled" },
+    { ...recovering, pinned: false },
+    { ...recovering, budget: { ...budget, exhaustedSequence: 1 } },
+    { ...recovering, lease: { ...lease, generation: 3 } },
+  ])
+    assert.notEqual(dispatchDecision(changed, check), "send");
+  assert.equal(dispatchDecision(recovering, { intent, now: noon }), "withheld");
+});
+
 await test("CLV-049 the dispatch decision is send for an open attempt of the present lease generation in a running run before the lease expiry", () => {
   assert.equal(dispatchDecision(read, { intent, now: noon }), "send");
   const { budget } = read;

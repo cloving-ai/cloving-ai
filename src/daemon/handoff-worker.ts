@@ -73,16 +73,16 @@ async function retained(
 }
 
 function outcome(reply: Reply): AdapterOutcome | undefined {
-  if (reply.kind === "error") {
-    if (reply.error.code === "workflow-active") return undefined;
-    return uncertain.includes(reply.error.code)
-      ? { kind: "unknown" }
-      : { kind: "failed", reason: "handoff-input-refused" };
+  if (reply.kind !== "error") {
+    const runId = reply.result["runId"];
+    return reply.result["kind"] === "run-admitted" && typeof runId === "string"
+      ? completed(runId)
+      : { kind: "unknown" };
   }
-  const runId = reply.result["runId"];
-  return reply.result["kind"] === "run-admitted" && typeof runId === "string"
-    ? completed(runId)
-    : { kind: "unknown" };
+  if (reply.error.code === "workflow-active") return undefined;
+  return uncertain.includes(reply.error.code)
+    ? { kind: "unknown" }
+    : { kind: "failed", reason: "handoff-input-refused" };
 }
 
 async function input(settings: Settings, intent: ProtectedIntent) {
@@ -267,6 +267,12 @@ export function handoffWorker(settings: Settings): EffectDelivery {
   return {
     deliver,
     reconcile: (intent) => observed(settings, intent),
+    retry: async (intent, signal) => {
+      if (!own(intent)) return { kind: "failed", reason: "unsupported-effect" };
+      const { folder } = located(settings.journal, intent.operationId);
+      if (!(await inFlight(folder))) return { kind: "unknown" };
+      return deliver(intent, signal);
+    },
     stop: async (intent) => {
       const active = pending.get(intent.operationId);
       active?.stopping.abort();

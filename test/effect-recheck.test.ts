@@ -52,6 +52,57 @@ async function outcomes(
 const request = effectRequest({ commandId: "c-request", round: 1 });
 const { operationId } = request;
 
+for (const scenario of ["available", "lease-expired", "pin-unavailable"])
+  await test(`CLV-182 uncertain retry rechecks dispatch authority: ${scenario}`, async () => {
+    const clock = { now: noon };
+    let sent = false;
+    let available = true;
+    let retries = 0;
+    const authority = await openedAuthority(await temporaryDirectory(), {
+      clock: () => clock.now,
+      available: (pinned) => (available ? pinned : undefined),
+      timing: fastTiming,
+      delivery: {
+        reconcile: () => Promise.resolve({ kind: sent ? "unknown" : "absent" }),
+        deliver: (intent) => {
+          if (intent.kind === "protected-effect") {
+            sent = true;
+            if (scenario === "lease-expired") clock.now = later;
+            if (scenario === "pin-unavailable") available = false;
+          }
+          return Promise.resolve({ kind: "unknown" });
+        },
+        retry: () => {
+          retries += 1;
+          return Promise.resolve({
+            kind: "completed",
+            receipt: "target",
+            worker: "handoff",
+            result: "target",
+          });
+        },
+      },
+    });
+    try {
+      const send = sender(authority, clock);
+      await runningRun(send, { effectLimit: 5 });
+      await send(request.command, request.documents);
+      const expected = scenario === "available" ? "completed" : "blocked";
+      await deliverUntil(
+        authority,
+        async () =>
+          (await authority.effects.operation(operationId))?.status === expected,
+      );
+      assert.equal(retries, scenario === "available" ? 1 : 0);
+      assert.equal(
+        (await authority.effects.operation(operationId))?.status,
+        expected,
+      );
+    } finally {
+      await authority.close();
+    }
+  });
+
 await test("CLV-049 a change of ownership between the commit and the send withholds the send", async () => {
   const destination = fakeDestination();
   const held = heldReconcile(destination, "protected-effect");

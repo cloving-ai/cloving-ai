@@ -148,6 +148,62 @@ await test("CLV-182 an unconfirmed submission cannot be called stopped from a mi
     });
   }));
 
+await test("CLV-182 uncertain recovery replays one command only while the source is running", () =>
+  withHarness(async (harness) => {
+    const commands: unknown[] = [];
+    const listener = await listen({
+      path: harness.runtimeDirectory + "/control.sock",
+      handle: (request) => {
+        if (request.operation === "run")
+          commands.push(request.parameters["commandId"]);
+        const reply =
+          commands.length === 1
+            ? undefined
+            : {
+                kind: "result" as const,
+                result: { kind: "run-admitted", runId: "run-target" },
+              };
+        return Promise.resolve(
+          request.operation === "run"
+            ? reply
+            : {
+                kind: "error",
+                error: { code: "unknown-run", detail: "not admitted" },
+              },
+        );
+      },
+    });
+    harness.cleanup(listener.close);
+    let status = "running";
+    const worker = handoffWorker({
+      ...settings(harness),
+      runStatus: () => Promise.resolve(status),
+    });
+    assert.ok(worker.retry);
+    const signal = new AbortController().signal;
+    assert.deepEqual(await worker.deliver(intent, signal), { kind: "unknown" });
+    assert.deepEqual(await worker.reconcile(intent, signal), {
+      kind: "unknown",
+    });
+    for (status of ["paused", "cancelled", "completed", "failed"])
+      assert.deepEqual(await worker.retry(intent, signal), {
+        kind: "unknown",
+      });
+    status = "running";
+    assert.deepEqual(await worker.retry(intent, AbortSignal.abort()), {
+      kind: "unknown",
+    });
+    assert.equal(commands.length, 1);
+    const result = await worker.retry(intent, signal);
+    assert.equal(field(result, "kind"), "completed");
+    assert.equal(field(result, "result"), "run-target");
+    assert.deepEqual(await worker.reconcile(intent, signal), result);
+    assert.deepEqual(commands, [
+      `handoff:${intent.operationId}`,
+      `handoff:${intent.operationId}`,
+    ]);
+  }));
+
 await test("CLV-182 a lost worker result reuses the committed submission after service restart", () =>
   withHarness(async (harness) => {
     const first = await harness.start();
@@ -268,8 +324,14 @@ await test("CLV-182 invalid input, unsupported delivery and cancellation start n
       assert.deepEqual(await worker.reconcile(intent, signal), failed);
     }
     const worker = handoffWorker(settings(harness));
+    assert.ok(worker.retry);
     const unsupported = { ...intent, capability: "other" };
-    for (const action of [worker.deliver, worker.reconcile, worker.stop])
+    for (const action of [
+      worker.deliver,
+      worker.reconcile,
+      worker.retry,
+      worker.stop,
+    ])
       assert.deepEqual(await action(unsupported, signal), {
         kind: "failed",
         reason: "unsupported-effect",
@@ -278,6 +340,7 @@ await test("CLV-182 invalid input, unsupported delivery and cancellation start n
       kind: "unknown",
     });
     assert.deepEqual(await worker.deliver(intent, signal), { kind: "unknown" });
+    assert.deepEqual(await worker.retry(intent, signal), { kind: "unknown" });
     assert.deepEqual(await worker.stop(intent, signal), { kind: "unknown" });
   }));
 

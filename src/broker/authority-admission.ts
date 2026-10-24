@@ -78,14 +78,13 @@ const effectRequest: Rule = (command, context) => {
   });
   if (computed !== command.inputDigest)
     return { kind: "rejected", reason: "input-digest-mismatch" };
-  if (command.capability === "handoff") {
-    const pin = context.state.runs[command.runId]?.workflow ?? "";
-    const declaration = context.definitions.get(pin);
-    if (!declaration?.handoffs?.includes(String(command.target)))
-      return { kind: "rejected", reason: "handoff-not-declared" };
-    if (command.units !== 1 || command.method !== "run")
-      return { kind: "rejected", reason: "invalid-handoff-request" };
-  }
+  if (command.capability !== "handoff") return unpinned(command, context);
+  const pin = context.state.runs[command.runId]?.workflow ?? "";
+  const declaration = context.definitions.get(pin);
+  if (!declaration?.handoffs?.includes(String(command.target)))
+    return { kind: "rejected", reason: "handoff-not-declared" };
+  if (command.units !== 1 || command.method !== "run")
+    return { kind: "rejected", reason: "invalid-handoff-request" };
   return unpinned(command, context);
 };
 
