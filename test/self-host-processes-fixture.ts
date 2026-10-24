@@ -50,10 +50,15 @@ export async function stalledCheck(root: string, options: StalledCheck) {
   const bin = join(root, "bin");
   await mkdir(bin);
   const executable = join(bin, "git");
+  if (options.command === "merge")
+    await writeFile(`${executable}.mjs`, interruptedMerge(root, options));
   await writeFile(
     executable,
     options.command === "merge"
-      ? interruptedMerge(root, options)
+      ? `#!/bin/sh
+if [ "$3" = "merge" ]; then exec ${shellWord(process.execPath)} "$0.mjs" "$@"; fi
+PATH=${shellWord(process.env["PATH"] ?? "")} exec git "$@"
+`
       : stalledGit(root, options),
   );
   await chmod(executable, 0o755);
@@ -84,6 +89,10 @@ process.exitCode = await running;`,
   } finally {
     await cleanedProcesses(root);
   }
+}
+
+function shellWord(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function interruptedMerge(root: string, options: StalledCheck): string {

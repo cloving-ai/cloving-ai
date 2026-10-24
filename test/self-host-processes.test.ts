@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { chmod, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -132,6 +133,35 @@ await test("CLV-085 without the setting the host never fetches and preserves nor
       await readFile(join(root, "watch-stopped"), "utf8"),
       "stopped",
     );
+  });
+});
+
+await test("CLV-179 the merge shutdown fixture starts Node only for the merge barrier", async () => {
+  await withUpdateRepository(async ({ root, repository }) => {
+    const preload = join(root, "record-git-startup.mjs");
+    const record = join(root, "git-node-startups");
+    await writeFile(
+      preload,
+      `import { appendFileSync } from "node:fs";
+if (process.argv[1] === ${JSON.stringify(join(root, "bin/git"))} && process.argv[4] !== "merge")
+  appendFileSync(${JSON.stringify(record)}, process.argv[4] + "\\n");`,
+    );
+    const previous = process.env["NODE_OPTIONS"];
+    process.env["NODE_OPTIONS"] =
+      `${previous ?? ""} --import=${pathToFileURL(preload).href}`;
+    try {
+      const result = await stalledCheck(root, {
+        repository,
+        command: "merge",
+        signal: "SIGINT",
+      });
+      assert.equal(result.error, undefined, result.stderr);
+      assert.equal(result.status, 75, result.stderr);
+      await assert.rejects(readFile(record), { code: "ENOENT" });
+    } finally {
+      if (previous === undefined) delete process.env["NODE_OPTIONS"];
+      else process.env["NODE_OPTIONS"] = previous;
+    }
   });
 });
 
