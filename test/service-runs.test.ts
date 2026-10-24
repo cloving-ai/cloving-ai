@@ -24,6 +24,7 @@ function status(
 }
 
 const initialRunDetails = {
+  input: { prompt: "task of c-1" },
   ticketId: null,
   latestAt: noon,
   outcome: null,

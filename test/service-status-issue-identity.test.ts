@@ -48,9 +48,10 @@ await test("CLV-129 single issue status exposes only one valid stored issue mark
       });
       const shown = await view(harness, text(reply, "runId"));
       assert.deepEqual(field(shown, "issueIdentity"), expected, prompt);
+      assert.deepEqual(field(shown, "input"), { prompt });
       assert.doesNotMatch(
         JSON.stringify(shown),
-        /Private body|private-repository|"host"|"ticket"|"input"/,
+        /Private body|private-repository|"host"|"ticket"/,
       );
     }
     await service.close();

@@ -71,6 +71,7 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
       "Outcome: none",
       "Condition: quota-wait",
       "Reason: provider-quota: A worker reported this reason.",
+      "Input: null",
       "Revision: 4, latest sequence 9",
       "Latest at: none",
       "Pending decisions: none",

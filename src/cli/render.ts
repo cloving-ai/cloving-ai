@@ -191,6 +191,11 @@ export function statusJson(result: Fields): Fields {
   };
 }
 
+function inputText(value: unknown): string {
+  const text = visible(value ?? null);
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
 export function runStatus(result: Fields): readonly string[] {
   const run = result["run"];
   const reason = part(run, "reason");
@@ -204,6 +209,7 @@ export function runStatus(result: Fields): readonly string[] {
     ...outcomeLines(part(run, "outcome")),
     `Condition: ${show(part(run, "condition"))}`,
     `Reason: ${show(part(reason, "code"))}: ${show(part(reason, "detail"))}`,
+    `Input: ${inputText(part(run, "input"))}`,
     `Revision: ${show(part(run, "revision"))}, latest sequence ${show(part(run, "latestSequence"))}`,
     `Latest at: ${show(part(run, "latestAt") ?? "none")}`,
     `Pending decisions: ${listing(part(run, "pendingDecisions"))}`,

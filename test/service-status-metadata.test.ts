@@ -77,7 +77,7 @@ function identityInput(request: {
   });
 }
 
-await test("CLV-091 single status exposes only the exact stored ticket ID alongside existing metadata", () =>
+await test("CLV-091 single status exposes the exact stored ticket ID alongside the submitted input and existing metadata", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
       workflows: [
@@ -111,6 +111,9 @@ await test("CLV-091 single status exposes only the exact stored ticket ID alongs
         },
       });
       const shown = await view(harness, text(reply, "runId"));
+      assert.deepEqual(field(shown, "input"), {
+        prompt: JSON.stringify(ticketId),
+      });
       assert.equal(
         field(shown, "ticketId"),
         typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
@@ -127,7 +130,7 @@ await test("CLV-091 single status exposes only the exact stored ticket ID alongs
         assert.ok(Object.hasOwn(fields(shown), name), name);
       assert.doesNotMatch(
         JSON.stringify(shown),
-        /Private ticket text|private-repository|different-cycle|"input"|"ticket"|"repository"/,
+        /Private ticket text|private-repository|different-cycle|"ticket"|"repository"/,
       );
     }
     const missing = await admitted(harness, "missing-input-id");

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 import { rendered } from "../src/cli/render.ts";
 import {
   reportTurn,
@@ -8,7 +11,7 @@ import {
   scenarioTotal,
   turnResult,
 } from "./worker-report-fixture.ts";
-import { field, parsed } from "./service-fixture.ts";
+import { field, items, parsed, type Harness } from "./service-fixture.ts";
 import { later, noon, startedRun, withHarness } from "./service-fixture.ts";
 
 await test("CLV-072 plain status lists unused and unavailable workflows and the latest time of each run", () =>
@@ -200,3 +203,161 @@ await test("CLV-133 status JSON exposes the selected cost display and preserves 
       assert.ok(text.stdout.includes(`Cost so far: ${costDisplay}\n`));
     });
 });
+
+function registrations(harness: Harness) {
+  const table = ticketRegistrationTable(
+    {
+      repository: "/fixture/private-repository",
+      command: [
+        process.execPath,
+        "-e",
+        'console.log("# Synthetic issue\\nGitHub issue: fixture/demo#297\\nPrivate ticket body")',
+      ],
+    },
+    [
+      {
+        workflowId: "review-run",
+        functionName: "reviewRun",
+        effectLimit: 4,
+        capabilities: ["claude"],
+        input: {
+          maximumBytes: 4096,
+          fields: {
+            prompt: { type: "string" },
+            rounds: { type: "integer", minimum: 1 },
+            publish: { type: "boolean" },
+          },
+        },
+      },
+    ],
+  );
+  return table.map((row) => ({
+    ...row,
+    manifest: harness.registration.manifest,
+    availability: "available" as const,
+  }));
+}
+
+async function assertInputs(
+  harness: Harness,
+  expected: { readonly runId: string; readonly input: unknown },
+): Promise<void> {
+  const single = await harness.cli(["status", expected.runId, "--json"]);
+  const list = await harness.cli(["status", "--json"]);
+  for (const result of [single, list]) {
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(
+      result.stdout,
+      /Private ticket body|private-repository/,
+    );
+  }
+  const listed = items(parsed(list)["runs"]).find(
+    (run) => field(run, "runId") === expected.runId,
+  );
+  for (const run of [parsed(single)["run"], listed]) {
+    assert.deepEqual(field(run, "input"), expected.input);
+    assert.equal(
+      JSON.stringify(field(run, "input")),
+      JSON.stringify(expected.input),
+    );
+  }
+}
+
+await test("CLV-181 develop-issue input reaches single and listed JSON status across restart", () =>
+  withHarness(async (harness) => {
+    const workflows = registrations(harness);
+    const service = await harness.start({ workflows });
+    const admitted = await harness.cli([
+      "run",
+      "develop-issue",
+      "--ticket",
+      "297",
+      "--command-id",
+      "input-issue",
+      "--json",
+    ]);
+    assert.equal(admitted.status, 0, admitted.stderr);
+    const runId = String(parsed(admitted)["runId"]);
+    const status = await harness.cli(["status", runId, "--json"]);
+    assert.equal(status.status, 0, status.stderr);
+    assert.deepEqual(field(field(parsed(status), "run"), "input"), {
+      ticket: "297",
+    });
+    assert.doesNotMatch(
+      status.stdout,
+      /Private ticket body|private-repository/,
+    );
+    const expected = { runId, input: { ticket: "297" } };
+    await assertInputs(harness, expected);
+    const plain = await harness.cli(["status", runId]);
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.match(plain.stdout, /^Input: {"ticket":"297"}$/m);
+    assert.doesNotMatch(plain.stdout, /Private ticket body|private-repository/);
+    await service.close();
+    const reopened = await harness.start({ workflows: [] });
+    await assertInputs(harness, expected);
+    await reopened.close();
+  }));
+
+await test("CLV-181 text status shows compact JSON and marks input longer than 200 characters", () => {
+  for (const length of [20, 187, 188, 250]) {
+    const input = { prompt: "p".repeat(length) };
+    const compact = JSON.stringify(input);
+    const output = rendered({ kind: "run-status", run: { input } });
+    const expected =
+      compact.length > 200 ? `${compact.slice(0, 200)}…` : compact;
+    assert.ok(output.includes(`Input: ${expected}\n`), output);
+    assert.equal(
+      output.split("\n").filter((line) => line.startsWith("Input:")).length,
+      1,
+    );
+  }
+});
+
+await test("CLV-181 text input escapes terminal controls and handles legacy absent input", () => {
+  const output = rendered({
+    kind: "run-status",
+    run: { input: { prompt: "First\nsecond\u001b[2J\u202e\u200b" } },
+  });
+  assert.match(
+    output,
+    /^Input: {"prompt":"First\\nsecond\\u001b\[2J\\u202e\\u200b"}$/m,
+  );
+  for (const input of [null, undefined])
+    assert.match(
+      rendered({ kind: "run-status", run: { input } }),
+      /^Input: null$/m,
+    );
+});
+
+await test("CLV-181 declared workflow input reaches single and listed JSON status across restart", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({ workflows: registrations(harness) });
+    await writeFile(
+      join(harness.projectDirectory, "input.json"),
+      JSON.stringify({
+        rounds: 3,
+        publish: false,
+        prompt: "Check the change.",
+      }),
+    );
+    const admitted = await harness.cli([
+      "run",
+      "review-run",
+      "--input",
+      "input.json",
+      "--command-id",
+      "input-declared",
+      "--json",
+    ]);
+    assert.equal(admitted.status, 0, admitted.stderr);
+    const expected = {
+      runId: String(parsed(admitted)["runId"]),
+      input: { prompt: "Check the change.", publish: false, rounds: 3 },
+    };
+    await assertInputs(harness, expected);
+    await service.close();
+    const reopened = await harness.start({ workflows: [] });
+    await assertInputs(harness, expected);
+    await reopened.close();
+  }));
