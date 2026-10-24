@@ -35,6 +35,7 @@ export interface ExecutionManifest {
   readonly workflowId: string;
   readonly steps: readonly string[];
   readonly capabilities: readonly string[];
+  readonly handoffs?: readonly string[];
   readonly artifacts: Readonly<Record<string, string>>;
   readonly resources: Readonly<Record<string, string>>;
   readonly toolchain: ToolchainIdentity;

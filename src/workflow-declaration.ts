@@ -155,6 +155,10 @@ function isCapabilities(value: unknown): boolean {
   );
 }
 
+export function isWorkflowHandoffs(value: unknown): value is readonly string[] {
+  return selectors(value, /^[A-Za-z0-9-]{1,64}$/) && unique(value);
+}
+
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
@@ -179,7 +183,6 @@ export function isWorkflowDeclaration(
     isInput(input) &&
     (!Object.hasOwn(declaration, "stages") ||
       isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") ||
-      (selectors(handoffs, /^[A-Za-z0-9-]{1,64}$/) && unique(handoffs)))
+    (!Object.hasOwn(declaration, "handoffs") || isWorkflowHandoffs(handoffs))
   );
 }

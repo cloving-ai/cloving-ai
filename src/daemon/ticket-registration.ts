@@ -12,6 +12,7 @@ import type {
 } from "../service/registry.ts";
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
+import { declaredManifest } from "../execution-pin.ts";
 
 export const ticketWorkflow = bundledWorkflowIds.ticket;
 export const promptWorkflow = bundledWorkflowIds.prompt;
@@ -263,7 +264,7 @@ export async function ticketRegistrations(
       };
     registrations.push({
       ...registration,
-      manifest: admission.manifest,
+      manifest: declaredManifest(admission.manifest, row),
       availability: "available",
     });
   }

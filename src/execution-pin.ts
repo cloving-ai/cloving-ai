@@ -2,6 +2,7 @@ import type {
   AdmissionResult,
   ExecutionManifest,
 } from "./workflow-admission.ts";
+import { isWorkflowHandoffs } from "./workflow-declaration.ts";
 
 const canonical: Readonly<
   Record<keyof ExecutionManifest, (manifest: ExecutionManifest) => string>
@@ -10,6 +11,7 @@ const canonical: Readonly<
   workflowId: (manifest) => JSON.stringify(manifest.workflowId),
   steps: (manifest) => JSON.stringify([...manifest.steps].sort()),
   capabilities: (manifest) => JSON.stringify([...manifest.capabilities].sort()),
+  handoffs: (manifest) => JSON.stringify([...(manifest.handoffs ?? [])].sort()),
   artifacts: (manifest) =>
     JSON.stringify(
       Object.keys(manifest.artifacts)
@@ -41,14 +43,16 @@ const fields = [
 ] as const;
 
 export function pinnedIdentity(manifest: ExecutionManifest): string {
-  return JSON.stringify(fields.map((field) => canonical[field](manifest)));
+  const identity = fields.map((field) => canonical[field](manifest));
+  if (manifest.handoffs?.length) identity.push(canonical.handoffs(manifest));
+  return JSON.stringify(identity);
 }
 
 export function resumePinned(
   pinned: ExecutionManifest,
   available: ExecutionManifest,
 ): AdmissionResult {
-  const changed = fields.find(
+  const changed = ([...fields, "handoffs"] as const).find(
     (field) => canonical[field](pinned) !== canonical[field](available),
   );
   if (changed !== undefined)
@@ -63,11 +67,15 @@ export function resumePinned(
 export function readExecutionManifest(value: unknown): ExecutionManifest {
   const fields = record(value);
   const toolchain = record(fields["toolchain"]);
+  const handoffs = fields["handoffs"];
+  if (Object.hasOwn(fields, "handoffs") && !isWorkflowHandoffs(handoffs))
+    throw new Error("invalid-handoffs");
   return {
     name: text(fields["name"]),
     workflowId: text(fields["workflowId"]),
     steps: texts(fields["steps"]),
     capabilities: texts(fields["capabilities"]),
+    ...(isWorkflowHandoffs(handoffs) ? { handoffs: [...handoffs] } : {}),
     artifacts: textRecord(fields["artifacts"]),
     resources: textRecord(fields["resources"]),
     toolchain: {
@@ -78,6 +86,18 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
       dependencies: text(toolchain["dependencies"]),
     },
   };
+}
+
+export function declaredManifest(
+  manifest: ExecutionManifest,
+  declaration: { readonly handoffs?: readonly string[] },
+): ExecutionManifest {
+  return readExecutionManifest({
+    ...manifest,
+    ...(declaration.handoffs === undefined
+      ? {}
+      : { handoffs: declaration.handoffs }),
+  });
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
