@@ -182,6 +182,7 @@ await test("CLV-056 a crash before or after the authority commit of the dispatch
     const before = await consumer.runUntil(
       "halted-before-record",
       `${servicePrelude}
+writeFileSync("hold", "");
 let announced;
 const known = new Promise((resolve) => { announced = resolve; });
 const service = await hosted({ wrap: (product) => ({ ...product, deliver: async (intent) => { const started = await product.deliver(intent); await known; return await halt("halted-before-record", { receipt: started.receipt }); } }) });
@@ -207,9 +208,11 @@ await halt("halted-after-record", { dispatches: await dispatches(runId), calls }
         calls: ["reconcile accepted"],
       },
     ]);
-    const last = await consumer.run(servicePrelude + restarted, {
-      RUN_ID: String(runId),
-    });
+    const last = await consumer.run(
+      servicePrelude + 'rmSync("hold");\n' + restarted,
+      { RUN_ID: String(runId) },
+    );
+    assert.equal(last.status, 0, last.stderr);
     assert.deepEqual(last.lines, [
       {
         types: completedRun,

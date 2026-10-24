@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { test } from "node:test";
+import { setImmediate } from "node:timers/promises";
+import { requestLine } from "../src/protocol.ts";
+import { socketAddress } from "../src/broker/socket-address.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import { mergeRepository } from "./watch-merge-fixture.ts";
 import { watchReader } from "../src/cli/watch-reads.ts";
 import { fields, items } from "./service-fixture.ts";
@@ -16,6 +22,44 @@ import {
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test(
+  "CLV-091 the watch service fixture survives a client closing before its reply",
+  { timeout: testMilliseconds(10000) },
+  async () => {
+    const answered = Promise.withResolvers<undefined>();
+    const replies = watchReplies({ runs: [] });
+    await withWatchService(
+      (request) => {
+        if (request.operation === "disconnected-probe")
+          answered.resolve(undefined);
+        return replies.answer(request);
+      },
+      async (_watch, runtime) => {
+        const address = socketAddress(join(runtime, "control.sock"));
+        assert.equal(address.kind, "address");
+        const request = requestLine({
+          operation: "disconnected-probe",
+          parameters: {},
+        });
+        execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `import { connect } from "node:net";
+const client = connect(${JSON.stringify(address.path)});
+client.on("connect", () => client.write(${JSON.stringify(request)}, () => client.destroy()));`,
+          ],
+          { timeout: testMilliseconds(5000) },
+        );
+        await answered.promise;
+        await setImmediate();
+        assert.equal(replies.requests.at(-1)?.operation, "disconnected-probe");
+      },
+    );
+  },
+);
 
 await test("CLV-091 older completion candidates are not read without a visible blocked issue card", async () => {
   const { runs } = completionReplies();
