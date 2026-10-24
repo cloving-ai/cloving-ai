@@ -1,5 +1,6 @@
 import {
   runCommand,
+  runSupervisedCommand,
   type CheckCommand,
   type CommandOptions,
 } from "./command.ts";
@@ -85,7 +86,10 @@ function validateRequiredTests(
     throw new Error("mandatory-test-inventory-mismatch");
 }
 
-export function checkTests(directory: string, execution: TestExecution): void {
+export async function checkTests(
+  directory: string,
+  execution: TestExecution,
+): Promise<void> {
   const { files, ...options } = execution;
   const tests = files
     .filter((file) => /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/.test(file))
@@ -99,7 +103,7 @@ export function checkTests(directory: string, execution: TestExecution): void {
   ].sort();
   const before = sourceSnapshot(checked);
   try {
-    executeTests(directory, { tests, temporary, options });
+    await executeTests(directory, { tests, temporary, options });
     if (before !== sourceSnapshot(checked))
       throw new Error("test-source-changed");
   } finally {
@@ -140,7 +144,6 @@ export function testCommand(
     ],
     directory,
     timeoutMilliseconds: 600000 * (run.timeFactor ?? 1),
-    processGroup: "isolated",
     ...(run.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: run.coverageDirectory }),
@@ -184,16 +187,16 @@ export function coverageCommand(
   };
 }
 
-function executeTests(
+async function executeTests(
   directory: string,
   run: {
     readonly tests: readonly string[];
     readonly temporary: string;
     readonly options: TestExecutionOptions;
   },
-): void {
+): Promise<void> {
   const { tests, temporary, options } = run;
-  const output = runCommand(
+  const output = await runSupervisedCommand(
     testCommand(directory, {
       tests,
       timeFactor: options.timeFactor ?? 1,

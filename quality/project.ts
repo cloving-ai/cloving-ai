@@ -58,7 +58,7 @@ export async function checkProject(
     directory,
     measured,
   );
-  checkProjectTests(directory, { program, files, options: measured });
+  await checkProjectTests(directory, { program, files, options: measured });
   completed.push("tests");
   assertCheckCoverage(completed);
   return { files, completed, timings, warnings: checkTimeWarnings(timings) };
@@ -124,20 +124,20 @@ export async function checkProjectSources(
   return { program, files, completed };
 }
 
-function checkProjectTests(
+async function checkProjectTests(
   directory: string,
   checked: {
     readonly program: ReturnType<typeof compilerProgram>;
     readonly files: readonly string[];
     readonly options: ProjectOptions;
   },
-): void {
+): Promise<void> {
   const { program, files, options } = checked;
   const production = productionInventory(program, {
     files,
     roles: options.architecture.roles,
   });
-  checkTests(directory, {
+  await checkTests(directory, {
     files,
     ...(options.commandOptions
       ? { commandOptions: options.commandOptions }

@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { runCommand } from "../../quality/command.ts";
+import { runSupervisedCommand } from "../../quality/command.ts";
 import { testCommand } from "../../quality/test-execution.ts";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
@@ -38,42 +38,51 @@ await test("CLV-174 starts unknown files first, then longest files with path tie
 await test("CLV-174 keeps report files sorted when slow files start first", async () => {
   const source =
     'import { test } from "node:test"; await test("passes", () => {});';
-  await withFiles({ "a.test.ts": source, "z.test.ts": source }, (directory) => {
-    const tests = [join(directory, "a.test.ts"), join(directory, "z.test.ts")];
-    const command = testCommand(directory, {
-      tests,
-      durations: { "a.test.ts": 1, "z.test.ts": 20 },
-    });
-    assert.deepEqual(command.arguments.slice(-2), [...tests].reverse());
-    const report: unknown = JSON.parse(runCommand(command));
-    assert.ok(report !== null && typeof report === "object");
-    assert.deepEqual(Reflect.get(report, "files"), tests);
-    assert.equal(Reflect.get(report, "completed"), 2);
-    assert.deepEqual(Reflect.get(report, "failures"), []);
-  });
+  await withFiles(
+    { "a.test.ts": source, "z.test.ts": source },
+    async (directory) => {
+      const tests = [
+        join(directory, "a.test.ts"),
+        join(directory, "z.test.ts"),
+      ];
+      const command = testCommand(directory, {
+        tests,
+        durations: { "a.test.ts": 1, "z.test.ts": 20 },
+      });
+      assert.deepEqual(command.arguments.slice(-2), [...tests].reverse());
+      const report: unknown = JSON.parse(await runSupervisedCommand(command));
+      assert.ok(report !== null && typeof report === "object");
+      assert.deepEqual(Reflect.get(report, "files"), tests);
+      assert.equal(Reflect.get(report, "completed"), 2);
+      assert.deepEqual(Reflect.get(report, "failures"), []);
+    },
+  );
 });
 
 await test("CLV-174 actually starts the slow file first with one worker", async () => {
   const source =
     'import { appendFileSync } from "node:fs"; import { basename } from "node:path"; import { test } from "node:test"; appendFileSync("starts", basename(import.meta.filename) + "\\n"); await test("passes", () => {});';
-  await withFiles({ "a.test.ts": source, "z.test.ts": source }, (directory) => {
-    const command = testCommand(directory, {
-      tests: [join(directory, "a.test.ts"), join(directory, "z.test.ts")],
-      durations: { "a.test.ts": 1, "z.test.ts": 20 },
-    });
-    runCommand({
-      ...command,
-      arguments: command.arguments.map((argument) =>
-        argument.startsWith("--test-concurrency=")
-          ? "--test-concurrency=1"
-          : argument,
-      ),
-    });
-    assert.equal(
-      readFileSync(join(directory, "starts"), "utf8"),
-      "z.test.ts\na.test.ts\n",
-    );
-  });
+  await withFiles(
+    { "a.test.ts": source, "z.test.ts": source },
+    async (directory) => {
+      const command = testCommand(directory, {
+        tests: [join(directory, "a.test.ts"), join(directory, "z.test.ts")],
+        durations: { "a.test.ts": 1, "z.test.ts": 20 },
+      });
+      await runSupervisedCommand({
+        ...command,
+        arguments: command.arguments.map((argument) =>
+          argument.startsWith("--test-concurrency=")
+            ? "--test-concurrency=1"
+            : argument,
+        ),
+      });
+      assert.equal(
+        readFileSync(join(directory, "starts"), "utf8"),
+        "z.test.ts\na.test.ts\n",
+      );
+    },
+  );
 });
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -154,8 +163,53 @@ function timeoutSupervisor(): string {
   const executionModule = pathToFileURL(
     resolve("quality/test-execution.ts"),
   ).href;
-  return `import { runCommand } from ${JSON.stringify(commandModule)}; import { testCommand } from ${JSON.stringify(executionModule)}; import { writeFileSync } from "node:fs"; try { runCommand({ ...testCommand(process.cwd(), { tests: ["main.test.ts"] }), timeoutMilliseconds: ${String(testMilliseconds(1500))} }); } catch (error) { writeFileSync("timed-out", String(error)); }`;
+  return `import { runSupervisedCommand } from ${JSON.stringify(commandModule)}; import { testCommand } from ${JSON.stringify(executionModule)}; import { writeFileSync } from "node:fs"; try { await runSupervisedCommand({ ...testCommand(process.cwd(), { tests: ["main.test.ts"] }), timeoutMilliseconds: ${String(testMilliseconds(1500))} }); } catch (error) { writeFileSync("timed-out", String(error)); }`;
 }
+
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  await test(`CLV-174 stopping the gate with ${signal} stops resistant workers`, async () => {
+    const module = pathToFileURL(resolve("quality/test-execution.ts")).href;
+    await withFiles(
+      {
+        "supervisor.ts": `import { checkTests } from ${JSON.stringify(module)}; await checkTests(process.cwd(), { files: ["main.test.ts"] });`,
+        "main.test.ts":
+          'import { writeFileSync } from "node:fs"; import { test } from "node:test"; process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); writeFileSync("identity", JSON.stringify({ child: process.pid, launcher: process.ppid })); writeFileSync("ready", ""); await test("passes", () => {});',
+      },
+      async (directory) => {
+        const gate = spawn(process.execPath, ["supervisor.ts"], {
+          cwd: directory,
+          env: { PATH: process.env["PATH"] },
+          stdio: "ignore",
+          detached: true,
+        });
+        const closed = once(gate, "close");
+        let launcher: number | undefined;
+        try {
+          await waitFor(() => existsSync(join(directory, "ready")));
+          const identity: unknown = JSON.parse(
+            readFileSync(join(directory, "identity"), "utf8"),
+          );
+          assert.ok(identity !== null && typeof identity === "object");
+          const parent: unknown = Reflect.get(identity, "launcher");
+          const child: unknown = Reflect.get(identity, "child");
+          assert.ok(typeof parent === "number" && parent > 0);
+          assert.ok(typeof child === "number" && child > 0);
+          launcher = parent;
+          assert.ok(gate.pid);
+          process.kill(-gate.pid, signal);
+          await waitFor(() => !running(child) && !running(parent));
+          await waitFor(
+            () => gate.exitCode !== null || gate.signalCode !== null,
+          );
+          assert.notEqual((await closed)[0], 0);
+        } finally {
+          stopGroup(launcher);
+          stopGroup(gate.pid);
+          await closed;
+        }
+      },
+    );
+  });
 
 await test("CLV-174 the gate timeout stops signal-resistant test process groups", async () => {
   const source =

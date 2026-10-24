@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { runCommand } from "../quality/command.ts";
+import { runSupervisedCommand } from "../quality/command.ts";
 import { inspectGenerated } from "../quality/generated-output.ts";
 import { sourceFiles } from "../quality/source-files.ts";
 import {
@@ -40,7 +40,7 @@ const tests = files.filter((file) =>
 );
 const temporary = mkdtempSync(join(tmpdir(), "cloving-test-durations-"));
 try {
-  const output = runCommand(
+  const output = await runSupervisedCommand(
     testCommand(directory, {
       tests,
       timeFactor,
