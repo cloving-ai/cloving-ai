@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
+import { githubRead } from "./github-retry.ts";
 import {
   field,
   githubTiming,
@@ -66,7 +67,7 @@ async function checkRuns(
   commit: string,
 ): Promise<readonly CheckRun[]> {
   const pages: unknown = JSON.parse(
-    await operation.calls.gh([
+    await githubRead(operation, [
       "api",
       "--paginate",
       "--slurp",

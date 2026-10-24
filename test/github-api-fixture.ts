@@ -7,6 +7,7 @@ const origin = process.env.FAKE_GH_ORIGIN;
 const state = JSON.parse(readFileSync(file, "utf8"));
 const args = process.argv.slice(2);
 state.calls.push(args);
+state.callTimes = [...(state.callTimes ?? []), Date.now()];
 const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const headOf = (branch) => execFileSync("git", ["-C", origin, "rev-parse", "refs/heads/" + branch], { encoding: "utf8" }).trim();
 const visibleHead = (pr) => state.headAfterReads === undefined ? headOf(pr.head) : pr.visibleHead;
@@ -20,7 +21,9 @@ const readHead = (pr) => {
 };
 const url = (number) => "https://github.com/acme/demo/pull/" + number;
 const view = (pr) => ({ number: pr.number, url: url(pr.number), state: pr.state, headRefOid: pr.state === "OPEN" ? headOf(pr.head) : pr.mergedHead });
-const out = (value) => process.stdout.write(typeof value === "string" ? value + "\\n" : JSON.stringify(value));
+const out = (value) => {
+  if (!failure?.after) process.stdout.write(typeof value === "string" ? value + "\\n" : JSON.stringify(value));
+};
 const path = args.find((item) => item.startsWith("repos/")) ?? "";
 const number = Number(path.split("/")[4]);
 const summary = (score, head) => "<h2>Confidence Score: " + score + "/5</h2>\\n<!-- greptile_confidence_score:" + score + " -->\\n<sub>Reviews (1) · Last reviewed commit: [\\"Change\\"](https://github.com/acme/demo/commit/" + head + ")</sub>";
@@ -141,7 +144,13 @@ const actions = {
 };
 const kind = path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
-if (state.fail === name) {
+const index = state.failures?.findIndex((failure) => failure.call === name) ?? -1;
+const failure = index < 0 ? undefined : state.failures.splice(index, 1)[0];
+if (failure) {
+  if (failure.after) actions[name]();
+  process.stderr.write(failure.detail);
+  process.exitCode = 1;
+} else if (state.fail === name) {
   process.stderr.write(state.failureText ?? "the fake gh refused " + name);
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");

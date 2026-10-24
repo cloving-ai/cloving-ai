@@ -15,7 +15,7 @@ await test("CLV-082 journals failed gh stderr without sending it to the service"
       method: "merge",
       payload: { number: 1, commit },
     });
-    assert.equal(report.reason, "github-call-failed");
+    assert.equal(report.reason, "github-network-failed");
     const saved = resultOf(
       readFileSync(
         join(scene.journal, journalKey(report.operationId), "result.json"),
@@ -105,7 +105,7 @@ await test("CLV-082 redacts environment secrets and private texts before retaini
     );
     const redacted = "[hidden] [hidden] [hidden] [hidden] [hidden]";
     assert.equal(saved["detail"], ("x".repeat(2_000) + redacted).slice(-2_000));
-    assert.equal(report.reason, "github-call-failed");
+    assert.equal(report.reason, "github-network-failed");
     assert.doesNotMatch(
       JSON.stringify(report),
       /example-token|private phrase|\[hidden\]/,
