@@ -25,21 +25,21 @@ await test("CLV-016 the watch phases give a run five steps from its events, with
   assert.deepEqual(states([event("run.created", 0)]), [
     "Admitted: done",
     "Started: active",
-    "Claude turn: pending",
+    "Agent turn: pending",
     "Your review: pending",
     "Completed: pending",
   ]);
   assert.deepEqual(states([...begun, event("effect.requested", 2)]), [
     "Admitted: done",
     "Started: done",
-    "Claude turn: active",
+    "Agent turn: active",
     "Your review: pending",
     "Completed: pending",
   ]);
   assert.deepEqual(phasesOf(asked), [
     { name: "Admitted", state: "done", startedAt: at(0), endedAt: at(0) },
     { name: "Started", state: "done", startedAt: at(1), endedAt: at(1) },
-    { name: "Claude turn", state: "done", startedAt: at(2), endedAt: at(30) },
+    { name: "Agent turn", state: "done", startedAt: at(2), endedAt: at(30) },
     { name: "Your review", state: "active", startedAt: at(31), endedAt: null },
     { name: "Completed", state: "pending", startedAt: null, endedAt: null },
   ]);
@@ -50,17 +50,17 @@ await test("CLV-016 the watch phases show the end of a run: completed, failed or
   assert.deepEqual(states([...decided, event("run.completed", 41)]), [
     "Admitted: done",
     "Started: done",
-    "Claude turn: done",
+    "Agent turn: done",
     "Your review: done",
     "Completed: done",
   ]);
   assert.deepEqual(states([...begun, event("run.failed", 5)]).slice(2), [
-    "Claude turn: pending",
+    "Agent turn: pending",
     "Your review: pending",
     "Failed: failed",
   ]);
   assert.deepEqual(states([...turned, event("run.cancelled", 35)]).slice(2), [
-    "Claude turn: done",
+    "Agent turn: done",
     "Your review: pending",
     "Dropped: failed",
   ]);
@@ -148,18 +148,18 @@ await test("CLV-065 the watch phases give a develop-issue run the steps of its p
     "Admitted: done",
     "Started: done",
     "Work tree: done",
-    "Claude turn: done",
+    "Agent turn: done",
     "Pull request: done",
-    "Greptile review: done",
+    "Code review: done",
     "Merge: done",
     "Completed: done",
   ]);
   assert.deepEqual(phasesOf(merged, "develop-issue").slice(2, 7), [
     { name: "Work tree", state: "done", startedAt: at(2), endedAt: at(3) },
-    { name: "Claude turn", state: "done", startedAt: at(4), endedAt: at(10) },
+    { name: "Agent turn", state: "done", startedAt: at(4), endedAt: at(10) },
     { name: "Pull request", state: "done", startedAt: at(11), endedAt: at(12) },
     {
-      name: "Greptile review",
+      name: "Code review",
       state: "done",
       startedAt: at(13),
       endedAt: at(20),
@@ -182,15 +182,15 @@ await test("CLV-068 the watch phases show the current Claude round and leave its
     "Admitted: done",
     "Started: done",
     "Work tree: done",
-    "Claude turn, round 2: active",
+    "Agent turn, round 2: active",
     "Pull request, round 2: pending",
-    "Greptile review, round 2: pending",
+    "Code review, round 2: pending",
     "Merge: pending",
     "Completed: pending",
   ]);
   assert.deepEqual(phasesOf(secondRound, "develop-issue").slice(3, 6), [
     {
-      name: "Claude turn, round 2",
+      name: "Agent turn, round 2",
       state: "active",
       startedAt: at(21),
       endedAt: null,
@@ -202,7 +202,7 @@ await test("CLV-068 the watch phases show the current Claude round and leave its
       endedAt: null,
     },
     {
-      name: "Greptile review, round 2",
+      name: "Code review, round 2",
       state: "pending",
       startedAt: null,
       endedAt: null,
@@ -223,9 +223,9 @@ await test("CLV-068 a completed two-round issue run shows completed steps timed 
     "Admitted: done",
     "Started: done",
     "Work tree: done",
-    "Claude turn, round 2: done",
+    "Agent turn, round 2: done",
     "Pull request, round 2: done",
-    "Greptile review, round 2: done",
+    "Code review, round 2: done",
     "Merge: done",
     "Completed: done",
   ]);
@@ -254,17 +254,17 @@ await test("CLV-068 the watch phases show the waiting Greptile review, then show
   }));
   assert.deepEqual(issued([...begun, ...broken]).slice(2, 4), [
     "Work tree: active",
-    "Claude turn: pending",
+    "Agent turn: pending",
   ]);
   assert.deepEqual(issued(reviewing).slice(5), [
-    "Greptile review: active",
+    "Code review: active",
     "Merge: pending",
     "Completed: pending",
   ]);
   assert.deepEqual(issued(secondRound).slice(3, 6), [
-    "Claude turn, round 2: active",
+    "Agent turn, round 2: active",
     "Pull request, round 2: pending",
-    "Greptile review, round 2: pending",
+    "Code review, round 2: pending",
   ]);
   const twice = [
     ...secondRound,
@@ -272,13 +272,13 @@ await test("CLV-068 the watch phases show the waiting Greptile review, then show
     ...step(["github-open-pr", 2], [31, 32]),
   ];
   assert.deepEqual(phasesOf(twice, "develop-issue")[3], {
-    name: "Claude turn, round 2",
+    name: "Agent turn, round 2",
     state: "done",
     startedAt: at(21),
     endedAt: at(30),
   });
   assert.deepEqual(issued([...twice, event("run.failed", 33)]).slice(5), [
-    "Greptile review, round 2: pending",
+    "Code review, round 2: pending",
     "Merge: pending",
     "Failed: failed",
   ]);
@@ -291,15 +291,15 @@ await test("CLV-065 the watch phases show a step of a develop-issue run as faile
     effect("effect.reported", { second: 12, operation, outcome }),
   ];
   assert.deepEqual(issued(reported("failed")).slice(3, 6), [
-    "Claude turn: done",
+    "Agent turn: done",
     "Pull request: failed",
-    "Greptile review: pending",
+    "Code review: pending",
   ]);
   assert.deepEqual(
     issued([...reported("stopped"), event("run.failed", 13)]).slice(4),
     [
       "Pull request: failed",
-      "Greptile review: pending",
+      "Code review: pending",
       "Merge: pending",
       "Failed: failed",
     ],
@@ -307,10 +307,10 @@ await test("CLV-065 the watch phases show a step of a develop-issue run as faile
   const again = effect("effect.requested", { second: 14, operation });
   assert.deepEqual(issued([...reported("failed"), again]).slice(4, 6), [
     "Pull request: active",
-    "Greptile review: pending",
+    "Code review: pending",
   ]);
   assert.deepEqual(issued(reported("completed")).slice(4, 6), [
     "Pull request: done",
-    "Greptile review: active",
+    "Code review: active",
   ]);
 });

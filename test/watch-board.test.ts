@@ -62,9 +62,9 @@ await test("CLV-077 boards follow registration order and place each active run a
     issue.columns.map((column) => column.name),
     [
       "Work tree",
-      "Claude turn",
+      "Agent turn",
       "Pull request",
-      "Greptile review",
+      "Code review",
       "Merge",
       "Done",
       "Stopped",
@@ -72,7 +72,7 @@ await test("CLV-077 boards follow registration order and place each active run a
   );
   assert.deepEqual(
     ticket.columns.map((column) => column.name),
-    ["Claude turn", "Your review", "Done", "Stopped"],
+    ["Agent turn", "Your review", "Done", "Stopped"],
   );
   assert.deepEqual(
     prompt.columns.map((column) => column.name),
@@ -112,7 +112,7 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
       cache_read_input_tokens: null,
       output_tokens: null,
     },
-    currentStep: { name: "Claude turn", startedAt: "2026-10-14T11:00:00Z" },
+    currentStep: { name: "Agent turn", startedAt: "2026-10-14T11:00:00Z" },
     endedAt: null,
     decisionWaiting: false,
     round: 2,

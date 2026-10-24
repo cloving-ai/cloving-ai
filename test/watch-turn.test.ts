@@ -35,7 +35,7 @@ await test("CLV-016 the watch page folds the tool calls between two messages of 
   const turn = sampleTurn({ ...reviewedTurn, activity });
   const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
   includes(html, [
-    '<section class="turn code-window"><h3 class="code-head">Claude turn · completed · 7 min 38 s · 1.03 USD</h3>',
+    '<section class="turn code-window"><h3 class="code-head">Agent turn · completed · 7 min 38 s · 1.03 USD</h3>',
     '<p class="meta">Branch cloving/clv-016-a6f7ef47 · work tree clv-016-a6f7ef47</p>',
     '<div class="activity"><div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
     '<details class="tools"><summary>3 tool calls · <span class="bad">1 error</span><span class="last">Bash: npm test</span></summary><div class="item tool" title="Bash: git status">Bash: git status</div>',
@@ -53,13 +53,13 @@ await test("CLV-016 the watch page keeps the last group of tool calls open while
     component(Turn, { turn: working, now: at("21:26:44") }),
   );
   includes(html, [
-    '<h3 class="code-head">Claude turn · in work · 42 s · Price not known</h3>',
+    '<h3 class="code-head">Agent turn · in work · 42 s · Price not known</h3>',
     '<details class="tools"><summary>3 tool calls',
     '<details class="tools" open><summary>2 tool calls',
   ]);
   const failed = sampleTurn({ outcome: "failed" });
   includes(rendered(component(Turn, { turn: failed, now: at("21:26:44") })), [
-    '<h3 class="code-head">Claude turn · failed · Price not known</h3>',
+    '<h3 class="code-head">Agent turn · failed · Price not known</h3>',
     '<div class="activity"></div>',
   ]);
 });
@@ -151,7 +151,7 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
   );
   assert.match(
     turn,
-    /<section class="turn code-window"><h3 class="code-head">Claude turn · in work · 42 s · Price not known<\/h3>/,
+    /<section class="turn code-window"><h3 class="code-head">Agent turn · in work · 42 s · Price not known<\/h3>/,
   );
   assert.match(
     rendered(component(Events, { events: [] })),

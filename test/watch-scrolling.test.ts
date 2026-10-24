@@ -126,7 +126,7 @@ function assertColumnScroll(
   assert.equal(
     scrolled["lastVisible"],
     true,
-    "last Claude turn card is reachable",
+    "last Agent turn card is reachable",
   );
   assert.equal(scrolled["lastId"], "implement-27");
   assert.equal(scrolled["lastOnScreen"], true);

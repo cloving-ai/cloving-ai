@@ -90,7 +90,7 @@ function stepNames(
     return [...stages.map((stage) => stage.label), "Other"];
   return workflowId === "develop-issue"
     ? issueSteps.map((step) => step.name)
-    : ["Claude turn", "Your review"];
+    : ["Agent turn", "Your review"];
 }
 
 function operationOf(event: unknown): readonly unknown[] {
@@ -108,7 +108,7 @@ function stepName(event: unknown, workflowId: string): string | undefined {
   if (workflowId !== "develop-issue" && type === "gate.opened")
     return "Your review";
   if (type !== "effect.requested") return undefined;
-  if (workflowId !== "develop-issue") return "Claude turn";
+  if (workflowId !== "develop-issue") return "Agent turn";
   return issueSteps.find((step) => step.operation === operationOf(event)[4])
     ?.name;
 }
@@ -166,7 +166,7 @@ export function currentStepOf(
   );
   return {
     name:
-      stepName(event, workflowId) ?? stepNames(workflowId)[0] ?? "Claude turn",
+      stepName(event, workflowId) ?? stepNames(workflowId)[0] ?? "Agent turn",
     startedAt: startedAt(event),
   };
 }
