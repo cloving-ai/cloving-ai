@@ -86,10 +86,7 @@ async function effectInput(
   const budget = await effects.budget(runId);
   const stored = await effects.operations(runId);
   return {
-    budget:
-      budget === undefined
-        ? null
-        : { limit: budget.limit, spent: budget.spent },
+    budget: budget ? { limit: budget.limit, spent: budget.spent } : null,
     effects: stored.map((operation) => ({
       operationId: operation.operationId,
       status: operation.status,
@@ -151,9 +148,7 @@ async function viewOf(
 function summary(view: ShownRun): Fields {
   return {
     runId: view.runId,
-    parentRunId: view.parentRunId,
-    chainId: view.chainId,
-    childRunIds: view.childRunIds,
+    ...linksOf(view),
     input: view.input,
     workflowId: view.workflowId,
     state: view.state,
