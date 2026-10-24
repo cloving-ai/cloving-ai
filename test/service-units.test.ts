@@ -280,3 +280,25 @@ await test("CLV-008 the question counter of a stored state with 200 000 gates is
   assert.equal(decisionState({ gates, details: [] }).questions, 200_000);
   assert.equal(decisionState({ gates: [], details: [] }).questions, 0);
 });
+
+await test("CLV-168 registry pins current and retained handoff permissions without sharing the declaration array", () => {
+  const handoffs = ["b"];
+  const registration = fakeRegistration([]);
+  const registry = workflowRegistry(
+    [{ ...registration, handoffs }],
+    [{ ...registration, handoffs: ["c"] }],
+  );
+  const current = registry.byId("develop");
+  assert.ok(current);
+  assert.deepEqual(current.manifest.handoffs, ["b"]);
+  handoffs.push("c");
+  assert.deepEqual(current.handoffs, ["b"]);
+  assert.deepEqual(current.manifest.handoffs, ["b"]);
+  const retained = workflowRegistry([
+    { ...registration, handoffs: ["c"] },
+  ]).byId("develop");
+  assert.ok(retained);
+  assert.notEqual(current.pin, retained.pin);
+  assert.deepEqual(registry.byPin(retained.pin)?.manifest.handoffs, ["c"]);
+  assert.deepEqual(registry.available(current.manifest), current.manifest);
+});

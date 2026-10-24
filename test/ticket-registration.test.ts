@@ -84,10 +84,14 @@ await test("CLV-168 registrations retain forward, self and cyclic handoff declar
     });
     assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
     assert.deepEqual(
-      admitted.registrations.map((row) => [row.workflowId, row.handoffs]),
+      admitted.registrations.map((row) => [
+        row.workflowId,
+        row.handoffs,
+        row.manifest.handoffs,
+      ]),
       [
-        ["a", ["b", "a"]],
-        ["b", ["a"]],
+        ["a", ["b", "a"], ["b", "a"]],
+        ["b", ["a"], ["a"]],
       ],
     );
   });

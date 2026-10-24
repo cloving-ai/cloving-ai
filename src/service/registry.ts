@@ -1,5 +1,6 @@
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { workflowPin } from "../broker/workflow-pin.ts";
+import { declaredManifest } from "../execution-pin.ts";
 import type { SubmissionContract } from "../submission.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
 
@@ -50,23 +51,26 @@ export interface Registry {
   ) => ExecutionManifest | undefined;
 }
 
+function registered(workflow: WorkflowRegistration): Registered {
+  const manifest = declaredManifest(workflow.manifest, workflow);
+  return {
+    ...workflow,
+    ...(manifest.handoffs === undefined ? {} : { handoffs: manifest.handoffs }),
+    manifest,
+    pin: workflowPin(manifest),
+  };
+}
+
 export function workflowRegistry(
   workflows: readonly WorkflowRegistration[],
   retainedWorkflows: readonly WorkflowRegistration[] = [],
 ): Registry {
-  const current = workflows.map((workflow) => ({
-    ...workflow,
-    pin: workflowPin(workflow.manifest),
-  }));
-  const registered = [
-    ...current,
-    ...retainedWorkflows.map((workflow) => ({
-      ...workflow,
-      pin: workflowPin(workflow.manifest),
-    })),
-  ].filter((workflow) => workflow.availability === "available");
+  const current = workflows.map(registered);
+  const available = [...current, ...retainedWorkflows.map(registered)].filter(
+    (workflow) => workflow.availability === "available",
+  );
   const byPin = (pin: string): Registered | undefined =>
-    registered.find((workflow) => workflow.pin === pin);
+    available.find((workflow) => workflow.pin === pin);
   return {
     workflowIds: current.map((workflow) => workflow.workflowId),
     workflowStages: Object.fromEntries(

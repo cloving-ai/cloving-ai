@@ -117,3 +117,56 @@ await test("CLV-007 a stored manifest reads back to the same pinned identity and
     },
   );
 });
+
+await test("CLV-168 handoff permissions change the execution pin and reordered targets preserve it", () => {
+  const declared = { ...pinned, handoffs: ["b", "a"] };
+  assert.notEqual(pinnedIdentity(declared), pinnedIdentity(pinned));
+  assert.equal(
+    pinnedIdentity(declared),
+    pinnedIdentity({ ...declared, handoffs: ["a", "b"] }),
+  );
+  assert.deepEqual(resumePinned(declared, { ...pinned, handoffs: ["c"] }), {
+    kind: "rejected",
+    reason: "pinned-manifest-mismatch",
+    detail: "handoffs",
+  });
+  assert.deepEqual(resumePinned(declared, pinned), {
+    kind: "rejected",
+    reason: "pinned-manifest-mismatch",
+    detail: "handoffs",
+  });
+});
+
+await test("CLV-168 empty handoff declarations keep legacy pins and stored targets round trip", () => {
+  const legacy = JSON.stringify([
+    JSON.stringify(pinned.name),
+    JSON.stringify(pinned.workflowId),
+    JSON.stringify(pinned.steps),
+    JSON.stringify(pinned.capabilities),
+    JSON.stringify(Object.entries(pinned.artifacts)),
+    JSON.stringify(Object.entries(pinned.resources)),
+    JSON.stringify(Object.values(pinned.toolchain)),
+  ]);
+  assert.equal(pinnedIdentity({ ...pinned, handoffs: [] }), legacy);
+  const declared = { ...pinned, handoffs: ["b"] };
+  assert.deepEqual(
+    readExecutionManifest(JSON.parse(JSON.stringify(declared))),
+    declared,
+  );
+});
+
+await test("CLV-168 malformed stored handoff permissions fail closed", () => {
+  for (const handoffs of [
+    null,
+    undefined,
+    "b",
+    [""],
+    ["not/valid"],
+    ["b", "b"],
+    [1],
+  ])
+    assert.throws(
+      () => readExecutionManifest({ ...pinned, handoffs }),
+      /invalid-handoffs/,
+    );
+});

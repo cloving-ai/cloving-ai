@@ -18,6 +18,8 @@ import {
 } from "./service-fixture.ts";
 import { changedManifest } from "./service-views.ts";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
+import { queryDatabase } from "./authority-store-fixture.ts";
+import { readExecutionManifest } from "../src/execution-pin.ts";
 
 function unreachableStarts(): Delivery {
   return {
@@ -186,5 +188,49 @@ await test("CLV-153 an unavailable retained version cannot release an old queued
         : undefined,
     );
     assert.equal(harness.sent.length, 0);
+    await restarted.close();
+  }));
+
+await test("CLV-168 admission and restart keep the run's original handoff declaration while new runs use the edited declaration", () =>
+  withHarness(async (harness) => {
+    const original = { ...harness.registration, handoffs: ["b"] };
+    const expected = { ...original.manifest, handoffs: ["b"] };
+    const parameters = {
+      workflowId: "develop",
+      source: "prompt",
+      submission: { prompt: "task" },
+      commandId: "original",
+    };
+    const first = await harness.start({ workflows: [original] });
+    const submitted = await call(harness, { operation: "run", parameters });
+    const runId = text(submitted, "runId");
+    assert.equal(
+      field(field(submitted, "binding"), "workflowPin"),
+      workflowPin(expected),
+    );
+    await first.close();
+    assert.deepEqual(
+      queryDatabase(
+        harness.stateDirectory,
+        "SELECT manifest FROM definitions",
+      ).map((row) => readExecutionManifest(JSON.parse(text(row, "manifest")))),
+      [expected],
+    );
+    const current = { ...harness.registration, handoffs: ["c"] };
+    const restarted = await harness.start({
+      workflows: [current],
+      retainedWorkflows: [original],
+    });
+    const repeated = await call(harness, { operation: "run", parameters });
+    assert.equal(field(repeated, "runId"), runId);
+    assert.deepEqual(field(repeated, "binding"), field(submitted, "binding"));
+    const edited = await call(harness, {
+      operation: "run",
+      parameters: { ...parameters, commandId: "edited" },
+    });
+    assert.equal(
+      field(field(edited, "binding"), "workflowPin"),
+      workflowPin({ ...current.manifest, handoffs: ["c"] }),
+    );
     await restarted.close();
   }));

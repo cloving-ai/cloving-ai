@@ -88,6 +88,7 @@ await test("CLV-007 admission without its matching manifest is rejected without 
 await test("CLV-007 a stored manifest that no longer matches its pin is refused", async () => {
   for (const stored of [
     JSON.stringify({ ...manifest, capabilities: ["fake-harness", "tracker"] }),
+    JSON.stringify({ ...manifest, handoffs: ["b"] }),
     "{",
   ]) {
     const directory = await temporaryDirectory();
