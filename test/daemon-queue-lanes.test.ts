@@ -11,6 +11,7 @@ const daemon = await launched({ queueLanes: 2 });
 try {
   await until(() => existsSync("input-CLV-900"));
   writeFileSync("ready", "CLV-901");
+  await until(async () => (await runs()).length === 2);
   await delay(400);
   assert.equal((await runs()).length, 2);
   assert.equal(commands().length, 2);
