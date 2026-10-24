@@ -13,7 +13,7 @@ import type {
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
-import { record } from "../protocol.ts";
+import { record, type Fields } from "../protocol.ts";
 import { issueIdentity } from "../issue-identity.ts";
 import {
   ticketDependencyWaits,
@@ -275,12 +275,19 @@ function declaredResolver(repository: string): Resolver {
     resolve: (request) =>
       Promise.resolve({
         kind: "resolved",
-        input: {
-          cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
-          repository,
-          input: request.submission,
-        },
+        input: declaredInput(repository, request),
       }),
+  };
+}
+
+export function declaredInput(
+  repository: string,
+  request: Pick<ResolutionRequest, "commandId" | "submission">,
+): Fields {
+  return {
+    cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
+    repository,
+    input: request.submission,
   };
 }
 

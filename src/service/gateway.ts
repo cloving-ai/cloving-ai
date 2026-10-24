@@ -35,6 +35,7 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "cancel-run",
   ],
   worker: [
+    "record-schedule-skip",
     "mark-started",
     "open-gate",
     "register-wait",

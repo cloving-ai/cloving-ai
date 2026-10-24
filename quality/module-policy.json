@@ -1009,7 +1009,20 @@
     "test/handoff-chain-status.test.ts": "test",
     "test/handoff-chain-watch.test.ts": "test",
     "test/handoff-chain.test.ts": "test",
-    "test/handoff-worker-fixture.ts": "test"
+    "test/handoff-worker-fixture.ts": "test",
+    "src/workflow-schedule.ts": "pure",
+    "src/daemon/schedule-journal.ts": "daemon",
+    "src/daemon/workflow-schedules.ts": "daemon",
+    "test/daemon-schedules.test.ts": "test",
+    "test/workflow-schedules.test.ts": "test",
+    "test/cli-start-schedules.test.ts": "test",
+    "src/daemon/daemon-loops.ts": "daemon",
+    "test/schedule-journal.test.ts": "test",
+    "test/daemon-schedule-validation.test.ts": "test",
+    "test/workflow-scheduler-fixture.ts": "test",
+    "test/workflow-scheduler.test.ts": "test",
+    "test/workflow-scheduler-failures.test.ts": "test",
+    "test/schedule-events.test.ts": "test"
   },
   "allowed": {
     "quality": [

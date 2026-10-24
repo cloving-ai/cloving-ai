@@ -1,5 +1,9 @@
 import { record, type Fields } from "./protocol.ts";
 import type { SubmissionContract, SubmissionField } from "./submission.ts";
+import {
+  checkWorkflowSchedule,
+  type WorkflowSchedule,
+} from "./workflow-schedule.ts";
 
 export interface WorkflowStage {
   readonly name: string;
@@ -17,6 +21,7 @@ export interface WorkflowDeclaration {
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
+  readonly schedule?: WorkflowSchedule;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -159,6 +164,20 @@ export function isWorkflowHandoffs(value: unknown): value is readonly string[] {
   return selectors(value, /^[A-Za-z0-9-]{1,64}$/) && unique(value);
 }
 
+function optionalDeclarationFields(
+  declaration: Fields,
+  input: SubmissionContract,
+): boolean {
+  return (
+    (!Object.hasOwn(declaration, "stages") ||
+      isWorkflowStages(declaration["stages"])) &&
+    (!Object.hasOwn(declaration, "handoffs") ||
+      isWorkflowHandoffs(declaration["handoffs"])) &&
+    (!Object.hasOwn(declaration, "schedule") ||
+      checkWorkflowSchedule(input, declaration["schedule"]).kind === "valid")
+  );
+}
+
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
@@ -171,18 +190,16 @@ export function isWorkflowDeclaration(
       "input",
       "stages",
       "handoffs",
+      "schedule",
     ])
   )
     return false;
-  const { workflowId, effectLimit, capabilities, input, handoffs } =
-    declaration;
+  const { workflowId, effectLimit, capabilities, input } = declaration;
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
     isInput(input) &&
-    (!Object.hasOwn(declaration, "stages") ||
-      isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") || isWorkflowHandoffs(handoffs))
+    optionalDeclarationFields(declaration, input)
   );
 }
