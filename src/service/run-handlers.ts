@@ -98,6 +98,7 @@ async function effectInput(
 }
 
 type ShownRun = RunView & {
+  readonly input: Fields | null;
   readonly workflowId: string;
   readonly latestAt: string | null;
   readonly unresolvedEffects: readonly string[];
@@ -132,6 +133,7 @@ async function viewOf(
   };
   return {
     ...runView(input),
+    input: await submittedInput(context, details?.submission),
     workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
     latestAt: times[run.runId] ?? null,
     unresolvedEffects: unresolvedEffects(input),
@@ -142,6 +144,7 @@ async function viewOf(
 function summary(view: ShownRun): Fields {
   return {
     runId: view.runId,
+    input: view.input,
     workflowId: view.workflowId,
     state: view.state,
     condition: view.condition,
@@ -230,6 +233,17 @@ async function metadataOf(
       ? { issueIdentity: issueIdentity(input?.["ticket"]) }
       : {}),
   };
+}
+
+async function submittedInput(
+  context: ServiceContext,
+  digest: string | null | undefined,
+): Promise<Fields | null> {
+  const document = digest
+    ? await context.authority.queries.document(digest)
+    : undefined;
+  const request = record(JSON.parse(document ?? "null"));
+  return record(request?.["submission"]) ?? null;
 }
 
 async function listed(
