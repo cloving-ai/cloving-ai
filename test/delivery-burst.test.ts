@@ -31,22 +31,59 @@ const silent: Delivery = {
   deliver: () => Promise.resolve({ receipt: "receipt-1" }),
 };
 
+await test("CLV-162 burst preparation pipelines independent runs within eight requests and keeps every cancellation", async () => {
+  const authority = await openedAuthority(await temporaryDirectory());
+  let activeRequests = 0;
+  let largestCount = 0;
+  const preparing: Authority = {
+    ...authority,
+    execute: async (command, context) => {
+      activeRequests += 1;
+      largestCount = Math.max(largestCount, activeRequests);
+      try {
+        return await authority.execute(command, context);
+      } finally {
+        activeRequests -= 1;
+      }
+    },
+  };
+  try {
+    await droppedRuns(preparing, 16);
+    assert.ok(largestCount > 1, String(largestCount));
+    assert.ok(largestCount <= 8, String(largestCount));
+    assert.deepEqual(
+      Object.values((await authority.state()).runs).map((run) => [
+        run.status,
+        run.revision,
+      ]),
+      Array.from({ length: 16 }, () => ["cancelled", 2]),
+    );
+    assert.equal(await openRows(authority), 16);
+  } finally {
+    await authority.close();
+  }
+});
+
 async function droppedRuns(authority: Authority, count: number): Promise<void> {
-  for (let made = 0; made < count; made += 1) {
-    const runId = `run-${String(made).padStart(4, "0")}`;
-    await executePinned(authority, {
-      ...start,
-      runId,
-      commandId: `c-admit-${runId}`,
-    });
-    await authority.execute(
-      {
-        kind: "cancel-run",
-        commandId: `c-drop-${runId}`,
-        runId,
-        expectedRevision: 1,
-      },
-      { recordedAt: noon },
+  for (let offset = 0; offset < count; offset += 8) {
+    await Promise.all(
+      Array.from({ length: Math.min(8, count - offset) }, async (_, index) => {
+        const runId = `run-${String(offset + index).padStart(4, "0")}`;
+        await executePinned(authority, {
+          ...start,
+          runId,
+          commandId: `c-admit-${runId}`,
+        });
+        await authority.execute(
+          {
+            kind: "cancel-run",
+            commandId: `c-drop-${runId}`,
+            runId,
+            expectedRevision: 1,
+          },
+          { recordedAt: noon },
+        );
+      }),
     );
   }
 }

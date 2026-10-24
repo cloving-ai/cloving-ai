@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { withConsumer } from "./world-host-fixture.ts";
+import { productRoot, withConsumer } from "./world-host-fixture.ts";
 
 const workflows = `
 import { existsSync, writeFileSync } from "node:fs";
@@ -32,6 +33,31 @@ export async function held(input: { directory: string }) {
   return await hold(input.directory);
 }
 `;
+
+await test("CLV-162 compiled SDK fixtures resolve runtime dependencies and package helpers without copying unrelated application sources", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`
+const entities = await import("entities");
+let developmentTool;
+try { await import("eslint"); } catch (error) { developmentTool = error.code; }
+print({ runtime: entities.decodeHTML("&amp;"), developmentTool });
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines, [
+      { runtime: "&", developmentTool: "ERR_MODULE_NOT_FOUND" },
+    ]);
+    assert.equal(
+      await readFile(
+        join(consumer.directory, "node_modules/cloving/src/workflows.ts"),
+        "utf8",
+      ),
+      await readFile(join(productRoot, "src/workflows.ts"), "utf8"),
+    );
+    assert.equal(
+      existsSync(join(consumer.directory, "node_modules/cloving/src/cli.ts")),
+      false,
+    );
+  }));
 
 const opened = `
 const opening = await startHost({ dataDirectory, concurrency: Number(process.env.BOUND ?? "1"), handler: counted });
