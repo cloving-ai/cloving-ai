@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/chats-darwin-emulation.test.ts": "test",
     "test/watch-pr-publish.test.ts": "test",
     "test/quality/compiler-host-fixture.ts": "test",
     "test/quality/compiler-library-reuse.test.ts": "test",
