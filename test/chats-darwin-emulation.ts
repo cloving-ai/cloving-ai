@@ -13,7 +13,7 @@ export function darwinChatFileArguments(): readonly string[] {
 export function assertEmulatedChatTests(files: readonly string[]): void {
   const result = spawnSync(
     process.execPath,
-    ["--import", fixture, "--test", "--test-concurrency=1", ...files],
+    ["--import", fixture, "--test", "--test-concurrency=2", ...files],
     {
       encoding: "utf8",
       timeout: testMilliseconds(120_000),
@@ -25,7 +25,7 @@ export function assertEmulatedChatTests(files: readonly string[]): void {
       ),
     },
   );
-  assert.match(result.stdout, /tests [1-9]\d*/);
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /tests [1-9]\d*/);
 }
