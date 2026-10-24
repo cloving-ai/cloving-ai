@@ -124,9 +124,9 @@ await test("CLV-079 the workflow navigation shows counts and selection with orde
     ),
     [
       "Work tree",
-      "Claude turn",
+      "Agent turn",
       "Pull request",
-      "Greptile review",
+      "Code review",
       "Merge",
       "Done",
       "Stopped",
@@ -142,7 +142,7 @@ await test("CLV-079 the workflow navigation shows counts and selection with orde
     [...ticket.matchAll(/<h3 class="column-name"><span>(.*?)<\/span>/g)].map(
       (match) => match[1],
     ),
-    ["Claude turn", "Your review", "Done", "Stopped"],
+    ["Agent turn", "Your review", "Done", "Stopped"],
   );
   assert.match(ticket, /Title of ticket/);
   assert.doesNotMatch(ticket, /Title of round-2|class="banner|class="run /);
@@ -152,7 +152,7 @@ function cardPage(
   changes: Partial<WatchCard>,
   options: { readonly column?: string; readonly workflowId?: string } = {},
 ): string {
-  const { column = "Greptile review", workflowId = "develop-issue" } = options;
+  const { column = "Code review", workflowId = "develop-issue" } = options;
   const model = activeBoardModel();
   const card: WatchCard = {
     completionMark: null,
@@ -166,7 +166,7 @@ function cardPage(
       cache_read_input_tokens: null,
       output_tokens: null,
     },
-    currentStep: { name: "Greptile review", startedAt: "2026-10-14T11:57:00Z" },
+    currentStep: { name: "Code review", startedAt: "2026-10-14T11:57:00Z" },
     endedAt: null,
     decisionWaiting: true,
     round: 2,
@@ -218,7 +218,7 @@ await test("CLV-079 cards show step time, review progress, cost, decisions and e
   const html = cardPage({});
   for (const text of [
     "Review the change",
-    "Greptile review · 3 min",
+    "Code review · 3 min",
     '<span class="review-pill">round 2</span> · <span class="review-pill">4/5</span> · <span class="review-pill">#67</span>',
     "1.24 USD",
     "Decision waiting",
@@ -254,15 +254,12 @@ await test("CLV-079 Done and Stopped cards show the local end date and time inst
   for (const column of ["Done", "Stopped"]) {
     const html = cardPage({ currentStep: null, endedAt }, { column });
     assert.ok(html.includes(new Date(endedAt).toLocaleString()));
-    assert.doesNotMatch(html, /Greptile review ·/);
+    assert.doesNotMatch(html, /Code review ·/);
   }
 });
 
 await test("CLV-098 active steps and stopped categories retain their words with distinct presentation", () => {
-  assert.match(
-    cardPage({}),
-    /class="card-step active">Greptile review · 3 min/,
-  );
+  assert.match(cardPage({}), /class="card-step active">Code review · 3 min/);
   const stopped = cardPage(
     { endedAt: "2026-10-14T11:57:00Z" },
     { column: "Stopped" },
@@ -288,7 +285,7 @@ await test("CLV-098 develop-issue cards render only present review values as sep
   );
   for (const workflow of ["develop-ticket", "develop-prompt"])
     assert.doesNotMatch(
-      cardPage({}, { column: "Claude turn", workflowId: workflow }),
+      cardPage({}, { column: "Agent turn", workflowId: workflow }),
       /review-pill|card-review/,
     );
 });

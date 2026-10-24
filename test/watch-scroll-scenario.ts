@@ -4,10 +4,10 @@ export const scrollScenario = `
   const column = (name) => [...document.querySelectorAll(".column")].find(
     (item) => item.querySelector(".column-name > span").textContent === name,
   );
-  for (let attempt = 0; attempt < 300 && !column("Claude turn"); attempt++) await frame();
-  if (!column("Claude turn")) throw new Error("watch board did not load");
+  for (let attempt = 0; attempt < 300 && !column("Agent turn"); attempt++) await frame();
+  if (!column("Agent turn")) throw new Error("watch board did not load");
   const board = document.querySelector(".columns");
-  const implement = column("Claude turn");
+  const implement = column("Agent turn");
   board.scrollLeft = implement.getBoundingClientRect().left - board.getBoundingClientRect().left - 6;
   await frame();
   let initialScrollLeft = board.scrollLeft;

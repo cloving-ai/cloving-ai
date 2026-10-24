@@ -338,7 +338,7 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
     sampleRun({
       claudeCostUsd: null,
       estimatedCostUsd: null,
-      currentStep: { name: "Claude turn", startedAt: null },
+      currentStep: { name: "Agent turn", startedAt: null },
       decisions: [],
       events: [
         {

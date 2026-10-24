@@ -333,7 +333,7 @@ await test("CLV-077 watch follows event sequences beyond a thousand events to th
     const shown = fields(items(model["runs"])[0]);
     assert.equal(items(shown["events"]).length, 1001);
     assert.deepEqual(shown["currentStep"], {
-      name: "Claude turn",
+      name: "Agent turn",
       startedAt: "2026-10-14T11:00:00Z",
     });
     assert.ok(

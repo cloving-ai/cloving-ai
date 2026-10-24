@@ -50,7 +50,7 @@ export function Turn(props: {
   const groups = groupActivity(turn.activity);
   const working = turn.outcome === "in work";
   const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
-  const heading = ["Claude turn", turn.outcome, turnTime(turn, now), cost];
+  const heading = ["Agent turn", turn.outcome, turnTime(turn, now), cost];
   const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
   const activity = groups.map((items, index) =>
     component(Group, { items, open: working && index === groups.length - 1 }),

@@ -163,7 +163,7 @@ await test("CLV-128 inherited object keys cannot supply stages for an unstaged w
   });
   assert.deepEqual(
     model.workflows[0]?.columns.map((column) => column.name),
-    ["Claude turn", "Your review", "Done", "Stopped"],
+    ["Agent turn", "Your review", "Done", "Stopped"],
   );
 });
 

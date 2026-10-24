@@ -20,9 +20,9 @@ const effect = { open: "effect.requested", close: "effect.reported" };
 const issueWorkflow = "develop-issue";
 export const issueSteps = [
   { name: "Work tree", operation: "github-prepare" },
-  { name: "Claude turn", operation: "claude-turn" },
+  { name: "Agent turn", operation: "claude-turn" },
   { name: "Pull request", operation: "github-open-pr" },
-  { name: "Greptile review", operation: "github-wait-review" },
+  { name: "Code review", operation: "github-wait-review" },
   { name: "Merge", operation: "github-merge" },
 ];
 const verdicts: Readonly<Record<string, string>> = {
@@ -77,7 +77,7 @@ function ticketSpans(events: readonly Fields[]): Span[] {
   return [
     ...admission(events),
     {
-      name: "Claude turn",
+      name: "Agent turn",
       startedAt: firstAt(events, effect.open),
       endedAt: closedAt(events, effect),
       ending: "done",

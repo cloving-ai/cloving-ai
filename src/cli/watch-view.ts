@@ -165,7 +165,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
     run.spent === null || run.limit === null
       ? ""
       : ` · ${String(run.spent)} of ${String(run.limit)} effect units`;
-  const none = "No Claude turn for this run.";
+  const none = "No agent turn for this run.";
   const turns =
     run.turns.length === 0
       ? element("p", { class: "meta", children: none })

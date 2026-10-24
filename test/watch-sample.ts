@@ -71,7 +71,7 @@ export function phases(
     [at("21:33:41"), at("21:35:00")],
     [at("21:35:01"), at("21:35:01")],
   ] as const;
-  const names = ["Admitted", "Started", "Claude turn", "Your review", end];
+  const names = ["Admitted", "Started", "Agent turn", "Your review", end];
   return names.map((name, index) => {
     const state = states[index] ?? "pending";
     const [startedAt, endedAt] = spans[index] ?? [null, null];
