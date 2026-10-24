@@ -183,9 +183,11 @@ await test("CLV-056 a crash before or after the authority commit of the dispatch
       "halted-before-record",
       `${servicePrelude}
 writeFileSync("hold", "");
+const world = await getWorld();
+const created = async (receipt) => (await world.events.list({ runId: receipt, resolveData: "none", pagination: { limit: 100, sortOrder: "asc" } })).data.some((event) => event.eventType === "run_created");
 let announced;
 const known = new Promise((resolve) => { announced = resolve; });
-const service = await hosted({ wrap: (product) => ({ ...product, deliver: async (intent) => { const started = await product.deliver(intent); await known; return await halt("halted-before-record", { receipt: started.receipt }); } }) });
+const service = await hosted({ wrap: (product) => ({ ...product, deliver: async (intent) => { const started = await product.deliver(intent); await until(() => created(started.receipt)); await known; return await halt("halted-before-record", { receipt: started.receipt }); } }) });
 print({ runId: await submitted("c-1") });
 announced();
 `,
