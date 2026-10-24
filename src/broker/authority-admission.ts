@@ -69,6 +69,26 @@ const resumption: Rule = (command, context) => {
     : admissible;
 };
 
+const commandEffect: Rule = (command, context) => {
+  const pin = context.state.runs[command.runId]?.workflow ?? "";
+  const names = context.definitions.get(pin)?.commands ?? [];
+  const method = String(command.method);
+  if (!method.startsWith("run:") || !names.includes(method.slice(4)))
+    return { kind: "rejected", reason: "command-not-declared" };
+  return unpinned(command, context);
+};
+
+const handoffEffect: Rule = (command, context) => {
+  if (command.capability !== "handoff") return unpinned(command, context);
+  const pin = context.state.runs[command.runId]?.workflow ?? "";
+  const declaration = context.definitions.get(pin);
+  if (!declaration?.handoffs?.includes(String(command.target)))
+    return { kind: "rejected", reason: "handoff-not-declared" };
+  if (command.units !== 1 || command.method !== "run")
+    return { kind: "rejected", reason: "invalid-handoff-request" };
+  return unpinned(command, context);
+};
+
 const effectRequest: Rule = (command, context) => {
   const computed = effectInputDigest({
     capability: String(command.capability),
@@ -78,14 +98,9 @@ const effectRequest: Rule = (command, context) => {
   });
   if (computed !== command.inputDigest)
     return { kind: "rejected", reason: "input-digest-mismatch" };
-  if (command.capability !== "handoff") return unpinned(command, context);
-  const pin = context.state.runs[command.runId]?.workflow ?? "";
-  const declaration = context.definitions.get(pin);
-  if (!declaration?.handoffs?.includes(String(command.target)))
-    return { kind: "rejected", reason: "handoff-not-declared" };
-  if (command.units !== 1 || command.method !== "run")
-    return { kind: "rejected", reason: "invalid-handoff-request" };
-  return unpinned(command, context);
+  return command.capability === "command"
+    ? commandEffect(command, context)
+    : handoffEffect(command, context);
 };
 
 const rules: Readonly<Record<string, Rule>> = {
