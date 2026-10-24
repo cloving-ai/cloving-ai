@@ -174,7 +174,7 @@ export function ticketRegistrationTable(
       workflowId: bundledWorkflowIds.prd,
       functionName: "developPrd",
       effectLimit: 8,
-      handoffs: [],
+      handoffs: [issueWorkflow],
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },

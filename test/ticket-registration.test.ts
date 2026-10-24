@@ -30,7 +30,7 @@ const declared = {
   },
 } as const;
 
-await test("CLV-168 bundled workflows declare no automatic handoffs", () => {
+await test("CLV-169 only develop-prd declares the develop-issue handoff", () => {
   const table = ticketRegistrationTable({
     repository: "/repositories/example",
     command: undefined,
@@ -40,10 +40,34 @@ await test("CLV-168 bundled workflows declare no automatic handoffs", () => {
     [
       ["develop-ticket", []],
       ["develop-issue", []],
-      ["develop-prd", []],
+      ["develop-prd", ["develop-issue"]],
       ["develop-prompt", []],
     ],
   );
+});
+
+await test("CLV-169 the PRD handoff survives manifest admission", async () => {
+  await withProject({}, async (_cli, directory) => {
+    const manifests = await manifestsIn(directory);
+    const table = ticketRegistrationTable({
+      repository: directory,
+      command: undefined,
+    });
+    const admitted = await ticketRegistrations(
+      {
+        developPrd: manifests["develop"],
+        developTicket: manifests["developOther"],
+      },
+      { table },
+    );
+    assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
+    const prd = admitted.registrations.find(
+      (row) => row.workflowId === "develop-prd",
+    );
+    assert.ok(prd);
+    assert.deepEqual(prd.handoffs, ["develop-issue"]);
+    assert.deepEqual(prd.manifest.handoffs, ["develop-issue"]);
+  });
 });
 
 await test("CLV-168 unknown handoff targets refuse registration before manifest admission", async () => {
