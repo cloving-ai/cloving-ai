@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import configuration from "../../eslint.config.mjs";
+import { compilerConfiguration } from "../../quality/compiler.ts";
+import { fixtureProgram } from "./compiler-host-fixture.ts";
 
 export async function inspectTypedFixture(
   sources: Readonly<Record<string, string>>,
@@ -29,27 +31,24 @@ export async function inspectTypedFixture(
       await writeFile(filename, source);
       files.push(filename);
     }
-    const parsed = ts.getParsedCommandLineOfConfigFile(
-      join(directory, "tsconfig.json"),
-      {},
-      {
-        ...ts.sys,
-        onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
-          throw new Error(
-            ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-          );
-        },
-      },
-    );
-    if (!parsed) throw new Error("Fixture compiler configuration is missing");
-    const program = ts.createProgram(parsed.fileNames, parsed.options);
+    const parsed = compilerConfiguration(join(directory, "tsconfig.json"));
+    const program = fixtureProgram(parsed.fileNames, parsed.options);
     const compiler = [...parsed.errors, ...ts.getPreEmitDiagnostics(program)];
     const linter = new ESLint({
       cwd: directory,
       overrideConfigFile: true,
       overrideConfig: [
         ...configuration,
-        { languageOptions: { parserOptions: { tsconfigRootDir: directory } } },
+        {
+          languageOptions: {
+            parserOptions: {
+              tsconfigRootDir: directory,
+              programs: [program],
+              projectService: false,
+              project: false,
+            },
+          },
+        },
       ],
     });
     const lint = await linter.lintFiles(files);

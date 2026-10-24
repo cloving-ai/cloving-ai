@@ -11,6 +11,7 @@ import {
   recordedPrJournal,
   stoppedPrCard,
   stoppedPrRun,
+  waitForPrObservation,
 } from "./watch-pr-cli-fixture.ts";
 import {
   watchData,
@@ -89,14 +90,7 @@ await test("CLV-093 CLI terminates a held GitHub command after five seconds", as
       const pid = Number(
         await readFile(join(dirname(runtime), "gh-pid"), "utf8"),
       );
-      await until(
-        async () =>
-          fields(
-            stoppedPrCard(await watchData(watch.address))[
-              "pullRequestObservation"
-            ],
-          )["failure"] === "timeout",
-      );
+      await waitForPrObservation(watch, { failure: "timeout" });
       const model = await watchData(watch.address);
       assert.equal(model["service"], "up");
       assert.deepEqual(stoppedPrCard(model)["pullRequestObservation"], {

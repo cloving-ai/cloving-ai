@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { until } from "./claude-worker-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
@@ -8,6 +8,7 @@ import { prOutput } from "./watch-pr-fixture.ts";
 import type { WatchCommandOutput } from "../src/cli/watch-pr-command.ts";
 import type { Watching, WatchOptions } from "./watch-fixture.ts";
 import { watchServer } from "../src/cli/watch-server.ts";
+import { watchData } from "./watch-service-fixture.ts";
 
 export async function directPrWatch(
   runtimeDirectory: string,
@@ -142,20 +143,39 @@ export async function releasePr(
   runtime: string,
   merged: unknown,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(prOutput(merged)),
-  );
+  await releasePrOutput(runtime, prOutput(merged));
 }
 
 export async function releasePrOutput(
   runtime: string,
   output: WatchCommandOutput,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(output),
-  );
+  const file = join(dirname(runtime), "gh-response");
+  await writeFile(`${file}.tmp`, JSON.stringify(output));
+  await rename(`${file}.tmp`, file);
+}
+
+export async function waitForPrObservation(
+  watch: Watching,
+  expected: Readonly<Record<string, string>>,
+): Promise<void> {
+  let current: unknown;
+  try {
+    await until(async () => {
+      const observed = fields(
+        stoppedPrCard(await watchData(watch.address))["pullRequestObservation"],
+      );
+      current = observed;
+      return Object.entries(expected).every(
+        ([key, value]) => observed[key] === value,
+      );
+    });
+  } catch (error) {
+    throw new Error(
+      `PR observation expected ${JSON.stringify(expected)}, received ${JSON.stringify(current)}`,
+      { cause: error },
+    );
+  }
 }
 
 export function stoppedPrRun() {

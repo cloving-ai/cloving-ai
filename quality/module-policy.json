@@ -1,5 +1,8 @@
 {
   "roles": {
+    "test/watch-pr-publish.test.ts": "test",
+    "test/quality/compiler-host-fixture.ts": "test",
+    "test/quality/compiler-library-reuse.test.ts": "test",
     "src/daemon/workflow-generations.ts": "daemon",
     "test/workflow-generations.test.ts": "test",
     "test/service-bundles.test.ts": "test",

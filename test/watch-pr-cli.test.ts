@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { until } from "./claude-worker-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
 import { mergedJournal, writeMergeRecords } from "./watch-merge-fixture.ts";
 import {
@@ -12,6 +11,7 @@ import {
   releasePr,
   stoppedPrCard,
   stoppedPrRun,
+  waitForPrObservation,
 } from "./watch-pr-cli-fixture.ts";
 import {
   watchData,
@@ -82,14 +82,7 @@ await test("CLV-093 CLI board returns while configured GitHub waits and a later 
         "--include",
       ]);
       await releasePr(runtime, true);
-      await until(
-        async () =>
-          fields(
-            stoppedPrCard(await watchData(watch.address))[
-              "pullRequestObservation"
-            ],
-          )["status"] === "merged",
-      );
+      await waitForPrObservation(watch, { status: "merged" });
       const later = await watchData(watch.address);
       const run = fields(items(later["runs"])[0]);
       assert.equal(run["state"], "completed");
@@ -136,14 +129,7 @@ await test("CLV-093 CLI reads the service origin from a relative repository path
         "--include",
       ]);
       await releasePr(runtime, true);
-      await until(
-        async () =>
-          fields(
-            stoppedPrCard(await watchData(watch.address))[
-              "pullRequestObservation"
-            ],
-          )["status"] === "merged",
-      );
+      await waitForPrObservation(watch, { status: "merged" });
     },
   );
 });
