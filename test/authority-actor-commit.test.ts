@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { DatabaseSync, StatementSync } from "node:sqlite";
 import {
   actorState,
   deliverUntil,
@@ -43,6 +44,43 @@ const injections = [
 ];
 
 const empty = { count: 0 };
+
+await test("CLV-179 operation polling reads delivery records without rebuilding unrelated projections", async () => {
+  const authority = await openedAuthority(await temporaryDirectory());
+  await executePinned(authority, admission);
+  const expected = await authority.operations();
+  assert.equal(expected.length, 1);
+  assert.equal(expected[0]?.deliveries.length, 1);
+  const descriptor = Object.getOwnPropertyDescriptor(
+    DatabaseSync.prototype,
+    "prepare",
+  );
+  assert.ok(descriptor);
+  const prepare: unknown = descriptor.value;
+  assert.equal(typeof prepare, "function");
+  const statements: string[] = [];
+  DatabaseSync.prototype.prepare = function (sql) {
+    statements.push(sql);
+    assert.ok(typeof prepare === "function");
+    const statement: unknown = Reflect.apply(prepare, this, [sql]);
+    assert.ok(statement instanceof StatementSync);
+    return statement;
+  };
+  try {
+    assert.deepEqual(await authority.operations(), expected);
+    assert.deepEqual(
+      statements.filter((sql) =>
+        /\bFROM (?:definitions|runs|commands|gates|run_details)\b/i.test(sql),
+      ),
+      [],
+    );
+    assert.ok(statements.some((sql) => /\bFROM outbox\b/i.test(sql)));
+    assert.ok(statements.some((sql) => /\bFROM deliveries\b/i.test(sql)));
+  } finally {
+    Object.defineProperty(DatabaseSync.prototype, "prepare", descriptor);
+    await authority.close();
+  }
+});
 
 for (const injection of injections)
   await test(`CLV-042 a failure ${injection.name} rolls back the actor sequence, the domain rows and the staged effect together`, async () => {
