@@ -95,7 +95,9 @@ export async function checkProjectSources(
     .filter((source) => files.includes(source.fileName));
   checkSuppressions(sources, options.suppressionApprovals ?? []);
   completed.push("suppressions");
-  const testIntegrity = inspectTestIntegrity(program);
+  const testIntegrity = inspectTestIntegrity(program, {
+    runnerFile: resolve(directory, "quality/test-runner.ts"),
+  });
   if (testIntegrity.length > 0)
     throw new Error(`Test integrity failed:\n${testIntegrity.join("\n")}`);
   completed.push("test-integrity");
@@ -146,6 +148,7 @@ function checkProjectTests(
   });
 }
 import { compilerProgram } from "./compiler.ts";
+import { resolve } from "node:path";
 import { inspectClones } from "./clones.ts";
 import { checkFormatting, checkLint } from "./source-checks.ts";
 import { sourceFiles } from "./source-files.ts";

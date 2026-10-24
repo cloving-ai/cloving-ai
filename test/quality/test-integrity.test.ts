@@ -3,6 +3,69 @@ import { test } from "node:test";
 import { inspectTestIntegrity } from "../../quality/test-integrity.ts";
 import { withProgram } from "./program-fixture.ts";
 
+await test("CLV-174 permits the explicit launcher with the complete files and isolation options", async () => {
+  await withProgram(
+    {
+      "quality/test-runner.ts":
+        'import { run } from "node:test"; run({ files: ["fixture.test.ts"], concurrency: 2, isolation: "process" }).on("test:summary", () => {});',
+    },
+    (program) => {
+      const runnerFile = program.getRootFileNames()[0];
+      assert.ok(runnerFile);
+      assert.deepEqual(inspectTestIntegrity(program, { runnerFile }), []);
+      assert.ok(
+        inspectTestIntegrity(program).some((finding) =>
+          finding.includes("test-selection"),
+        ),
+      );
+    },
+  );
+});
+
+await test("CLV-174 the launcher allowance still rejects filters, focus, discovery and other files", async () => {
+  await withProgram(
+    {
+      "quality/test-runner.ts":
+        'import { run, test } from "node:test"; run({ files: ["fixture"], concurrency: 2, isolation: "process", only: true }); run({ files: ["fixture"], concurrency: 2, isolation: "process", testNamePatterns: "limited" }); run({ concurrency: 2, isolation: "process" }); await test.only("focused", () => {});',
+      "other.test.ts":
+        'import { run } from "node:test"; run({ files: ["fixture"], concurrency: 2, isolation: "process" });',
+    },
+    (program) => {
+      const runnerFile = program
+        .getRootFileNames()
+        .find((file) => file.endsWith("/quality/test-runner.ts"));
+      assert.ok(runnerFile);
+      const findings = inspectTestIntegrity(program, { runnerFile });
+      assert.equal(findings.length, 5);
+      assert.ok(
+        findings.every((finding) => finding.startsWith("test-selection:")),
+      );
+    },
+  );
+});
+
+for (const body of [
+  'const selected = { files: ["fixture"], concurrency: 2, isolation: "process" as const, only: true }; const options: { files: string[]; concurrency: number; isolation: "process" } = selected; run(options);',
+  'run({ files: ["fixture"], concurrency: 2, isolation: "none" });',
+  'const options = { files: ["fixture"], concurrency: 2, isolation: "process" as const }; run({ ...options });',
+  'run({ ["files"]: ["fixture"], concurrency: 2, isolation: "process" });',
+  'run({ get files() { return ["fixture"]; }, concurrency: 2, isolation: "process" });',
+])
+  await test(`CLV-174 rejects indirect or unisolated runner options: ${body}`, async () => {
+    await withProgram(
+      { "quality/test-runner.ts": `import { run } from "node:test"; ${body}` },
+      (program) => {
+        const runnerFile = program.getRootFileNames()[0];
+        assert.ok(runnerFile);
+        assert.ok(
+          inspectTestIntegrity(program, { runnerFile }).some((finding) =>
+            finding.includes("test-selection"),
+          ),
+        );
+      },
+    );
+  });
+
 for (const body of [
   'await test.only("focused", () => {});',
   'await test("conditional", { skip: true }, () => {});',
