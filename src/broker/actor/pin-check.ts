@@ -21,7 +21,7 @@ export async function pinned(
       ),
     ),
   );
-  const current = available(stored);
+  const current = await available(stored);
   return (
     current !== undefined && resumePinned(stored, current).kind === "admitted"
   );

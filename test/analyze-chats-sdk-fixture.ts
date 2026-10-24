@@ -33,7 +33,7 @@ installAnalysisCli({ directory: process.cwd() }, { reply: existsSync("batch-repl
 let analysisNow = "2026-10-20T10:00:00.000Z";
 const analysisClock = () => existsSync("clock-analysis") ? analysisNow : new Date().toISOString();
 const document = async (digest) => ports.document(digest);
-const workflowId = async (runId) => ports.workflowId(runId);
+const workflowId = async (runId) => ports.workflow.id(runId);
 const analysis = claudeWorker({
   worker: "codex", command: ["false"], repository: "unused", worktrees: process.cwd() + "/worktrees", journal: process.cwd() + "/journal", document, workflowId,
   report: async (report) => {

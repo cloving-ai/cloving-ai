@@ -54,6 +54,12 @@ function closed(type: "run.cancelled" | "run.failed"): Handler {
 }
 
 function observation(state: AuthorityState, recorded: Recorded): Reduction {
+  const expected = recorded.event.payload["expectedObservation"];
+  if (
+    expected !== undefined &&
+    expected !== String(recorded.details.observation?.sequence ?? 0)
+  )
+    return invalid("stale-observation");
   return applied(state, {
     ...recorded,
     observed: observed(recorded.details, recorded.event),

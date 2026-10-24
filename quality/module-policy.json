@@ -1,5 +1,13 @@
 {
   "roles": {
+    "src/daemon/workflow-generations.ts": "daemon",
+    "test/workflow-generations.test.ts": "test",
+    "test/service-bundles.test.ts": "test",
+    "test/service-bundle-fixture.ts": "test",
+    "test/workflow-replay.test.ts": "test",
+    "test/workflow-replay-recovery.test.ts": "test",
+    "test/daemon-bundles.test.ts": "test",
+    "src/daemon/workflow-replay.ts": "daemon",
     "test/github-merge-conflict.test.ts": "test",
     "src/service/queue-runs.ts": "service",
     "test/service-queue-statuses.test.ts": "test",
@@ -949,7 +957,7 @@
     "test/watch-workflow-refusals.test.ts": "test",
     "test/workflow-refusal-fixture.ts": "test",
     "tools/self-host-project.ts": "candidate-adapter",
-    "tools/workflow-bundles.ts": "candidate-adapter",
+    "tools/workflow-bundles.ts": "workflow-bundles",
     "tools/workflow-bundle-dependencies.ts": "candidate-adapter",
     "test/workflow-bundles.test.ts": "test",
     "test/workflow-bundle-dependencies.test.ts": "test",
@@ -1034,7 +1042,8 @@
       "host-bridge",
       "daemon",
       "entry",
-      "candidate-adapter"
+      "candidate-adapter",
+      "workflow-bundles"
     ],
     "build": [
       "build",
@@ -1061,7 +1070,15 @@
     "storage": ["storage", "stdlib"],
     "harness": ["stdlib"],
     "actor-runtime": [],
-    "service": ["service", "broker", "pure", "stdlib", "network"],
+    "service": [
+      "service",
+      "broker",
+      "pure",
+      "stdlib",
+      "network",
+      "workflow-bundles"
+    ],
+    "workflow-bundles": ["stdlib"],
     "host-bridge": ["host-bridge", "sdk-runtime", "pure", "stdlib"],
     "daemon": [
       "daemon",
@@ -1080,6 +1097,7 @@
     "entry": ["cli", "pure", "stdlib", "process"],
     "candidate-adapter": [
       "candidate-adapter",
+      "workflow-bundles",
       "pure",
       "stdlib",
       "tooling",

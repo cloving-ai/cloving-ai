@@ -80,7 +80,7 @@ export interface Delivery {
 
 export type AvailableManifest = (
   pinned: ExecutionManifest,
-) => ExecutionManifest | undefined;
+) => ExecutionManifest | undefined | Promise<ExecutionManifest | undefined>;
 
 export function intentDigest(intent: Undigested): string {
   const base = [intent.kind, intent.runId, intent.operationId, intent.workflow];

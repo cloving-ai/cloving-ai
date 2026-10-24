@@ -3,6 +3,13 @@ import { workflowPin } from "../broker/workflow-pin.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import type { SubmissionContract } from "../submission.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
+import type { AvailableManifest } from "../broker/actor/delivery-intents.ts";
+import { readRetainedWorkflowBundle } from "../../tools/workflow-bundles.ts";
+
+export interface WorkflowBundleStore {
+  readonly directory: string;
+  readonly repository: string;
+}
 
 export type Resolution =
   | { readonly kind: "resolved"; readonly input: unknown }
@@ -48,9 +55,8 @@ export interface Registry {
   readonly workflowStages: WorkflowStages;
   readonly byId: (workflowId: string) => Registered | undefined;
   readonly byPin: (pin: string) => Registered | undefined;
-  readonly available: (
-    pinned: ExecutionManifest,
-  ) => ExecutionManifest | undefined;
+  readonly bundle: (pinned: ExecutionManifest) => Promise<string | undefined>;
+  readonly available: AvailableManifest;
 }
 
 function registered(workflow: WorkflowRegistration): Registered {
@@ -63,16 +69,41 @@ function registered(workflow: WorkflowRegistration): Registered {
   };
 }
 
+function availableVersions(workflow: Registered): readonly Registered[] {
+  if (workflow.availability !== "available") return [];
+  if (workflow.manifest.bundleDigest === undefined) return [workflow];
+  const manifest = { ...workflow.manifest };
+  delete manifest.bundleDigest;
+  return [workflow, { ...workflow, manifest, pin: workflowPin(manifest) }];
+}
+
 export function workflowRegistry(
   workflows: readonly WorkflowRegistration[],
-  retainedWorkflows: readonly WorkflowRegistration[] = [],
+  options: {
+    readonly retainedWorkflows?: readonly WorkflowRegistration[];
+    readonly workflowBundles?: WorkflowBundleStore;
+    readonly retainedWorkflow?: AvailableManifest;
+  } = {},
 ): Registry {
   const current = workflows.map(registered);
-  const available = [...current, ...retainedWorkflows.map(registered)].filter(
-    (workflow) => workflow.availability === "available",
-  );
+  const available = [
+    ...current,
+    ...(options.retainedWorkflows ?? []).map(registered),
+  ].flatMap(availableVersions);
   const byPin = (pin: string): Registered | undefined =>
     available.find((workflow) => workflow.pin === pin);
+  const bundle = async (pinned: ExecutionManifest) => {
+    if (
+      pinned.bundleDigest === undefined ||
+      options.workflowBundles === undefined
+    )
+      return undefined;
+    const retained = await readRetainedWorkflowBundle({
+      ...options.workflowBundles,
+      id: pinned.bundleDigest,
+    });
+    return retained.kind === "available" ? retained.directory : undefined;
+  };
   return {
     workflowIds: current.map((workflow) => workflow.workflowId),
     workflowStages: Object.fromEntries(
@@ -85,6 +116,15 @@ export function workflowRegistry(
     byId: (workflowId) =>
       current.find((workflow) => workflow.workflowId === workflowId),
     byPin,
-    available: (pinned) => byPin(workflowPin(pinned))?.manifest,
+    bundle,
+    available: (pinned) => {
+      const manifest = byPin(workflowPin(pinned))?.manifest;
+      if (pinned.bundleDigest === undefined) return manifest;
+      return bundle(pinned).then((directory) =>
+        directory !== undefined
+          ? (manifest ?? options.retainedWorkflow?.(pinned))
+          : undefined,
+      );
+    },
   };
 }

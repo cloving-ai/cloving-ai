@@ -106,7 +106,7 @@ const hosted = async (overrides = {}) => {
     runs: taggedRuns,
     input: (runId) => ports.input(runId),
     document: (digest) => ports.document(digest),
-    workflow: async (intent) => overrides.resolveWorkflow === undefined ? overrides.workflow ?? workflows[await ports.workflowId(intent.runId)] : await overrides.resolveWorkflow(intent),
+    workflow: async (intent) => overrides.resolveWorkflow === undefined ? overrides.workflow ?? workflows[await ports.workflow.id(intent.runId)] : await overrides.resolveWorkflow(intent),
     cancel: cancelled,
   });
   const runs = (overrides.wrap ?? recording)(product);

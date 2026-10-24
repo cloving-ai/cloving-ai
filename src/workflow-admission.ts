@@ -36,6 +36,7 @@ export interface ExecutionManifest {
   readonly steps: readonly string[];
   readonly capabilities: readonly string[];
   readonly handoffs?: readonly string[];
+  readonly bundleDigest?: string;
   readonly artifacts: Readonly<Record<string, string>>;
   readonly resources: Readonly<Record<string, string>>;
   readonly toolchain: ToolchainIdentity;

@@ -8,6 +8,10 @@ import {
   ticketRegistrationTable,
 } from "../src/daemon/ticket-registration.ts";
 import { withProject, workflowId } from "./cli-fixture.ts";
+import { queryDatabase } from "./authority-store-fixture.ts";
+import { call, field, text, withHarness } from "./service-fixture.ts";
+import { workflowPin } from "../src/broker/workflow-pin.ts";
+import { readExecutionManifest } from "../src/execution-pin.ts";
 
 const functions = [
   { name: "develop", functionName: "develop", workflowId, effectLimit: 8 },
@@ -29,6 +33,57 @@ const declared = {
     fields: { rounds: { type: "integer", minimum: 1, maximum: 10 } },
   },
 } as const;
+
+await test("CLV-161 a daemon registration stores the serving bundle digest in the durable execution pin", () =>
+  withProject({}, async (_cli, directory) => {
+    const manifests = await manifestsIn(directory);
+    const bundleDigest = "a".repeat(64);
+    const options = {
+      table: ticketRegistrationTable({
+        repository: directory,
+        command: undefined,
+      }),
+      bundleDigest,
+    };
+    const admitted = await ticketRegistrations(
+      {
+        developPrd: manifests["develop"],
+        developTicket: manifests["developOther"],
+      },
+      options,
+    );
+    assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
+    await withHarness(async (harness) => {
+      const service = await harness.start({
+        workflows: admitted.registrations,
+      });
+      const result = await call(harness, {
+        operation: "run",
+        parameters: {
+          workflowId: "develop-prompt",
+          source: "prompt",
+          submission: { prompt: "Task" },
+          commandId: "pinned",
+        },
+      });
+      assert.equal(result["kind"], "run-admitted");
+      await service.close();
+      const rows = queryDatabase(
+        harness.stateDirectory,
+        "SELECT pin, manifest FROM definitions",
+      );
+      assert.equal(rows.length, 1);
+      const stored = readExecutionManifest(
+        JSON.parse(text(rows[0], "manifest")),
+      );
+      assert.equal(field(stored, "bundleDigest"), bundleDigest);
+      assert.equal(text(rows[0], "pin"), workflowPin(stored));
+      assert.equal(
+        field(field(result, "binding"), "workflowPin"),
+        workflowPin(stored),
+      );
+    });
+  }));
 
 await test("CLV-169 only develop-prd declares the develop-issue handoff", () => {
   const table = ticketRegistrationTable({

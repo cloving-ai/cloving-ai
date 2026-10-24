@@ -153,8 +153,9 @@ const unavailablePin = assessed("infrastructure-failure", {
   humanInputCanHelp: true,
 });
 
-function worldConflict(input: StatusInput): Assessment | undefined {
+function workflowFailure(input: StatusInput): Assessment | undefined {
   const code = input.details?.observation?.reason;
+  if (code === "pinned-workflow-unavailable") return unavailablePin;
   if (code !== "world-run-conflict") return undefined;
   return assessed("infrastructure-failure", {
     code,
@@ -166,7 +167,7 @@ function worldConflict(input: StatusInput): Assessment | undefined {
 function queued(input: StatusInput): Assessment {
   if (uncertain(input.operations)) return unknownEffect;
   if (blocked(input.operations)) return unavailablePin;
-  const conflict = worldConflict(input);
+  const conflict = workflowFailure(input);
   if (conflict !== undefined) return conflict;
   if (dispatched(input.operations))
     return assessed("queued", {
@@ -204,7 +205,7 @@ function running(input: StatusInput): Assessment {
   const effect = uncertainEffect(input.effects);
   if (effect !== undefined) return effect;
   if (blocked(input.operations)) return unavailablePin;
-  return worldConflict(input) ?? observed(input);
+  return workflowFailure(input) ?? observed(input);
 }
 
 function observed(input: StatusInput): Assessment {
@@ -228,6 +229,8 @@ function observed(input: StatusInput): Assessment {
 }
 
 function waiting(input: StatusInput): Assessment {
+  if (input.details?.observation?.reason === "pinned-workflow-unavailable")
+    return unavailablePin;
   const pending = input.gates.filter((gate) => gate.outcome === null);
   const question = pending.some((gate) => gate.kind === "question");
   const approval = pending.some((gate) => gate.kind === "approval");

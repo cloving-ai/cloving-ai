@@ -74,6 +74,7 @@ export interface AuthorityEvent {
 
 export const numberFields = [
   "expectedRevision",
+  "expectedObservation",
   "generation",
   "attempt",
   "limit",

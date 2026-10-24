@@ -21,6 +21,57 @@ import {
 } from "./authority-decision-commands.ts";
 import { admit } from "./authority-fixture.ts";
 
+await test("CLV-161 a conditional observation cannot replace a newer report and a matching restoration replays", () => {
+  const missing = {
+    kind: "report-observation",
+    commandId: "missing",
+    runId: "run-1",
+    condition: "infrastructure-failure",
+    reason: "pinned-workflow-unavailable",
+  };
+  const restored = {
+    ...missing,
+    commandId: "restored",
+    condition: "working",
+    reason: "in-progress",
+    expectedObservation: 3,
+  };
+  const newer = {
+    ...missing,
+    commandId: "quota",
+    condition: "quota-wait",
+    reason: "provider-quota",
+  };
+  const stale = commands([admit, started, missing, newer, restored]);
+  assert.equal(reasons(stale).at(-1), "stale-observation");
+  assert.equal(
+    stale.state.details["run-1"]?.observation?.reason,
+    "provider-quota",
+  );
+  const matched = commands([admit, started, missing, restored]);
+  assert.equal(reasons(matched).at(-1), "accepted");
+  assert.equal(
+    matched.state.details["run-1"]?.observation?.reason,
+    "in-progress",
+  );
+  assert.deepEqual(
+    rebuild(
+      matched.results.flatMap((result) =>
+        result.kind === "accepted" ? result.events : [],
+      ),
+    ),
+    matched.state,
+  );
+  const initial = commands([admit, { ...missing, expectedObservation: 0 }]);
+  assert.equal(reasons(initial).at(-1), "accepted");
+  for (const expectedObservation of [-1, 1.5, "3"]) {
+    assert.equal(
+      reasons(commands([admit, { ...missing, expectedObservation }])).at(-1),
+      "invalid-command",
+    );
+  }
+});
+
 await test("CLV-008 a dropped run cancels its open gates and admits no continuation for them", () => {
   const outcome = commands([
     admit,
