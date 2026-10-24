@@ -100,24 +100,20 @@ const outcomes: Readonly<
       const ticketStatus = fields["ticketStatus"];
       const issueUpdate = fields["issueUpdate"];
       const reason = fields["reason"];
-      let outcome: CycleOutcome = {
+      if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
+      if (ticketStatus !== undefined && !isTicketStatus(ticketStatus))
+        return null;
+      if (reason !== undefined && !isBlockedReason(reason)) return null;
+      return {
         kind: "handoff_requested",
         cycleId,
         promotionId,
+        ...Object.fromEntries(
+          Object.entries({ issueUpdate, ticketStatus, reason }).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
       };
-      if (issueUpdate !== undefined) {
-        if (issueUpdate !== "failed") return null;
-        outcome = { ...outcome, issueUpdate };
-      }
-      if (ticketStatus !== undefined) {
-        if (!isTicketStatus(ticketStatus)) return null;
-        outcome = { ...outcome, ticketStatus };
-      }
-      if (reason !== undefined) {
-        if (!isBlockedReason(reason)) return null;
-        outcome = { ...outcome, reason };
-      }
-      return outcome;
     },
   },
 };
