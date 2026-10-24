@@ -7,6 +7,7 @@ export interface CheckCommand {
   readonly acceptedExitCodes?: readonly number[];
   readonly coverageDirectory?: string;
   readonly homeDirectory?: string;
+  readonly processGroup?: "isolated";
 }
 
 export interface CheckTiming {
@@ -54,24 +55,13 @@ export function runCommand(
 }
 
 function executeCommand(command: CheckCommand): string {
-  const result = spawnSync(command.executable, command.arguments, {
-    cwd: command.directory,
-    encoding: "utf8",
-    timeout: command.timeoutMilliseconds,
-    maxBuffer: 8 * 1024 * 1024,
-    env: {
-      PATH: process.env["PATH"],
-      CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
-      CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
-      TZ: "UTC",
-      CI: "true",
-      NODE_DISABLE_COMPILE_CACHE: "1",
-      ...(command.homeDirectory ? { HOME: command.homeDirectory } : {}),
-      ...(command.coverageDirectory
-        ? { NODE_V8_COVERAGE: command.coverageDirectory }
-        : {}),
-    },
-  });
+  const result = spawnSync(
+    command.executable,
+    command.arguments,
+    spawnOptions(command),
+  );
+  if (command.processGroup === "isolated" && result.pid > 0)
+    killVerificationGroup(result.pid);
   if (result.error)
     throw new Error(
       `Check execution failed: ${command.check ?? command.executable} (limit ${String(command.timeoutMilliseconds)} ms)`,
@@ -88,4 +78,34 @@ function executeCommand(command: CheckCommand): string {
     );
   return result.stdout;
 }
-import { spawnSync } from "node:child_process";
+
+function spawnOptions(
+  command: CheckCommand,
+): SpawnSyncOptionsWithStringEncoding & Pick<SpawnOptions, "detached"> {
+  return {
+    cwd: command.directory,
+    encoding: "utf8",
+    timeout: command.timeoutMilliseconds,
+    detached: command.processGroup === "isolated",
+    killSignal: command.processGroup === "isolated" ? "SIGKILL" : "SIGTERM",
+    maxBuffer: 8 * 1024 * 1024,
+    env: {
+      PATH: process.env["PATH"],
+      CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
+      CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
+      TZ: "UTC",
+      CI: "true",
+      NODE_DISABLE_COMPILE_CACHE: "1",
+      ...(command.homeDirectory ? { HOME: command.homeDirectory } : {}),
+      ...(command.coverageDirectory
+        ? { NODE_V8_COVERAGE: command.coverageDirectory }
+        : {}),
+    },
+  };
+}
+import {
+  spawnSync,
+  type SpawnOptions,
+  type SpawnSyncOptionsWithStringEncoding,
+} from "node:child_process";
+import { killVerificationGroup } from "./verification-process-group.ts";

@@ -59,9 +59,11 @@ function explicitRunner(
       return property.name.text;
     })
     .sort();
+  const executionFields = fields.filter((field) => field !== "signal");
   if (
-    JSON.stringify(fields) !==
-    JSON.stringify(["concurrency", "files", "isolation"])
+    JSON.stringify(executionFields) !==
+      JSON.stringify(["concurrency", "files", "isolation"]) ||
+    fields.filter((field) => field === "signal").length > 1
   )
     return false;
   const isolation = argument.properties.find(

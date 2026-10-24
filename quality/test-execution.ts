@@ -140,6 +140,7 @@ export function testCommand(
     ],
     directory,
     timeoutMilliseconds: 600000 * (run.timeFactor ?? 1),
+    processGroup: "isolated",
     ...(run.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: run.coverageDirectory }),

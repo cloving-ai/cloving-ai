@@ -7,7 +7,7 @@ await test("CLV-174 permits the explicit launcher with the complete files and is
   await withProgram(
     {
       "quality/test-runner.ts":
-        'import { run } from "node:test"; run({ files: ["fixture.test.ts"], concurrency: 2, isolation: "process" }).on("test:summary", () => {});',
+        'import { run } from "node:test"; run({ files: ["fixture.test.ts"], concurrency: 2, isolation: "process" }).on("test:summary", () => {}); run({ files: ["fixture.test.ts"], concurrency: 2, isolation: "process", signal: new AbortController().signal });',
     },
     (program) => {
       const runnerFile = program.getRootFileNames()[0];
@@ -50,6 +50,7 @@ for (const body of [
   'const options = { files: ["fixture"], concurrency: 2, isolation: "process" as const }; run({ ...options });',
   'run({ ["files"]: ["fixture"], concurrency: 2, isolation: "process" });',
   'run({ get files() { return ["fixture"]; }, concurrency: 2, isolation: "process" });',
+  'run({ files: ["fixture"], concurrency: 2, isolation: "process", signal: new AbortController().signal, only: true });',
 ])
   await test(`CLV-174 rejects indirect or unisolated runner options: ${body}`, async () => {
     await withProgram(

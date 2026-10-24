@@ -21,17 +21,29 @@ const reporter =
   reporterArgument === "--test-reporter=durations"
     ? reportDurations
     : reportTests;
+const controller = new AbortController();
+const interrupt = (): void => {
+  process.exitCode = 1;
+  controller.abort();
+};
+process.once("SIGINT", interrupt);
+process.once("SIGTERM", interrupt);
 try {
   for await (const chunk of reporter(
-    run({ files, concurrency, isolation: "process" }).on(
-      "test:summary",
-      (summary) => {
-        if (!summary.success) process.exitCode = 1;
-      },
-    ),
+    run({
+      files,
+      concurrency,
+      isolation: "process",
+      signal: controller.signal,
+    }).on("test:summary", (summary) => {
+      if (!summary.success) process.exitCode = 1;
+    }),
   ))
     process.stdout.write(chunk);
 } catch (error) {
   console.error(error);
   process.exitCode = 1;
+} finally {
+  process.off("SIGINT", interrupt);
+  process.off("SIGTERM", interrupt);
 }
