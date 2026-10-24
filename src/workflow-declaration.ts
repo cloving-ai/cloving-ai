@@ -13,10 +13,11 @@ export type WorkflowStages = Readonly<Record<string, readonly WorkflowStage[]>>;
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
-  readonly capabilities: readonly ("claude" | "github" | "chats")[];
+  readonly capabilities: readonly ("claude" | "github" | "chats" | "command")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
+  readonly commands?: readonly string[];
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -142,7 +143,9 @@ export function isWorkflowStages(
   );
 }
 
-function isCapabilities(value: unknown): boolean {
+function isCapabilities(
+  value: unknown,
+): value is WorkflowDeclaration["capabilities"] {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
@@ -150,13 +153,27 @@ function isCapabilities(value: unknown): boolean {
       (capability: unknown) =>
         capability === "claude" ||
         capability === "github" ||
-        capability === "chats",
+        capability === "chats" ||
+        capability === "command",
     )
   );
 }
 
-export function isWorkflowHandoffs(value: unknown): value is readonly string[] {
+export function isWorkflowNames(value: unknown): value is readonly string[] {
   return selectors(value, /^[A-Za-z0-9-]{1,64}$/) && unique(value);
+}
+
+function declaredCommands(
+  declaration: Fields,
+  capabilities: readonly string[],
+): boolean {
+  const commands = declaration["commands"];
+  if (Object.hasOwn(declaration, "commands") && !isWorkflowNames(commands))
+    return false;
+  return (
+    !capabilities.includes("command") ||
+    (Array.isArray(commands) && commands.length > 0)
+  );
 }
 
 export function isWorkflowDeclaration(
@@ -171,6 +188,7 @@ export function isWorkflowDeclaration(
       "input",
       "stages",
       "handoffs",
+      "commands",
     ])
   )
     return false;
@@ -180,9 +198,10 @@ export function isWorkflowDeclaration(
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
+    declaredCommands(declaration, capabilities) &&
     isInput(input) &&
     (!Object.hasOwn(declaration, "stages") ||
       isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") || isWorkflowHandoffs(handoffs))
+    (!Object.hasOwn(declaration, "handoffs") || isWorkflowNames(handoffs))
   );
 }

@@ -31,6 +31,7 @@ import {
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
 import type { TokenPrices } from "../token-prices.ts";
+import type { LocalCommands } from "../command-settings.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Worker } from "./claude-turn.ts";
@@ -48,6 +49,8 @@ import {
 } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
+  readonly commands?: LocalCommands;
+  readonly commandSeconds?: number;
   readonly fallbackModels?: readonly string[];
   readonly tokenPrices?: TokenPrices;
   readonly worker?: Worker;
@@ -256,6 +259,7 @@ async function daemonRegistrations(settings: DaemonSettings) {
   );
   const admitted = await ticketRegistrations(settings.manifests, {
     table,
+    commands: settings.commands ?? {},
     ...(settings.bundleDigest === undefined
       ? {}
       : { bundleDigest: settings.bundleDigest }),
