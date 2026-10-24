@@ -21,7 +21,10 @@ import {
   type Service,
   type ServiceHost,
 } from "../service/service.ts";
-import { workflowGenerations } from "./workflow-generations.ts";
+import {
+  workflowGenerations,
+  prepareWorkflowGenerations,
+} from "./workflow-generations.ts";
 import { deliveryRouter } from "./delivery-router.ts";
 import { commandEffects } from "./command-journal.ts";
 import { worldDirectory } from "./host-environment.ts";
@@ -62,6 +65,7 @@ async function hosted(
   },
 ): Promise<ServiceHost> {
   const { ports, generations } = hosting;
+  await prepareWorkflowGenerations(ports, generations);
   const opening = await startHost({
     dataDirectory: worldDirectory(settings.directory),
     concurrency: settings.concurrency,

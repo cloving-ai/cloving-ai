@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { workflowGenerations } from "../src/daemon/workflow-generations.ts";
+import {
+  workflowGenerations,
+  prepareWorkflowGenerations,
+} from "../src/daemon/workflow-generations.ts";
+import { emptyAuthority } from "../src/authority/reducer.ts";
+import type { RunState, RunStatus } from "../src/authority/transitions.ts";
+import { workflowPin } from "../src/broker/workflow-pin.ts";
 import { workflowRegistry } from "../src/service/registry.ts";
 import { bundled } from "./service-bundle-fixture.ts";
 import { withHarness } from "./service-fixture.ts";
@@ -123,3 +129,57 @@ await test("CLV-161 unavailable retained executables never fall back to current 
       undefined,
     );
   }));
+
+await test("CLV-162 startup prepares each unfinished pin once, including different digests of the same workflow, and ignores terminal runs", async () => {
+  const original = { ...changedManifest, bundleDigest: "a".repeat(64) };
+  const current = { ...changedManifest, bundleDigest: "b".repeat(64) };
+  const runs: Record<string, RunState> = {};
+  const manifests = new Map<string, typeof original>();
+  const statuses: readonly RunStatus[] = [
+    "queued",
+    "running",
+    "waiting_gate",
+    "paused",
+    "completed",
+    "failed",
+    "cancelled",
+  ];
+  for (const [index, status] of statuses.entries()) {
+    const manifest =
+      index < 4
+        ? ([original, original, current, current][index] ?? current)
+        : { ...changedManifest, bundleDigest: String(index).repeat(64) };
+    const runId = "run-" + String(index);
+    const run: RunState = {
+      runId,
+      status,
+      revision: 1,
+      workflow: workflowPin(manifest),
+      pausedFrom: null,
+      gates: [],
+    };
+    runs[runId] = run;
+    manifests.set(runId, manifest);
+  }
+  const queried: string[] = [];
+  const prepared: unknown[] = [];
+  await prepareWorkflowGenerations(
+    {
+      state: () => Promise.resolve({ ...emptyAuthority, runs }),
+      workflow: {
+        manifest: (runId) => {
+          queried.push(runId);
+          return Promise.resolve(manifests.get(runId));
+        },
+      },
+    },
+    {
+      resolve: (manifest) => {
+        prepared.push(manifest);
+        return Promise.resolve(undefined);
+      },
+    },
+  );
+  assert.deepEqual(queried, ["run-0", "run-2"]);
+  assert.deepEqual(prepared, [original, current]);
+});
