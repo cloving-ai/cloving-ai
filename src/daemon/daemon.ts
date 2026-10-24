@@ -26,6 +26,7 @@ import {
 } from "../service/service.ts";
 import {
   workflowGenerations,
+  prepareWorkflowGenerations,
   type WorkflowBundleLoader,
 } from "./workflow-generations.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
@@ -105,6 +106,7 @@ async function hosted(
   },
 ): Promise<ServiceHost> {
   const { ports, generations } = hosting;
+  await prepareWorkflowGenerations(ports, generations);
   const opening = await startHost({
     dataDirectory: worldDirectory(settings.directory),
     concurrency: settings.concurrency,
