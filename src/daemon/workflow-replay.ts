@@ -1,6 +1,7 @@
 import type { WorkflowHandler } from "../host/world-host.ts";
 import { record } from "../protocol.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import type { AuthorityState } from "../authority/transitions.ts";
 
 interface ReplayRun {
   readonly runId: string;
@@ -8,11 +9,12 @@ interface ReplayRun {
 }
 
 interface ReplayPorts {
+  readonly state: () => Promise<Pick<AuthorityState, "details">>;
   readonly run: (receipt: string) => Promise<ReplayRun | undefined>;
   readonly available: (runId: string, workflowId?: string) => Promise<boolean>;
-  readonly submit: (
-    command: Readonly<Record<string, unknown>>,
-  ) => Promise<unknown>;
+  readonly submit: (command: Readonly<Record<string, unknown>>) => Promise<{
+    readonly kind: "accepted" | "duplicate" | "failed" | "rejected";
+  }>;
 }
 
 function seeded(value: unknown): ReplayRun | undefined {
@@ -33,6 +35,30 @@ async function located(ports: ReplayPorts, receipt: string) {
   return undefined;
 }
 
+async function observedReplay(
+  ports: ReplayPorts,
+  replay: {
+    readonly runId: string;
+    readonly receipt: string;
+    readonly available: boolean;
+  },
+): Promise<boolean> {
+  const { runId, receipt, available } = replay;
+  const observation = (await ports.state()).details[runId]?.observation;
+  const unavailable = observation?.reason === "pinned-workflow-unavailable";
+  if (available !== unavailable) return true;
+  const expectedObservation = observation?.sequence ?? 0;
+  const outcome = await ports.submit({
+    kind: "report-observation",
+    runId,
+    commandId: `pinned-workflow-${available ? "restored" : "unavailable"}:${receipt}:${String(expectedObservation)}`,
+    condition: available ? "working" : "infrastructure-failure",
+    reason: available ? "in-progress" : "pinned-workflow-unavailable",
+    expectedObservation,
+  });
+  return outcome.kind === "accepted" || outcome.kind === "duplicate";
+}
+
 export function pinnedWorkflowHandler(
   handler: WorkflowHandler,
   ports: ReplayPorts,
@@ -51,15 +77,12 @@ export function pinnedWorkflowHandler(
       (await located(ports, receipt));
     if (run === undefined)
       return new Response("unknown-world-run", { status: 503 });
-    if (await ports.available(run.runId, run.workflowId))
-      return handler(request);
-    await ports.submit({
-      kind: "report-observation",
-      runId: run.runId,
-      commandId: `pinned-workflow-unavailable:${receipt}`,
-      condition: "infrastructure-failure",
-      reason: "pinned-workflow-unavailable",
-    });
+    const available = await ports.available(run.runId, run.workflowId);
+    if (
+      !(await observedReplay(ports, { runId: run.runId, receipt, available }))
+    )
+      return new Response("workflow-observation-unavailable", { status: 503 });
+    if (available) return handler(request);
     return new Response("pinned-workflow-unavailable", { status: 503 });
   };
 }

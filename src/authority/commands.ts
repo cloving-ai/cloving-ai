@@ -121,7 +121,14 @@ const shapes: Readonly<Record<string, Shape>> = {
   "cancel-run": revised,
   "report-observation": {
     required: ["condition", "reason"],
-    optional: ["evidence", "retryAt", "attempt", "limit", "operationId"],
+    optional: [
+      "evidence",
+      "retryAt",
+      "attempt",
+      "limit",
+      "operationId",
+      "expectedObservation",
+    ],
     groups: [["attempt", "limit"]],
   },
   "record-dispatch": { required: ["operationId", "receipt"] },
@@ -296,6 +303,7 @@ export function isCapabilityList(value: unknown): value is string {
 
 const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   expectedRevision: positive,
+  expectedObservation: whole,
   generation: positive,
   attempt: positive,
   limit: positive,

@@ -3,6 +3,7 @@
     "test/service-bundles.test.ts": "test",
     "test/service-bundle-fixture.ts": "test",
     "test/workflow-replay.test.ts": "test",
+    "test/workflow-replay-recovery.test.ts": "test",
     "test/daemon-bundles.test.ts": "test",
     "src/daemon/workflow-replay.ts": "daemon",
     "test/github-merge-conflict.test.ts": "test",

@@ -39,6 +39,7 @@ await test("CLV-161 SDK replay checks the stored bundle before invoking any curr
         return new Response(await request.text());
       },
       {
+        state: ports.state,
         run: () =>
           Promise.resolve(
             ++lookups === 1 ? undefined : { runId: waiting.runId },
@@ -95,6 +96,7 @@ await test("CLV-161 a resilient SDK start checks the recorded pin before the Wor
         return Promise.resolve(new Response("started"));
       },
       {
+        state: ports.state,
         run: () => Promise.resolve(undefined),
         available: ports.workflow.available,
         submit: ports.submit,
@@ -139,6 +141,7 @@ for (const state of ["queued", "running"]) {
       const replay = pinnedWorkflowHandler(
         () => Promise.reject(new Error("must not execute")),
         {
+          state: ports.state,
           run: () => Promise.resolve({ runId }),
           available: ports.workflow.available,
           submit: ports.submit,
@@ -173,6 +176,7 @@ for (const state of ["queued", "running"]) {
 await test("CLV-161 malformed and uncorrelated SDK messages cannot invoke workflow code", async () => {
   const unreachable = () => Promise.reject(new Error("uncorrelated message"));
   const replay = pinnedWorkflowHandler(unreachable, {
+    state: unreachable,
     run: () => Promise.resolve(undefined),
     available: unreachable,
     submit: unreachable,

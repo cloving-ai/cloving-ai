@@ -103,6 +103,7 @@ async function hosted(
     dataDirectory: worldDirectory(settings.directory),
     concurrency: settings.concurrency,
     handler: pinnedWorkflowHandler(settings.handler, {
+      state: ports.state,
       run: taggedRun,
       available: ports.workflow.available,
       submit: ports.submit,
