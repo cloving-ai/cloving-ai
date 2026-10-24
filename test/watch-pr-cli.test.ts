@@ -1,23 +1,57 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import filesystem, { readFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { until } from "./claude-worker-fixture.ts";
-import { fields, items } from "./service-fixture.ts";
+import { fields, items, withHarness } from "./service-fixture.ts";
 import { mergedJournal, writeMergeRecords } from "./watch-merge-fixture.ts";
 import {
   configuredPrWatch,
   ghRequest,
   recordedPrJournal,
   releasePr,
+  releasePrOutput,
   stoppedPrCard,
   stoppedPrRun,
 } from "./watch-pr-cli-fixture.ts";
+import { prOutput } from "./watch-pr-fixture.ts";
 import {
   watchData,
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test("CLV-162 the fake GitHub response becomes visible only after its JSON is complete", async () => {
+  await withHarness(async (harness) => {
+    const started = Promise.withResolvers<undefined>();
+    const released = Promise.withResolvers<undefined>();
+    const write = filesystem.writeFile;
+    filesystem.writeFile = async (file, contents) => {
+      await write(file, "");
+      started.resolve(undefined);
+      await released.promise;
+      await write(file, contents);
+    };
+    syncBuiltinESMExports();
+    const output = prOutput(true);
+    const sending = releasePrOutput(harness.runtimeDirectory, output);
+    const response = join(dirname(harness.runtimeDirectory), "gh-response");
+    try {
+      await started.promise;
+      await assert.rejects(readFile(response), { code: "ENOENT" });
+    } finally {
+      released.resolve(undefined);
+      try {
+        await sending;
+      } finally {
+        filesystem.writeFile = write;
+        syncBuiltinESMExports();
+      }
+    }
+    assert.deepEqual(JSON.parse(await readFile(response, "utf8")), output);
+  });
+});
 
 await test("CLV-129 configured local origin validates a local merge before any GitHub read", async () => {
   const replies = watchReplies({ runs: [stoppedPrRun()] });
