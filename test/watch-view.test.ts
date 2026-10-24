@@ -253,7 +253,7 @@ await test("CLV-065 the watch page shows the pull request of a develop-issue run
       : html.slice(start, html.indexOf("</section>", start));
   };
   const reviews =
-    '<ul class="reviews"><li>Round 1 · Greptile 4/5 · commit aaaaaaa</li><li>Round 2 · Greptile 5/5 · commit bbbbbbb</li></ul>';
+    '<ul class="reviews"><li>Round 1 · Review 4/5 · commit aaaaaaa</li><li>Round 2 · Review 5/5 · commit bbbbbbb</li></ul>';
   assert.equal(
     section(issue),
     `<section class="pull"><h3>Pull request <a href="${url}">#61</a></h3>${reviews}`,
