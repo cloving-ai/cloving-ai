@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
 
 function moduleUrl(file: string): string {
@@ -110,7 +111,7 @@ for (const scenario of [
         cwd: directory,
         env: { ...process.env, CLOVING_CHECK_TIME_FACTOR: "1" },
         encoding: "utf8",
-        timeout: 10000,
+        timeout: testMilliseconds(10_000),
       });
       assert.equal(result.error, undefined);
       assert.equal(result.status, 1);
