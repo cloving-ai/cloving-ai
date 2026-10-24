@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { Linter } from "eslint";
 import typescript from "typescript-eslint";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
+import { withConsumer } from "./world-host-fixture.ts";
 
 const input = {
   cycleId: "prd-75",
@@ -143,6 +144,54 @@ await test("CLV-075 a refused post blocks the run and preserves the draft", asyn
   });
   assert.equal(field(field(line, "requests"), "length"), 4);
 });
+
+for (const [created, reason] of [
+  [completed({}), "invalid-issue-result"],
+  [
+    { kind: "failed", operationId: "operation", reason: "post-refused" },
+    "post-refused",
+  ],
+] as const)
+  await test(`CLV-169 compiled PRD makes no handoff after ${reason}`, () =>
+    withConsumer(
+      readFileSync(
+        new URL("../workflows/develop-prd.ts", import.meta.url),
+        "utf8",
+      ),
+      async (consumer) => {
+        const result = await consumer.run(`
+const requests = [];
+globalThis[Symbol.for("cloving.step-bridge/v1")] = {
+  effect: async (request) => {
+    requests.push(request.scope.operation);
+    return request.method === "create-issue" ? ${JSON.stringify(created)} : ${JSON.stringify(completed({}))};
+  },
+  gate: async () => { throw new Error("unexpected-gate"); },
+};
+const opened = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+if (opened.kind !== "started") throw new Error(opened.reason);
+try {
+  const run = await start(workflows.developPrd, [${JSON.stringify(input)}]);
+  const outcome = await getRun(run.runId).returnValue;
+  const runs = await (await getWorld()).runs.list({ resolveData: "none", pagination: { limit: 10 } });
+  print({ outcome, requests, runs: runs.data.length });
+} finally { await opened.host.close(); }
+`);
+        assert.equal(result.status, 0, result.stderr);
+        assert.deepEqual(result.lines, [
+          {
+            outcome: {
+              kind: "blocked",
+              cycleId: input.cycleId,
+              reason,
+              evidenceId: "github-create-issue",
+            },
+            requests: operations.slice(0, 4),
+            runs: 1,
+          },
+        ]);
+      },
+    ));
 
 await test("CLV-075 invalid issue results block handoff and preserve the draft", async () => {
   const invalid = [
