@@ -5,6 +5,21 @@ import { test } from "node:test";
 import { refusedStart as refused } from "./cli-start-fixture.ts";
 import { ended, reached, scene, withoutChildren } from "./self-host-fixture.ts";
 
+await test("CLV-184 queue lanes require a queue and a whole number from one to four", async () => {
+  for (const value of ["0", "5", "2.5", "", "NaN", "1e0", "-1"])
+    assert.match(
+      await refused({ CLOVING_QUEUE_LANES: value }),
+      /invalid-queue-lanes/,
+    );
+  assert.match(
+    await refused({
+      CLOVING_QUEUE_LANES: "2",
+      CLOVING_QUEUE_SECONDS: undefined,
+    }),
+    /queue-lanes-needs-queue/,
+  );
+});
+
 await test("CLV-084 start refuses a queue interval outside its whole second bounds", async () => {
   for (const value of ["5", "3601", "10.5", "", "NaN", "1e2"])
     assert.match(

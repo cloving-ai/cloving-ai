@@ -105,7 +105,7 @@ await test("CLV-182 a lost busy reply recovers in the live daemon when the targe
   withConsumer(
     workflow
       .replaceAll('workflowId: "B"', 'workflowId: "develop-issue"')
-      .replace("input: input.input", 'input: { ticket: "CLV-900" }')
+      .replace("input: input.input", 'input: { ticket: "CLV-901" }')
       .replace(
         "JSON.stringify(input.input)",
         "JSON.stringify({ ticket: input.ticketId })",
@@ -152,7 +152,7 @@ try {
   assert.equal(targets.length, 1);
   assert.equal(completed.outcome.promotionId, targets[0].runId);
   await ended(targets[0].runId);
-  assert.deepEqual(targetInputs(), [{ ticket: "CLV-900" }, { ticket: "CLV-900" }]);
+  assert.deepEqual(targetInputs(), [{ ticket: "CLV-900" }, { ticket: "CLV-901" }]);
 } finally { await daemon.close(); }
 `,
         { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "2" },

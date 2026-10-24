@@ -1,18 +1,16 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { issueQueue } from "../src/daemon/issue-queue.ts";
 import {
-  record,
   type Fields,
   type Reply,
   type ServiceRequest,
 } from "../src/protocol.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
-import { listen, type Handle } from "../src/service/transport.ts";
-import { eventually, withHarness } from "./service-fixture.ts";
+import { type Handle } from "../src/service/transport.ts";
+import { eventually } from "./service-fixture.ts";
+
+import { withQueue } from "./issue-queue-fixture.ts";
 
 function result(fields: Fields): Reply {
   return { kind: "result", result: fields };
@@ -22,59 +20,6 @@ const empty: Reply = {
   kind: "error",
   error: { code: "no-ready-ticket", detail: "No ready ticket." },
 };
-
-async function queueCommands(file: string): Promise<readonly string[]> {
-  const saved: unknown = JSON.parse(await readFile(file, "utf8"));
-  const value = Array.isArray(saved) ? saved : record(saved)?.["commands"];
-  assert.ok(Array.isArray(value));
-  assert.ok(value.every((id): id is string => typeof id === "string"));
-  return value;
-}
-
-async function withQueue(
-  options: {
-    readonly handle: Handle;
-    readonly commands?: readonly string[];
-    readonly failures?: readonly string[];
-    readonly intervalMilliseconds?: number;
-  },
-  body: (scene: {
-    readonly commands: () => Promise<readonly string[]>;
-    readonly stop: () => Promise<void>;
-  }) => Promise<void>,
-): Promise<void> {
-  return withHarness(async (harness) => {
-    const directory = harness.stateDirectory;
-    const file = join(directory, "queue-commands.json");
-    await writeFile(
-      file,
-      JSON.stringify(
-        options.failures === undefined
-          ? (options.commands ?? [])
-          : { commands: options.commands ?? [], failures: options.failures },
-      ),
-    );
-    const listener = await listen({
-      path: join(harness.runtimeDirectory, "control.sock"),
-      handle: options.handle,
-      limits: { idleMilliseconds: 5000 },
-    });
-    const queue = issueQueue({
-      directory,
-      runtimeDirectory: harness.runtimeDirectory,
-      intervalMilliseconds: options.intervalMilliseconds ?? 5,
-    });
-    try {
-      await body({
-        commands: () => queueCommands(file),
-        stop: queue.stop,
-      });
-    } finally {
-      await queue.stop();
-      await listener.close();
-    }
-  });
-}
 
 function changingRun(counts: {
   reads: number;

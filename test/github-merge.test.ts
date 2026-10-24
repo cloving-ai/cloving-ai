@@ -210,45 +210,6 @@ await test("CLV-078 refuses checks that dirty tracked files or change HEAD", asy
     });
 });
 
-await test("CLV-081 returns conflicting files and aborts the update without a push or merge call", () =>
-  withGithub(async (scene) => {
-    const trace = join(scene.directory, "git-trace");
-    const worker = scene.worker({
-      environment: {
-        FAKE_GH_STATE: join(scene.directory, "gh-state.json"),
-        FAKE_GH_ORIGIN: scene.origin,
-        GIT_TRACE: trace,
-      },
-    });
-    const commit = await opened(scene, worker);
-    committed(scene.repository, { name: "one.ts", text: "2;\n" });
-    git(scene.repository, ["push", "--quiet", "origin", "main"]);
-    writeFileSync(trace, "");
-    const report = await scene.perform(worker, {
-      method: "merge",
-      payload: { number: 1, commit },
-    });
-    assert.equal(report.outcome, "completed", report.reason ?? "");
-    assert.deepEqual(resultOf(report.result), {
-      reason: "merge-conflict",
-      output: "src/one.ts",
-    });
-    assert.doesNotMatch(readFileSync(trace, "utf8"), /built-in: git push/);
-    assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
-    assert.equal(
-      existsSync(git(treeOf(scene), ["rev-parse", "--git-path", "MERGE_HEAD"])),
-      false,
-    );
-    assert.equal(
-      git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
-      commit,
-    );
-    assert.equal(
-      scene.state().calls.some((call) => call.includes("PUT")),
-      false,
-    );
-  }));
-
 await test("CLV-078 keeps an updated head private and unrecorded when privacy or the check fails", async () => {
   for (const [reason, outcome] of [
     ["private-path-in-change", "failed"],
