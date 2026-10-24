@@ -20,6 +20,12 @@ after(removeTemporaryDirectories);
 
 const start = storedGate[0] ?? {};
 
+const burstTiming = {
+  ...fastTiming,
+  leaseMilliseconds: testMilliseconds(1_000),
+  renewalMilliseconds: testMilliseconds(250),
+};
+
 const silent: Delivery = {
   reconcile: () => Promise.resolve({ kind: "absent" }),
   deliver: () => Promise.resolve({ receipt: "receipt-1" }),
@@ -70,6 +76,7 @@ async function burst(authority: Authority): Promise<readonly string[]> {
 }
 
 const lostEvent = "solid_objects.activation.lost";
+const activationEvent = "solid_objects.activation.started";
 const contextEvents = [
   "solid_objects.processes.cleaned",
   "solid_objects.recovery.reclaimed",
@@ -104,6 +111,25 @@ function lostReport(events: readonly InstrumentationEvent[]): string {
   return JSON.stringify({ lost, counts, before }, null, 2);
 }
 
+function instrumentationWithStop(
+  events: InstrumentationEvent[],
+  stop: { readonly activation: number; readonly milliseconds: number },
+): (event: InstrumentationEvent) => void {
+  let activations = 0;
+  return (event) => {
+    events.push(event);
+    if (event.name !== activationEvent) return;
+    activations += 1;
+    if (activations !== stop.activation) return;
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(4)),
+      0,
+      0,
+      stop.milliseconds,
+    );
+  };
+}
+
 async function timerTurns(
   action: () => Promise<unknown>,
 ): Promise<{ readonly turns: number; readonly largestGap: number }> {
@@ -129,7 +155,7 @@ await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timi
   const authority = await openedAuthority(await temporaryDirectory(), {
     delivery: silent,
     clock: () => noon,
-    timing: fastTiming,
+    timing: burstTiming,
     instrumentation: (event) => {
       events.push(event);
     },
@@ -151,6 +177,34 @@ await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timi
     commandId: "c-later",
   });
   assert.equal(later.kind, "accepted");
+  await authority.close();
+});
+
+await test("CLV-051 a stop of the process just after a claim in the burst loses no activation", async () => {
+  const events: InstrumentationEvent[] = [];
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    delivery: silent,
+    clock: () => noon,
+    timing: burstTiming,
+    instrumentation: instrumentationWithStop(events, {
+      activation: 300,
+      milliseconds: testMilliseconds(400),
+    }),
+  });
+  await droppedRuns(authority, 1_000);
+  assert.deepEqual(await burst(authority), []);
+  const activations = events.filter(
+    (event) => event.name === activationEvent,
+  ).length;
+  assert.ok(activations > 300, String(activations));
+  assert.deepEqual(
+    events
+      .filter((event) => event.name === lostEvent)
+      .map((event) => event.name),
+    [],
+    lostReport(events),
+  );
+  assert.equal(await openRows(authority), 0);
   await authority.close();
 });
 
