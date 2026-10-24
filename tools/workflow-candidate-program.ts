@@ -11,6 +11,27 @@ export interface CandidatePackageOptions {
   readonly packageRoot?: string;
 }
 
+const librarySyntax = new Map<string, ts.SourceFile>();
+
+function librarySource(input: {
+  readonly file: string;
+  readonly content: string;
+  readonly languageVersion: ts.ScriptTarget | ts.CreateSourceFileOptions;
+  readonly options: ts.CompilerOptions;
+}): ts.SourceFile {
+  const key = JSON.stringify([input.file, input.options]);
+  const known = librarySyntax.get(key);
+  if (known?.text === input.content) return known;
+  const source = ts.createSourceFile(
+    input.file,
+    input.content,
+    input.languageVersion,
+    true,
+  );
+  librarySyntax.set(key, source);
+  return source;
+}
+
 export function resolvedSymbol(
   checker: ts.TypeChecker,
   symbol: ts.Symbol | undefined,
@@ -84,8 +105,9 @@ function trustedHost(input: {
   host.fileExists = (file) => readFile(file) !== undefined;
   host.getSourceFile = (file, languageVersion) => {
     const content = readFile(file);
-    return content === undefined
-      ? undefined
+    if (content === undefined) return undefined;
+    return resolve(file).startsWith(libraries)
+      ? librarySource({ file, content, languageVersion, options })
       : ts.createSourceFile(file, content, languageVersion, true);
   };
   host.resolveModuleNameLiterals = (names, containingFile) =>

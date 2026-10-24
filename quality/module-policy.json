@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/workflow-candidate-library.test.ts": "test",
     "test/chats-darwin-emulation.test.ts": "test",
     "test/watch-pr-publish.test.ts": "test",
     "test/quality/compiler-host-fixture.ts": "test",
