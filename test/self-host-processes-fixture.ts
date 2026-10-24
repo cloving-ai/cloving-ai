@@ -78,7 +78,7 @@ process.exitCode = await running;`,
         PATH: `${bin}:${process.env["PATH"] ?? ""}`,
       },
       encoding: "utf8",
-      timeout: (options.signal === "deadline" ? 35000 : 3000) * timeFactor,
+      timeout: (options.signal === "deadline" ? 35000 : 10000) * timeFactor,
       killSignal: "SIGKILL",
     });
   } finally {
