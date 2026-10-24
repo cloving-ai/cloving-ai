@@ -14,7 +14,11 @@ import {
 } from "../../storage/domain-rows.ts";
 import { storedEvents } from "../authority-restore.ts";
 import { documentDigest } from "../decision-restore.ts";
-import type { RunOrigins } from "../../authority/handoff-chain.ts";
+import {
+  runLinks,
+  type RunLinks,
+  type RunOrigins,
+} from "../../authority/handoff-chain.ts";
 
 export interface CommandRecord {
   readonly commandId: string;
@@ -60,11 +64,16 @@ export interface AuthorityQueries {
   readonly sequences: () => Promise<Sequences>;
   readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
   readonly runOrigins: () => Promise<RunOrigins>;
+  readonly runLinks: () => Promise<Readonly<Record<string, RunLinks>>>;
 }
 
-async function runOrigins(connection: SqlConnection): Promise<RunOrigins> {
+async function runOrigins(
+  connection: SqlConnection,
+  cursor: { readonly after: number; readonly through: number },
+): Promise<RunOrigins> {
   const rows = await connection.all(
-    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id FROM events WHERE type = 'run.created' ORDER BY sequence",
+    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id FROM events WHERE type = 'run.created' AND sequence > ? AND sequence <= ? ORDER BY sequence",
+    [cursor.after, cursor.through],
   );
   return Object.fromEntries(
     rows.map((row) => [
@@ -186,6 +195,32 @@ export type Read = <Value>(
   query: (connection: SqlConnection) => Promise<Value>,
 ) => Promise<Value>;
 
+function cachedOrigins(read: Read): () => Promise<RunOrigins> {
+  let sequence = 0;
+  let origins: RunOrigins = {};
+  let pending = Promise.resolve();
+  return () => {
+    const result = pending.then(() =>
+      read(async (connection) => {
+        const through = await latestSequence(connection);
+        if (through === sequence) return origins;
+        const added = await runOrigins(connection, {
+          after: sequence,
+          through,
+        });
+        if (Object.keys(added).length > 0) origins = { ...origins, ...added };
+        sequence = through;
+        return origins;
+      }),
+    );
+    pending = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+}
+
 export function guardedRead(access: {
   readonly reader: Database;
   readonly ready: () => Promise<void>;
@@ -198,6 +233,17 @@ export function guardedRead(access: {
 }
 
 export function authorityQueries(read: Read): AuthorityQueries {
+  const origins = cachedOrigins(read);
+  let linkedOrigins: RunOrigins | undefined;
+  let links: Readonly<Record<string, RunLinks>> = {};
+  const currentLinks = async () => {
+    const current = await origins();
+    if (current !== linkedOrigins) {
+      links = runLinks(current);
+      linkedOrigins = current;
+    }
+    return links;
+  };
   return {
     document: (digest) =>
       read((connection) => documentBody(connection, digest)),
@@ -209,6 +255,7 @@ export function authorityQueries(read: Read): AuthorityQueries {
       read((connection) => latestCompletion(connection, cursor)),
     sequences: () => read(sequences),
     workflowIds: () => read(workflowIds),
-    runOrigins: () => read(runOrigins),
+    runOrigins: origins,
+    runLinks: currentLinks,
   };
 }

@@ -216,7 +216,9 @@ async function submitted(
     });
   const chain = handoffChain(
     commandId,
-    await context.authority.queries.runOrigins(),
+    commandId.startsWith("handoff:")
+      ? await context.authority.queries.runOrigins()
+      : {},
   );
   if (chain.kind === "refused")
     return failed(chain.reason, {

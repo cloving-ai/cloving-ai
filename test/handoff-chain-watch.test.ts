@@ -3,8 +3,41 @@ import { test } from "node:test";
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
 import { Card } from "../src/cli/watch-board-view.ts";
 import { found, rendered } from "./watch-dom.ts";
-import { fields } from "./service-fixture.ts";
+import { admitted, fields, withHarness } from "./service-fixture.ts";
 import { played } from "./watch-browser.ts";
+import { watchReader } from "../src/cli/watch-reads.ts";
+import { operationOf } from "./effect-fixture.ts";
+
+for (const view of ["board", "run"]) {
+  await test(`CLV-183 cached ${view} watch links refresh after child admission with no parent event`, () =>
+    withHarness(async (harness) => {
+      await harness.start();
+      const parent = await admitted(harness, `watch-${view}-parent`);
+      const reader = watchReader(harness.runtimeDirectory);
+      const read = () =>
+        view === "board"
+          ? reader.read(new Date().toISOString())
+          : reader.run(parent);
+      const before = (await read()).runs.find(
+        (run) => run.status.runId === parent,
+      );
+      assert.ok(before);
+      assert.deepEqual(before.status["childRunIds"], []);
+      const child = await admitted(
+        harness,
+        `handoff:${operationOf(parent, { round: 1 })}`,
+      );
+      const after = (await read()).runs.find(
+        (run) => run.status.runId === parent,
+      );
+      assert.ok(after);
+      assert.equal(after.status.latestSequence, before.status.latestSequence);
+      assert.deepEqual(after.events, before.events);
+      assert.deepEqual(after.status["childRunIds"], [child]);
+      const model = boardModel([after]);
+      assert.deepEqual(model.runs[0]?.childRunIds, [child]);
+    }));
+}
 
 await test("CLV-183 watch runs and cards retain chain links across workflows with encoded navigation", () => {
   const parent = "earlier /&<parent>";

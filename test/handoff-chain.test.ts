@@ -7,9 +7,63 @@ import {
 } from "../src/authority/handoff-chain.ts";
 import { operationOf } from "./effect-fixture.ts";
 import { call, withHarness } from "./service-fixture.ts";
+import { openedAuthority } from "./authority-actor-fixture.ts";
+import { fakeRegistration } from "./service-fixture.ts";
+import { workflowRegistry } from "../src/service/registry.ts";
+import { submissionHandler } from "../src/service/submission-handler.ts";
+import { commandGateway } from "../src/service/gateway.ts";
 
 const command = (runId: string) =>
   `handoff:${operationOf(runId, { round: 1 })}`;
+
+await test("CLV-183 ordinary submissions skip history while handoffs read recorded origins", () =>
+  withHarness(async (harness) => {
+    const authority = await openedAuthority(harness.stateDirectory);
+    harness.cleanup(() => authority.close());
+    let reads = 0;
+    const registry = workflowRegistry([fakeRegistration([])]);
+    const clock = () => "2026-10-24T12:00:00.000Z";
+    const submit = submissionHandler({
+      authority: {
+        ...authority,
+        queries: {
+          ...authority.queries,
+          runOrigins: () => {
+            reads += 1;
+            return authority.queries.runOrigins();
+          },
+        },
+      },
+      registry,
+      clock,
+      gateway: commandGateway({ authority, registry, clock, textBytes: 4096 }),
+      livenessMilliseconds: 1000,
+      followMilliseconds: 20,
+      resolverMilliseconds: 1000,
+      textBytes: 4096,
+      documentBytes: 4096,
+    });
+    const parameters = {
+      workflowId: "develop",
+      source: "prompt",
+      submission: { prompt: "next" },
+      commandId: "history-root",
+    };
+    const root = await submit(parameters);
+    assert.equal(root.kind, "result");
+    assert.equal(reads, 0);
+    const child = await submit({
+      ...parameters,
+      commandId: command(String(root.result["runId"])),
+    });
+    assert.equal(child.kind, "result");
+    assert.equal(reads, 1);
+    assert.equal(
+      (await submit({ ...parameters, commandId: "other" })).kind,
+      "result",
+    );
+    assert.equal(reads, 1);
+  }));
 
 await test("CLV-183 chain policy counts ancestry, permits siblings and refuses missing parents and cycles", () => {
   const origins: RunOrigins = {

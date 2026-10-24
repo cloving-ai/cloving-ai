@@ -1,9 +1,5 @@
 import { issueIdentity } from "../issue-identity.ts";
-import {
-  linksOf,
-  runLinks,
-  type RunLinks,
-} from "../authority/handoff-chain.ts";
+import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
 import {
   runView,
   unresolvedEffects,
@@ -45,7 +41,7 @@ async function snapshot(context: ServiceContext): Promise<Snapshot> {
   const state = await authority.state();
   const sequences = await authority.queries.sequences();
   return {
-    links: runLinks(await authority.queries.runOrigins()),
+    links: await authority.queries.runLinks(),
     state,
     operations: await authority.operations(),
     sequences: sequences.runs,
