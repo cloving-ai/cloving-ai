@@ -57,6 +57,11 @@ await test("CLV-072 handoff and old completions replay without changing the run 
     { outcome: "handoff_requested" },
     { outcome: "handoff_requested", promotionId: "pull-request-7" },
     { outcome: "handoff_requested", promotionId: "x".repeat(128) },
+    {
+      outcome: "handoff_requested",
+      promotionId: "issue-42",
+      outcomeReason: "handoff-start-timeout",
+    },
     { outcome: "blocked" },
   ]) {
     const result = execute(state, {
@@ -70,14 +75,13 @@ await test("CLV-072 handoff and old completions replay without changing the run 
   }
 });
 
-await test("CLV-072 completion rejects unknown outcomes and reasons outside the blocked contract", () => {
+await test("CLV-169 completion rejects unknown outcomes and invalid bounded reasons", () => {
   const state = lastState(run(answeredGate.slice(0, 2)));
   const invalid = [
     { outcome: "unknown" },
     { outcome: "completed" },
     { outcome: 7 },
     { outcomeReason: "Blocked" },
-    { outcome: "handoff_requested", outcomeReason: "Blocked" },
     { promotionId: "pull-request-7" },
     { outcome: "blocked", promotionId: "pull-request-7" },
     ...["", "x".repeat(129), "bad/id", "trailing\n", 7, null].map(
@@ -92,6 +96,10 @@ await test("CLV-072 completion rejects unknown outcomes and reasons outside the 
       7,
       null,
     ].map((outcomeReason) => ({ outcome: "blocked", outcomeReason })),
+    ...["", " leading", "x".repeat(257), null, 7].map((outcomeReason) => ({
+      outcome: "handoff_requested",
+      outcomeReason,
+    })),
   ];
   for (const outcome of invalid)
     assert.deepEqual(

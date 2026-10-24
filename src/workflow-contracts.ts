@@ -22,6 +22,7 @@ export type CycleOutcome =
       readonly promotionId: string;
       readonly ticketStatus?: "complete" | "partial";
       readonly issueUpdate?: "failed";
+      readonly reason?: string;
     };
 
 export type Validation<Value> =
@@ -85,7 +86,7 @@ const outcomes: Readonly<
   },
   handoff_requested: {
     keys: ["cycleId", "kind", "promotionId"],
-    optional: ["ticketStatus", "issueUpdate"],
+    optional: ["ticketStatus", "issueUpdate", "reason"],
     parse: (fields) => {
       const cycleId = textField(fields, {
         key: "cycleId",
@@ -98,15 +99,20 @@ const outcomes: Readonly<
       if (cycleId === null || promotionId === null) return null;
       const ticketStatus = fields["ticketStatus"];
       const issueUpdate = fields["issueUpdate"];
+      const reason = fields["reason"];
       if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
       if (ticketStatus !== undefined && !isTicketStatus(ticketStatus))
         return null;
+      if (reason !== undefined && !isBlockedReason(reason)) return null;
       return {
         kind: "handoff_requested",
         cycleId,
         promotionId,
-        ...(issueUpdate === "failed" ? { issueUpdate } : {}),
-        ...(ticketStatus === undefined ? {} : { ticketStatus }),
+        ...Object.fromEntries(
+          Object.entries({ issueUpdate, ticketStatus, reason }).filter(
+            ([, value]) => value !== undefined,
+          ),
+        ),
       };
     },
   },

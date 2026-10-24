@@ -91,3 +91,21 @@ await test("CLV-123 merged outcomes retain a valid ticket status and reject othe
       "invalid",
     );
 });
+
+await test("CLV-169 completed issue promotions retain a bounded handoff refusal reason", () => {
+  const base = {
+    kind: "handoff_requested",
+    cycleId: "cycle-1",
+    promotionId: "issue-42",
+  };
+  const outcome = { ...base, reason: "handoff-start-timeout" };
+  assert.deepEqual(validateCycleOutcome(outcome, base), {
+    kind: "valid",
+    value: outcome,
+  });
+  for (const reason of [null, 7, "", " leading", "x".repeat(257)])
+    assert.equal(
+      validateCycleOutcome({ ...base, reason }, base).kind,
+      "invalid",
+    );
+});

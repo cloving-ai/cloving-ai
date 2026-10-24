@@ -109,7 +109,7 @@ const shapes: Readonly<Record<string, Shape>> = {
     },
     consistent: (fields) =>
       (fields["outcomeReason"] === undefined ||
-        fields["outcome"] === "blocked") &&
+        fields["outcome"] !== undefined) &&
       (fields["promotionId"] === undefined ||
         fields["outcome"] === "handoff_requested") &&
       (fields["ticketStatus"] === undefined ||

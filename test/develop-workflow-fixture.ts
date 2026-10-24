@@ -69,6 +69,7 @@ for (const given of cases) {
       return next(given, request, requests.length);
     },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
+    handoff: async () => given.effects?.handoff?.shift() ?? ({ kind: "completed", result: "target-run" }),
   };
   const workflows = { "develop-prd": developPrd, "develop-ticket": developTicket };
   const develop = given.workflow === "analyze-chats" ? (await import(${located("workflows/analyze-chats.ts")})).analyzeChats : workflows[given.workflow] ?? developTicket;
