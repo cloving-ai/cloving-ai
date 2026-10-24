@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { until } from "./claude-worker-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
@@ -58,8 +58,8 @@ export async function configuredPrWatch(
     program,
     `import { writeFileSync, existsSync, readFileSync, watch } from "node:fs";
 const root = ${JSON.stringify(root)};
-writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 writeFileSync(root + "/gh-pid", String(process.pid));
+writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 process.on("SIGTERM", () => {});
 const watcher = watch(root, respond);
 function respond() {
@@ -142,20 +142,17 @@ export async function releasePr(
   runtime: string,
   merged: unknown,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(prOutput(merged)),
-  );
+  await releasePrOutput(runtime, prOutput(merged));
 }
 
 export async function releasePrOutput(
   runtime: string,
   output: WatchCommandOutput,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(output),
-  );
+  const response = join(dirname(runtime), "gh-response");
+  const temporary = response + ".pending";
+  await writeFile(temporary, JSON.stringify(output));
+  await rename(temporary, response);
 }
 
 export function stoppedPrRun() {

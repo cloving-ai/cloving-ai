@@ -8,6 +8,7 @@ import {
 } from "../src/daemon/workflow-generations.ts";
 import { emptyAuthority } from "../src/authority/reducer.ts";
 import type { RunState, RunStatus } from "../src/authority/transitions.ts";
+import type { ExecutionManifest } from "../src/workflow-admission.ts";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
 import { workflowRegistry } from "../src/service/registry.ts";
 import { bundled } from "./service-bundle-fixture.ts";
@@ -162,7 +163,7 @@ await test("CLV-162 startup prepares each unfinished pin once, including differe
     manifests.set(runId, manifest);
   }
   const queried: string[] = [];
-  const prepared: unknown[] = [];
+  const prepared: (ExecutionManifest | undefined)[] = [];
   await prepareWorkflowGenerations(
     {
       state: () => Promise.resolve({ ...emptyAuthority, runs }),
