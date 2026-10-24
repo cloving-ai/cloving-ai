@@ -166,3 +166,107 @@ await test("CLV-184 an alias of an active GitHub issue is refused even when the 
       detail: "An active run already works on this ticket.",
     });
   }));
+
+await test("CLV-184 a failed dependency lookup refuses admission and the same command can retry", () =>
+  withHarness(async (harness) => {
+    const source = await sourceAt(harness.projectDirectory);
+    const command = join(harness.projectDirectory, "lookup.mjs");
+    await writeFile(command, "process.exit(1);");
+    const resolver = issueResolver({
+      ...source,
+      githubCommand: [process.execPath, command],
+    });
+    const request = {
+      workflowId: "develop-issue",
+      commandId: "lookup-retry",
+      signal,
+      submission: { ticket: "900" },
+    };
+    const resolution = await resolver.resolve(request);
+    assert.equal(resolution.kind, "rejected");
+    assert.equal(resolution.code, "ticket-not-available");
+    await writeFile(
+      command,
+      'process.stdout.write(JSON.stringify({ state: "closed" }));',
+    );
+    assert.equal((await resolver.resolve(request)).kind, "resolved");
+  }));
+
+await test("CLV-184 selection refreshes one waiting ticket and rotates past removed entries", () =>
+  withHarness(async (harness) => {
+    const directory = harness.projectDirectory;
+    const source = await sourceAt(directory);
+    await writeFile(
+      join(directory, "ticket.mjs"),
+      `import { appendFileSync, readFileSync } from "node:fs";
+const id = process.argv.at(-1);
+appendFileSync(${JSON.stringify(join(directory, "reads"))}, id + "\\n");
+process.stdout.write(id === "999" ? "# Ready task" : readFileSync(process.argv[2], "utf8"));`,
+    );
+    const skips = join(directory, "skips");
+    const resolver = issueResolver({
+      ...source,
+      nextCommand: [
+        process.execPath,
+        "-e",
+        `require("node:fs").writeFileSync(${JSON.stringify(skips)}, process.env.CLOVING_SKIP_TICKETS); process.stdout.write("999");`,
+      ],
+    });
+    const resolve = (ticketId: string) =>
+      resolver.resolve({
+        workflowId: "develop-issue",
+        commandId: ticketId,
+        signal,
+        submission: { ticket: ticketId },
+      });
+    for (const ticketId of ["900", "901", "902"])
+      assert.equal((await resolve(ticketId)).kind, "rejected");
+    await writeFile(join(directory, "reads"), "");
+    assert.equal((await resolve("next")).kind, "resolved");
+    assert.equal(
+      await readFile(join(directory, "reads"), "utf8"),
+      "900\n999\n",
+    );
+    assert.equal(await readFile(skips, "utf8"), "900 901 902");
+    await writeFile(
+      join(directory, "states"),
+      JSON.stringify({ "12": "closed", "13": "closed" }),
+    );
+    for (const remaining of ["900 902", "900", ""]) {
+      assert.equal((await resolve("next")).kind, "resolved");
+      assert.equal(await readFile(skips, "utf8"), remaining);
+    }
+    assert.equal(
+      await readFile(join(directory, "reads"), "utf8"),
+      "900\n999\n901\n999\n902\n999\n900\n999\n",
+    );
+    assert.deepEqual(resolver.skippedTickets?.(), []);
+  }));
+
+await test("CLV-184 a failed refresh retains its skip and lets later tickets be refreshed", () =>
+  withHarness(async (harness) => {
+    const directory = harness.projectDirectory;
+    const source = await sourceAt(directory);
+    const waits = ticketDependencyWaits(source);
+    for (const ticketId of ["900", "901", "902"])
+      await waits.check({ ticketId, ticket, signal });
+    await writeFile(
+      join(directory, "ticket.mjs"),
+      'if (process.argv.at(-1) === "900") process.exit(1); process.stdout.write("# Ready task");',
+    );
+    await assert.rejects(waits.refresh(signal), /ticket-not-available/);
+    assert.deepEqual(await waits.refresh(signal), ["900", "902"]);
+    assert.deepEqual(await waits.refresh(signal), ["900"]);
+    assert.deepEqual(waits.skipped(), [
+      {
+        ticketId: "900",
+        reason: "ticket-dependency-open",
+        dependencies: ["12"],
+      },
+    ]);
+    await writeFile(
+      join(directory, "ticket.mjs"),
+      'process.stdout.write("# Ready task");',
+    );
+    assert.deepEqual(await waits.refresh(signal), []);
+  }));

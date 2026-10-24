@@ -71,3 +71,36 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stderr, /Queue stopped:/);
   }));
+
+await test("CLV-184 transient dependency command failures retry without stopping intake", async () => {
+  for (const failure of ["lookup", "refresh-lookup", "refresh-ticket"]) {
+    await withConsumer(queueWorkflow, async (consumer) => {
+      const result = await consumer.run(`${queuePrelude}
+const failure = ${JSON.stringify(failure)};
+writeFileSync("pending-self-update", String(Date.now()));
+writeFileSync("next.mjs", 'const skipped = (process.env.CLOVING_SKIP_TICKETS ?? "").split(" "); process.stdout.write(["900", "901"].find(id => !skipped.includes(id)) ?? "");');
+writeFileSync("ticket.mjs", \`import { existsSync, unlinkSync } from "node:fs";
+if (existsSync("fail-ticket")) { unlinkSync("fail-ticket"); process.exit(1); }
+const id = process.argv.at(-1);
+process.stdout.write("# Task " + id + (id === "900" ? "\\\\n## Dependencies\\\\nNeeds #899." : ""));\`);
+writeFileSync("gh.mjs", \`import { existsSync, unlinkSync } from "node:fs";
+if (existsSync("fail-lookup")) { unlinkSync("fail-lookup"); process.exit(1); }
+process.stdout.write(JSON.stringify({ state: "open" }));\`);
+const daemon = await launched({ queueLanes: 2, githubCommand: [process.execPath, directory + "/gh.mjs"] });
+try {
+  if (failure !== "lookup")
+    assert.equal((await submitted("waiting", { submission: { ticket: "900" } })).code, "ticket-dependency-open");
+  writeFileSync(failure === "refresh-ticket" ? "fail-ticket" : "fail-lookup", "");
+  rmSync("pending-self-update");
+  await until(() => existsSync("input-901"));
+  assert.equal(existsSync("input-900"), false);
+  assert.equal((await runs()).length, 1);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stderr, /Queue ticket-not-available:.*will retry/);
+      assert.doesNotMatch(result.stderr, /Queue stopped:/);
+    });
+  }
+});
