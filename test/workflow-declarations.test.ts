@@ -31,6 +31,45 @@ const manifests = workflowManifests({
   },
 });
 
+await test("CLV-168 reads declared handoff targets without changing their order", async () => {
+  for (const handoffs of [[], ["b"], ["b", "review-run", "A".repeat(64)]])
+    await withFiles(
+      {
+        "review-run.ts": "export {};",
+        "review-run.declaration.json": JSON.stringify({
+          ...declaration,
+          handoffs,
+        }),
+      },
+      async (directory) => {
+        assert.deepEqual(await workflowDeclarations(directory, manifests), [
+          { ...declaration, handoffs, functionName: "review" },
+        ]);
+      },
+    );
+});
+
+await test("CLV-168 rejects malformed, duplicate and sparse handoff targets", async () => {
+  for (const handoffs of [
+    null,
+    "b",
+    {},
+    [1],
+    [""],
+    ["a".repeat(65)],
+    ["a_b"],
+    ["a/b"],
+    ["é"],
+    ["b", "b"],
+    new Array<unknown>(1),
+    undefined,
+  ]) {
+    assert.equal(isWorkflowDeclaration({ ...declaration, handoffs }), false);
+    if (handoffs !== undefined)
+      await rejectsDeclaration({ ...declaration, handoffs });
+  }
+});
+
 await test("CLV-115 admits chats only when explicitly declared", async () => {
   await withFiles(
     {

@@ -16,6 +16,7 @@ export interface WorkflowDeclaration {
   readonly capabilities: readonly ("claude" | "github" | "chats")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
+  readonly handoffs?: readonly string[];
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -156,6 +157,16 @@ function isCapabilities(value: unknown): boolean {
   );
 }
 
+function optionalDeclarations(declaration: Fields): boolean {
+  const handoffs = declaration["handoffs"];
+  return (
+    (!Object.hasOwn(declaration, "stages") ||
+      isWorkflowStages(declaration["stages"])) &&
+    (!Object.hasOwn(declaration, "handoffs") ||
+      (selectors(handoffs, /^[A-Za-z0-9-]{1,64}$/) && unique(handoffs)))
+  );
+}
+
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
@@ -168,6 +179,7 @@ export function isWorkflowDeclaration(
       "capabilities",
       "input",
       "stages",
+      "handoffs",
     ])
   )
     return false;
@@ -178,7 +190,6 @@ export function isWorkflowDeclaration(
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
     isInput(input) &&
-    (!Object.hasOwn(declaration, "stages") ||
-      isWorkflowStages(declaration["stages"]))
+    optionalDeclarations(declaration)
   );
 }

@@ -49,6 +49,7 @@ export interface TicketRegistration {
   readonly effectLimit: number;
   readonly capabilities?: readonly string[];
   readonly stages?: readonly WorkflowStage[];
+  readonly handoffs?: readonly string[];
 }
 
 async function ticket(
@@ -156,6 +157,7 @@ export function ticketRegistrationTable(
       workflowId: ticketWorkflow,
       functionName: "developTicket",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
       resolver: ticketResolver(source),
     },
@@ -163,6 +165,7 @@ export function ticketRegistrationTable(
       workflowId: issueWorkflow,
       functionName: "developTicket",
       effectLimit: 20,
+      handoffs: [],
       submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
       resolver: issueResolver(source),
     },
@@ -170,6 +173,7 @@ export function ticketRegistrationTable(
       workflowId: bundledWorkflowIds.prd,
       functionName: "developPrd",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
@@ -177,6 +181,7 @@ export function ticketRegistrationTable(
       workflowId: promptWorkflow,
       functionName: "developTicket",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
@@ -189,6 +194,9 @@ export function ticketRegistrationTable(
       ...(declaration.stages === undefined
         ? {}
         : { stages: declaration.stages }),
+      ...(declaration.handoffs === undefined
+        ? {}
+        : { handoffs: declaration.handoffs }),
       resolver: declaredResolver(source.repository),
     })),
   ];
@@ -210,19 +218,29 @@ function declaredResolver(repository: string): Resolver {
   };
 }
 
+function registrationConflict(
+  table: readonly TicketRegistration[],
+): string | undefined {
+  const ids = new Set<string>();
+  for (const row of table) {
+    if (ids.has(row.workflowId))
+      return `duplicate-workflow-id: ${row.workflowId}`;
+    ids.add(row.workflowId);
+  }
+  for (const row of table) {
+    const unknown = row.handoffs?.find((target) => !ids.has(target));
+    if (unknown !== undefined)
+      return `unknown-handoff-target: ${row.workflowId} -> ${unknown}`;
+  }
+  return undefined;
+}
+
 export async function ticketRegistrations(
   manifests: Readonly<Record<string, string | undefined>>,
   options: { readonly table: readonly TicketRegistration[] },
 ): Promise<TicketRegistrations> {
-  const ids = new Set<string>();
-  for (const row of options.table) {
-    if (ids.has(row.workflowId))
-      return {
-        kind: "rejected",
-        detail: `duplicate-workflow-id: ${row.workflowId}`,
-      };
-    ids.add(row.workflowId);
-  }
+  const conflict = registrationConflict(options.table);
+  if (conflict !== undefined) return { kind: "rejected", detail: conflict };
   const registrations: WorkflowRegistration[] = [];
   for (const row of options.table) {
     const manifest = manifests[row.functionName];
@@ -248,6 +266,7 @@ export async function ticketRegistrations(
       submission: row.submission,
       resolver: row.resolver,
       ...(row.stages === undefined ? {} : { stages: row.stages }),
+      ...(row.handoffs === undefined ? {} : { handoffs: row.handoffs }),
     });
   }
   return { kind: "admitted", registrations };

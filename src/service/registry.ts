@@ -32,6 +32,7 @@ export interface WorkflowRegistration {
   readonly resolver: Resolver;
   readonly effectLimit?: number;
   readonly stages?: readonly WorkflowStage[];
+  readonly handoffs?: readonly string[];
   readonly admission?: "when-idle";
 }
 

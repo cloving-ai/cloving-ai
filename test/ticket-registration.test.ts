@@ -30,6 +30,69 @@ const declared = {
   },
 } as const;
 
+await test("CLV-168 bundled workflows declare no automatic handoffs", () => {
+  const table = ticketRegistrationTable({
+    repository: "/repositories/example",
+    command: undefined,
+  });
+  assert.deepEqual(
+    table.map((row) => [row.workflowId, row.handoffs]),
+    [
+      ["develop-ticket", []],
+      ["develop-issue", []],
+      ["develop-prd", []],
+      ["develop-prompt", []],
+    ],
+  );
+});
+
+await test("CLV-168 unknown handoff targets refuse registration before manifest admission", async () => {
+  for (const handoffs of [["missing"], ["develop-ticket", "missing"]]) {
+    const table = ticketRegistrationTable(
+      { repository: "/repositories/example", command: undefined },
+      [{ ...declared, handoffs }],
+    );
+    assert.deepEqual(await ticketRegistrations({}, { table }), {
+      kind: "rejected",
+      detail: "unknown-handoff-target: review-run -> missing",
+    });
+  }
+});
+
+await test("CLV-168 registrations retain forward, self and cyclic handoff declarations", async () => {
+  await withProject({}, async (_cli, directory) => {
+    const table = ticketRegistrationTable(
+      { repository: directory, command: undefined },
+      [
+        {
+          ...declared,
+          workflowId: "a",
+          functionName: "develop",
+          capabilities: ["claude", "github"],
+          handoffs: ["b", "a"],
+        },
+        {
+          ...declared,
+          workflowId: "b",
+          capabilities: ["claude", "github"],
+          handoffs: ["a"],
+        },
+      ],
+    ).slice(4);
+    const admitted = await ticketRegistrations(await manifestsIn(directory), {
+      table,
+    });
+    assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
+    assert.deepEqual(
+      admitted.registrations.map((row) => [row.workflowId, row.handoffs]),
+      [
+        ["a", ["b", "a"]],
+        ["b", ["a"]],
+      ],
+    );
+  });
+});
+
 await test("CLV-089 a declared workflow registers its manifest, effect limit and capabilities", async () => {
   await withProject({}, async (_cli, directory) => {
     const manifests = await manifestsIn(directory);
