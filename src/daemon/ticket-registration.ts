@@ -49,6 +49,7 @@ export interface TicketRegistration {
   readonly effectLimit: number;
   readonly capabilities?: readonly string[];
   readonly stages?: readonly WorkflowStage[];
+  readonly handoffs?: readonly string[];
 }
 
 async function ticket(
@@ -156,6 +157,7 @@ export function ticketRegistrationTable(
       workflowId: ticketWorkflow,
       functionName: "developTicket",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
       resolver: ticketResolver(source),
     },
@@ -163,6 +165,7 @@ export function ticketRegistrationTable(
       workflowId: issueWorkflow,
       functionName: "developTicket",
       effectLimit: 20,
+      handoffs: [],
       submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
       resolver: issueResolver(source),
     },
@@ -170,6 +173,7 @@ export function ticketRegistrationTable(
       workflowId: bundledWorkflowIds.prd,
       functionName: "developPrd",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
@@ -177,6 +181,7 @@ export function ticketRegistrationTable(
       workflowId: promptWorkflow,
       functionName: "developTicket",
       effectLimit: 8,
+      handoffs: [],
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
@@ -189,6 +194,9 @@ export function ticketRegistrationTable(
       ...(declaration.stages === undefined
         ? {}
         : { stages: declaration.stages }),
+      ...(declaration.handoffs === undefined
+        ? {}
+        : { handoffs: declaration.handoffs }),
       resolver: declaredResolver(source.repository),
     })),
   ];
@@ -223,17 +231,30 @@ export async function ticketRegistrations(
       };
     ids.add(row.workflowId);
   }
+  for (const row of options.table) {
+    const unknown = row.handoffs?.find((target) => !ids.has(target));
+    if (unknown !== undefined)
+      return {
+        kind: "rejected",
+        detail: `unknown-handoff-target: ${row.workflowId} -> ${unknown}`,
+      };
+  }
   const registrations: WorkflowRegistration[] = [];
   for (const row of options.table) {
-    const manifest = manifests[row.functionName];
+    const {
+      functionName,
+      capabilities = ticketCapabilities,
+      ...registration
+    } = row;
+    const manifest = manifests[functionName];
     if (manifest === undefined)
       return {
         kind: "rejected",
-        detail: `Missing manifest for workflow function ${row.functionName}.`,
+        detail: `Missing manifest for workflow function ${functionName}.`,
       };
     const admission = await admitCompiled(manifest, {
       file: manifest,
-      capabilities: row.capabilities ?? ticketCapabilities,
+      capabilities,
     });
     if (admission.kind === "rejected")
       return {
@@ -241,13 +262,9 @@ export async function ticketRegistrations(
         detail: `${admission.error.code}: ${admission.error.detail}`,
       };
     registrations.push({
-      workflowId: row.workflowId,
+      ...registration,
       manifest: admission.manifest,
       availability: "available",
-      effectLimit: row.effectLimit,
-      submission: row.submission,
-      resolver: row.resolver,
-      ...(row.stages === undefined ? {} : { stages: row.stages }),
     });
   }
   return { kind: "admitted", registrations };
