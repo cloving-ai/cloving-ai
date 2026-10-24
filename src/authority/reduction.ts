@@ -109,6 +109,7 @@ function effect(rule: EffectRule): Handler {
 }
 
 const handlers: Readonly<Record<string, Handler>> = {
+  "schedule.skipped": applied,
   "effect.requested": effect(requested),
   "lease.granted": effect(granted),
   "lease.expired": effect(leaseExpired),

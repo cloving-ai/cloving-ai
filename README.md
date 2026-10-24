@@ -743,6 +743,20 @@ The bundled `analyze-chats` stages are Read input (`read-analysis`), Analyze (`t
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
+A declared workflow can include an interval schedule:
+
+```json
+"schedule": { "everySeconds": 300, "input": {} }
+```
+
+`everySeconds` must be a whole number from 60 through 86400, and `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object such as `{"review-queue":{"everySeconds":600,"input":{}}}` to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+
+The first run starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+
+An earlier scheduled run blocks later scheduled slots while queued, running, waiting for a decision or paused. Each overlap records a `schedule.skipped` event on that earlier run, with `workflowId` and `slot`, without changing its status or observation. Manual runs remain independent. The `develop-issue` queue continues to use `CLOVING_QUEUE_SECONDS`.
+
+This first scheduling slice does not yet implement schedule pause/resume commands, stopping and notification after repeated failures, or schedule displays and scheduled-run marks in status and watch. Schedule settings load at startup. A scheduler transport or journal failure stops scheduling and writes a diagnostic; reconcile the state and restart to retry a pending slot. Full product admission remains subject to the external verification policy.
+
 Startup retains each complete compiled project under `workflow-bundles` in private daemon state, beside the generated `project` directory. Each content-addressed snapshot includes workflow sources, declarations, registration manifests, all compiler artifacts, and the installed dependency graph and Node identity. Snapshots bind to the canonical repository and survive later source edits or removal. Storage lookup validates every captured file and returns `pinned-workflow-unavailable` for missing or changed bytes; startup refuses reuse of a matching damaged snapshot without repairing it. No retained generation is deleted automatically. Routing pinned runs through these stored generations remains pending.
 
 Candidate policy checking is available internally through `checkWorkflowCandidate` in `src/workflow-candidate.ts`. It takes serializable analysis facts, an export snapshot and a candidate declaration containing `workflow` and `methods`. Each declared capability requires a nonempty list of distinct method names. The existing workflow sidecar format is unchanged. Results are sorted, unique refusal codes; an empty list grants no admission or execution authority.
