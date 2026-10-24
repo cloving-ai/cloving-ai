@@ -321,7 +321,13 @@ function mergeScenario(reasons: readonly string[]): unknown {
       "github open-pr": commits.map((commit) => pull(commit)),
       "github wait-review": commits.map((commit) => review(commit, 5)),
       "github merge": [
-        ...reasons.map((reason) => completed({ reason, output: "src/a.ts" })),
+        ...reasons.map((reason) =>
+          completed({
+            reason,
+            output:
+              "Another lane merged first.\nCONFLICT (content): Merge conflict in src/a.ts",
+          }),
+        ),
         merged,
       ],
     },
@@ -336,6 +342,7 @@ await test("CLV-081 a merge conflict tells the next worker to merge the default 
   assert.match(prompt, /[Mm]erge the default branch of origin into the branch/);
   assert.match(prompt, /resolve each conflict.*run the tests.*commit/);
   assert.match(prompt, /src\/a\.ts/);
+  assert.match(prompt, /Another lane merged first\.\nCONFLICT/);
   assert.equal(steps(line).length, 11);
   assert.equal(field(field(line, "outcome"), "kind"), "handoff_requested");
 });

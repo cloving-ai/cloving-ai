@@ -116,6 +116,7 @@ function runList(result: Fields): readonly string[] {
   const refusals = workflowRefusals(result["workflowRefusals"]);
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
+    ...queueLines(result["queue"]),
     ...(refusals.length === 0
       ? []
       : [
@@ -131,6 +132,24 @@ function runList(result: Fields): readonly string[] {
       ? [
           `${String(hiddenRuns)} older runs: use --limit and --after to see them`,
         ]
+      : []),
+  ];
+}
+
+export function queueLines(value: unknown): readonly string[] {
+  const queue = record(value);
+  if (queue === undefined) return [];
+  const skipped = queue["skipped"];
+  return [
+    `Queue: ${visible(queue["busy"])} of ${visible(queue["lanes"])} lanes busy`,
+    ...(Array.isArray(skipped)
+      ? skipped.map((item: unknown) => {
+          const dependencies = part(item, "dependencies");
+          const needs = Array.isArray(dependencies)
+            ? `; needs ${dependencies.map(visible).join(", ")}`
+            : "";
+          return `Skipped ticket ${visible(part(item, "ticketId"))}: ${visible(part(item, "reason"))}${needs}`;
+        })
       : []),
   ];
 }

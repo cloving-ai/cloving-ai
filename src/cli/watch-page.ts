@@ -1,4 +1,5 @@
 import { cardReply } from "./watch-card-reply.ts";
+import { record } from "../protocol.ts";
 import { watchCardClient } from "./watch-card-client.ts";
 import {
   AddCard,
@@ -66,10 +67,13 @@ import {
   PullRequest,
   Review,
   RefusedWorkflows,
+  Queue,
   Run,
 } from "./watch-view.ts";
 
 const functions = [
+  record,
+  Queue,
   cardReply,
   cardSubmitKey,
   cardKey,

@@ -24,6 +24,32 @@ import {
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn } from "./watch-turn.ts";
 import { StartRun } from "./watch-start-view.ts";
+import { record } from "../protocol.ts";
+
+export function Queue(props: { readonly model: WatchModel }): Shown {
+  const queue = props.model.queue;
+  if (queue === undefined) return null;
+  const skipped: readonly unknown[] = Array.isArray(queue["skipped"])
+    ? queue["skipped"]
+    : [];
+  return [
+    element("p", {
+      class: "meta",
+      children: `Queue: ${String(queue["busy"])} of ${String(queue["lanes"])} lanes busy`,
+    }),
+    ...skipped.map((value) => {
+      const ticket = record(value) ?? {};
+      const dependencies = ticket["dependencies"];
+      const needs = Array.isArray(dependencies)
+        ? `; needs ${dependencies.map(String).join(", ")}`
+        : "";
+      return element("p", {
+        class: "meta",
+        children: `Skipped ticket ${String(ticket["ticketId"])}: ${String(ticket["reason"])}${needs}`,
+      });
+    }),
+  ];
+}
 
 interface Timed {
   readonly run: WatchRun;
@@ -306,6 +332,7 @@ export function Page(props: PageProps): Shown {
     return [
       head,
       down,
+      component(Queue, { model }),
       component(RefusedWorkflows, { model }),
       element("a", {
         class: "back",
@@ -336,6 +363,7 @@ export function BoardPage(
     class: "board-page",
     children: [
       component(Header, { model, stale, start }),
+      component(Queue, { model }),
       down,
       component(RefusedWorkflows, { model }),
       component(StartRun, {

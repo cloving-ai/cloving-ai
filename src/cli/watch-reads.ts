@@ -28,6 +28,7 @@ interface ReadRun {
 }
 
 export interface WatchRead {
+  readonly queue?: Fields;
   readonly service: string;
   readonly workflows: readonly string[];
   readonly workflowRefusals: readonly WorkflowRefusal[];
@@ -342,6 +343,9 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   }
   return {
     service: "up",
+    ...(record(status["queue"]) === undefined
+      ? {}
+      : { queue: record(status["queue"]) ?? {} }),
     workflows: list(status["workflows"]).filter(
       (value) => typeof value === "string",
     ),

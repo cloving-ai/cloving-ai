@@ -107,7 +107,18 @@ interface Commands {
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
+  readonly queueLanes: number;
   readonly resetQueue: boolean;
+}
+
+function queueLanes(): number {
+  const value = process.env["CLOVING_QUEUE_LANES"];
+  if (value === undefined) return 1;
+  if (!/^[1-4]$/.test(value))
+    throw new Error("The daemon did not start: invalid-queue-lanes");
+  if (process.env["CLOVING_QUEUE_SECONDS"] === undefined)
+    throw new Error("The daemon did not start: queue-lanes-needs-queue");
+  return Number(value);
 }
 
 function queueInterval(
@@ -212,6 +223,7 @@ const command =
     : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
+const lanes = queueLanes();
 const queueMilliseconds = queueInterval({ nextCommand, ticketCommand });
 const manifests = await preparedProject({
   product,
@@ -230,6 +242,7 @@ await launchers(
     ticketCommand,
     nextCommand,
     queueMilliseconds,
+    queueLanes: lanes,
     resetQueue: flags.includes("--reset-queue"),
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),

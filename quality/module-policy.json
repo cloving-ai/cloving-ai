@@ -1,5 +1,16 @@
 {
   "roles": {
+    "test/github-merge-conflict.test.ts": "test",
+    "src/service/queue-runs.ts": "service",
+    "test/service-queue-statuses.test.ts": "test",
+    "test/ticket-dependency-waits.test.ts": "test",
+    "test/queue-status.test.ts": "test",
+    "src/ticket-dependencies.ts": "pure",
+    "src/daemon/ticket-dependency-waits.ts": "daemon",
+    "test/ticket-dependencies.test.ts": "test",
+    "test/issue-queue-fixture.ts": "test",
+    "test/issue-queue-lanes.test.ts": "test",
+    "test/daemon-queue-lanes.test.ts": "test",
     "test/promotion-status.test.ts": "test",
     "test/chats-analysis-batch-question-fixture.ts": "test",
     "test/chats-analysis-batch-question.test.ts": "test",

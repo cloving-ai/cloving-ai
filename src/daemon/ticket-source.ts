@@ -53,11 +53,20 @@ export function ticketText(
 
 export function ticketCommandText(
   command: readonly string[],
-  signal: AbortSignal,
+  request:
+    | AbortSignal
+    | { readonly signal: AbortSignal; readonly skipTickets: readonly string[] },
 ): Promise<TicketRead> {
   const [executable = "", ...fixed] = command;
   return executed(executable, fixed, {
-    signal,
+    signal: request instanceof AbortSignal ? request : request.signal,
+    env:
+      request instanceof AbortSignal
+        ? process.env
+        : {
+            ...process.env,
+            CLOVING_SKIP_TICKETS: request.skipTickets.join(" "),
+          },
     maxBuffer: 4 * ticketLimits.textBytes,
     encoding: "utf8",
   }).then((output) => ({ kind: "read", text: output.stdout.trim() }), ended);

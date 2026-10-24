@@ -114,6 +114,7 @@ interface Admission {
   readonly commandId: string;
   readonly submission: Fields;
   readonly normalized: string;
+  readonly activeTickets: readonly Fields[];
 }
 
 type Resolved = CheckedResolution | "timeout" | "failure";
@@ -125,7 +126,13 @@ async function resolved(
   const { workflow, workflowId, commandId, submission } = admission;
   const limit = new AbortController();
   const timer = new AbortController();
-  const request = { workflowId, submission, commandId, signal: limit.signal };
+  const request = {
+    workflowId,
+    submission,
+    commandId,
+    signal: limit.signal,
+    activeTickets: admission.activeTickets,
+  };
   const call = Promise.resolve(request)
     .then((given) => workflow.resolver.resolve(given))
     .then((value) => checkResolution(value) ?? ("failure" as const))
@@ -169,6 +176,8 @@ async function admit(
     return unresolved(context, { kind: resolution, commandId });
   if (resolution.kind === "rejected")
     return failed(resolution.code, { commandId, detail: resolution.detail });
+  const limited = capacityRefusal(workflow, admission);
+  if (limited !== undefined) return limited;
   const { input } = resolution;
   if (Buffer.byteLength(input) > context.documentBytes)
     return unresolved(context, { kind: "failure", commandId });
@@ -199,6 +208,50 @@ async function admit(
     workflowId,
     replayed: receipt.kind === "duplicate",
   });
+}
+
+function admissionRefusal(
+  workflow: Registered,
+  request: {
+    readonly workflowId: string;
+    readonly commandId: string;
+    readonly submission: Fields;
+    readonly activeTickets: readonly Fields[];
+  },
+): Reply | undefined {
+  const { workflowId, commandId, submission, activeTickets } = request;
+  if (
+    workflowId === "develop-issue" &&
+    typeof submission["ticket"] === "string" &&
+    activeTickets.some((input) => input["ticketId"] === submission["ticket"])
+  )
+    return failed("ticket-active", {
+      commandId,
+      detail: "An active run already works on this ticket.",
+    });
+  if (workflowId === "develop-issue" && submission["ticket"] !== "next")
+    return undefined;
+  return capacityRefusal(workflow, request);
+}
+
+function capacityRefusal(
+  workflow: Registered,
+  request: {
+    readonly workflowId: string;
+    readonly commandId: string;
+    readonly activeTickets: readonly Fields[];
+  },
+): Reply | undefined {
+  if (
+    workflow.admission !== undefined &&
+    request.activeTickets.length >=
+      (workflow.admission === "when-idle" ? 1 : workflow.admission)
+  )
+    return failed("workflow-active", {
+      commandId: request.commandId,
+      detail: `The workflow ${request.workflowId} already has an active run.`,
+    });
+  return undefined;
 }
 
 async function submitted(
@@ -242,14 +295,14 @@ async function submitted(
   );
   if (check.kind === "rejected")
     return failed(check.code, { commandId, detail: check.detail });
-  if (
-    found.workflow.admission === "when-idle" &&
-    (await activeWorkflow(context, workflowId))
-  )
-    return failed("workflow-active", {
-      commandId,
-      detail: `The workflow ${workflowId} already has an active run.`,
-    });
+  const activeTickets = await activeWorkflow(context, workflowId);
+  const refusal = admissionRefusal(found.workflow, {
+    workflowId,
+    commandId,
+    submission: check.submission,
+    activeTickets,
+  });
+  if (refusal !== undefined) return refusal;
   return admit(context, {
     chain,
     workflow: found.workflow,
@@ -257,20 +310,50 @@ async function submitted(
     commandId,
     submission: check.submission,
     normalized: check.normalized,
+    activeTickets,
   });
 }
 
 async function activeWorkflow(
   context: ServiceContext,
   workflowId: string,
-): Promise<boolean> {
+): Promise<Fields[]> {
   const workflows = await context.authority.queries.workflowIds();
   const state = await context.authority.state();
-  return Object.values(state.runs).some(
+  const runs = Object.values(state.runs).filter(
     (run) =>
       workflows[run.runId] === workflowId &&
       !["completed", "failed", "cancelled"].includes(run.status),
   );
+  return Promise.all(
+    runs.map(async (run) => {
+      const digest = state.details[run.runId]?.input;
+      const text = digest
+        ? await context.authority.queries.document(digest)
+        : undefined;
+      return record(JSON.parse(text ?? "null")) ?? {};
+    }),
+  );
+}
+
+export async function queueOverview(context: ServiceContext): Promise<Fields> {
+  const workflow = context.registry.byId("develop-issue");
+  if (workflow?.admission === undefined) return {};
+  const active = await activeWorkflow(context, "develop-issue");
+  return {
+    queue: {
+      lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
+      busy: active.length,
+      skipped: [
+        ...active.flatMap((input) =>
+          typeof input["ticketId"] === "string"
+            ? [{ ticketId: input["ticketId"], reason: "ticket-active" }]
+            : [],
+        ),
+        ...(workflow.resolver.skippedTickets?.() ?? []),
+      ],
+    },
+  };
 }
 
 export function submissionHandler(
@@ -280,7 +363,10 @@ export function submissionHandler(
   return (parameters) => {
     const keys = [`command:${String(parameters["commandId"])}`];
     const workflowId = String(parameters["workflowId"]);
-    if (context.registry.byId(workflowId)?.admission === "when-idle")
+    if (
+      workflowId === "develop-issue" ||
+      context.registry.byId(workflowId)?.admission !== undefined
+    )
       keys.push(`workflow:${workflowId}`);
     const next = (): Promise<Reply> => submitted(context, parameters);
     const previous = keys

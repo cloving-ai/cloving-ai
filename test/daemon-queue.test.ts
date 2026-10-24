@@ -190,6 +190,7 @@ try {
   assert.deepEqual(await runs(), []);
   assert.equal(existsSync("checks"), false);
   assert.equal(existsSync("queue-commands.json"), false);
+  writeFileSync("ready", "CLV-901");
   const replies = await Promise.all([
     submitted("manual-one"),
     submitted("manual-two", { submission: { ticket: "next" } }),

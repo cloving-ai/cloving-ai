@@ -26,6 +26,8 @@ import {
 import type { WorkerTotals } from "../worker-usage.ts";
 import { usageTotals } from "./worker-totals.ts";
 import { feedbackOf } from "./decision-handler.ts";
+import { queueOverview } from "./submission-handler.ts";
+import { queueRunStatuses } from "./queue-runs.ts";
 
 interface Snapshot {
   readonly links: Readonly<Record<string, RunLinks>>;
@@ -271,6 +273,7 @@ async function listed(
     views.push(await viewOf(context, { snapshot: page.snapshot, runId }));
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
+    ...(await queueOverview(context)),
     workflows: context.registry.workflowIds,
     workflowRefusals: context.workflowRefusals ?? [],
     ...(Object.keys(context.registry.workflowStages).length === 0
@@ -284,18 +287,29 @@ async function listed(
   });
 }
 
+function listParameters(
+  parameters: Fields,
+): { readonly after: string; readonly limit: number } | undefined {
+  const after: unknown = parameters["after"] ?? "";
+  const limit: unknown = parameters["limit"] ?? 50;
+  if (typeof after !== "string" || !wholeNumber(limit, 1) || limit > 500)
+    return undefined;
+  return { after, limit };
+}
+
 export async function status(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
+  if (parameters["runIds"] !== undefined)
+    return queueRunStatuses(context, parameters["runIds"]);
   const { runId } = parameters;
-  const after: unknown = parameters["after"] ?? "";
-  const limit: unknown = parameters["limit"] ?? 50;
-  if (typeof after !== "string" || !wholeNumber(limit, 1) || limit > 500)
+  const page = listParameters(parameters);
+  if (page === undefined)
     return invalidRequest("The status request is not valid.");
   const current = await snapshot(context);
   if (runId === undefined)
-    return listed(context, { snapshot: current, after, limit });
+    return listed(context, { snapshot: current, ...page });
   const named = typeof runId === "string" ? runId : "";
   const view = await viewOf(context, { snapshot: current, runId: named });
   if (view === undefined)

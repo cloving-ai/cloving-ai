@@ -10,6 +10,7 @@ interface QueueSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly intervalMilliseconds: number;
+  readonly lanes?: number;
   readonly resetQueue?: boolean;
 }
 
@@ -114,6 +115,33 @@ async function recover(
   }
 }
 
+async function trackedRuns(
+  runtimeDirectory: string,
+  commands: readonly string[],
+): Promise<readonly { readonly commandId: string; readonly run: Fields }[]> {
+  if (commands.length === 0) return [];
+  if (commands.length === 1) {
+    const commandId = String(commands[0]);
+    const run = await runStatus(runtimeDirectory, commandId);
+    if (run === undefined) throw new Error("queue-run-missing");
+    return [{ commandId, run }];
+  }
+  const reply = await send(runtimeDirectory, {
+    operation: "status",
+    parameters: { runIds: commands.map(runIdentity) },
+  });
+  if (reply.kind === "error") throw new Error(reply.error.code);
+  const runs = reply.result["runs"];
+  if (!Array.isArray(runs)) throw new Error("invalid-run-list");
+  return commands.map((commandId) => {
+    const run = runs
+      .map(record)
+      .find((item) => item?.["runId"] === runIdentity(commandId));
+    if (run === undefined) throw new Error("queue-run-missing");
+    return { commandId, run };
+  });
+}
+
 function handedOff(run: Fields): boolean {
   const outcome = record(run["outcome"]);
   return (
@@ -132,38 +160,55 @@ function checkFailureLimit(pending: QueueJournal): void {
     );
 }
 
+async function retired(
+  pending: QueueJournal,
+  ending: { readonly commandId: string; readonly run: Fields },
+): Promise<void> {
+  const { commandId, run } = ending;
+  pending.commands.delete(commandId);
+  if (handedOff(run)) pending.failures.length = 0;
+  else pending.failures.push(runIdentity(commandId));
+  await pending.save();
+  checkFailureLimit(pending);
+  if (handedOff(run)) return;
+  const outcome = record(run["outcome"]);
+  process.stderr.write(
+    `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}${outcome?.["issueUpdate"] === "failed" ? "; issueUpdate: failed" : ""}: ${runIdentity(commandId)}; continuing\n`,
+  );
+}
+
 async function completed(
   settings: QueueSettings,
   pending: QueueJournal,
-): Promise<boolean> {
+): Promise<number> {
   checkFailureLimit(pending);
-  let pendingRun = false;
+  let pendingRuns = 0;
+  const endings: { readonly commandId: string; readonly run: Fields }[] = [];
   const tracked = [...pending.commands].filter(
     (commandId) => commandId !== pending.retryCommandId,
   );
-  for (const commandId of tracked) {
-    const run = await runStatus(settings.runtimeDirectory, commandId);
-    if (run === undefined) throw new Error("queue-run-missing");
-    if (!terminal(run)) {
-      pendingRun = true;
-      continue;
-    }
-    pending.commands.delete(commandId);
-    if (handedOff(run)) pending.failures.length = 0;
-    else pending.failures.push(runIdentity(commandId));
-    await pending.save();
-    checkFailureLimit(pending);
-    if (!handedOff(run)) {
-      const outcome = record(run["outcome"]);
-      process.stderr.write(
-        `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}${outcome?.["issueUpdate"] === "failed" ? "; issueUpdate: failed" : ""}: ${runIdentity(commandId)}; continuing\n`,
-      );
-    }
+  for (const { commandId, run } of await trackedRuns(
+    settings.runtimeDirectory,
+    tracked,
+  )) {
+    if (terminal(run)) endings.push({ commandId, run });
+    else pendingRuns += 1;
   }
-  return pendingRun;
+  endings.sort(
+    (first, second) =>
+      Number(
+        first.run["terminalSequence"] ?? first.run["latestSequence"] ?? 0,
+      ) -
+      Number(
+        second.run["terminalSequence"] ?? second.run["latestSequence"] ?? 0,
+      ),
+  );
+  for (const ending of endings) await retired(pending, ending);
+  return pendingRuns;
 }
 
-async function active(runtimeDirectory: string): Promise<boolean> {
+async function active(runtimeDirectory: string): Promise<number> {
+  let count = 0;
   let after: string | null = "";
   do {
     const reply = await send(runtimeDirectory, {
@@ -173,19 +218,16 @@ async function active(runtimeDirectory: string): Promise<boolean> {
     if (reply.kind === "error") throw new Error(reply.error.code);
     const runs = reply.result["runs"];
     if (!Array.isArray(runs)) throw new Error("invalid-run-list");
-    if (
-      runs.some((value: unknown) => {
-        const run = record(value);
-        return run?.["workflowId"] === "develop-issue" && !terminal(run);
-      })
-    )
-      return true;
+    count += runs.filter((value: unknown) => {
+      const run = record(value);
+      return run?.["workflowId"] === "develop-issue" && !terminal(run);
+    }).length;
     const next = reply.result["next"];
     if (next !== null && (typeof next !== "string" || next <= after))
       throw new Error("invalid-run-page");
     after = next;
   } while (after !== null);
-  return false;
+  return count;
 }
 
 async function submit(
@@ -219,26 +261,51 @@ async function submit(
     );
     return;
   }
-  if (!["no-ready-ticket", "workflow-active"].includes(reply.error.code))
+  if (
+    ![
+      "no-ready-ticket",
+      "workflow-active",
+      "ticket-active",
+      "ticket-dependency-open",
+    ].includes(reply.error.code)
+  )
     throw new Error(reply.error.code);
   pending.commands.delete(commandId);
   await pending.save();
 }
 
-function updateHold(
-  directory: string,
-  pending: QueueJournal,
-): () => Promise<boolean> {
-  let notice: string | undefined;
-  return async () => {
-    const mark = await readFile(
-      join(directory, "pending-self-update"),
-      "utf8",
-    ).catch((error: unknown) => {
+async function pendingUpdate(directory: string): Promise<string | undefined> {
+  return readFile(join(directory, "pending-self-update"), "utf8").catch(
+    (error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT")
         return undefined;
       throw error;
-    });
+    },
+  );
+}
+
+async function holdStarted(
+  pending: QueueJournal,
+  observed: { readonly mark: string; readonly activeRuns: number },
+): Promise<number> {
+  const { mark, activeRuns } = observed;
+  const timestamp = Number(mark);
+  if (!Number.isFinite(timestamp) || timestamp <= 0)
+    throw new Error("invalid-pending-self-update");
+  if (pending.selfUpdateHold?.mark !== mark || activeRuns > 0) {
+    pending.selfUpdateHold = { mark, startedAt: Date.now() };
+    await pending.save();
+  }
+  return pending.selfUpdateHold.startedAt;
+}
+
+function updateHold(
+  directory: string,
+  pending: QueueJournal,
+): (activeRuns?: number) => Promise<boolean> {
+  let notice: string | undefined;
+  return async (activeRuns = 0) => {
+    const mark = await pendingUpdate(directory);
     if (mark === undefined && pending.selfUpdateHold !== undefined) {
       pending.selfUpdateHold = undefined;
       await pending.save();
@@ -247,15 +314,8 @@ function updateHold(
       notice = undefined;
       return false;
     }
-    const timestamp = Number(mark);
-    if (!Number.isFinite(timestamp) || timestamp <= 0)
-      throw new Error("invalid-pending-self-update");
-    if (pending.selfUpdateHold?.mark !== mark) {
-      pending.selfUpdateHold = { mark, startedAt: Date.now() };
-      await pending.save();
-    }
-    const holding =
-      Date.now() - pending.selfUpdateHold.startedAt < 30 * 60 * 1000;
+    const startedAt = await holdStarted(pending, { mark, activeRuns });
+    const holding = activeRuns > 0 || Date.now() - startedAt < 30 * 60 * 1000;
     const line = holding
       ? "Queue holding for pending self-update\n"
       : "Queue continuing after pending self-update time limit\n";
@@ -302,9 +362,16 @@ async function cycle(
       () => undefined,
     );
     if (stopped()) return;
-    if (await completed(settings, pending)) continue;
-    if (await active(settings.runtimeDirectory)) continue;
-    if (await holding()) continue;
+    const pendingRuns = await completed(settings, pending);
+    const lanes = settings.lanes ?? 1;
+    if (pendingRuns >= lanes) {
+      await holding(pendingRuns);
+      continue;
+    }
+    const activeRuns = await active(settings.runtimeDirectory);
+    const held = await holding(activeRuns);
+    if (activeRuns >= lanes || activeRuns < pendingRuns) continue;
+    if (held) continue;
     if (stopped()) return;
     await admission(settings, { pending, holding, signal });
   }

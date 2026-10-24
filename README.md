@@ -381,6 +381,14 @@ CLOVING_TICKET_COMMAND='["github-ticket"]' cloving start
 
 `cloving run develop-issue --next` and `cloving run develop-ticket --next` use the reserved ticket ID `next`, just like `--ticket next`. Set `CLOVING_NEXT_COMMAND` to a JSON list naming your selection command and its arguments. The daemon adds no argument. The command chooses a ready ticket in your tracker and prints its ID; the daemon trims it and reads the ticket with `CLOVING_TICKET_COMMAND`. Both commands share the resolver's 30-second deadline. Selection logic stays in your command, and each invocation submits only one run.
 
+Set `CLOVING_QUEUE_SECONDS` to a whole number from 10 to 3600 to poll for ready issues. It requires both ticket commands. `CLOVING_QUEUE_LANES` sets the number of simultaneous `develop-issue` runs, from 1 to 4, and requires `CLOVING_QUEUE_SECONDS`; its default is 1. For example, `CLOVING_QUEUE_LANES=4` admits at most one new ticket each cycle until four lanes are busy. Each run has its own branch and work tree. Manual issue submissions share this limit and receive `workflow-active` when all lanes are busy. A ticket already being developed receives `ticket-active`.
+
+Before enabling more than one lane, update the next-ticket command to honor `CLOVING_SKIP_TICKETS`. Cloving sets this environment variable to space-separated IDs of active tickets and tickets waiting for dependencies. The command must never print an ID from that list. It should print nothing when no eligible ticket remains. The service also checks selected tickets before admission.
+
+In the ticket text returned by `CLOVING_TICKET_COMMAND`, each `#N` in a sentence starting with **Needs** inside `## Dependencies` is a hard dependency. For example, `Needs #123 and #124.` waits until both GitHub issues close. Other references and sections do not create dependencies. Cloving reads dependency state with `CLOVING_GH_COMMAND` (default `gh`); an unavailable or invalid response prevents admission. An open dependency returns `ticket-dependency-open` and puts the ticket in the skip list. Waiting tickets are checked again each cycle with a free lane, so a closed dependency makes its ticket eligible again.
+
+`cloving status` and watch display busy lanes and skipped tickets with their reasons. A pending self-update holds new admissions while active lanes drain. Three unsuccessful runs in a row, counted in the order they finish, stop the queue; a successful handoff clears the streak. Ordinary restarts preserve it. After inspecting and reconciling the failures, start with `--reset-queue` to clear the streak. A conflict caused by an earlier lane's merge returns its diagnostics to a fix round. Lanes do not add CI runners or parallelize turns within one run.
+
 An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-not-available`. Missing configuration gives `next-source-not-configured`. Multiple IDs, an invalid ID, or `next` as the selected ID give `invalid-ticket-id`. Use only one of `--next`, `--ticket`, `--prompt` and `--input`.
 
 ### Review rounds of `develop-ticket` and `develop-prompt`
@@ -401,10 +409,10 @@ Single-run status (`cloving status RUN_ID`, also with `--json`) and watch show e
 
 The built-in table uses standard short-context prices read on **2026-10-18** from the [OpenAI pricing page](https://openai.com/api/pricing/), in USD per million tokens:
 
-| Model | Input | Cached input | Output |
-| --- | ---: | ---: | ---: |
-| `gpt-6.1-sol` | 2.00 | 0.10 | 10.00 |
-| `gpt-6-astra` | 10.00 | 1.00 | 50.00 |
+| Model         | Input | Cached input | Output |
+| ------------- | ----: | -----------: | -----: |
+| `gpt-6.1-sol` |  2.00 |         0.10 |  10.00 |
+| `gpt-6-astra` | 10.00 |         1.00 |  50.00 |
 
 `CLOVING_TOKEN_PRICES` accepts a JSON object mapping model names to non-negative finite `input`, `cachedInput` and `output` prices per million tokens. Its entries override matching built-in entries and retain the others. Estimates use the reported model or the worker command's model argument, with `estimatedCostUsd` totals only when every ended turn has an estimate. There is no live price lookup; estimates do not change budgets or limits.
 
@@ -697,7 +705,12 @@ To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
     "maximumBytes": 65536,
     "fields": {
       "prompt": { "type": "string" },
-      "rounds": { "type": "integer", "minimum": 1, "maximum": 10, "optional": true }
+      "rounds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "optional": true
+      }
     }
   }
 }
