@@ -15,11 +15,12 @@
   },
   "jobs": {
     "quality": {
-      "runs-on": "macos-15",
+      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"macOS\",\"ARM64\",\"cloving-ci\"]') || 'macos-15' }}",
       "timeout-minutes": 60,
       "env": {
         "CLOVING_CHECK_TIME_FACTOR": "3",
-        "CLOVING_TEST_CONCURRENCY": "3"
+        "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '3' }}",
+        "CLOVING_CI_MACOS_VERSION": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '*' || '15.*' }}"
       },
       "steps": [
         {
@@ -43,7 +44,7 @@
         },
         {
           "name": "Verify runner toolchain",
-          "run": "node --input-type=module -e 'import assert from \"node:assert/strict\"; assert.equal(process.version, \"v26.9.0\"); assert.equal(process.platform, \"darwin\"); assert.equal(process.arch, \"arm64\");'\ntest \"$(npm --version)\" = \"11.19.1\"\ncase \"$(sw_vers -productVersion)\" in 15.*) ;; *) exit 1 ;; esac"
+          "run": "node --input-type=module -e 'import assert from \"node:assert/strict\"; assert.equal(process.version, \"v26.9.0\"); assert.equal(process.platform, \"darwin\"); assert.equal(process.arch, \"arm64\");'\ntest \"$(npm --version)\" = \"11.19.1\"\ncase \"$(sw_vers -productVersion)\" in $CLOVING_CI_MACOS_VERSION) ;; *) exit 1 ;; esac"
         },
         {
           "run": "npm ci --ignore-scripts"
