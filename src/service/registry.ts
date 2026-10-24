@@ -55,6 +55,7 @@ export interface Registry {
   readonly workflowStages: WorkflowStages;
   readonly byId: (workflowId: string) => Registered | undefined;
   readonly byPin: (pin: string) => Registered | undefined;
+  readonly bundle: (pinned: ExecutionManifest) => Promise<string | undefined>;
   readonly available: AvailableManifest;
 }
 
@@ -81,6 +82,7 @@ export function workflowRegistry(
   options: {
     readonly retainedWorkflows?: readonly WorkflowRegistration[];
     readonly workflowBundles?: WorkflowBundleStore;
+    readonly retainedWorkflow?: AvailableManifest;
   } = {},
 ): Registry {
   const current = workflows.map(registered);
@@ -90,6 +92,18 @@ export function workflowRegistry(
   ].flatMap(availableVersions);
   const byPin = (pin: string): Registered | undefined =>
     available.find((workflow) => workflow.pin === pin);
+  const bundle = async (pinned: ExecutionManifest) => {
+    if (
+      pinned.bundleDigest === undefined ||
+      options.workflowBundles === undefined
+    )
+      return undefined;
+    const retained = await readRetainedWorkflowBundle({
+      ...options.workflowBundles,
+      id: pinned.bundleDigest,
+    });
+    return retained.kind === "available" ? retained.directory : undefined;
+  };
   return {
     workflowIds: current.map((workflow) => workflow.workflowId),
     workflowStages: Object.fromEntries(
@@ -102,14 +116,15 @@ export function workflowRegistry(
     byId: (workflowId) =>
       current.find((workflow) => workflow.workflowId === workflowId),
     byPin,
+    bundle,
     available: (pinned) => {
       const manifest = byPin(workflowPin(pinned))?.manifest;
       if (pinned.bundleDigest === undefined) return manifest;
-      if (options.workflowBundles === undefined) return undefined;
-      return readRetainedWorkflowBundle({
-        ...options.workflowBundles,
-        id: pinned.bundleDigest,
-      }).then((bundle) => (bundle.kind === "available" ? manifest : undefined));
+      return bundle(pinned).then((directory) =>
+        directory !== undefined
+          ? (manifest ?? options.retainedWorkflow?.(pinned))
+          : undefined,
+      );
     },
   };
 }

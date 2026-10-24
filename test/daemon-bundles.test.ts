@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { queuePrelude } from "./daemon-queue-fixture.ts";
 import { productRoot, withConsumer } from "./world-host-fixture.ts";
+import { workflowBundleLoader } from "../tools/self-host-workflows.ts";
 
 const workflow = `
 import { decisionGate } from "cloving/workflows/steps/decision-gate";
@@ -69,3 +70,64 @@ process.exit(0);
       assert.equal(result.status, 0, result.stderr);
     }));
 }
+
+const versionedWorkflow =
+  `
+import { appendFileSync } from "node:fs";
+export const before = 1;
+export async function finish() {
+  "use step";
+  appendFileSync("executions", "original-step\\n");
+  return { kind: "completed", step: "original-step" };
+}
+` +
+  workflow.replace(
+    'return { kind: "completed" }',
+    'return { ...await finish(), flow: "original-flow" }',
+  );
+
+await test("CLV-161 an intact old bundle continues after a daemon update using its own workflow code", () =>
+  withConsumer(versionedWorkflow, async (original) =>
+    withConsumer(
+      versionedWorkflow.replaceAll("original-", "current-"),
+      async (current) => {
+        const result =
+          await original.run(`${bundlePrelude}${workflowBundleLoader()}
+const first = await launched({ bundleDigest, queueMilliseconds: undefined });
+const admitted = await submitted("original");
+const runId = admitted.runId;
+await until(async () => (await shown(runId)).state === "waiting_gate");
+await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+await first.close();
+cpSync(${JSON.stringify(current.directory)}, "current-project", { recursive: true, dereference: true, filter: (source) => !source.includes("node_modules") });
+cpSync("bundle-project/package.json", "current-project/package.json");
+for (const name of ["declarations.json", "dependencies.json"])
+  cpSync("bundle-project/" + name, "current-project/" + name);
+cpSync("develop.workflow.json", "current-project/develop.workflow.json");
+const currentDigest = await retainWorkflowBundle({ project: directory + "/current-project", repository: directory, directory: directory + "/workflow-bundles" });
+assert.notEqual(currentDigest, bundleDigest);
+const currentClient = await import("./current-project/artifacts/client.mjs");
+const currentHandler = await import("./current-project/artifacts/flow.mjs");
+const manifests = { developTicket: directory + "/current-project/develop.workflow.json", developPrd: directory + "/current-project/develop.workflow.json" };
+const daemon = await launched({ bundleDigest: currentDigest, manifests, queueMilliseconds: undefined, workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop }, handler: currentHandler.POST, loadBundle: loadWorkflowBundle });
+try {
+  const answer = await asked("decision", { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId: "answer" });
+  assert.equal(answer.kind, "decision-recorded", JSON.stringify(answer));
+  await until(async () => { const run = await shown(runId); return run.state === "completed" || run.reason.code === "pinned-workflow-unavailable"; });
+  assert.equal((await shown(runId)).state, "completed", JSON.stringify(await shown(runId)));
+  const currentRun = (await submitted("current")).runId;
+  await until(async () => (await shown(currentRun)).state === "waiting_gate");
+  const currentAnswer = await asked("decision", { command: "answer", reference: currentRun + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId: "current-answer" });
+  assert.equal(currentAnswer.kind, "decision-recorded");
+  await until(async () => (await shown(currentRun)).state === "completed");
+  await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+  const values = await Promise.all((await (await getWorld()).runs.list({})).data.map(run => getRun(run.runId).returnValue));
+  assert.deepEqual(values.map(value => value.flow).filter(Boolean).sort(), ["current-flow", "original-flow"]);
+  assert.equal(readFileSync("executions", "utf8"), "original-step\\ncurrent-step\\n");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+        assert.equal(result.status, 0, result.stderr);
+      },
+    ),
+  ));

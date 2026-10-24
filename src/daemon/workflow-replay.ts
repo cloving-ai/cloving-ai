@@ -60,7 +60,7 @@ async function observedReplay(
 }
 
 export function pinnedWorkflowHandler(
-  handler: WorkflowHandler,
+  handler: (request: Request, runId: string) => Promise<Response>,
   ports: ReplayPorts,
 ): WorkflowHandler {
   return async (request) => {
@@ -82,7 +82,7 @@ export function pinnedWorkflowHandler(
       !(await observedReplay(ports, { runId: run.runId, receipt, available }))
     )
       return new Response("workflow-observation-unavailable", { status: 503 });
-    if (available) return handler(request);
+    if (available) return handler(request, run.runId);
     return new Response("pinned-workflow-unavailable", { status: 503 });
   };
 }

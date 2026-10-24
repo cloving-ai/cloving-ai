@@ -110,3 +110,38 @@ export function workflowManifests(
     }),
   );
 }
+
+export function workflowBundleLoader(): string {
+  return `
+import { AsyncLocalStorage } from "node:async_hooks";
+import { pathToFileURL } from "node:url";
+const bundleRegistries = new AsyncLocalStorage();
+const registryKeys = ["@workflow/core//registeredSteps", "workflow-class-registry"].map(Symbol.for);
+for (const key of registryKeys) {
+  let current = globalThis[key] ?? new Map();
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    get: () => bundleRegistries.getStore()?.get(key) ?? current,
+    set: (value) => {
+      const scope = bundleRegistries.getStore();
+      if (scope === undefined) current = value;
+      else scope.set(key, value);
+    },
+  });
+}
+const loadedBundles = new Map();
+const loadWorkflowBundle = (directory) => {
+  const known = loadedBundles.get(directory);
+  if (known !== undefined) return known;
+  const scope = new Map(registryKeys.map((key) => [key, new Map()]));
+  const loaded = bundleRegistries.run(scope, async () => {
+    const workflows = await import(pathToFileURL(directory + "/artifacts/client.mjs").href);
+    const { POST } = await import(pathToFileURL(directory + "/artifacts/flow.mjs").href);
+    if (typeof POST !== "function") throw new Error("pinned-workflow-unavailable");
+    return { workflows, handler: (request) => bundleRegistries.run(scope, () => POST(request)) };
+  });
+  loadedBundles.set(directory, loaded);
+  return loaded;
+};
+`;
+}

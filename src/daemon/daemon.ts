@@ -23,9 +23,11 @@ import {
   type HostPorts,
   type Service,
   type ServiceHost,
-  type WorkflowRegistration,
 } from "../service/service.ts";
-import { workflowRegistry } from "../service/registry.ts";
+import {
+  workflowGenerations,
+  type WorkflowBundleLoader,
+} from "./workflow-generations.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
 import type { TokenPrices } from "../token-prices.ts";
@@ -43,7 +45,6 @@ import { notifyRuns } from "./notify.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
-  type TicketRegistration,
 } from "./ticket-registration.ts";
 
 export interface DaemonSettings {
@@ -60,6 +61,7 @@ export interface DaemonSettings {
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
+  readonly loadBundle?: WorkflowBundleLoader;
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];
@@ -97,17 +99,31 @@ export const bridgeTiming = {
 
 async function hosted(
   settings: DaemonSettings,
-  ports: HostPorts,
+  hosting: {
+    readonly ports: HostPorts;
+    readonly generations: ReturnType<typeof workflowGenerations>;
+  },
 ): Promise<ServiceHost> {
+  const { ports, generations } = hosting;
   const opening = await startHost({
     dataDirectory: worldDirectory(settings.directory),
     concurrency: settings.concurrency,
-    handler: pinnedWorkflowHandler(settings.handler, {
-      state: ports.state,
-      run: taggedRun,
-      available: ports.workflow.available,
-      submit: ports.submit,
-    }),
+    handler: pinnedWorkflowHandler(
+      async (request, runId) => {
+        const generation = await generations.resolve(
+          await ports.workflow.manifest(runId),
+        );
+        return generation === undefined
+          ? new Response("pinned-workflow-unavailable", { status: 503 })
+          : generation.handler(request);
+      },
+      {
+        state: ports.state,
+        run: taggedRun,
+        available: ports.workflow.available,
+        submit: ports.submit,
+      },
+    ),
   });
   if (opening.kind === "refused")
     throw new Error(`${opening.reason}: ${opening.detail}`);
@@ -173,16 +189,11 @@ function adapters(
   settings: DaemonSettings,
   options: {
     readonly given: Promise<HostPorts>;
-    readonly table: readonly TicketRegistration[];
-    readonly registrations: readonly WorkflowRegistration[];
+    readonly generations: ReturnType<typeof workflowGenerations>;
   },
 ): Adapters {
   const { directory, repository, command } = settings;
-  const { given, table, registrations } = options;
-  const functions = Object.fromEntries(
-    table.map((row) => [row.workflowId, settings.workflows[row.functionName]]),
-  );
-  const registry = workflowRegistry(registrations);
+  const { given, generations } = options;
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
   const report = async (
@@ -212,8 +223,9 @@ function adapters(
     runs: taggedRuns,
     cancel: cancelled,
     input: async (runId) => (await given).input(runId),
-    workflow: ({ workflow }) =>
-      Promise.resolve(functions[registry.byPin(workflow)?.workflowId ?? ""]),
+    workflow: async ({ runId }) =>
+      (await generations.resolve(await (await given).workflow.manifest(runId)))
+        ?.workflow,
   });
   const handoff = handoffOf(settings, given);
   return { worker, github, runs, chats, handoff };
@@ -273,7 +285,6 @@ export async function startDaemon(
     ...givenSettings,
     repository: await realpath(givenSettings.repository),
   };
-  const { directory } = settings;
   const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected")
     return {
@@ -282,22 +293,27 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
+  const generations = workflowGenerations({
+    ...settings,
+    registrations: admitted.registrations,
+    table,
+  });
   const { worker, github, runs, chats, handoff } = adapters(settings, {
     given: given.promise,
-    table,
-    registrations: admitted.registrations,
+    generations,
   });
-  await mkdir(join(directory, "state"), { recursive: true });
+  await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
-    stateDirectory: join(directory, "state"),
+    stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
     workflowBundles: {
-      directory: join(directory, "workflow-bundles"),
+      directory: join(settings.directory, "workflow-bundles"),
       repository: settings.repository,
     },
     workflowRefusals: settings.workflowRefusals ?? [],
     workflows: admitted.registrations,
+    retainedWorkflow: generations.available,
     delivery: deliveryRouter({
       runs,
       effects: { claude: worker, github, chats, handoff },
@@ -305,7 +321,7 @@ export async function startDaemon(
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {
       given.resolve(ports);
-      return hosted(settings, ports);
+      return hosted(settings, { ports, generations });
     },
   });
   if (opening.kind === "refused") {

@@ -82,6 +82,7 @@ export interface HostPorts {
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly workflow: {
     readonly id: (runId: string) => Promise<string | undefined>;
+    readonly manifest: Authority["queries"]["manifest"];
     readonly available: (
       runId: string,
       workflowId?: string,
@@ -100,6 +101,7 @@ export interface ServiceOptions {
   readonly workflows: readonly WorkflowRegistration[];
   readonly retainedWorkflows?: readonly WorkflowRegistration[];
   readonly workflowBundles?: WorkflowBundleStore;
+  readonly retainedWorkflow?: Registry["available"];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly delivery: Delivery;
   readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
@@ -264,14 +266,7 @@ export async function startService(
   const path = await endpoint(options.runtimeDirectory);
   if (typeof path !== "string") return path;
   const timing = options.timing ?? serviceTiming;
-  const registry = workflowRegistry(options.workflows, {
-    ...(options.retainedWorkflows === undefined
-      ? {}
-      : { retainedWorkflows: options.retainedWorkflows }),
-    ...(options.workflowBundles === undefined
-      ? {}
-      : { workflowBundles: options.workflowBundles }),
-  });
+  const registry = workflowRegistry(options.workflows, options);
   const opening = await openAuthority(options.stateDirectory, {
     delivery: options.delivery,
     timing: timing.authority,
@@ -349,6 +344,7 @@ function hostPorts(
     operation: authority.effects.operation,
     workflow: {
       id: async (runId) => (await authority.queries.workflowIds())[runId],
+      manifest: authority.queries.manifest,
       available: async (runId, workflowId) => {
         const manifest = await authority.queries.manifest(runId);
         return (
