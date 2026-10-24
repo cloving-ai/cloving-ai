@@ -60,15 +60,16 @@ export async function configuredPrWatch(
 const root = ${JSON.stringify(root)};
 writeFileSync(root + "/gh-pid", String(process.pid));
 process.on("SIGTERM", () => {});
+let responded = false;
 const watcher = watch(root, respond);
 function respond() {
-  if (!existsSync(root + "/gh-response")) return;
+  if (responded || !existsSync(root + "/gh-response")) return;
+  responded = true;
   watcher.close();
   const output = JSON.parse(readFileSync(root + "/gh-response", "utf8"));
   process.stdout.write(output.stdout);
   process.stderr.write(output.stderr);
   process.exitCode = output.status;
-
 }
 respond();
 writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));

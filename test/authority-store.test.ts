@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { answeredGate, continuation, recorded } from "./authority-fixture.ts";
 import { openAuthority } from "../src/broker/actor/authority.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import { contentionMilliseconds } from "../src/broker/actor/authority-connection.ts";
 import {
   opened,
@@ -73,7 +74,7 @@ await test("CLV-007 a second authority process for the same state directory is r
       });
       const waited = performance.now() - started;
       assert.ok(
-        waited >= contentionMilliseconds && waited < 1500,
+        waited >= contentionMilliseconds && waited < testMilliseconds(1500),
         String(waited),
       );
       assert.deepEqual(await holder.kill(), { code: null, signal: "SIGKILL" });

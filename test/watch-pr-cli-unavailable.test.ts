@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { testMilliseconds } from "./test-timing.ts";
+import { prOutput } from "./watch-pr-fixture.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { alive, until } from "./claude-worker-fixture.ts";
 import { fields, withHarness } from "./service-fixture.ts";
@@ -10,6 +15,7 @@ import {
   directPrWatch,
   ghRequest,
   recordedPrJournal,
+  releasePr,
   stoppedPrCard,
   stoppedPrRun,
 } from "./watch-pr-cli-fixture.ts";
@@ -130,4 +136,42 @@ await test("CLV-093 CLI terminates a held GitHub command after five seconds", as
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     },
   );
+});
+
+await test("CLV-093 the GitHub fixture emits one response when filesystem notifications are duplicated", async () => {
+  await withHarness(async (harness) => {
+    await configuredPrWatch(harness.runtimeDirectory);
+    const program = pathToFileURL(
+      join(dirname(harness.runtimeDirectory), "fake gh.mjs"),
+    ).href;
+    const completion = promisify(execFile)(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const watch = fs.watch;
+fs.watch = (path, listener) => watch(path, (...arguments_) => {
+  listener(...arguments_);
+  listener(...arguments_);
+});
+syncBuiltinESMExports();
+await import(${JSON.stringify(program)});`,
+      ],
+      {
+        timeout: testMilliseconds(10000),
+        killSignal: "SIGKILL",
+        env: { ...process.env, NODE_V8_COVERAGE: undefined },
+      },
+    );
+    try {
+      await ghRequest(harness.runtimeDirectory);
+      await releasePr(harness.runtimeDirectory, true);
+    } finally {
+      const output = await completion;
+      assert.equal(output.stdout, prOutput(true).stdout);
+      assert.equal(output.stderr, "");
+    }
+  });
 });

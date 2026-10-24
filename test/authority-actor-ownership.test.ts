@@ -3,6 +3,7 @@ import { mkdir, rename, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import { contentionMilliseconds } from "../src/broker/actor/authority-connection.ts";
 import {
   openedAuthority,
@@ -41,7 +42,7 @@ await test("CLV-042 a second process and a directory alias are refused within th
         });
         const waited = performance.now() - started;
         assert.ok(
-          waited >= contentionMilliseconds && waited < 1500,
+          waited >= contentionMilliseconds && waited < testMilliseconds(1500),
           String(waited),
         );
       }
