@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { format } from "prettier";
+import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
 
 await test("QG-09 fixed source checker applies installed policy despite candidate package scripts", async () => {
@@ -19,7 +20,7 @@ await test("QG-09 fixed source checker applies installed policy despite candidat
         spawnSync(
           process.execPath,
           [resolve("tools/check-protected-quality.ts"), directory],
-          { encoding: "utf8", timeout: 15000 },
+          { encoding: "utf8", timeout: testMilliseconds(15_000) },
         );
       const valid = run();
       assert.equal(valid.status, 0, valid.stderr);
@@ -72,7 +73,7 @@ await test("QG-19 fixed source checker binds candidate product files only under 
         spawnSync(
           process.execPath,
           [resolve("tools/check-protected-quality.ts"), directory],
-          { encoding: "utf8", timeout: 15000 },
+          { encoding: "utf8", timeout: testMilliseconds(15_000) },
         );
       const valid = run();
       assert.equal(valid.status, 0, valid.stderr);
