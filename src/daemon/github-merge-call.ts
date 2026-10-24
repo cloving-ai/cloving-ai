@@ -83,14 +83,18 @@ export function mergePull(
 ): Promise<string> {
   return retryGithub(operation, {
     action: async (attempt) => {
-      if (attempt > 0) {
-        const known = await knownMerge(operation, pull);
-        if (known.merged !== undefined) return known.merged;
-      }
+      const known = attempt > 0 ? await knownMerge(operation, pull) : undefined;
+      if (known?.merged !== undefined) return known.merged;
       const updated = { number: pull.number, commit: pull.updated };
       if (pull.updated !== pull.commit) await waitForHead(operation, updated);
       return mergedNow(operation, updated);
     },
     statuses: pull.updated === pull.commit ? [] : [405, 409],
+  }).catch(async (error: unknown) => {
+    if (!(error instanceof Error) || error.message !== "github-network-failed")
+      throw error;
+    const known = await knownMerge(operation, pull);
+    if (known.merged !== undefined) return known.merged;
+    throw error;
   });
 }

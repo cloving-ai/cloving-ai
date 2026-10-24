@@ -146,8 +146,8 @@ const kind = path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.t
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 const index = state.failures?.findIndex((failure) => failure.call === name) ?? -1;
 const failure = index < 0 ? undefined : state.failures.splice(index, 1)[0];
+if (failure?.after) actions[name]();
 if (failure) {
-  if (failure.after) actions[name]();
   process.stderr.write(failure.detail);
   process.exitCode = 1;
 } else if (state.fail === name) {

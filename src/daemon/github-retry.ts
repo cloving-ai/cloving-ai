@@ -4,12 +4,14 @@ import { field, githubTiming, type Operation } from "./github-operation.ts";
 function transient(error: unknown): boolean {
   if (!(error instanceof Error) || error.message !== "github-call-failed")
     return false;
-  if (typeof field(error, "detail") !== "string") return false;
+  const detail = field(error, "detail");
+  if (typeof detail !== "string") return false;
   const status = field(error, "status");
+  if ([500, 502, 503, 504].includes(Number(status))) return true;
   return (
-    status === undefined ||
-    (typeof status === "number" && Number.isNaN(status)) ||
-    [500, 502, 503, 504].includes(Number(status))
+    (status === undefined ||
+      (typeof status === "number" && Number.isNaN(status))) &&
+    /TLS handshake timeout|connection reset|i\/o timeout|\bEOF\b/i.test(detail)
   );
 }
 

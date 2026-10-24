@@ -75,27 +75,35 @@ for (const status of [500, 502, 503, 504]) {
 }
 
 for (const head of ["reviewed", "updated"]) {
-  await test(`CLV-194 reconciles a lost merge reply for the ${head} head`, () =>
-    withGithub(async (scene) => {
-      const worker = scene.worker({ check: [process.execPath, "-e", ""] });
-      const commit = await opened(scene, worker);
-      if (head === "updated") advancedBase(scene);
-      scene.plan({
-        scores: [],
-        failures: [{ call: "api PUT merge", detail: "EOF", after: true }],
-      });
-      const report = await scene.perform(worker, {
-        method: "merge",
-        payload: { number: 1, commit },
-      });
-      assert.equal(report.outcome, "completed", report.reason ?? "");
-      const result = resultOf(report.result);
-      assert.equal(result["commit"], commit);
-      assert.equal(result["updated"], scene.state().prs[0]?.["mergedHead"]);
-      assert.equal(result["merged"], "f".repeat(40));
-      assert.equal(mergeCalls(scene).length, 1);
-      assert.equal(existsSync(treeOf(scene)), false);
-    }));
+  for (const attempt of [1, 3]) {
+    await test(`CLV-194 reconciles a lost merge reply on attempt ${String(attempt)} for the ${head} head`, () =>
+      withGithub(async (scene) => {
+        const worker = scene.worker({ check: [process.execPath, "-e", ""] });
+        const commit = await opened(scene, worker);
+        if (head === "updated") advancedBase(scene);
+        scene.plan({
+          scores: [],
+          failures: [
+            ...Array.from({ length: attempt - 1 }, () => ({
+              call: "api PUT merge",
+              detail: "TLS handshake timeout",
+            })),
+            { call: "api PUT merge", detail: "EOF", after: true },
+          ],
+        });
+        const report = await scene.perform(worker, {
+          method: "merge",
+          payload: { number: 1, commit },
+        });
+        assert.equal(report.outcome, "completed", report.reason ?? "");
+        const result = resultOf(report.result);
+        assert.equal(result["commit"], commit);
+        assert.equal(result["updated"], scene.state().prs[0]?.["mergedHead"]);
+        assert.equal(result["merged"], "f".repeat(40));
+        assert.equal(mergeCalls(scene).length, attempt);
+        assert.equal(existsSync(treeOf(scene)), false);
+      }));
+  }
 }
 
 await test("CLV-194 grows the wait between transient merge attempts", () =>
@@ -213,3 +221,28 @@ await test("CLV-194 does not retry a check-run client error", () =>
     );
     assert.equal(mergeCalls(scene).length, 0);
   }));
+
+for (const call of ["api PUT merge", "api GET pull", "api GET check-runs"]) {
+  for (const detail of ["", "gh: authentication required"]) {
+    await test(`CLV-194 does not retry a local ${call} failure with ${JSON.stringify(detail)}`, () =>
+      withGithub(async (scene) => {
+        const worker = scene.worker();
+        const commit = await opened(scene, worker);
+        const before = scene.state().calls.length;
+        scene.plan({ scores: [], failures: [{ call, detail }] });
+        const report = await scene.perform(worker, {
+          method: "merge",
+          payload: { number: 1, commit },
+        });
+        assert.equal(report.outcome, "failed");
+        assert.equal(report.reason, "github-call-failed");
+        const attempts = scene
+          .state()
+          .calls.slice(before)
+          .filter((parts) => matchesCall(parts, call));
+        assert.equal(attempts.length, 1);
+        assert.equal(scene.state().prs[0]?.["state"], "OPEN");
+        assert.equal(existsSync(treeOf(scene)), true);
+      }));
+  }
+}

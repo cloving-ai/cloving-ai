@@ -6,6 +6,18 @@ import { test } from "node:test";
 import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
 
+await test("CLV-194 preserves the failure reason when the gh executable is missing", () =>
+  withGithub(async (scene) => {
+    const commit = await opened(scene, scene.worker());
+    const worker = scene.worker({ gh: [join(scene.directory, "missing-gh")] });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "failed");
+    assert.equal(report.reason, "github-call-failed");
+  }));
+
 await test("CLV-082 journals failed gh stderr without sending it to the service", () =>
   withGithub(async (scene) => {
     const worker = scene.worker();
@@ -15,7 +27,7 @@ await test("CLV-082 journals failed gh stderr without sending it to the service"
       method: "merge",
       payload: { number: 1, commit },
     });
-    assert.equal(report.reason, "github-network-failed");
+    assert.equal(report.reason, "github-call-failed");
     const saved = resultOf(
       readFileSync(
         join(scene.journal, journalKey(report.operationId), "result.json"),
@@ -105,7 +117,7 @@ await test("CLV-082 redacts environment secrets and private texts before retaini
     );
     const redacted = "[hidden] [hidden] [hidden] [hidden] [hidden]";
     assert.equal(saved["detail"], ("x".repeat(2_000) + redacted).slice(-2_000));
-    assert.equal(report.reason, "github-network-failed");
+    assert.equal(report.reason, "github-call-failed");
     assert.doesNotMatch(
       JSON.stringify(report),
       /example-token|private phrase|\[hidden\]/,
