@@ -44,7 +44,7 @@ for (const factor of [undefined, "3"])
             assert.equal(result.status, 0);
             assert.equal(
               timeout,
-              (signal === "deadline" ? 35000 : 3000) * Number(factor ?? 1),
+              (signal === "deadline" ? 35000 : 10000) * Number(factor ?? 1),
             );
           } finally {
             if (kill) Object.defineProperty(process, "kill", kill);
