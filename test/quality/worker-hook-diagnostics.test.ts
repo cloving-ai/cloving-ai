@@ -1,6 +1,35 @@
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { hookTimeout, runHook, withHook } from "./worker-hook-fixture.ts";
+
+await test("CLV-179 hook lint configuration loads only the enabled SonarJS rule", () => {
+  const configuration = pathToFileURL(resolve("eslint.config.mjs")).href;
+  const result = runHook({
+    arguments: [
+      "--input-type=module",
+      "-e",
+      `
+import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
+registerHooks({ resolve(specifier, context, next) {
+  if (specifier === "eslint-plugin-sonarjs") throw new Error("unused-sonarjs-rules-loaded");
+  return next(specifier, context);
+} });
+const { default: configuration } = await import(${JSON.stringify(configuration)});
+const plugin = configuration.find(entry => entry.plugins?.sonarjs).plugins.sonarjs;
+assert.deepEqual(Object.keys(plugin.rules), ["cognitive-complexity"]);
+const { rule } = await import("eslint-plugin-sonarjs/cjs/S3776/index.js");
+assert.equal(plugin.rules["cognitive-complexity"], rule);
+assert.deepEqual(configuration.find(entry => entry.rules?.["sonarjs/cognitive-complexity"]).rules["sonarjs/cognitive-complexity"], ["error", 15]);
+`,
+    ],
+    expectedExit: 0,
+  });
+  assert.equal(result.exit, 0);
+  assert.equal(result.stdout, "");
+});
 
 await test("CLV-104 unexpected hook exits and signals retain failure details", () => {
   for (const scenario of [

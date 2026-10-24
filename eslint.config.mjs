@@ -2,7 +2,7 @@ import javascript from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import typescript from "typescript-eslint";
 import { structuralRules } from "./quality/structural-rules.ts";
-import sonarjs from "eslint-plugin-sonarjs";
+import { rule as cognitiveComplexity } from "eslint-plugin-sonarjs/cjs/S3776/index.js";
 
 export default defineConfig(globalIgnores(["node_modules/**", "dist/**"]), {
   files: ["**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"],
@@ -20,7 +20,9 @@ export default defineConfig(globalIgnores(["node_modules/**", "dist/**"]), {
     noInlineConfig: true,
     reportUnusedDisableDirectives: "error",
   },
-  plugins: { sonarjs },
+  plugins: {
+    sonarjs: { rules: { "cognitive-complexity": cognitiveComplexity } },
+  },
   rules: {
     ...structuralRules,
     "@typescript-eslint/max-params": "off",
