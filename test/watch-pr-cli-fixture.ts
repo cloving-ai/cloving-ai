@@ -58,8 +58,8 @@ export async function configuredPrWatch(
     program,
     `import { writeFileSync, existsSync, readFileSync, watch } from "node:fs";
 const root = ${JSON.stringify(root)};
-writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 writeFileSync(root + "/gh-pid", String(process.pid));
+writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 process.on("SIGTERM", () => {});
 const watcher = watch(root, respond);
 function respond() {
