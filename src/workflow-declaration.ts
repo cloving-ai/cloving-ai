@@ -23,8 +23,14 @@ export interface DeclaredWorkflow extends WorkflowDeclaration {
   readonly functionName: string;
 }
 
-function keys(fields: Fields, allowed: readonly string[]): boolean {
-  return Object.keys(fields).every((key) => allowed.includes(key));
+function keys(
+  fields: Fields | undefined,
+  allowed: readonly string[],
+): fields is Fields {
+  return (
+    fields !== undefined &&
+    Object.keys(fields).every((key) => allowed.includes(key))
+  );
 }
 
 function integer(
@@ -52,11 +58,7 @@ function integerBounds(fields: Fields): boolean {
 
 function isField(value: unknown): value is SubmissionField {
   const fields = record(value);
-  if (
-    fields === undefined ||
-    !keys(fields, ["type", "optional", "minimum", "maximum"])
-  )
-    return false;
+  if (!keys(fields, ["type", "optional", "minimum", "maximum"])) return false;
   if (
     fields["optional"] !== undefined &&
     typeof fields["optional"] !== "boolean"
@@ -72,8 +74,7 @@ function isField(value: unknown): value is SubmissionField {
 
 function isInput(value: unknown): value is SubmissionContract {
   const input = record(value);
-  if (input === undefined || !keys(input, ["maximumBytes", "fields"]))
-    return false;
+  if (!keys(input, ["maximumBytes", "fields"])) return false;
   const fields = record(input["fields"]);
   return (
     integer(input["maximumBytes"], { minimum: 1, maximum: 1_048_576 }) &&
@@ -82,15 +83,17 @@ function isInput(value: unknown): value is SubmissionContract {
   );
 }
 
+function matches(value: unknown, pattern: RegExp): value is string {
+  return typeof value === "string" && pattern.test(value);
+}
+
 function selectors(
   value: unknown,
   pattern: RegExp,
 ): value is readonly string[] {
   return (
     Array.isArray(value) &&
-    Array.from<unknown>(value).every(
-      (item: unknown) => typeof item === "string" && pattern.test(item),
-    )
+    Array.from<unknown>(value).every((item) => matches(item, pattern))
   );
 }
 
@@ -105,19 +108,14 @@ function isStageLabel(label: unknown): boolean {
 
 function isStage(value: unknown): value is WorkflowStage {
   const stage = record(value);
-  if (
-    stage === undefined ||
-    !keys(stage, ["name", "label", "operations", "gateKinds"])
-  )
-    return false;
+  if (!keys(stage, ["name", "label", "operations", "gateKinds"])) return false;
   const { name, label } = stage;
   const operations = Object.hasOwn(stage, "operations")
     ? stage["operations"]
     : [];
   const gateKinds = Object.hasOwn(stage, "gateKinds") ? stage["gateKinds"] : [];
   return (
-    typeof name === "string" &&
-    /^[A-Za-z0-9-]{1,64}$/.test(name) &&
+    matches(name, /^[A-Za-z0-9-]{1,64}$/) &&
     isStageLabel(label) &&
     selectors(operations, /^[A-Za-z0-9._:/-]{1,128}$/) &&
     selectors(gateKinds, /^(approval|question)$/) &&
@@ -157,22 +155,11 @@ function isCapabilities(value: unknown): boolean {
   );
 }
 
-function optionalDeclarations(declaration: Fields): boolean {
-  const handoffs = declaration["handoffs"];
-  return (
-    (!Object.hasOwn(declaration, "stages") ||
-      isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") ||
-      (selectors(handoffs, /^[A-Za-z0-9-]{1,64}$/) && unique(handoffs)))
-  );
-}
-
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
   const declaration = record(value);
   if (
-    declaration === undefined ||
     !keys(declaration, [
       "workflowId",
       "effectLimit",
@@ -183,13 +170,16 @@ export function isWorkflowDeclaration(
     ])
   )
     return false;
-  const { workflowId, effectLimit, capabilities, input } = declaration;
+  const { workflowId, effectLimit, capabilities, input, handoffs } =
+    declaration;
   return (
-    typeof workflowId === "string" &&
-    /^[A-Za-z0-9-]{1,64}$/.test(workflowId) &&
+    matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
     isInput(input) &&
-    optionalDeclarations(declaration)
+    (!Object.hasOwn(declaration, "stages") ||
+      isWorkflowStages(declaration["stages"])) &&
+    (!Object.hasOwn(declaration, "handoffs") ||
+      (selectors(handoffs, /^[A-Za-z0-9-]{1,64}$/) && unique(handoffs)))
   );
 }

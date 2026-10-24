@@ -61,7 +61,7 @@ await test("CLV-168 rejects malformed, duplicate and sparse handoff targets", as
     ["a/b"],
     ["é"],
     ["b", "b"],
-    new Array<unknown>(1),
+    new Array<string>(1),
     undefined,
   ]) {
     assert.equal(isWorkflowDeclaration({ ...declaration, handoffs }), false);

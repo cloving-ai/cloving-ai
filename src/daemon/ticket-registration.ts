@@ -218,40 +218,43 @@ function declaredResolver(repository: string): Resolver {
   };
 }
 
-function registrationConflict(
-  table: readonly TicketRegistration[],
-): string | undefined {
-  const ids = new Set<string>();
-  for (const row of table) {
-    if (ids.has(row.workflowId))
-      return `duplicate-workflow-id: ${row.workflowId}`;
-    ids.add(row.workflowId);
-  }
-  for (const row of table) {
-    const unknown = row.handoffs?.find((target) => !ids.has(target));
-    if (unknown !== undefined)
-      return `unknown-handoff-target: ${row.workflowId} -> ${unknown}`;
-  }
-  return undefined;
-}
-
 export async function ticketRegistrations(
   manifests: Readonly<Record<string, string | undefined>>,
   options: { readonly table: readonly TicketRegistration[] },
 ): Promise<TicketRegistrations> {
-  const conflict = registrationConflict(options.table);
-  if (conflict !== undefined) return { kind: "rejected", detail: conflict };
+  const ids = new Set<string>();
+  for (const row of options.table) {
+    if (ids.has(row.workflowId))
+      return {
+        kind: "rejected",
+        detail: `duplicate-workflow-id: ${row.workflowId}`,
+      };
+    ids.add(row.workflowId);
+  }
+  for (const row of options.table) {
+    const unknown = row.handoffs?.find((target) => !ids.has(target));
+    if (unknown !== undefined)
+      return {
+        kind: "rejected",
+        detail: `unknown-handoff-target: ${row.workflowId} -> ${unknown}`,
+      };
+  }
   const registrations: WorkflowRegistration[] = [];
   for (const row of options.table) {
-    const manifest = manifests[row.functionName];
+    const {
+      functionName,
+      capabilities = ticketCapabilities,
+      ...registration
+    } = row;
+    const manifest = manifests[functionName];
     if (manifest === undefined)
       return {
         kind: "rejected",
-        detail: `Missing manifest for workflow function ${row.functionName}.`,
+        detail: `Missing manifest for workflow function ${functionName}.`,
       };
     const admission = await admitCompiled(manifest, {
       file: manifest,
-      capabilities: row.capabilities ?? ticketCapabilities,
+      capabilities,
     });
     if (admission.kind === "rejected")
       return {
@@ -259,14 +262,9 @@ export async function ticketRegistrations(
         detail: `${admission.error.code}: ${admission.error.detail}`,
       };
     registrations.push({
-      workflowId: row.workflowId,
+      ...registration,
       manifest: admission.manifest,
       availability: "available",
-      effectLimit: row.effectLimit,
-      submission: row.submission,
-      resolver: row.resolver,
-      ...(row.stages === undefined ? {} : { stages: row.stages }),
-      ...(row.handoffs === undefined ? {} : { handoffs: row.handoffs }),
     });
   }
   return { kind: "admitted", registrations };
