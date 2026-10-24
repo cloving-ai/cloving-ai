@@ -55,6 +55,9 @@ await test("CLV-008 status gives the state, the revision, the pending decision a
       kind: "run-status",
       run: {
         runId: waiting.runId,
+        parentRunId: null,
+        chainId: waiting.runId,
+        childRunIds: [],
         workflowId: "develop",
         state: "waiting_gate",
         condition: "waiting-decision",
@@ -74,9 +77,16 @@ await test("CLV-008 status gives the state, the revision, the pending decision a
         humanInputCanHelp: true,
       },
     });
+    await service.close();
+  }));
+
+await test("CLV-008 run lists retain pagination cursors and report unknown runs", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const first = await admitted(harness, "c-1");
     const second = await admitted(harness, "c-2");
     const list = await call(harness, { operation: "status", parameters: {} });
-    const ordered = [waiting.runId, second].sort();
+    const ordered = [first, second].sort();
     assert.deepEqual(
       items(field(list, "runs")).map((run: unknown) => [
         field(run, "runId"),

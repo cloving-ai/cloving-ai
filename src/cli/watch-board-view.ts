@@ -159,8 +159,28 @@ export function Card(props: {
         ],
       }),
       completionMark(card, { workflowId, now: props.observationNow ?? now }),
+      component(HandoffLinks, { run: card }),
     ],
   });
+}
+
+export function HandoffLinks(props: {
+  readonly run: Pick<WatchCard, "parentRunId" | "childRunIds">;
+}): Shown {
+  const { parentRunId, childRunIds } = props.run;
+  const links = [
+    ...(parentRunId == null
+      ? []
+      : [{ label: "Parent run", runId: parentRunId }]),
+    ...(childRunIds ?? []).map((runId) => ({ label: "Child run", runId })),
+  ];
+  return links.map(({ label, runId }) =>
+    element("a", {
+      class: "meta",
+      href: watchHash({ workflowId: null, runId }),
+      children: `${label}: ${runId}`,
+    }),
+  );
 }
 
 export function WorkflowList(props: {

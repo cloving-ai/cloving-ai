@@ -7,7 +7,7 @@ import {
   withHarness,
   field,
 } from "./service-fixture.ts";
-import { operationOf } from "./effect-fixture.ts";
+import { settings, intent, startWithSource } from "./handoff-worker-fixture.ts";
 import type { Harness } from "./service-fixture.ts";
 import { listen } from "../src/service/transport.ts";
 import { rejection } from "../src/service/replies.ts";
@@ -25,33 +25,9 @@ function folder(harness: Harness): string {
   return located(settings(harness).journal, intent.operationId).folder;
 }
 
-function settings(harness: Harness) {
-  return {
-    runtimeDirectory: harness.runtimeDirectory,
-    journal: harness.stateDirectory + "/handoffs",
-    retryMilliseconds: 1,
-    document: () => Promise.resolve('{"prompt":"next"}'),
-    runStatus: () => Promise.resolve("running"),
-  };
-}
-
-const intent = {
-  kind: "protected-effect" as const,
-  purpose: "dispatch" as const,
-  runId: "run-source",
-  operationId: operationOf("run-source", { round: 1 }),
-  workflow: "source-pin",
-  inputDigest: `sha256:${"a".repeat(64)}`,
-  capability: "handoff",
-  method: "run",
-  target: "develop",
-  payload: `sha256:${"b".repeat(64)}`,
-  leaseGeneration: 1,
-};
-
 await test("CLV-182 handoff waits a fixed number of times for an active target then starts no run", () =>
   withHarness(async (harness) => {
-    const service = await harness.start({
+    const service = await startWithSource(harness, {
       workflows: [{ ...fakeRegistration([]), admission: "when-idle" }],
     });
     const first = await call(harness, {
@@ -73,8 +49,11 @@ await test("CLV-182 handoff waits a fixed number of times for an active target t
     );
     const reply = await call(harness, { operation: "status", parameters: {} });
     assert.ok(Array.isArray(reply["runs"]));
-    assert.equal(reply["runs"].length, 1);
-    assert.equal(field(reply["runs"][0], "runId"), first["runId"]);
+    const targets = reply["runs"].filter(
+      (run) => field(run, "workflowId") === "develop",
+    );
+    assert.equal(targets.length, 1);
+    assert.equal(field(targets[0], "runId"), first["runId"]);
     await service.close();
   }));
 
@@ -113,7 +92,7 @@ await test("CLV-182 an authority failure stays uncertain and can recover with th
     const signal = new AbortController().signal;
     assert.deepEqual(await worker.deliver(intent, signal), { kind: "unknown" });
     await listener.close();
-    const service = await harness.start();
+    const service = await startWithSource(harness);
     assert.equal(
       field(await worker.deliver(intent, signal), "kind"),
       "completed",
@@ -206,7 +185,7 @@ await test("CLV-182 uncertain recovery replays one command only while the source
 
 await test("CLV-182 a lost worker result reuses the committed submission after service restart", () =>
   withHarness(async (harness) => {
-    const first = await harness.start();
+    const first = await startWithSource(harness);
     const worker = handoffWorker(settings(harness));
     const signal = new AbortController().signal;
     const [one, two] = await Promise.all([
@@ -219,7 +198,7 @@ await test("CLV-182 a lost worker result reuses the committed submission after s
     assert.deepEqual(await worker.stop(intent, signal), one);
     await rm(join(folder(harness), "result.json"));
     await first.close();
-    const second = await harness.start();
+    const second = await startWithSource(harness);
     const restarted = handoffWorker(settings(harness));
     assert.deepEqual(await restarted.reconcile(intent, signal), one);
     assert.deepEqual(await restarted.deliver(intent, signal), one);
@@ -271,7 +250,7 @@ await test("CLV-182 a target that becomes idle is retried with one command ID", 
 
 await test("CLV-182 stopping an active-target wait aborts retries and preserves its count", () =>
   withHarness(async (harness) => {
-    const service = await harness.start({
+    const service = await startWithSource(harness, {
       workflows: [{ ...fakeRegistration([]), admission: "when-idle" }],
     });
     await call(harness, {

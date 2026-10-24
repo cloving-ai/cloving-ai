@@ -102,6 +102,9 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
   );
   assert.deepEqual(issue.columns[1]?.cards[0], {
     runId: "round-2",
+    parentRunId: null,
+    chainId: "round-2",
+    childRunIds: [],
     title: "Title of round-2",
     completionMark: null,
     pullRequestObservation: null,

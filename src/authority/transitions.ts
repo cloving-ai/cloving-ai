@@ -86,6 +86,8 @@ export const numberFields = [
 ] as const;
 
 export const textFields = [
+  "parentRunId",
+  "chainId",
   "workflow",
   "submission",
   "input",

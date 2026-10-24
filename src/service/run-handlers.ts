@@ -1,5 +1,10 @@
 import { issueIdentity } from "../issue-identity.ts";
 import {
+  linksOf,
+  runLinks,
+  type RunLinks,
+} from "../authority/handoff-chain.ts";
+import {
   runView,
   unresolvedEffects,
   type OperationSummary,
@@ -27,6 +32,7 @@ import { usageTotals } from "./worker-totals.ts";
 import { feedbackOf } from "./decision-handler.ts";
 
 interface Snapshot {
+  readonly links: Readonly<Record<string, RunLinks>>;
   readonly state: StoredState;
   readonly operations: readonly OperationRecord[];
   readonly sequences: Readonly<Record<string, number>>;
@@ -39,6 +45,7 @@ async function snapshot(context: ServiceContext): Promise<Snapshot> {
   const state = await authority.state();
   const sequences = await authority.queries.sequences();
   return {
+    links: runLinks(await authority.queries.runOrigins()),
     state,
     operations: await authority.operations(),
     sequences: sequences.runs,
@@ -97,13 +104,14 @@ async function effectInput(
   };
 }
 
-type ShownRun = RunView & {
-  readonly input: Fields | null;
-  readonly workflowId: string;
-  readonly latestAt: string | null;
-  readonly unresolvedEffects: readonly string[];
-  readonly feedback: readonly Fields[];
-};
+type ShownRun = RunView &
+  RunLinks & {
+    readonly input: Fields | null;
+    readonly workflowId: string;
+    readonly latestAt: string | null;
+    readonly unresolvedEffects: readonly string[];
+    readonly feedback: readonly Fields[];
+  };
 
 async function viewOf(
   context: ServiceContext,
@@ -133,6 +141,7 @@ async function viewOf(
   };
   return {
     ...runView(input),
+    ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
     input: await submittedInput(context, details?.submission),
     workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
     latestAt: times[run.runId] ?? null,
@@ -144,6 +153,9 @@ async function viewOf(
 function summary(view: ShownRun): Fields {
   return {
     runId: view.runId,
+    parentRunId: view.parentRunId,
+    chainId: view.chainId,
+    childRunIds: view.childRunIds,
     input: view.input,
     workflowId: view.workflowId,
     state: view.state,

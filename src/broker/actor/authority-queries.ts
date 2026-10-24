@@ -7,12 +7,14 @@ import type {
 import { documentBody } from "../../storage/decision-rows.ts";
 import {
   integer,
+  optionalText,
   latestSequence,
   text,
   type SqlConnection,
 } from "../../storage/domain-rows.ts";
 import { storedEvents } from "../authority-restore.ts";
 import { documentDigest } from "../decision-restore.ts";
+import type { RunOrigins } from "../../authority/handoff-chain.ts";
 
 export interface CommandRecord {
   readonly commandId: string;
@@ -57,6 +59,22 @@ export interface AuthorityQueries {
   ) => Promise<PublishedEvent | undefined>;
   readonly sequences: () => Promise<Sequences>;
   readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
+  readonly runOrigins: () => Promise<RunOrigins>;
+}
+
+async function runOrigins(connection: SqlConnection): Promise<RunOrigins> {
+  const rows = await connection.all(
+    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id FROM events WHERE type = 'run.created' ORDER BY sequence",
+  );
+  return Object.fromEntries(
+    rows.map((row) => [
+      text(row, "run_id"),
+      {
+        parentRunId: optionalText(row, "parent_run_id"),
+        chainId: text(row, "chain_id"),
+      },
+    ]),
+  );
 }
 
 async function receipt(
@@ -191,5 +209,6 @@ export function authorityQueries(read: Read): AuthorityQueries {
       read((connection) => latestCompletion(connection, cursor)),
     sequences: () => read(sequences),
     workflowIds: () => read(workflowIds),
+    runOrigins: () => read(runOrigins),
   };
 }

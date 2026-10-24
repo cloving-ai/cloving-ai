@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { handoffChain, type HandoffChain } from "../authority/handoff-chain.ts";
 import { executionCapabilities } from "../execution-pin.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -107,6 +108,7 @@ function usable(workflow: Registered | undefined, workflowId: string): Usable {
 }
 
 interface Admission {
+  readonly chain: HandoffChain;
   readonly workflow: Registered;
   readonly workflowId: string;
   readonly commandId: string;
@@ -181,6 +183,12 @@ async function admit(
       input: documentDigest(input),
       resolver: `${workflow.resolver.id}:${workflow.resolver.version}`,
       ...effectBudget(workflow),
+      ...(admission.chain.kind === "handoff"
+        ? {
+            parentRunId: admission.chain.parentRunId,
+            chainId: admission.chain.chainId,
+          }
+        : {}),
     },
     documents: [normalized, input],
   });
@@ -205,6 +213,16 @@ async function submitted(
     return replayed(existing, {
       workflowId,
       submission: parameters["submission"],
+    });
+  const chain = handoffChain(
+    commandId,
+    await context.authority.queries.runOrigins(),
+  );
+  if (chain.kind === "refused")
+    return failed(chain.reason, {
+      commandId,
+      detail:
+        "A hand-off chain permits at most five runs and requires a recorded parent.",
     });
   const found = usable(context.registry.byId(workflowId), workflowId);
   if (found.kind === "unusable") return found.reply;
@@ -231,6 +249,7 @@ async function submitted(
       detail: `The workflow ${workflowId} already has an active run.`,
     });
   return admit(context, {
+    chain,
     workflow: found.workflow,
     workflowId,
     commandId,

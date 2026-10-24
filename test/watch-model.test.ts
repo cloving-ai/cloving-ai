@@ -336,6 +336,9 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
   assert.deepEqual(
     { ...selected, decisions: [], turns: [] },
     sampleRun({
+      parentRunId: null,
+      chainId: "run-1",
+      childRunIds: [],
       claudeCostUsd: null,
       estimatedCostUsd: null,
       currentStep: { name: "Agent turn", startedAt: null },
