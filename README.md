@@ -331,7 +331,7 @@ Journal updates use a temporary file and rename. Sent and exhausted failed deliv
 - `develop-prompt` takes the text of a task. Use it for a small task with no ticket, or for a first try in a new repository.
 - `develop-ticket` takes a ticket ID and reads the ticket itself. Use it for the normal work on a ticket, when you want to read each diff and merge the branch yourself.
 - `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request. Use it for a small ticket with clear criteria, in a GitHub repository that Greptile reviews and that has a check command. It is the workflow of the continuous process.
-- `develop-prd` takes an idea, researches the code and web, reviews a draft PRD, and posts it as a GitHub issue. Set `CLOVING_PRIVATE_TEXTS` to a nonempty JSON list before starting the daemon. A refused post preserves the worktree and draft. A successful post removes the worktree and adds no label; read the issue and add `cloving: ready` when it is ready for implementation.
+- `develop-prd` takes an idea, researches the code and web, reviews a draft PRD, and posts it as a GitHub issue. It then hands the issue number to `develop-issue` to build automatically. Set `CLOVING_PRIVATE_TEXTS` to a nonempty JSON list before starting the daemon. A refused post preserves the worktree and draft. If the handoff is refused, it adds `cloving: ready` so the issue queue can build it later. The PRD run retains `issue-N` as its promotion, shows the refusal code in its outcome reason, and removes its worktree after posting. If the fallback label fails, status also shows `issueUpdate: failed`; inspect the GitHub operation and queue the issue after resolving the failure.
 
 ```sh
 cloving start                                  # terminal 1, in the repository
@@ -624,7 +624,7 @@ A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
-For `handoff_requested`, the daemon retains the workflow's `promotionId` in the completion event. `cloving status <runId>` shows it as `Promotion:`, JSON status includes `run.outcome.promotionId`, and watch retains it in the run model and completed-run details. This identifier is an opaque reference and grants no authority.
+For `handoff_requested`, the daemon retains the workflow's `promotionId` in the completion event. An optional bounded `reason` records a handoff refusal while preserving the promotion. `cloving status <runId>` shows the promotion as `Promotion:` and the reason beside the outcome; JSON status includes `run.outcome.promotionId` and `run.outcome.reason`. Watch retains the promotion in the run model and completed-run details. This identifier is an opaque reference and grants no authority.
 
 ```ts
 import type { CycleOutcome } from "cloving/workflows";
@@ -718,7 +718,7 @@ To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
 
 The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities must contain `claude`, `github`, or both. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, or booleans. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
 
-Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The built-in `develop-prd` declares `develop-issue` as its only handoff target; the other built-in workflows declare none. The built-in `develop-prd` does not call the step yet, so a PRD issue still needs `cloving: ready` to enter the issue queue.
+Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The built-in `develop-prd` declares `develop-issue` as its only handoff target and calls it after creating an issue; the other built-in workflows declare none. A refused PRD handoff adds `cloving: ready` for the queue and records the refusal in the PRD run's outcome.
 
 Use `handoff` inside a workflow to submit input to a declared target:
 

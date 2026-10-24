@@ -89,6 +89,47 @@ await test("CLV-075 researches, reviews, posts and discards in order", async () 
   checkPrompts(line);
 });
 
+for (const [label, ending] of [
+  [completed({}), {}],
+  [{ kind: "refused", reason: "budget-exhausted" }, { issueUpdate: "failed" }],
+] as const)
+  await test(`CLV-169 a handoff timeout queues its issue and exposes label result ${JSON.stringify(ending)}`, async () => {
+    const [line] = await ran([
+      scenario(
+        completed({
+          number: 75,
+          url: "https://github.com/acme/demo/issues/75",
+        }),
+        {
+          "github label": [label],
+          handoff: [{ kind: "failed", reason: "handoff-start-timeout" }],
+        },
+      ),
+    ]);
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "handoff_requested",
+      cycleId: input.cycleId,
+      promotionId: "issue-75",
+      reason: "handoff-start-timeout",
+      ...ending,
+    });
+    assert.deepEqual(request(line, 4), {
+      scope: { phase: "prd", operation: "github-ready", round: 1 },
+      capability: "github",
+      method: "label",
+      target: input.cycleId,
+      units: 1,
+      payload: JSON.stringify({
+        owner: "acme",
+        repository: "demo",
+        number: 75,
+        add: ["cloving: ready"],
+        remove: [],
+      }),
+    });
+    assert.equal(field(request(line, 5), "method"), "discard");
+  });
+
 function checkPrompts(line: unknown): void {
   const research = String(field(request(line, 1), "payload"));
   assert.ok(research.includes(input.ticket));
@@ -167,6 +208,7 @@ globalThis[Symbol.for("cloving.step-bridge/v1")] = {
     return request.method === "create-issue" ? ${JSON.stringify(created)} : ${JSON.stringify(completed({}))};
   },
   gate: async () => { throw new Error("unexpected-gate"); },
+  handoff: async () => { requests.push("handoff"); throw new Error("unexpected-handoff"); },
 };
 const opened = await startHost({ dataDirectory, concurrency: 1, handler: POST });
 if (opened.kind !== "started") throw new Error(opened.reason);

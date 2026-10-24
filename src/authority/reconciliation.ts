@@ -203,6 +203,7 @@ function completionOutcome(world: WorldRun): Readonly<Record<string, string>> {
   if (outcome !== "handoff_requested") return {};
   return {
     outcome,
+    ...(isBlockedReason(outcomeReason) ? { outcomeReason } : {}),
     ...(isPromotionId(world.promotionId)
       ? { promotionId: world.promotionId }
       : {}),

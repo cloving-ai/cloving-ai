@@ -276,6 +276,7 @@ await test("CLV-075 develop-prd registers its own function with prompt input and
   assert.ok(row);
   assert.equal(row.functionName, "developPrd");
   assert.equal(row.effectLimit, 8);
+  assert.deepEqual(row.handoffs, ["develop-issue"]);
   assert.deepEqual(row.submission, {
     maximumBytes: 65_536,
     fields: { prompt: "string" },

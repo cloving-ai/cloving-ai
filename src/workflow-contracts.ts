@@ -22,6 +22,7 @@ export type CycleOutcome =
       readonly promotionId: string;
       readonly ticketStatus?: "complete" | "partial";
       readonly issueUpdate?: "failed";
+      readonly reason?: string;
     };
 
 export type Validation<Value> =
@@ -31,12 +32,33 @@ export type Validation<Value> =
 const identifier = /^[A-Za-z0-9._:-]{1,128}$/;
 const reason = /^\S[\s\S]{0,255}$/;
 
+type PromotionDetails = Pick<
+  Extract<CycleOutcome, { kind: "handoff_requested" }>,
+  "ticketStatus" | "issueUpdate" | "reason"
+>;
+
 export function isPromotionId(value: unknown): value is string {
   return typeof value === "string" && identifier.test(value);
 }
 
 export function isBlockedReason(value: unknown): value is string {
   return typeof value === "string" && reason.test(value);
+}
+
+function promotionDetails(
+  fields: Readonly<Record<string, unknown>>,
+): PromotionDetails | null {
+  const ticketStatus = fields["ticketStatus"];
+  const issueUpdate = fields["issueUpdate"];
+  const reason = fields["reason"];
+  if (reason !== undefined && !isBlockedReason(reason)) return null;
+  if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
+  if (ticketStatus !== undefined && !isTicketStatus(ticketStatus)) return null;
+  return {
+    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
+    ...(ticketStatus === undefined ? {} : { ticketStatus }),
+    ...(reason === undefined ? {} : { reason }),
+  };
 }
 
 const outcomes: Readonly<
@@ -85,7 +107,7 @@ const outcomes: Readonly<
   },
   handoff_requested: {
     keys: ["cycleId", "kind", "promotionId"],
-    optional: ["ticketStatus", "issueUpdate"],
+    optional: ["ticketStatus", "issueUpdate", "reason"],
     parse: (fields) => {
       const cycleId = textField(fields, {
         key: "cycleId",
@@ -96,17 +118,13 @@ const outcomes: Readonly<
         pattern: identifier,
       });
       if (cycleId === null || promotionId === null) return null;
-      const ticketStatus = fields["ticketStatus"];
-      const issueUpdate = fields["issueUpdate"];
-      if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
-      if (ticketStatus !== undefined && !isTicketStatus(ticketStatus))
-        return null;
+      const details = promotionDetails(fields);
+      if (details === null) return null;
       return {
         kind: "handoff_requested",
         cycleId,
         promotionId,
-        ...(issueUpdate === "failed" ? { issueUpdate } : {}),
-        ...(ticketStatus === undefined ? {} : { ticketStatus }),
+        ...details,
       };
     },
   },

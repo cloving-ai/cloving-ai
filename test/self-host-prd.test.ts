@@ -20,16 +20,40 @@ writeFileSync("cloving-prd-draft.md", "# Run costs\\n\\n## Problem\\nShow the co
 process.stdout.write(JSON.stringify({ type: "result", result: "Draft ready" }) + "\\n");
 `;
 
-async function prdRun(privateTexts: string | undefined): Promise<{
+function commands(
+  root: string,
+  options: { readonly refuseHandoff?: true },
+): { readonly state: string; readonly script: string } {
+  const state = join(root, "gh-state.json");
+  const script = join(root, "fake-gh.mjs");
+  writeFileSync(state, ghState({ scores: [] }));
+  writeFileSync(
+    script,
+    fakeGh.replace(
+      "number: state.issues.length + 1",
+      'repository: "acme/demo", number: state.issues.length + 1',
+    ),
+  );
+  writeFileSync(
+    join(root, "fake-board.mjs"),
+    options.refuseHandoff
+      ? "process.exit(3);"
+      : 'process.stdout.write("# New PRD\\n\\nGitHub issue: acme/demo#" + process.argv.at(-1) + " (open)\\n");',
+  );
+  return { state, script };
+}
+
+async function prdRun(
+  privateTexts: string | undefined,
+  options: { readonly refuseHandoff?: true } = {},
+): Promise<{
   readonly run: unknown;
   readonly state: string;
   readonly directory: string;
+  readonly targets: readonly unknown[];
 }> {
   const work = await scene(writer);
-  const state = join(work.root, "gh-state.json");
-  const script = join(work.root, "fake-gh.mjs");
-  writeFileSync(state, ghState({ scores: [] }));
-  writeFileSync(script, fakeGh);
+  const { state, script } = commands(work.root, options);
   const daemon = await work.start({
     CLOVING_PRIVATE_TEXTS: privateTexts,
     CLOVING_GH_COMMAND: JSON.stringify([process.execPath, script]),
@@ -56,8 +80,13 @@ async function prdRun(privateTexts: string | undefined): Promise<{
       ? run
       : undefined;
   });
+  const listed = field(await asked("status", {}), "runs");
+  assert.ok(Array.isArray(listed));
+  const targets: unknown[] = listed.filter(
+    (entry: unknown) => field(entry, "workflowId") === "develop-issue",
+  );
   assert.equal(await ended(daemon), 0);
-  return { run, state, directory: work.directory };
+  return { run, state, directory: work.directory, targets };
 }
 
 function issueCount(state: string): unknown {
@@ -82,12 +111,39 @@ await test("CLV-075 a started daemon preserves the absent operator list and refu
       results.some((record) => record.includes("private-texts-not-set")),
     );
     assert.equal(issueCount(result.state), 0);
+    assert.deepEqual(result.targets, []);
     assert.equal(readdirSync(join(result.directory, "worktrees")).length, 1);
   }));
 
-await test("CLV-075 the compiled PRD workflow posts an issue and completes without a review gate", () =>
+await test("CLV-169 a refused compiled PRD handoff queues the issue and retains its promotion and refusal in status", () =>
+  withoutChildren(async () => {
+    const result = await prdRun('["private organization"]', {
+      refuseHandoff: true,
+    });
+    const saved: unknown = JSON.parse(readFileSync(result.state, "utf8"));
+    assert.deepEqual(field(field(field(saved, "issues"), 0), "labels"), [
+      "cloving: ready",
+    ]);
+    assert.deepEqual(result.targets, []);
+    assert.equal(field(result.run, "state"), "completed");
+    assert.deepEqual(field(result.run, "outcome"), {
+      kind: "handoff_requested",
+      promotionId: "issue-1",
+      reason: "handoff-input-refused",
+    });
+    assert.deepEqual(field(result.run, "budget"), { limit: 8, spent: 7 });
+    assert.deepEqual(readdirSync(join(result.directory, "worktrees")), []);
+  }));
+
+await test("CLV-169 compiled PRD creates an issue and starts exactly one develop-issue run for its number", () =>
   withoutChildren(async () => {
     const result = await prdRun('["private organization"]');
+    assert.equal(result.targets.length, 1);
+    assert.deepEqual(field(result.targets[0], "input"), { ticket: "1" });
+    assert.equal(
+      field(result.targets[0], "parentRunId"),
+      field(result.run, "runId"),
+    );
     assert.equal(field(result.run, "state"), "completed");
     assert.deepEqual(field(result.run, "outcome"), {
       kind: "handoff_requested",
@@ -95,6 +151,5 @@ await test("CLV-075 the compiled PRD workflow posts an issue and completes witho
       reason: null,
     });
     assert.equal(issueCount(result.state), 1);
-    assert.deepEqual(field(result.run, "budget"), { limit: 8, spent: 5 });
-    assert.deepEqual(readdirSync(join(result.directory, "worktrees")), []);
+    assert.deepEqual(field(result.run, "budget"), { limit: 8, spent: 6 });
   }));

@@ -1,9 +1,15 @@
 import type { CycleOutcome, ProtectedRequest } from "cloving/workflows";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
+import { handoff } from "cloving/workflows/steps/handoff";
 
 interface Idea {
   readonly cycleId: string;
   readonly ticket: string;
+}
+
+interface CreatedIssue {
+  readonly number: number;
+  readonly result: string | null;
 }
 
 const draft = "cloving-prd-draft.md";
@@ -79,9 +85,88 @@ function requests(input: Idea): readonly ProtectedRequest[] {
   }));
 }
 
+function readyIssue(input: Idea, issueResult: CreatedIssue): ProtectedRequest {
+  const { number, result } = issueResult;
+  const created: unknown = JSON.parse(result ?? "null");
+  const url =
+    typeof created === "object" && created !== null && "url" in created
+      ? created.url
+      : undefined;
+  const issue =
+    typeof url === "string"
+      ? /^https?:\/\/[^/\s]+\/([\w.-]+)\/([\w.-]+)\/issues\/([1-9]\d*)$/.exec(
+          url,
+        )
+      : null;
+  if (issue === null || Number(issue[3]) !== number)
+    throw new Error("invalid-issue-result");
+  return {
+    scope: { phase: "prd", operation: "github-ready", round: 1 },
+    capability: "github",
+    method: "label",
+    target: input.cycleId,
+    units: 1,
+    payload: JSON.stringify({
+      owner: issue[1],
+      repository: issue[2],
+      number,
+      add: ["cloving: ready"],
+      remove: [],
+    }),
+  };
+}
+
+async function handoffIssue(
+  input: Idea,
+  created: CreatedIssue,
+): Promise<CycleOutcome> {
+  const { number } = created;
+  const outcome = {
+    kind: "handoff_requested" as const,
+    cycleId: input.cycleId,
+    promotionId: `issue-${String(number)}`,
+  };
+  try {
+    await handoff({
+      workflowId: "develop-issue",
+      input: { ticket: String(number) },
+    });
+    return outcome;
+  } catch (error) {
+    const reason = handoffReason(error);
+    const queued = await protectedEffect(readyIssue(input, created));
+    return {
+      ...outcome,
+      reason,
+      ...(queued.kind === "completed" ? {} : { issueUpdate: "failed" }),
+    };
+  }
+}
+
+function handoffReason(error: unknown): string {
+  const cause =
+    typeof error === "object" && error !== null && "cause" in error
+      ? error.cause
+      : error;
+  if (
+    typeof cause !== "object" ||
+    cause === null ||
+    !("message" in cause) ||
+    typeof cause.message !== "string"
+  )
+    return "handoff-failed";
+  return /^[a-z][a-z0-9-]{0,127}$/.test(cause.message)
+    ? cause.message
+    : "handoff-failed";
+}
+
 export async function developPrd(input: Idea): Promise<CycleOutcome> {
   "use workflow";
-  let promotionId = "";
+  let outcome: CycleOutcome = {
+    kind: "handoff_requested",
+    cycleId: input.cycleId,
+    promotionId: "",
+  };
   for (const request of requests(input)) {
     const result = await protectedEffect(request);
     if (result.kind !== "completed")
@@ -103,7 +188,7 @@ export async function developPrd(input: Idea): Promise<CycleOutcome> {
         reason: "invalid-issue-result",
         evidenceId: request.scope.operation,
       };
-    promotionId = `issue-${String(number)}`;
+    outcome = await handoffIssue(input, { number, result: result.result });
   }
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId };
+  return outcome;
 }

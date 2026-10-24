@@ -77,7 +77,7 @@ const command = {
   expectedRevision: 2,
 };
 
-await test("CLV-072 the host forwards completed workflow outcomes and valid blocked reasons", async () => {
+await test("CLV-169 the host forwards completed workflow outcomes and bounded reasons", async () => {
   for (const reason of [
     "Greptile gave the confidence score 4/5 in round 4",
     "x".repeat(256),
@@ -86,8 +86,17 @@ await test("CLV-072 the host forwards completed workflow outcomes and valid bloc
       { ...command, outcome: "blocked", outcomeReason: reason },
     ]);
   assert.deepEqual(
-    await completed({ kind: "handoff_requested", reason: "ignored" }),
-    [{ ...command, outcome: "handoff_requested" }],
+    await completed({
+      kind: "handoff_requested",
+      reason: "handoff-start-timeout",
+    }),
+    [
+      {
+        ...command,
+        outcome: "handoff_requested",
+        outcomeReason: "handoff-start-timeout",
+      },
+    ],
   );
 });
 
