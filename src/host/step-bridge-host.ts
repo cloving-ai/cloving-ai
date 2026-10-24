@@ -342,6 +342,20 @@ export function stepBridge(ports: BridgePorts): StepBridge {
   return {
     effect: (request) => effect(hold, request),
     gate: (request) => gate(hold, request),
+    handoff: (request) =>
+      effect(hold, {
+        scope: {
+          phase: "handoff",
+          operation: "handoff",
+          round: 1,
+          key: createHash("sha256").update(ports.call().stepId).digest("hex"),
+        },
+        capability: "handoff",
+        method: "run",
+        target: request.workflowId,
+        payload: JSON.stringify(request.input),
+        units: 1,
+      }),
   };
 }
 

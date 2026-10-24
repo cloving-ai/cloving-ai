@@ -612,7 +612,7 @@ A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
 - The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. After a decision, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine the decision before it asks for an effect, as `decided()` in `workflows/develop-ticket.ts` does. If it does not, it does the work of round 1 again.
-- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate` and `loadCycle` from `cloving/workflows/steps/load-cycle`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
+- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate` and `loadCycle` from `cloving/workflows/steps/load-cycle` and `handoff` from `cloving/workflows/steps/handoff`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
@@ -705,7 +705,20 @@ To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
 
 The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities must contain `claude`, `github`, or both. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, or booleans. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
 
-Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The built-in `develop-prd` declares `develop-issue` as its only handoff target; the other built-in workflows declare none. The handoff step and automatic chaining remain unimplemented, so a PRD issue still needs `cloving: ready` to enter the issue queue.
+Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The built-in `develop-prd` declares `develop-issue` as its only handoff target; the other built-in workflows declare none. The built-in `develop-prd` does not call the step yet, so a PRD issue still needs `cloving: ready` to enter the issue queue.
+
+Use `handoff` inside a workflow to submit input to a declared target:
+
+```typescript
+import { handoff } from "cloving/workflows/steps/handoff";
+
+const runId = await handoff({
+  workflowId: "develop-issue",
+  input: { ticket: "CLV-123" },
+});
+```
+
+The step returns the target run ID after admission through the operator submission path. It spends one protected-effect unit. The caller’s pinned `handoffs` list must include the target; otherwise the step fails with `handoff-not-declared`. The target validates and resolves the input through its normal submission contract. Refusal fails with `handoff-input-refused` and admits no target run. If the target returns `workflow-active`, the worker makes at most ten attempts, one second apart, then fails with `handoff-start-timeout`. The worker retains the active-target refusal count across restarts. Replays reuse command ID `handoff:<operation ID>` and return the same run ID; separate step calls have distinct operation IDs. A lost submission reply remains uncertain until reconciled with that same command ID.
 
 Optional `stages` contains 1–12 entries in board order. Each entry has a unique `name` (1–64 ASCII letters, digits or hyphens), a unique `label` (1–40 printable characters on one line, without outer spaces), and `operations`, `gateKinds`, or both. At least one selector array must be nonempty. Operations match the `scope.operation` passed to `protectedEffect`, using 1–128 ASCII letters, digits or `._:/-`; gate kinds are `approval` and `question`. Selectors cannot repeat within an array or belong to two stages of the same selector type. Unknown fields and labels `Other`, `Done` and `Stopped` are rejected.
 
@@ -731,7 +744,7 @@ node dist/src/cli.js --help
 npm pack --ignore-scripts
 ```
 
-`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and bundled workflows; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect` and `decisionGate`, and starts no service.
+`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and bundled workflows; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `decisionGate` and `handoff`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 

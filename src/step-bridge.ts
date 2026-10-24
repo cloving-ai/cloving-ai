@@ -44,6 +44,19 @@ export interface GateRequest {
   readonly expiresAt?: string;
 }
 
+export type HandoffValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly HandoffValue[]
+  | { readonly [key: string]: HandoffValue };
+
+export interface HandoffRequest {
+  readonly workflowId: string;
+  readonly input: Readonly<Record<string, HandoffValue>>;
+}
+
 export type GateResult =
   | { readonly kind: "opened"; readonly decisionId: string }
   | { readonly kind: "refused"; readonly reason: string }
@@ -52,6 +65,7 @@ export type GateResult =
 export interface StepBridge {
   readonly effect: (request: ProtectedRequest) => Promise<ProtectedResult>;
   readonly gate: (request: GateRequest) => Promise<GateResult>;
+  readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
 }
 
 export function isStepBridge(value: unknown): value is StepBridge {

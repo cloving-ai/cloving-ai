@@ -1,7 +1,11 @@
 import { parseCommand } from "../authority/commands.ts";
 import type { AuthorityState } from "../authority/reducer.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
-import { readExecutionManifest, resumePinned } from "../execution-pin.ts";
+import {
+  executionCapabilities,
+  readExecutionManifest,
+  resumePinned,
+} from "../execution-pin.ts";
 import type {
   AdmissionResult,
   ExecutionManifest,
@@ -45,7 +49,7 @@ const admission: Rule = (command, context) => {
   const pin = workflowPin(stored);
   if (command.workflow !== pin)
     return { kind: "rejected", reason: "workflow-pin-mismatch" };
-  const capabilities = JSON.stringify([...stored.capabilities].sort());
+  const capabilities = executionCapabilities(stored);
   if ((command.capabilities ?? capabilities) !== capabilities)
     return { kind: "rejected", reason: "capability-pin-mismatch" };
   return { kind: "admissible", definitions: new Map([[pin, stored]]) };
@@ -72,9 +76,17 @@ const effectRequest: Rule = (command, context) => {
     target: String(command.target),
     payload: String(command.payload),
   });
-  return computed === command.inputDigest
-    ? unpinned(command, context)
-    : { kind: "rejected", reason: "input-digest-mismatch" };
+  if (computed !== command.inputDigest)
+    return { kind: "rejected", reason: "input-digest-mismatch" };
+  if (command.capability === "handoff") {
+    const pin = context.state.runs[command.runId]?.workflow ?? "";
+    const declaration = context.definitions.get(pin);
+    if (!declaration?.handoffs?.includes(String(command.target)))
+      return { kind: "rejected", reason: "handoff-not-declared" };
+    if (command.units !== 1 || command.method !== "run")
+      return { kind: "rejected", reason: "invalid-handoff-request" };
+  }
+  return unpinned(command, context);
 };
 
 const rules: Readonly<Record<string, Rule>> = {

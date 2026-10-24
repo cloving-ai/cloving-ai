@@ -972,7 +972,15 @@
     "src/chats/reference-mapping.ts": "pure",
     "test/chats-reference-mapping-fixture.ts": "test",
     "test/chats-reference-mapping.test.ts": "test",
-    "test/chats-reference-mapping-refusals.test.ts": "test"
+    "test/chats-reference-mapping-refusals.test.ts": "test",
+    "src/steps/handoff.ts": "step",
+    "src/daemon/handoff-worker.ts": "daemon",
+    "test/handoff-sdk.test.ts": "test",
+    "test/handoff-authority.test.ts": "test",
+    "test/handoff-worker.test.ts": "test",
+    "test/handoff-candidate.test.ts": "test",
+    "test/handoff-step.test.ts": "test",
+    "test/handoff-cancellation.test.ts": "test"
   },
   "allowed": {
     "quality": [

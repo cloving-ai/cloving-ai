@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
+import { executionCapabilities } from "../execution-pin.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { isIdentifier as isWorkflowIdentifier } from "../authority/commands.ts";
+import {
+  isCommandId,
+  isIdentifier as isWorkflowIdentifier,
+} from "../authority/commands.ts";
 import type { CommandRecord } from "../broker/actor/authority.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
@@ -15,7 +19,6 @@ import {
   committed,
   failed,
   invalidRequest,
-  isIdentifier,
   publicReceipt,
   rejection,
   result,
@@ -77,7 +80,7 @@ function effectBudget(workflow: Registered): Fields {
   if (workflow.effectLimit === undefined) return {};
   return {
     effectLimit: workflow.effectLimit,
-    capabilities: JSON.stringify([...workflow.manifest.capabilities].sort()),
+    capabilities: executionCapabilities(workflow.manifest),
   };
 }
 
@@ -195,7 +198,7 @@ async function submitted(
   parameters: Fields,
 ): Promise<Reply> {
   const { workflowId, commandId } = parameters;
-  if (!isWorkflowIdentifier(workflowId) || !isIdentifier(commandId))
+  if (!isWorkflowIdentifier(workflowId) || !isCommandId(commandId))
     return invalidRequest("The workflow ID or the command ID is not valid.");
   const existing = await context.authority.queries.receipt(commandId);
   if (existing !== undefined)

@@ -42,11 +42,14 @@ function exportSnapshot(
 
 function protectedHelper(
   modules: ReadonlyMap<string, ts.SourceFile>,
-  checker: ts.TypeChecker,
+  options: {
+    readonly checker: ts.TypeChecker;
+    readonly subpath: string;
+    readonly name: string;
+  },
 ): ts.Symbol | undefined {
-  const protectedModule = modules.get(
-    "cloving/workflows/steps/protected-effect",
-  );
+  const { checker } = options;
+  const protectedModule = modules.get(options.subpath);
   const moduleSymbol =
     protectedModule && checker.getSymbolAtLocation(protectedModule);
   return (
@@ -55,7 +58,7 @@ function protectedHelper(
       checker,
       checker
         .getExportsOfModule(moduleSymbol)
-        .find((entry) => entry.name === "protectedEffect"),
+        .find((entry) => entry.name === options.name),
     )
   );
 }
@@ -119,7 +122,16 @@ export function analyzeWorkflowCandidate(
   const symbols = {
     checker,
     source,
-    protectedSymbol: protectedHelper(modules, checker),
+    protectedSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/protected-effect",
+      name: "protectedEffect",
+    }),
+    handoffSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/handoff",
+      name: "handoff",
+    }),
   };
   const facts = sourceFacts(symbols);
   const invalid =

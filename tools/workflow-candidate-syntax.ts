@@ -7,6 +7,7 @@ export interface CandidateSymbols {
   readonly checker: ts.TypeChecker;
   readonly source: ts.SourceFile;
   readonly protectedSymbol: ts.Symbol | undefined;
+  readonly handoffSymbol: ts.Symbol | undefined;
 }
 
 export function propertyName(name: ts.PropertyName): string | undefined {
@@ -20,12 +21,26 @@ export function protectedCall(
 ): node is ts.CallExpression {
   if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression))
     return false;
+  const symbol = resolvedSymbol(
+    symbols.checker,
+    symbols.checker.getSymbolAtLocation(node.expression),
+  );
   return (
-    symbols.protectedSymbol !== undefined &&
+    symbol !== undefined &&
+    [symbols.protectedSymbol, symbols.handoffSymbol].includes(symbol)
+  );
+}
+
+export function handoffCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  return (
+    symbols.handoffSymbol !== undefined &&
     resolvedSymbol(
       symbols.checker,
       symbols.checker.getSymbolAtLocation(node.expression),
-    ) === symbols.protectedSymbol
+    ) === symbols.handoffSymbol
   );
 }
 
@@ -44,6 +59,7 @@ export function protectedEffectFact(
   symbols: CandidateSymbols,
 ): CandidateEffect | undefined {
   if (!protectedCall(node, symbols)) return undefined;
+  if (handoffCall(node, symbols)) return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
   return {
@@ -53,12 +69,16 @@ export function protectedEffectFact(
 }
 
 function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
-  if (!ts.isIdentifier(node) || !symbols.protectedSymbol) return false;
+  if (!ts.isIdentifier(node)) return false;
   const symbol = resolvedSymbol(
     symbols.checker,
     referenceSymbol(node, { parent: node.parent, checker: symbols.checker }),
   );
-  if (symbol !== symbols.protectedSymbol) return false;
+  if (
+    symbol === undefined ||
+    ![symbols.protectedSymbol, symbols.handoffSymbol].includes(symbol)
+  )
+    return false;
   if (ts.isImportSpecifier(node.parent)) return false;
   return (
     !ts.isCallExpression(node.parent) ||

@@ -42,6 +42,13 @@ const fields = [
   "toolchain",
 ] as const;
 
+export function executionCapabilities(manifest: ExecutionManifest): string {
+  const handoff = manifest.handoffs?.length ? ["handoff"] : [];
+  return JSON.stringify(
+    [...new Set([...manifest.capabilities, ...handoff])].sort(),
+  );
+}
+
 export function pinnedIdentity(manifest: ExecutionManifest): string {
   const identity = fields.map((field) => canonical[field](manifest));
   if (manifest.handoffs?.length) identity.push(canonical.handoffs(manifest));
