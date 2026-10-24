@@ -45,6 +45,13 @@ export function deliveryRouter(routes: DeliveryRoutes): Delivery {
       if (!protectedEffect(intent)) return runs.reconcile(intent);
       return workerOf(routes, intent)?.reconcile(intent, signal) ?? refusal();
     },
+    retry: (intent, signal) => {
+      if (!protectedEffect(intent)) return refusal();
+      return (
+        workerOf(routes, intent)?.retry?.(intent, signal) ??
+        Promise.resolve({ kind: "unknown" })
+      );
+    },
     stop: (intent, signal) => {
       if (!protectedEffect(intent)) return runs.stop(intent);
       return workerOf(routes, intent)?.stop(intent, signal) ?? refusal();

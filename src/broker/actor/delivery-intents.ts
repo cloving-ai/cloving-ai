@@ -71,6 +71,7 @@ export interface Delivery {
     intent: DeliveryIntent,
     signal: AbortSignal,
   ) => Promise<AdapterOutcome>;
+  readonly retry?: Delivery["reconcile"];
   readonly stop?: (
     intent: DeliveryIntent,
     signal: AbortSignal,

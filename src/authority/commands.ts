@@ -1,4 +1,5 @@
 import { isTicketStatus } from "../ticket-status.ts";
+import { operationScope } from "../operation-identity.ts";
 import { isInstant } from "./instants.ts";
 import { isBlockedReason, isPromotionId } from "../workflow-contracts.ts";
 import {
@@ -185,7 +186,7 @@ export function parseCommand(value: unknown): AuthorityCommand | null {
     Object.entries(value).filter(([, item]) => item !== undefined),
   );
   const { kind, commandId, runId } = fields;
-  if (!knownKind(kind) || !isRecordKey(commandId) || !isRecordKey(runId))
+  if (!knownKind(kind) || !isCommandId(commandId) || !isRecordKey(runId))
     return null;
   if (!completeFields(kind, fields)) return null;
   return {
@@ -326,4 +327,14 @@ const plainRecord: Readonly<Record<string, unknown>> = {};
 
 export function isRecordKey(value: unknown): value is string {
   return isIdentifier(value) && !(value in plainRecord);
+}
+
+export function isCommandId(value: unknown): value is string {
+  if (isRecordKey(value)) return true;
+  return (
+    typeof value === "string" &&
+    value.startsWith("handoff:") &&
+    printable(value.slice(8)) &&
+    operationScope(value.slice(8)) !== null
+  );
 }

@@ -263,6 +263,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",
         "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
         "./workflows/steps/decision-gate": "./src/steps/decision-gate.ts",
+        "./workflows/steps/handoff": "./src/steps/handoff.ts",
       },
     }),
   );

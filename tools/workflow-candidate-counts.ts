@@ -1,6 +1,7 @@
 import ts from "typescript";
 import {
   protectedCall,
+  handoffCall,
   propertyName,
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
@@ -46,7 +47,8 @@ function multiply(total: Totals, repetitions: number): Totals {
   };
 }
 
-function units(node: ts.CallExpression): number {
+function units(node: ts.CallExpression, symbols: CandidateSymbols): number {
+  if (handoffCall(node, symbols)) return 1;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return 0;
   const property = argument.properties.find(
@@ -303,7 +305,10 @@ export function candidateEffectTotals(
     if (ts.isSwitchStatement(node))
       return add(count(node.expression), switchTotals(node.caseBlock, count));
     let total = protectedCall(node, symbols)
-      ? { knownCallCount: 1, knownUnitTotal: units(node) }
+      ? {
+          knownCallCount: 1,
+          knownUnitTotal: units(node, symbols),
+        }
       : zero;
     ts.forEachChild(node, (child) => {
       total = add(total, count(child));

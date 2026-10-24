@@ -1,4 +1,4 @@
-import { isRecordKey } from "./commands.ts";
+import { isCommandId, isRecordKey } from "./commands.ts";
 import { eventTypes, type AuthorityEvent } from "./transitions.ts";
 
 export function parseEvent(value: unknown): AuthorityEvent | null {
@@ -12,7 +12,7 @@ export function parseEvent(value: unknown): AuthorityEvent | null {
     !Number.isSafeInteger(sequence) ||
     eventType === undefined ||
     !isRecordKey(runId) ||
-    !isRecordKey(commandId) ||
+    !isCommandId(commandId) ||
     typeof recordedAt !== "string" ||
     typeof request !== "string" ||
     !payload

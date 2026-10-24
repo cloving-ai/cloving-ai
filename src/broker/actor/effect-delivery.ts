@@ -95,7 +95,7 @@ async function called(
   parts: EffectDelivery,
   call: {
     readonly intent: ProtectedIntent;
-    readonly name: "reconcile" | "deliver" | "stop";
+    readonly name: "reconcile" | "deliver" | "stop" | "retry";
   },
 ): Promise<Settlement> {
   const { intent, name } = call;
@@ -124,7 +124,7 @@ async function stopRequested(
 
 function decided(
   parts: EffectDelivery,
-  attempt: Attempt,
+  attempt: Attempt & { readonly mode?: "retry" },
 ): Promise<DispatchDecision> {
   const { intent } = attempt;
   const now = parts.clock();
@@ -137,12 +137,23 @@ function decided(
       {
         intent: { ...intent, computedDigest: effectInputDigest(intent) },
         now,
+        ...(attempt.mode === undefined ? {} : { mode: attempt.mode }),
       },
     ),
   );
 }
 
 const withheld: Result = { kind: "withheld" };
+
+async function retryEffect(
+  parts: EffectDelivery,
+  attempt: Attempt & { readonly known: Settlement },
+): Promise<Settlement> {
+  const retry = await decided(parts, { ...attempt, mode: "retry" });
+  return retry === "send"
+    ? called(parts, { intent: attempt.intent, name: "retry" })
+    : attempt.known;
+}
 
 function unsent(decision: Exclude<DispatchDecision, "send">): Result {
   return decision === "stale" ? withheld : { kind: decision };
@@ -157,6 +168,8 @@ async function attempted(
   if (first === "stale") return withheld;
   if (intent.purpose === "stop") return stopRequested(parts, intent);
   const known = await called(parts, { intent, name: "reconcile" });
+  if (known.kind === "unknown" && parts.delivery.retry !== undefined)
+    return retryEffect(parts, { ...attempt, known });
   if (known.kind !== "absent" || intent.purpose === "reconcile") return known;
   if (first !== "send") return unsent(first);
   const second = await decided(parts, attempt);

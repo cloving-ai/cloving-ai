@@ -47,6 +47,7 @@ export interface DispatchCheck {
     readonly leaseGeneration?: number;
   };
   readonly now: string;
+  readonly mode?: "retry";
 }
 
 export type DispatchDecision =
@@ -68,13 +69,17 @@ function bound(read: DispatchRead, intent: DispatchCheck["intent"]): boolean {
   ].every(Boolean);
 }
 
-function sendable(read: DispatchRead, now: string): boolean {
+function sendable(read: DispatchRead, check: DispatchCheck): boolean {
+  const statuses =
+    check.mode === "retry"
+      ? ["dispatch-pending", "recovering", "blocked"]
+      : ["dispatch-pending"];
   return [
     !read.released,
     read.runStatus === "running",
-    read.operation?.status === "dispatch-pending",
+    statuses.includes(read.operation?.status ?? ""),
     read.lease?.state === "held",
-    isAfter(read.lease?.expiresAt ?? "", now),
+    isAfter(read.lease?.expiresAt ?? "", check.now),
   ].every(Boolean);
 }
 
@@ -97,7 +102,7 @@ export function dispatchDecision(
   check: DispatchCheck,
 ): DispatchDecision {
   if (!bound(read, check.intent)) return "stale";
-  if (!sendable(read, check.now)) return "withheld";
+  if (!sendable(read, check)) return "withheld";
   if (!authorized(read)) return "refused";
   return read.pinned ? "send" : "blocked";
 }

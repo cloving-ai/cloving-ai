@@ -132,3 +132,19 @@ await test("CLV-063 the delivery router gives a protected effect to the worker o
   );
   assert.equal(calls.length, 3);
 });
+
+await test("CLV-182 retry routing never starts a run or retries a worker without retry support", async () => {
+  const { calls, router } = routes();
+  assert.ok(router.retry);
+  const signal = new AbortController().signal;
+  assert.deepEqual(await router.retry(intent("start-run"), signal), {
+    kind: "failed",
+    reason: "unsupported-effect",
+  });
+  for (const capability of ["claude", "mail"])
+    assert.deepEqual(
+      await router.retry(intent("protected-effect", capability), signal),
+      { kind: "unknown" },
+    );
+  assert.deepEqual(calls, []);
+});

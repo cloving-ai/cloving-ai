@@ -32,7 +32,8 @@ import type { TokenPrices } from "../token-prices.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Worker } from "./claude-turn.ts";
-import { deliveryRouter } from "./delivery-router.ts";
+import { deliveryRouter, type EffectDelivery } from "./delivery-router.ts";
+import { handoffWorker } from "./handoff-worker.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { chatsWorker, type ChatsWorker } from "./chats-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
@@ -134,6 +135,7 @@ interface Adapters {
   readonly github: GithubWorker;
   readonly runs: StartDelivery;
   readonly chats: ChatsWorker;
+  readonly handoff: EffectDelivery;
 }
 
 function githubOf(
@@ -209,7 +211,21 @@ function adapters(
     input: async (runId) => (await given).input(runId),
     workflow: ({ workflow }) => Promise.resolve(workflows[workflow]),
   });
-  return { worker, github, runs, chats };
+  const handoff = handoffOf(settings, given);
+  return { worker, github, runs, chats, handoff };
+}
+
+function handoffOf(
+  settings: DaemonSettings,
+  given: Promise<HostPorts>,
+): EffectDelivery {
+  return handoffWorker({
+    runtimeDirectory: settings.runtimeDirectory,
+    journal: join(settings.directory, "handoffs"),
+    document: async (digest) => (await given).document(digest),
+    runStatus: async (runId) =>
+      (await (await given).state()).runs[runId]?.status,
+  });
 }
 
 async function daemonRegistrations(settings: DaemonSettings) {
@@ -241,7 +257,7 @@ export async function startDaemon(
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
-  const { worker, github, runs, chats } = adapters(settings, {
+  const { worker, github, runs, chats, handoff } = adapters(settings, {
     given: given.promise,
     table,
     registrations: admitted.registrations,
@@ -261,7 +277,7 @@ export async function startDaemon(
     })),
     delivery: deliveryRouter({
       runs,
-      effects: { claude: worker, github, chats },
+      effects: { claude: worker, github, chats, handoff },
     }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {

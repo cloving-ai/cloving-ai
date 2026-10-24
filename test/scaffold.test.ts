@@ -44,6 +44,7 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
   assert.match(result.stderr, /unknown-option/);
   assert.deepEqual(Object.keys(workflows), [
     "decisionGate",
+    "handoff",
     "loadCycle",
     "protectedEffect",
     "ticketStatus",
