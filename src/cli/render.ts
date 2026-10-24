@@ -192,8 +192,11 @@ export function statusJson(result: Fields): Fields {
 }
 
 function inputText(value: unknown): string {
-  const text = visible(value ?? null);
-  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+  const text = visible(record(value) ?? null);
+  const characters = Array.from(text);
+  return characters.length > 200
+    ? `${characters.slice(0, 200).join("")}…`
+    : text;
 }
 
 export function runStatus(result: Fields): readonly string[] {

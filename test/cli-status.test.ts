@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 import { rendered } from "../src/cli/render.ts";
+import type { Fields } from "../src/protocol.ts";
 import {
   reportTurn,
   workerScene,
@@ -240,7 +241,7 @@ function registrations(harness: Harness) {
 
 async function assertInputs(
   harness: Harness,
-  expected: { readonly runId: string; readonly input: unknown },
+  expected: { readonly runId: string; readonly input: Fields | null },
 ): Promise<void> {
   const single = await harness.cli(["status", expected.runId, "--json"]);
   const list = await harness.cli(["status", "--json"]);
@@ -299,7 +300,7 @@ await test("CLV-181 develop-issue input reaches single and listed JSON status ac
     await reopened.close();
   }));
 
-await test("CLV-181 text status shows compact JSON and marks input longer than 200 characters", () => {
+await test("CLV-181 text status shows compact JSON and marks input longer than 200 Unicode characters", () => {
   for (const length of [20, 187, 188, 250]) {
     const input = { prompt: "p".repeat(length) };
     const compact = JSON.stringify(input);
@@ -312,9 +313,25 @@ await test("CLV-181 text status shows compact JSON and marks input longer than 2
       1,
     );
   }
+  for (const [length, ending] of [
+    [188, "😀…"],
+    [186, '😀"}'],
+    [187, '😀"…'],
+    [189, "…"],
+  ] as const) {
+    const prefix = "p".repeat(length);
+    const output = rendered({
+      kind: "run-status",
+      run: { input: { prompt: `${prefix}😀` } },
+    });
+    assert.ok(
+      output.includes(`Input: {"prompt":"${prefix}${ending}\n`),
+      output,
+    );
+  }
 });
 
-await test("CLV-181 text input escapes terminal controls and handles legacy absent input", () => {
+await test("CLV-181 text input escapes terminal controls and guards non-object input", () => {
   const output = rendered({
     kind: "run-status",
     run: { input: { prompt: "First\nsecond\u001b[2J\u202e\u200b" } },
@@ -323,7 +340,7 @@ await test("CLV-181 text input escapes terminal controls and handles legacy abse
     output,
     /^Input: {"prompt":"First\\nsecond\\u001b\[2J\\u202e\\u200b"}$/m,
   );
-  for (const input of [null, undefined])
+  for (const input of [null, undefined, 42, false, "unsubmitted", []])
     assert.match(
       rendered({ kind: "run-status", run: { input } }),
       /^Input: null$/m,
