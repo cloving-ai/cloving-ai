@@ -162,7 +162,7 @@ export function PullRequest(props: { readonly run: WatchRun }): Shown {
   });
   const scores = reviews.map((review) =>
     element("li", {
-      children: `Round ${String(review.round)} · Greptile ${String(review.score)}/5 · commit ${review.commit.slice(0, 7)}`,
+      children: `Round ${String(review.round)} · Review ${String(review.score)}/5 · commit ${review.commit.slice(0, 7)}`,
     }),
   );
   const merge =
