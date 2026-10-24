@@ -2,7 +2,42 @@ import type {
   Delivery,
   DeliveryIntent,
 } from "../src/broker/actor/authority.ts";
-import type { Destination } from "./effect-fixture.ts";
+import { later, type Destination } from "./effect-fixture.ts";
+
+export function uncertainRetryDelivery(
+  scenario: string,
+  clock: { now: string },
+): Delivery & { readonly available: boolean; readonly retries: number } {
+  let sent = false;
+  let available = true;
+  let retries = 0;
+  return {
+    get available() {
+      return available;
+    },
+    get retries() {
+      return retries;
+    },
+    reconcile: () => Promise.resolve({ kind: sent ? "unknown" : "absent" }),
+    deliver: (intent) => {
+      if (intent.kind !== "protected-effect")
+        return Promise.resolve({ kind: "unknown" });
+      sent = true;
+      if (scenario === "lease-expired") clock.now = later;
+      if (scenario === "pin-unavailable") available = false;
+      return Promise.resolve({ kind: "unknown" });
+    },
+    retry: () => {
+      retries += 1;
+      return Promise.resolve({
+        kind: "completed",
+        receipt: "target",
+        worker: "handoff",
+        result: "target",
+      });
+    },
+  };
+}
 
 export interface Held {
   readonly delivery: Delivery;
