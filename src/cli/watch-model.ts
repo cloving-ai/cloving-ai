@@ -275,6 +275,9 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
+    parentRunId: stamp(status["parentRunId"]),
+    chainId: stamp(status["chainId"]) ?? runId,
+    childRunIds: texts(status["childRunIds"]),
     ticketId: ticketId === "" ? null : ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),

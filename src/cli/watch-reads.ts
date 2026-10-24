@@ -215,10 +215,23 @@ async function completionOf(
   return { status: known.status, events: creation === null ? [] : [creation] };
 }
 
+function refreshedLinks(run: ReadRun, status: ReadStatus): ReadRun {
+  const links = Object.fromEntries(
+    ["parentRunId", "chainId", "childRunIds"]
+      .filter((name) => Object.hasOwn(status, name))
+      .map((name) => [name, status[name]]),
+  );
+  return {
+    ...run,
+    status: { ...run.status, ...links },
+  };
+}
+
 async function detailed(reader: Reader, summary: ReadStatus): Promise<ReadRun> {
   const { runId, latestSequence: sequence } = summary;
   const known = reader.details.get(runId);
-  if (known !== undefined && known.sequence === sequence) return known.value;
+  if (known !== undefined && known.sequence === sequence)
+    return refreshedLinks(known.value, summary);
   const shown = await asked(reader, {
     operation: "status",
     parameters: { runId },
@@ -357,7 +370,7 @@ async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
   const known = reader.details.get(runId);
   const value =
     known !== undefined && known.sequence === status.latestSequence
-      ? known.value
+      ? refreshedLinks(known.value, status)
       : await remember(reader, status);
   return {
     ...unavailable,

@@ -80,6 +80,8 @@ function outcome(reply: Reply): AdapterOutcome | undefined {
       : { kind: "unknown" };
   }
   if (reply.error.code === "workflow-active") return undefined;
+  if (reply.error.code === "chain-limit")
+    return { kind: "failed", reason: "chain-limit" };
   return uncertain.includes(reply.error.code)
     ? { kind: "unknown" }
     : { kind: "failed", reason: "handoff-input-refused" };

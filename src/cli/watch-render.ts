@@ -75,6 +75,9 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly parentRunId?: string | null;
+  readonly chainId?: string;
+  readonly childRunIds?: readonly string[];
   readonly estimatedCostUsd: number | null;
   readonly runId: string;
   readonly title: string | null;
@@ -109,6 +112,9 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly parentRunId?: string | null;
+  readonly chainId?: string;
+  readonly childRunIds?: readonly string[];
   readonly mergeProof?: PrIdentity | null;
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";

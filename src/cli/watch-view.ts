@@ -17,6 +17,7 @@ import {
 } from "./watch-render.ts";
 import {
   Board,
+  HandoffLinks,
   WorkflowList,
   type ColumnControls,
 } from "./watch-board-view.ts";
@@ -210,6 +211,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
   return [
     component(Banner, { run, now }),
+    component(HandoffLinks, { run }),
     element("section", {
       class: "run-usage",
       children: [

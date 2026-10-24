@@ -73,7 +73,16 @@ function admitted(result: Fields): readonly string[] {
 }
 
 function runLine(run: unknown): string {
-  return `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
+  const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
+  return [line, ...chainLines(run).map((link) => `    ${link}`)].join("\n");
+}
+
+function chainLines(run: unknown): readonly string[] {
+  return [
+    `Parent run: ${visible(part(run, "parentRunId") ?? "none")}`,
+    `Chain: ${visible(part(run, "chainId") ?? part(run, "runId") ?? "none")}`,
+    `Child runs: ${visible(listing(part(run, "childRunIds")))}`,
+  ];
 }
 
 function ended(run: Fields): boolean {
@@ -244,6 +253,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
     ...feedbackLines(part(run, "feedback")),
+    ...chainLines(run),
   ];
 }
 

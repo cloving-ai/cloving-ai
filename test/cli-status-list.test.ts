@@ -123,7 +123,7 @@ await test("CLV-108 the run overview only selects object entries", () => {
 
 function runLine(run: Fields): string {
   const latestAt = run["latestAt"];
-  return `  ${String(run["runId"])}  ${String(run["workflowId"])}  ${String(run["condition"])}  revision ${String(run["revision"])}  latest at ${typeof latestAt === "string" ? latestAt : "none"}\n`;
+  return `  ${String(run["runId"])}  ${String(run["workflowId"])}  ${String(run["condition"])}  revision ${String(run["revision"])}  latest at ${typeof latestAt === "string" ? latestAt : "none"}\n    Parent run: none\n    Chain: ${String(run["runId"])}\n    Child runs: none\n`;
 }
 
 await test("CLV-108 default status finds an active run on the second page and lists it first", async () => {

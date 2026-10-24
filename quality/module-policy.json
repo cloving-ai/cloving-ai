@@ -991,7 +991,14 @@
     "test/handoff-worker.test.ts": "test",
     "test/handoff-candidate.test.ts": "test",
     "test/handoff-step.test.ts": "test",
-    "test/handoff-cancellation.test.ts": "test"
+    "test/handoff-cancellation.test.ts": "test",
+    "src/authority/handoff-chain.ts": "pure",
+    "test/handoff-chain-queries.test.ts": "test",
+    "test/handoff-chain-sdk.test.ts": "test",
+    "test/handoff-chain-status.test.ts": "test",
+    "test/handoff-chain-watch.test.ts": "test",
+    "test/handoff-chain.test.ts": "test",
+    "test/handoff-worker-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

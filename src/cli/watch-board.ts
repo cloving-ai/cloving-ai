@@ -1,4 +1,5 @@
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
+import { linksOf } from "../authority/handoff-chain.ts";
 import { record } from "../protocol.ts";
 import { isInstant } from "../authority/instants.ts";
 import { issueSteps } from "./watch-phases.ts";
@@ -193,6 +194,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
     title: run.title,
+    ...linksOf(run),
     completionMark: completionMarkOf(run, runs),
     pullRequestObservation: null,
     claudeCostUsd: run.claudeCostUsd,

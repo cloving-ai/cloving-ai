@@ -82,6 +82,9 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
       "Token usage so far: Input tokens: Token usage not known · Cache read tokens: Token usage not known · Output tokens: Token usage not known",
       "Next action: recheck-eligibility at 2026-10-10T13:00:00.000Z",
       "Human input can help: no",
+      "Parent run: none",
+      "Chain: run-1",
+      "Child runs: none",
       "",
     ].join("\n"),
   );
@@ -99,7 +102,7 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
         pendingDecisions: ["run-1/design-1"],
       },
     }),
-    /Pending decisions: run-1\/design-1\n.*\nLast confirmed observation: none\nRecovery: 0 of no limit\nCost so far: Price not known\nToken usage so far: .*\nNext action: none\nHuman input can help: yes\n$/s,
+    /Pending decisions: run-1\/design-1\n.*\nLast confirmed observation: none\nRecovery: 0 of no limit\nCost so far: Price not known\nToken usage so far: .*\nNext action: none\nHuman input can help: yes\nParent run: none\nChain: run-1\nChild runs: none\n$/s,
   );
 });
 
@@ -126,7 +129,7 @@ await test("CLV-008 the human form of a run list, a run command and a decision h
   );
   assert.equal(
     rendered({ kind: "run-list", runs: [run] }),
-    "Workflows: none\nRuns:\n  run-1  develop  quota-wait  revision 4  latest at none\n",
+    "Workflows: none\nRuns:\n  run-1  develop  quota-wait  revision 4  latest at none\n    Parent run: none\n    Chain: run-1\n    Child runs: none\n",
   );
   assert.equal(
     rendered({

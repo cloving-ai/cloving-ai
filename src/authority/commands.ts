@@ -52,6 +52,8 @@ const shapes: Readonly<Record<string, Shape>> = {
   "admit-run": {
     required: ["workflow"],
     optional: [
+      "parentRunId",
+      "chainId",
       "submission",
       "input",
       "resolver",
@@ -59,6 +61,7 @@ const shapes: Readonly<Record<string, Shape>> = {
       "capabilities",
     ],
     groups: [
+      ["parentRunId", "chainId"],
       ["submission", "input", "resolver"],
       ["effectLimit", "capabilities"],
     ],
