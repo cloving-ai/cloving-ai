@@ -32,33 +32,12 @@ export type Validation<Value> =
 const identifier = /^[A-Za-z0-9._:-]{1,128}$/;
 const reason = /^\S[\s\S]{0,255}$/;
 
-type PromotionDetails = Pick<
-  Extract<CycleOutcome, { kind: "handoff_requested" }>,
-  "ticketStatus" | "issueUpdate" | "reason"
->;
-
 export function isPromotionId(value: unknown): value is string {
   return typeof value === "string" && identifier.test(value);
 }
 
 export function isBlockedReason(value: unknown): value is string {
   return typeof value === "string" && reason.test(value);
-}
-
-function promotionDetails(
-  fields: Readonly<Record<string, unknown>>,
-): PromotionDetails | null {
-  const ticketStatus = fields["ticketStatus"];
-  const issueUpdate = fields["issueUpdate"];
-  const reason = fields["reason"];
-  if (reason !== undefined && !isBlockedReason(reason)) return null;
-  if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
-  if (ticketStatus !== undefined && !isTicketStatus(ticketStatus)) return null;
-  return {
-    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
-    ...(ticketStatus === undefined ? {} : { ticketStatus }),
-    ...(reason === undefined ? {} : { reason }),
-  };
 }
 
 const outcomes: Readonly<
@@ -118,14 +97,27 @@ const outcomes: Readonly<
         pattern: identifier,
       });
       if (cycleId === null || promotionId === null) return null;
-      const details = promotionDetails(fields);
-      if (details === null) return null;
-      return {
+      const ticketStatus = fields["ticketStatus"];
+      const issueUpdate = fields["issueUpdate"];
+      const reason = fields["reason"];
+      let outcome: CycleOutcome = {
         kind: "handoff_requested",
         cycleId,
         promotionId,
-        ...details,
       };
+      if (issueUpdate !== undefined) {
+        if (issueUpdate !== "failed") return null;
+        outcome = { ...outcome, issueUpdate };
+      }
+      if (ticketStatus !== undefined) {
+        if (!isTicketStatus(ticketStatus)) return null;
+        outcome = { ...outcome, ticketStatus };
+      }
+      if (reason !== undefined) {
+        if (!isBlockedReason(reason)) return null;
+        outcome = { ...outcome, reason };
+      }
+      return outcome;
     },
   },
 };
