@@ -13,6 +13,12 @@ import type {
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
+import { record } from "../protocol.ts";
+import { issueIdentity } from "../issue-identity.ts";
+import {
+  ticketDependencyWaits,
+  TicketDependencyReadError,
+} from "./ticket-dependency-waits.ts";
 
 export const ticketWorkflow = bundledWorkflowIds.ticket;
 export const promptWorkflow = bundledWorkflowIds.prompt;
@@ -40,6 +46,8 @@ export interface TicketSource {
   readonly repository: string;
   readonly command: readonly string[] | undefined;
   readonly nextCommand?: readonly string[] | undefined;
+  readonly githubCommand?: readonly string[] | undefined;
+  readonly skipTickets?: readonly string[];
 }
 
 export interface TicketRegistration {
@@ -94,7 +102,17 @@ async function nextTicket(
       "next-source-not-configured",
       "The daemon has no next-ticket command. Set CLOVING_NEXT_COMMAND.",
     );
-  const selected = await ticketCommandText(source.nextCommand, request.signal);
+  const selected = await ticketCommandText(source.nextCommand, {
+    signal: request.signal,
+    skipTickets: [
+      ...new Set([
+        ...(request.activeTickets ?? []).flatMap((input) =>
+          typeof input["ticketId"] === "string" ? [input["ticketId"]] : [],
+        ),
+        ...(source.skipTickets ?? []),
+      ]),
+    ].sort(),
+  });
   if (selected.kind === "failed")
     return rejected("next-ticket-not-available", selected.detail);
   if (selected.text === "")
@@ -119,17 +137,64 @@ export function ticketResolver(source: TicketSource): Resolver {
 }
 
 export function issueResolver(source: TicketSource): Resolver {
+  const waits = ticketDependencyWaits(source);
   return {
     id: "issue-command",
     version: "1",
-    resolve: async (request) => {
-      const resolution = await ticket(source, request);
-      if (resolution.kind === "rejected") return resolution;
-      return {
-        kind: "resolved",
-        input: { ...Object(resolution.input), delivery: "pull-request" },
-      };
-    },
+    skippedTickets: waits.skipped,
+    resolve: (request) =>
+      issueTicket({ source, waits }, request).catch((error: unknown) => {
+        if (!(error instanceof TicketDependencyReadError)) throw error;
+        return rejected(
+          "ticket-not-available",
+          "The ticket dependencies could not be read. Retry this command.",
+        );
+      }),
+  };
+}
+
+async function issueTicket(
+  context: {
+    readonly source: TicketSource;
+    readonly waits: ReturnType<typeof ticketDependencyWaits>;
+  },
+  request: ResolutionRequest,
+): Promise<Resolution> {
+  const { source, waits } = context;
+  const skipTickets =
+    request.submission["ticket"] === "next"
+      ? await waits.refresh(request.signal)
+      : [];
+  const resolution = await ticket({ ...source, skipTickets }, request);
+  if (resolution.kind === "rejected") return resolution;
+  const input = record(resolution.input) ?? {};
+  const identity = issueIdentity(input["ticket"]);
+  if (
+    (request.activeTickets ?? []).some(
+      (active) =>
+        active["ticketId"] === input["ticketId"] ||
+        (identity !== null &&
+          JSON.stringify(issueIdentity(active["ticket"])) ===
+            JSON.stringify(identity)),
+    )
+  )
+    return rejected(
+      "ticket-active",
+      "An active run already works on this ticket.",
+    );
+  const dependencies = await waits.check({
+    ticketId: String(input["ticketId"]),
+    ticket: String(input["ticket"]),
+    signal: request.signal,
+  });
+  if (dependencies.length > 0)
+    return rejected(
+      "ticket-dependency-open",
+      `Ticket ${String(input["ticketId"])} needs open issues: ${dependencies.map((id) => `#${id}`).join(", ")}.`,
+    );
+  return {
+    kind: "resolved",
+    input: { ...input, delivery: "pull-request" },
   };
 }
 

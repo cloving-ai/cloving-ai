@@ -64,6 +64,7 @@ export interface DaemonSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly queueLanes?: number;
   readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
   readonly checkCommand?: readonly string[];
@@ -234,6 +235,7 @@ async function daemonRegistrations(settings: DaemonSettings) {
       repository: settings.repository,
       command: settings.ticketCommand,
       nextCommand: settings.nextCommand,
+      githubCommand: settings.githubCommand,
     },
     settings.declarations,
   );
@@ -272,7 +274,7 @@ export async function startDaemon(
       ...registration,
       ...(settings.queueMilliseconds !== undefined &&
       registration.workflowId === "develop-issue"
-        ? { admission: "when-idle" as const }
+        ? { admission: settings.queueLanes ?? 1 }
         : {}),
     })),
     delivery: deliveryRouter({
@@ -333,6 +335,7 @@ async function runningDaemon(
           directory: settings.directory,
           runtimeDirectory: settings.runtimeDirectory,
           intervalMilliseconds: settings.queueMilliseconds,
+          lanes: settings.queueLanes ?? 1,
           resetQueue: settings.resetQueue ?? false,
         });
   return {

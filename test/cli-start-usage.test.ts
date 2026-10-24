@@ -16,6 +16,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /30.*3600.*stops the daemon.*package-lock.json.*operator/,
   ],
   ["CLOVING_TICKET_COMMAND", /JSON list/],
+  ["CLOVING_QUEUE_LANES", /1.*4.*default is 1.*CLOVING_QUEUE_SECONDS/],
   ["CLOVING_NOTIFY_COMMAND", /JSON list.*standard input.*no default/],
   [
     "CLOVING_QUEUE_SECONDS",
@@ -69,7 +70,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 19);
+  assert.equal(names.length, 20);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

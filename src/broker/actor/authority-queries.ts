@@ -46,6 +46,7 @@ export interface Sequences {
 export interface CompletionCursor {
   readonly runId: string;
   readonly atOrBefore: number;
+  readonly terminal?: boolean;
 }
 
 export interface AuthorityQueries {
@@ -131,8 +132,12 @@ async function latestCompletion(
   connection: SqlConnection,
   cursor: CompletionCursor,
 ): Promise<PublishedEvent | undefined> {
+  const types =
+    cursor.terminal === true
+      ? "type IN ('run.completed', 'run.failed', 'run.cancelled')"
+      : "type = 'run.completed'";
   const row = await connection.get(
-    "SELECT sequence, type, run_id, command_id, recorded_at, payload FROM events WHERE run_id = ? AND type = 'run.completed' AND sequence <= ? ORDER BY sequence DESC LIMIT 1",
+    `SELECT sequence, type, run_id, command_id, recorded_at, payload FROM events WHERE run_id = ? AND ${types} AND sequence <= ? ORDER BY sequence DESC LIMIT 1`,
     [cursor.runId, cursor.atOrBefore],
   );
   return row === undefined ? undefined : publishedEvents([row])[0];

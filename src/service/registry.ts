@@ -17,12 +17,14 @@ export interface ResolutionRequest {
   readonly submission: Readonly<Record<string, unknown>>;
   readonly commandId: string;
   readonly signal: AbortSignal;
+  readonly activeTickets?: readonly Readonly<Record<string, unknown>>[];
 }
 
 export interface Resolver {
   readonly id: string;
   readonly version: string;
   readonly resolve: (request: ResolutionRequest) => Promise<Resolution>;
+  readonly skippedTickets?: () => readonly Readonly<Record<string, unknown>>[];
 }
 
 export interface WorkflowRegistration {
@@ -34,7 +36,7 @@ export interface WorkflowRegistration {
   readonly effectLimit?: number;
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
-  readonly admission?: "when-idle";
+  readonly admission?: "when-idle" | number;
 }
 
 export interface Registered extends WorkflowRegistration {

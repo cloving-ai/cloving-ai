@@ -15,6 +15,49 @@ import {
 
 after(removeTemporaryDirectories);
 
+await test("CLV-184 terminal reads include failures and cancellations at the snapshot boundary", async () => {
+  for (const kind of ["fail-run", "cancel-run"]) {
+    const authority = await openedAuthority(await temporaryDirectory());
+    try {
+      const results = await executeAll(authority, [
+        { command: admission },
+        {
+          command: {
+            kind,
+            commandId: "ended",
+            runId: "run-1",
+            expectedRevision: 1,
+          },
+        },
+      ]);
+      assert.deepEqual(
+        results.map((result) => result.kind),
+        ["accepted", "accepted"],
+      );
+      assert.equal(
+        await authority.queries.latestCompletion({
+          runId: "run-1",
+          atOrBefore: 1,
+          terminal: true,
+        }),
+        undefined,
+      );
+      const event = await authority.queries.latestCompletion({
+        runId: "run-1",
+        atOrBefore: 2,
+        terminal: true,
+      });
+      assert.equal(event?.sequence, 2);
+      assert.equal(
+        event.type,
+        kind === "fail-run" ? "run.failed" : "run.cancelled",
+      );
+    } finally {
+      await authority.close();
+    }
+  }
+});
+
 await test("CLV-008 a receipt read returns the committed record of one command, also after a reopening", async () => {
   const directory = await temporaryDirectory();
   const first = await openedAuthority(directory);

@@ -14,6 +14,7 @@ import {
 } from "./github-operation.ts";
 import { treePlace } from "./work-tree.ts";
 import { waitForCi, type CiResult } from "./github-ci.ts";
+import { githubText } from "./github-calls.ts";
 
 interface ReviewedPull {
   readonly number: number;
@@ -118,14 +119,19 @@ async function updatedTree(
       "--no-edit",
       place.base,
     ]);
-  } catch {
+  } catch (error) {
     const conflicts = await calls.git(place.tree.path, [
       "diff",
       "--name-only",
       "--diff-filter=U",
     ]);
     await calls.git(place.tree.path, ["merge", "--abort"]);
-    throw new Error("merge-conflict", { cause: conflicts.trim() });
+    const output = commandOutput(error instanceof Error ? error.cause : error);
+    throw Object.assign(new Error("merge-conflict", { cause: error }), {
+      output: githubText(output + conflicts, operation.settings)
+        .slice(-6_000)
+        .trim(),
+    });
   }
 }
 
@@ -321,13 +327,16 @@ async function readyHead(
 }
 
 function checkOutput(cause: unknown): string {
+  return commandOutput(cause).slice(-6_000);
+}
+
+function commandOutput(cause: unknown): string {
   return ["stdout", "stderr"]
     .map((name) => {
       const value = field(cause, name);
       return typeof value === "string" ? value : "";
     })
-    .join("")
-    .slice(-6_000);
+    .join("");
 }
 
 export async function merge(
@@ -341,10 +350,14 @@ export async function merge(
     if (!(error instanceof Error)) throw error;
     const reason = error.message;
     if (reason !== "check-failed" && reason !== "merge-conflict") throw error;
-    const conflicts = typeof error.cause === "string" ? error.cause : "";
+    const detail = field(error, "output");
+    const conflicts = typeof detail === "string" ? detail : "";
     return {
       reason,
-      output: reason === "check-failed" ? checkOutput(error.cause) : conflicts,
+      output:
+        reason === "check-failed"
+          ? checkOutput(error.cause)
+          : githubText(conflicts, operation.settings),
     };
   }
 }

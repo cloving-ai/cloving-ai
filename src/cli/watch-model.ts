@@ -215,6 +215,7 @@ export function decisionCommands(
 }
 
 export interface WatchInputs {
+  readonly queue?: Fields;
   readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
@@ -334,6 +335,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   );
   return {
     workflows,
+    ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     startWorkflowId: startWorkflowOf(workflows),
     updatedAt: inputs.updatedAt,
