@@ -1,4 +1,6 @@
 import type { Database } from "solid-objects";
+import { readExecutionManifest } from "../../execution-pin.ts";
+import type { ExecutionManifest } from "../../workflow-admission.ts";
 import { parseCommand } from "../../authority/commands.ts";
 import type {
   AuthorityCommand,
@@ -56,6 +58,7 @@ export interface CompletionCursor {
 }
 
 export interface AuthorityQueries {
+  readonly manifest: (runId: string) => Promise<ExecutionManifest | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly receipt: (commandId: string) => Promise<CommandRecord | undefined>;
   readonly eventsAfter: (cursor: EventCursor) => Promise<EventPage>;
@@ -250,6 +253,16 @@ export function authorityQueries(read: Read): AuthorityQueries {
     return links;
   };
   return {
+    manifest: (runId) =>
+      read(async (connection) => {
+        const row = await connection.get(
+          "SELECT d.manifest FROM runs r JOIN definitions d ON d.pin = r.workflow WHERE r.run_id = ?",
+          [runId],
+        );
+        return row === undefined
+          ? undefined
+          : readExecutionManifest(JSON.parse(text(row, "manifest")));
+      }),
     document: (digest) =>
       read((connection) => documentBody(connection, digest)),
     receipt: (commandId) =>

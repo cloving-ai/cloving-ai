@@ -286,7 +286,10 @@ function declaredResolver(repository: string): Resolver {
 
 export async function ticketRegistrations(
   manifests: Readonly<Record<string, string | undefined>>,
-  options: { readonly table: readonly TicketRegistration[] },
+  options: {
+    readonly table: readonly TicketRegistration[];
+    readonly bundleDigest?: string;
+  },
 ): Promise<TicketRegistrations> {
   const ids = new Set<string>();
   for (const row of options.table) {
@@ -329,7 +332,10 @@ export async function ticketRegistrations(
       };
     registrations.push({
       ...registration,
-      manifest: declaredManifest(admission.manifest, row),
+      manifest: declaredManifest(admission.manifest, {
+        ...row,
+        bundleDigest: options.bundleDigest,
+      }),
       availability: "available",
     });
   }

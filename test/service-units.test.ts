@@ -284,10 +284,9 @@ await test("CLV-008 the question counter of a stored state with 200 000 gates is
 await test("CLV-168 registry pins current and retained handoff permissions without sharing the declaration array", () => {
   const handoffs = ["b"];
   const registration = fakeRegistration([]);
-  const registry = workflowRegistry(
-    [{ ...registration, handoffs }],
-    [{ ...registration, handoffs: ["c"] }],
-  );
+  const registry = workflowRegistry([{ ...registration, handoffs }], {
+    retainedWorkflows: [{ ...registration, handoffs: ["c"] }],
+  });
   const current = registry.byId("develop");
   assert.ok(current);
   assert.deepEqual(current.manifest.handoffs, ["b"]);

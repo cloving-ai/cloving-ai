@@ -87,3 +87,18 @@ await test("CLV-121 candidate adapters remain in the production coverage invento
     );
   });
 });
+
+await test("CLV-161 retained bundle storage remains in the production coverage inventory", async () => {
+  await withProgram({ "bundles.ts": "export const value = 1;" }, (program) => {
+    const files = program.getRootFileNames();
+    assert.deepEqual(
+      productionInventory(program, {
+        files,
+        roles: Object.fromEntries(
+          files.map((file) => [file, "workflow-bundles"]),
+        ),
+      }).map((file) => basename(file)),
+      ["bundles.ts"],
+    );
+  });
+});

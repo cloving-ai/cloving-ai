@@ -120,7 +120,10 @@ export function commandGateway(parts: {
     if (kind === "admit-run")
       return registry.byPin(String(command["workflow"]))?.manifest;
     if (!pinned.includes(kind)) return undefined;
-    const run = (await authority.state()).runs[String(command["runId"])];
+    const runId = String(command["runId"]);
+    const stored = await authority.queries.manifest(runId);
+    if (stored?.bundleDigest !== undefined) return stored;
+    const run = (await authority.state()).runs[runId];
     return registry.byPin(run?.workflow ?? "")?.manifest;
   }
   async function forwarded(submission: Checked): Promise<StoreReceipt> {

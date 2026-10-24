@@ -24,6 +24,7 @@ import {
   workflowRegistry,
   type Registry,
   type WorkflowRegistration,
+  type WorkflowBundleStore,
 } from "./registry.ts";
 import { failed, type ServiceContext } from "./replies.ts";
 import { runCommand, status } from "./run-handlers.ts";
@@ -79,7 +80,13 @@ export interface HostPorts {
   readonly submit: WorkerPort["submit"];
   readonly input: (runId: string) => Promise<string | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
-  readonly workflowId: (runId: string) => Promise<string | undefined>;
+  readonly workflow: {
+    readonly id: (runId: string) => Promise<string | undefined>;
+    readonly available: (
+      runId: string,
+      workflowId?: string,
+    ) => Promise<boolean>;
+  };
   readonly requestEffect: WorkerPort["requestEffect"];
   readonly operation: Authority["effects"]["operation"];
   readonly reportEffect: WorkerPort["reportEffect"];
@@ -92,6 +99,7 @@ export interface ServiceOptions {
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
   readonly retainedWorkflows?: readonly WorkflowRegistration[];
+  readonly workflowBundles?: WorkflowBundleStore;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly delivery: Delivery;
   readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
@@ -256,10 +264,14 @@ export async function startService(
   const path = await endpoint(options.runtimeDirectory);
   if (typeof path !== "string") return path;
   const timing = options.timing ?? serviceTiming;
-  const registry = workflowRegistry(
-    options.workflows,
-    options.retainedWorkflows,
-  );
+  const registry = workflowRegistry(options.workflows, {
+    ...(options.retainedWorkflows === undefined
+      ? {}
+      : { retainedWorkflows: options.retainedWorkflows }),
+    ...(options.workflowBundles === undefined
+      ? {}
+      : { workflowBundles: options.workflowBundles }),
+  });
   const opening = await openAuthority(options.stateDirectory, {
     delivery: options.delivery,
     timing: timing.authority,
@@ -271,7 +283,10 @@ export async function startService(
   const { authority } = opening;
   const gateway = serviceGateway(authority, { options, registry });
   const worker = workerPort({ gateway, authority });
-  const host = await hosted(options, hostPorts(authority, worker));
+  const host = await hosted(
+    options,
+    hostPorts(authority, { worker, registry }),
+  );
   if (host.kind === "refused") {
     await authority.close();
     return host;
@@ -312,7 +327,11 @@ function serviceGateway(
   });
 }
 
-function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
+function hostPorts(
+  authority: Authority,
+  parts: { readonly worker: WorkerPort; readonly registry: Registry },
+): HostPorts {
+  const { worker, registry } = parts;
   return {
     state: authority.state,
     submit: worker.submit,
@@ -328,7 +347,17 @@ function hostPorts(authority: Authority, worker: WorkerPort): HostPorts {
     openGate: worker.openGate,
     registerWait: worker.registerWait,
     operation: authority.effects.operation,
-    workflowId: async (runId) => (await authority.queries.workflowIds())[runId],
+    workflow: {
+      id: async (runId) => (await authority.queries.workflowIds())[runId],
+      available: async (runId, workflowId) => {
+        const manifest = await authority.queries.manifest(runId);
+        return (
+          manifest !== undefined &&
+          (workflowId === undefined || manifest.workflowId === workflowId) &&
+          (await registry.available(manifest)) !== undefined
+        );
+      },
+    },
   };
 }
 

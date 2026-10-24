@@ -47,6 +47,7 @@ interface ProjectSettings {
 
 export interface RegisteredWorkflows {
   readonly repository: string;
+  readonly bundleDigest: string;
   readonly manifests: Readonly<Record<string, string>>;
   readonly declarations: readonly DeclaredWorkflow[];
   readonly workflowRefusals: readonly WorkflowRefusal[];
@@ -276,13 +277,14 @@ export async function preparedProject(
       packages: Object.keys(packageMetadata.dependencies),
     }),
   );
-  await retainWorkflowBundle({
+  const bundleDigest = await retainWorkflowBundle({
     project,
     repository: folders.repository,
     directory: join(dirname(project), "workflow-bundles"),
   });
   return {
     repository: folders.repository,
+    bundleDigest,
     manifests,
     declarations: combined,
     workflowRefusals: folders.refusals,

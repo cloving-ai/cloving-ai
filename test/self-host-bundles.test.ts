@@ -74,6 +74,7 @@ await test("CLV-153 startup retains complete compiled generations after operator
     const store = join(root, "workflow-bundles");
     const [original] = await bundleIds(store);
     assert.ok(original);
+    assert.equal(first["bundleDigest"], original);
     const retained = join(store, original);
     const { artifacts, originalBytes } = await retainedSnapshot({
       project: settings.project,

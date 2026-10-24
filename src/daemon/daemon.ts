@@ -25,7 +25,7 @@ import {
   type ServiceHost,
   type WorkflowRegistration,
 } from "../service/service.ts";
-import { workflowPin } from "../broker/workflow-pin.ts";
+import { workflowRegistry } from "../service/registry.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
 import type { TokenPrices } from "../token-prices.ts";
@@ -37,6 +37,7 @@ import { handoffWorker } from "./handoff-worker.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { chatsWorker, type ChatsWorker } from "./chats-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
+import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
 import {
@@ -53,6 +54,7 @@ export interface DaemonSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
+  readonly bundleDigest?: string;
   readonly manifests: Readonly<Record<string, string | undefined>>;
   readonly declarations?: readonly DeclaredWorkflow[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
@@ -100,7 +102,11 @@ async function hosted(
   const opening = await startHost({
     dataDirectory: worldDirectory(settings.directory),
     concurrency: settings.concurrency,
-    handler: settings.handler,
+    handler: pinnedWorkflowHandler(settings.handler, {
+      run: taggedRun,
+      available: ports.workflow.available,
+      submit: ports.submit,
+    }),
   });
   if (opening.kind === "refused")
     throw new Error(`${opening.reason}: ${opening.detail}`);
@@ -175,12 +181,7 @@ function adapters(
   const functions = Object.fromEntries(
     table.map((row) => [row.workflowId, settings.workflows[row.functionName]]),
   );
-  const workflows = Object.fromEntries(
-    registrations.map((registration) => [
-      workflowPin(registration.manifest),
-      functions[registration.workflowId],
-    ]),
-  );
+  const registry = workflowRegistry(registrations);
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
   const report = async (
@@ -191,7 +192,7 @@ function adapters(
     tokenPrices: settings.tokenPrices ?? {},
     worker: settings.worker ?? "claude",
     profiles: settings.profiles ?? {},
-    workflowId: async (runId) => (await given).workflowId(runId),
+    workflowId: async (runId) => (await given).workflow.id(runId),
     repository,
     command,
     document,
@@ -203,14 +204,15 @@ function adapters(
   const chats = chatsWorker({
     runtimeDirectory: settings.runtimeDirectory,
     document,
-    workflowId: async (runId) => (await given).workflowId(runId),
+    workflowId: async (runId) => (await given).workflow.id(runId),
   });
   const runs = startDelivery({
     document,
     runs: taggedRuns,
     cancel: cancelled,
     input: async (runId) => (await given).input(runId),
-    workflow: ({ workflow }) => Promise.resolve(workflows[workflow]),
+    workflow: ({ workflow }) =>
+      Promise.resolve(functions[registry.byPin(workflow)?.workflowId ?? ""]),
   });
   const handoff = handoffOf(settings, given);
   return { worker, github, runs, chats, handoff };
@@ -239,8 +241,28 @@ async function daemonRegistrations(settings: DaemonSettings) {
     },
     settings.declarations,
   );
-  const admitted = await ticketRegistrations(settings.manifests, { table });
-  return { table, admitted };
+  const admitted = await ticketRegistrations(settings.manifests, {
+    table,
+    ...(settings.bundleDigest === undefined
+      ? {}
+      : { bundleDigest: settings.bundleDigest }),
+  });
+  return {
+    table,
+    admitted:
+      admitted.kind === "rejected"
+        ? admitted
+        : {
+            ...admitted,
+            registrations: admitted.registrations.map((registration) => ({
+              ...registration,
+              ...(settings.queueMilliseconds !== undefined &&
+              registration.workflowId === "develop-issue"
+                ? { admission: settings.queueLanes ?? 1 }
+                : {}),
+            })),
+          },
+  };
 }
 
 export async function startDaemon(
@@ -269,14 +291,12 @@ export async function startDaemon(
   const opening = await startService({
     stateDirectory: join(directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
+    workflowBundles: {
+      directory: join(directory, "workflow-bundles"),
+      repository: settings.repository,
+    },
     workflowRefusals: settings.workflowRefusals ?? [],
-    workflows: admitted.registrations.map((registration) => ({
-      ...registration,
-      ...(settings.queueMilliseconds !== undefined &&
-      registration.workflowId === "develop-issue"
-        ? { admission: settings.queueLanes ?? 1 }
-        : {}),
-    })),
+    workflows: admitted.registrations,
     delivery: deliveryRouter({
       runs,
       effects: { claude: worker, github, chats, handoff },

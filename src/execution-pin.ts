@@ -12,6 +12,7 @@ const canonical: Readonly<
   steps: (manifest) => JSON.stringify([...manifest.steps].sort()),
   capabilities: (manifest) => JSON.stringify([...manifest.capabilities].sort()),
   handoffs: (manifest) => JSON.stringify([...(manifest.handoffs ?? [])].sort()),
+  bundleDigest: (manifest) => JSON.stringify(manifest.bundleDigest),
   artifacts: (manifest) =>
     JSON.stringify(
       Object.keys(manifest.artifacts)
@@ -52,6 +53,8 @@ export function executionCapabilities(manifest: ExecutionManifest): string {
 export function pinnedIdentity(manifest: ExecutionManifest): string {
   const identity = fields.map((field) => canonical[field](manifest));
   if (manifest.handoffs?.length) identity.push(canonical.handoffs(manifest));
+  if (manifest.bundleDigest !== undefined)
+    identity.push(canonical.bundleDigest(manifest));
   return JSON.stringify(identity);
 }
 
@@ -59,7 +62,7 @@ export function resumePinned(
   pinned: ExecutionManifest,
   available: ExecutionManifest,
 ): AdmissionResult {
-  const changed = ([...fields, "handoffs"] as const).find(
+  const changed = ([...fields, "handoffs", "bundleDigest"] as const).find(
     (field) => canonical[field](pinned) !== canonical[field](available),
   );
   if (changed !== undefined)
@@ -83,6 +86,9 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
     steps: texts(fields["steps"]),
     capabilities: texts(fields["capabilities"]),
     ...(isWorkflowHandoffs(handoffs) ? { handoffs: [...handoffs] } : {}),
+    ...(Object.hasOwn(fields, "bundleDigest")
+      ? { bundleDigest: text(fields["bundleDigest"]) }
+      : {}),
     artifacts: textRecord(fields["artifacts"]),
     resources: textRecord(fields["resources"]),
     toolchain: {
@@ -97,13 +103,19 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
 
 export function declaredManifest(
   manifest: ExecutionManifest,
-  declaration: { readonly handoffs?: readonly string[] },
+  declaration: {
+    readonly handoffs?: readonly string[];
+    readonly bundleDigest?: string | undefined;
+  },
 ): ExecutionManifest {
   return readExecutionManifest({
     ...manifest,
     ...(declaration.handoffs === undefined
       ? {}
       : { handoffs: declaration.handoffs }),
+    ...(declaration.bundleDigest === undefined
+      ? {}
+      : { bundleDigest: declaration.bundleDigest }),
   });
 }
 
