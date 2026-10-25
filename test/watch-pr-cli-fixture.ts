@@ -56,16 +56,16 @@ export async function configuredPrWatch(
   const program = join(root, "fake gh.mjs");
   await writeFile(
     program,
-    `import { writeFileSync, existsSync, readFileSync, watch } from "node:fs";
+    `import { writeFileSync, existsSync, readFileSync } from "node:fs";
 const root = ${JSON.stringify(root)};
 writeFileSync(root + "/gh-pid", String(process.pid));
 process.on("SIGTERM", () => {});
 let responded = false;
-const watcher = watch(root, respond);
+const timer = setInterval(respond, 10);
 function respond() {
   if (responded || !existsSync(root + "/gh-response")) return;
   responded = true;
-  watcher.close();
+  clearInterval(timer);
   const output = JSON.parse(readFileSync(root + "/gh-response", "utf8"));
   process.stdout.write(output.stdout);
   process.stderr.write(output.stderr);

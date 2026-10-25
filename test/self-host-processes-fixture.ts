@@ -54,6 +54,7 @@ interface StalledCheck {
   readonly repository: string;
   readonly command: string;
   readonly signal: string;
+  readonly environment?: NodeJS.ProcessEnv;
 }
 
 export async function stalledCheck(root: string, options: StalledCheck) {
@@ -88,6 +89,7 @@ process.exitCode = await running;`,
     return spawnSync(process.execPath, [entry], {
       env: {
         ...process.env,
+        ...options.environment,
         NODE_V8_COVERAGE: undefined,
         PATH: `${bin}:${process.env["PATH"] ?? ""}`,
       },
@@ -103,7 +105,7 @@ process.exitCode = await running;`,
 function interruptedMerge(root: string, options: StalledCheck): string {
   return `#!${process.execPath}
 import { spawnSync } from "node:child_process";
-import { existsSync, watch, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 const argumentsList = process.argv.slice(2);
 function merge() {
   const result = spawnSync("git", argumentsList, {
@@ -116,11 +118,11 @@ function merge() {
 }
 if (argumentsList[2] === "merge") {
   writeFileSync(${JSON.stringify(join(root, "git-pid"))}, String(process.pid));
-  const watcher = watch(${JSON.stringify(root)}, () => {
+  const timer = setInterval(() => {
     if (!existsSync(${JSON.stringify(join(root, "shutdown-observed"))})) return;
-    watcher.close();
+    clearInterval(timer);
     merge();
-  });
+  }, 10);
   process.kill(process.ppid, ${JSON.stringify(options.signal)});
 } else merge();
 `;
