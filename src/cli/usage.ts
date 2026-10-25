@@ -62,7 +62,7 @@ The default port is 3663. The page is read only. Stop it with Control-C.
 
 Starts the Cloving service for one git repository, with the workflow host,
 the Claude worker and the watch page. The default repository is the current
-directory. This command works in a development checkout of Cloving.
+directory.
 Stop it with Control-C.
 
 The queue continues after unsuccessful runs and stops after three runs in a row

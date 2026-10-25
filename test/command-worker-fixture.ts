@@ -62,7 +62,16 @@ export async function withCommandScene(
         const worker = commandWorker({
           repository: directory,
           journal,
-          commands: { scan: [process.execPath, "-e", source] },
+          commands: {
+            scan: [
+              "env",
+              "-u",
+              "NODE_V8_COVERAGE",
+              process.execPath,
+              "-e",
+              source,
+            ],
+          },
           document: () => Promise.resolve('{"value":"hello"}'),
           report: (report) => {
             reports.push(report);
