@@ -8,6 +8,7 @@ import { pageDocument } from "../src/cli/watch-page.ts";
 import { boardEvent, boardModel, boardRun } from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 import { scrollScenario } from "./watch-scroll-scenario.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 function overflowingBoard() {
   const active = Array.from({ length: 28 }, (_, index) =>
@@ -336,3 +337,34 @@ for (const viewport of [
     assert.deepEqual(final["page"], viewport);
   });
 }
+
+await test("CLV-196 expanded Done layout is rendered before horizontal input at 390px", async () => {
+  await using fixture = await watchFixture();
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 390, height: 844 });
+  await page.navigate(fixture.url);
+  const initial = await page.evaluate(scrollScenario);
+  const contentWidth = assertInitialLayout(initial, 390);
+  await page.scroll("watchScrolling.activeGesture()");
+  await page.evaluate("watchScrolling.rewind()");
+  await page.scroll("watchScrolling.sidewaysGesture()");
+  await page.evaluate(`(() => {
+    const expand = watchScrolling.expand;
+    watchScrolling.expand = () => {
+      const expanded = expand();
+      requestAnimationFrame(() => {
+        const until = performance.now() + ${String(testMilliseconds(250))};
+        while (performance.now() < until) {}
+      });
+      return expanded;
+    };
+    return {};
+  })()`);
+  await page.scroll(`(async () => {
+    await watchScrolling.expand();
+    return watchScrolling.sidewaysGesture();
+  })()`);
+  await page.scroll("watchScrolling.doneGesture()");
+  const expanded = await page.evaluate("watchScrolling.expanded()");
+  assertExpanded(expanded, contentWidth);
+});

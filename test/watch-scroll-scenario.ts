@@ -65,7 +65,7 @@ export const scrollScenario = `
     }),
     expand: async () => {
       done.querySelector("button").click();
-      await frame();
+      await frame(); await frame();
       return {};
     },
     expanded: () => {
