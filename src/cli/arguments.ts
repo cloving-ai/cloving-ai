@@ -10,16 +10,6 @@ export type Invocation =
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
-  | { readonly kind: "chats-redact-help" }
-  | { readonly kind: "chats-redact"; readonly importId: string }
-  | { readonly kind: "chats-import-help" }
-  | {
-      readonly kind: "chats-import";
-      readonly paths: readonly string[];
-      readonly roots?: readonly string[];
-      readonly excludeProjects?: readonly string[];
-      readonly previousImportId?: string;
-    }
   | {
       readonly kind: "validate";
       readonly manifest: string;
@@ -93,10 +83,6 @@ function textValues(argumentsList: readonly string[]): readonly string[] {
 }
 
 export function parseInvocation(given: readonly string[]): Invocation {
-  if (given[0] === "chats" && given[1] === "import")
-    return chatsImport(given.slice(2));
-  if (given[0] === "chats" && given[1] === "redact")
-    return chatsRedact(given.slice(2));
   const argumentsList = textValues(given);
   const json = given.includes("--json");
   const parsed = parsedArguments(argumentsList);
@@ -115,142 +101,6 @@ export function parseInvocation(given: readonly string[]): Invocation {
   if (typeof outcome === "string")
     return { kind: "usage-error", code: outcome, json };
   return outcome;
-}
-
-function chatsRedact(argumentsList: readonly string[]): Invocation {
-  if (
-    argumentsList.length === 1 &&
-    ["--help", "-h"].includes(String(argumentsList[0]))
-  )
-    return { kind: "chats-redact-help" };
-  const importId = argumentsList[0];
-  if (
-    argumentsList.length !== 1 ||
-    importId === undefined ||
-    !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
-      importId,
-    )
-  )
-    return { kind: "usage-error", code: "invalid-import-id", json: false };
-  return { kind: "chats-redact", importId };
-}
-
-function chatsImport(argumentsList: readonly string[]): Invocation {
-  const error = (code: string): Invocation => ({
-    kind: "usage-error",
-    code,
-    json: false,
-  });
-  if (
-    argumentsList.length === 1 &&
-    ["--help", "-h"].includes(String(argumentsList[0]))
-  )
-    return { kind: "chats-import-help" };
-  const state: ImportArguments = {
-    paths: [],
-    roots: [],
-    excludeProjects: [],
-    literal: false,
-    option: undefined,
-    previousImportId: undefined,
-  };
-  for (const argument of argumentsList) {
-    const failure = importArgument(state, argument);
-    if (failure !== undefined) return error(failure);
-  }
-  if (state.option !== undefined) return error("missing-value");
-  if (state.excludeProjects.length > 0 && state.roots.length === 0)
-    return error("roots-required");
-  if (state.paths.length + state.roots.length === 0)
-    return error("missing-argument");
-  return importInvocation(state);
-}
-
-function importInvocation(state: ImportArguments): Invocation {
-  const previous =
-    state.previousImportId === undefined
-      ? {}
-      : { previousImportId: state.previousImportId };
-  return state.roots.length === 0
-    ? { kind: "chats-import", paths: state.paths, ...previous }
-    : {
-        kind: "chats-import",
-        paths: state.paths,
-        ...previous,
-        roots: state.roots,
-        excludeProjects: state.excludeProjects,
-      };
-}
-
-interface ImportArguments {
-  paths: string[];
-  roots: string[];
-  excludeProjects: string[];
-  previousImportId: string | undefined;
-  literal: boolean;
-  option: string | undefined;
-}
-
-function importArgument(
-  state: ImportArguments,
-  argument: string,
-): string | undefined {
-  if (state.option !== undefined) return importValue(state, argument);
-  if (argument === "") return "missing-argument";
-  if (state.literal) {
-    state.paths.push(argument);
-    return;
-  }
-  if (argument === "--previous-import" && state.previousImportId !== undefined)
-    return "repeated-previous-import";
-  if (["--root", "--exclude-project", "--previous-import"].includes(argument)) {
-    state.option = argument;
-    return;
-  }
-  if (argument === "--") {
-    state.literal = true;
-    return;
-  }
-  if (argument.startsWith("-")) return "unexpected-option";
-  state.paths.push(argument);
-  return;
-}
-
-function importValue(
-  state: ImportArguments,
-  argument: string,
-): string | undefined {
-  if (argument === "" || argument.startsWith("-")) return "missing-value";
-  const option = state.option;
-  state.option = undefined;
-  if (option === "--root") {
-    state.roots.push(argument);
-    return;
-  }
-  if (option === "--exclude-project" && !validProjectName(argument))
-    return "invalid-exclusion";
-  if (option === "--exclude-project") {
-    state.excludeProjects.push(argument);
-    return;
-  }
-  if (
-    !/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/.test(
-      argument,
-    )
-  )
-    return "invalid-import-id";
-  state.previousImportId = argument;
-  return;
-}
-
-function validProjectName(name: string): boolean {
-  return (
-    name !== "." &&
-    name !== ".." &&
-    !["/", "\\", "\0", "*", "?", "[", "]"].some((character) =>
-      name.includes(character),
-    )
-  );
 }
 
 function parsedArguments(argumentsList: readonly string[]): Parsed | string {

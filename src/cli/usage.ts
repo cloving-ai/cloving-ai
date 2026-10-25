@@ -103,8 +103,6 @@ export const usage = `Usage: cloving [--help] [--version]
 
 Commands:
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
-  chats redact  Redact one imported chat corpus into private runtime files.
-  chats import  Import explicitly selected Claude Code transcripts into private runtime files.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
   report     Report loop facts and seven-day baselines.
@@ -123,32 +121,6 @@ The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runti
 Use npm exec -- cloving ... for a project-local installation.
 `;
 
-export const chatsImportUsage = `Usage: cloving chats import [--] <path> [<path> ...]
-       cloving chats import --root <projects-folder> [--root <projects-folder> ...] [--exclude-project <name> ...] [-- <path> ...]
-
-Imports only the selected Claude Code JSONL files. Relative paths use the current directory.
-This local command needs no service. It scans only explicitly named roots and does not expand globs or discover configuration.
-Positional files come first, retaining order and repetitions. Roots sort by canonical path, then entries by relative path in JavaScript string order.
-Exclusions match direct project folder names exactly and prune their children. Exclusions require a root.
-Scans accept lowercase .jsonl filenames, attempt at most 100 eligible files across roots, and stop before entering folders at depth four.
-Later file candidates and depth-limited folders are pending. Select pending files explicitly in a later import.
-Linked components, containment changes and roots in Git repositories are refused. Scan protections require the supported macOS kernel.
-The file limit is 10 MiB (10,485,760 bytes). Links and nonregular files are refused.
-The total normalized corpus limit is 50 MiB (52,428,800 UTF-8 bytes), including newlines and repeated selections.
-Exceeding that total returns output-failed with exit code 1 and no completed coverage manifest; partial files may remain.
---previous-import <IMPORT_ID> compares against one explicitly named UUID v4 import before --.
-The earlier coverage and optional revision must be valid, completed private metadata; otherwise previous-import-refused returns exit 1 with no new import.
-A comparison writes private revision.json with ordered selection evidence and six status counts. Matching uses source path and selected root path; repetitions pair in order.
-Byte-verified extensions are extended; shorter sources are truncated. Legacy imports without sizes can establish unchanged digests but cannot prove extension or truncation.
-Missing or truncated evidence makes the import partial. History completeness remains unknown.
-Private corpus.jsonl, structure.json and coverage.json files go into a new import directory under the runtime directory's chats directory.
-The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
-Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
-Structure preserves branches and marks known copies without removing records. History completeness remains unknown.
-Root imports write coverage version 2 and add excluded and pending entry counts; positional-only imports retain coverage version 1.
-Exit codes: 0 for no refused, pending, missing or truncated entries (exclusions alone permit success without comparison), 1 for partial coverage or processing failure, 2 for invalid usage.
-`;
-
 export const validateUsage = `Usage: cloving workflows validate <manifest-path> [--input <json-file>] [--json]
 
 Checks a Cloving workflow manifest, its compiled SDK artifacts, declared resources and toolchain, and an optional runtime input file. Relative paths resolve against the current directory.
@@ -161,13 +133,4 @@ Validation does not admit a run, dispatch effects, import workflow code or call 
 
 Example:
   cloving workflows validate cloving.workflow.json --input input.json
-`;
-
-export const chatsRedactUsage = `Usage: cloving chats redact <IMPORT_ID>
-
-Redact one existing import selected by its UUID v4 import ID. No service is required.
-Write redacted.jsonl and redaction.json beside the original corpus with mode 0600.
-HOME supplies the home folder. CLOVING_PRIVATE_TEXTS is an optional JSON list of nonblank strings.
-Originals and metadata remain private. Redaction does not authorize model use or guarantee removal of every private value.
-Exit codes: 0 complete, 1 processing failure, 2 invalid usage.
 `;
