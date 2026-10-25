@@ -75,7 +75,11 @@ function admitted(result: Fields): readonly string[] {
 
 function runLine(run: unknown): string {
   const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
-  return [line, ...chainLines(run).map((link) => `    ${link}`)].join("\n");
+  return [
+    line,
+    ...ciLines(run).map((notice) => `    ${notice}`),
+    ...chainLines(run).map((link) => `    ${link}`),
+  ].join("\n");
 }
 
 function chainLines(run: unknown): readonly string[] {
@@ -84,6 +88,14 @@ function chainLines(run: unknown): readonly string[] {
     `Chain: ${visible(part(run, "chainId") ?? part(run, "runId") ?? "none")}`,
     `Child runs: ${visible(listing(part(run, "childRunIds")))}`,
   ];
+}
+
+function ciLines(run: unknown): readonly string[] {
+  const reruns = part(run, "ciReruns");
+  return (Array.isArray(reruns) ? reruns : []).map(
+    (rerun: unknown) =>
+      `CI rerun after a failed check: workflow ${visible(part(rerun, "run"))}, commit ${visible(part(rerun, "commit"))}`,
+  );
 }
 
 function ended(run: Fields): boolean {
@@ -239,6 +251,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
     ...outcomeLines(part(run, "outcome")),
+    ...ciLines(run),
     `Condition: ${show(part(run, "condition"))}`,
     `Reason: ${show(part(reason, "code"))}: ${show(part(reason, "detail"))}`,
     `Input: ${inputText(part(run, "input"))}`,

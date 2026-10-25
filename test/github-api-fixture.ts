@@ -84,6 +84,9 @@ const actions = {
   },
   "repo view": () => out({ nameWithOwner: "acme/demo" }),
   "api GET check-runs": () => out([{ check_runs: [{ id: 101, name: "quality_linux", app: { slug: "github-actions" }, status: "completed", conclusion: "success", details_url: null }] }]),
+  "api GET attempt-jobs": () => out([{ jobs: [101, 102].map((id) => ({ check_run_url: "https://api.github.com/repos/acme/demo/check-runs/" + id })) }]),
+  "api GET workflow-run": () => out({ run_attempt: 2, status: "completed" }),
+  "run rerun": () => out(""),
   "run view": () => out(args.includes("--log-failed") ? "Failed assertion" : { jobs: [{ databaseId: 101, name: "quality_linux", steps: [{ name: "Run quality", conclusion: "failure" }] }] }),
   "api GET issues": () => {
     const pages = state.issuePages ?? [state.issues];
@@ -142,7 +145,7 @@ const actions = {
   },
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
-const kind = path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
+const kind = path.includes("/attempts/") ? "attempt-jobs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));
@@ -156,6 +159,10 @@ if (failure) {
   process.stderr.write(state.failureText ?? "the fake gh refused " + name);
   process.exitCode = 1;
 } else if (state.garble === name) process.stdout.write("not json");
+else if (state.sequences?.[name]) {
+  const sequence = state.sequences[name];
+  out(sequence.length > 1 ? sequence.shift() : sequence[0]);
+}
 else if (state.replies && Object.hasOwn(state.replies, name)) out(state.replies[name]);
 else actions[name]();
 const staged = file + "." + process.pid;

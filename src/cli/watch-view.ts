@@ -22,9 +22,9 @@ import {
   type ColumnControls,
 } from "./watch-board-view.ts";
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
-export { PullRequest } from "./watch-turn.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
+export { PullRequest } from "./watch-turn.ts";
 import { StartRun } from "./watch-start-view.ts";
 import { record } from "../protocol.ts";
 
@@ -194,6 +194,12 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
     }),
     component(Phases, { phases: run.phases, now }),
     component(PullRequest, { run }),
+    (run.ciReruns ?? []).map((rerun) =>
+      element("p", {
+        class: "meta",
+        children: `CI rerun after a failed check: workflow ${rerun.run}, commit ${rerun.commit.slice(0, 7)}`,
+      }),
+    ),
     run.decisions.map((decision) =>
       component(Decision, { decision, turn, copying }),
     ),

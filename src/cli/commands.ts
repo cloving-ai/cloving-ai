@@ -1,4 +1,5 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { withCiReruns } from "./github-ci-progress.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -102,8 +103,12 @@ async function requested(
   environment: Located,
   exchange: { readonly request: ServiceRequest; readonly format: Format },
 ): Promise<number> {
+  const reply = await send(environment.runtimeDirectory, exchange.request);
   return presented(environment, {
-    reply: await send(environment.runtimeDirectory, exchange.request),
+    reply:
+      exchange.request.operation === "status"
+        ? await withCiReruns(environment.runtimeDirectory, reply)
+        : reply,
     format: exchange.format,
   });
 }
@@ -223,7 +228,10 @@ async function status(
   const { runId, limit, after, json } = invocation;
   if (!json && runId === null) await summarized(environment);
   if (!json && runId === null && limit === null && after === null) {
-    const reply = await listRuns(environment.runtimeDirectory);
+    const reply = await withCiReruns(
+      environment.runtimeDirectory,
+      await listRuns(environment.runtimeDirectory),
+    );
     return presented(environment, {
       format: { json },
       reply:
