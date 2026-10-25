@@ -25,7 +25,8 @@ export interface HeartbeatContext {
   readonly wait: (milliseconds: number, signal: AbortSignal) => Promise<void>;
 }
 
-export type BeatOutcome = "beat" | "failed" | "lost" | "unregistered";
+export type BeatOutcome =
+  "beat" | "failed" | "lost" | "replaced" | "unregistered";
 
 function revokedDevices(body: unknown): readonly string[] {
   const devices: unknown =
@@ -44,12 +45,15 @@ function revokedDevices(body: unknown): readonly string[] {
 
 async function applyRevocations(
   context: HeartbeatContext,
-  link: PhoneLink,
+  call: { readonly link: PhoneLink; readonly signal: AbortSignal },
 ): Promise<void> {
+  const { link, signal } = call;
+  if (signal.aborted) return;
   const reply = await relayRequest(link.origin, {
     method: "GET",
     path: "/api/v1/relay/devices",
     token: link.token,
+    signal,
   });
   if (reply.status !== 200) return;
   const known = new Set(
@@ -61,14 +65,21 @@ async function applyRevocations(
     if (known.has(deviceId)) await context.store.remove(deviceId);
 }
 
-async function lostRegistration(context: HeartbeatContext): Promise<void> {
-  await rm(join(context.phoneDirectory, "link.json"), { force: true });
+async function lostRegistration(
+  context: HeartbeatContext,
+  link: PhoneLink,
+): Promise<BeatOutcome> {
+  const current = await readLink(context.phoneDirectory);
+  if (current?.token !== link.token) return "replaced";
   await context.store.removeAll();
+  await rm(join(context.phoneDirectory, "link.json"), { force: true });
   context.lost();
+  return "lost";
 }
 
 export async function heartbeat(
   context: HeartbeatContext,
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<BeatOutcome> {
   const link = await readLink(context.phoneDirectory);
   if (link === undefined) return "unregistered";
@@ -76,13 +87,11 @@ export async function heartbeat(
     method: "PUT",
     path: "/api/v1/relay/daemon/heartbeat",
     token: link.token,
+    signal,
   }).catch(() => undefined);
-  if (reply?.status === 401) {
-    await lostRegistration(context);
-    return "lost";
-  }
+  if (reply?.status === 401) return lostRegistration(context, link);
   if (reply === undefined || reply.status >= 300) return "failed";
-  await applyRevocations(context, link).catch(() => undefined);
+  await applyRevocations(context, { link, signal }).catch(() => undefined);
   return "beat";
 }
 
@@ -100,7 +109,9 @@ export async function runHeartbeats(
 ): Promise<void> {
   let failures = 0;
   while (!signal.aborted) {
-    const outcome = await heartbeat(context).catch((): BeatOutcome => "failed");
+    const outcome = await heartbeat(context, signal).catch(
+      (): BeatOutcome => "failed",
+    );
     failures = outcome === "failed" ? failures + 1 : 0;
     await context.wait(pause(context.timing, failures), signal);
   }

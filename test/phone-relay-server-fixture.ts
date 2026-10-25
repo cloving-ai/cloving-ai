@@ -51,6 +51,8 @@ interface Settings {
   readonly startDelayMilliseconds?: number;
   readonly heartbeatStatuses?: number[];
   readonly envelopeStatuses?: number[];
+  readonly registerDelayMilliseconds?: number;
+  readonly heartbeatDelayMilliseconds?: number;
 }
 
 export interface ListedDevice {
@@ -244,9 +246,20 @@ function daemonRoute(
   return daemonRoutes[`${method} ${path}`]?.(state, daemon);
 }
 
+function delayOf(settings: Settings, path: string): number {
+  const delays: Readonly<Record<string, number | undefined>> = {
+    "/api/v1/relay/daemons": settings.registerDelayMilliseconds,
+    "/api/v1/relay/daemon/heartbeat": settings.heartbeatDelayMilliseconds,
+  };
+  return delays[path] ?? 0;
+}
+
 async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
   const { request, url, body } = exchange;
   const path = url.pathname;
+  await new Promise((settle) =>
+    setTimeout(settle, delayOf(state.settings, path)),
+  );
   if (request.method === "POST" && path === "/api/v1/relay/daemons")
     return registered(state, body);
   const daemon = daemonOf(state, request);

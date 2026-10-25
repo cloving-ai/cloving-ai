@@ -1120,7 +1120,9 @@
     "test/relay-decision-check.test.ts": "test",
     "test/relay-decision-watch.test.ts": "test",
     "test/relay-envelope-post.test.ts": "test",
-    "test/relay-decision-check-cases.test.ts": "test"
+    "test/relay-decision-check-cases.test.ts": "test",
+    "test/phone-heartbeat-races.test.ts": "test",
+    "test/phone-heartbeat-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

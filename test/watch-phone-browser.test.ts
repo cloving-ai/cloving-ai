@@ -18,7 +18,14 @@ interface Served {
 }
 
 interface PhoneFlow {
-  phase: "idle" | "open" | "requested" | "checking" | "connected" | "lost";
+  phase:
+    | "idle"
+    | "open"
+    | "requested"
+    | "checking"
+    | "connected"
+    | "removed"
+    | "lost";
 }
 
 const request = {
@@ -27,6 +34,24 @@ const request = {
   platform: "android",
   code: "482913",
 };
+
+const listedPhases: ReadonlySet<PhoneFlow["phase"]> = new Set([
+  "checking",
+  "connected",
+  "removed",
+]);
+
+function listedDevices(flow: PhoneFlow): readonly unknown[] {
+  if (!listedPhases.has(flow.phase)) return [];
+  return [
+    {
+      ...request,
+      pairedAt: "2026-10-25T12:00:00Z",
+      state: flow.phase === "checking" ? "checking" : "connected",
+      removedAt: flow.phase === "removed" ? "2026-10-25T12:05:00Z" : null,
+    },
+  ];
+}
 
 function phoneState(flow: PhoneFlow): unknown {
   const pairing =
@@ -40,17 +65,7 @@ function phoneState(flow: PhoneFlow): unknown {
           request: flow.phase === "open" ? null : request,
         }
       : null;
-  const devices =
-    flow.phase === "checking" || flow.phase === "connected"
-      ? [
-          {
-            ...request,
-            pairedAt: "2026-10-25T12:00:00Z",
-            state: flow.phase,
-            removedAt: null,
-          },
-        ]
-      : [];
+  const devices = listedDevices(flow);
   const lost = flow.phase === "lost";
   return {
     relay: "on",
@@ -228,12 +243,15 @@ async function flowBoard(start: PhoneFlow["phase"] = "idle") {
       }, 300);
       return phoneReply("/actions/phone/pair", 600_000);
     },
-    "/actions/phone/remove": () => ({
-      deviceId: "phone-1",
-      removed: true,
-      warning:
-        "cloving.ai did not remove the phone (answer 404). This computer keeps it removed.",
-    }),
+    "/actions/phone/remove": () => {
+      flow.phase = "removed";
+      return {
+        deviceId: "phone-1",
+        removed: true,
+        warning:
+          "cloving.ai did not remove the phone (answer 404). This computer keeps it removed.",
+      };
+    },
     "/actions/phone/accept": () => {
       flow.phase = "checking";
       setTimeout(() => {
@@ -279,6 +297,7 @@ await test("CLV-189 the request shows the name and the code, and Accept shows Co
     const done = panel();
     button("Remove").click();
     await until(() => panel().includes("cloving.ai did not remove the phone"), "no remove warning");
+    await until(() => !panel().includes("Connected: Pixel 8a"), "a removed phone still shows Connected");
     return { asked, done };
   })()`);
   assert.match(

@@ -24,7 +24,11 @@ export class RegistrationEnded extends Error {
 export interface PairingSessions {
   readonly current: () => OpenPairing | undefined;
   readonly refusal: () => string | null;
-  readonly start: (registration: Registration) => Promise<OpenPairing>;
+  readonly generation: () => number;
+  readonly start: (
+    registration: Registration,
+    startedIn: number,
+  ) => Promise<OpenPairing>;
   readonly end: (open: OpenPairing, refusal: string | null) => void;
   readonly cancel: () => void;
 }
@@ -76,6 +80,10 @@ async function created(
   };
 }
 
+function cancelled(): Error {
+  return new Error("pairing-cancelled: The pairing was cancelled.");
+}
+
 export function pairingSessions(settings: SessionSettings): PairingSessions {
   let open: OpenPairing | undefined;
   let refusal: string | null = null;
@@ -96,11 +104,11 @@ export function pairingSessions(settings: SessionSettings): PairingSessions {
       generation += 1;
       if (open !== undefined) end(open, null);
     },
-    start: async (registration) => {
-      const startedIn = generation;
+    generation: () => generation,
+    start: async (registration, startedIn) => {
+      if (startedIn !== generation) throw cancelled();
       const started = await created(registration, settings.secret());
-      if (startedIn !== generation)
-        throw new Error("pairing-cancelled: The pairing was cancelled.");
+      if (startedIn !== generation) throw cancelled();
       open = started;
       refusal = null;
       timer = setTimeout(
