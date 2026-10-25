@@ -77,12 +77,26 @@ function writeStderr(descriptor: number, chunk: Buffer): boolean {
   }
 }
 
-export function startCommand(start: CommandStart): RunningCommand {
+function prepareCommand(start: CommandStart) {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
+  let stderr: number | undefined;
+  try {
+    stderr = openSync(join(start.folder, "command.stderr.log"), "w", 0o600);
+    return { child: spawnCommand(start, configuration), stderr, configuration };
+  } catch (error) {
+    try {
+      if (stderr !== undefined) closeSync(stderr);
+    } finally {
+      rmSync(configuration, { recursive: true, force: true });
+    }
+    throw error;
+  }
+}
+
+export function startCommand(start: CommandStart): RunningCommand {
   const began = performance.now();
-  const child = spawnCommand(start, configuration);
+  const { child, stderr, configuration } = prepareCommand(start);
   const stdout: Buffer[] = [];
-  const stderr = openSync(join(start.folder, "command.stderr.log"), "w", 0o600);
   const closed = Promise.withResolvers<number | null>();
   let reason: string | undefined;
   const fail = (failure: string): void => {
