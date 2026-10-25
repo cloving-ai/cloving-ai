@@ -72,6 +72,7 @@ await test("CLV-057 a continuation starts a second SDK segment on the same Clovi
 const reply = await answered(runId);
 if (reply.kind !== "decision-recorded") print({ reply });
 ${finished}`);
+    assert.equal(result.status, 0, result.stderr);
     const [line] = result.lines;
     assert.deepEqual(line, {
       runId: field(line, "runId"),
@@ -80,7 +81,6 @@ ${finished}`);
       calls: ["reconcile absent", "deliver", "reconcile absent", "deliver"],
       reports: [],
     });
-    assert.equal(result.status, 0, result.stderr);
   }));
 
 await test("CLV-057 an answer before the wait is delivered to the real SDK run one time after the wait registration", () =>
