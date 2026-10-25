@@ -94,11 +94,14 @@ await test("CLV-178 a stop before or during command execution cannot start anoth
       kind: "absent",
     });
     await worker.deliver(commandIntent(), signal);
-    await until(() => existsSync(join(scene.directory, "calls")));
+    const calls = join(scene.directory, "calls");
+    await until(
+      () => existsSync(calls) && readFileSync(calls, "utf8") === "one\n",
+    );
     const stopped = await worker.stop(commandIntent(), signal);
     assert.equal(stopped.kind, "stopped");
     assert.deepEqual(await worker.deliver(commandIntent(), signal), stopped);
-    assert.equal(readFileSync(join(scene.directory, "calls"), "utf8"), "one\n");
+    assert.equal(readFileSync(calls, "utf8"), "one\n");
   }));
 
 await test("CLV-178 a caller whose dispatch is already aborted cannot start a command", () =>
