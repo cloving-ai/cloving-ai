@@ -1,6 +1,7 @@
 import { continues, gateKey, type GateState } from "../authority/gates.ts";
 import type { RunState } from "../authority/reducer.ts";
 import type { StoredState } from "../broker/actor/authority.ts";
+import { isDeviceActor } from "../authority/commands.ts";
 import { gateContinuation } from "../authority/reduction.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
 import type { Fields, Reply } from "../protocol.ts";
@@ -71,6 +72,29 @@ export async function feedbackOf(
     shown.push({
       decisionId: `${gate.runId}/${gate.gateId}`,
       text: text ?? "",
+    });
+  }
+  return shown;
+}
+
+export async function decidedOf(
+  context: ServiceContext,
+  scope: { readonly state: StoredState; readonly runId: string },
+): Promise<readonly Fields[]> {
+  const decided = typed(scope.state).filter(
+    (gate) => gate.runId === scope.runId && gate.outcome !== null,
+  );
+  const shown: Fields[] = [];
+  for (const gate of decided) {
+    const page = await context.authority.queries.eventsAfter({
+      after: (gate.outcome?.sequence ?? 1) - 1,
+      limit: 1,
+    });
+    const actor = page.events[0]?.payload["actor"];
+    shown.push({
+      decisionId: decisionId(gate),
+      decision: gate.outcome?.decision ?? null,
+      actor: typeof actor === "string" ? actor : "local",
     });
   }
   return shown;
@@ -169,6 +193,7 @@ function target(
 }
 
 interface DecisionRequest {
+  readonly actor: string | null;
   readonly command: string;
   readonly reference: string;
   readonly text: string | null;
@@ -194,7 +219,22 @@ function textLimit(
     : { bytes: context.textBytes, name: "An answer" };
 }
 
+function actorOf(parameters: Fields): string | null | undefined {
+  const actor: unknown = parameters["actor"] ?? null;
+  if (actor === null) return null;
+  return isDeviceActor(actor) ? actor : undefined;
+}
+
 function decisionRequest(parameters: Fields): DecisionRequest | undefined {
+  const actor = actorOf(parameters);
+  const fields = decisionFields(parameters);
+  if (actor === undefined || fields === undefined) return undefined;
+  return { ...fields, actor };
+}
+
+function decisionFields(
+  parameters: Fields,
+): Omit<DecisionRequest, "actor"> | undefined {
   const { command, reference, expectedRevision, generation } = parameters;
   const { subjectDigest, commandId } = parameters;
   const text: unknown = parameters["text"] ?? null;
@@ -269,6 +309,7 @@ export async function decision(
       generation: request.generation,
       subject: request.subjectDigest,
       ...(text === null ? {} : { answer: documentDigest(text) }),
+      ...(request.actor === null ? {} : { actor: request.actor }),
     },
     documents: text === null ? [] : [text],
   });
@@ -325,6 +366,7 @@ async function recorded(
     decisionId: decisionId(gate),
     runId,
     decision: gate.outcome?.decision ?? null,
+    actor: stored.command.actor ?? null,
     commandId,
     replayed: outcome.replayed,
     receipt: publicReceipt(stored),

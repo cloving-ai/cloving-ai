@@ -27,7 +27,7 @@ import {
 import type { WorkerTotals } from "../worker-usage.ts";
 import { usageTotals } from "./worker-totals.ts";
 import { commandFields } from "./command-effects.ts";
-import { feedbackOf } from "./decision-handler.ts";
+import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./submission-handler.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 
@@ -116,6 +116,7 @@ type ShownRun = RunView &
     readonly latestAt: string | null;
     readonly unresolvedEffects: readonly string[];
     readonly feedback: readonly Fields[];
+    readonly decisions: readonly Fields[];
   };
 
 async function viewOf(
@@ -154,6 +155,7 @@ async function viewOf(
     latestAt: times[run.runId] ?? null,
     unresolvedEffects: unresolvedEffects(input),
     feedback: await feedbackOf(context, { state, runId: run.runId }),
+    decisions: await decidedOf(context, { state, runId: run.runId }),
   };
 }
 
@@ -189,6 +191,7 @@ function full(view: ShownRun & WorkerTotals): Fields {
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
     feedback: view.feedback,
+    decisions: view.decisions,
   };
 }
 

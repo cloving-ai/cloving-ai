@@ -270,8 +270,17 @@ export function runStatus(result: Fields): readonly string[] {
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
     ...feedbackLines(part(run, "feedback")),
+    ...decidedLines(part(run, "decisions")),
     ...chainLines(run),
   ];
+}
+
+function decidedLines(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(
+    (decision: unknown) =>
+      `Decision ${visible(part(decision, "decisionId"))}: ${visible(part(decision, "decision"))} by ${visible(part(decision, "actor"))}`,
+  );
 }
 
 function binding(decision: unknown): string {
