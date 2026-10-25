@@ -274,15 +274,18 @@ await test("CLV-189 a pairing ends with pairing-failed when its follow loop fail
       secret: () => Buffer.from(fixture.secret, "base64url"),
       follow: () => Promise.reject(new Error("follow-failed")),
     });
-    await sessions.start({
-      keys: newDaemonKeys(),
-      link: {
-        daemonId: String(record(registered.body)?.["daemon_id"]),
-        origin: server.origin,
-        token: String(record(registered.body)?.["token"]),
-        registeredAt: "2026-10-25T12:00:00Z",
+    await sessions.start(
+      {
+        keys: newDaemonKeys(),
+        link: {
+          daemonId: String(record(registered.body)?.["daemon_id"]),
+          origin: server.origin,
+          token: String(record(registered.body)?.["token"]),
+          registeredAt: "2026-10-25T12:00:00Z",
+        },
       },
-    });
+      sessions.generation(),
+    );
     await new Promise((settle) => setTimeout(settle, 20));
     assert.equal(sessions.current(), undefined);
     assert.equal(sessions.refusal(), "pairing-failed");

@@ -98,12 +98,17 @@ async function phoneState(relay: OperationState): Promise<Reply> {
 }
 
 async function opened(relay: OperationState): Promise<OpenPairing> {
+  const startedIn = relay.sessions.generation();
   try {
-    return await relay.sessions.start(await registration(relay.context));
+    return await relay.sessions.start(
+      await registration(relay.context),
+      startedIn,
+    );
   } catch (error) {
     if (!(error instanceof RegistrationEnded)) throw error;
+    await relay.store.removeAll();
     await forgetRegistration(relay.context.phoneDirectory);
-    return relay.sessions.start(await registration(relay.context));
+    return relay.sessions.start(await registration(relay.context), startedIn);
   }
 }
 
@@ -128,6 +133,12 @@ function pairCancel(relay: OperationState): Promise<Reply> {
   return Promise.resolve(result({ pairing: null }));
 }
 
+async function resetAfterStart(relay: OperationState): Promise<Reply> {
+  relay.sessions.cancel();
+  await starts.get(relay)?.catch(() => undefined);
+  return phoneReset(relay);
+}
+
 type Operation = (relay: OperationState, parameters: Fields) => Promise<Reply>;
 
 const operations: Readonly<Record<string, Operation>> = {
@@ -137,7 +148,7 @@ const operations: Readonly<Record<string, Operation>> = {
   "phone-pair-accept": pairAccept,
   "phone-pair-deny": pairDeny,
   "phone-remove": phoneRemove,
-  "phone-reset": phoneReset,
+  "phone-reset": resetAfterStart,
 };
 
 export function computerName(name: string): string {

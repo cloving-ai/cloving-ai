@@ -40,14 +40,31 @@ const changed = refused(
   "The pairing changed. Check the name and the code on the watch page again.",
 );
 
-export async function pairAccept(
+const acceptances = new WeakMap<OpenPairing, Promise<Reply>>();
+
+export function pairAccept(
   relay: OperationState,
   parameters: Fields,
 ): Promise<Reply> {
   const open = requestedPairing(relay);
-  const request = open?.request;
-  if (open === undefined || request === undefined) return noRequest;
-  if (parameters["pairingId"] !== open.pairingId) return changed;
+  if (open === undefined) return Promise.resolve(noRequest);
+  if (parameters["pairingId"] !== open.pairingId)
+    return Promise.resolve(changed);
+  const running = acceptances.get(open);
+  if (running !== undefined) return running;
+  const accepting = accepted(relay, open).finally(() =>
+    acceptances.delete(open),
+  );
+  acceptances.set(open, accepting);
+  return accepting;
+}
+
+async function accepted(
+  relay: OperationState,
+  open: OpenPairing,
+): Promise<Reply> {
+  const { request } = open;
+  if (request === undefined) return noRequest;
   const pairedAt = new Date().toISOString();
   const rejection = await relay.store.add({
     deviceId: request.deviceId,

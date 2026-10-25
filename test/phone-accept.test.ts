@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createPublicKey, verify } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { phoneRequest } from "../src/cli/phone-client.ts";
@@ -62,9 +63,12 @@ function relayStart(setup: Omit<Setup, "relay">): Promise<Relay> {
   });
 }
 
-async function withRelay(body: (setup: Setup) => Promise<void>): Promise<void> {
+async function withRelay(
+  body: (setup: Setup) => Promise<void>,
+  settings: Parameters<typeof fakeRelayServer>[0] = {},
+): Promise<void> {
   await withFiles({}, async (root) => {
-    const server = await fakeRelayServer();
+    const server = await fakeRelayServer(settings);
     const base = { root, runtimeDirectory: join(root, "run"), server };
     const setup: Setup = { ...base, relay: await relayStart(base) };
     try {
@@ -299,5 +303,74 @@ await test("CLV-189 phone-remove writes a tombstone, tells cloving.ai, and a new
     );
     const again = await requested(setup);
     assert.equal(again.state["refusal"], "pairing-device-revoked");
+  });
+});
+
+await test("CLV-189 a double Accept sends one receipt, and the check still connects the phone", async () => {
+  await withRelay(async (setup) => {
+    const { pairingId } = await requested(setup);
+    const accept = {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    };
+    const [first, second] = await Promise.all([
+      call(setup, accept),
+      call(setup, accept),
+    ]);
+    assert.deepEqual(first, second);
+    assert.equal(
+      setup.server.requests.filter((item) => item.path.endsWith("/receipt"))
+        .length,
+      1,
+    );
+    sendPhoneCheck(setup.server, { pairingId });
+    await until(
+      setup,
+      (current) =>
+        device(current, fixture.device.id)?.["state"] === "connected" &&
+        current["pairing"] === null,
+    );
+  });
+});
+
+await test("CLV-189 a reset during the registration leaves no registration and no pairing", async () => {
+  await withRelay(
+    async (setup) => {
+      const starting = phoneRequest(setup.runtimeDirectory, {
+        operation: "phone-pair-start",
+        parameters: {},
+      });
+      await new Promise((settle) => setTimeout(settle, 100));
+      await call(setup, { operation: "phone-reset" });
+      const started = await starting;
+      assert.equal(
+        started?.kind === "error" ? started.error.code : "",
+        "phone-relay-failed",
+      );
+      const state = await call(setup, { operation: "phone-state" });
+      assert.deepEqual([state["registered"], state["pairing"]], [false, null]);
+      for (const file of ["link.json", "daemon-keys.json"])
+        await assert.rejects(stat(join(setup.root, "state/phone", file)), {
+          code: "ENOENT",
+        });
+    },
+    { registerDelayMilliseconds: 400 },
+  );
+});
+
+await test("CLV-189 a new registration after cloving.ai ended the old one removes the phones of the old one", async () => {
+  await withRelay(async (setup) => {
+    const { pairingId } = await requested(setup);
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    });
+    sendPhoneCheck(setup.server, { pairingId });
+    await until(setup, (current) => current["pairing"] === null);
+    setup.server.revoke("token-1");
+    await call(setup, { operation: "phone-pair-start" });
+    const state = await call(setup, { operation: "phone-state" });
+    assert.equal(state["daemonId"], "dmn_test2");
+    assert.notEqual(device(state, fixture.device.id)?.["removedAt"], null);
   });
 });

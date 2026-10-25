@@ -46,6 +46,7 @@ interface Settings {
   readonly receiptStatus?: number;
   readonly startDelayMilliseconds?: number;
   readonly heartbeatStatuses?: number[];
+  readonly registerDelayMilliseconds?: number;
 }
 
 export interface ListedDevice {
@@ -235,8 +236,12 @@ function daemonRoute(
 async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
   const { request, url, body } = exchange;
   const path = url.pathname;
-  if (request.method === "POST" && path === "/api/v1/relay/daemons")
+  if (request.method === "POST" && path === "/api/v1/relay/daemons") {
+    await new Promise((settle) =>
+      setTimeout(settle, state.settings.registerDelayMilliseconds ?? 0),
+    );
     return registered(state, body);
+  }
   const daemon = daemonOf(state, request);
   if (daemon === undefined) return [401, null];
   if (request.method === "POST" && path === "/api/v1/relay/pairings") {

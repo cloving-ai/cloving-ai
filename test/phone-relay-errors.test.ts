@@ -159,3 +159,29 @@ await test("CLV-188 the key file reader accepts only complete key files", () => 
     undefined,
   );
 });
+
+await test(
+  "CLV-187 a response that stops inside its body rejects the request",
+  { timeout: 10_000 },
+  async () => {
+    const server = await oddServer((_request, response) => {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": "100",
+      });
+      response.write('{"partial":');
+      setTimeout(() => response.socket?.destroy(), 20);
+    });
+    try {
+      await assert.rejects(
+        relayRequest(server.origin, {
+          method: "GET",
+          path: "/api/v1/relay/devices",
+        }),
+        { message: /^relay-response-incomplete: / },
+      );
+    } finally {
+      await server.close();
+    }
+  },
+);
