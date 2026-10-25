@@ -84,10 +84,10 @@ for (const [workflowId, modifiers, form] of [
   ["develop-prd", { ctrlKey: true }, undefined],
   ["develop-prd", { metaKey: true }, undefined],
   [
-    "analyze-chats",
+    "review-corpus",
     {},
     {
-      workflowId: "analyze-chats",
+      workflowId: "review-corpus",
       source: "input",
       fields: [
         {

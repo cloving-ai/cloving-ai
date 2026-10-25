@@ -69,7 +69,7 @@ await test("CLV-138 an active run between turns holds the update until all workf
             result: {
               runs: [
                 { workflowId: "develop-issue", state: "completed" },
-                { workflowId: "analyze-chats", state },
+                { workflowId: "review-corpus", state },
                 { workflowId: "develop-prd", state: "cancelled" },
                 { workflowId: "develop-ticket", state: "failed" },
               ],

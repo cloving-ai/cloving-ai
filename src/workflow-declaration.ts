@@ -13,7 +13,7 @@ export type WorkflowStages = Readonly<Record<string, readonly WorkflowStage[]>>;
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
-  readonly capabilities: readonly ("claude" | "github" | "chats" | "command")[];
+  readonly capabilities: readonly ("claude" | "github" | "command")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
@@ -153,7 +153,6 @@ function isCapabilities(
       (capability: unknown) =>
         capability === "claude" ||
         capability === "github" ||
-        capability === "chats" ||
         capability === "command",
     )
   );

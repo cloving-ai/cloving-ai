@@ -157,7 +157,7 @@ console.log(JSON.stringify({ add: app.all("button").some((node) => node.text ===
 
 await test("CLV-135 declared workflows render one input for each string field", () => {
   const form = {
-    workflowId: "analyze-chats",
+    workflowId: "review-corpus",
     source: "input",
     fields: [
       {
@@ -172,7 +172,7 @@ await test("CLV-135 declared workflows render one input for each string field", 
   const result = played(
     { ...boardModel([], { workflows: [form.workflowId] }), cardForms: [form] },
     `
-location.hash = "#workflow=analyze-chats";
+location.hash = "#workflow=review-corpus";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
 app.all("button").find((node) => node.text === "+ Add a card").dispatch("click");
@@ -186,7 +186,7 @@ console.log(JSON.stringify({ labels: app.all("label").map((node) => node.text), 
 for (const cleared of ["", " \t "]) {
   await test(`CLV-135 an optional field cleared to ${JSON.stringify(cleared)} is omitted from the run request`, () => {
     const form = {
-      workflowId: "analyze-chats",
+      workflowId: "review-corpus",
       source: "input",
       fields: [
         { name: "importId", label: "Import", optional: false },
@@ -199,7 +199,7 @@ for (const cleared of ["", " \t "]) {
         cardForms: [form],
       },
       `
-location.hash = "#workflow=analyze-chats";
+location.hash = "#workflow=review-corpus";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
 app.all("button").find((node) => node.text === "+ Add a card").dispatch("click");
@@ -210,10 +210,10 @@ const change = (name, value) => {
 };
 change("importId", "import-1");
 change("topic", " analysis ");
-const typed = state.cards["analyze-chats"].fields;
+const typed = state.cards["review-corpus"].fields;
 change("topic", ${JSON.stringify(cleared)});
 change("importId", "");
-const requiredBlank = state.cards["analyze-chats"].fields;
+const requiredBlank = state.cards["review-corpus"].fields;
 change("importId", "import-1");
 const submissions = [];
 globalThis.fetch = async (address, options) => {
