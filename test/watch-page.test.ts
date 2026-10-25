@@ -74,6 +74,7 @@ await test("CLV-016 the watch page document has the components, a script that ge
     [...page.matchAll(/\bfetch\(([^,\n]+)/g)].map((call) => call[1]),
     [
       '"actions/run"',
+      '"actions/phone/" + action',
       '"data.json?runId=" + encodeURIComponent(runId)',
       '"data.json"',
     ],

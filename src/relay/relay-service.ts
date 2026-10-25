@@ -1,8 +1,22 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
-import { parsePhoneLink, type PhoneLink } from "../phone/phone-link.ts";
-import type { Reply, ServiceRequest } from "../protocol.ts";
+import type { Fields, Reply, ServiceRequest } from "../protocol.ts";
+import {
+  pairingSessions,
+  RegistrationEnded,
+  type OpenPairing,
+  type PairingSessions,
+} from "./pairing-session.ts";
 import { listenPhoneSocket } from "./phone-socket.ts";
+import { relayOrigin } from "./relay-http.ts";
+import {
+  forgetRegistration,
+  readLink,
+  registration,
+  type RegistrationContext,
+} from "./relay-registration.ts";
 import { openRelayStore, type RelayStore } from "./relay-store.ts";
 
 export interface RelayPaths {
@@ -10,20 +24,20 @@ export interface RelayPaths {
   readonly phoneDirectory: string;
 }
 
+export interface RelayOptions extends RelayPaths {
+  readonly origin?: string;
+  readonly computerName?: string;
+  readonly secret?: () => Buffer;
+}
+
 export interface Relay {
   readonly close: () => Promise<void>;
 }
 
-async function readLink(
-  phoneDirectory: string,
-): Promise<PhoneLink | undefined> {
-  const text = await readFile(join(phoneDirectory, "link.json"), "utf8").catch(
-    (error: unknown) => {
-      if (Reflect.get(Object(error), "code") === "ENOENT") return undefined;
-      throw error;
-    },
-  );
-  return parsePhoneLink(text);
+interface RelayState {
+  readonly context: RegistrationContext;
+  readonly store: RelayStore;
+  readonly sessions: PairingSessions;
 }
 
 function unknownOperation(request: ServiceRequest): Reply {
@@ -36,36 +50,85 @@ function unknownOperation(request: ServiceRequest): Reply {
   };
 }
 
-async function phoneState(
-  paths: RelayPaths,
-  store: RelayStore,
-): Promise<Reply> {
-  const link = await readLink(paths.phoneDirectory);
-  return {
-    kind: "result",
-    result: {
-      registered: link !== undefined,
-      daemonId: link?.daemonId ?? null,
-      origin: link?.origin ?? null,
-      pairing: null,
-      devices: await store.devices(),
-    },
-  };
+function result(fields: Fields): Reply {
+  return { kind: "result", result: fields };
 }
 
-export async function startRelay(paths: RelayPaths): Promise<Relay> {
-  await mkdir(paths.runtimeDirectory, { recursive: true, mode: 0o700 });
-  await mkdir(paths.phoneDirectory, { recursive: true, mode: 0o700 });
-  const store = await openRelayStore(paths.phoneDirectory);
+async function phoneState(relay: RelayState): Promise<Reply> {
+  const link = await readLink(relay.context.phoneDirectory);
+  const open = relay.sessions.current();
+  return result({
+    registered: link !== undefined,
+    daemonId: link?.daemonId ?? null,
+    origin: link?.origin ?? null,
+    pairing:
+      open === undefined
+        ? null
+        : {
+            pairingId: open.pairingId,
+            expiresAt: open.expiresAt,
+            stage: "open",
+          },
+    devices: await relay.store.devices(),
+  });
+}
+
+async function opened(relay: RelayState): Promise<OpenPairing> {
+  try {
+    return await relay.sessions.start(await registration(relay.context));
+  } catch (error) {
+    if (!(error instanceof RegistrationEnded)) throw error;
+    await forgetRegistration(relay.context.phoneDirectory);
+    return relay.sessions.start(await registration(relay.context));
+  }
+}
+
+async function pairStart(relay: RelayState): Promise<Reply> {
+  const open = relay.sessions.current() ?? (await opened(relay));
+  return result({ link: open.link, expiresAt: open.expiresAt });
+}
+
+function pairCancel(relay: RelayState): Promise<Reply> {
+  relay.sessions.cancel();
+  return Promise.resolve(result({ pairing: null }));
+}
+
+const operations: Readonly<
+  Record<string, (relay: RelayState) => Promise<Reply>>
+> = {
+  "phone-state": phoneState,
+  "phone-pair-start": pairStart,
+  "phone-pair-cancel": pairCancel,
+};
+
+export function computerName(name: string): string {
+  return name.replace(/\.local$/, "").slice(0, 64);
+}
+
+export async function startRelay(options: RelayOptions): Promise<Relay> {
+  await mkdir(options.runtimeDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(options.phoneDirectory, { recursive: true, mode: 0o700 });
+  const store = await openRelayStore(options.phoneDirectory);
+  const relay: RelayState = {
+    context: {
+      phoneDirectory: options.phoneDirectory,
+      origin: options.origin ?? relayOrigin(undefined),
+      computerName: options.computerName ?? computerName(hostname()),
+    },
+    store,
+    sessions: pairingSessions(options.secret ?? (() => randomBytes(16))),
+  };
   const socket = await listenPhoneSocket(
-    join(paths.runtimeDirectory, "phone.sock"),
-    async (request) =>
-      request.operation === "phone-state"
-        ? phoneState(paths, store)
-        : unknownOperation(request),
+    join(options.runtimeDirectory, "phone.sock"),
+    (request) =>
+      (
+        operations[request.operation] ??
+        (() => Promise.resolve(unknownOperation(request)))
+      )(relay),
   );
   return {
     close: async () => {
+      relay.sessions.cancel();
       await socket.close();
       await store.close();
     },
@@ -92,6 +155,7 @@ export async function runRelay(
     const relay = await startRelay({
       runtimeDirectory,
       phoneDirectory: join(dirname(runtimeDirectory), "state", "phone"),
+      origin: relayOrigin(environment["CLOVING_RELAY_ORIGIN"]),
     });
     await program.stopped;
     await relay.close();

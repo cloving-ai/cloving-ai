@@ -1067,7 +1067,27 @@
     "test/phone-relay.test.ts": "test",
     "test/cli-phone.test.ts": "test",
     "test/quality/relay-policy.test.ts": "test",
-    "test/phone-command.test.ts": "test"
+    "test/phone-command.test.ts": "test",
+    "src/phone/qr-data.ts": "pure",
+    "src/phone/qr-matrix.ts": "pure",
+    "src/phone/qr-penalty.ts": "pure",
+    "src/phone/qr-picture.ts": "pure",
+    "src/phone/canonical-json.ts": "pure",
+    "src/relay/daemon-keys.ts": "relay",
+    "src/relay/relay-http.ts": "relay",
+    "src/relay/relay-files.ts": "relay",
+    "src/relay/relay-registration.ts": "relay",
+    "src/relay/pairing-session.ts": "relay",
+    "test/qr-code.test.ts": "test",
+    "test/phone-pairing.test.ts": "test",
+    "test/phone-relay-errors.test.ts": "test",
+    "test/phone-relay-server-fixture.ts": "test",
+    "src/cli/watch-phone.ts": "cli",
+    "src/cli/watch-phone-view.ts": "cli",
+    "src/cli/watch-phone-client.ts": "cli",
+    "test/watch-phone-actions.test.ts": "test",
+    "test/watch-phone-browser.test.ts": "test",
+    "test/watch-phone-view.test.ts": "test"
   },
   "allowed": {
     "quality": [
