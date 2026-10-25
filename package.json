@@ -111,7 +111,7 @@
     "@workflow/builders": "5.0.2",
     "entities": "8.1.0",
     "preact": "11.0.0",
-    "solid-objects": "0.17.8",
+    "solid-objects": "1.0.2",
     "typescript": "6.0.3",
     "workflow": "5.1.0"
   }
