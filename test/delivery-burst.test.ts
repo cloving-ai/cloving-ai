@@ -31,6 +31,29 @@ const silent: Delivery = {
   deliver: () => Promise.resolve({ receipt: "receipt-1" }),
 };
 
+await test("CLV-162 earlier callback notifications do not finish a later delivery burst", async () => {
+  const events: InstrumentationEvent[] = [];
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory, {
+    delivery: silent,
+    clock: () => noon,
+    timing: burstTiming,
+    instrumentation: (event) => {
+      events.push(event);
+    },
+  });
+  try {
+    await droppedRuns(authority, 1);
+    assert.deepEqual(await burst(authority), []);
+    await droppedRuns(authority, 2);
+    assert.equal(await openRows(authority), 1);
+    assert.deepEqual(await burst(authority), []);
+    assert.equal(await openRows(authority), 0);
+  } finally {
+    await authority.close();
+  }
+});
+
 await test("CLV-162 burst preparation pipelines independent runs within eight requests and keeps every cancellation", async () => {
   const authority = await openedAuthority(await temporaryDirectory());
   let activeRequests = 0;
@@ -94,26 +117,7 @@ async function openRows(authority: Authority): Promise<number> {
   ).length;
 }
 
-function completedDeliveries(events: readonly InstrumentationEvent[]): number {
-  return new Set(
-    events
-      .filter(
-        (event) =>
-          event.name === "solid_objects.message.completed" &&
-          event.attributes["operation"] === "deliveryCompleted",
-      )
-      .map((event) => event.messageId),
-  ).size;
-}
-
-async function burst(
-  authority: Authority,
-  observation: {
-    readonly events: readonly InstrumentationEvent[];
-    readonly expected?: number;
-  },
-): Promise<readonly string[]> {
-  const { events, expected = 1_000 } = observation;
+async function burst(authority: Authority): Promise<readonly string[]> {
   const controller = new AbortController();
   const failures: string[] = [];
   const running = authority
@@ -122,7 +126,7 @@ async function burst(
       failures.push(String(Reflect.get(Object(error), "message")));
     });
   for (let round = 0; round < 600 && failures.length === 0; round += 1) {
-    if (completedDeliveries(events) >= expected) break;
+    if ((await openRows(authority)) === 0) break;
     await delay(testMilliseconds(50));
   }
   controller.abort();
@@ -207,7 +211,8 @@ async function timerTurns(
 
 await test("CLV-053 burst readiness does not repeatedly load full authority projections", async () => {
   const events: InstrumentationEvent[] = [];
-  const authority = await openedAuthority(await temporaryDirectory(), {
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory, {
     delivery: silent,
     clock: () => noon,
     timing: burstTiming,
@@ -220,12 +225,12 @@ await test("CLV-053 burst readiness does not repeatedly load full authority proj
     let snapshots = 0;
     const observed = {
       ...authority,
-      operations: () => {
+      state: () => {
         snapshots += 1;
-        return authority.operations();
+        return authority.state();
       },
     };
-    assert.deepEqual(await burst(observed, { events, expected: 1 }), []);
+    assert.deepEqual(await burst(observed), []);
     assert.equal(snapshots, 0);
     assert.equal(await openRows(authority), 0);
   } finally {
@@ -235,7 +240,8 @@ await test("CLV-053 burst readiness does not repeatedly load full authority proj
 
 await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timing loses no activation, and the authority stays available", async () => {
   const events: InstrumentationEvent[] = [];
-  const authority = await openedAuthority(await temporaryDirectory(), {
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory, {
     delivery: silent,
     clock: () => noon,
     timing: burstTiming,
@@ -245,7 +251,7 @@ await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timi
   });
   await droppedRuns(authority, 1_000);
   assert.equal(await openRows(authority), 1_000);
-  assert.deepEqual(await burst(authority, { events }), []);
+  assert.deepEqual(await burst(authority), []);
   assert.deepEqual(
     events
       .filter((event) => event.name === lostEvent)
@@ -265,7 +271,8 @@ await test("CLV-051 a burst of 1 000 withheld deliveries with the fast test timi
 
 await test("CLV-051 a stop of the process just after a claim in the burst loses no activation", async () => {
   const events: InstrumentationEvent[] = [];
-  const authority = await openedAuthority(await temporaryDirectory(), {
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory, {
     delivery: silent,
     clock: () => noon,
     timing: burstTiming,
@@ -275,7 +282,7 @@ await test("CLV-051 a stop of the process just after a claim in the burst loses 
     }),
   });
   await droppedRuns(authority, 1_000);
-  assert.deepEqual(await burst(authority, { events }), []);
+  assert.deepEqual(await burst(authority), []);
   const activations = events.filter(
     (event) => event.name === activationEvent,
   ).length;
@@ -293,7 +300,8 @@ await test("CLV-051 a stop of the process just after a claim in the burst loses 
 
 await test("CLV-053 a burst of 1 000 withheld deliveries gives a 20 ms timer of the process a turn at least each 500 ms", async () => {
   const events: InstrumentationEvent[] = [];
-  const authority = await openedAuthority(await temporaryDirectory(), {
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory, {
     delivery: silent,
     clock: () => noon,
     timing: fastTiming,
@@ -304,7 +312,7 @@ await test("CLV-053 a burst of 1 000 withheld deliveries gives a 20 ms timer of 
   await droppedRuns(authority, 1_000);
   const failures: string[] = [];
   const timer = await timerTurns(async () => {
-    failures.push(...(await burst(authority, { events })));
+    failures.push(...(await burst(authority)));
   });
   assert.deepEqual(failures, []);
   assert.equal(await openRows(authority), 0);

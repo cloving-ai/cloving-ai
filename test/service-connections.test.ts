@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { socketAddress } from "../src/broker/socket-address.ts";
 import type { Service } from "../src/service/service.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import {
   call,
   eventually,
@@ -65,7 +66,7 @@ async function backlog(harness: Harness, service: Service): Promise<number> {
 await test("CLV-008 the service ends a connection that sends no complete request in the idle limit, and keeps a follower open", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
-      timing: { ...testTiming, idleMilliseconds: 150 },
+      timing: { ...testTiming, idleMilliseconds: testMilliseconds(150) },
     });
     const silent = connected(harness, closing);
     const partial = connected(harness, closing);
@@ -75,8 +76,8 @@ await test("CLV-008 the service ends a connection that sends no complete request
     const started = performance.now();
     await Promise.all([silent.closed, partial.closed]);
     assert.deepEqual([silent.lines(), partial.lines()], [[], []]);
-    assert.ok(performance.now() - started < 3000);
-    await delay(300);
+    assert.ok(performance.now() - started < testMilliseconds(3000));
+    await delay(testMilliseconds(300));
     assert.equal(follower.socket.destroyed, false);
     follower.socket.destroy();
     const status = await call(harness, { operation: "status", parameters: {} });
@@ -109,17 +110,17 @@ await test("CLV-008 a follower that reads gets each event of a backlog that is l
 await test("CLV-008 the service ends a follower that reads nothing for the idle limit while events wait for it", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
-      timing: { ...testTiming, idleMilliseconds: 300 },
+      timing: { ...testTiming, idleMilliseconds: testMilliseconds(300) },
     });
     const total = await backlog(harness, service);
     const follower = connected(harness, closing);
     follower.socket.pause();
     follower.socket.write(follow);
-    await delay(1500);
+    await delay(testMilliseconds(1500));
     follower.socket.resume();
     const ended = await Promise.race([
       follower.closed.then(() => "closed"),
-      delay(3000, "open"),
+      delay(testMilliseconds(3000), "open"),
     ]);
     follower.socket.destroy();
     assert.equal(ended, "closed");
@@ -132,7 +133,7 @@ await test("CLV-008 the service ends a follower that reads nothing for the idle 
 await test("CLV-008 the service ends a connection in the idle limit after its reply, also when the client keeps its side open", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
-      timing: { ...testTiming, idleMilliseconds: 150 },
+      timing: { ...testTiming, idleMilliseconds: testMilliseconds(150) },
     });
     const client = connected(harness, { allowHalfOpen: true });
     client.socket.write(
@@ -144,10 +145,13 @@ await test("CLV-008 the service ends a connection in the idle limit after its re
         settle("refused");
       });
     });
-    await delay(600);
+    await delay(testMilliseconds(600));
     client.socket.write("more data after the reply\n");
     client.socket.write("and more\n");
-    const outcome = await Promise.race([refused, delay(2000, "accepted")]);
+    const outcome = await Promise.race([
+      refused,
+      delay(testMilliseconds(2000), "accepted"),
+    ]);
     client.socket.destroy();
     assert.equal(outcome, "refused");
     await service.close();

@@ -21,6 +21,16 @@ await test("CLV-100 scales the QG-15 hook subprocess limit by the check time fac
   assert.equal(hookTimeoutMilliseconds("3"), 30000);
 });
 
+await test("CLV-162 hook fixtures check source errors without unrelated ambient Node declarations", () =>
+  withHook("export const value = process.pid;\n", (dispatch) => {
+    const result = dispatch({
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    assert.equal(result.exit, 2);
+    assert.match(result.diagnostic, /Cannot find name 'process'/);
+  }));
+
 await test("CLV-107 scales the inner hook check limit by the hook environment factor", () => {
   for (const [factor, timeout] of [
     [undefined, 5000],

@@ -63,7 +63,7 @@ function command(
     cwd: options.cwd,
     env: options.env ?? process.env,
     encoding: "utf8",
-    timeout: 120000,
+    timeout: testMilliseconds(120000),
     maxBuffer: 4 * 1024 * 1024,
   });
   assert.equal(result.error, undefined, result.stderr);
@@ -106,6 +106,7 @@ async function installed(root: string): Promise<string> {
       "--omit=dev",
       "--no-audit",
       "--no-fund",
+      "--prefer-offline",
       join(root, String(field(archive, "filename"))),
     ],
     cwd: root,

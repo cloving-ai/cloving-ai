@@ -134,6 +134,11 @@ export async function withHook(
     {
       "workspace/main.ts": source,
       "workspace/package.json": '{"type":"module"}',
+      "workspace/tsconfig.json": JSON.stringify({
+        extends: resolve("tsconfig.json"),
+        compilerOptions: { types: [] },
+        include: ["main.ts"],
+      }),
       "policy.json": "{}",
     },
     async (directory) => {
@@ -145,7 +150,7 @@ export async function withHook(
           workspace,
           editableFiles: ["main.ts"],
           sourceFiles: ["main.ts"],
-          compilerConfiguration: resolve("tsconfig.json"),
+          compilerConfiguration: join(workspace, "tsconfig.json"),
         }),
       );
       let lastResult: HookResult | undefined;
