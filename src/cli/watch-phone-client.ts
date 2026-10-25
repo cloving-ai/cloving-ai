@@ -39,7 +39,8 @@ function phoneSession(now) {
   if (pairing !== null && (ended || Date.parse(pairing.expiresAt) <= Date.parse(now))) state.phonePairing = null;
   const accepted = state.phoneAccepted;
   const device = (state.phone?.devices ?? []).find((item) => item.deviceId === accepted?.deviceId);
-  return { live, connected: device?.state === "connected" ? device.name : null };
+  const shown = device?.state === "connected" && device.removedAt === null;
+  return { live, connected: shown ? device.name : null };
 }
 function phoneControls(now) {
   if (actionToken === null) return undefined;

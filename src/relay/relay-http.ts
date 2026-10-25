@@ -75,6 +75,16 @@ export function relayRequest(
         response.once("end", () => {
           settle({ status: response.statusCode ?? 0, body: parsed(text) });
         });
+        const incomplete = (): void => {
+          if (!response.complete)
+            reject(
+              new Error(
+                "relay-response-incomplete: cloving.ai closed the answer before its end.",
+              ),
+            );
+        };
+        response.once("error", incomplete);
+        response.once("close", incomplete);
       },
     );
     request.once("timeout", () => {
