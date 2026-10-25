@@ -1,8 +1,59 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
+import timers from "node:timers/promises";
+import { until } from "./claude-worker-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { withConsumer } from "./world-host-fixture.ts";
+
+await test("CLV-196 worker report waits honor the scaled deadline", async () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  const clock = Object.getOwnPropertyDescriptor(performance, "now");
+  const timeout = timers.setTimeout;
+  let elapsed = 0;
+  Object.defineProperty(performance, "now", {
+    configurable: true,
+    value: () => elapsed,
+  });
+  Object.defineProperty(timers, "setTimeout", {
+    configurable: true,
+    value: (milliseconds: number) => {
+      elapsed += milliseconds;
+      return Promise.resolve();
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "1";
+    await assert.rejects(
+      until(() => elapsed >= 15_000),
+      {
+        message: "The scene did not reach its state.",
+      },
+    );
+    assert.equal(elapsed, 10_000);
+    elapsed = 0;
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+    await until(() => elapsed >= 15_000);
+    assert.equal(elapsed, 15_000);
+    elapsed = 0;
+    await assert.rejects(
+      until(() => false),
+      {
+        message: "The scene did not reach its state.",
+      },
+    );
+    assert.equal(elapsed, 30_000);
+  } finally {
+    if (clock) Object.defineProperty(performance, "now", clock);
+    else Reflect.deleteProperty(performance, "now");
+    timers.setTimeout = timeout;
+    syncBuiltinESMExports();
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+});
 
 await test("CLV-147 test durations follow the check time factor and reject invalid factors", () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];

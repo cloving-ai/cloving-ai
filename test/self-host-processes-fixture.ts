@@ -103,7 +103,8 @@ process.exitCode = await running;`,
 function interruptedMerge(root: string, options: StalledCheck): string {
   return `#!${process.execPath}
 import { spawnSync } from "node:child_process";
-import { existsSync, watch, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 const argumentsList = process.argv.slice(2);
 function merge() {
   const result = spawnSync("git", argumentsList, {
@@ -116,13 +117,14 @@ function merge() {
 }
 if (argumentsList[2] === "merge") {
   writeFileSync(${JSON.stringify(join(root, "git-pid"))}, String(process.pid));
-  const watcher = watch(${JSON.stringify(root)}, () => {
-    if (!existsSync(${JSON.stringify(join(root, "shutdown-observed"))})) return;
-    watcher.close();
-    merge();
-  });
   process.kill(process.ppid, ${JSON.stringify(options.signal)});
-} else merge();
+  const deadline = Date.now() + ${String(testMilliseconds(5000))};
+  while (!existsSync(${JSON.stringify(join(root, "shutdown-observed"))})) {
+    if (Date.now() >= deadline) throw new Error("shutdown-not-observed");
+    await delay(10);
+  }
+}
+merge();
 `;
 }
 
