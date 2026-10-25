@@ -106,7 +106,8 @@ await test(
         { cwd: directory, encoding: "utf8", env: {} },
       );
       assert.equal(unavailable.status, 1);
-      assert.match(unavailable.stdout, /runtime-directory-unknown/);
+      assert.match(unavailable.stdout, /repository-unknown/);
+      assert.match(unavailable.stdout, /--repository/);
       for (const setting of [
         "sentinel",
         "{}",

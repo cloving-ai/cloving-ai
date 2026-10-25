@@ -70,7 +70,7 @@ without a successful handoff. A successful handoff resets the count; ordinary re
 Stop the service, inspect the failures and reconcile affected issues, then start with --reset-queue and the same queue settings to clear the failure streak once. Tracked commands are preserved.
 
 The command reads these settings from the environment:
-  CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set.
+  CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/<name>-<id>/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set. A recorded legacy adoption takes priority.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs and failed runs send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
@@ -119,7 +119,7 @@ Commands:
   watch      Serve a page that shows the runs live.
   start      Start the service for a repository.
 
-The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
+The runtime commands need a Cloving service. They use the current git repository; --repository <directory> selects another repository. CLOVING_RUNTIME_DIR overrides its runtime directory.
 Use npm exec -- cloving ... for a project-local installation.
 `;
 
@@ -142,7 +142,7 @@ A comparison writes private revision.json with ordered selection evidence and si
 Byte-verified extensions are extended; shorter sources are truncated. Legacy imports without sizes can establish unchanged digests but cannot prove extension or truncation.
 Missing or truncated evidence makes the import partial. History completeness remains unknown.
 Private corpus.jsonl, structure.json and coverage.json files go into a new import directory under the runtime directory's chats directory.
-The runtime selection is CLOVING_RUNTIME_DIR, XDG_RUNTIME_DIR, XDG_STATE_HOME, then HOME.
+The runtime selection is CLOVING_RUNTIME_DIR, a recorded adoption, then the repository default below XDG_RUNTIME_DIR, XDG_STATE_HOME, or HOME/.local/state.
 Output contains only counts, fixed codes and an opaque import ID. Source paths stay in the private manifest.
 Structure preserves branches and marks known copies without removing records. History completeness remains unknown.
 Root imports write coverage version 2 and add excluded and pending entry counts; positional-only imports retain coverage version 1.

@@ -8,7 +8,10 @@ import {
   pendingSummary,
   rendered,
 } from "../src/cli/render.ts";
-import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
+import {
+  legacyRuntimeDirectory,
+  runtimeDirectory,
+} from "../src/cli/runtime-directory.ts";
 
 const receipt = {
   commandId: "c-1",
@@ -221,12 +224,15 @@ await test("CLV-008 the runtime directory comes from the environment in a fixed 
     "/a",
   );
   assert.equal(
-    runtimeDirectory({ CLOVING_RUNTIME_DIR: "", XDG_RUNTIME_DIR: "/b" }),
+    legacyRuntimeDirectory({ CLOVING_RUNTIME_DIR: "", XDG_RUNTIME_DIR: "/b" }),
     "/b/cloving",
   );
-  assert.equal(runtimeDirectory({ XDG_STATE_HOME: "/c" }), "/c/cloving/run");
   assert.equal(
-    runtimeDirectory({ HOME: "/home/operator" }),
+    legacyRuntimeDirectory({ XDG_STATE_HOME: "/c" }),
+    "/c/cloving/run",
+  );
+  assert.equal(
+    legacyRuntimeDirectory({ HOME: "/home/operator" }),
     "/home/operator/.local/state/cloving/run",
   );
   assert.equal(runtimeDirectory({ HOME: "" }), undefined);
@@ -262,7 +268,7 @@ await test("CLV-008 a runtime command with no known runtime directory fails with
   assert.deepEqual(
     output.map((line) => line.split("\n")[0]),
     [
-      "error runtime-directory-unknown: No runtime directory is known. Set CLOVING_RUNTIME_DIR to the runtime directory of the service.",
+      "error repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.",
       "out Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]",
     ],
   );

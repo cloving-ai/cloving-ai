@@ -250,17 +250,9 @@ await test(
       assert.equal(result.status, 1);
       const output: unknown = JSON.parse(result.stdout);
       assert.deepEqual(output, {
-        code: "runtime-directory-unknown",
-        importId: null,
-        included: 0,
-        refused: 0,
-        records: 0,
-        knownSessions: 0,
-        forks: 0,
-        copies: 0,
-        conflictGroups: 0,
-        unknownIdentities: 0,
-        missingParentTargets: 0,
+        code: "repository-unknown",
+        detail:
+          "Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.",
       });
       assert.equal(result.stderr, "");
       assert.deepEqual(await readdir(directory, { recursive: true }), before);

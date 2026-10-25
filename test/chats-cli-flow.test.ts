@@ -57,7 +57,7 @@ await test(
         argumentsList: ["chats", "redact", importId],
       });
       assert.equal(unavailable.status, 1);
-      assert.match(unavailable.stdout, /runtime-directory-unknown/);
+      assert.match(unavailable.stdout, /repository-unknown/);
       for (const setting of ["sentinel", "{}", "null", "[1]", '[" "]']) {
         const invalid = await invoke({
           directory,
@@ -124,7 +124,7 @@ await test(
         argumentsList: ["chats", "import", "source.jsonl"],
       });
       assert.equal(unavailable.status, 1);
-      assert.match(unavailable.stdout, /runtime-directory-unknown/);
+      assert.match(unavailable.stdout, /repository-unknown/);
       for (const [path, code, status] of [
         ["source.jsonl", "import-complete", 0],
         ["missing.jsonl", "import-partial", 1],

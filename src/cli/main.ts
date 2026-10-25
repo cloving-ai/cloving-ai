@@ -34,10 +34,14 @@ function helpInvocation(
 
 export async function main(
   argumentsList: readonly string[],
-  watchPr?: WatchPrSettings,
+  context?: {
+    readonly watchPr?: WatchPrSettings;
+    readonly repository: string | undefined;
+  },
 ): Promise<void> {
+  const repository = context?.repository;
   const invocation = parseInvocation(argumentsList);
-  if (refuseChatPlatform(invocation)) return;
+  if (refusedInvocation(invocation, repository)) return;
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
     return;
@@ -48,23 +52,23 @@ export async function main(
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
   } else if (invocation.kind === "chats-redact") {
-    await redactionCommand(invocation.importId);
+    await redactionCommand(invocation.importId, repository);
   } else if (invocation.kind === "chats-import") {
     const result = await importChats({
       ...invocation,
       workingDirectory: process.cwd(),
-      runtimeDirectory: runtimeDirectory(process.env),
+      runtimeDirectory: runtimeDirectory(process.env, repository),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     process.exitCode = result.code === "import-complete" ? 0 : 1;
   } else {
     process.exitCode = await runtimeCommand(invocation, {
-      runtimeDirectory: runtimeDirectory(process.env),
+      runtimeDirectory: runtimeDirectory(process.env, repository),
       ...(process.env["CLOVING_WATCH_ACTIONS"] === undefined
         ? {}
         : { watchActions: process.env["CLOVING_WATCH_ACTIONS"] }),
-      ...(watchPr === undefined ? {} : { watchPr }),
-      client: clientCommand(process.env),
+      ...context,
+      client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal: {
         out: (text) => process.stdout.write(text),
@@ -80,6 +84,21 @@ export async function main(
         }),
     });
   }
+}
+
+function refusedInvocation(
+  invocation: Invocation,
+  repository: string | undefined,
+): boolean {
+  if (refuseChatPlatform(invocation)) return true;
+  if (invocation.kind !== "chats-import" && invocation.kind !== "chats-redact")
+    return false;
+  if (runtimeDirectory(process.env, repository) !== undefined) return false;
+  process.stdout.write(
+    `${JSON.stringify({ code: "repository-unknown", detail: "Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR." })}\n`,
+  );
+  process.exitCode = 1;
+  return true;
 }
 
 function refuseChatPlatform(invocation: Invocation): boolean {
@@ -127,7 +146,10 @@ function present(report: ValidationReport, format: "json" | "human"): void {
     process.stderr.write(`${error.code}: ${error.file}: ${error.detail}\n`);
 }
 
-async function redactionCommand(importId: string): Promise<void> {
+async function redactionCommand(
+  importId: string,
+  repository?: string,
+): Promise<void> {
   let privateTexts: unknown = [];
   try {
     const setting = process.env["CLOVING_PRIVATE_TEXTS"];
@@ -150,7 +172,7 @@ async function redactionCommand(importId: string): Promise<void> {
   const result = await redactImport({
     importId,
     workingDirectory: process.cwd(),
-    runtimeDirectory: runtimeDirectory(process.env),
+    runtimeDirectory: runtimeDirectory(process.env, repository),
     settings: { home: process.env["HOME"] || null, privateTexts },
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);

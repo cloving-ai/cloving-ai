@@ -298,7 +298,7 @@ await test("CLV-016 cloving start with no known runtime directory starts nothing
   assert.deepEqual([started.status, started.stdout], [1, ""]);
   assert.match(
     started.stderr,
-    /^runtime-directory-unknown: Set CLOVING_RUNTIME_DIR /,
+    /^repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR\./,
   );
 });
 

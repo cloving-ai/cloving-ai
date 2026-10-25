@@ -1,16 +1,41 @@
 #!/usr/bin/env node
 import { addAbortListener } from "node:events";
-import { execFile, spawn } from "node:child_process";
-import { delimiter, dirname, extname, join } from "node:path";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
+import { parseInvocation } from "./cli/arguments.ts";
 import type {
   WatchCommandOutput,
   WatchCommandRunner,
 } from "./cli/watch-pr-command.ts";
-import { clientCommand, runtimeDirectory } from "./cli/runtime-directory.ts";
+import {
+  adoptionRecordPath,
+  clientCommand,
+  legacyRuntimeDirectory,
+  runtimeDirectory,
+} from "./cli/runtime-directory.ts";
 import { commandUsage } from "./cli/usage.ts";
 
 const [command, ...options] = process.argv.slice(2);
+
+function repositoryDirectory(directory: string): string | undefined {
+  try {
+    return realpathSync(
+      execFileSync(
+        "git",
+        ["-C", resolve(directory), "rev-parse", "--show-toplevel"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ).trim(),
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 const watchCommand: WatchCommandRunner = async (request) => {
   const [command = "", ...argumentsList] = request.command;
@@ -55,35 +80,56 @@ const watchCommand: WatchCommandRunner = async (request) => {
   }
 };
 
-function started(
-  runtime: string,
-  argumentsList: readonly string[],
-): Promise<number> {
+interface StartRequest {
+  readonly runtime: string;
+  readonly argumentsList: readonly string[];
+  readonly repository: string | undefined;
+}
+
+function startArguments(input: StartRequest): readonly string[] {
+  const { runtime, repository, argumentsList } = input;
+  const located = [
+    "--runtime",
+    runtimeDirectory(process.env, repository) ?? runtime,
+    "--repository",
+    repository ?? process.cwd(),
+    "--client",
+    clientCommand(process.env, repository),
+  ];
+  const record =
+    repository === undefined
+      ? undefined
+      : adoptionRecordPath(process.env, repository);
+  const legacy = legacyRuntimeDirectory(process.env);
+  if (
+    !process.env["CLOVING_RUNTIME_DIR"] &&
+    record !== undefined &&
+    !existsSync(record) &&
+    legacy !== undefined
+  )
+    located.push(
+      "--legacy-runtime",
+      resolve(legacy),
+      "--adoption-record",
+      resolve(record),
+    );
+  return [...located, ...argumentsList];
+}
+
+function started(input: StartRequest): Promise<number> {
   const program = join(
     import.meta.dirname,
     "..",
     "tools",
     `self-host${extname(import.meta.filename)}`,
   );
-  const located = [
-    "--runtime",
-    runtime,
-    "--repository",
-    process.cwd(),
-    "--client",
-    clientCommand(process.env),
-  ];
-  const child = spawn(
-    process.execPath,
-    [program, ...located, ...argumentsList],
-    {
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
-      },
+  const child = spawn(process.execPath, [program, ...startArguments(input)], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
     },
-  );
+  });
   let stopping = false;
   const interrupt = (): void => {
     stopping = true;
@@ -109,23 +155,61 @@ async function start(): Promise<number> {
     process.stdout.write(String(commandUsage["start"]));
     return 0;
   }
-  const runtime = runtimeDirectory(process.env);
+  const parsed = parseArgs({
+    args: options,
+    options: { repository: { type: "string" } },
+    strict: false,
+    allowPositionals: true,
+  });
+  const selected = parsed.values["repository"];
+  if (
+    Object.hasOwn(parsed.values, "repository") &&
+    (typeof selected !== "string" || selected === "")
+  ) {
+    process.stderr.write("missing-value: --repository needs a directory.\n");
+    return 1;
+  }
+  if (parsed.positionals.length > 0) {
+    process.stderr.write(
+      "unexpected-argument: run cloving start --help for usage.\n",
+    );
+    return 1;
+  }
+  const repository = repositoryDirectory(
+    typeof selected === "string" ? selected : process.cwd(),
+  );
+  const runtime = runtimeDirectory(process.env, repository);
   if (runtime !== undefined) {
-    let status = await started(runtime, options);
+    let status = await started({ runtime, argumentsList: options, repository });
     const restarting = options.filter((option) => option !== "--reset-queue");
-    while (status === 75) status = await started(runtime, restarting);
+    while (status === 75)
+      status = await started({
+        runtime,
+        argumentsList: restarting,
+        repository,
+      });
     return status === 0 ? 0 : 1;
   }
   process.stderr.write(
-    "runtime-directory-unknown: Set CLOVING_RUNTIME_DIR to the runtime directory of the service.\n",
+    "repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.\n",
   );
   return 1;
 }
 
 if (command === "start") process.exitCode = await start();
-else
+else {
+  const invocation = parseInvocation(process.argv.slice(2));
+  const repository = repositoryDirectory(
+    "repository" in invocation
+      ? (invocation.repository ?? process.cwd())
+      : process.cwd(),
+  );
   await main(process.argv.slice(2), {
-    repository: process.env["CLOVING_WATCH_REPOSITORY"],
-    githubCommand: process.env["CLOVING_GH_COMMAND"],
-    execute: watchCommand,
+    repository,
+    watchPr: {
+      repository: process.env["CLOVING_WATCH_REPOSITORY"],
+      githubCommand: process.env["CLOVING_GH_COMMAND"],
+      execute: watchCommand,
+    },
   });
+}

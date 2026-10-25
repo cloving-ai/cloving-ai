@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { repositoryArguments } from "./repository-arguments.ts";
 import {
   isRuntimeCommand,
   runtimeInvocation,
@@ -6,7 +7,7 @@ import {
   type RuntimeInvocation,
 } from "./runtime-arguments.ts";
 
-export type Invocation =
+export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
@@ -31,7 +32,8 @@ export type Invocation =
       readonly kind: "usage-error";
       readonly code: string;
       readonly json: boolean;
-    };
+    }
+);
 
 const errorCodes: Readonly<Record<string, string>> = {
   ERR_PARSE_ARGS_UNKNOWN_OPTION: "unknown-option",
@@ -56,6 +58,7 @@ const options = {
   after: { type: "string" },
   follow: { type: "boolean" },
   since: { type: "string" },
+  repository: { type: "string" },
 } as const;
 
 type Parsed = ReturnType<
@@ -93,6 +96,20 @@ function textValues(argumentsList: readonly string[]): readonly string[] {
 }
 
 export function parseInvocation(given: readonly string[]): Invocation {
+  const selected = repositoryArguments(given, options);
+  if (typeof selected === "string")
+    return {
+      kind: "usage-error",
+      code: selected,
+      json: given.includes("--json"),
+    };
+  const invocation = selectedInvocation(selected.argumentsList);
+  return selected.repository === undefined
+    ? invocation
+    : { ...invocation, repository: selected.repository };
+}
+
+function selectedInvocation(given: readonly string[]): Invocation {
   if (given[0] === "chats" && given[1] === "import")
     return chatsImport(given.slice(2));
   if (given[0] === "chats" && given[1] === "redact")

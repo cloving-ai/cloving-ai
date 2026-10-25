@@ -11,7 +11,10 @@ import {
 import { join } from "node:path";
 import { test } from "node:test";
 import { importChats } from "../src/chats/import.ts";
-import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
+import {
+  legacyRuntimeDirectory,
+  runtimeDirectory,
+} from "../src/cli/runtime-directory.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { readRootOutput } from "./chats-selection-fixture.ts";
 
@@ -29,15 +32,15 @@ await test("CLV-095 selects runtime locations without resolving relative overrid
     "relative",
   );
   assert.equal(
-    runtimeDirectory({ CLOVING_RUNTIME_DIR: "", XDG_RUNTIME_DIR: "xdg" }),
+    legacyRuntimeDirectory({ CLOVING_RUNTIME_DIR: "", XDG_RUNTIME_DIR: "xdg" }),
     join("xdg", "cloving"),
   );
   assert.equal(
-    runtimeDirectory({ XDG_STATE_HOME: "state", HOME: "home" }),
+    legacyRuntimeDirectory({ XDG_STATE_HOME: "state", HOME: "home" }),
     join("state", "cloving", "run"),
   );
   assert.equal(
-    runtimeDirectory({ HOME: "home" }),
+    legacyRuntimeDirectory({ HOME: "home" }),
     join("home", ".local", "state", "cloving", "run"),
   );
   assert.equal(runtimeDirectory({}), undefined);

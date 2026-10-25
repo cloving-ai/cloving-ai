@@ -1002,7 +1002,13 @@
     "test/run-wait-display.test.ts": "test",
     "test/run-wait-candidate.test.ts": "test",
     "test/run-wait-host.test.ts": "test",
-    "test/run-wait-storage.test.ts": "test"
+    "test/run-wait-storage.test.ts": "test",
+    "tools/self-host-runtime.ts": "candidate-adapter",
+    "test/cli-runtime-directory.test.ts": "test",
+    "test/self-host-runtime.test.ts": "test",
+    "test/cli-repository-runtime.test.ts": "test",
+    "test/self-host-default-runtime.test.ts": "test",
+    "src/cli/repository-arguments.ts": "cli"
   },
   "allowed": {
     "quality": [
