@@ -694,6 +694,8 @@ node dist/src/cli.js --help
 npm pack --ignore-scripts
 ```
 
+After a merge or branch update changes `package.json` or `package-lock.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks. Copied `node_modules` can still contain the previous versions; the developer gate rejects a mismatch with the lockfile.
+
 `npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and bundled workflows; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `decisionGate`, `handoff` and `runCommand`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.

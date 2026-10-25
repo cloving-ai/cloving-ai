@@ -96,6 +96,14 @@ await test("CLV-203 the README omits retired chat commands and corpus sections",
   );
 });
 
+await test("CLV-203 development setup refreshes installed dependencies after a merge", () => {
+  const development = readme.split("## Development of Cloving\n")[1] ?? "";
+  assert.match(
+    development,
+    /After a merge or branch update changes `package\.json` or `package-lock\.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks/,
+  );
+});
+
 await test("CLV-076 the README starts with the three exact lines of the product owner", () => {
   const opening = readme.split("\n").filter((line) => line.trim() !== "");
   assert.deepEqual(opening.slice(0, 4), [
