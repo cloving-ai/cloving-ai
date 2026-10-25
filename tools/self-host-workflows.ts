@@ -23,7 +23,8 @@ export async function workflowFiles(directory: string): Promise<string[]> {
       (entry) =>
         entry.isFile() &&
         /\.(?:ts|js)$/.test(entry.name) &&
-        !entry.name.endsWith(".d.ts"),
+        !entry.name.endsWith(".d.ts") &&
+        !entry.name.endsWith(".test.ts"),
     )
     .map((entry) => entry.name)
     .sort();

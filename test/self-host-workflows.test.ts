@@ -40,6 +40,7 @@ await test("CLV-074 start lists every TypeScript workflow file", async () => {
     {
       "workflows/develop-ticket.ts": "export {};",
       "workflows/develop-other.ts": "export {};",
+      "workflows/develop-ticket.test.ts": "export {};",
       "workflows/README.md": "Workflow documentation.",
       "workflows/folder.ts/README.md": "A directory is not a workflow file.",
     },

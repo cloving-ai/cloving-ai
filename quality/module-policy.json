@@ -915,6 +915,8 @@
     "tools/workflow-folders.ts": "candidate-adapter",
     "tools/workflow-folder-capture.ts": "candidate-adapter",
     "test/workflow-folders.test.ts": "test",
+    "test/workflow-folder-imports.test.ts": "test",
+    "test/workflow-folder-retention.test.ts": "test",
     "test/workflow-folder-paths.test.ts": "test",
     "test/workflow-folder-fixture.ts": "test",
     "src/workflow-discovery.ts": "pure",

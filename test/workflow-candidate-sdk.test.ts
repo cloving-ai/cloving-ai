@@ -46,6 +46,49 @@ await test("CLV-121 admission compiles a valid candidate with real SDK handlers 
   assert.match(result.artifactDigest, /^[0-9a-f]{64}$/);
 });
 
+await test("CLV-216 helper record order preserves the compiled artifact digest", async () => {
+  const source = `
+import { first } from "./helpers/first.ts";
+import { second } from "./helpers/second.ts";
+export async function candidate() {
+  "use workflow";
+  return [first(), second()];
+}`;
+  const helpers = {
+    "helpers/first.ts": 'export function first() { return "first"; }',
+    "helpers/second.ts": 'export function second() { return "second"; }',
+  };
+  const original = await admitWorkflowCandidate({
+    source,
+    helpers,
+    declaration: candidateDeclaration,
+  });
+  const reordered = await admitWorkflowCandidate({
+    source,
+    helpers: Object.fromEntries(Object.entries(helpers).reverse()),
+    declaration: candidateDeclaration,
+  });
+  assert.equal(original.kind, "admitted");
+  assert.deepEqual(reordered, original);
+});
+
+for (const name of [
+  "../outside.ts",
+  "candidate.ts",
+  "node_modules/cloving/workflows.ts",
+]) {
+  await test(`CLV-216 admission refuses a helper snapshot with unsafe key ${name}`, async () => {
+    assert.deepEqual(
+      await admitWorkflowCandidate({
+        source: validCandidateSource,
+        helpers: { [name]: "export const value = 1;" },
+        declaration: candidateDeclaration,
+      }),
+      { kind: "refused", codes: ["compile-failed"] },
+    );
+  });
+}
+
 for (const ending of ["break;", "return;", "index = 3;"]) {
   await test(`CLV-121 admission compiles a candidate loop with ${ending}`, async () => {
     const source = candidateSource(

@@ -674,6 +674,10 @@ The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd
 
 For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.
 
+Discovery considers files in the folder root and ignores `.d.ts` and `.test.ts` files. Put local TypeScript helpers in subfolders: for example, `develop.ts` can import `./develop/prompts.ts`. Helpers can import further `.ts` files through `./` paths within those subfolders and need no workflow function or declaration. Imports with parent traversal, absolute paths or a `node_modules` component are refused, as are package imports outside the public `cloving/workflows` modules.
+
+Every imported helper must be a regular file, with no links in its path. Its imports and effects receive the same checks as the workflow, and their combined effects count against the workflow's declared limit. Startup captures and retains all imported helper bytes in the workflow generation. Editing a helper changes the digest for new runs; existing runs keep their earlier helpers after restart.
+
 The declaration has two fields: `workflow` contains the workflow declaration, and `methods` maps each declared capability to its permitted methods. Each list must contain at least one nonblank method name and no duplicates. Do not add method keys for undeclared capabilities. The `isCandidateDeclaration` check in `src/workflow-candidate.ts` validates this form:
 
 ```json

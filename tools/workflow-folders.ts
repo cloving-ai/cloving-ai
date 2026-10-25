@@ -36,6 +36,7 @@ interface WorkflowSnapshot extends WorkflowLabel {
   readonly baseName: string;
   readonly source: string;
   readonly declaration: string;
+  readonly helpers: Readonly<Record<string, string>>;
 }
 
 type DiscoveredWorkflow =
@@ -138,7 +139,12 @@ async function scanFolder(
   }
   const snapshots: DiscoveredWorkflow[] = [];
   for (const name of entries
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".d.ts"))
+    .filter(
+      (name) =>
+        name.endsWith(".ts") &&
+        !name.endsWith(".d.ts") &&
+        !name.endsWith(".test.ts"),
+    )
     .sort()) {
     snapshots.push(
       await captureEntry(folder, {
@@ -174,6 +180,7 @@ async function captureEntry(
         ...label,
         source: capture.source,
         declaration: capture.declaration,
+        helpers: capture.helpers,
       },
     };
   } catch (error) {
@@ -234,6 +241,7 @@ export async function loadWorkflowFolders(
       {
         source: snapshot.source,
         declaration: parsedDeclaration(snapshot.declaration),
+        helpers: snapshot.helpers,
       },
       installed,
     );
