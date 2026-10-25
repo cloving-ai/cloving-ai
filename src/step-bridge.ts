@@ -57,6 +57,17 @@ export interface HandoffRequest {
   readonly input: Readonly<Record<string, HandoffValue>>;
 }
 
+export interface RunWaitRequest {
+  readonly runId: string;
+  readonly maximumWaitSeconds: number;
+}
+
+export interface RunWaitOutcome {
+  readonly kind: string;
+  readonly reason: string | null;
+  readonly promotionId: string | null;
+}
+
 export interface CommandRequest {
   readonly scope: ProtectedScope;
   readonly name: string;
@@ -72,6 +83,7 @@ export interface StepBridge {
   readonly effect: (request: ProtectedRequest) => Promise<ProtectedResult>;
   readonly gate: (request: GateRequest) => Promise<GateResult>;
   readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
+  readonly waitForRun?: (request: RunWaitRequest) => Promise<RunWaitOutcome>;
 }
 
 export function isStepBridge(value: unknown): value is StepBridge {

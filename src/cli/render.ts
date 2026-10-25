@@ -84,6 +84,9 @@ function runLine(run: unknown): string {
 
 function chainLines(run: unknown): readonly string[] {
   return [
+    ...(typeof part(run, "awaitedRunId") === "string"
+      ? [`Awaited run: ${visible(part(run, "awaitedRunId"))}`]
+      : []),
     `Parent run: ${visible(part(run, "parentRunId") ?? "none")}`,
     `Chain: ${visible(part(run, "chainId") ?? part(run, "runId") ?? "none")}`,
     `Child runs: ${visible(listing(part(run, "childRunIds")))}`,

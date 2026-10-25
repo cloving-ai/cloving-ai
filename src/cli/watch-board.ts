@@ -189,12 +189,23 @@ function columnOf(run: WatchRun, now: string): string | null {
   return run.outcome === "handoff_requested" ? "Done" : null;
 }
 
-function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
+function issueCardDetails(
+  run: WatchRun,
+): Pick<WatchCard, "round" | "greptileScore" | "pullRequestNumber"> {
   const issue = run.workflowId === "develop-issue";
+  return {
+    round: issue ? run.round : null,
+    greptileScore: issue ? (run.reviews.at(-1)?.score ?? null) : null,
+    pullRequestNumber: issue ? (run.pullRequest?.number ?? null) : null,
+  };
+}
+
+function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
     title: run.title,
     ...linksOf(run),
+    ...(run.awaitedRunId == null ? {} : { awaitedRunId: run.awaitedRunId }),
     completionMark: completionMarkOf(run, runs),
     pullRequestObservation: null,
     claudeCostUsd: run.claudeCostUsd,
@@ -203,9 +214,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
     decisionWaiting: run.decisions.length > 0,
-    round: issue ? run.round : null,
-    greptileScore: issue ? (run.reviews.at(-1)?.score ?? null) : null,
-    pullRequestNumber: issue ? (run.pullRequest?.number ?? null) : null,
+    ...issueCardDetails(run),
   };
 }
 
@@ -246,7 +255,9 @@ function summaryOf(value: unknown): {
   const latest = fields?.["latestAt"];
   return {
     state: String(fields?.["state"]),
-    waiting: Array.isArray(pending) && pending.length > 0,
+    waiting:
+      (Array.isArray(pending) && pending.length > 0) ||
+      typeof fields?.["awaitedRunId"] === "string",
     latestAt: typeof latest === "string" ? latest : null,
   };
 }
@@ -261,7 +272,7 @@ export function boardsOf(
       inputs.summaries === undefined
         ? own.map((run) => ({
             state: run.state,
-            waiting: run.decisions.length > 0,
+            waiting: run.decisions.length > 0 || run.awaitedRunId != null,
             latestAt: run.latestAt,
           }))
         : inputs.summaries
