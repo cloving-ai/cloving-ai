@@ -13,6 +13,16 @@ import { withFiles } from "./quality/files-fixture.ts";
 
 for (const [name, source, declaration, codes] of [
   [
+    "chats",
+    validCandidateSource,
+    JSON.stringify({
+      ...candidateDeclaration,
+      workflow: { ...candidateDeclaration.workflow, capabilities: ["chats"] },
+      methods: { chats: ["read-analysis"] },
+    }),
+    ["invalid-declaration"],
+  ],
+  [
     "missing",
     combinedCandidateSource,
     JSON.stringify(candidateDeclaration),

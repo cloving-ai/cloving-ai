@@ -10,9 +10,6 @@ import {
   validateDestination,
 } from "../src/chats/destination.ts";
 import { openInput } from "../src/chats/input-file.ts";
-import { analysisDirectory } from "../src/daemon/chats-files.ts";
-import { chatsWorker } from "../src/daemon/chats-worker.ts";
-import { analysisIntent } from "./chats-worker-fixture.ts";
 import { readPreviousImport } from "../src/chats/previous-import.ts";
 import { noFollowPath, inspectScanSource } from "../src/chats/source.ts";
 import { main } from "../src/cli/main.ts";
@@ -93,7 +90,6 @@ for (const [name, operation] of [
   ["input open", () => openInput("/synthetic/input")],
   ["import destination", () => importDirectory("/synthetic", "invalid")],
   ["previous import", () => readPreviousImport("/synthetic", "invalid")],
-  ["analysis directory", () => analysisDirectory("/synthetic", "invalid")],
   ["source inspection", () => inspectScanSource("/synthetic", "/synthetic")],
 ] as const)
   await test(`CLV-136 ${name} refuses unsupported platforms before any file access`, async () => {
@@ -156,44 +152,3 @@ for (const argumentsList of [
       else process.env["CLOVING_PRIVATE_TEXTS"] = privateTexts;
     }
   });
-
-await test("CLV-136 analysis file effects refuse unsupported platforms before reading payloads", async () => {
-  await withoutChatFileAccess(async () => {
-    const accesses: string[] = [];
-    const worker = chatsWorker({
-      runtimeDirectory: "/synthetic",
-      document: () => {
-        accesses.push("document");
-        return Promise.resolve(undefined);
-      },
-      workflowId: () => {
-        accesses.push("workflow");
-        return Promise.resolve(undefined);
-      },
-    });
-    try {
-      for (const method of ["read-analysis", "save-analysis"])
-        for (const operation of [
-          worker.deliver,
-          worker.reconcile,
-          worker.stop,
-        ]) {
-          const result = await operation(
-            analysisIntent(method),
-            new AbortController().signal,
-          );
-          assert.deepEqual(result, {
-            kind: "failed",
-            reason: "platform-unsupported",
-            result: JSON.stringify({
-              kind: "blocked",
-              codes: ["platform-unsupported"],
-            }),
-          });
-        }
-      assert.deepEqual(accesses, []);
-    } finally {
-      await worker.close();
-    }
-  });
-});

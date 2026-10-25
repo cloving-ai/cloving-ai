@@ -9,7 +9,6 @@ import {
   type WorkerAttemptUsage,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
-import { analysisCommand, analysisEnvironment } from "./analysis-launch.ts";
 
 export type Worker = "claude" | "codex";
 
@@ -33,8 +32,6 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
-  readonly mode?: "analysis";
-  readonly analysisToken?: string;
   readonly worker?: Worker;
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -119,11 +116,6 @@ export function turnEnvironment(
   configuration: string,
   start: TurnStart,
 ): NodeJS.ProcessEnv {
-  if (start.mode === "analysis")
-    return {
-      ...analysisEnvironment(start.folder),
-      CLAUDE_CODE_OAUTH_TOKEN: start.analysisToken,
-    };
   const excluded = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -151,8 +143,7 @@ function spawnTurn(start: TurnStart): {
   readonly configuration: string;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const [executable = "", ...fixed] =
-    start.mode === "analysis" ? analysisCommand() : start.command;
+  const [executable = "", ...fixed] = start.command;
   try {
     const child = spawn(executable, fixed, {
       cwd: start.directory,
@@ -187,7 +178,6 @@ function receivedLines(stream: Stream, lines: readonly string[]): void {
 }
 
 function activityOutput(start: TurnStart) {
-  if (start.mode === "analysis") return undefined;
   const output = createWriteStream(
     join(start.activityFolder ?? start.folder, "turn.jsonl"),
     { flags: start.activityFolder === undefined ? "w" : "a" },
@@ -212,12 +202,12 @@ function turnOutput(
     receivedLines(stream, lines);
   };
   const written = (lines: readonly string[]): void => {
-    for (const line of lines) output?.write(`${line}\n`);
+    for (const line of lines) output.write(`${line}\n`);
     received(lines);
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (codex === undefined) output?.write(chunk);
+    if (codex === undefined) output.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
     if (codex !== undefined) {
@@ -231,45 +221,22 @@ function turnOutput(
       written(codex.line(stream.pending));
       written([codex.result(exitCode)]);
     }
-    if (output !== undefined) await ended(output);
+    await ended(output);
     if (codex === undefined) received([stream.pending]);
     const result = stream.result;
     return result === undefined
       ? undefined
       : {
           ...result,
-          model:
-            result.model ??
-            stream.model ??
-            commandModel(
-              start.mode === "analysis" ? analysisCommand() : start.command,
-            ),
+          model: result.model ?? stream.model ?? commandModel(start.command),
         };
-  };
-}
-
-function withoutAnalysisToken(
-  start: TurnStart,
-  result: StreamResult | undefined,
-): StreamResult | undefined {
-  const token = start.mode === "analysis" ? start.analysisToken : undefined;
-  if (token === undefined || result === undefined) return result;
-  const redact = (value: string | null) =>
-    value === null ? null : value.replaceAll(token, "[redacted]");
-  return {
-    ...result,
-    text: redact(result.text) ?? "",
-    model: redact(result.model),
-    sessionId: redact(result.sessionId),
   };
 }
 
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
-  if (start.mode === "analysis") child.stderr.resume();
-  else
-    child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
+  child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
   child.stdin.end(start.prompt);
   const closed = new Promise<number | null>((settle) => {
@@ -284,7 +251,7 @@ export function startTurn(start: TurnStart): RunningTurn {
         timers.forEach(clearTimeout);
         return {
           exitCode,
-          result: withoutAnalysisToken(start, await output(exitCode)),
+          result: await output(exitCode),
         };
       })
       .finally(() => {

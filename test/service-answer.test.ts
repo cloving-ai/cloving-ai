@@ -17,12 +17,8 @@ import {
   type Harness,
 } from "./service-fixture.ts";
 
-import {
-  analysisSource,
-  analysisQuestionSetup,
-} from "./analyze-chats-sdk-fixture.ts";
+import { questionSource, questionSetup } from "./service-question-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
-import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 
 import {
   host,
@@ -295,52 +291,41 @@ await test("CLV-008 a paused run whose start was in flight at a kill is reconcil
     await once(second.process, "exit");
   }));
 
-await test(
-  "CLV-148 the generic service durably records added answer text and the analysis continuation rejects it",
-  chatPlatformScenario(() =>
-    withConsumer(analysisSource, async (consumer) => {
-      const result = await consumer.run(`${analysisQuestionSetup}
-writeFileSync(directory + "/redacted.jsonl", "changed after captured snapshot");
+await test("CLV-148 the generic service durably records added answer text and the workflow continuation rejects it", () =>
+  withConsumer(questionSource, async (consumer) => {
+    const result = await consumer.run(`${questionSetup}
 const response = await answer("earlier with extra text");
 await until(async () => (await tagged()).length === 2);
 await until(async () => (await tagged()).every((run) => run.status === "completed"));
 const gate = Object.values((await ports.state()).gates).find((gate) => gate.runId === runId);
-print({ recorded: response.kind, retained: await ports.document(gate.outcome.answer), runBound: gate.runId === runId, gateBound: gate.gateId === "analysis-question" });
+print({ recorded: response.kind, retained: await ports.document(gate.outcome.answer), runBound: gate.runId === runId, gateBound: gate.gateId === "design-choice" });
 await finished(runId);
 `);
-      assert.equal(result.status, 0, result.stderr);
-      assert.deepEqual(result.lines[0], {
-        recorded: "decision-recorded",
-        retained: "earlier with extra text",
-        runBound: true,
-        gateBound: true,
-      });
-      const line = result.lines[1];
-      assert.deepEqual(field(line, "outcome"), {
-        kind: "blocked",
-        reason: "analysis-answer-invalid",
-      });
-      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
-      assert.equal(field(line, "turns"), 1);
-      assert.equal(field(line, "gates"), 1);
-      assert.equal(field(line, "expiresMatch"), true);
-      assert.equal(field(line, "candidateBound"), true);
-      assert.equal(field(line, "safe"), true);
-      assert.deepEqual(field(line, "outputs"), []);
-    }),
-  ),
-);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      recorded: "decision-recorded",
+      retained: "earlier with extra text",
+      runBound: true,
+      gateBound: true,
+    });
+    const line = result.lines[1];
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "blocked",
+      reason: "answer-invalid",
+    });
+    assert.deepEqual(field(line, "budget"), { limit: 5, spent: 1 });
+    assert.equal(field(line, "turns"), 1);
+    assert.equal(field(line, "gates"), 1);
+  }));
 
-await test(
-  "CLV-148 an unanswered analysis expires at its original draft deadline without reopening",
-  chatPlatformScenario(() =>
-    withConsumer(analysisSource, async (consumer) => {
-      const result = await consumer.run(`${analysisQuestionSetup}
+await test("CLV-148 an unanswered question expires at its original deadline without reopening", () =>
+  withConsumer(questionSource, async (consumer) => {
+    const result = await consumer.run(`${questionSetup}
 const before = (await asked("status", { runId })).run;
 const deadline = question.expiresAt;
-analysisNow = "2026-10-21T09:59:59.999Z";
+questionNow = "2026-10-21T09:59:59.999Z";
 const pending = (await asked("questions", { runId })).decisions.length;
-analysisNow = deadline;
+questionNow = deadline;
 const late = await answer("earlier");
 await until(async () => (await tagged()).length === 2);
 await until(async () => (await tagged()).every((run) => run.status === "completed"));
@@ -348,28 +333,23 @@ const settled = await answer("earlier", { commandId: "after-expiry" });
 print({ before: before.state, pending, late: late.code, settled: settled.code, deadline });
 await finished(runId);
 `);
-      assert.equal(result.status, 0, result.stderr);
-      const observed = result.lines[0];
-      assert.equal(field(observed, "before"), "waiting_gate");
-      assert.equal(field(observed, "pending"), 1);
-      assert.ok(
-        ["decision-expired", "decision-not-pending"].includes(
-          String(field(observed, "late")),
-        ),
-      );
-      assert.equal(field(observed, "settled"), "decision-not-pending");
-      assert.equal(field(observed, "deadline"), "2026-10-21T10:00:00.000Z");
-      const line = result.lines[1];
-      assert.deepEqual(field(line, "outcome"), {
-        kind: "blocked",
-        reason: "analysis-answer-missing",
-      });
-      assert.deepEqual(field(line, "budget"), { limit: 5, spent: 3 });
-      assert.equal(field(line, "turns"), 1);
-      assert.equal(field(line, "gates"), 1);
-      assert.equal(field(line, "expiresMatch"), true);
-      assert.equal(field(line, "safe"), true);
-      assert.deepEqual(field(line, "outputs"), []);
-    }),
-  ),
-);
+    assert.equal(result.status, 0, result.stderr);
+    const observed = result.lines[0];
+    assert.equal(field(observed, "before"), "waiting_gate");
+    assert.equal(field(observed, "pending"), 1);
+    assert.ok(
+      ["decision-expired", "decision-not-pending"].includes(
+        String(field(observed, "late")),
+      ),
+    );
+    assert.equal(field(observed, "settled"), "decision-not-pending");
+    assert.equal(field(observed, "deadline"), "2026-10-21T10:00:00.000Z");
+    const line = result.lines[1];
+    assert.deepEqual(field(line, "outcome"), {
+      kind: "blocked",
+      reason: "answer-missing",
+    });
+    assert.deepEqual(field(line, "budget"), { limit: 5, spent: 1 });
+    assert.equal(field(line, "turns"), 1);
+    assert.equal(field(line, "gates"), 1);
+  }));

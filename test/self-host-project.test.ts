@@ -69,6 +69,46 @@ await test("CLV-124 missing operator folders preserve bundled startup and remain
       await assert.rejects(lstat(folder), { code: "ENOENT" });
   }));
 
+await test("CLV-202 bundled declarations survive project staging and registration", () =>
+  withFiles({ "repo/marker": "" }, async (root) => {
+    const settings = await project(
+      root,
+      manifestCompiler({
+        workflows: {
+          "workflows/bundled.ts": {
+            bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
+          },
+        },
+      }),
+    );
+    const declaration = {
+      ...candidateDeclaration.workflow,
+      workflowId: "review-corpus",
+      capabilities: ["claude", "claude"],
+    };
+    const sidecar = "workflows/bundled.declaration.json";
+    await writeFile(
+      join(settings.product, sidecar),
+      JSON.stringify(declaration),
+    );
+    const result = await preparedProject(settings);
+    assert.deepEqual(result.declarations, [
+      { ...declaration, capabilities: ["claude"], functionName: "bundled" },
+    ]);
+    assert.deepEqual(result.workflowRefusals, []);
+    assert.equal(
+      await readFile(join(settings.project, sidecar), "utf8"),
+      JSON.stringify(declaration),
+    );
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(join(settings.project, "declarations.json"), "utf8"),
+      ),
+      result.declarations,
+    );
+    assert.equal(typeof result.manifests["bundled"], "string");
+  }));
+
 await test("CLV-124 startup stops on a failed compiler without exposing its output", () =>
   withFiles({ "repo/marker": "" }, async (root) => {
     const settings = await project(

@@ -339,6 +339,7 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       parentRunId: null,
       chainId: "run-1",
       childRunIds: [],
+      awaitedRunId: null,
       claudeCostUsd: null,
       estimatedCostUsd: null,
       currentStep: { name: "Agent turn", startedAt: null },

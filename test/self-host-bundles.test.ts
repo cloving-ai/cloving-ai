@@ -21,12 +21,9 @@ async function retainedSnapshot(input: {
   readonly declarations: unknown;
 }) {
   assert.equal(
+    await readFile(join(input.retained, "workflows/develop-prd.ts"), "utf8"),
     await readFile(
-      join(input.retained, "workflows/analyze-chats.declaration.json"),
-      "utf8",
-    ),
-    await readFile(
-      join(candidatePackageRoot, "workflows/analyze-chats.declaration.json"),
+      join(candidatePackageRoot, "workflows/develop-prd.ts"),
       "utf8",
     ),
   );
@@ -179,4 +176,36 @@ await test("candidate package builds exclude the external compiler from runtime 
       contents.every((report) => !report.includes("typescript/lib/_tsc.js")),
       "the TypeScript compiler must not generate runtime coverage",
     );
+  }));
+
+await test("CLV-202 bundled chats declarations abort startup before retaining a bundle", () =>
+  withFiles({ "repo/marker": "" }, async (root) => {
+    const declaration = join(
+      candidatePackageRoot,
+      "workflows/develop-prd.declaration.json",
+    );
+    await writeFile(
+      declaration,
+      JSON.stringify({
+        workflowId: "retired-corpus",
+        effectLimit: 1,
+        capabilities: ["chats"],
+        input: { maximumBytes: 1024, fields: {} },
+      }),
+    );
+    try {
+      assert.throws(
+        () =>
+          preparedProject({
+            project: join(root, "project"),
+            repository: join(root, "repo"),
+            home: root,
+            xdgConfigHome: join(root, "config"),
+          }),
+        /invalid-workflow-declaration: develop-prd\.declaration\.json/,
+      );
+      assert.deepEqual(await bundleIds(root), ["project", "repo"]);
+    } finally {
+      await rm(declaration);
+    }
   }));

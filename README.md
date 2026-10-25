@@ -18,6 +18,7 @@ What works now:
 
 - `cloving start` starts the service for one git repository, with the workflow host, the Claude worker and a watch page.
 - Three workflows from one workflow file: `develop-prompt`, `develop-ticket` and `develop-issue`.
+- `cloving start` loads the bundled `workflows/`, repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
@@ -29,13 +30,11 @@ What does not work yet:
 
 - The Claude worker is not confined. It runs as the current user.
 - An approval does not merge the branch. You merge the branch yourself.
-- `cloving start` loads only the workflow file `workflows/develop-ticket.ts`. A new workflow file also needs changes of the code (see "Develop a workflow").
 - Cloving cannot make a workflow from your earlier chats yet. The issues [#42](https://github.com/cloving-ai/cloving-ai/issues/42), [#43](https://github.com/cloving-ai/cloving-ai/issues/43) and [#44](https://github.com/cloving-ai/cloving-ai/issues/44) are open for this work. Until then, the prompt "Find workflows in your chats" is a guide for a coding agent.
-- This pre-release package is not published to npm.
 
 ### Import selected chats
 
-Chat import, redaction and analysis file operations currently require macOS. On Linux, the chat commands return `platform-unsupported` with exit status `1` before file access. The analysis file adapter also refuses with `platform-unsupported` before reading payloads.
+Chat import and redaction currently require macOS. On Linux, the chat commands return `platform-unsupported` with exit status `1` before file access.
 
 ```sh
 cloving chats import -- TRANSCRIPT_A.jsonl TRANSCRIPT_B.jsonl
@@ -74,62 +73,6 @@ The version 1 structure sidecar references each occurrence by zero-based `record
 Structure groups nodes and observed links within known sessions. Null and empty session IDs remain separate, unlinked occurrences. Links with conflicting observed parents or unknown child identity are marked ambiguous. Forks require multiple distinct known child IDs through unambiguous links. Missing parent targets are counted once per session and target ID, separately from unknown parent fields. Cyclic groups include all observed links, including ambiguous links; their IDs form strongly connected groups in occurrence order. Counts include records, known sessions, forks, copies, conflict groups, unknown identities and missing parent targets, including zeros. `historyCompleteness` is always `"unknown"`: selected history and even an explicit root cannot establish complete history. Omitted metadata parents remain unresolved.
 
 Console output contains counts, fixed codes and an opaque import ID. Source paths, exclusion names, event and session IDs, and transcript text stay in the private files. Root imports add `excluded` and `pending` entry totals. `refused` counts unreadable, unsupported and positional oversized entries. Exit code `0` and `import-complete` mean no refused or pending entries and, when comparing revisions, no missing or truncated evidence; exclusions alone permit success without comparison. Code `1` and `import-partial` mean refused, pending, missing or truncated entries when output completes. Output failures return code `1`, a null import ID and zeroed counts. Code `2` means invalid usage, before source or destination access. Importing performs only structural comparison; it makes no model or network call and does not execute transcript instructions. Full quality admission and release qualification remain pending.
-
-### Protected chat analysis files
-
-The daemon provides `chats` capability methods `read-analysis` and `save-analysis` only to the registered `analyze-chats` workflow. A declaration must explicitly name `chats`; existing workflows retain their capabilities. Start one analysis with `cloving run analyze-chats --input input.json`, where the file contains exactly `{ "importId": "11111111-1111-4111-8111-111111111111" }` using your redacted import ID. The declaration allows eleven effect units: one capture, up to four restricted turns and four checkpoint saves, with two units reserved for question continuation. A run without a question charges one unit for capture and two per accepted batch. No evidence path is accepted.
-
-`read-analysis` takes `{ importId }`, with the same lowercase UUID v4 syntax as redaction and the import ID as its protected target. It reads only `redaction.json`, `redacted.jsonl` and `structure.json` from the resolved runtime import directory. For one batch its completed result contains `{ snapshot }`, whose `importId`, `redaction`, `corpus` and `structure` fields are strings. Keep these strings in private durable state; parsing and serializing corpus numbers can lose their exact tokens. For multiple batches it returns the prepared batch snapshot, encoded context and captured-digest binding. Original corpus, coverage, revision and transcript content are never analysis inputs.
-
-Each evidence file is bounded before retention. Capture streams up to 52,428,800 UTF-8 bytes of redacted corpus. Each metadata file, serialized batch document and save payload is bounded at 65,536 bytes. The complete model launch includes the fixed instruction, encoded batch evidence, projected structure and earlier accepted result. Overflow returns `analysis-too-large`; transport limits are unchanged. Missing redaction manifest or corpus returns `redaction-required`, malformed nonempty import IDs return `invalid-import-id`, and invalid or unsafe evidence returns `analysis-input-refused`. Manifest counts and identity fields must match the corpus. Sidecar validation retains original copy/conflict classes, using class markers rather than redacted content to check structure consistency.
-
-`save-analysis` takes `{ importId, cycleId, reply }`, with the captured-digest binding in `batch` for multiple batches and `followUp` for a question continuation. It resolves evidence from the run's private capture instead of resending it with the reply, keeping saves within the payload bound. Checkpoint saves verify any supplied legacy `snapshot` against the captured batch. The reply is JSON text and validation uses the captured snapshot even if the files later change. Invalid JSON returns `analysis-invalid-json`; candidate refusal retains the validator's unique codes in declaration order. Accepted output writes and closes private `proposal-CYCLE_ID.txt` before creating `analysis-CYCLE_ID.json` as the completion marker. The JSON is the complete validator result, including every citation, counterevidence item and limitation. The deterministic plain-text proposal is at most 4,000 characters. Matching duplicate saves retain bytes and receipt identity; a matching proposal without a marker may finish. Conflicting or incomplete existing outputs remain unchanged and return `analysis-output-failed`. A proposal alone is not completed analysis. New files have mode `0600`; destinations and linked files use the import protections.
-
-The pure batch preparer validates a captured snapshot, selects the longest consecutive whole-record prefix within 65,536-byte encoded launch and adapter documents, and refuses a fifth batch. It preserves record bytes, global occurrence indexes and captured copy/conflict classes, includes the earlier result as data, and measures the fixed instruction and prompt encoding shared with the restricted launcher. Raw metadata remains bounded at 65,536 bytes and the input corpus at 52,428,800 bytes. The workflow runs one restricted turn per batch and commits its checkpoint before preparing the next. Budget, batch, size, validation and worker stops leave the latest partial checkpoint available.
-
-The internal pure `mergeAnalysisBatch({ previousResult, candidate, evidence, nextRecordIndex })` in `src/chats/analysis-merge.ts` merges one batch candidate into an earlier result, or starts with `previousResult: null`. Evidence contains the complete captured redacted records and their original structure; `nextRecordIndex` is the exclusive processed-prefix bound. References keep global indexes and source IDs. Unknown and future references are refused. Captured copy classes remain intact, and returned conflict groups retain only processed occurrences. Process ID, name and scope must match. New IDs append in first-seen order per collection; an existing ID must keep its collection and every non-reference field. Support and counterevidence references are deduplicated separately in record order. Disagreement returns only `analysis-merge-conflict`; neither input is changed. Callers remain responsible for retaining both variants privately.
-
-The merge revalidates the cumulative process, including repetition, global ID uniqueness, links, non-gates and question citations. It accepts references and links to earlier processed evidence and items without requiring the new batch to stand alone. A valid `openQuestion` remains unresolved data in the returned result; a prior result with an unresolved question is refused as `analysis-input-refused`. The pure merge saves no checkpoint, establishes no coverage or completion, and grants no action authority.
-
-Capture atomically publishes a private version 1 `checkpoint-0.json` and `proposal-0.txt` alongside its evidence. The initial checkpoint is partial, with a null result, zero covered records and the entire captured total uncovered. Each committed batch saves its own immutable `analysis-checkpoint-N.json` and `proposal-checkpoint-N.txt` inside that capture. Checkpoints bind the run, import, captured digest and zero-based batch index, and retain the cumulative accepted result, covered and uncovered counts, completed batch count and next record index. Proposals put status and counts before shortened inference text. Full coverage with an accepted result and no unresolved question is complete; other checkpoints remain partial.
-
-The final batch save writes the complete checkpoint and final output without another effect. The one-batch path retains its three effect charges. Matching retries retain checkpoint bytes and receipts; conflicting batch writes fail with `analysis-output-failed`. Storage uses the pure merge and privately retains both variants of an `analysis-merge-conflict`, leaving the earlier checkpoint accepted and partial. A private conflict envelope binds digests and references to that accepted checkpoint and a separately retained incoming candidate, so each variant keeps its own file bound. Checkpoint files use the existing private file protections. These records grant no execution or publication authority. Completed turns and saves are reused after restart without repeated charges or usage. Interrupted or unknown turns start no replacement. One question may pause any batch before its checkpoint commits. Its answer permits one follow-up on the same captured batch and earlier accepted result; processing then continues with the remaining batches. A second question leaves the earlier accepted checkpoint partial and blocks the run. The CLI five-dollar cap applies to each turn, not the run.
-
-Analysis reuse after an evidence revision is unavailable. `earlierAnalysisId` is not a supported analysis input, and `analysis:IMPORT_ID:CYCLE_ID` identifies a saved result without establishing checkpoint coverage. The batch pipeline and its checkpoints do not establish reuse across an evidence revision. Protected reuse capture, conclusion invalidation, coverage transfer and workflow integration remain unimplemented.
-
-The internal pure `mapEvidenceReferences` helper in `src/chats/reference-mapping.ts` maps occurrences from two supplied coverage manifests and corpora plus revision entries. It validates each manifest's record counts against its corpus before assigning selection ranges, resolves root indexes separately and pairs repeated path/root selections in manifest order. Matches use source digests and canonical byte offsets within each pair, never UUIDs or redacted text. The returned pairs rewrite both `recordIndex` and `sourceId` in earlier record order, without modifying inputs. Invalid or inconsistent inputs return `analysis-reference-map-refused`.
-
-Only unchanged selections and provably preserved records of extended selections map. An extension must retain the earlier occurrence offsets below the old byte count. A record maps only when a later current occurrence starts at or before that count, proving the record ended within the verified prefix. An unterminated final record, or a final record whose boundary cannot be proved from captured occurrences, stays unmapped. Refused and subtree entries contribute no records; changed, truncated, missing and new selections transfer none. The helper checks recorded revision metadata without rereading source bytes. It establishes neither checkpoint coverage nor authority and is not connected to `analyze-chats`.
-
-A valid candidate with `openQuestion` writes only private `draft-CYCLE_ID.json`. This version 1 record binds the worker intent's run ID, cycle ID, operation ID and input digest, the captured snapshot's SHA-256 digest, the exact reply and its SHA-256 candidate digest. Batched drafts also bind the captured digest, batch index and exclusive next record index; their questions are validated against the captured processed prefix. Saving a draft does not commit that batch or advance coverage. Its `expiresAt` is fixed at 24 hours after the first draft save. The completed private result contains `{ kind: "analysis_draft", cycleId, candidateDigest, expiresAt, question }` for the durable question. Matching delivery, reconciliation and stop preserve the record's bytes, receipt and deadline, including after restart and deadline passage. Absent reconciliation and stop create nothing. Conflicting or incomplete drafts return `analysis-output-failed`. A draft cannot replace accepted output. A final save alongside a retained draft requires the same run, cycle, captured snapshot and draft candidate, plus an exact listed answer.
-
-The first draft or final write creates a shared private `claim-CYCLE_ID.json` with the output kind and a digest of its bound input. A follow-up final save verifies that draft claim and creates a separate `final-claim-CYCLE_ID.json` bound to the draft and validated output. Exclusive creation admits only one output for that cycle, including concurrent conflicting saves. An incomplete or conflicting claim fails closed. Matching retries reuse the claim; older matching final outputs remain readable without one. This storage claim carries no execution authority.
-
-The gate helper accepts optional `expiresAt` and forwards that exact deadline to the durable decision service. Replayed gate openings retain the existing deadline. The service preserves deadlines across restart, expires unanswered questions and refuses late answers without reopening settled gates. Opening a gate uses no protected-effect unit. Existing callers that omit the field retain their current behavior.
-
-A saved private draft opens one durable question. Its private prompt contains the candidate digest and listed choices. The deadline remains 24 hours after the first draft save, including across restart. Use `cloving questions` to read the prompt. Answer with exactly one listed choice ID; case changes, surrounding whitespace and extra text are invalid. Operational watch views and automatic notifications use fixed text.
-
-An exact choice runs one restricted follow-up turn with the same captured batch, earlier accepted result, original draft candidate and answer as encoded data. The reply passes the same cumulative merge and checkpoint rules before the next batch starts. The one-batch path retains round 2 follow-up scopes and five effect units. Batched follow-ups use round 5 scopes, separate from batch rounds 1–4. A batched run uses one capture plus two effect units for each accepted batch, with two more for a question draft save and its follow-up turn, within the existing limit of eleven. The question and its answer use no effect unit. There is no additional follow-up or automatic repair. The complete encoded follow-up must still fit the existing byte bounds; a size refusal keeps the accepted coverage partial.
-
-The committed answer survives a host restart before continuation delivery. Recovery delivers one continuation, reuses the original read, turn and draft save, and preserves their scopes, payloads and charges. Changed evidence files do not replace the captured snapshot. A repeated answer command returns its original receipt without another continuation. The compiled Local World restart tests verify the one-batch path and a three-batch question path with four turns, nine charged units and each batch committed once, using synthetic data and fake workers. A restart between draft persistence and gate opening also keeps the original deadline.
-
-Expiry blocks with `analysis-answer-missing`; an answer outside the exact listed IDs blocks with `analysis-answer-invalid`. Another question blocks with `analysis-question-limit`. Follow-up validation refusal blocks with `analysis-follow-up-refused`, and validator details stay private. Exhausted effect units block with `budget-exhausted`. Expiry, an invalid answer, follow-up refusal or a second question leaves the earlier accepted checkpoint and proposal partial, without committing the questioned batch. Draft persistence does not resolve a question or grant action authority.
-
-Success returns `{ kind: "handoff_requested", cycleId, promotionId }`, where `promotionId` is an opaque analysis reference. It grants no execution or publication authority. The file adapter performs no git work, network request or model call. Redaction can leave private values, and validator acceptance checks shape and cited occurrences rather than factual accuracy. History completeness remains unknown and independent observations remain unestablished.
-
-The analysis turn always uses the `claude` executable on the search path, including with `CLOVING_WORKER=codex`. Development workflows keep their configured worker. Analysis requires Claude Code major version 2, at least 2.1.302, with every required launch flag in its help text; an unavailable or unsupported CLI returns `analysis-worker-unavailable`. It accepts no `analyze-chats` profile or development-command override.
-
-To configure subscription login:
-
-1. Run `claude setup-token` once and store the token in your secret manager.
-2. Set `CLOVING_ANALYSIS_TOKEN_COMMAND` before starting the daemon. Its value is a JSON array of one or more nonempty strings naming a program and its arguments, for example `CLOVING_ANALYSIS_TOKEN_COMMAND='["op","read","op://Development/Claude Analysis/token"]' cloving start`. The command must print only the stored token on stdout.
-3. Start an `analyze-chats` run. Immediately before each new turn, Cloving runs the command without a shell, with a 10-second deadline and a 4,096-byte limit shared by stdout and stderr. After removing one final line break, stdout must contain 1–512 printable ASCII characters without spaces or control characters. An unset or malformed setting, command failure, timeout, excessive output or invalid token blocks with `analysis-worker-unavailable` and a fixed cause category.
-
-The fetched token goes only to the analysis process as `CLAUDE_CODE_OAUTH_TOKEN`. Cloving does not put it in its environment, development workers, logs or stored results, and does not fetch it for CLI probes or completed-turn replay. Analysis excludes `ANTHROPIC_API_KEY`, including a key present in the daemon environment. Cloving does not read the macOS keychain.
-
-The fixed launch removes built-in tools with `--tools ""` and denies MCP tools separately, with an empty strict MCP configuration. Safe and restricted modes disable discovery; skills, hooks, project instructions, plugins, session persistence and Chrome integration are disabled. Each turn runs with a five-dollar cap in an empty private directory and uses a separate fixed system instruction and encoded evidence input. Only these restricted turns contact the model. See the [Claude CLI controls](https://code.claude.com/docs/en/cli-reference) and [subscription authentication](https://code.claude.com/docs/en/authentication).
-
-Each CLI turn has its own five-dollar cap; effect units do not define a dollar budget for the run. Each complete escaped document, including any draft and answer, is limited to 65,536 bytes. Replies of at most 16,000 UTF-8 bytes are retained completely for validation. Larger replies return `analysis-reply-too-large`; unsuccessful turns return `analysis-turn-failed`. Both retain available usage. A completed private worker result is written before its report, so durable replay can reuse it. An interrupted or unknown completion never starts a replacement turn. Analysis creates no raw stdout/stderr turn logs or generic text summary. Worker records and accepted outputs remain private; operational views expose codes, counts, usage and opaque identities. Temporary CLI data is removed when the turn completes. Acceptance grants no execution, publication or workflow-generation authority.
 
 ### Redact an imported corpus
 
@@ -181,14 +124,14 @@ A run needs these tools:
 - The `claude` command of Claude Code on the search path. The Claude worker runs it as the current user.
 - For `develop-issue` only: the `gh` command with a login, and a GitHub repository that Greptile reviews. The worker uses the `gh` login and the git credentials of the current user.
 
-Once the operator publishes this package, install the executable with:
+Install the executable from npm:
 
 ```sh
 npm install --global cloving --ignore-scripts
 cloving --version
 ```
 
-This package replaces the older Cloving CLI under the same npm name. The registry currently serves that older CLI; the command above is for after this release is published. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
+This package replaces the older Cloving CLI under the same npm name. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
 
 For checkout development, get the code and install the dependencies:
 
@@ -297,7 +240,7 @@ The client commands find the service with no setting, because the two sides use 
 
 `cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the Claude worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
-Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. It opens an inline form: **Issue number** for `develop-issue`, **Ticket ID** for `develop-ticket`, **Idea** for `develop-prd` and **Task** for `develop-prompt`. Declared workflows such as `analyze-chats` use the string fields in their bundled declaration. Unsupported inputs have no control. Select **Add card**, press Enter in a one-line field, or Command/Control+Enter in a text area to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream. For `workflow-active`, add `cloving: ready` to the issue to queue it.
+Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. It opens an inline form: **Issue number** for `develop-issue`, **Ticket ID** for `develop-ticket`, **Idea** for `develop-prd` and **Task** for `develop-prompt`. Declared workflows use the string fields in their bundled declaration. Unsupported inputs have no control. Select **Add card**, press Enter in a one-line field, or Command/Control+Enter in a text area to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream. For `workflow-active`, add `cloving: ready` to the issue to queue it.
 
 The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. `CLOVING_WATCH_ACTIONS=off` removes both the form control and the endpoint; actions are enabled by default. The **Start a run** section remains available with prompts to copy into agents. Decisions and other run actions still use their displayed CLI commands.
 
@@ -307,7 +250,6 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
 - `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs and failed runs. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
-- `CLOVING_ANALYSIS_TOKEN_COMMAND`: a JSON command array that prints the subscription token just before an analysis turn (see "Protected chat analysis files"). It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_PROFILES`: a JSON file of named Claude turn profiles, read once when the service starts.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`.
@@ -421,9 +363,9 @@ An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-
 
 ### Review rounds of `develop-ticket` and `develop-prompt`
 
-Worker turns retry an exact Codex capacity refusal or a Claude overload after 60 seconds, then 180 seconds, for at most three attempts. Each retry keeps the work tree, profile, budget and limits, and asks the worker to continue from the current work. The step keeps one operation identity and sums usage across attempts. Private turn journals and turn usage retain each attempt's model, token counts and cost estimate. Stopping during a wait returns `stopped`; a daemon restart fails the recorded operation for existing recovery. The same retry waits apply to the restricted analysis turn in `analyze-chats`. Other failures are not retried.
+Worker turns retry an exact Codex capacity refusal or a Claude overload after 60 seconds, then 180 seconds, for at most three attempts. Each retry keeps the work tree, profile, budget and limits, and asks the worker to continue from the current work. The step keeps one operation identity and sums usage across attempts. Private turn journals and turn usage retain each attempt's model, token counts and cost estimate. Stopping during a wait returns `stopped`; a daemon restart fails the recorded operation for existing recovery. Other failures are not retried.
 
-`CLOVING_FALLBACK_MODELS` accepts a JSON array of at most three nonempty model names, for example `'["gpt-6-astra"]'`. Without the setting or with `[]`, every attempt keeps the main model. The first attempt and first retry use the main model; each later attempt uses the next configured fallback within the existing attempt limit. With three attempts, only the first fallback can be used. The worker command must explicitly name a model with `-m NAME`, `--model NAME` or `--model=NAME`; otherwise it stays unchanged and the private journal records `fallback-model-unavailable`. Fallbacks apply only after capacity refusals and never change the fixed analysis model of `analyze-chats`. A fallback model can have a higher price. Each attempt's estimate uses its own model's price; an unknown price or missing token count leaves the total estimate unknown. Malformed settings refuse daemon start with `invalid-fallback-models`.
+`CLOVING_FALLBACK_MODELS` accepts a JSON array of at most three nonempty model names, for example `'["gpt-6-astra"]'`. Without the setting or with `[]`, every attempt keeps the main model. The first attempt and first retry use the main model; each later attempt uses the next configured fallback within the existing attempt limit. With three attempts, only the first fallback can be used. The worker command must explicitly name a model with `-m NAME`, `--model NAME` or `--model=NAME`; otherwise it stays unchanged and the private journal records `fallback-model-unavailable`. Fallbacks apply only after capacity refusals. A fallback model can have a higher price. Each attempt's estimate uses its own model's price; an unknown price or missing token count leaves the total estimate unknown. Malformed settings refuse daemon start with `invalid-fallback-models`.
 
 A run of `develop-ticket` or `develop-prompt` has one to three review rounds. Each round does one Claude Code turn in the work tree of the run, on the branch `cloving/<ticket id>-…`, and then opens one approval. The first round makes the work tree. The approval text has the round, the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you decide. The decision has these results:
 
@@ -556,7 +498,7 @@ Set up Cloving for my repository REPOSITORY_PATH. Ask me for each value that you
 
 1. Check the platform: macOS or Linux on arm64 or x64, with the Node and npm versions of "engines" in package.json of Cloving. Check that git and the claude command work. If I want develop-issue, check that gh has a login and that Greptile reviews the GitHub repository.
 2. If I have no Cloving checkout, clone https://github.com/cloving-ai/cloving-ai.git to ~/cloving. In the checkout, run: npm ci --ignore-scripts
-3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link, and do not install the npm package with the name cloving. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
+3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
 4. Ask me which tracker has my tickets. Write a ticket command for that tracker in ~/.local/bin. The command gets a ticket ID as its last argument and prints the text of the ticket. For develop-issue, the first line is "# " and the title, and one line is "GitHub issue: OWNER/REPOSITORY#NUMBER". Test the command with one ticket ID, and show me the output.
 5. Start the service in a terminal session that stays open, for example a tmux session. In that session, in my repository, run: CLOVING_TICKET_COMMAND='["TICKET_COMMAND"]' cloving start
    For develop-issue, also set CLOVING_CHECK_COMMAND to the checks of my repository. Give me the address of the watch page.
@@ -646,11 +588,17 @@ Steps:
 
 ## Develop a workflow
 
+`cloving start` loads workflows from three folders:
+
+- The bundled `workflows/` folder in the Cloving package. Startup compiles each TypeScript file in this folder.
+- The repository `.cloving/workflows/` folder.
+- The user `cloving/workflows/` folder under an absolute `XDG_CONFIG_HOME`, otherwise under `~/.config`. An unset or relative `XDG_CONFIG_HOME` uses that default.
+
 A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
 - The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. After a decision, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine the decision before it asks for an effect, as `decided()` in `workflows/develop-ticket.ts` does. If it does not, it does the work of round 1 again.
-- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
+- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
@@ -722,31 +670,38 @@ In this example, an approval completes the run and a denial ends it. `workflows/
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
-`cloving start` compiles the TypeScript files in the application's `workflows` folder. Each file may contain one workflow function, and function names must be unique across files. The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
+The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
 
-To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
+For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.
+
+The declaration has two fields: `workflow` contains the workflow declaration, and `methods` maps each declared capability to its permitted methods. Each list must contain at least one nonblank method name and no duplicates. Do not add method keys for undeclared capabilities. The `isCandidateDeclaration` check in `src/workflow-candidate.ts` validates this form:
 
 ```json
 {
-  "workflowId": "review-run",
-  "effectLimit": 14,
-  "capabilities": ["claude"],
-  "input": {
-    "maximumBytes": 65536,
-    "fields": {
-      "prompt": { "type": "string" },
-      "rounds": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10,
-        "optional": true
+  "workflow": {
+    "workflowId": "review-run",
+    "effectLimit": 14,
+    "capabilities": ["claude"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "prompt": { "type": "string" },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "optional": true
+        }
       }
     }
+  },
+  "methods": {
+    "claude": ["run-turn"]
   }
 }
 ```
 
-The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities contain one or more of `claude`, `github`, `chats` and `command`. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, or booleans. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
+The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities contain one or more of `claude`, `github` and `command`. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, or booleans. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
 
 Optional `commands` lists distinct names from `CLOVING_COMMANDS`; executable paths and arguments belong only in the operator setting. The `command` capability requires at least one name. Registration refuses an unknown name with `command-unknown`. The execution pin retains these names with each run, and authority refuses `command` effects whose `run:<name>` method is absent from that run's pinned list with `command-not-declared`. Reordering names preserves the pin; changing names changes it. Omitted and empty lists preserve legacy pins.
 
@@ -785,11 +740,25 @@ The step returns the target run ID after admission through the operator submissi
 
 Hand-offs record `parentRunId` and `chainId` (the first run's ID) in the new run's admission. A chain permits at most five runs, including the first; attempting a sixth fails with `chain-limit` and starts no run. This fixed limit follows ancestry, so separate children of the same parent do not consume each other's chain length. The records and limit survive service restarts. `cloving status` shows the parent, chain and child run IDs in text and JSON; watch cards link to parent and child runs across workflows.
 
+Use `waitForRun` to await the outcome of a run that the current run started with `handoff`:
+
+```typescript
+import { handoff, waitForRun } from "cloving/workflows";
+
+const runId = await handoff({ workflowId: "size-ticket", input: {} });
+const outcome = await waitForRun({ runId, maximumWaitSeconds: 60 });
+if (outcome.kind === "handoff_requested" && outcome.promotionId === "size-small")
+  await handoff({ workflowId: "take-ticket", input: {} });
+```
+
+`maximumWaitSeconds` must be an integer from 1 to 86400. The result contains `kind`, `reason` and `promotionId`; absent reason or promotion values are `null`. A wait for an unknown run, a run started by another run, or an invalid bound fails with `run-wait-refused`. Expiry fails with `run-wait-timeout`. Waiting spends no effect units. Several handoffs to a workflow without `when-idle` admission create distinct child runs that can each be awaited.
+
+The compiled SDK step uses durable retries and its original start time, so restarting the daemon preserves the deadline, includes downtime in the wait and replays the same terminal outcome. `cloving status` shows condition `waiting-run` and the awaited run ID (`awaitedRunId` in JSON); watch cards show a link labeled “Waiting for run”.
+
 Optional `stages` contains 1–12 entries in board order. Each entry has a unique `name` (1–64 ASCII letters, digits or hyphens), a unique `label` (1–40 printable characters on one line, without outer spaces), and `operations`, `gateKinds`, or both. At least one selector array must be nonempty. Operations match the `scope.operation` passed to `protectedEffect`, using 1–128 ASCII letters, digits or `._:/-`; gate kinds are `approval` and `question`. Selectors cannot repeat within an array or belong to two stages of the same selector type. Unknown fields and labels `Other`, `Done` and `Stopped` are rejected.
 
 For declared stages, the board uses the latest committed `effect.requested` or `gate.opened` sequence, preserving that event's start time. Unmatched events and runs without a relevant event use Other. Decisions and worker output do not advance a card; later requests can move it back. Declared labels are followed by Other, Done and Stopped. Existing terminal retention rules take precedence. Unstaged workflows and `develop-issue` keep their existing columns and placement. Declarations load at service startup; stages provide display metadata and grant no capabilities.
 
-The bundled `analyze-chats` stages are Read input (`read-analysis`), Analyze (`turn-analysis`) and Save result (`save-analysis`). The Analyze selector names its operation; the model method remains `run-turn:analyze-chats`.
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
