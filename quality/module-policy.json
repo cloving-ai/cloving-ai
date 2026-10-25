@@ -1002,7 +1002,14 @@
     "test/run-wait-display.test.ts": "test",
     "test/run-wait-candidate.test.ts": "test",
     "test/run-wait-host.test.ts": "test",
-    "test/run-wait-storage.test.ts": "test"
+    "test/run-wait-storage.test.ts": "test",
+    "src/agent-harnesses.ts": "entry",
+    "src/agent-harness-shell.ts": "pure",
+    "src/agent-harness-versions.ts": "pure",
+    "test/agent-harness-fixture.ts": "test",
+    "test/agent-harnesses.test.ts": "test",
+    "test/agent-harness-shell.test.ts": "test",
+    "test/agent-harness-protocol.test.ts": "test"
   },
   "allowed": {
     "quality": [
