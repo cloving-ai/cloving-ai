@@ -20,6 +20,7 @@ import {
 } from "../host/world-runs.ts";
 import {
   startService,
+  serviceLimits,
   type HostPorts,
   type Service,
   type ServiceHost,
@@ -41,8 +42,8 @@ import { githubWorker, type GithubWorker } from "./github-worker.ts";
 import { chatsWorker, type ChatsWorker } from "./chats-worker.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
-import { issueQueue } from "./issue-queue.ts";
-import { notifyRuns } from "./notify.ts";
+import { scheduledDeclarations } from "./workflow-schedules.ts";
+import { daemonLoops } from "./daemon-loops.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -71,6 +72,8 @@ export interface DaemonSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly scheduleClock?: () => number;
+  readonly schedules?: unknown;
   readonly queueLanes?: number;
   readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
@@ -285,10 +288,20 @@ async function daemonRegistrations(settings: DaemonSettings) {
 export async function startDaemon(
   givenSettings: DaemonSettings,
 ): Promise<DaemonOpening> {
-  const settings = {
+  const repository = await realpath(givenSettings.repository);
+  const scheduled = scheduledDeclarations(givenSettings, {
+    repository,
+    documentBytes: serviceLimits.documentBytes,
+  });
+  if (scheduled.kind === "refused") return scheduled;
+  return openDaemon({
     ...givenSettings,
-    repository: await realpath(givenSettings.repository),
-  };
+    declarations: scheduled.declarations,
+    repository,
+  });
+}
+
+async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected")
     return {
@@ -354,36 +367,18 @@ async function runningDaemon(
 ): Promise<Daemon> {
   const { service, worker, github, chats } = resources;
   await github.scan();
-  const notifier =
-    settings.notifyCommand === undefined
-      ? undefined
-      : await notifyRuns({
-          directory: settings.directory,
-          runtimeDirectory: settings.runtimeDirectory,
-          command: settings.notifyCommand,
-          ...(settings.notifyMilliseconds === undefined
-            ? {}
-            : { intervalMilliseconds: settings.notifyMilliseconds }),
-        }).catch(async (error: unknown) => {
-          await Promise.all([worker.close(), github.close(), chats.close()]);
-          await service.close();
-          throw error;
-        });
-  const queue =
-    settings.queueMilliseconds === undefined
-      ? undefined
-      : issueQueue({
-          directory: settings.directory,
-          runtimeDirectory: settings.runtimeDirectory,
-          intervalMilliseconds: settings.queueMilliseconds,
-          lanes: settings.queueLanes ?? 1,
-          resetQueue: settings.resetQueue ?? false,
-        });
+  const loops = await daemonLoops({
+    ...settings,
+    submit: service.worker.submit,
+  }).catch(async (error: unknown) => {
+    await Promise.all([worker.close(), github.close(), chats.close()]);
+    await service.close();
+    throw error;
+  });
   return {
     socket: service.socket,
     close: async () => {
-      await notifier?.stop();
-      await queue?.stop();
+      await loops.stop();
       await Promise.all([worker.close(), github.close(), chats.close()]);
       await service.close();
     },

@@ -1,5 +1,9 @@
 import { record, type Fields } from "./protocol.ts";
 import type { SubmissionContract, SubmissionField } from "./submission.ts";
+import {
+  checkWorkflowSchedule,
+  type WorkflowSchedule,
+} from "./workflow-schedule.ts";
 
 export interface WorkflowStage {
   readonly name: string;
@@ -18,6 +22,7 @@ export interface WorkflowDeclaration {
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly schedule?: WorkflowSchedule;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -176,6 +181,20 @@ function declaredCommands(
   );
 }
 
+function optionalDeclarationFields(
+  declaration: Fields,
+  input: SubmissionContract,
+): boolean {
+  return (
+    (!Object.hasOwn(declaration, "stages") ||
+      isWorkflowStages(declaration["stages"])) &&
+    (!Object.hasOwn(declaration, "handoffs") ||
+      isWorkflowNames(declaration["handoffs"])) &&
+    (!Object.hasOwn(declaration, "schedule") ||
+      checkWorkflowSchedule(input, declaration["schedule"]).kind === "valid")
+  );
+}
+
 export function isWorkflowDeclaration(
   value: unknown,
 ): value is WorkflowDeclaration {
@@ -189,19 +208,17 @@ export function isWorkflowDeclaration(
       "stages",
       "handoffs",
       "commands",
+      "schedule",
     ])
   )
     return false;
-  const { workflowId, effectLimit, capabilities, input, handoffs } =
-    declaration;
+  const { workflowId, effectLimit, capabilities, input } = declaration;
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
-    (!Object.hasOwn(declaration, "stages") ||
-      isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") || isWorkflowNames(handoffs))
+    optionalDeclarationFields(declaration, input)
   );
 }

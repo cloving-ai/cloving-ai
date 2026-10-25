@@ -21,6 +21,7 @@ import {
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
+import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -103,6 +104,7 @@ async function profilesFile(): Promise<TurnProfiles> {
 interface Commands {
   readonly commands: LocalCommands;
   readonly commandSeconds: number;
+  readonly schedules: unknown;
   readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
@@ -229,6 +231,7 @@ const fallbackModels = parseFallbackModels(
   process.env["CLOVING_FALLBACK_MODELS"],
 );
 const profiles = await profilesFile();
+const schedules = parseSchedulesSetting(process.env["CLOVING_SCHEDULES"]);
 const worker = selectedWorker();
 const command =
   worker === "codex"
@@ -249,6 +252,7 @@ await launchers(
   {
     commands,
     commandSeconds,
+    schedules,
     tokenPrices,
     fallbackModels,
     worker,
