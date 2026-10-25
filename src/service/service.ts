@@ -31,6 +31,8 @@ import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
+import { runWaitTarget } from "./run-waits.ts";
+import type { RunWaitTarget } from "../run-wait.ts";
 import type { CommandEffects } from "../command-settings.ts";
 
 export type { WorkflowRegistration } from "./registry.ts";
@@ -77,6 +79,10 @@ export interface ServiceHost {
 }
 
 export interface HostPorts {
+  readonly runWait?: {
+    readonly target: (runId: string) => Promise<RunWaitTarget | undefined>;
+    readonly observe: WorkerPort["observe"];
+  };
   readonly state: Authority["state"];
   readonly submit: WorkerPort["submit"];
   readonly input: (runId: string) => Promise<string | undefined>;
@@ -334,6 +340,10 @@ function hostPorts(
 ): HostPorts {
   const { worker, registry } = parts;
   return {
+    runWait: {
+      target: (runId) => runWaitTarget(authority, runId),
+      observe: worker.observe,
+    },
     state: authority.state,
     submit: worker.submit,
     input: async (runId) => {
