@@ -71,6 +71,12 @@ export const scrollScenario = `
     expanded: () => {
       const list = done.querySelector(".column-cards");
       return {
+        measurement: {
+          card: rect(list.lastElementChild), column: rect(list), board: rect(board),
+          columnScroll: { top: list.scrollTop, left: list.scrollLeft, height: list.scrollHeight, width: list.scrollWidth },
+          boardScroll: { top: board.scrollTop, left: board.scrollLeft, height: board.scrollHeight, width: board.scrollWidth },
+          viewport: { width: innerWidth, height: innerHeight, x: scrollX, y: scrollY },
+        },
         width: rect(done).width, lastVisible: visible(list.lastElementChild, list),
         lastOnScreen: visible(list.lastElementChild, board),
         scrollTop: list.scrollTop, implementScrollTop: cards.scrollTop,

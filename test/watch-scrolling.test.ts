@@ -169,10 +169,43 @@ function assertExpanded(
   assert.ok(Number(expanded["scrollTop"]) > 0);
   assert.equal(expanded["lastVisible"], true, "last Done card is reachable");
   assert.equal(expanded["lastId"], "done-19");
-  assert.equal(expanded["lastOnScreen"], true);
+  assert.equal(
+    expanded["lastOnScreen"],
+    true,
+    `last Done card is fully on screen: ${JSON.stringify(expanded)}`,
+  );
   assert.equal(expanded["headerVisible"], true);
   assert.ok(Number(expanded["implementScrollTop"]) > 0);
 }
+
+await test("CLV-196 clipped Done card failures include browser measurements", () => {
+  const measurement = {
+    card: { left: 282, right: 462, top: 659.8125, bottom: 799.5625 },
+    column: { left: 282, right: 462, top: 311.5625, bottom: 810 },
+    board: { left: 12, right: 378, top: 252.375, bottom: 844 },
+    columnScroll: { top: 2497, left: 0, height: 2995, width: 180 },
+    boardScroll: { top: 0, left: 806, height: 580, width: 1328 },
+    viewport: { width: 390, height: 844, x: 0, y: 0 },
+  };
+  const expanded = {
+    width: 200,
+    scrollTop: 2497,
+    lastVisible: true,
+    lastId: "done-19",
+    lastOnScreen: false,
+    measurement,
+  };
+  assert.throws(
+    () => {
+      assertExpanded(expanded, 354);
+    },
+    (error: unknown) =>
+      error instanceof assert.AssertionError &&
+      error.actual === false &&
+      error.expected === true &&
+      error.message.includes(JSON.stringify(measurement)),
+  );
+});
 
 interface LayoutMeasurement {
   readonly contentWidth: number;
