@@ -16,7 +16,7 @@ interface Ending {
   readonly actor: string | null;
 }
 
-const outcomes: ReadonlySet<unknown> = new Set([
+const outcomes: ReadonlySet<string> = new Set([
   "answered",
   "approved",
   "denied",
