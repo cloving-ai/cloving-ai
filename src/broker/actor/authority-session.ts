@@ -5,6 +5,7 @@ import {
   type EffectIntent,
 } from "../../authority/reducer.ts";
 import {
+  loadOperationSnapshot,
   loadProjections,
   type ProjectionSnapshot,
 } from "../../storage/decision-snapshots.ts";
@@ -160,7 +161,7 @@ export function authoritySession(parts: SessionParts): Authority {
       return storedEvents(await parts.reader.connection(loadEvents));
     },
     eligibleIntents: async () => eligible(await projected(session)),
-    operations: async () => operationRecords(await projected(session)),
+    operations: async () => operationRecords(await read(loadOperationSnapshot)),
     resumePinned: async (runId, manifest) => {
       const snapshot = await projected(session);
       return pinnedResumption(currentState(snapshot), {

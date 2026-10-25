@@ -20,9 +20,9 @@ await test("QG-18 rejects missed same-line statements despite passing native cov
       "main.ts": production,
       "main.test.ts": tests,
     },
-    (directory) => {
-      assert.throws(() => {
-        checkTests(directory, {
+    async (directory) => {
+      await assert.rejects(async () => {
+        await checkTests(directory, {
           files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });
@@ -40,9 +40,9 @@ await test("QG-18 merges complementary coverage from isolated test processes", a
       "additional.test.ts":
         'import { test } from "node:test"; import assert from "node:assert/strict"; import { calculate } from "./main.ts"; await test("additional branch", () => { assert.equal(calculate(999), 10); });',
     },
-    (directory) => {
-      assert.doesNotThrow(() => {
-        checkTests(directory, {
+    async (directory) => {
+      await assert.doesNotReject(async () => {
+        await checkTests(directory, {
           files: ["main.test.ts", "additional.test.ts"].map((file) =>
             join(directory, file),
           ),
@@ -61,9 +61,9 @@ await test("QG-18 rejects production source rewritten during the test run", asyn
       "main.test.ts":
         'import { test } from "node:test"; import { writeFileSync } from "node:fs"; import { value } from "./main.ts"; await test("rewrites source", () => { writeFileSync(new URL("main.ts", import.meta.url), "export const value = 2;"); });',
     },
-    (directory) => {
-      assert.throws(() => {
-        checkTests(directory, {
+    async (directory) => {
+      await assert.rejects(async () => {
+        await checkTests(directory, {
           files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });
@@ -84,9 +84,9 @@ for (const extension of ["ts", "mts", "cts", "js", "mjs", "cjs"]) {
         [name]: source,
         "main.test.ts": `import { test } from "node:test"; import assert from "node:assert/strict"; import twice from "./${name}"; await test("twice", () => { assert.equal(twice(2), 4); });`,
       },
-      (directory) => {
-        assert.doesNotThrow(() => {
-          checkTests(directory, {
+      async (directory) => {
+        await assert.doesNotReject(async () => {
+          await checkTests(directory, {
             files: [join(directory, "main.test.ts")],
             coverageFiles: [join(directory, name)],
           });
@@ -109,9 +109,9 @@ for (const [comment, diagnostic] of [
         "main.test.ts":
           'import { test } from "node:test"; import assert from "node:assert/strict"; import { value } from "./main.ts"; await test("value", () => { assert.equal(value, 1); });',
       },
-      (directory) => {
-        assert.throws(() => {
-          checkTests(directory, {
+      async (directory) => {
+        await assert.rejects(async () => {
+          await checkTests(directory, {
             files: [join(directory, "main.test.ts")],
             coverageFiles: [join(directory, "main.ts")],
           });
@@ -129,9 +129,9 @@ await test("QG-18 ignores unrelated virtual scripts without treating them as mis
       "main.test.ts":
         'import { test } from "node:test"; import assert from "node:assert/strict"; import { runInNewContext } from "node:vm"; import { value } from "./main.ts"; await test("value", () => { assert.equal(value, 1); assert.equal(runInNewContext("2+2", {}, { filename: "file:///cloving-missing-virtual-source.js" }), 4); });',
     },
-    (directory) => {
-      assert.doesNotThrow(() => {
-        checkTests(directory, {
+    async (directory) => {
+      await assert.doesNotReject(async () => {
+        await checkTests(directory, {
           files: [join(directory, "main.test.ts")],
           coverageFiles: [join(directory, "main.ts")],
         });

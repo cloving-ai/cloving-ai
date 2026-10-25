@@ -15,8 +15,8 @@ async function rejectSource(source: (file: string) => string): Promise<void> {
     async (directory) => {
       const file = join(directory, "main.ts");
       await writeFile(file, source(file));
-      assert.throws(() => {
-        checkTests(directory, {
+      await assert.rejects(async () => {
+        await checkTests(directory, {
           files: [join(directory, "main.test.ts")],
           coverageFiles: [file],
         });

@@ -35,11 +35,7 @@ export function runCommand(
   command: CheckCommand,
   options: CommandOptions = {},
 ): string {
-  if (
-    !Number.isFinite(command.timeoutMilliseconds) ||
-    command.timeoutMilliseconds <= 0
-  )
-    throw new Error("Check command requires a finite positive timeout");
+  validateTimeout(command);
   const clock = options.clock ?? (() => performance.now());
   const started = clock();
   try {
@@ -54,24 +50,23 @@ export function runCommand(
 }
 
 function executeCommand(command: CheckCommand): string {
-  const result = spawnSync(command.executable, command.arguments, {
-    cwd: command.directory,
-    encoding: "utf8",
-    timeout: command.timeoutMilliseconds,
-    maxBuffer: 8 * 1024 * 1024,
-    env: {
-      PATH: process.env["PATH"],
-      CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
-      CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
-      TZ: "UTC",
-      CI: "true",
-      NODE_DISABLE_COMPILE_CACHE: "1",
-      ...(command.homeDirectory ? { HOME: command.homeDirectory } : {}),
-      ...(command.coverageDirectory
-        ? { NODE_V8_COVERAGE: command.coverageDirectory }
-        : {}),
-    },
-  });
+  const result = spawnSync(
+    command.executable,
+    command.arguments,
+    spawnOptions(command),
+  );
+  return commandOutput(command, result);
+}
+
+function validateTimeout(command: CheckCommand): void {
+  if (
+    !Number.isFinite(command.timeoutMilliseconds) ||
+    command.timeoutMilliseconds <= 0
+  )
+    throw new Error("Check command requires a finite positive timeout");
+}
+
+function commandOutput(command: CheckCommand, result: CommandResult): string {
   if (result.error)
     throw new Error(
       `Check execution failed: ${command.check ?? command.executable} (limit ${String(command.timeoutMilliseconds)} ms)`,
@@ -88,4 +83,133 @@ function executeCommand(command: CheckCommand): string {
     );
   return result.stdout;
 }
-import { spawnSync } from "node:child_process";
+
+function spawnOptions(
+  command: CheckCommand,
+): SpawnSyncOptionsWithStringEncoding {
+  return {
+    cwd: command.directory,
+    encoding: "utf8",
+    timeout: command.timeoutMilliseconds,
+    maxBuffer: 8 * 1024 * 1024,
+    env: commandEnvironment(command),
+  };
+}
+
+function commandEnvironment(command: CheckCommand): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env["PATH"],
+    CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
+    CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
+    TZ: "UTC",
+    CI: "true",
+    NODE_DISABLE_COMPILE_CACHE: "1",
+    ...(command.homeDirectory ? { HOME: command.homeDirectory } : {}),
+    ...(command.coverageDirectory
+      ? { NODE_V8_COVERAGE: command.coverageDirectory }
+      : {}),
+  };
+}
+
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  error?: Error | undefined;
+}
+
+export async function runSupervisedCommand(
+  command: CheckCommand,
+  options: CommandOptions = {},
+): Promise<string> {
+  validateTimeout(command);
+  const clock = options.clock ?? (() => performance.now());
+  const started = clock();
+  try {
+    return commandOutput(command, await superviseCommand(command));
+  } finally {
+    options.timings?.push({
+      check: command.check ?? command.executable,
+      elapsedMilliseconds: Math.round(clock() - started),
+      timeoutMilliseconds: command.timeoutMilliseconds,
+    });
+  }
+}
+
+async function superviseCommand(command: CheckCommand): Promise<CommandResult> {
+  const child = spawn(command.executable, command.arguments, {
+    cwd: command.directory,
+    env: commandEnvironment(command),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const result: CommandResult = { stdout: "", stderr: "", status: null };
+  const stop = (error: Error): void => {
+    result.error ??= error;
+    if (child.pid) killVerificationGroup(child.pid);
+    child.stdout.destroy();
+    child.stderr.destroy();
+  };
+  const interrupt = (): void => {
+    process.exitCode = 1;
+    stop(new Error("Check interrupted"));
+  };
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
+  const timeout = setTimeout(() => {
+    stop(new Error("Check timed out"));
+  }, command.timeoutMilliseconds);
+  collectOutput(child, { result, stop });
+  try {
+    await new Promise<void>((resolve) => {
+      child.once("error", (error) => {
+        result.error ??= error;
+      });
+      child.once("close", (status) => {
+        result.status = status;
+        resolve();
+      });
+    });
+    return result;
+  } finally {
+    clearTimeout(timeout);
+    try {
+      if (child.pid) await stopVerificationGroup(child.pid);
+    } finally {
+      process.off("SIGINT", interrupt);
+      process.off("SIGTERM", interrupt);
+    }
+  }
+}
+
+function collectOutput(
+  child: ChildProcessByStdio<null, Readable, Readable>,
+  capture: {
+    readonly result: CommandResult;
+    readonly stop: (error: Error) => void;
+  },
+): void {
+  let bytes = 0;
+  for (const channel of ["stdout", "stderr"] as const) {
+    child[channel].setEncoding("utf8");
+    child[channel].on("data", (data: string) => {
+      bytes += Buffer.byteLength(data);
+      if (bytes > 8 * 1024 * 1024) {
+        capture.stop(new Error("Check output exceeded maxBuffer"));
+        return;
+      }
+      capture.result[channel] += data;
+    });
+  }
+}
+import {
+  spawn,
+  spawnSync,
+  type ChildProcessByStdio,
+  type SpawnSyncOptionsWithStringEncoding,
+} from "node:child_process";
+import type { Readable } from "node:stream";
+import {
+  killVerificationGroup,
+  stopVerificationGroup,
+} from "./verification-process-group.ts";

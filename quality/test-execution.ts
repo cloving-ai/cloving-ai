@@ -1,13 +1,15 @@
 import {
   runCommand,
+  runSupervisedCommand,
   type CheckCommand,
   type CommandOptions,
 } from "./command.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { availableParallelism, tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
+import recordedDurations from "./test-durations.json" with { type: "json" };
 
 export function testConcurrency(cores: number): number {
   return Math.min(4, Math.max(2, cores - 1));
@@ -84,7 +86,10 @@ function validateRequiredTests(
     throw new Error("mandatory-test-inventory-mismatch");
 }
 
-export function checkTests(directory: string, execution: TestExecution): void {
+export async function checkTests(
+  directory: string,
+  execution: TestExecution,
+): Promise<void> {
   const { files, ...options } = execution;
   const tests = files
     .filter((file) => /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/.test(file))
@@ -98,7 +103,7 @@ export function checkTests(directory: string, execution: TestExecution): void {
   ].sort();
   const before = sourceSnapshot(checked);
   try {
-    executeTests(directory, { tests, temporary, options });
+    await executeTests(directory, { tests, temporary, options });
     if (before !== sourceSnapshot(checked))
       throw new Error("test-source-changed");
   } finally {
@@ -121,16 +126,21 @@ export function testCommand(
     readonly tests: readonly string[];
     readonly coverageDirectory?: string;
     readonly timeFactor?: number;
+    readonly durations?: Readonly<Record<string, number>>;
+    readonly reporter?: "durations";
   },
 ): CheckCommand {
   return {
     check: "tests",
     executable: process.execPath,
     arguments: [
-      "--test",
-      `--test-reporter=${resolve(import.meta.dirname, "test-reporter.ts")}`,
+      resolve(import.meta.dirname, "test-runner.ts"),
+      `--test-reporter=${run.reporter ?? "gate"}`,
       `--test-concurrency=${String(parseTestConcurrency(process.env["CLOVING_TEST_CONCURRENCY"], availableParallelism()))}`,
-      ...run.tests,
+      ...orderTests(directory, {
+        tests: run.tests,
+        durations: run.durations ?? recordedDurations,
+      }),
     ],
     directory,
     timeoutMilliseconds: 600000 * (run.timeFactor ?? 1),
@@ -138,6 +148,22 @@ export function testCommand(
       ? {}
       : { coverageDirectory: run.coverageDirectory }),
   };
+}
+
+function orderTests(
+  directory: string,
+  run: {
+    readonly tests: readonly string[];
+    readonly durations: Readonly<Record<string, number>>;
+  },
+): string[] {
+  const seconds = (file: string): number =>
+    run.durations[relative(directory, resolve(directory, file))] ?? Infinity;
+  return [...run.tests].sort().sort((left, right) => {
+    const first = seconds(left);
+    const second = seconds(right);
+    return first === second ? 0 : second - first;
+  });
 }
 
 export function coverageCommand(
@@ -161,16 +187,16 @@ export function coverageCommand(
   };
 }
 
-function executeTests(
+async function executeTests(
   directory: string,
   run: {
     readonly tests: readonly string[];
     readonly temporary: string;
     readonly options: TestExecutionOptions;
   },
-): void {
+): Promise<void> {
   const { tests, temporary, options } = run;
-  const output = runCommand(
+  const output = await runSupervisedCommand(
     testCommand(directory, {
       tests,
       timeFactor: options.timeFactor ?? 1,

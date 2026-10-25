@@ -19,16 +19,64 @@ function callOrigin(
 
 function selectedTest(
   node: ts.CallExpression,
-  selection: { readonly checker: ts.TypeChecker; readonly name: string },
+  selection: {
+    readonly checker: ts.TypeChecker;
+    readonly name: string;
+    readonly runnerFile: string | undefined;
+  },
 ): boolean {
   const { checker, name } = selection;
-  if (["only", "skip", "todo", "run"].includes(name)) return true;
+  if (name === "run") return !explicitRunner(node, selection.runnerFile);
+  if (["only", "skip", "todo"].includes(name)) return true;
   return node.arguments.some((argument) => {
     const type = checker.getTypeAtLocation(argument);
     return ["only", "skip", "todo"].some(
       (field) => type.getProperty(field) !== undefined,
     );
   });
+}
+
+function explicitRunner(
+  node: ts.CallExpression,
+  runnerFile: string | undefined,
+): boolean {
+  if (node.getSourceFile().fileName !== runnerFile) return false;
+  const argument = node.arguments[0];
+  if (
+    !argument ||
+    node.arguments.length !== 1 ||
+    !ts.isObjectLiteralExpression(argument)
+  )
+    return false;
+  const fields = argument.properties
+    .map((property) => {
+      if (
+        (!ts.isPropertyAssignment(property) &&
+          !ts.isShorthandPropertyAssignment(property)) ||
+        !ts.isIdentifier(property.name)
+      )
+        return "";
+      return property.name.text;
+    })
+    .sort();
+  const executionFields = fields.filter((field) => field !== "signal");
+  if (
+    JSON.stringify(executionFields) !==
+      JSON.stringify(["concurrency", "files", "isolation"]) ||
+    fields.filter((field) => field === "signal").length > 1
+  )
+    return false;
+  const isolation = argument.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      ts.isIdentifier(property.name) &&
+      property.name.text === "isolation",
+  );
+  return (
+    !!isolation &&
+    ts.isStringLiteral(isolation.initializer) &&
+    isolation.initializer.text === "process"
+  );
 }
 
 function assertionAwaited(ancestors: readonly ts.Node[]): boolean {
@@ -62,6 +110,7 @@ function conditional(node: ts.Node): boolean {
 interface VisitContext {
   readonly ancestors: readonly ts.Node[];
   readonly checker: ts.TypeChecker;
+  readonly runnerFile: string | undefined;
 }
 
 function callFindings(
@@ -76,7 +125,14 @@ function callFindings(
   if (!test && !assertion) return [];
   const findings: string[] = [];
   if (ancestors.some(conditional)) findings.push("conditional-test-evidence");
-  if (test && selectedTest(node, { checker, name: origin.name }))
+  if (
+    test &&
+    selectedTest(node, {
+      checker,
+      name: origin.name,
+      runnerFile: context.runnerFile,
+    })
+  )
     findings.push("test-selection");
   if (
     assertion &&
@@ -97,7 +153,10 @@ function conditionalExit(node: ts.Node, context: VisitContext): boolean {
   );
 }
 
-export function inspectTestIntegrity(program: ts.Program): readonly string[] {
+export function inspectTestIntegrity(
+  program: ts.Program,
+  options: { readonly runnerFile?: string } = {},
+): readonly string[] {
   const checker = program.getTypeChecker();
   const findings: string[] = [];
   for (const file of program.getRootFileNames()) {
@@ -105,7 +164,7 @@ export function inspectTestIntegrity(program: ts.Program): readonly string[] {
     if (!source) throw new Error(`missing-test-integrity-source: ${file}`);
     const visit = (node: ts.Node, ancestors: readonly ts.Node[]): void => {
       const location = `${file}:${String(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1)}`;
-      const context = { ancestors, checker };
+      const context = { ancestors, checker, runnerFile: options.runnerFile };
       if (escapedTestApi(node, context))
         findings.push(`test-api-escape: ${location}`);
       if (conditionalExit(node, context))

@@ -58,7 +58,7 @@ export async function checkProject(
     directory,
     measured,
   );
-  checkProjectTests(directory, { program, files, options: measured });
+  await checkProjectTests(directory, { program, files, options: measured });
   completed.push("tests");
   assertCheckCoverage(completed);
   return { files, completed, timings, warnings: checkTimeWarnings(timings) };
@@ -95,7 +95,9 @@ export async function checkProjectSources(
     .filter((source) => files.includes(source.fileName));
   checkSuppressions(sources, options.suppressionApprovals ?? []);
   completed.push("suppressions");
-  const testIntegrity = inspectTestIntegrity(program);
+  const testIntegrity = inspectTestIntegrity(program, {
+    runnerFile: resolve(directory, "quality/test-runner.ts"),
+  });
   if (testIntegrity.length > 0)
     throw new Error(`Test integrity failed:\n${testIntegrity.join("\n")}`);
   completed.push("test-integrity");
@@ -122,20 +124,20 @@ export async function checkProjectSources(
   return { program, files, completed };
 }
 
-function checkProjectTests(
+async function checkProjectTests(
   directory: string,
   checked: {
     readonly program: ReturnType<typeof compilerProgram>;
     readonly files: readonly string[];
     readonly options: ProjectOptions;
   },
-): void {
+): Promise<void> {
   const { program, files, options } = checked;
   const production = productionInventory(program, {
     files,
     roles: options.architecture.roles,
   });
-  checkTests(directory, {
+  await checkTests(directory, {
     files,
     ...(options.commandOptions
       ? { commandOptions: options.commandOptions }
@@ -146,6 +148,7 @@ function checkProjectTests(
   });
 }
 import { compilerProgram } from "./compiler.ts";
+import { resolve } from "node:path";
 import { inspectClones } from "./clones.ts";
 import { checkFormatting, checkLint } from "./source-checks.ts";
 import { sourceFiles } from "./source-files.ts";

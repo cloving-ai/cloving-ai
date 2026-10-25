@@ -8,6 +8,7 @@ import {
   latestSequence,
   loadAttempts,
   loadSnapshot,
+  outboxRow,
   projectionRows,
   text,
   type AttemptRow,
@@ -29,6 +30,19 @@ export interface DecidedSnapshot extends DomainSnapshot, DecisionRows {
 
 export interface CurrentSnapshot extends DecidedSnapshot {
   readonly effects: EffectRows;
+}
+
+export async function loadOperationSnapshot(
+  connection: SqlConnection,
+): Promise<Pick<ProjectionSnapshot, "outbox" | "deliveries">> {
+  return {
+    outbox: (
+      await connection.all(
+        "SELECT operation_id, kind, run_id, created_sequence, released_sequence FROM outbox ORDER BY created_sequence, rowid",
+      )
+    ).map(outboxRow),
+    deliveries: await loadAttempts(connection),
+  };
 }
 
 export async function loadProjections(
