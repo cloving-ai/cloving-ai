@@ -13,7 +13,6 @@ import {
 } from "./workflow-generations.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
-import { chatsWorker, type ChatsWorker } from "./chats-worker.ts";
 import { commandWorker, type CommandWorker } from "./command-worker.ts";
 import { handoffWorker } from "./handoff-worker.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
@@ -60,7 +59,6 @@ export interface Adapters {
   readonly worker: ClaudeWorker;
   readonly github: GithubWorker;
   readonly runs: StartDelivery;
-  readonly chats: ChatsWorker;
   readonly handoff: EffectDelivery;
   readonly commands: CommandWorker;
 }
@@ -116,11 +114,6 @@ export function adapters(
     journal: join(directory, "journal"),
   });
   const github = githubOf(settings, given);
-  const chats = chatsWorker({
-    runtimeDirectory: settings.runtimeDirectory,
-    document,
-    workflowId: async (runId) => (await given).workflow.id(runId),
-  });
   const runs = startDelivery({
     document,
     runs: taggedRuns,
@@ -139,7 +132,7 @@ export function adapters(
     document,
     report,
   });
-  return { worker, github, runs, chats, handoff, commands };
+  return { worker, github, runs, handoff, commands };
 }
 
 function handoffOf(

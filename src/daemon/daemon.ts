@@ -167,7 +167,7 @@ export async function startDaemon(
     table,
   });
   const resources = adapters(settings, { given: given.promise, generations });
-  const { worker, github, runs, chats, handoff, commands } = resources;
+  const { worker, github, runs, handoff, commands } = resources;
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
@@ -183,7 +183,7 @@ export async function startDaemon(
     retainedWorkflow: generations.available,
     delivery: deliveryRouter({
       runs,
-      effects: { claude: worker, github, chats, handoff, command: commands },
+      effects: { claude: worker, github, handoff, command: commands },
     }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
     host: (ports) => {
@@ -203,7 +203,7 @@ export async function startDaemon(
   };
 }
 
-type Workers = Pick<Adapters, "worker" | "github" | "chats" | "commands">;
+type Workers = Pick<Adapters, "worker" | "github" | "commands">;
 
 async function recoverWorkers(
   resources: Workers & { readonly service: Service },
@@ -224,7 +224,6 @@ async function closeWorkers(resources: Workers): Promise<void> {
   await Promise.all([
     resources.worker.close(),
     resources.github.close(),
-    resources.chats.close(),
     resources.commands.close(),
   ]);
 }

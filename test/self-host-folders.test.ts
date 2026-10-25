@@ -34,7 +34,6 @@ await test("CLV-124 real daemon startup registers admitted operator snapshots an
         "develop-issue",
         "develop-prd",
         "develop-prompt",
-        "analyze-chats",
         "project-run",
         "user-run",
       ]);
