@@ -3,18 +3,13 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { phoneRequest } from "../src/cli/phone-client.ts";
 import { record, type Fields } from "../src/protocol.ts";
-import { checkedRequest, checkValid } from "../src/relay/pairing-checks.ts";
 import { newDaemonKeys } from "../src/relay/daemon-keys.ts";
 import { pairingSessions } from "../src/relay/pairing-session.ts";
 import { relayRequest } from "../src/relay/relay-http.ts";
 import { startRelay, type Relay } from "../src/relay/relay-service.ts";
 import { openRelayStore } from "../src/relay/relay-store.ts";
 import fixture from "./fixtures/phone-pairing.json" with { type: "json" };
-import {
-  phoneRequestBody,
-  sendPhoneCheck,
-  sendPhoneRequest,
-} from "./phone-fake-phone.ts";
+import { sendPhoneCheck, sendPhoneRequest } from "./phone-fake-phone.ts";
 import {
   fakeRelayServer,
   type FakeRelayServer,
@@ -31,6 +26,7 @@ async function withRelay(
   settings: {
     readonly pairingMilliseconds?: number;
     readonly receiptStatus?: number;
+    readonly startDelayMilliseconds?: number;
   },
   body: (setup: Setup) => Promise<void>,
 ): Promise<void> {
@@ -122,9 +118,14 @@ await test("CLV-189 accept and deny need a waiting request", async () => {
 
 await test("CLV-189 a refused receipt keeps the request and reports the cause", async () => {
   await withRelay({ receiptStatus: 500 }, async (setup) => {
-    await requested(setup);
+    const pairingId = await requested(setup);
     assert.equal(
-      code(await call(setup, { operation: "phone-pair-accept" })),
+      code(
+        await call(setup, {
+          operation: "phone-pair-accept",
+          parameters: { pairingId },
+        }),
+      ),
       "receipt-failed",
     );
   });
@@ -151,16 +152,24 @@ await test("CLV-189 a pairing that cloving.ai no longer knows ends", async () =>
 await test("CLV-189 a phone removed between the request and Accept is refused", async () => {
   await withRelay({}, async (setup) => {
     const first = await requested(setup);
-    await call(setup, { operation: "phone-pair-accept" });
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId: first },
+    });
     sendPhoneCheck(setup.server, { pairingId: first });
     await until(setup, (current) => current["pairing"] === null);
-    await requested(setup);
+    const second = await requested(setup);
     await call(setup, {
       operation: "phone-remove",
       parameters: { deviceId: fixture.device.id },
     });
     assert.equal(
-      code(await call(setup, { operation: "phone-pair-accept" })),
+      code(
+        await call(setup, {
+          operation: "phone-pair-accept",
+          parameters: { pairingId: second },
+        }),
+      ),
       "pairing-device-revoked",
     );
     assert.equal((await state(setup))["refusal"], "pairing-device-revoked");
@@ -210,71 +219,13 @@ await test("CLV-189 the store refuses a removed device and counts a reset", asyn
   });
 });
 
-await test("CLV-189 the request checks refuse missing fields, long names and other platforms", () => {
-  const secret = Buffer.from(fixture.secret, "base64url");
-  const link = fixture.link;
-  assert.deepEqual(checkedRequest(secret, null), {
-    kind: "refused",
-    code: "pairing-request-invalid",
-  });
-  assert.deepEqual(checkedRequest(secret, { device_id: "x" }), {
-    kind: "refused",
-    code: "pairing-request-invalid",
-  });
-  for (const values of [{ name: "n".repeat(65) }, { platform: "windows" }])
-    assert.deepEqual(checkedRequest(secret, phoneRequestBody(link, values)), {
-      kind: "refused",
-      code: "pairing-request-invalid",
-    });
-  assert.deepEqual(
-    checkedRequest(secret, phoneRequestBody(link, { mac: "short" })),
-    {
-      kind: "refused",
-      code: "pairing-mac-invalid",
-    },
-  );
-  const valid = checkedRequest(secret, {
-    ...fixture.request,
-    mac: fixture.mac,
-  });
-  assert.equal(valid.kind === "valid" ? valid.request.code : "", fixture.code);
-});
-
-await test("CLV-189 the check refuses a missing field, another key, an old time and another device", () => {
-  const expected = {
-    daemonId: fixture.daemon.id,
-    deviceId: fixture.device.id,
-    nonce: fixture.receiptNonce,
-    answerPublicKey: fixture.device.answerPublicKey,
-    now: Date.parse(fixture.checkSignedAt),
-  };
-  assert.equal(checkValid(fixture.check, expected), true);
-  assert.equal(checkValid({ payload: fixture.check.payload }, expected), false);
-  assert.equal(
-    checkValid(fixture.check, {
-      ...expected,
-      answerPublicKey: fixture.device.approvalPublicKey,
-    }),
-    false,
-  );
-  assert.equal(
-    checkValid(fixture.check, { ...expected, answerPublicKey: "bad" }),
-    false,
-  );
-  assert.equal(
-    checkValid(fixture.check, { ...expected, now: expected.now + 3_600_000 }),
-    false,
-  );
-  assert.equal(
-    checkValid(fixture.check, { ...expected, deviceId: "other" }),
-    false,
-  );
-});
-
 await test("CLV-189 an expiry after Accept keeps the device checking with no refusal", async () => {
   await withRelay({}, async (setup) => {
     const pairingId = await requested(setup);
-    await call(setup, { operation: "phone-pair-accept" });
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    });
     setup.server.change(pairingId, { stage: "expired" });
     const ended = await until(setup, (current) => current["pairing"] === null);
     assert.equal(ended["refusal"], null);
@@ -299,7 +250,15 @@ await test("CLV-189 a check before Accept is ignored, and the relay keeps the pa
     await setup.server.close();
     await new Promise((settle) => setTimeout(settle, 1500));
     assert.equal(stage(await state(setup)), "requested");
-    assert.equal(code(await call(setup, { operation: "phone-pair-deny" })), "");
+    assert.equal(
+      code(
+        await call(setup, {
+          operation: "phone-pair-deny",
+          parameters: { pairingId },
+        }),
+      ),
+      "",
+    );
   });
 });
 
@@ -343,5 +302,40 @@ await test("CLV-189 phone-reset keeps going and warns when cloving.ai does not a
       /^cloving.ai did not remove this computer \(answer 0\)/,
     );
     assert.equal((await state(setup))["registered"], false);
+  });
+});
+
+await test("CLV-189 Accept and Deny refuse a pairing ID that is not the shown pairing", async () => {
+  await withRelay({}, async (setup) => {
+    await requested(setup);
+    for (const operation of ["phone-pair-accept", "phone-pair-deny"])
+      assert.equal(
+        code(
+          await call(setup, { operation, parameters: { pairingId: "other" } }),
+        ),
+        "pairing-changed",
+      );
+    assert.equal(stage(await state(setup)), "requested");
+  });
+});
+
+await test("CLV-189 two starts share one pairing, and Cancel stops a start in progress", async () => {
+  await withRelay({ startDelayMilliseconds: 300 }, async (setup) => {
+    const [first, second] = await Promise.all([
+      call(setup, { operation: "phone-pair-start" }),
+      call(setup, { operation: "phone-pair-start" }),
+    ]);
+    assert.equal(
+      first?.kind === "result" ? first.result["link"] : "a",
+      second?.kind === "result" ? second.result["link"] : "b",
+    );
+    assert.equal(setup.server.daemons.length, 1);
+    assert.equal(setup.server.pairings.size, 1);
+    await call(setup, { operation: "phone-pair-cancel" });
+    const starting = call(setup, { operation: "phone-pair-start" });
+    await new Promise((settle) => setTimeout(settle, 50));
+    await call(setup, { operation: "phone-pair-cancel" });
+    assert.equal(code(await starting), "phone-relay-failed");
+    assert.equal((await state(setup))["pairing"], null);
   });
 });

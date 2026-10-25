@@ -80,6 +80,7 @@ export function pairingSessions(settings: SessionSettings): PairingSessions {
   let open: OpenPairing | undefined;
   let refusal: string | null = null;
   let timer: NodeJS.Timeout | undefined;
+  let generation = 0;
   const end = (ended: OpenPairing, code: string | null): void => {
     if (open !== ended) return;
     clearTimeout(timer);
@@ -92,10 +93,14 @@ export function pairingSessions(settings: SessionSettings): PairingSessions {
     refusal: () => refusal,
     end,
     cancel: () => {
+      generation += 1;
       if (open !== undefined) end(open, null);
     },
     start: async (registration) => {
+      const startedIn = generation;
       const started = await created(registration, settings.secret());
+      if (startedIn !== generation)
+        throw new Error("pairing-cancelled: The pairing was cancelled.");
       open = started;
       refusal = null;
       timer = setTimeout(

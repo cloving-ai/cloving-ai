@@ -44,10 +44,14 @@ async function cloving(
   }
 }
 
-async function operation(runtimeDirectory: string, name: string) {
+async function operation(
+  runtimeDirectory: string,
+  request: { readonly name: string; readonly pairingId?: string },
+) {
   const reply = await phoneRequest(runtimeDirectory, {
-    operation: name,
-    parameters: {},
+    operation: request.name,
+    parameters:
+      request.pairingId === undefined ? {} : { pairingId: request.pairingId },
   });
   assert.equal(reply?.kind, "result", JSON.stringify(reply));
   return reply.result;
@@ -57,17 +61,19 @@ async function connected(
   runtimeDirectory: string,
   server: FakeRelayServer,
 ): Promise<void> {
-  const started = await operation(runtimeDirectory, "phone-pair-start");
+  const started = await operation(runtimeDirectory, {
+    name: "phone-pair-start",
+  });
   const pairingId = sendPhoneRequest(server, { link: String(started["link"]) });
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    const state = await operation(runtimeDirectory, "phone-state");
+    const state = await operation(runtimeDirectory, { name: "phone-state" });
     if (Reflect.get(Object(state["pairing"]), "stage") === "requested") break;
     await new Promise((settle) => setTimeout(settle, 20));
   }
-  await operation(runtimeDirectory, "phone-pair-accept");
+  await operation(runtimeDirectory, { name: "phone-pair-accept", pairingId });
   sendPhoneCheck(server, { pairingId });
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    const state = await operation(runtimeDirectory, "phone-state");
+    const state = await operation(runtimeDirectory, { name: "phone-state" });
     if (state["pairing"] === null) return;
     await new Promise((settle) => setTimeout(settle, 20));
   }

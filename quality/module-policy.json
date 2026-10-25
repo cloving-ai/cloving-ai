@@ -1096,7 +1096,8 @@
     "test/cli-phone-devices.test.ts": "test",
     "test/phone-relay-cases.test.ts": "test",
     "test/fixtures/phone-pairing.json": "test",
-    "test/fixtures/qr-qrcodegen-1.8.0.json": "test"
+    "test/fixtures/qr-qrcodegen-1.8.0.json": "test",
+    "test/phone-checks.test.ts": "test"
   },
   "allowed": {
     "quality": [

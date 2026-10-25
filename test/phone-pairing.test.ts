@@ -222,6 +222,9 @@ await test("CLV-188 the relay accepts only https origins, and http://127.0.0.1 f
     "https://staging.cloving.ai",
   );
   assert.equal(relayOrigin("http://127.0.0.1:4567"), "http://127.0.0.1:4567");
+  const longest = `https://${"a".repeat(150)}.ai`;
+  assert.equal(longest.length, 161);
+  assert.equal(relayOrigin(longest), longest);
   for (const origin of [
     "http://cloving.ai",
     "http://localhost:3000",
@@ -229,6 +232,7 @@ await test("CLV-188 the relay accepts only https origins, and http://127.0.0.1 f
     "https://cloving.ai/api",
     "ftp://cloving.ai",
     "cloving.ai",
+    `https://${"a".repeat(155)}.ai`,
   ])
     assert.throws(
       () => relayOrigin(origin),

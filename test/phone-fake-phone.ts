@@ -102,3 +102,14 @@ export function sendPhoneCheck(
     check: { payload, signature: signature.toString("base64url") },
   });
 }
+
+export function signedByAnswerKey(payload: string): {
+  readonly payload: string;
+  readonly signature: string;
+} {
+  const signature = sign("sha256", Buffer.from(payload), {
+    key: answerKey(),
+    dsaEncoding: "ieee-p1363",
+  });
+  return { payload, signature: signature.toString("base64url") };
+}

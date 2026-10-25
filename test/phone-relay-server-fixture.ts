@@ -43,6 +43,7 @@ export interface FakeRelayServer {
 interface Settings {
   readonly pairingMilliseconds?: number;
   readonly receiptStatus?: number;
+  readonly startDelayMilliseconds?: number;
 }
 
 interface FakeState {
@@ -210,8 +211,12 @@ async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
     return registered(state, body);
   const daemon = daemonOf(state, request);
   if (daemon === undefined) return [401, null];
-  if (request.method === "POST" && path === "/api/v1/relay/pairings")
+  if (request.method === "POST" && path === "/api/v1/relay/pairings") {
+    await new Promise((settle) =>
+      setTimeout(settle, state.settings.startDelayMilliseconds ?? 0),
+    );
     return opened(state, { daemon, body });
+  }
   if (request.method === "DELETE") return removed(state, { daemon, path });
   return pairingRoute(state, { ...exchange, daemon });
 }

@@ -216,3 +216,43 @@ await test("CLV-187 the phone arguments accept status and refuse other forms", (
       json: false,
     });
 });
+
+await test("CLV-189 phone list escapes hidden characters of the relay text", async () => {
+  await withFiles({}, async (root) => {
+    const runtimeDirectory = join(root, "run");
+    const device = {
+      deviceId: "phone\u001b[31m",
+      name: "Pixel\nfake  row",
+      platform: "android",
+      state: "connected",
+      pairedAt: "2026-10-25T12:00:00Z",
+      removedAt: null,
+    };
+    const server = await fakeRelay(
+      runtimeDirectory,
+      `${JSON.stringify({ ok: true, result: { devices: [device] } })}\n`,
+    );
+    const output = { out: "" };
+    try {
+      const status = await phoneCommand(
+        { kind: "phone", command: "list", deviceId: null, json: false },
+        {
+          runtimeDirectory,
+          terminal: {
+            out: (text) => {
+              output.out += text;
+            },
+            error: () => undefined,
+          },
+        },
+      );
+      assert.equal(status, 0);
+      assert.equal(
+        output.out,
+        "phone\\u001b[31m  Pixel\\u000afake  row (android)  connected  paired 2026-10-25T12:00:00Z\n",
+      );
+    } finally {
+      await closed(server);
+    }
+  });
+});

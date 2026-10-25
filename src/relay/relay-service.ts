@@ -99,8 +99,18 @@ async function opened(relay: OperationState): Promise<OpenPairing> {
   }
 }
 
+const starts = new WeakMap<OperationState, Promise<OpenPairing>>();
+
+function sharedStart(relay: OperationState): Promise<OpenPairing> {
+  const running = starts.get(relay);
+  if (running !== undefined) return running;
+  const starting = opened(relay).finally(() => starts.delete(relay));
+  starts.set(relay, starting);
+  return starting;
+}
+
 async function pairStart(relay: OperationState): Promise<Reply> {
-  const open = relay.sessions.current() ?? (await opened(relay));
+  const open = relay.sessions.current() ?? (await sharedStart(relay));
   return result({ link: open.link, expiresAt: open.expiresAt });
 }
 

@@ -102,6 +102,34 @@ function device(state: Fields, deviceId: string): Fields | undefined {
     .find((item) => item?.["deviceId"] === deviceId);
 }
 
+function receiptSigned(
+  server: FakeRelayServer,
+  signed: { readonly payload: string; readonly receipt: unknown },
+): boolean {
+  const point = Buffer.from(
+    String(server.daemons[0]?.signingPublicKey),
+    "base64url",
+  );
+  const key = createPublicKey({
+    key: {
+      kty: "EC",
+      crv: "P-256",
+      x: point.subarray(1, 33).toString("base64url"),
+      y: point.subarray(33).toString("base64url"),
+    },
+    format: "jwk",
+  });
+  return verify(
+    "sha256",
+    Buffer.from(signed.payload),
+    { key, dsaEncoding: "ieee-p1363" },
+    Buffer.from(
+      String(Reflect.get(Object(signed.receipt), "signature")),
+      "base64url",
+    ),
+  );
+}
+
 await test("CLV-189 the request shows the code, and Accept records a checking device with a signed receipt that survives a restart", async () => {
   await withRelay(async (setup) => {
     const { pairingId, state } = await requested(setup);
@@ -113,7 +141,10 @@ await test("CLV-189 the request shows the code, and Accept records a checking de
       platform: "android",
       code: shown?.["code"],
     });
-    await call(setup, { operation: "phone-pair-accept" });
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    });
     const accepted = await call(setup, { operation: "phone-state" });
     assert.equal(device(accepted, fixture.device.id)?.["state"], "checking");
     const receipt = setup.server.pairings.get(pairingId)?.receipt;
@@ -130,30 +161,7 @@ await test("CLV-189 the request shows the code, and Accept records a checking de
     ]);
     assert.equal(fields["daemonId"], "dmn_test1");
     assert.equal(fields["kind"], "pairing-receipt");
-    const point = Buffer.from(
-      String(setup.server.daemons[0]?.signingPublicKey),
-      "base64url",
-    );
-    const key = createPublicKey({
-      key: {
-        kty: "EC",
-        crv: "P-256",
-        x: point.subarray(1, 33).toString("base64url"),
-        y: point.subarray(33).toString("base64url"),
-      },
-      format: "jwk",
-    });
-    assert.ok(
-      verify(
-        "sha256",
-        Buffer.from(payload),
-        { key, dsaEncoding: "ieee-p1363" },
-        Buffer.from(
-          String(Reflect.get(Object(receipt), "signature")),
-          "base64url",
-        ),
-      ),
-    );
+    assert.ok(receiptSigned(setup.server, { payload, receipt }));
     await setup.relay.close();
     setup.relay = await relayStart(setup);
     const restarted = await call(setup, { operation: "phone-state" });
@@ -164,7 +172,10 @@ await test("CLV-189 the request shows the code, and Accept records a checking de
 await test("CLV-189 a correct check connects the device", async () => {
   await withRelay(async (setup) => {
     const { pairingId } = await requested(setup);
-    await call(setup, { operation: "phone-pair-accept" });
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    });
     sendPhoneCheck(setup.server, { pairingId });
     const state = await until(
       setup,
@@ -182,7 +193,10 @@ for (const [label, exchange] of [
   await test(`CLV-189 a check with ${label} keeps the device checking`, async () => {
     await withRelay(async (setup) => {
       const { pairingId } = await requested(setup);
-      await call(setup, { operation: "phone-pair-accept" });
+      await call(setup, {
+        operation: "phone-pair-accept",
+        parameters: { pairingId },
+      });
       sendPhoneCheck(setup.server, { pairingId, ...exchange });
       const state = await until(
         setup,
@@ -235,7 +249,10 @@ await test("CLV-189 an expired pairing is refused with pairing-expired and gives
 await test("CLV-189 Deny gives no device and no receipt, and tells cloving.ai", async () => {
   await withRelay(async (setup) => {
     const { pairingId } = await requested(setup);
-    await call(setup, { operation: "phone-pair-deny" });
+    await call(setup, {
+      operation: "phone-pair-deny",
+      parameters: { pairingId },
+    });
     const state = await call(setup, { operation: "phone-state" });
     assert.deepEqual(state["devices"], []);
     assert.equal(state["pairing"], null);
@@ -253,7 +270,10 @@ await test("CLV-189 Deny gives no device and no receipt, and tells cloving.ai", 
 await test("CLV-189 phone-remove writes a tombstone, tells cloving.ai, and a new pairing of the same device is refused", async () => {
   await withRelay(async (setup) => {
     const { pairingId } = await requested(setup);
-    await call(setup, { operation: "phone-pair-accept" });
+    await call(setup, {
+      operation: "phone-pair-accept",
+      parameters: { pairingId },
+    });
     sendPhoneCheck(setup.server, { pairingId });
     await until(
       setup,

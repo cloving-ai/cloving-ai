@@ -22,10 +22,11 @@ export function relayOrigin(value: string | undefined): string {
   if (
     url === null ||
     (url.protocol !== "https:" && !local) ||
-    url.origin !== given
+    url.origin !== given ||
+    given.length > 161
   )
     throw new Error(
-      `relay-origin-invalid: CLOVING_RELAY_ORIGIN must be an https origin, such as https://cloving.ai.`,
+      `relay-origin-invalid: CLOVING_RELAY_ORIGIN must be an https origin of at most 161 characters, such as https://cloving.ai.`,
     );
   return url.origin;
 }

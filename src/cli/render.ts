@@ -26,6 +26,12 @@ function hidden(character: string): boolean {
   return hiddenRanges.some(([first, last]) => code >= first && code <= last);
 }
 
+export function oneLine(value: unknown): string {
+  return Array.from(show(value), (character) =>
+    hidden(character) ? escaped(character) : character,
+  ).join("");
+}
+
 function visible(value: unknown): string {
   return show(value)
     .split("\n")

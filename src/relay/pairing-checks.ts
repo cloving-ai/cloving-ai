@@ -212,14 +212,13 @@ function signatureValid(message: SignedMessage, publicKey: string): boolean {
 }
 
 function checkFields(payload: string): Readonly<Record<string, unknown>> {
-  const value: unknown = JSON.parse(payload);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    canonicalJson(value) !== payload
-  )
+  try {
+    const value: unknown = JSON.parse(payload);
+    if (typeof value !== "object" || value === null) return {};
+    return canonicalJson(value) === payload ? { ...value } : {};
+  } catch {
     return {};
-  return { ...value };
+  }
 }
 
 export function checkValid(check: unknown, expected: ExpectedCheck): boolean {
@@ -239,6 +238,7 @@ export function checkValid(check: unknown, expected: ExpectedCheck): boolean {
   };
   const signedAt = Date.parse(String(fields["signedAt"]));
   return (
+    typeof fields["signedAt"] === "string" &&
     canonicalJson(wanted) === payload &&
     Math.abs(signedAt - expected.now) <= 600_000
   );

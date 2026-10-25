@@ -1,10 +1,13 @@
 export const watchPhoneClient = `
 async function phoneLoad() {
   const sent = Date.now();
+  const sequence = ++state.phoneSequence;
   try {
     const reply = await fetch("phone.json", { cache: "no-store" });
-    if (reply.ok) {
-      state.phone = await reply.json();
+    const phone = reply.ok ? await reply.json() : null;
+    if (phone !== null && sequence > state.phoneApplied) {
+      state.phoneApplied = sequence;
+      state.phone = phone;
       state.phoneLoadedAt = sent;
     }
   } catch {}
@@ -26,7 +29,7 @@ async function phonePost(action, body = {}) {
     reply = { error: { detail: "The watch tool does not answer." } };
   }
   state.phoneBusy = false;
-  if (reply.error) state.phoneMessage = reply.error.detail;
+  state.phoneMessage = reply.error?.detail ?? reply.warning ?? "";
   return reply;
 }
 function phoneSession(now) {
@@ -63,11 +66,11 @@ function phoneControls(now) {
     },
     async onAccept() {
       state.phoneAccepted = live?.request ?? null;
-      await phonePost("accept");
+      await phonePost("accept", { pairingId: live?.pairingId });
       await phoneLoad();
     },
     async onDeny() {
-      await phonePost("deny");
+      await phonePost("deny", { pairingId: live?.pairingId });
       await phoneLoad();
     },
     async onRemove(deviceId) {

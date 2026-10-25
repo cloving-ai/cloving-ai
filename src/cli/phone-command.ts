@@ -1,6 +1,7 @@
 import { record, type Fields, type Reply } from "../protocol.ts";
 import type { PhoneInvocation } from "./phone-arguments.ts";
 import { phoneRequest } from "./phone-client.ts";
+import { oneLine } from "./render.ts";
 
 type Invocation = Extract<PhoneInvocation, { readonly kind: "phone" }>;
 
@@ -34,7 +35,7 @@ function listed(state: Fields): readonly Fields[] {
 function stateText(state: Fields): string {
   const registration =
     state["registered"] === true
-      ? `Registered as ${String(state["daemonId"])} with ${String(state["origin"])}.`
+      ? `Registered as ${oneLine(state["daemonId"])} with ${oneLine(state["origin"])}.`
       : "Not registered.";
   return `${registration} ${counted(listed(state).length)}.\n`;
 }
@@ -42,10 +43,8 @@ function stateText(state: Fields): string {
 function deviceLine(device: Fields): string {
   const removedAt = device["removedAt"];
   const condition =
-    typeof removedAt === "string"
-      ? `removed ${removedAt}`
-      : String(device["state"]);
-  return `${String(device["deviceId"])}  ${String(device["name"])} (${String(device["platform"])})  ${condition}  paired ${String(device["pairedAt"])}\n`;
+    typeof removedAt === "string" ? `removed ${removedAt}` : device["state"];
+  return `${oneLine(device["deviceId"])}  ${oneLine(device["name"])} (${oneLine(device["platform"])})  ${oneLine(condition)}  paired ${oneLine(device["pairedAt"])}\n`;
 }
 
 function listText(state: Fields): string {
@@ -57,14 +56,16 @@ function listText(state: Fields): string {
 
 function failed(context: PhoneContext, reply: Reply): number {
   if (reply.kind === "result") return 0;
-  context.terminal.error(`${reply.error.code}: ${reply.error.detail}\n`);
+  context.terminal.error(
+    `${oneLine(reply.error.code)}: ${oneLine(reply.error.detail)}\n`,
+  );
   return 1;
 }
 
 function warned(context: PhoneContext, result: Fields): void {
   const warning = result["warning"];
   if (typeof warning === "string")
-    context.terminal.error(`warning: ${warning}\n`);
+    context.terminal.error(`warning: ${oneLine(warning)}\n`);
 }
 
 const operations: Readonly<Record<Invocation["command"], string>> = {

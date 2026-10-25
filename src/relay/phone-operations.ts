@@ -34,10 +34,19 @@ const noRequest = refused(
   "No phone waits for an answer. Click Connect a phone and scan the code again.",
 );
 
-export async function pairAccept(relay: OperationState): Promise<Reply> {
+const changed = refused(
+  "pairing-changed",
+  "The pairing changed. Check the name and the code on the watch page again.",
+);
+
+export async function pairAccept(
+  relay: OperationState,
+  parameters: Fields,
+): Promise<Reply> {
   const open = requestedPairing(relay);
   const request = open?.request;
   if (open === undefined || request === undefined) return noRequest;
+  if (parameters["pairingId"] !== open.pairingId) return changed;
   const pairedAt = new Date().toISOString();
   const rejection = await relay.store.add({
     deviceId: request.deviceId,
@@ -79,9 +88,13 @@ export async function pairAccept(relay: OperationState): Promise<Reply> {
   return result({ deviceId: request.deviceId, state: "checking" });
 }
 
-export async function pairDeny(relay: OperationState): Promise<Reply> {
+export async function pairDeny(
+  relay: OperationState,
+  parameters: Fields,
+): Promise<Reply> {
   const open = requestedPairing(relay);
   if (open === undefined) return noRequest;
+  if (parameters["pairingId"] !== open.pairingId) return changed;
   await denied(open);
   relay.sessions.end(open, null);
   return result({ pairing: null });
