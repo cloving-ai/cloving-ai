@@ -223,7 +223,7 @@ export async function readAnswers(
       `inbox-failed: cloving.ai answered ${String(reply.status)}.`,
     );
   for (const item of inboxItems(reply.body))
-    if (!(await handled(context, { registration, item }))) break;
+    if (!(await handled(context, { registration, item }))) return false;
   return true;
 }
 

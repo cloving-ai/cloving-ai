@@ -90,10 +90,10 @@ await test("CLV-193 a failed receipt post keeps the answer, and the retry posts 
           device_id: fixtureDevice.deviceId,
           ciphertext: validAnswer(relay),
         });
-        await readAnswers(relay.context, reading);
+        assert.equal(await readAnswers(relay.context, reading), false);
         assert.deepEqual(relay.server.acked, []);
         assert.equal(await relay.store.inbox.cursor(), 0);
-        await readAnswers(relay.context, reading);
+        assert.equal(await readAnswers(relay.context, reading), true);
         assert.deepEqual(relay.server.acked, ["answer-1"]);
         const [first, second] = receiptIds(relay);
         assert.equal(typeof first, "string");
@@ -156,10 +156,10 @@ await test("CLV-193 a failed acknowledgement keeps the answer, and a malformed i
           device_id: fixtureDevice.deviceId,
           ciphertext: validAnswer(relay),
         });
-        await readAnswers(relay.context, reading);
+        assert.equal(await readAnswers(relay.context, reading), false);
         assert.deepEqual(relay.server.acked, []);
         assert.equal(await relay.store.inbox.cursor(), 0);
-        await readAnswers(relay.context, reading);
+        assert.equal(await readAnswers(relay.context, reading), true);
         assert.deepEqual(relay.server.acked, ["answer-1"]);
         assert.equal(await relay.store.inbox.cursor(), 2);
       },

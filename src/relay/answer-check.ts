@@ -65,9 +65,9 @@ const textNames = [
 
 const countNames = ["expectedRevision", "generation"] as const;
 
-const commands: ReadonlySet<unknown> = new Set(["answer", "approve", "deny"]);
+const commands: ReadonlySet<string> = new Set(["answer", "approve", "deny"]);
 
-const keyClasses: ReadonlySet<unknown> = new Set(["answer", "approval"]);
+const keyClasses: ReadonlySet<string> = new Set(["answer", "approval"]);
 
 const ageLimitMilliseconds = 10 * 60_000;
 
@@ -92,8 +92,8 @@ function wellFormed(fields: Fields): boolean {
       const value = fields[name];
       return Number.isSafeInteger(value) && Number(value) >= 1;
     }) &&
-    commands.has(fields["command"]) &&
-    keyClasses.has(fields["keyClass"]) &&
+    commands.has(String(fields["command"])) &&
+    keyClasses.has(String(fields["keyClass"])) &&
     !Number.isNaN(Date.parse(String(fields["signedAt"])))
   );
 }
