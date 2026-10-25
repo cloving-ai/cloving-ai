@@ -231,8 +231,6 @@ await test("CLV-198 two failed checks in a workflow cause only one failed-jobs r
 });
 
 await test("CLV-198 an unfinished workflow waits before requesting its failed jobs", async () => {
-  let now = 1_700_000_000_000;
-  mock.method(Date, "now", () => now++);
   let reads = 0;
   let now = 0;
   mock.method(Date, "now", () => now);
