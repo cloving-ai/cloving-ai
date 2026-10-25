@@ -2,6 +2,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
 import { githubRead } from "./github-retry.ts";
 import {
+  ciWait,
+  workflowAttempt,
+  attemptChecks,
+  rerunCi,
+  attemptOutput,
+  type CiWait,
+} from "./github-ci-rerun.ts";
+import {
   field,
   githubTiming,
   repositoryPath,
@@ -203,6 +211,71 @@ function pendingChecks(
   );
 }
 
+function runOf(check: CheckRun): string | undefined {
+  return check.app?.slug === "github-actions"
+    ? /\/actions\/runs\/(\d+)/.exec(check.details_url ?? "")?.[1]
+    : undefined;
+}
+
+async function rerunFailedChecks(
+  operation: Operation,
+  input: { readonly wait: CiWait; readonly failed: readonly CheckRun[] },
+): Promise<{
+  readonly failures: readonly CheckRun[];
+  readonly pending: readonly string[];
+}> {
+  const { wait, failed } = input;
+  const failures = failed.filter((check) => runOf(check) === undefined);
+  const pending: string[] = [];
+  const runs = new Set(failed.flatMap((check) => runOf(check) ?? []));
+  for (const run of runs) {
+    const checks = failed.filter((check) => runOf(check) === run);
+    const recorded = wait.reruns.find((rerun) => rerun.run === run);
+    const workflow = await workflowAttempt(operation, run);
+    if (workflow.attempt === 1) {
+      if (recorded === undefined && workflow.status === "completed")
+        await rerunCi(operation, {
+          wait,
+          rerun: {
+            run,
+            requestedAt: Date.now(),
+            output: await failedOutput(operation, checks),
+          },
+        });
+      pending.push(`workflow ${run} rerun`);
+      continue;
+    }
+    const ids = await attemptChecks(operation, {
+      run,
+      attempt: workflow.attempt,
+    });
+    const current = checks.filter((check) => ids.has(check.id));
+    if (current.length === 0) {
+      pending.push(`workflow ${run} rerun`);
+      continue;
+    }
+    failures.push(...current);
+  }
+  return { failures, pending };
+}
+
+async function ciFailureOutput(
+  operation: Operation,
+  input: { readonly wait: CiWait; readonly failed: readonly CheckRun[] },
+): Promise<string> {
+  const { wait, failed } = input;
+  const previous = wait.reruns.filter((rerun) =>
+    failed.some((check) => runOf(check) === rerun.run),
+  );
+  const current = await failedOutput(operation, failed);
+  return previous.length === 0
+    ? current
+    : attemptOutput([
+        previous.map((rerun) => rerun.output).join("\n"),
+        current,
+      ]);
+}
+
 export async function waitForCi(
   operation: Operation,
   commit: string,
@@ -217,7 +290,8 @@ export async function waitForCi(
     ciLimitMilliseconds: 5_400_000,
     ...operation.settings.timing,
   };
-  const started = Date.now();
+  const wait = await ciWait(operation, commit);
+  const started = wait.startedAt;
   const required = requiredChecks(operation);
   const names = new Set(required);
   for (;;) {
@@ -227,12 +301,16 @@ export async function waitForCi(
       (check) =>
         check.status === "completed" && !passing.has(check.conclusion ?? ""),
     );
-    if (failed.length > 0)
+    const retried = await rerunFailedChecks(operation, { wait, failed });
+    if (retried.failures.length > 0)
       return {
         reason: "ci-failed",
-        output: await failedOutput(operation, failed),
+        output: await ciFailureOutput(operation, {
+          wait,
+          failed: retried.failures,
+        }),
       };
-    const pending = pendingChecks(checks, names);
+    const pending = [...pendingChecks(checks, names), ...retried.pending];
     if (
       pending.length === 0 &&
       (required !== undefined ||
