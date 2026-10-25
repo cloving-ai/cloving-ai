@@ -3,7 +3,7 @@ import { link, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { located, readRecord } from "./operation-journal.ts";
 import { record } from "../protocol.ts";
-import type { CommandEffect } from "../command-settings.ts";
+import type { CommandEffect, CommandEffects } from "../command-settings.ts";
 
 function alreadyExists(error: unknown): boolean {
   if (Reflect.get(Object(error), "code") === "EEXIST") return false;
@@ -41,21 +41,26 @@ export async function recordCommandResult(
   }
 }
 
-export async function commandEffects(
-  journal: string,
-  effects: readonly CommandEffect[],
-): Promise<readonly CommandEffect[]> {
-  return Promise.all(
-    effects.map(async (effect) => {
-      const { folder } = located(journal, effect.operationId);
-      const result = record(await readRecord(folder, "result.json"));
-      const exitCode = result?.["exitCode"];
-      const duration = result?.["durationMilliseconds"];
-      return {
-        ...effect,
-        exitCode: typeof exitCode === "number" ? exitCode : null,
-        durationMilliseconds: typeof duration === "number" ? duration : null,
-      };
-    }),
-  );
+export function commandEffects(journal: string): CommandEffects {
+  const completed = new Map<
+    string,
+    Pick<CommandEffect, "exitCode" | "durationMilliseconds">
+  >();
+  return (effects) =>
+    Promise.all(
+      effects.map(async (effect) => {
+        const { key, folder } = located(journal, effect.operationId);
+        const cached = completed.get(key);
+        if (cached !== undefined) return { ...effect, ...cached };
+        const result = record(await readRecord(folder, "result.json"));
+        const exitCode = result?.["exitCode"];
+        const duration = result?.["durationMilliseconds"];
+        const metadata = {
+          exitCode: typeof exitCode === "number" ? exitCode : null,
+          durationMilliseconds: typeof duration === "number" ? duration : null,
+        };
+        if (result !== undefined) completed.set(key, metadata);
+        return { ...effect, ...metadata };
+      }),
+    );
 }

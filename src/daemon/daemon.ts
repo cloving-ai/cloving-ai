@@ -171,8 +171,7 @@ export async function startDaemon(
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
-    commandEffects: (effects) =>
-      commandEffects(join(settings.directory, "commands"), effects),
+    commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
     workflowBundles: {
@@ -196,17 +195,30 @@ export async function startDaemon(
     await closeWorkers(resources);
     return opening;
   }
-  await recoverCommands(commands, await given.promise);
+  const running = { ...resources, service: opening.service };
+  await recoverWorkers(running, given.promise);
   return {
     kind: "started",
-    daemon: await runningDaemon(settings, {
-      service: opening.service,
-      ...resources,
-    }),
+    daemon: await runningDaemon(settings, running),
   };
 }
 
 type Workers = Pick<Adapters, "worker" | "github" | "chats" | "commands">;
+
+async function recoverWorkers(
+  resources: Workers & { readonly service: Service },
+  ports: Promise<HostPorts>,
+): Promise<void> {
+  try {
+    await recoverCommands(resources.commands, await ports);
+  } catch (error) {
+    await Promise.allSettled([
+      closeWorkers(resources),
+      resources.service.close(),
+    ]);
+    throw error;
+  }
+}
 
 async function closeWorkers(resources: Workers): Promise<void> {
   await Promise.all([

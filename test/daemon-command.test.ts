@@ -128,3 +128,54 @@ process.exit(0);
       stopCommand(consumer.directory);
     }
   }));
+
+await test("CLV-178 failed command recovery releases the socket and ownership so startup can be retried", () =>
+  withConsumer(workflow, async (consumer) => {
+    try {
+      const crashed = await consumer.runUntil(
+        "command-started",
+        `${commandPrelude}
+writeFileSync("scan.mjs", 'import { writeFileSync } from "node:fs"; writeFileSync("command-pid", String(process.pid)); setInterval(() => {}, 1000);');
+await launch();
+await submit();
+await until(() => existsSync("command-pid"));
+await halt("command-started");
+`,
+      );
+      assert.equal(crashed.status, null);
+      const restarted = await consumer.run(`${commandPrelude}
+import filesystem from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+const write = filesystem.writeFile;
+let injected = 0;
+filesystem.writeFile = async (file, ...args) => {
+  if (String(file).includes("/commands/") && String(file).endsWith(".staged")) {
+    injected += 1;
+    throw Object.assign(new Error("command recovery disk full"), { code: "ENOSPC" });
+  }
+  return write(file, ...args);
+};
+syncBuiltinESMExports();
+try {
+  await assert.rejects(launch(), { code: "ENOSPC" });
+  assert.ok(injected > 0);
+  assert.equal(existsSync(runtimeDirectory + "/control.sock"), false);
+} finally {
+  filesystem.writeFile = write;
+  syncBuiltinESMExports();
+}
+writeFileSync("scan.mjs", 'process.stdout.write("recovered");');
+const daemon = await launch();
+try {
+  const admission = await asked("run", { workflowId: "review-queue", source: "input", submission: {}, commandId: "after-recovery" });
+  assert.equal(admission.kind, "run-admitted");
+  await until(async () => (await commandShown(admission.runId)).state === "completed");
+  assert.equal((await commandShown(admission.runId)).commandEffects[0].exitCode, 0);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+      assert.equal(restarted.status, 0, restarted.stderr);
+    } finally {
+      stopCommand(consumer.directory);
+    }
+  }));

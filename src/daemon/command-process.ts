@@ -68,6 +68,15 @@ function spawnCommand(start: CommandStart, configuration: string) {
   });
 }
 
+function writeStderr(descriptor: number, chunk: Buffer): boolean {
+  try {
+    writeSync(descriptor, chunk);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function startCommand(start: CommandStart): RunningCommand {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const began = performance.now();
@@ -97,7 +106,7 @@ export function startCommand(start: CommandStart): RunningCommand {
   boundedOutput(child.stderr, {
     bytes: commandLimits.stderrBytes,
     receive: (chunk) => {
-      writeSync(stderr, chunk);
+      if (!writeStderr(stderr, chunk)) fail("command-exit");
     },
     exceeded,
   });

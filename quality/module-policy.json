@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/command-journal-failures.test.ts": "test",
+    "test/command-journal.test.ts": "test",
     "src/steps/run-command.ts": "step",
     "test/command-step.test.ts": "test",
     "test/command-candidate.test.ts": "test",
