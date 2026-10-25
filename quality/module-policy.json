@@ -1097,7 +1097,10 @@
     "test/phone-relay-cases.test.ts": "test",
     "test/fixtures/phone-pairing.json": "test",
     "test/fixtures/qr-qrcodegen-1.8.0.json": "test",
-    "test/phone-checks.test.ts": "test"
+    "test/phone-checks.test.ts": "test",
+    "src/relay/relay-heartbeat.ts": "relay",
+    "src/relay/relay-control.ts": "relay",
+    "test/phone-heartbeat.test.ts": "test"
   },
   "allowed": {
     "quality": [

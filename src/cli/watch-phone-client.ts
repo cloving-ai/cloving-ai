@@ -50,6 +50,7 @@ function phoneControls(now) {
     stage: live?.stage ?? null,
     connected,
     refusal: state.phone?.refusal ?? null,
+    reason: state.phone?.reason ?? null,
     devices: state.phone?.devices ?? [],
     busy: state.phoneBusy,
     message: state.phoneMessage,

@@ -37,6 +37,7 @@ export interface FakeRelayServer {
   readonly pairings: Map<string, FakePairing>;
   readonly revoke: (token: string) => void;
   readonly change: (pairingId: string, update: Partial<FakePairing>) => void;
+  readonly list: (device: ListedDevice) => void;
   readonly close: () => Promise<void>;
 }
 
@@ -44,6 +45,12 @@ interface Settings {
   readonly pairingMilliseconds?: number;
   readonly receiptStatus?: number;
   readonly startDelayMilliseconds?: number;
+  readonly heartbeatStatuses?: number[];
+}
+
+export interface ListedDevice {
+  readonly device_id: string;
+  readonly revoked_at: string | null;
 }
 
 interface FakeState {
@@ -53,6 +60,7 @@ interface FakeState {
   readonly pairings: Map<string, FakePairing>;
   readonly revoked: Set<string>;
   readonly waiting: Set<() => void>;
+  readonly listed: ListedDevice[];
 }
 
 interface Exchange {
@@ -204,6 +212,26 @@ function pairingRoute(
   return acted(state, { pairing, action: String(action), body });
 }
 
+function daemonRoute(
+  state: FakeState,
+  exchange: {
+    readonly method: string;
+    readonly path: string;
+    readonly daemon: FakeDaemon;
+  },
+): Reply | undefined {
+  const { method, path, daemon } = exchange;
+  if (method === "DELETE") return removed(state, { daemon, path });
+  if (method === "PUT" && path === "/api/v1/relay/daemon/heartbeat")
+    return [
+      state.settings.heartbeatStatuses?.shift() ?? 200,
+      { daemon_id: daemon.daemonId },
+    ];
+  if (method === "GET" && path === "/api/v1/relay/devices")
+    return [200, { devices: state.listed }];
+  return undefined;
+}
+
 async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
   const { request, url, body } = exchange;
   const path = url.pathname;
@@ -217,8 +245,10 @@ async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
     );
     return opened(state, { daemon, body });
   }
-  if (request.method === "DELETE") return removed(state, { daemon, path });
-  return pairingRoute(state, { ...exchange, daemon });
+  return (
+    daemonRoute(state, { method: String(request.method), path, daemon }) ??
+    pairingRoute(state, { ...exchange, daemon })
+  );
 }
 
 async function answered(
@@ -252,6 +282,7 @@ export async function fakeRelayServer(
     pairings: new Map(),
     revoked: new Set(),
     waiting: new Set(),
+    listed: [],
   };
   const server = createServer((request, response) => {
     answered(state, { request, response }).catch(() => {
@@ -270,6 +301,9 @@ export async function fakeRelayServer(
     pairings: state.pairings,
     revoke: (token) => {
       state.revoked.add(token);
+    },
+    list: (device) => {
+      state.listed.push(device);
     },
     change: (pairingId, update) => {
       const pairing = state.pairings.get(pairingId);

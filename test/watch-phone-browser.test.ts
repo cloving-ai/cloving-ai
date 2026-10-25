@@ -18,7 +18,7 @@ interface Served {
 }
 
 interface PhoneFlow {
-  phase: "idle" | "open" | "requested" | "checking" | "connected";
+  phase: "idle" | "open" | "requested" | "checking" | "connected" | "lost";
 }
 
 const request = {
@@ -51,7 +51,15 @@ function phoneState(flow: PhoneFlow): unknown {
           },
         ]
       : [];
-  return { relay: "on", registered: true, pairing, refusal: null, devices };
+  const lost = flow.phase === "lost";
+  return {
+    relay: "on",
+    registered: !lost,
+    pairing,
+    refusal: null,
+    reason: lost ? "registration-lost" : null,
+    devices,
+  };
 }
 
 function phoneReply(path: string, lifetimeMilliseconds: number): unknown {
@@ -206,12 +214,12 @@ function flowAnswer(
   response.writeHead(200, { "content-type": type }).end(body);
 }
 
-async function flowBoard() {
+async function flowBoard(start: PhoneFlow["phase"] = "idle") {
   const library = await readFile(new URL(import.meta.resolve("preact")));
   const model = JSON.stringify(
     boardModel([], { workflows: ["develop-issue"] }),
   );
-  const flow: PhoneFlow = { phase: "idle" };
+  const flow: PhoneFlow = { phase: start };
   const advance: Readonly<Record<string, () => unknown>> = {
     "/actions/phone/pair": () => {
       flow.phase = "open";
@@ -278,4 +286,17 @@ await test("CLV-189 the request shows the name and the code, and Accept shows Co
     /Connect "Pixel 8a" \(android\)\? Code 482913/,
   );
   assert.match(String(result["done"]), /Connected: Pixel 8a/);
+});
+
+await test("CLV-190 after a lost registration the page shows the button and asks to connect the phones again", async () => {
+  await using board = await flowBoard("lost");
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 900, height: 800 });
+  await page.navigate(board.url);
+  const result = await page.evaluate(`(async () => {
+    ${helpers}
+    await until(() => document.querySelector(".phone")?.textContent?.includes("Connect your phones again."), "no reconnect text");
+    return { button: Boolean(button("Connect a phone")) };
+  })()`);
+  assert.equal(result["button"], true);
 });
