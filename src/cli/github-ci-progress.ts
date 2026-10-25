@@ -48,18 +48,37 @@ export async function ciRerunNotices(folder: string): Promise<CiRerunNotice[]> {
   );
 }
 
+function requestedRunIds(result: Fields): ReadonlySet<string> {
+  const runs: readonly unknown[] = Array.isArray(result["runs"])
+    ? result["runs"]
+    : [];
+  return new Set(
+    [result["run"], ...runs].flatMap((value) => {
+      const runId = record(value)?.["runId"];
+      return typeof runId === "string" ? [runId] : [];
+    }),
+  );
+}
+
 export async function withCiReruns(
   runtimeDirectory: string,
   reply: Reply,
 ): Promise<Reply> {
   if (reply.kind !== "result") return reply;
+  const { result } = reply;
+  const requested = requestedRunIds(result);
   const journal = join(dirname(runtimeDirectory), "github");
   const notices = new Map<string, CiRerunNotice[]>();
   for (const key of await readdir(journal).catch(() => [])) {
     const folder = join(journal, key);
-    const started = await stored(join(folder, "started.json"));
-    const runId = started?.["runId"];
-    if (started?.["method"] !== "merge" || typeof runId !== "string") continue;
+    const started = (await stored(join(folder, "started.json"))) ?? {};
+    const runId = started["runId"];
+    if (
+      started["method"] !== "merge" ||
+      typeof runId !== "string" ||
+      !requested.has(runId)
+    )
+      continue;
     notices.set(runId, [
       ...(notices.get(runId) ?? []),
       ...(await ciRerunNotices(folder)),
@@ -70,7 +89,6 @@ export async function withCiReruns(
     const found = notices.get(String(run?.["runId"])) ?? [];
     return found.length === 0 ? value : { ...run, ciReruns: found };
   };
-  const { result } = reply;
   return {
     kind: "result",
     result: {

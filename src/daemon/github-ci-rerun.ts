@@ -103,7 +103,11 @@ export async function attemptChecks(
 
 export async function rerunCi(
   operation: Operation,
-  request: { readonly wait: CiWait; readonly rerun: CiRerun },
+  request: {
+    readonly wait: CiWait;
+    readonly rerun: CiRerun;
+    readonly deadline: number;
+  },
 ): Promise<void> {
   const { wait, rerun } = request;
   wait.reruns.push(rerun);
@@ -112,6 +116,7 @@ export async function rerunCi(
     value: wait,
     permissions: "private",
   });
+  if (Date.now() >= request.deadline) return;
   try {
     await operation.calls.gh(["run", "rerun", rerun.run, "--failed"]);
   } catch (error) {

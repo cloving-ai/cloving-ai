@@ -217,9 +217,33 @@ function runOf(check: CheckRun): string | undefined {
     : undefined;
 }
 
+async function rerunBeforeDeadline(
+  operation: Operation,
+  request: {
+    readonly wait: CiWait;
+    readonly run: string;
+    readonly checks: readonly CheckRun[];
+    readonly deadline: number;
+  },
+): Promise<void> {
+  if (Date.now() >= request.deadline) return;
+  const output = await failedOutput(operation, request.checks);
+  const requestedAt = Date.now();
+  if (requestedAt >= request.deadline) return;
+  await rerunCi(operation, {
+    wait: request.wait,
+    rerun: { run: request.run, requestedAt, output },
+    deadline: request.deadline,
+  });
+}
+
 async function rerunFailedChecks(
   operation: Operation,
-  input: { readonly wait: CiWait; readonly failed: readonly CheckRun[] },
+  input: {
+    readonly wait: CiWait;
+    readonly failed: readonly CheckRun[];
+    readonly deadline: number;
+  },
 ): Promise<{
   readonly failures: readonly CheckRun[];
   readonly pending: readonly string[];
@@ -232,16 +256,18 @@ async function rerunFailedChecks(
     const checks = failed.filter((check) => runOf(check) === run);
     const recorded = wait.reruns.find((rerun) => rerun.run === run);
     const workflow = await workflowAttempt(operation, run);
+    if (
+      workflow.attempt === 1 &&
+      recorded === undefined &&
+      workflow.status === "completed"
+    )
+      await rerunBeforeDeadline(operation, {
+        wait,
+        run,
+        checks,
+        deadline: input.deadline,
+      });
     if (workflow.attempt === 1) {
-      if (recorded === undefined && workflow.status === "completed")
-        await rerunCi(operation, {
-          wait,
-          rerun: {
-            run,
-            requestedAt: Date.now(),
-            output: await failedOutput(operation, checks),
-          },
-        });
       pending.push(`workflow ${run} rerun`);
       continue;
     }
@@ -301,7 +327,11 @@ export async function waitForCi(
       (check) =>
         check.status === "completed" && !passing.has(check.conclusion ?? ""),
     );
-    const retried = await rerunFailedChecks(operation, { wait, failed });
+    const retried = await rerunFailedChecks(operation, {
+      wait,
+      failed,
+      deadline: started + limit,
+    });
     if (retried.failures.length > 0)
       return {
         reason: "ci-failed",

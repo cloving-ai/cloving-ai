@@ -1,15 +1,87 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import filesystem, { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { field, parsed, waitingGate, withHarness } from "./service-fixture.ts";
 import { watchedModel } from "./watch-fixture.ts";
 import { component } from "../src/cli/watch-element.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { rendered } from "./watch-dom.ts";
 import { sampleModel, sampleRun, at, noCopy } from "./watch-sample.ts";
-import { ciRerunNotices } from "../src/cli/github-ci-progress.ts";
+import { ciRerunNotices, withCiReruns } from "../src/cli/github-ci-progress.ts";
+
+async function rerunHistory(directory: string): Promise<void> {
+  for (const runId of ["selected", "paged", "unrelated"]) {
+    const folder = join(directory, "github", runId);
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      join(folder, "started.json"),
+      JSON.stringify({ method: "merge", runId }),
+    );
+    await writeFile(
+      join(folder, `ci-${"a".repeat(32)}.json`),
+      JSON.stringify({
+        commit: "b".repeat(40),
+        reruns: [{ run: "88", requestedAt: 1, output: "private log" }],
+      }),
+    );
+  }
+}
+
+await test("CLV-198 status reads CI records only for the requested runs", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-ci-status-"));
+  try {
+    await rerunHistory(directory);
+    const read = filesystem.readFile;
+    const reads: string[] = [];
+    mock.method(
+      filesystem,
+      "readFile",
+      (...arguments_: Parameters<typeof read>) => {
+        if (typeof arguments_[0] === "string") reads.push(arguments_[0]);
+        return read(...arguments_);
+      },
+    );
+    syncBuiltinESMExports();
+    for (const { result, requested } of [
+      { result: { run: { runId: "selected" } }, requested: ["selected"] },
+      {
+        result: { runs: [{ runId: "selected" }, { runId: "paged" }] },
+        requested: ["selected", "paged"],
+      },
+      { result: { runs: [] }, requested: [] },
+    ]) {
+      reads.length = 0;
+      const reply = await withCiReruns(join(directory, "run"), {
+        kind: "result",
+        result,
+      });
+      const ciReads = reads.filter((file) =>
+        file.endsWith(`ci-${"a".repeat(32)}.json`),
+      );
+      assert.deepEqual(
+        ciReads.toSorted(),
+        requested
+          .map((runId) =>
+            join(directory, "github", runId, `ci-${"a".repeat(32)}.json`),
+          )
+          .toSorted(),
+      );
+      assert.equal(reply.kind, "result");
+      assert.equal(JSON.stringify(reply).includes("private log"), false);
+      assert.equal(
+        JSON.stringify(reply).includes("ciReruns"),
+        requested.length > 0,
+      );
+    }
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 await test("CLV-198 rerun notices ignore incomplete and malformed private records", async () => {
   const folder = await mkdtemp(join(tmpdir(), "cloving-ci-notices-"));

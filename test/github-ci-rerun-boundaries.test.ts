@@ -1,13 +1,80 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import filesystem, {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
 import { checkRun, ciScenario } from "./github-ci-fixture.ts";
 
 const failed = checkRun({ conclusion: "failure" });
 const workflow = { run_attempt: 1, status: "completed" };
+
+await test("CLV-198 a CI deadline reached while persisting the rerun intent prevents the request", async () => {
+  let now = 0;
+  const rename = filesystem.rename;
+  mock.method(Date, "now", () => now);
+  mock.method(
+    filesystem,
+    "rename",
+    async (...arguments_: Parameters<typeof rename>) => {
+      await rename(...arguments_);
+      now = 20;
+    },
+  );
+  syncBuiltinESMExports();
+  try {
+    const { result, calls } = await ciScenario({
+      snapshots: [[failed]],
+      workflow: () => workflow,
+      timing: { ciLimitMilliseconds: 20 },
+    });
+    assert.equal(result?.reason, "ci-pending");
+    assert.deepEqual(
+      calls.filter((call) => call[1] === "rerun"),
+      [],
+    );
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+});
+
+await test("CLV-198 failed checks do not start reruns at or after the CI deadline", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  try {
+    for (const expiresDuring of ["poll", "workflow", "diagnostics"]) {
+      now = 0;
+      const { result, calls } = await ciScenario({
+        snapshots: [[failed]],
+        workflow: () => {
+          if (expiresDuring === "workflow") now = 20;
+          return workflow;
+        },
+        reply: () => {
+          if (expiresDuring === "diagnostics") now = 20;
+          return "{}";
+        },
+        timing: { ciLimitMilliseconds: expiresDuring === "poll" ? 0 : 20 },
+      });
+      assert.equal(result?.reason, "ci-pending", expiresDuring);
+      assert.deepEqual(
+        calls.filter((call) => call[1] === "rerun"),
+        [],
+        expiresDuring,
+      );
+    }
+  } finally {
+    mock.restoreAll();
+  }
+});
 
 await test("CLV-198 newer selected successes supersede a still pending historical rerun", async () => {
   const { result } = await ciScenario({
