@@ -246,7 +246,7 @@ async function linkedPackages(directory: string): Promise<void> {
   const modules = join(directory, "node_modules");
   const product = join(modules, "cloving");
   await mkdir(product, { recursive: true });
-  for (const entry of Object.keys(dependencies ?? {})) {
+  for (const entry of [...Object.keys(dependencies ?? {}), "@workflow/core"]) {
     await mkdir(dirname(join(modules, entry)), { recursive: true });
     await symlink(
       join(productRoot, "node_modules", entry),
