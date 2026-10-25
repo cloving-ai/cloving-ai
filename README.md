@@ -326,6 +326,32 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+### Daily loop facts
+
+Run `cloving report --since 24 --json` for a versioned JSON report, or omit `--json` for text. `--since` accepts whole hours from 1 to 168 and defaults to 24. The window includes its start and excludes its end; the command captures the end time once. It reads the daemon's committed events and individual run status through the control socket. Set `CLOVING_WATCH_REPOSITORY` to the service repository to enable GitHub reads; its local origin supplies the host, owner and repository. There is no current-directory fallback. `CLOVING_GH_COMMAND` selects the GitHub command as a JSON argument array, defaulting to `gh`.
+
+This is the first part of the daily report. The implemented values are:
+
+| JSON value | Meaning |
+| --- | --- |
+| `metrics.tickets.completed` | Currently closed GitHub issues whose state reason is completed and whose latest closure falls in the window. Pull requests and issues closed for another reason are excluded. This is a current snapshot: reopening an issue removes that closure from these figures. |
+| `metrics.pullRequests.merged` | Pull requests with a GitHub merge timestamp in the window. Closed, unmerged pull requests are excluded. |
+| `metrics.runs.completed` | Terminal `run.completed` events with no outcome or with `handoff_requested`, excluding partial ticket handoffs. |
+| `metrics.runs.partial` | Handoffs explicitly marked with partial ticket status. |
+| `metrics.runs.blocked` | Terminal `run.completed` events with the blocked outcome. |
+| `metrics.runs.failed` | Terminal `run.failed` events. |
+| `metrics.runs.cancelled` | Terminal `run.cancelled` events. |
+| `metrics.cost.medianRunUsd` | Median lifetime actual turn cost among runs ending in the window. Any unknown run cost makes this value unavailable. |
+| `runCosts` | Each ended run's outcome, end time, actual total USD cost, individual turn operation IDs and actual prices, plus the historical daily median run-cost baseline. All of a run's turn cost is attributed to its end time, including turns before the window. Estimates never replace unknown actual prices. An observed run with no worker turns and settled effects has cost zero. A cancelled run that is still draining, or any unresolved effect, leaves its total unavailable. Active runs are excluded. |
+
+Every metric has `value`, `comparisonValue`, `baseline` and `evidence`. Counts retain their requested-window totals in `value`; `comparisonValue` is their equivalent per 24 hours. Costs are not scaled. The baseline uses the seven consecutive 24-hour periods immediately before the window, anchored at the same time of day in UTC. It contains the median and the band from median minus three times the median absolute deviation to median plus three times that deviation. Only values strictly outside the band receive `mark: "outside"`. Individual run costs use the band of daily median run costs. With fewer than five complete observed days, `history` is `short`, the median and band are null, and there is no mark. Empty observed days count as zero for counts; days with no cost sample or with an unknown cost do not establish a daily cost median. An unrepresentable numeric band has unavailable history and no mark. Daemon history starts at its earliest retained event; GitHub history starts at repository creation.
+
+Evidence includes the contributing run IDs and event sequences, issue numbers or pull request numbers. Baseline evidence is separate from current-window evidence. Run cost details also expose each turn's operation ID. The daemon event read is pinned to the first page's latest sequence; later appended events are excluded. Run status and GitHub sources are separate reads, so the report is not an atomic cross-source snapshot.
+
+Each GitHub read uses the existing retry rules: transient network errors and HTTP 500, 502, 503 and 504 receive up to three attempts, with growing waits of 30 and 60 seconds. Read failure, invalid data, an unknown actual price or missing repository context is represented as `unavailable` with a null metric value, rather than zero. A failed source does not hide readable sources. `sources` shows which reads succeeded; the command exits zero when it produces a report, including one with unavailable sources. Invalid command arguments exit two.
+
+The `coverage` object explicitly marks the remaining facts unavailable: immutable ticket closure and reopening history, fix rounds per merged pull request, ready-to-merge lead time, phase durations, lane utilization and ready-ticket idle time, peak active runs, skips and unsuccessful streaks, first-attempt main CI passes, flaky failures and test names, reverted work, review scores, CI runner/OS utilization and limits, time-outs, reruns and runner waits, completed-ticket costs across attempts, and operator merges, reruns, labels and restarts. These facts are not inferred from the implemented counts. The report performs no model call, writes no state and changes no queue.
+
 ## Daily development
 
 `cloving start` copies the TypeScript files in `workflows/` into a host project and compiles them there. The bundled workflows are:
