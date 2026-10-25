@@ -30,16 +30,13 @@ function authorized(input: AuthorizationInput): boolean {
   );
 }
 
-function connected(
+function postRefusal(
   devices: readonly PhoneDevice[],
   deviceId: unknown,
-): boolean {
-  return devices.some(
-    (device) =>
-      device.deviceId === deviceId &&
-      device.state === "connected" &&
-      device.removedAt === null,
-  );
+): string | null {
+  const device = devices.find((item) => item.deviceId === deviceId);
+  if (device === undefined || device.removedAt !== null) return deviceRemoved;
+  return device.state === "connected" ? null : "device-not-connected";
 }
 
 export interface DeliveryOffer {
@@ -92,8 +89,8 @@ export async function openRelayStore(
     .with({ authorizationContext: relayPrincipal });
   const now = options.now ?? (() => Date.now());
   runtime.registerEffect(postEnvelopesEffect, async (request) => {
-    if (!connected(await devices.devices, request["deviceId"]))
-      return { at: now(), failure: deviceRemoved };
+    const refusal = postRefusal(await devices.devices, request["deviceId"]);
+    if (refusal !== null) return { at: now(), failure: refusal };
     return postEnvelopes({ phoneDirectory, now }, request);
   });
   const delivery = (decisionId: string) =>

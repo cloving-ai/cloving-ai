@@ -180,3 +180,18 @@ await test("CLV-191 a retry does not post to a phone that was removed", () =>
     );
     assert.equal(posts(server).length, 1);
   }));
+
+await test("CLV-191 a phone that pairs again keeps its delivery and gets the retry after it connects", () =>
+  withDelivery([500], async ({ server, clock, store }) => {
+    await store.delivery.offer(decisionId, offer);
+    assert.equal(await settled(store, clock), "failed");
+    await store.add({ ...knownDevice, state: "checking" });
+    clock.now += 60_000;
+    assert.equal(await settled(store, clock), "failed");
+    const [waiting] = await store.delivery.list(decisionId);
+    assert.equal(waiting?.lastFailure, "device-not-connected");
+    await store.connect(knownDevice.deviceId);
+    clock.now += 300_000;
+    assert.equal(await settled(store, clock), "sent");
+    assert.equal(posts(server).length, 2);
+  }));
