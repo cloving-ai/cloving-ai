@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Reply } from "../src/protocol.ts";
 import { newDaemonKeys } from "../src/relay/daemon-keys.ts";
 import { checkDecisions } from "../src/relay/decision-check.ts";
 import { openRelayStore } from "../src/relay/relay-store.ts";
@@ -185,6 +186,51 @@ await test("CLV-192 seven days after the closed envelope the delivery of the dec
       } finally {
         await reopened.close();
       }
+    });
+    await service.close();
+  }));
+
+await test("CLV-192 a failed status request keeps the decision open, and the next check closes it with the real outcome", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const waiting = await waitingGate(harness, {
+      service,
+      commandId: "c-1",
+      kind: "approval",
+    });
+    await withRelay({ harness }, async (relay) => {
+      await connected(relay.store, fixtureDevice);
+      await checked(relay);
+      await decide(harness, {
+        command: "approve",
+        reference: waiting.decisionId,
+        subjectDigest: digestOf(prompt),
+      });
+      const operations: string[] = [];
+      const unavailable: Reply = {
+        kind: "error",
+        error: { code: "service-unavailable", detail: "" },
+      };
+      await checkDecisions({
+        ...relay.context,
+        control: (request) => {
+          operations.push(request.operation);
+          return request.operation === "status"
+            ? Promise.resolve(unavailable)
+            : relay.context.control(request);
+        },
+      });
+      assert.deepEqual(operations, ["questions", "status"]);
+      assert.deepEqual(
+        (await relay.store.delivery.open()).map((item) => item.decisionId),
+        [waiting.decisionId],
+      );
+      await checked(relay);
+      assert.deepEqual(closedBody(relay), {
+        decisionId: waiting.decisionId,
+        outcome: "approved",
+        actor: "local",
+      });
     });
     await service.close();
   }));

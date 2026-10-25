@@ -10,8 +10,12 @@ import {
 } from "../src/relay/phone-delivery.ts";
 import { PhoneOutbox } from "../src/relay/phone-outbox.ts";
 import { writePrivate } from "../src/relay/relay-files.ts";
-import { openRelayStore } from "../src/relay/relay-store.ts";
-import { fixtureDaemonKeys, fixtureDevice } from "./phone-envelope-fixture.ts";
+import { openRelayStore, type RelayStore } from "../src/relay/relay-store.ts";
+import {
+  fixtureDaemonKeys,
+  fixtureDevice,
+  openedEnvelope,
+} from "./phone-envelope-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const issued = Date.parse("2026-10-26T12:00:00.000Z");
@@ -67,7 +71,12 @@ function fakeControl(
   };
 }
 
-await test("CLV-191 a check skips a refused reply, malformed rows and a run without a workflow, reads each run once and keeps the gate expiry", async () => {
+async function withCaseStore(
+  body: (scope: {
+    readonly phoneDirectory: string;
+    readonly store: RelayStore;
+  }) => Promise<void>,
+): Promise<void> {
   await withFiles({}, async (root) => {
     const phoneDirectory = join(root, "phone");
     await mkdir(phoneDirectory);
@@ -82,13 +91,6 @@ await test("CLV-191 a check skips a refused reply, malformed rows and a run with
       fixtureDaemonKeys,
     );
     const store = await openRelayStore(phoneDirectory);
-    const requests: ServiceRequest[] = [];
-    const context = {
-      phoneDirectory,
-      store,
-      control: fakeControl(requests),
-      now: () => issued,
-    };
     try {
       await store.add({
         ...fixtureDevice,
@@ -97,32 +99,84 @@ await test("CLV-191 a check skips a refused reply, malformed rows and a run with
         answerPublicKey: fixtureDevice.agreementPublicKey,
         approvalPublicKey: fixtureDevice.agreementPublicKey,
         pairedAt: "2026-10-25T12:00:00.000Z",
-        state: "checking",
+        state: "connected",
         removedAt: null,
       });
-      await store.connect(fixtureDevice.deviceId);
-      await checkDecisions(context);
-      await checkDecisions(context);
-      const expiry = async (decisionId: string) =>
-        (await store.delivery.list(decisionId))[0]?.envelopes.map(
-          (envelope) => envelope.expiresAt,
-        );
-      assert.deepEqual(await expiry("run-1/a"), [
-        "2026-10-26T13:00:00.000Z",
-        "2026-10-26T13:00:00.000Z",
-      ]);
-      assert.deepEqual(await expiry("run-1/b"), [
-        "2026-11-02T11:00:00.000Z",
-        "2026-11-02T11:00:00.000Z",
-      ]);
-      assert.deepEqual(await store.delivery.list("run-2/c"), []);
-      assert.deepEqual(
-        requests.map((request) => request.parameters["runId"] ?? null),
-        [null, null, "run-1", "run-2"],
-      );
+      await body({ phoneDirectory, store });
     } finally {
       await store.close();
     }
+  });
+}
+
+await test("CLV-191 a check skips a refused reply, malformed rows and a run without a workflow, reads each run once and keeps the gate expiry", async () => {
+  await withCaseStore(async ({ phoneDirectory, store }) => {
+    const requests: ServiceRequest[] = [];
+    const context = {
+      phoneDirectory,
+      store,
+      control: fakeControl(requests),
+      now: () => issued,
+    };
+    await checkDecisions(context);
+    await checkDecisions(context);
+    const expiry = async (decisionId: string) =>
+      (await store.delivery.list(decisionId))[0]?.envelopes.map(
+        (envelope) => envelope.expiresAt,
+      );
+    assert.deepEqual(await expiry("run-1/a"), [
+      "2026-10-26T13:00:00.000Z",
+      "2026-10-26T13:00:00.000Z",
+    ]);
+    assert.deepEqual(await expiry("run-1/b"), [
+      "2026-11-02T11:00:00.000Z",
+      "2026-11-02T11:00:00.000Z",
+    ]);
+    assert.deepEqual(await store.delivery.list("run-2/c"), []);
+    assert.deepEqual(
+      requests.map((request) => request.parameters["runId"] ?? null),
+      [null, null, "run-1", "run-2"],
+    );
+  });
+});
+
+await test("CLV-192 a decision of a run that the service no longer knows closes with the outcome unknown", async () => {
+  await withCaseStore(async ({ phoneDirectory, store }) => {
+    await store.delivery.offer("run-gone/a", {
+      runId: "run-gone",
+      deviceId: fixtureDevice.deviceId,
+      envelopes: [],
+    });
+    await checkDecisions({
+      phoneDirectory,
+      store,
+      control: (request) =>
+        Promise.resolve(
+          request.operation === "questions"
+            ? { kind: "result", result: { decisions: [] } }
+            : {
+                kind: "error",
+                error: { code: "unknown-run", detail: "" },
+              },
+        ),
+      now: () => issued,
+    });
+    assert.deepEqual(await store.delivery.open(), []);
+    const closed = (await store.delivery.list("run-gone/a")).find(
+      (item) => item.topic === "closed",
+    );
+    const ciphertext = closed?.envelopes[0]?.ciphertext ?? "";
+    const body = openedEnvelope(fixtureDevice.agreementPrivateKey, {
+      daemonId: "dmn_1",
+      deviceId: fixtureDevice.deviceId,
+      kind: "closed",
+      sealed: Buffer.from(ciphertext, "base64url"),
+    }).fields["body"];
+    assert.deepEqual(body, {
+      decisionId: "run-gone/a",
+      outcome: "unknown",
+      actor: null,
+    });
   });
 });
 

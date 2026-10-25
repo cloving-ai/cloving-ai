@@ -187,3 +187,40 @@ await test("CLV-191 a retry does not post to a phone that was removed", () =>
     );
     assert.equal(posts(server).length, 1);
   }));
+
+await test("CLV-192 a decision post that fails after the close gets no retry, and the closed post retries", () =>
+  withDelivery([500, 500], async ({ server, clock, store }) => {
+    await store.delivery.offer(decisionId, offer);
+    await store.delivery.close(decisionId, {
+      devices: [
+        {
+          deviceId: "phone-1",
+          envelopes: [
+            {
+              envelopeId: "env-closed-1",
+              kind: "closed",
+              ciphertext: "CCCC",
+              expiresAt: "2026-11-01T11:00:00.000Z",
+              push: "passive",
+              collapseId: "collapse-1",
+            },
+          ],
+        },
+      ],
+      at: clock.now,
+    });
+    await settled(store, clock);
+    clock.now += 86_400_000;
+    await settled(store, clock);
+    assert.deepEqual(
+      (await store.delivery.list(decisionId)).map((item) => [
+        item.topic,
+        item.state,
+      ]),
+      [
+        ["decision", "cancelled"],
+        ["closed", "sent"],
+      ],
+    );
+    assert.equal(posts(server).length, 3);
+  }));
