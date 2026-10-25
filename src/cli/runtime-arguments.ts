@@ -10,6 +10,7 @@ type DecisionCommand = "answer" | "approve" | "deny";
 type RunCommand = "pause" | "resume" | "drop";
 
 export type RuntimeInvocation =
+  | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }
   | {
       readonly kind: "run";
@@ -139,6 +140,15 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       required: [],
       allowed: eventOptions,
       build: events,
+    },
+  ],
+  [
+    "report",
+    {
+      subject: "none",
+      required: [],
+      allowed: () => ["since", "json"],
+      build: report,
     },
   ],
   [
@@ -362,4 +372,10 @@ function events(request: RuntimeRequest): Outcome {
   const follow = given(request, "follow");
   const json = given(request, "json");
   return { kind: "events", runId, after: after ?? 0, limit, follow, json };
+}
+
+function report(request: RuntimeRequest): Outcome {
+  const since = whole(valueOf(request, "since"), { minimum: 1, maximum: 168 });
+  if (since === invalid) return "invalid-option-value";
+  return { kind: "report", since: since ?? 24, json: given(request, "json") };
 }

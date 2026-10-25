@@ -1045,7 +1045,16 @@
     "src/service/run-metadata.ts": "service",
     "src/cli/command-effects.ts": "cli",
     "test/command-display.test.ts": "test",
-    "test/daemon-command.test.ts": "test"
+    "test/daemon-command.test.ts": "test",
+    "src/cli/report.ts": "cli",
+    "src/cli/report-github.ts": "cli",
+    "src/cli/github-retry.ts": "cli",
+    "src/report.ts": "pure",
+    "src/report-statistics.ts": "pure",
+    "test/report.test.ts": "test",
+    "test/report-fixture.ts": "test",
+    "test/report-github.test.ts": "test",
+    "test/cli-report.test.ts": "test"
   },
   "allowed": {
     "quality": [

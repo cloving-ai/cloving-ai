@@ -55,6 +55,7 @@ const options = {
   limit: { type: "string" },
   after: { type: "string" },
   follow: { type: "boolean" },
+  since: { type: "string" },
 } as const;
 
 type Parsed = ReturnType<

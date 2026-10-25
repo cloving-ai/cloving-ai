@@ -2,6 +2,12 @@ const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
 
 export const commandUsage: Readonly<Record<string, string>> = {
+  report: `Usage: cloving report [--since <hours>] [--json]
+
+Reads loop facts without writing state. Hours are a whole number from 1 to 168; default 24.
+Reports run outcomes, throughput and ended-run costs with seven-day medians and MAD bands.
+Unsupported facts and unreadable sources are unavailable.
+`,
   run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
@@ -102,6 +108,7 @@ Commands:
   chats import  Import explicitly selected Claude Code transcripts into private runtime files.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
+  report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.
   answer     Answer one design question.
   approve    Approve one pending approval.

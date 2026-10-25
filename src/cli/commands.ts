@@ -1,3 +1,4 @@
+import { reportCommand } from "./report.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
 import { readFile } from "node:fs/promises";
@@ -356,6 +357,8 @@ function located(
   invocation: Exclude<RuntimeInvocation, { kind: "command-help" }>,
   environment: Located,
 ): Promise<number> {
+  if (invocation.kind === "report")
+    return reportCommand(invocation, environment);
   if (invocation.kind === "run") return run(environment, invocation);
   if (invocation.kind === "status") return status(environment, invocation);
   if (invocation.kind === "decision") return decision(environment, invocation);
