@@ -38,7 +38,13 @@ execFileSync(
     "--project",
     "tsconfig.build.json",
   ],
-  { cwd: directory, timeout: childTimeout, encoding: "utf8", stdio: "pipe" },
+  {
+    cwd: directory,
+    timeout: childTimeout,
+    encoding: "utf8",
+    stdio: "pipe",
+    env: { ...process.env, NODE_V8_COVERAGE: undefined },
+  },
 );
 
 export function candidateProgram(source: string) {

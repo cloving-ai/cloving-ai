@@ -3,17 +3,22 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 export async function programs(
   root: string,
-  options: { readonly daemonMilliseconds?: number } = {},
+  options: {
+    readonly daemonMilliseconds?: number;
+    readonly watchStartupMilliseconds?: number;
+  } = {},
 ): Promise<{ readonly product: string; readonly project: string }> {
   const product = join(root, "product");
   const project = join(root, "project");
   await mkdir(join(product, "src"), { recursive: true });
   await mkdir(project);
   const program = (name: string): string => `
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+${name === "watch" ? `await new Promise(resolve => setTimeout(resolve, ${String(options.watchStartupMilliseconds ?? 0)}));` : ""}
 ${
   name === "daemon"
     ? `import { createServer } from "node:net";
@@ -29,7 +34,16 @@ process.on("SIGTERM", () => setTimeout(() => {
   clearInterval(timer);
 }, 50));
 writeFileSync(${JSON.stringify(join(root, `${name}-ready`))}, String(process.pid));
-${name === "daemon" && options.daemonMilliseconds ? `setTimeout(() => process.emit("SIGTERM"), ${String(options.daemonMilliseconds)});` : ""}
+${
+  name === "daemon" && options.daemonMilliseconds
+    ? `const deadline = Date.now() + ${String(testMilliseconds(30_000))};
+while (!existsSync(${JSON.stringify(join(root, "watch-ready"))})) {
+  if (Date.now() >= deadline) throw new Error("watch-startup-timed-out");
+  await new Promise(resolve => setTimeout(resolve, 10));
+}
+setTimeout(() => process.emit("SIGTERM"), ${String(options.daemonMilliseconds)});`
+    : ""
+}
 `;
   await writeFile(join(project, "start.mjs"), program("daemon"));
   await writeFile(join(product, "src/cli.ts"), program("watch"));
