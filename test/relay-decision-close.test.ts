@@ -15,8 +15,12 @@ import {
   type RelayUnderTest,
 } from "./relay-check-fixture.ts";
 import {
+  call,
   decide,
   digestOf,
+  eventually,
+  field,
+  items,
   later,
   noon,
   waitingGate,
@@ -107,6 +111,15 @@ await test("CLV-192 an expired decision closes with the outcome expired", () =>
         command: "approve",
         reference: waiting.decisionId,
         subjectDigest: digestOf(prompt),
+      });
+      await eventually(async () => {
+        const listed = await call(harness, {
+          operation: "questions",
+          parameters: {},
+        });
+        return items(field(listed, "decisions")).length === 0
+          ? true
+          : undefined;
       });
       await checked(relay);
       assert.deepEqual(closedBody(relay), {
