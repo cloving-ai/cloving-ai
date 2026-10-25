@@ -9,9 +9,13 @@ import filesystem, {
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mock, test } from "node:test";
+import { afterEach, mock, test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
 import { checkRun, ciScenario } from "./github-ci-fixture.ts";
+
+afterEach(() => {
+  mock.restoreAll();
+});
 
 const failed = checkRun({ conclusion: "failure" });
 const workflow = { run_attempt: 1, status: "completed" };
@@ -77,6 +81,8 @@ await test("CLV-198 failed checks do not start reruns at or after the CI deadlin
 });
 
 await test("CLV-198 newer selected successes supersede a still pending historical rerun", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const { result } = await ciScenario({
     snapshots: [
       [failed],
@@ -94,6 +100,8 @@ await test("CLV-198 newer selected successes supersede a still pending historica
 });
 
 await test("CLV-198 a passing required check does not wait for unrelated workflow jobs", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result } = await ciScenario({
     environment: { CLOVING_REQUIRED_CHECKS: '["quality_linux"]' },
@@ -106,6 +114,8 @@ await test("CLV-198 a passing required check does not wait for unrelated workflo
 });
 
 await test("CLV-198 a fresh second failure starts repair while sibling jobs still run", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result } = await ciScenario({
     snapshots: [[failed], [checkRun({ id: 202, conclusion: "failure" })]],
@@ -117,6 +127,8 @@ await test("CLV-198 a fresh second failure starts repair while sibling jobs stil
 });
 
 await test("CLV-198 an unreadable rerun record cannot trigger another request", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const folder = await mkdtemp(join(tmpdir(), "cloving-ci-unreadable-"));
   const file = join(folder, `ci-${operationKey("a".repeat(40))}.json`);
   try {
@@ -136,6 +148,8 @@ await test("CLV-198 an unreadable rerun record cannot trigger another request", 
 });
 
 await test("CLV-198 a rerun still pending at the CI deadline returns ci-pending with one request", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const { result, calls } = await ciScenario({
     snapshots: [[failed]],
     workflow: () => workflow,
@@ -146,6 +160,8 @@ await test("CLV-198 a rerun still pending at the CI deadline returns ci-pending 
 });
 
 await test("CLV-198 a completed rerun waits for fresh check results rather than using attempt one's failure", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result, calls } = await ciScenario({
     snapshots: [[failed]],
@@ -158,6 +174,8 @@ await test("CLV-198 a completed rerun waits for fresh check results rather than 
 });
 
 await test("CLV-198 a stale first-attempt sibling failure is not reported as a second failure", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result, times } = await ciScenario({
     snapshots: [
@@ -185,6 +203,8 @@ await test("CLV-198 a stale first-attempt sibling failure is not reported as a s
 });
 
 await test("CLV-198 an externally started rerun also waits for fresh failed checks", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const { result } = await ciScenario({
     snapshots: [[failed]],
     workflow: () => ({ run_attempt: 2, status: "in_progress" }),
@@ -195,6 +215,8 @@ await test("CLV-198 an externally started rerun also waits for fresh failed chec
 });
 
 await test("CLV-198 two failed checks in a workflow cause only one failed-jobs rerun", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result, calls } = await ciScenario({
     snapshots: [
@@ -210,23 +232,40 @@ await test("CLV-198 two failed checks in a workflow cause only one failed-jobs r
 
 await test("CLV-198 an unfinished workflow waits before requesting its failed jobs", async () => {
   let reads = 0;
-  const { result, calls } = await ciScenario({
-    snapshots: [[failed]],
-    workflow: () => ({
-      ...workflow,
-      status: ++reads === 1 ? "in_progress" : "completed",
-    }),
-    timing: { ciLimitMilliseconds: 20 },
-  });
-  assert.equal(result?.reason, "ci-pending");
-  assert.equal(calls.filter((call) => call[1] === "rerun").length, 1);
-  assert.ok(
-    calls.findIndex((call) => call[1] === "rerun") >
-      calls.findIndex((call) => call[1]?.includes("/actions/runs/88")),
-  );
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  try {
+    const { result, calls } = await ciScenario({
+      snapshots: [[failed]],
+      workflow: () => {
+        reads += 1;
+        now = Math.min(reads - 1, 2) * 10;
+        return {
+          ...workflow,
+          status: reads === 1 ? "in_progress" : "completed",
+        };
+      },
+      reply: (parts) => {
+        if (parts[1] === "rerun") now = 20;
+        return "{}";
+      },
+      timing: { ciLimitMilliseconds: 20 },
+    });
+    assert.equal(result?.reason, "ci-pending");
+    assert.equal(reads, 2);
+    assert.equal(calls.filter((call) => call[1] === "rerun").length, 1);
+    assert.ok(
+      calls.findIndex((call) => call[1] === "rerun") >
+        calls.findIndex((call) => call[1]?.includes("/actions/runs/88")),
+    );
+  } finally {
+    mock.restoreAll();
+  }
 });
 
 await test("CLV-198 malformed workflow attempts fail closed without requesting reruns", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   for (const value of [
     {},
     { run_attempt: 0, status: "completed" },
@@ -240,6 +279,8 @@ await test("CLV-198 malformed workflow attempts fail closed without requesting r
 });
 
 await test("CLV-198 malformed attempt-job pages cannot establish a second failure", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   for (const jobPages of [
     null,
     {},
@@ -255,6 +296,8 @@ await test("CLV-198 malformed attempt-job pages cannot establish a second failur
 });
 
 await test("CLV-198 failed workflows each receive their own single rerun", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const { result, calls } = await ciScenario({
     snapshots: [
       [
@@ -282,6 +325,8 @@ await test("CLV-198 failed workflows each receive their own single rerun", async
 });
 
 await test("CLV-198 both attempt log tails fit the existing diagnostic bound", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   let reads = 0;
   let logs = 0;
   const { result } = await ciScenario({
@@ -301,6 +346,8 @@ await test("CLV-198 both attempt log tails fit the existing diagnostic bound", a
 });
 
 await test("CLV-198 restart retains the original CI deadline and malformed records fail closed", async () => {
+  let now = 1_700_000_000_000;
+  mock.method(Date, "now", () => now++);
   const folder = await mkdtemp(join(tmpdir(), "cloving-ci-restart-"));
   const file = join(folder, `ci-${operationKey("a".repeat(40))}.json`);
   try {

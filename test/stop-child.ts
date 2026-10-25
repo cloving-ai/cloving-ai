@@ -48,7 +48,9 @@ export async function stopChildGroup(
   child: ChildProcess,
   options: { readonly graceMilliseconds?: number } = {},
 ): Promise<void> {
-  if (child.pid === undefined || !signalGroup(child.pid, "SIGTERM")) return;
+  if (child.pid === undefined) return;
+  await stopChild(child, options);
+  if (!signalGroup(child.pid, "SIGTERM")) return;
   const grace =
     options.graceMilliseconds ??
     5000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);

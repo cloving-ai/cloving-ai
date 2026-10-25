@@ -67,12 +67,11 @@ await test("CLV-121 valid serializable facts have no refusal codes and do not co
   const declaration = {
     workflow: {
       ...candidateDeclaration.workflow,
-      capabilities: ["claude", "github", "chats"],
+      capabilities: ["claude", "github"],
     },
     methods: {
       claude: ["run-turn", "inspect"],
       github: ["create-pull-request"],
-      chats: ["read"],
     },
   };
   assert.deepEqual(check(validCandidateAnalysis, declaration), []);

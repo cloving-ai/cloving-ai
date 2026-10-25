@@ -16,12 +16,8 @@ import {
   items,
 } from "./service-fixture.ts";
 
-import {
-  analysisSource,
-  analysisQuestionSetup,
-} from "./analyze-chats-sdk-fixture.ts";
+import { questionSource, questionSetup } from "./service-question-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
-import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 
 const subject = (kind: string, commandId: string): string =>
   digestOf(`${kind} of ${commandId}?`);
@@ -322,13 +318,11 @@ await test("CLV-008 an answered gate does not expire later", () =>
     await service.close();
   }));
 
-await test(
-  "CLV-148 analysis decisions reject stale bindings, preserve duplicate receipts and admit one continuation",
-  chatPlatformScenario(() =>
-    withConsumer(analysisSource, async (consumer) => {
-      const result = await consumer.run(`${analysisQuestionSetup}
+await test("CLV-148 compiled questions reject stale bindings, preserve duplicate receipts and admit one continuation", () =>
+  withConsumer(questionSource, async (consumer) => {
+    const result = await consumer.run(`${questionSetup}
 const codes = [];
-for (const change of [{ expectedRevision: 2 }, { generation: 2 }, { subjectDigest: digestOf("other candidate") }, { reference: "absent/analysis-question" }]) {
+for (const change of [{ expectedRevision: 2 }, { generation: 2 }, { subjectDigest: digestOf("other candidate") }, { reference: "absent/design-choice" }]) {
   codes.push((await answer("earlier", change)).code);
 }
 const first = await answer("earlier");
@@ -339,39 +333,34 @@ await until(async () => (await tagged()).every((run) => run.status === "complete
 codes.push((await answer("earlier", { commandId: "new-answer" })).code);
 const state = await ports.state();
 const gate = Object.values(state.gates).find((gate) => gate.runId === runId);
-print({ operationalSafe, privateQuestionRetained, early: early.code, codes, recorded: first.kind, sameReceipt: JSON.stringify(first.receipt) === JSON.stringify(repeated.receipt), replayed: repeated.replayed, continuations: (await tagged()).length - 1, answerBound: gate.runId === runId && gate.gateId === question.gateId && gate.outcome.answer === digestOf("earlier"), promptBound: digestOf(await ports.document(gate.prompt)) === question.subjectDigest });
+print({ early: early.code, codes, recorded: first.kind, sameReceipt: JSON.stringify(first.receipt) === JSON.stringify(repeated.receipt), replayed: repeated.replayed, continuations: (await tagged()).length - 1, answerBound: gate.runId === runId && gate.gateId === question.gateId && gate.outcome.answer === digestOf("earlier"), promptBound: digestOf(await ports.document(gate.prompt)) === question.subjectDigest });
 await finished(runId);
 `);
-      assert.equal(result.status, 0, result.stderr);
-      assert.deepEqual(result.lines[0], {
-        codes: [
-          "stale-revision",
-          "stale-generation",
-          "subject-mismatch",
-          "unknown-decision",
-          "conflicting-command",
-          "decision-not-pending",
-        ],
-        operationalSafe: true,
-        privateQuestionRetained: true,
-        early: "unknown-decision",
-        recorded: "decision-recorded",
-        sameReceipt: true,
-        replayed: true,
-        continuations: 1,
-        answerBound: true,
-        promptBound: true,
-      });
-      assert.equal(field(result.lines[1], "turns"), 2);
-      assert.deepEqual(field(result.lines[1], "outputs"), []);
-      assert.deepEqual(field(result.lines[1], "outcome"), {
-        kind: "blocked",
-        reason: "analysis-question-limit",
-      });
-      assert.deepEqual(field(result.lines[1], "budget"), {
-        limit: 5,
-        spent: 5,
-      });
-    }),
-  ),
-);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      codes: [
+        "stale-revision",
+        "stale-generation",
+        "subject-mismatch",
+        "unknown-decision",
+        "conflicting-command",
+        "decision-not-pending",
+      ],
+      early: "unknown-decision",
+      recorded: "decision-recorded",
+      sameReceipt: true,
+      replayed: true,
+      continuations: 1,
+      answerBound: true,
+      promptBound: true,
+    });
+    assert.equal(field(result.lines[1], "turns"), 2);
+    assert.deepEqual(field(result.lines[1], "outcome"), {
+      kind: "handoff_requested",
+      reason: null,
+    });
+    assert.deepEqual(field(result.lines[1], "budget"), {
+      limit: 5,
+      spent: 2,
+    });
+  }));

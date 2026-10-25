@@ -240,45 +240,6 @@ export async function withScene<Result>(
   }
 }
 
-export function installAnalysisCli(
-  scene: Pick<Scene, "directory">,
-  options: {
-    readonly reply: string;
-    readonly mode?: string;
-    readonly version?: string;
-    readonly help?: string;
-  },
-): () => void {
-  const record = join(scene.directory, "turns.log");
-  if (!existsSync(record)) writeFileSync(record, "", { mode: 0o600 });
-  const mode = options.mode ?? "fixed-reply";
-  const source = fakeClaude.replace(
-    'const [mode = "complete", record = ""] = process.argv.slice(2);',
-    `const mode = ${JSON.stringify(mode)}, record = ${JSON.stringify(record)};`,
-  );
-  const probe = `if (process.argv.includes("--version")) { process.stdout.write(${JSON.stringify(options.version ?? "2.1.302 (Claude Code)")}); process.exit(0); }\nif (process.argv.includes("--help")) { process.stdout.write(${JSON.stringify(options.help ?? "--tools --safe-mode --restricted --strict-mcp-config --mcp-config --disallowedTools --disable-slash-commands --setting-sources --settings --system-prompt --no-chrome --no-session-persistence --permission-prompts --print --output-format --verbose --max-turns --max-budget-usd --model")}); process.exit(0); }\n`;
-  writeFileSync(
-    join(scene.directory, "claude"),
-    `#!${process.execPath}\n${probe}${source}`,
-    { mode: 0o700 },
-  );
-  writeFileSync(`${record}.reply`, options.reply, { mode: 0o600 });
-  const tokenCommand = process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"];
-  process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = JSON.stringify([
-    process.execPath,
-    "-e",
-    'process.stdout.write("synthetic-subscription-token\\n")',
-  ]);
-  const previous = process.env["PATH"];
-  process.env["PATH"] = `${scene.directory}:${previous ?? ""}`;
-  return () => {
-    process.env["PATH"] = previous;
-    if (tokenCommand === undefined)
-      delete process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"];
-    else process.env["CLOVING_ANALYSIS_TOKEN_COMMAND"] = tokenCommand;
-  };
-}
-
 function turnRecord(line: string): TurnRecord {
   const parsed: unknown = JSON.parse(line);
   const texts = (value: unknown): string[] =>

@@ -4,6 +4,7 @@ import type { ServiceRequest } from "../src/protocol.ts";
 import {
   actionHeaders,
   cardRequest,
+  declaredWatch,
   pageToken,
   postCard,
 } from "./watch-action-fixture.ts";
@@ -181,12 +182,15 @@ await test("CLV-135 off removes the token and makes the endpoint an unknown path
 await test("CLV-135 declared string inputs are exposed and forwarded with source input", () => {
   const requests: ServiceRequest[] = [];
   return withWatchService(
-    (request) => {
-      if (request.operation === "run") requests.push(request);
-      return {
-        kind: "result",
-        result: { runs: [], workflows: ["analyze-chats", "unknown"] },
-      };
+    {
+      answer: (request) => {
+        if (request.operation === "run") requests.push(request);
+        return {
+          kind: "result",
+          result: { runs: [], workflows: ["review-corpus", "unknown"] },
+        };
+      },
+      configure: declaredWatch,
     },
     async (watch) => {
       const model: unknown = await (
@@ -194,7 +198,7 @@ await test("CLV-135 declared string inputs are exposed and forwarded with source
       ).json();
       assert.deepEqual(Reflect.get(Object(model), "cardForms"), [
         {
-          workflowId: "analyze-chats",
+          workflowId: "review-corpus",
           source: "input",
           fields: [
             {
@@ -210,7 +214,7 @@ await test("CLV-135 declared string inputs are exposed and forwarded with source
         headers: actionHeaders(watch, await pageToken(watch)),
         body: JSON.stringify({
           ...cardRequest,
-          workflowId: "analyze-chats",
+          workflowId: "review-corpus",
           fields: { importId: "import-1" },
         }),
       });
@@ -219,7 +223,7 @@ await test("CLV-135 declared string inputs are exposed and forwarded with source
         {
           operation: "run",
           parameters: {
-            workflowId: "analyze-chats",
+            workflowId: "review-corpus",
             source: "input",
             submission: { importId: "import-1" },
             commandId: "card-1",

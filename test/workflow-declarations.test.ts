@@ -70,21 +70,8 @@ await test("CLV-168 rejects malformed, duplicate and sparse handoff targets", as
   }
 });
 
-await test("CLV-115 admits chats only when explicitly declared", async () => {
-  await withFiles(
-    {
-      "review-run.ts": "export {};",
-      "review-run.declaration.json": JSON.stringify({
-        ...declaration,
-        capabilities: ["chats"],
-      }),
-    },
-    async (directory) => {
-      const declarations = await workflowDeclarations(directory, manifests);
-      assert.deepEqual(declarations[0]?.capabilities, ["chats"]);
-      assert.deepEqual(manifests["review"]?.capabilities, ["claude", "github"]);
-    },
-  );
+await test("CLV-202 rejects the retired chats capability in bundled declarations", async () => {
+  await rejectsDeclaration({ ...declaration, capabilities: ["chats"] });
 });
 
 await test("CLV-089 reads a declaration beside its workflow and binds its function", async () => {

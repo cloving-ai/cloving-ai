@@ -28,7 +28,8 @@ function refusedFiles(root: string): Record<string, string> {
     'export async function refused() { "use workflow"; return "SOURCE_SENTINEL"; }';
   files[`${refused}.declaration.json`] = JSON.stringify({
     ...candidateDeclaration,
-    workflow: { ...candidateDeclaration.workflow, workflowId: "" },
+    workflow: { ...candidateDeclaration.workflow, capabilities: ["chats"] },
+    methods: { chats: ["read-analysis"] },
   });
   for (const [name, statement] of Object.entries({
     export: "export const developTicket = 1;",

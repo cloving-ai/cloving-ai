@@ -61,6 +61,7 @@ await test("CLV-008 status gives the state, the revision, the pending decision a
         workflowId: "develop",
         state: "waiting_gate",
         condition: "waiting-decision",
+        awaitedRunId: null,
         revision: 3,
         latestSequence: 5,
         pendingDecisions: [waiting.decisionId],
