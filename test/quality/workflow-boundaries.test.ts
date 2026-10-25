@@ -7,6 +7,49 @@ import { withProgram } from "./program-fixture.ts";
 const step =
   'export async function execute(input: { id: string }) { "use step"; return { id: input.id }; }';
 
+await test("QG-06 allows bounded SDK retry metadata only on the defining step", async () => {
+  for (const count of [0, 86401])
+    assert.deepEqual(
+      await findings({
+        "step.ts": `${step}\nexecute.maxRetries = ${String(count)};`,
+      }),
+      [],
+    );
+});
+
+for (const assignment of [
+  'execute.maxRetries = Number("86401");',
+  "execute.maxRetries = -1;",
+  "execute.maxRetries = 86402;",
+  "execute.maxRetries = 1.5;",
+  "execute.maxRetries += 1;",
+  'execute["maxRetries"] = 1;',
+  "execute.other = 1;",
+  "const retries = execute.maxRetries;",
+  "function configure() { execute.maxRetries = 1; }",
+])
+  await test(`QG-06 rejects retry metadata escape ${assignment}`, async () => {
+    assert.ok(
+      (
+        await findings({
+          "step.ts": `${step}\nexecute.maxRetries = 1;\n${assignment}`,
+        })
+      ).some((finding) => finding.startsWith("step-value-escape")),
+    );
+  });
+
+await test("QG-06 a workflow cannot change an imported step's retry metadata", async () => {
+  assert.ok(
+    (
+      await findings({
+        "step.ts": `${step}\nexecute.maxRetries = 1;`,
+        "flow.ts":
+          'import { execute } from "./step.js"; execute.maxRetries = 86401;',
+      })
+    ).some((finding) => finding.startsWith("step-value-escape")),
+  );
+});
+
 async function findings(sources: Readonly<Record<string, string>>) {
   return await withProgram(sources, (program) => {
     const files = program.getRootFileNames();

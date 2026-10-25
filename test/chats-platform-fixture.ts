@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chatsWorker } from "../src/daemon/chats-worker.ts";
-import { analysisIntent } from "./chats-worker-fixture.ts";
 import { importChats } from "../src/chats/import.ts";
 import { redactImport } from "../src/chats/redact-import.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -37,18 +35,6 @@ async function assertChatPlatformRefusal(): Promise<void> {
         runtimeDirectory: "runtime",
         settings: { home: null, privateTexts: [] },
       });
-      const worker = chatsWorker({
-        runtimeDirectory: directory,
-        document: () => Promise.resolve(undefined),
-        workflowId: () => Promise.resolve(undefined),
-      });
-      const analysis = await worker.deliver(
-        analysisIntent("read-analysis"),
-        new AbortController().signal,
-      );
-      await worker.close();
-      assert.equal(analysis.kind, "failed");
-      assert.equal(Reflect.get(analysis, "reason"), "platform-unsupported");
       assert.equal(imported.code, "platform-unsupported");
       assert.equal(imported.importId, null);
       assert.equal(redacted.code, "platform-unsupported");

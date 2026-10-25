@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { getStepMetadata, getWorkflowMetadata } from "workflow";
 import { gateKey } from "../authority/gates.ts";
+import { runWait, type RunWaitPorts } from "./run-wait.ts";
 import {
   stepBridgeKey,
   type GateRequest,
@@ -15,11 +16,17 @@ export interface StepCall {
   readonly worldRunId: string;
   readonly stepId: string;
   readonly attempt: number;
+  readonly startedAt?: number;
 }
 
 export function sdkStepCall(): StepCall {
-  const { stepId, attempt } = getStepMetadata();
-  return { worldRunId: getWorkflowMetadata().workflowRunId, stepId, attempt };
+  const { stepId, attempt, stepStartedAt } = getStepMetadata();
+  return {
+    worldRunId: getWorkflowMetadata().workflowRunId,
+    stepId,
+    attempt,
+    startedAt: stepStartedAt.getTime(),
+  };
 }
 
 export interface OperationRead {
@@ -83,6 +90,7 @@ export const bridgeTiming: BridgeTiming = {
 };
 
 export interface BridgePorts {
+  readonly runWait?: RunWaitPorts;
   readonly call: () => StepCall;
   readonly run: (
     worldRunId: string,
@@ -342,6 +350,21 @@ export function stepBridge(ports: BridgePorts): StepBridge {
   return {
     effect: (request) => effect(hold, request),
     gate: (request) => gate(hold, request),
+    waitForRun: async (request) => {
+      const call = ports.call();
+      const world = await located(hold, call.worldRunId);
+      if (
+        world === undefined ||
+        ports.runWait === undefined ||
+        call.startedAt === undefined
+      )
+        throw new Error("cloving-host-unavailable");
+      await inWork(hold, world.runId);
+      return await runWait(ports.runWait, {
+        caller: { ...world, stepId: call.stepId, startedAt: call.startedAt },
+        request,
+      });
+    },
     handoff: (request) =>
       effect(hold, {
         scope: {

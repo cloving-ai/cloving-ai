@@ -1,8 +1,6 @@
 import { join } from "node:path";
 import { ticketStatus } from "../ticket-status.ts";
 import { sumPrices } from "../worker-usage.ts";
-import { analysisWorker } from "./analysis-worker.ts";
-import { analysisMethod } from "./analysis-launch.ts";
 import {
   profileCommand,
   type TurnProfile,
@@ -345,35 +343,22 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
     active: new Map(),
     stopping: new AbortController(),
   };
-  const analysis = analysisWorker(settings);
-  const guarded = async <T>(intent: DeliveryIntent, run: () => Promise<T>) => {
-    if (
-      !turnIntent(intent) ||
-      Object.hasOwn(settings.profiles ?? {}, "analyze-chats") ||
-      (await runWorkflow(settings, intent.runId)) !== "analyze-chats"
-    )
-      return failure("analysis-worker-unavailable");
-    return run();
-  };
+  const guarded = <T>(intent: DeliveryIntent, run: () => Promise<T>) =>
+    intent.method === "run-turn:analyze-chats"
+      ? Promise.resolve(failure("unsupported-effect"))
+      : run();
   return {
     deliver: (intent, signal) =>
-      intent.method === analysisMethod
-        ? guarded(intent, () => analysis.deliver(intent, signal))
-        : delivered(parts, {
-            intent,
-            signal: AbortSignal.any([signal, parts.stopping.signal]),
-          }),
-    reconcile: (intent, signal) =>
-      intent.method === analysisMethod
-        ? guarded(intent, () => analysis.reconcile(intent, signal))
-        : reconciled(parts, intent),
-    stop: (intent, signal) =>
-      intent.method === analysisMethod
-        ? guarded(intent, () => analysis.stop(intent, signal))
-        : stopped(parts, intent),
+      guarded(intent, () =>
+        delivered(parts, {
+          intent,
+          signal: AbortSignal.any([signal, parts.stopping.signal]),
+        }),
+      ),
+    reconcile: (intent) => guarded(intent, () => reconciled(parts, intent)),
+    stop: (intent) => guarded(intent, () => stopped(parts, intent)),
     close: async () => {
       parts.stopping.abort();
-      await analysis.close();
       await Promise.all(
         [...parts.active.values()].map((active) => halted(parts, active)),
       );

@@ -14,7 +14,6 @@ import {
   priceForModel,
   type TokenPrices,
 } from "../token-prices.ts";
-import { analysisCommand } from "./analysis-launch.ts";
 import {
   capacityRefusal,
   startTurn,
@@ -98,12 +97,8 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
 
 function attemptCommand(attempts: Attempts, attempt: number) {
   const { start, options } = attempts;
-  const original =
-    start.mode === "analysis" ? analysisCommand() : start.command;
-  const fallback =
-    start.mode === "analysis"
-      ? undefined
-      : options.fallbackModels?.[attempt - 3];
+  const original = start.command;
+  const fallback = options.fallbackModels?.[attempt - 3];
   const command =
     fallback === undefined ? original : replaceCommandModel(original, fallback);
   const model = commandModel(command);
@@ -129,10 +124,7 @@ function attemptUsage(
     usage,
     costUsd: end.result?.costUsd ?? null,
     estimatedCostUsd: estimatedCostUsd(usage, {
-      worker:
-        attempts.start.mode === "analysis"
-          ? "claude"
-          : (attempts.start.worker ?? "claude"),
+      worker: attempts.start.worker ?? "claude",
       price: priceForModel(attempts.options.tokenPrices ?? {}, model),
     }),
   };
@@ -143,7 +135,7 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
   const attempt = ends.length + 1;
   const selected = attemptCommand(attempts, attempt);
   const folder =
-    start.mode === "analysis" || attempt === 1
+    attempt === 1
       ? start.folder
       : join(start.folder, `attempt-${String(attempt)}`);
   const entry = {
@@ -171,10 +163,7 @@ async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
     command: selected.command,
     folder,
     ...(attempt === 1 ? {} : { activityFolder: start.folder }),
-    prompt:
-      start.mode === "analysis" || attempt === 1
-        ? start.prompt
-        : continuation + start.prompt,
+    prompt: attempt === 1 ? start.prompt : continuation + start.prompt,
   });
   try {
     const value = { ...entry, phase: "running", processId: turn.processId };

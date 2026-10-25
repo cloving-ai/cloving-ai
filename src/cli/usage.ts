@@ -62,7 +62,7 @@ The default port is 3663. The page is read only. Stop it with Control-C.
 
 Starts the Cloving service for one git repository, with the workflow host,
 the Claude worker and the watch page. The default repository is the current
-directory. This command works in a development checkout of Cloving.
+directory.
 Stop it with Control-C.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
@@ -77,13 +77,12 @@ The command reads these settings from the environment:
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between develop-issue queue checks; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND. Unset means no queue. The queue stops after three runs in a row without a successful handoff; manual develop-issue submissions are refused with workflow-active when all lanes are busy.
   CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
   CLOVING_SELF_UPDATE_SECONDS      A whole number from 30 to 3600 seconds between checks of the own checkout; unset means no update. An update stops the daemon and restarts with new code. A change of package-lock.json needs the operator to update and install by hand.
-  CLOVING_ANALYSIS_TOKEN_COMMAND   A JSON list of a program and its nonempty string arguments, run without a shell just before analysis. It has limits of 10 seconds and 4096 combined stdout/stderr bytes; stdout must be one printable ASCII token without spaces, at most 512 bytes after one final line break. Only analysis receives CLAUDE_CODE_OAUTH_TOKEN; API keys are excluded. There is no default.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
   CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read once at start. The setting has no default.
   CLOVING_COMMANDS                A JSON object mapping names to argument arrays with an absolute executable path. Invalid values refuse startup with invalid-commands. Unset means no commands. Command execution is not available yet.
   CLOVING_COMMAND_SECONDS         A whole number from 1 to 3600 seconds; the default is 60. Invalid values refuse startup with invalid-command-seconds. Reserved for command execution.
   CLOVING_TOKEN_PRICES             A JSON object from model names to input, cachedInput and output USD prices per million tokens for estimates; entries override matching built-in prices.
-  CLOVING_FALLBACK_MODELS          A JSON array of at most three nonempty model names; the default is no fallback. After capacity refusals the first retry keeps the main model and the third attempt uses the first fallback, with the same waits and attempt limit. Requires an explicit -m, --model or --model= argument; does not change analyze-chats analysis. A fallback can have a higher price.
+  CLOVING_FALLBACK_MODELS          A JSON array of at most three nonempty model names; the default is no fallback. After capacity refusals the first retry keeps the main model and the third attempt uses the first fallback, with the same waits and attempt limit. Requires an explicit -m, --model or --model= argument. A fallback can have a higher price.
   CLOVING_WORKER                   The worker for each turn: claude or codex. The default is claude. Other values stop the start with invalid-worker.
   CLOVING_CODEX_COMMAND            A JSON list of a command and its arguments, used only when CLOVING_WORKER is codex; CLOVING_CLAUDE_COMMAND is then ignored. The default is codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -, with no sandbox and no approval prompts.
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.

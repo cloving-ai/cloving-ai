@@ -358,3 +358,24 @@ await test("CLV-013 a target with path characters gives a work tree inside the w
       ["", null, null, null],
     );
   }));
+
+await test("CLV-202 retained analysis turns are unsupported even with a matching profile", () =>
+  withScene(async (scene) => {
+    for (const profiles of [
+      {},
+      { "analyze-chats": { allowedTools: ["Bash"] } },
+    ]) {
+      const worker = scene.worker("hold", {
+        profiles,
+        workflowId: () => Promise.resolve("analyze-chats"),
+      });
+      const retired = intent({ method: "run-turn:analyze-chats" });
+      for (const deliver of [worker.deliver, worker.reconcile, worker.stop])
+        assert.deepEqual(await deliver(retired, signal), {
+          kind: "failed",
+          reason: "unsupported-effect",
+        });
+    }
+    assert.deepEqual(scene.turns(), []);
+    assert.deepEqual(scene.reports, []);
+  }));

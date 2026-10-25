@@ -39,6 +39,10 @@
       "types": "./dist/src/steps/handoff.d.ts",
       "import": "./dist/src/steps/handoff.js"
     },
+    "./workflows/steps/wait-for-run": {
+      "types": "./dist/src/steps/wait-for-run.d.ts",
+      "import": "./dist/src/steps/wait-for-run.js"
+    },
     "./workflows/steps/run-command": {
       "types": "./dist/src/steps/run-command.d.ts",
       "import": "./dist/src/steps/run-command.js"
