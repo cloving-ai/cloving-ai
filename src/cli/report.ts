@@ -227,19 +227,15 @@ function outcomeOf(event: Fields): ReportOutcome | null {
 }
 
 export function reportCompletion(event: Fields): ReportCompletion | null {
+  const terminal = ["run.completed", "run.failed", "run.cancelled"].includes(
+    String(event["type"]),
+  );
+  if (!terminal) return null;
   const outcome = outcomeOf(event);
+  if (outcome === null) throw new Error("invalid-report-event");
   const runId = event["runId"];
   const sequence = event["sequence"];
   const at = event["recordedAt"];
-  if (outcome === null) {
-    if (
-      ["run.completed", "run.failed", "run.cancelled"].includes(
-        String(event["type"]),
-      )
-    )
-      throw new Error("invalid-report-event");
-    return null;
-  }
   if (
     typeof runId !== "string" ||
     typeof sequence !== "number" ||

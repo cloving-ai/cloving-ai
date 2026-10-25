@@ -50,7 +50,7 @@ interface ReportInput {
 function outcomeMetrics(
   input: ReportInput,
   window: ReportWindow,
-): Record<string, unknown> {
+): Record<string, ReturnType<typeof reportMetric>> {
   return Object.fromEntries(
     reportOutcomes.map((outcome) => {
       const data =

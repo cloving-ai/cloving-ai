@@ -35,6 +35,54 @@ const pull = (
   ...extra,
 });
 
+function projectedIssues(values: unknown, query: string | undefined) {
+  if (
+    query !==
+    'map({number, html_url, closed_at, state, state_reason} + (if has("pull_request") then {pull_request: {}} else {} end))'
+  )
+    throw new Error("invalid-fixture-projection");
+  if (!Array.isArray(values)) throw new Error("invalid-fixture-rows");
+  return values.map((value: unknown) =>
+    Object.fromEntries(
+      Object.entries(value ?? {}).filter(([key]) =>
+        [
+          "number",
+          "html_url",
+          "closed_at",
+          "state",
+          "state_reason",
+          "pull_request",
+        ].includes(key),
+      ),
+    ),
+  );
+}
+
+function issueOutput(
+  request: WatchCommandRequest,
+  input: { readonly pages: unknown; readonly limit: number | undefined },
+): WatchCommandOutput {
+  const { pages, limit } = input;
+  const endpoint =
+    request.command.find((part) => part.startsWith("repos/")) ?? "";
+  const page = Number(/page=(\d+)$/.exec(endpoint)?.[1] ?? 1);
+  let values: unknown = pages;
+  if (Array.isArray(pages) && !request.command.includes("--slurp"))
+    values = page <= pages.length ? pages[page - 1] : [];
+  const query = request.command.indexOf("--jq");
+  if (query !== -1)
+    values = projectedIssues(values, request.command[query + 1]);
+  const result = output(values);
+  return limit !== undefined && Buffer.byteLength(result.stdout) > limit
+    ? {
+        ...result,
+        stdout: "",
+        status: 1,
+        errorCode: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+      }
+    : result;
+}
+
 function fixture(
   options: {
     readonly issues?: unknown;
@@ -43,6 +91,7 @@ function fixture(
     readonly failures?: readonly WatchCommandOutput[];
     readonly created?: string;
     readonly repositoryName?: string;
+    readonly issueOutputLimit?: number;
   } = {},
 ) {
   const commands: (readonly string[])[] = [];
@@ -67,8 +116,15 @@ function fixture(
     if (endpoint === "repos/fixture/demo")
       return Promise.resolve(output(metadata));
     if (endpoint.includes("/issues?")) {
-      const failure = options.failures?.[attempts++];
-      return Promise.resolve(failure ?? output(issueRows));
+      const failure = options.failures?.[attempts];
+      attempts += 1;
+      return Promise.resolve(
+        failure ??
+          issueOutput(request, {
+            pages: issueRows,
+            limit: options.issueOutputLimit,
+          }),
+      );
     }
     const page = Number(/page=(\d+)$/.exec(endpoint)?.[1] ?? 1);
     return Promise.resolve(output(pullPages[page - 1] ?? []));
@@ -115,6 +171,54 @@ await test("CLV-199 GitHub reads validate repository identity and separate compl
           command.includes("github.example"),
       ),
   );
+});
+
+await test("CLV-199 large GitHub issue pages keep ticket counts and baseline evidence within the CLI output limit", async () => {
+  const first = Array.from({ length: 100 }, (_, index) =>
+    issue(index + 1, { body: "x".repeat(65_536) }),
+  );
+  const scene = fixture({
+    issues: [
+      first,
+      [
+        issue(101, { closed_at: "2026-10-20T12:00:00Z" }),
+        issue(102, { pull_request: {} }),
+        issue(103, { state_reason: "not_planned" }),
+      ],
+    ],
+    issueOutputLimit: 1024 * 1024,
+  });
+  const result = await readReportGithub({ since, settings: scene.settings });
+  assert.equal(result.sources.issues.status, "available");
+  assert.equal(result.issues?.length, 101);
+  assert.deepEqual(result.issues.at(-1), {
+    at: Date.parse("2026-10-20T12:00:00Z"),
+    value: 1,
+    evidence: { issue: 101 },
+  });
+  assert.equal(scene.attempts(), 2);
+});
+
+await test("CLV-199 an unreadable later issue page retries without reporting partial ticket counts", async () => {
+  const first = Array.from({ length: 100 }, (_, index) => issue(index + 1));
+  const failure = { ...output(null), status: 1, stderr: "HTTP 502 (HTTP 502)" };
+  const scene = fixture({
+    failures: [output(first), failure, failure, failure],
+  });
+  const result = await readReportGithub({
+    since,
+    retryMilliseconds: 1,
+    settings: scene.settings,
+  });
+  assert.equal(scene.attempts(), 4);
+  assert.equal(result.issues, null);
+  assert.equal(result.sources.issues.reason, "github-network-failed");
+  assert.equal(result.sources.pulls.status, "available");
+  const repeated = await readReportGithub({
+    since,
+    settings: fixture({ issues: [first, first] }).settings,
+  });
+  assert.equal(repeated.issues, null);
 });
 
 await test("CLV-199 transient GitHub reads use three attempts and keep other sources available", async () => {

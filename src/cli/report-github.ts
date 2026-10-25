@@ -118,15 +118,19 @@ async function issuesOf(
   reader: Reader,
   since: string,
 ): Promise<readonly ReportDatum[]> {
-  const pages = await reader.read(
-    `issues?state=closed&since=${encodeURIComponent(since)}&per_page=100`,
-    ["--paginate", "--slurp"],
-  );
-  if (!Array.isArray(pages)) throw new Error("response");
   const result: ReportDatum[] = [];
   const seen = new Set<number>();
-  for (const page of pages) {
-    for (const row of rows(page)) {
+  for (let page = 1; ; page += 1) {
+    const values = rows(
+      await reader.read(
+        `issues?state=closed&since=${encodeURIComponent(since)}&per_page=100&page=${String(page)}`,
+        [
+          "--jq",
+          'map({number, html_url, closed_at, state, state_reason} + (if has("pull_request") then {pull_request: {}} else {} end))',
+        ],
+      ),
+    );
+    for (const row of values) {
       if (Object.hasOwn(row, "pull_request")) continue;
       const number = identity(row, {
         repository: reader.repository,
@@ -141,8 +145,8 @@ async function issuesOf(
         evidence: { issue: number },
       });
     }
+    if (values.length < 100) return result;
   }
-  return result;
 }
 
 async function pullsOf(
