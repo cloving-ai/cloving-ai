@@ -20,6 +20,7 @@ import {
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import pairing from "./fixtures/phone-pairing.json" with { type: "json" };
 import type { Harness } from "./service-fixture.ts";
 
 export interface PostedItem {
@@ -31,7 +32,7 @@ export interface PostedItem {
   readonly collapseId: unknown;
 }
 
-const kinds: readonly EnvelopeKind[] = ["preview", "full", "closed"];
+const kinds: readonly EnvelopeKind[] = ["preview", "full", "closed", "receipt"];
 
 function kindOf(value: unknown): EnvelopeKind {
   return kinds.find((kind) => kind === value) ?? "full";
@@ -156,4 +157,13 @@ export async function connected(
 ): Promise<void> {
   await store.add(device(values.deviceId, values.agreementPublicKey));
   await store.connect(values.deviceId);
+}
+
+export async function connectedFixturePhone(store: RelayStore): Promise<void> {
+  await store.add({
+    ...device(fixtureDevice.deviceId, fixtureDevice.agreementPublicKey),
+    answerPublicKey: pairing.device.answerPublicKey,
+    approvalPublicKey: pairing.device.approvalPublicKey,
+  });
+  await store.connect(fixtureDevice.deviceId);
 }

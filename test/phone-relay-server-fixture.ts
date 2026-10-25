@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { join } from "node:path";
-import { record } from "../src/protocol.ts";
-import { relayRequest } from "../src/relay/relay-http.ts";
+import {
+  acknowledged,
+  inboxPage,
+  inboxWait,
+  type FakeAnswer,
+} from "./phone-relay-inbox-fixture.ts";
+
+export { registeredLink } from "./phone-relay-link-fixture.ts";
 
 export interface RecordedRequest {
   readonly method: string;
@@ -42,8 +46,12 @@ export interface FakeRelayServer {
   readonly revoke: (token: string) => void;
   readonly change: (pairingId: string, update: Partial<FakePairing>) => void;
   readonly list: (device: ListedDevice) => void;
+  readonly answer: (item: Readonly<Record<string, unknown>>) => void;
+  readonly acked: string[];
   readonly close: () => Promise<void>;
 }
+
+export type { FakeAnswer } from "./phone-relay-inbox-fixture.ts";
 
 interface Settings {
   readonly pairingMilliseconds?: number;
@@ -51,6 +59,7 @@ interface Settings {
   readonly startDelayMilliseconds?: number;
   readonly heartbeatStatuses?: number[];
   readonly envelopeStatuses?: number[];
+  readonly ackStatuses?: number[];
   readonly registerDelayMilliseconds?: number;
   readonly heartbeatDelayMilliseconds?: number;
 }
@@ -68,6 +77,8 @@ interface FakeState {
   readonly revoked: Set<string>;
   readonly waiting: Set<() => void>;
   readonly listed: ListedDevice[];
+  readonly inbox: FakeAnswer[];
+  readonly acked: string[];
 }
 
 interface Exchange {
@@ -219,10 +230,26 @@ function pairingRoute(
   return acted(state, { pairing, action: String(action), body });
 }
 
+interface DaemonRoute {
+  readonly daemon: FakeDaemon;
+  readonly url: URL;
+  readonly body: unknown;
+}
+
 const daemonRoutes: Readonly<
-  Record<string, (state: FakeState, daemon: FakeDaemon) => Reply>
+  Record<string, (state: FakeState, route: DaemonRoute) => Reply>
 > = {
-  "PUT /api/v1/relay/daemon/heartbeat": (state, daemon) => [
+  "GET /api/v1/relay/inbox": (state, { url }) => inboxPage(state.inbox, url),
+  "POST /api/v1/relay/inbox/acks": (state, { body }) =>
+    acknowledged(
+      {
+        inbox: state.inbox,
+        acked: state.acked,
+        statuses: state.settings.ackStatuses ?? [],
+      },
+      body,
+    ),
+  "PUT /api/v1/relay/daemon/heartbeat": (state, { daemon }) => [
     state.settings.heartbeatStatuses?.shift() ?? 200,
     { daemon_id: daemon.daemonId },
   ],
@@ -235,15 +262,12 @@ const daemonRoutes: Readonly<
 
 function daemonRoute(
   state: FakeState,
-  exchange: {
-    readonly method: string;
-    readonly path: string;
-    readonly daemon: FakeDaemon;
-  },
+  exchange: DaemonRoute & { readonly method: string },
 ): Reply | undefined {
-  const { method, path, daemon } = exchange;
+  const { method, daemon } = exchange;
+  const path = exchange.url.pathname;
   if (method === "DELETE") return removed(state, { daemon, path });
-  return daemonRoutes[`${method} ${path}`]?.(state, daemon);
+  return daemonRoutes[`${method} ${path}`]?.(state, exchange);
 }
 
 function delayOf(settings: Settings, path: string): number {
@@ -264,6 +288,11 @@ async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
     return registered(state, body);
   const daemon = daemonOf(state, request);
   if (daemon === undefined) return [401, null];
+  if (path === "/api/v1/relay/inbox")
+    await inboxWait(state.inbox, {
+      url,
+      wake: (deadline) => wakeUp(state, deadline),
+    });
   if (request.method === "POST" && path === "/api/v1/relay/pairings") {
     await new Promise((settle) =>
       setTimeout(settle, state.settings.startDelayMilliseconds ?? 0),
@@ -271,8 +300,12 @@ async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
     return opened(state, { daemon, body });
   }
   return (
-    daemonRoute(state, { method: String(request.method), path, daemon }) ??
-    pairingRoute(state, { ...exchange, daemon })
+    daemonRoute(state, {
+      method: String(request.method),
+      daemon,
+      url,
+      body,
+    }) ?? pairingRoute(state, { ...exchange, daemon })
   );
 }
 
@@ -308,6 +341,8 @@ export async function fakeRelayServer(
     revoked: new Set(),
     waiting: new Set(),
     listed: [],
+    inbox: [],
+    acked: [],
   };
   const server = createServer((request, response) => {
     answered(state, { request, response }).catch(() => {
@@ -330,6 +365,16 @@ export async function fakeRelayServer(
     list: (device) => {
       state.listed.push(device);
     },
+    answer: (item) => {
+      state.inbox.push({
+        answer_id: item["answer_id"],
+        device_id: item["device_id"],
+        ciphertext: item["ciphertext"],
+        sequence: state.inbox.length + state.acked.length + 1,
+      });
+      changed(state);
+    },
+    acked: state.acked,
     change: (pairingId, update) => {
       const pairing = state.pairings.get(pairingId);
       if (pairing !== undefined) Object.assign(pairing, update);
@@ -341,26 +386,4 @@ export async function fakeRelayServer(
       await new Promise((settle) => server.close(settle));
     },
   };
-}
-
-export async function registeredLink(
-  server: FakeRelayServer,
-  phoneDirectory: string,
-): Promise<void> {
-  const reply = await relayRequest(server.origin, {
-    method: "POST",
-    path: "/api/v1/relay/daemons",
-    body: {},
-  });
-  await mkdir(phoneDirectory, { recursive: true, mode: 0o700 });
-  await writeFile(
-    join(phoneDirectory, "link.json"),
-    JSON.stringify({
-      daemonId: record(reply.body)?.["daemon_id"],
-      origin: server.origin,
-      token: record(reply.body)?.["token"],
-      registeredAt: "2026-10-25T12:00:00Z",
-    }),
-    { mode: 0o600 },
-  );
 }

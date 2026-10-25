@@ -13,6 +13,28 @@ await test("CLV-099 the README explains the developer gate time factor and defau
   );
 });
 
+await test("CLV-193 the README explains the phone relay, what cloving.ai can see, and where private analysis questions go", () => {
+  const section =
+    readme
+      .split("### Answer decisions from a phone")[1]
+      ?.split(/^#{2,3} /m)[0] ?? "";
+  for (const fact of [
+    "Connect a phone",
+    "Accept",
+    "6-digit code",
+    "`cloving phone remove",
+    "`cloving phone reset`",
+    "`CLOVING_PHONE_RELAY`",
+    "cloving.ai sees",
+    "end-to-end",
+    "`analyze-chats`",
+    "your own paired phones",
+    "Face ID",
+    "device:",
+  ])
+    assert.ok(section.includes(fact), fact);
+});
+
 await test("CLV-097 installation describes the packaged replacement and pending operator release", () => {
   assert.match(readme, /^npm install --global cloving --ignore-scripts$/m);
   assert.doesNotMatch(readme, /npm install --global cloving@/);

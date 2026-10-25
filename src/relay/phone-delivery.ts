@@ -105,15 +105,25 @@ export class PhoneDelivery extends Actor {
 
   closedAt: number | null = null;
 
-  offer(device: DeviceEnvelopes): boolean {
+  promptDigest: string | null = null;
+
+  offer(device: DeviceEnvelopes & { readonly promptDigest: string }): boolean {
     const known = this.deliveries.some((item) =>
       same(item, { deviceId: device.deviceId, topic: "decision" }),
     );
     if (known || this.closedAt !== null) return false;
-    const delivery = started("decision", device);
+    const delivery = started("decision", {
+      deviceId: device.deviceId,
+      envelopes: device.envelopes,
+    });
+    this.promptDigest ??= device.promptDigest;
     this.deliveries = [...this.deliveries, delivery];
     this.emit(postEnvelopesEffect, {
-      arguments: { ...device, topic: delivery.topic },
+      arguments: {
+        deviceId: delivery.deviceId,
+        envelopes: delivery.envelopes,
+        topic: delivery.topic,
+      },
       onSuccess: "posted",
     });
     return true;

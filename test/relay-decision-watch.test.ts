@@ -8,6 +8,11 @@ import {
   openedEnvelope,
   verifiedBy,
 } from "./phone-envelope-fixture.ts";
+import {
+  answerBase,
+  sealedAnswer,
+  signedAnswer,
+} from "./phone-answer-fixture.ts";
 import { connectedPhone } from "./phone-fake-phone.ts";
 import {
   fakeRelayServer,
@@ -36,6 +41,57 @@ function decisionOf(server: FakeRelayServer, item: unknown): unknown {
   });
   assert.ok(verifiedBy(String(daemon.signingPublicKey), opened));
   return record(opened.fields["body"])?.["decisionId"];
+}
+
+async function answeredThroughRelay(
+  server: FakeRelayServer,
+  decisionId: unknown,
+): Promise<void> {
+  const daemon = server.daemons[0];
+  assert.ok(daemon);
+  const full = sealedItems(server).find(
+    (item) =>
+      record(item)?.["kind"] === "full" &&
+      decisionOf(server, item) === decisionId,
+  );
+  const body = record(
+    openedEnvelope(fixtureDevice.agreementPrivateKey, {
+      daemonId: daemon.daemonId,
+      deviceId: fixtureDevice.deviceId,
+      kind: "full",
+      sealed: Buffer.from(String(record(full)?.["ciphertext"]), "base64url"),
+    }).fields["body"],
+  );
+  const fields = {
+    ...answerBase,
+    daemonId: daemon.daemonId,
+    decisionId,
+    expectedRevision: body?.["revision"],
+    generation: body?.["generation"],
+    subjectDigest: body?.["subjectDigest"],
+    promptDigest: body?.["promptDigest"],
+    signedAt: new Date().toISOString(),
+  };
+  server.answer({
+    answer_id: "answer-1",
+    device_id: fixtureDevice.deviceId,
+    ciphertext: sealedAnswer(
+      {
+        daemonId: daemon.daemonId,
+        agreementPublicKey: String(daemon.agreementPublicKey),
+      },
+      {
+        deviceId: fixtureDevice.deviceId,
+        message: signedAnswer(fields, "answer"),
+      },
+    ),
+  });
+  await eventually(() =>
+    server.acked.includes("answer-1") ? true : undefined,
+  );
+  assert.ok(
+    sealedItems(server).some((item) => record(item)?.["kind"] === "receipt"),
+  );
 }
 
 await test("CLV-191 the running relay sends an open decision when a phone connects, and a new decision when its event arrives", () =>
@@ -77,6 +133,7 @@ await test("CLV-191 the running relay sends an open decision when a phone connec
             second.decisionId,
           ],
         );
+        await answeredThroughRelay(server, second.decisionId);
       } finally {
         await relay.close();
         await server.close();

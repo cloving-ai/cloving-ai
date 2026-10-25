@@ -1,6 +1,10 @@
 import { record, type Fields } from "../protocol.ts";
 import { closeDecisions } from "./decision-close.ts";
-import { fullEnvelope, previewEnvelope } from "./decision-envelopes.ts";
+import {
+  fullEnvelope,
+  previewEnvelope,
+  promptDigest,
+} from "./decision-envelopes.ts";
 import type { PostedEnvelope } from "./phone-delivery.ts";
 import type { PhoneDevice } from "./phone-devices.ts";
 import { storedRegistration, type Registration } from "./relay-registration.ts";
@@ -72,6 +76,7 @@ async function offerDecision(
   ))
     await context.store.delivery.offer(decisionId, {
       runId: String(plan.decision["runId"]),
+      promptDigest: promptDigest(String(plan.decision["prompt"])),
       deviceId: device.deviceId,
       envelopes: await devicePosts(context, { ...plan, device }),
     });
