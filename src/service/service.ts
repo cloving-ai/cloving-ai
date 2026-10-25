@@ -31,6 +31,7 @@ import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
+import type { CommandEffects } from "../command-settings.ts";
 
 export type { WorkflowRegistration } from "./registry.ts";
 export type {
@@ -90,12 +91,14 @@ export interface HostPorts {
   };
   readonly requestEffect: WorkerPort["requestEffect"];
   readonly operation: Authority["effects"]["operation"];
+  readonly operations: Authority["effects"]["operations"];
   readonly reportEffect: WorkerPort["reportEffect"];
   readonly openGate: WorkerPort["openGate"];
   readonly registerWait: WorkerPort["registerWait"];
 }
 
 export interface ServiceOptions {
+  readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
   readonly workflows: readonly WorkflowRegistration[];
@@ -214,6 +217,9 @@ async function started(
     handle: dispatcher({
       authority,
       registry,
+      ...(options.commandEffects === undefined
+        ? {}
+        : { commandEffects: options.commandEffects }),
       workflowRefusals: workflowRefusals(options.workflowRefusals),
       gateway,
       clock,
@@ -342,6 +348,7 @@ function hostPorts(
     openGate: worker.openGate,
     registerWait: worker.registerWait,
     operation: authority.effects.operation,
+    operations: authority.effects.operations,
     workflow: {
       id: async (runId) => (await authority.queries.workflowIds())[runId],
       manifest: authority.queries.manifest,

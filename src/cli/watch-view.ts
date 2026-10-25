@@ -23,6 +23,7 @@ import {
 } from "./watch-board-view.ts";
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
+import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
 import { StartRun } from "./watch-start-view.ts";
 import { record } from "../protocol.ts";
@@ -203,6 +204,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       component(Decision, { decision, turn, copying }),
     ),
     turns,
+    component(Commands, { effects: run.commandEffects ?? [] }),
     component(Events, { events: run.events }),
     element("p", { class: "meta foot", children: foot }),
   ];

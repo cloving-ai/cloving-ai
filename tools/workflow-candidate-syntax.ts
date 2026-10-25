@@ -8,6 +8,7 @@ export interface CandidateSymbols {
   readonly source: ts.SourceFile;
   readonly protectedSymbol: ts.Symbol | undefined;
   readonly handoffSymbol: ts.Symbol | undefined;
+  readonly commandSymbol: ts.Symbol | undefined;
 }
 
 export function propertyName(name: ts.PropertyName): string | undefined {
@@ -27,7 +28,11 @@ export function protectedCall(
   );
   return (
     symbol !== undefined &&
-    [symbols.protectedSymbol, symbols.handoffSymbol].includes(symbol)
+    [
+      symbols.protectedSymbol,
+      symbols.handoffSymbol,
+      symbols.commandSymbol,
+    ].includes(symbol)
   );
 }
 
@@ -41,6 +46,19 @@ export function handoffCall(
       symbols.checker,
       symbols.checker.getSymbolAtLocation(node.expression),
     ) === symbols.handoffSymbol
+  );
+}
+
+export function commandCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  return (
+    symbols.commandSymbol !== undefined &&
+    resolvedSymbol(
+      symbols.checker,
+      symbols.checker.getSymbolAtLocation(node.expression),
+    ) === symbols.commandSymbol
   );
 }
 
@@ -62,6 +80,13 @@ export function protectedEffectFact(
   if (handoffCall(node, symbols)) return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
+  if (commandCall(node, symbols)) {
+    const name = literalField(argument, "name");
+    return {
+      capability: "command",
+      method: name === null ? null : `run:${name}`,
+    };
+  }
   return {
     capability: literalField(argument, "capability"),
     method: literalField(argument, "method"),
@@ -76,7 +101,11 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
   );
   if (
     symbol === undefined ||
-    ![symbols.protectedSymbol, symbols.handoffSymbol].includes(symbol)
+    ![
+      symbols.protectedSymbol,
+      symbols.handoffSymbol,
+      symbols.commandSymbol,
+    ].includes(symbol)
   )
     return false;
   if (ts.isImportSpecifier(node.parent)) return false;

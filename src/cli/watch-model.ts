@@ -32,6 +32,7 @@ export type { GithubRecords } from "./watch-pull-request.ts";
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 
 import { displayRun } from "./watch-paths.ts";
+import { shownCommands } from "./command-effects.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -306,6 +307,9 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
       ),
     events: list(record(value)["events"]).map(eventOf),
     turns: statusTurns(inputs.turns, status),
+    ...(status["commandEffects"] === undefined
+      ? {}
+      : { commandEffects: shownCommands(status["commandEffects"]) }),
     phases: phasesOf(list(record(value)["events"]), workflowId),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),

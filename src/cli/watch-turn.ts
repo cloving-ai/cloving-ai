@@ -9,8 +9,8 @@ import {
   type WatchDecision,
   type WatchEvent,
   type WatchItem,
-  type WatchTurn,
   type WatchRun,
+  type WatchTurn,
 } from "./watch-render.ts";
 
 export function Item(props: { readonly item: WatchItem }): Shown {

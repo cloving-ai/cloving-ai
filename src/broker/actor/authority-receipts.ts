@@ -2,6 +2,7 @@ import type { JsonObject } from "solid-objects";
 import type { EffectIntent } from "../../authority/reducer.ts";
 import { integer, text } from "../../storage/domain-rows.ts";
 import { intentKind } from "../authority-restore.ts";
+import { commandLimits } from "../../command-settings.ts";
 
 export type StoreReceipt =
   | {
@@ -42,7 +43,17 @@ export const tooLarge: StoreReceipt = {
 };
 
 export function oversized(request: JsonObject): boolean {
-  return Buffer.byteLength(JSON.stringify(request)) > maximumRequestBytes;
+  const command = request["command"];
+  const report =
+    typeof command === "object" &&
+    command !== null &&
+    !Array.isArray(command) &&
+    command["kind"] === "report-effect" &&
+    command["worker"] === "command";
+  const limit = report
+    ? maximumRequestBytes + commandLimits.stdoutBytes * 6
+    : maximumRequestBytes;
+  return Buffer.byteLength(JSON.stringify(request)) > limit;
 }
 
 export function failed(

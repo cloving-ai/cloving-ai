@@ -1,5 +1,11 @@
 {
   "roles": {
+    "test/command-journal-failures.test.ts": "test",
+    "test/command-journal.test.ts": "test",
+    "src/steps/run-command.ts": "step",
+    "test/command-step.test.ts": "test",
+    "test/command-candidate.test.ts": "test",
+    "test/command-sdk.test.ts": "test",
     "src/command-settings.ts": "pure",
     "test/command-settings.test.ts": "test",
     "test/command-declarations.test.ts": "test",
@@ -1027,7 +1033,19 @@
     "test/handoff-chain-status.test.ts": "test",
     "test/handoff-chain-watch.test.ts": "test",
     "test/handoff-chain.test.ts": "test",
-    "test/handoff-worker-fixture.ts": "test"
+    "test/handoff-worker-fixture.ts": "test",
+    "src/daemon/command-worker.ts": "daemon",
+    "src/daemon/command-process.ts": "daemon",
+    "src/daemon/command-journal.ts": "daemon",
+    "test/command-worker-fixture.ts": "test",
+    "test/command-worker.test.ts": "test",
+    "test/command-recovery.test.ts": "test",
+    "src/daemon/daemon-adapters.ts": "daemon",
+    "src/service/command-effects.ts": "service",
+    "src/service/run-metadata.ts": "service",
+    "src/cli/command-effects.ts": "cli",
+    "test/command-display.test.ts": "test",
+    "test/daemon-command.test.ts": "test"
   },
   "allowed": {
     "quality": [

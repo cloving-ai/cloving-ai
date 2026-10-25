@@ -1,3 +1,4 @@
+import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
 import type { CiRerunNotice } from "./github-ci-progress.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
@@ -113,6 +114,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly commandEffects?: readonly CommandEffect[];
   readonly ciReruns?: readonly CiRerunNotice[];
   readonly parentRunId?: string | null;
   readonly chainId?: string;
