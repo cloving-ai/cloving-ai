@@ -328,6 +328,7 @@ await test("CLV-054 the protected check of the product tree has the reserved mem
     ],
     [`${library}database/sqlite.d.ts`]: [
       `${actorDirectory}authority-runtime.ts`,
+      "/candidate/src/relay/relay-store.ts",
     ],
     "node:sqlite": ["/candidate/src/storage/domain-schema.ts"],
   });

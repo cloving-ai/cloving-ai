@@ -89,6 +89,7 @@ The command reads these settings from the environment:
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
   CLOVING_WATCH_ACTIONS            The value off removes the board run form and its write endpoint. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
+  CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
   CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, which the workflow develop-issue uses for pull requests and develop-prd uses for issues. The watch board also uses it to read pull request status. The default is gh.
@@ -118,6 +119,7 @@ Commands:
   drop       Cancel a run and keep its files.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
+  phone      Show the state of the phone relay.
   start      Start the service for a repository.
 
 The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
@@ -171,4 +173,10 @@ Write redacted.jsonl and redaction.json beside the original corpus with mode 060
 HOME supplies the home folder. CLOVING_PRIVATE_TEXTS is an optional JSON list of nonblank strings.
 Originals and metadata remain private. Redaction does not authorize model use or guarantee removal of every private value.
 Exit codes: 0 complete, 1 processing failure, 2 invalid usage.
+`;
+
+export const phoneUsage = `Usage: cloving phone status [--json]
+
+Shows the state of the phone relay: the registration with cloving.ai and the connected phones.
+cloving start runs the phone relay as a child process. With CLOVING_PHONE_RELAY=off, the relay does not start, and this command says that the relay is off or not started.
 `;

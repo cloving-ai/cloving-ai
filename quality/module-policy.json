@@ -1054,7 +1054,20 @@
     "test/report.test.ts": "test",
     "test/report-fixture.ts": "test",
     "test/report-github.test.ts": "test",
-    "test/cli-report.test.ts": "test"
+    "test/cli-report.test.ts": "test",
+    "src/relay.ts": "relay",
+    "src/relay/relay-service.ts": "relay",
+    "src/relay/relay-store.ts": "relay",
+    "src/relay/phone-socket.ts": "relay",
+    "src/relay/phone-devices.ts": "relay",
+    "src/phone/phone-link.ts": "pure",
+    "src/cli/phone-arguments.ts": "cli",
+    "src/cli/phone-client.ts": "cli",
+    "src/cli/phone-command.ts": "cli",
+    "test/phone-relay.test.ts": "test",
+    "test/cli-phone.test.ts": "test",
+    "test/quality/relay-policy.test.ts": "test",
+    "test/phone-command.test.ts": "test"
   },
   "allowed": {
     "quality": [
@@ -1088,7 +1101,8 @@
       "daemon",
       "entry",
       "candidate-adapter",
-      "workflow-bundles"
+      "workflow-bundles",
+      "relay"
     ],
     "build": [
       "build",
@@ -1151,7 +1165,8 @@
       "build",
       "candidate-analysis"
     ],
-    "candidate-analysis": ["candidate-analysis", "tooling"]
+    "candidate-analysis": ["candidate-analysis", "tooling"],
+    "relay": ["relay", "cli", "pure", "stdlib", "network", "actor-runtime"]
   },
   "forbiddenReachability": {
     "pure": [
@@ -1250,6 +1265,16 @@
       "workflow",
       "step",
       "inspector"
+    ],
+    "relay": [
+      "storage",
+      "harness",
+      "step",
+      "workflow",
+      "service",
+      "process",
+      "inspector",
+      "daemon"
     ]
   },
   "reserved": {
@@ -1329,7 +1354,8 @@
         "src/broker/actor/authority-runtime.ts"
       ],
       "node_modules/solid-objects/dist/database/sqlite.d.ts": [
-        "src/broker/actor/authority-runtime.ts"
+        "src/broker/actor/authority-runtime.ts",
+        "src/relay/relay-store.ts"
       ],
       "node:sqlite": ["src/storage/domain-schema.ts"]
     },

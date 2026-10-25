@@ -10,6 +10,7 @@ export async function programs(
   options: {
     readonly daemonMilliseconds?: number;
     readonly watchStartupMilliseconds?: number;
+    readonly readyPrograms?: readonly string[];
   } = {},
 ): Promise<{ readonly product: string; readonly project: string }> {
   const product = join(root, "product");
@@ -34,12 +35,15 @@ process.on("SIGTERM", () => setTimeout(() => {
   clearInterval(timer);
 }, 50));
 writeFileSync(${JSON.stringify(join(root, `${name}-ready`))}, String(process.pid));
+writeFileSync(${JSON.stringify(join(root, `${name}-runtime`))}, process.env.CLOVING_RUNTIME_DIR ?? "");
 ${
   name === "daemon" && options.daemonMilliseconds
     ? `const deadline = Date.now() + ${String(testMilliseconds(30_000))};
-while (!existsSync(${JSON.stringify(join(root, "watch-ready"))})) {
-  if (Date.now() >= deadline) throw new Error("watch-startup-timed-out");
-  await new Promise(resolve => setTimeout(resolve, 10));
+for (const ready of ${JSON.stringify((options.readyPrograms ?? ["watch"]).map((program) => join(root, `${program}-ready`)))}) {
+  while (!existsSync(ready)) {
+    if (Date.now() >= deadline) throw new Error("program-startup-timed-out");
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
 }
 setTimeout(() => process.emit("SIGTERM"), ${String(options.daemonMilliseconds)});`
     : ""
@@ -47,6 +51,7 @@ setTimeout(() => process.emit("SIGTERM"), ${String(options.daemonMilliseconds)})
 `;
   await writeFile(join(project, "start.mjs"), program("daemon"));
   await writeFile(join(product, "src/cli.ts"), program("watch"));
+  await writeFile(join(product, "src/relay.ts"), program("relay"));
   return { product, project };
 }
 
@@ -75,7 +80,7 @@ export async function stalledCheck(root: string, options: StalledCheck) {
   await writeFile(
     entry,
     `import { hostedPrograms } from ${JSON.stringify(pathToFileURL(resolve("tools/self-host-processes.ts")).href)};
-const running = hostedPrograms(${JSON.stringify({ ...paths, repository: options.repository, runtime: join(root, "host/run"), directory: join(root, "host"), watchPort: "3663", updateMilliseconds: 10 })});
+const running = hostedPrograms(${JSON.stringify({ ...paths, repository: options.repository, runtime: join(root, "host/run"), directory: join(root, "host"), watchPort: "3663", phoneRelay: "on", updateMilliseconds: 10 })});
 ${
   options.command === "merge"
     ? `import { writeFileSync } from "node:fs";
