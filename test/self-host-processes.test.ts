@@ -112,7 +112,10 @@ await test("CLV-085 a local merge can finish after the network deadline", async 
 
 await test("CLV-085 without the setting the host never fetches and preserves normal exit", async () => {
   await withUpdateRepository(async ({ root, repository, git, old }) => {
-    const paths = await programs(root, { daemonMilliseconds: 100 });
+    const paths = await programs(root, {
+      daemonMilliseconds: 100,
+      watchStartupMilliseconds: 300,
+    });
     const fetchHead = join(repository, ".git", "FETCH_HEAD");
     await writeFile(fetchHead, "no check\n");
     assert.equal(
