@@ -8,6 +8,7 @@ import {
   PhoneDelivery,
   type DeviceDelivery,
 } from "../src/relay/phone-delivery.ts";
+import { PhoneOutbox } from "../src/relay/phone-outbox.ts";
 import { writePrivate } from "../src/relay/relay-files.ts";
 import { openRelayStore } from "../src/relay/relay-store.ts";
 import { fixtureDaemonKeys, fixtureDevice } from "./phone-envelope-fixture.ts";
@@ -129,6 +130,7 @@ await test("CLV-191 a repeated post callback and a stale retry reminder do not c
   const actor = new PhoneDelivery("run-1/review-1");
   const sent: DeviceDelivery = {
     deviceId: "phone-1",
+    topic: "decision",
     state: "sent",
     attempts: 1,
     lastAttemptAt: issued,
@@ -145,10 +147,23 @@ await test("CLV-191 a repeated post callback and a stale retry reminder do not c
   actor.deliveries = [sent, spent];
   actor.posted({
     effectId: "effect-1",
-    arguments: { deviceId: "phone-1" },
+    arguments: { deviceId: "phone-1", topic: "decision" },
     result: { at: issued + 1, failure: null },
   });
-  actor.retry({ deviceId: "phone-2" });
-  actor.retry({ deviceId: "phone-9" });
+  actor.retry({ deviceId: "phone-2", topic: "decision" });
+  actor.retry({ deviceId: "phone-9", topic: "decision" });
   assert.deepEqual(actor.deliveries, [sent, spent]);
+});
+
+await test("CLV-192 the outbox keeps one entry for each open decision and each retired decision", () => {
+  const outbox = new PhoneOutbox("phone");
+  assert.equal(outbox.track({ decisionId: "run-1/a", runId: "run-1" }), true);
+  assert.equal(outbox.track({ decisionId: "run-1/a", runId: "run-1" }), false);
+  outbox.retire({ decisionId: "run-1/a" });
+  outbox.retire({ decisionId: "run-1/a" });
+  assert.deepEqual(outbox.retired, ["run-1/a"]);
+  assert.equal(outbox.untrack({ decisionId: "run-1/a" }), true);
+  assert.equal(outbox.untrack({ decisionId: "run-1/a" }), false);
+  outbox.forget({ decisionId: "run-1/a" });
+  assert.deepEqual([outbox.decisions, outbox.retired], [[], []]);
 });

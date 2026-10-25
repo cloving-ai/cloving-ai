@@ -9,20 +9,29 @@ export interface PostContext {
   readonly now: () => number;
 }
 
+const textFields = [
+  "envelopeId",
+  "kind",
+  "ciphertext",
+  "expiresAt",
+  "push",
+] as const;
+
 function postedEnvelope(value: unknown): PostedEnvelope | undefined {
   const fields = record(value);
-  const envelopeId = fields?.["envelopeId"];
-  const kind = fields?.["kind"];
-  const ciphertext = fields?.["ciphertext"];
-  const expiresAt = fields?.["expiresAt"];
-  if (
-    typeof envelopeId !== "string" ||
-    typeof kind !== "string" ||
-    typeof ciphertext !== "string" ||
-    typeof expiresAt !== "string"
-  )
+  if (fields === undefined) return undefined;
+  if (!textFields.every((name) => typeof fields[name] === "string"))
     return undefined;
-  return { envelopeId, kind, ciphertext, expiresAt };
+  const collapseId: unknown = fields["collapseId"] ?? null;
+  if (collapseId !== null && typeof collapseId !== "string") return undefined;
+  return {
+    envelopeId: String(fields["envelopeId"]),
+    kind: String(fields["kind"]),
+    ciphertext: String(fields["ciphertext"]),
+    expiresAt: String(fields["expiresAt"]),
+    push: String(fields["push"]),
+    collapseId,
+  };
 }
 
 function postedEnvelopes(
@@ -47,7 +56,8 @@ function body(
       kind: envelope.kind,
       ciphertext: envelope.ciphertext,
       expires_at: envelope.expiresAt,
-      push: envelope.kind === "preview" ? "alert" : "none",
+      push: envelope.push,
+      collapse_id: envelope.collapseId,
     })),
   };
 }

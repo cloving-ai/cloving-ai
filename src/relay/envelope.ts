@@ -1,10 +1,11 @@
+import { createHmac } from "node:crypto";
 import { canonicalJson } from "../phone/canonical-json.ts";
 import type { Fields } from "../protocol.ts";
 import type { DaemonKeys } from "./daemon-keys.ts";
 import { sealTo } from "./hpke.ts";
 import { signedBy } from "./pairing-checks.ts";
 
-export type EnvelopeKind = "preview" | "full";
+export type EnvelopeKind = "preview" | "full" | "closed";
 
 export interface Envelope {
   readonly version: 1;
@@ -31,6 +32,20 @@ export function envelopeAad(binding: {
   return Buffer.from(
     `cloving-relay-v1|${binding.daemonId}|${binding.deviceId}|${binding.kind}`,
   );
+}
+
+export function collapseId(keys: DaemonKeys, decisionId: string): string {
+  const key = createHmac(
+    "sha256",
+    Buffer.from(keys.signingPrivateKey, "base64url"),
+  )
+    .update("cloving-collapse-key")
+    .digest();
+  return createHmac("sha256", key)
+    .update(decisionId)
+    .digest()
+    .subarray(0, 16)
+    .toString("base64url");
 }
 
 export function plaintextBytes(envelope: Envelope): number {

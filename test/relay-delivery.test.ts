@@ -15,6 +15,7 @@ import { withFiles } from "./quality/files-fixture.ts";
 const decisionId = "run-1/review-1";
 
 const offer = {
+  runId: "run-1",
   deviceId: "phone-1",
   envelopes: [
     {
@@ -22,12 +23,16 @@ const offer = {
       kind: "preview",
       ciphertext: "AAAA",
       expiresAt: "2026-11-01T11:00:00.000Z",
+      push: "alert",
+      collapseId: "collapse-1",
     },
     {
       envelopeId: "env-full-1",
       kind: "full",
       ciphertext: "BBBB",
       expiresAt: "2026-11-01T11:00:00.000Z",
+      push: "none",
+      collapseId: null,
     },
   ],
 };
@@ -100,6 +105,7 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
     assert.deepEqual(await store.delivery.list(decisionId), [
       {
         deviceId: "phone-1",
+        topic: "decision",
         state: "sent",
         attempts: 3,
         lastAttemptAt: clock.now,
@@ -117,7 +123,8 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
         kind: envelope.kind,
         ciphertext: envelope.ciphertext,
         expires_at: envelope.expiresAt,
-        push: envelope.kind === "preview" ? "alert" : "none",
+        push: envelope.push,
+        collapse_id: envelope.collapseId,
       })),
     });
   }));
