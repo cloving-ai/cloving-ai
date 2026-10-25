@@ -1,4 +1,5 @@
 import { operationIdentity } from "../operation-identity.ts";
+import type { CiRerunNotice } from "./github-ci-progress.ts";
 import type {
   WatchPullRequest,
   WatchReview,
@@ -37,6 +38,7 @@ function count(value: unknown): number | null {
 export interface GithubRecords {
   readonly started: unknown;
   readonly result: unknown;
+  readonly ciReruns?: readonly CiRerunNotice[];
 }
 
 interface GithubResult {
@@ -170,7 +172,10 @@ export function pullOf(
     readonly repository: PrRepository | null;
   },
   runId: string,
-): Pick<WatchRun, "pullRequest" | "reviews" | "mergeCommit" | "mergeProof"> {
+): Pick<
+  WatchRun,
+  "pullRequest" | "reviews" | "mergeCommit" | "mergeProof" | "ciReruns"
+> {
   const results = inputs.records
     .map(githubOf)
     .filter((item) => item.runId === runId)
@@ -180,10 +185,14 @@ export function pullOf(
     repository: inputs.repository,
     pullRequest,
   });
+  const ciReruns = inputs.records
+    .filter((item) => record(item.started)["runId"] === runId)
+    .flatMap((item) => item.ciReruns ?? []);
   return {
     pullRequest,
     reviews: reviewsOf(results),
     mergeCommit: mergeCommitOf(results),
+    ...(ciReruns.length === 0 ? {} : { ciReruns }),
     ...(mergeProof === null ? {} : { mergeProof }),
   };
 }

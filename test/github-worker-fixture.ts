@@ -51,6 +51,7 @@ export interface Plan {
   readonly fail?: string;
   readonly garble?: string;
   readonly replies?: Readonly<Record<string, unknown>>;
+  readonly sequences?: Readonly<Record<string, readonly unknown[]>>;
 }
 
 export interface GithubScene {
