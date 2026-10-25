@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import type { Watching } from "./watch-fixture.ts";
+import { cp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { Watching, WatchOptions } from "./watch-fixture.ts";
 
 export const cardRequest = {
   workflowId: "develop-prd",
@@ -63,4 +65,25 @@ export function actionHeaders(
     host: new URL(watch.address).host,
     "x-cloving-token": token,
   };
+}
+
+export async function declaredWatch(
+  runtimeDirectory: string,
+): Promise<WatchOptions> {
+  const product = join(import.meta.dirname, "..");
+  const fixture = join(runtimeDirectory, "declared-product");
+  await mkdir(join(fixture, "workflows"), { recursive: true });
+  for (const name of ["src", "assets", "package.json"])
+    await cp(join(product, name), join(fixture, name), { recursive: true });
+  await symlink(join(product, "node_modules"), join(fixture, "node_modules"));
+  await writeFile(
+    join(fixture, "workflows/review-corpus.declaration.json"),
+    JSON.stringify({
+      workflowId: "review-corpus",
+      capabilities: ["claude"],
+      effectLimit: 1,
+      input: { maximumBytes: 4096, fields: { importId: { type: "string" } } },
+    }),
+  );
+  return { entry: join(fixture, "src/cli.ts") };
 }

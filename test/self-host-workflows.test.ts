@@ -7,13 +7,13 @@ import {
 } from "../tools/self-host-workflows.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
-await test("CLV-115 generated manifests bind explicit chats capability without expanding others", () => {
+await test("CLV-202 generated manifests bind explicit capability without expanding others", () => {
   const manifests = workflowManifests(
     {
       workflows: {
-        "workflows/analyze-chats.ts": {
+        "workflows/review-corpus.ts": {
           analyze: {
-            workflowId: "workflow//./workflows/analyze-chats//analyze",
+            workflowId: "workflow//./workflows/review-corpus//analyze",
           },
         },
         "workflows/other.ts": {
@@ -24,14 +24,14 @@ await test("CLV-115 generated manifests bind explicit chats capability without e
     [
       {
         functionName: "analyze",
-        workflowId: "analyze-chats",
+        workflowId: "review-corpus",
         effectLimit: 3,
-        capabilities: ["chats"],
+        capabilities: ["claude"],
         input: { maximumBytes: 64, fields: {} },
       },
     ],
   );
-  assert.deepEqual(manifests["analyze"]?.capabilities, ["chats"]);
+  assert.deepEqual(manifests["analyze"]?.capabilities, ["claude"]);
   assert.deepEqual(manifests["other"]?.capabilities, ["claude", "github"]);
 });
 

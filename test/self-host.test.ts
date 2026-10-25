@@ -276,3 +276,25 @@ await test("CLV-070 start passes the next command to the daemon and run next adm
     assert.match(String(field(decision, "prompt")), /ticket CLV-900/);
     assert.equal(await ended(daemon), 0);
   }));
+
+await test("CLV-202 bundled startup registers only development workflows", () =>
+  withoutChildren(async () => {
+    const fixture = await scene();
+    const daemon = await fixture.start({
+      CLOVING_SELF_UPDATE_SECONDS: undefined,
+    });
+    try {
+      const status = await call(fixture, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.deepEqual(status["workflows"], [
+        "develop-ticket",
+        "develop-issue",
+        "develop-prd",
+        "develop-prompt",
+      ]);
+    } finally {
+      assert.equal(await ended(daemon), 0);
+    }
+  }));

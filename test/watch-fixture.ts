@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const entry = join(import.meta.dirname, "../src/cli.ts");
 
 export interface WatchOptions {
+  readonly entry?: string;
   readonly port?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly directory?: string;
@@ -28,7 +29,7 @@ export function watchCommand(
     typeof selection === "string" ? { port: selection } : selection;
   const child = spawn(
     process.execPath,
-    [entry, "watch", "--port", options.port ?? "0"],
+    [options.entry ?? entry, "watch", "--port", options.port ?? "0"],
     {
       env: {
         ...process.env,

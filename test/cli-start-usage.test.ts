@@ -31,10 +31,6 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*no added argument.*ticket ID.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
-  [
-    "CLOVING_ANALYSIS_TOKEN_COMMAND",
-    /JSON list.*10 seconds.*4096.*512.*no default/,
-  ],
   ["CLOVING_PROFILES", /JSON file.*profile.*no default/],
   ["CLOVING_COMMANDS", /JSON object.*absolute.*invalid-commands.*no commands/],
   [
@@ -135,4 +131,8 @@ await test("CLV-075 the default Claude command allows web research and help desc
         .find((line) => line.startsWith(`  ${name} `)) ?? "",
       /develop-prd/,
     );
+});
+
+await test("CLV-202 start help omits retired analysis settings", () => {
+  assert.doesNotMatch(String(commandUsage["start"]), /CLOVING_ANALYSIS_/);
 });
