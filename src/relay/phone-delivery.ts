@@ -24,6 +24,8 @@ export type PostOutcome = {
 
 export const postEnvelopesEffect = "phone_post_envelopes";
 
+export const deviceRemoved = "device-removed";
+
 const attemptLimit = deliveryBackoffMilliseconds.length;
 
 function replaced(
@@ -91,7 +93,8 @@ export class PhoneDelivery extends Actor {
       lastAttemptAt: result.at,
       lastFailure: result.failure,
     });
-    if (delivery.attempts >= attemptLimit) return;
+    if (delivery.attempts >= attemptLimit || result.failure === deviceRemoved)
+      return;
     const wait = deliveryBackoffMilliseconds[delivery.attempts] ?? 0;
     this.schedule({
       at: new Date(result.at + wait),

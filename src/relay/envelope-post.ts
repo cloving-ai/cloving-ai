@@ -1,5 +1,6 @@
 import type { JsonObject } from "solid-objects";
-import type { PostOutcome } from "./phone-delivery.ts";
+import { record } from "../protocol.ts";
+import type { PostedEnvelope, PostOutcome } from "./phone-delivery.ts";
 import { relayRequest } from "./relay-http.ts";
 import { readLink } from "./relay-registration.ts";
 
@@ -8,22 +9,45 @@ export interface PostContext {
   readonly now: () => number;
 }
 
-function field(item: unknown, name: string): unknown {
-  return Reflect.get(Object(item), name);
+function postedEnvelope(value: unknown): PostedEnvelope | undefined {
+  const fields = record(value);
+  const envelopeId = fields?.["envelopeId"];
+  const kind = fields?.["kind"];
+  const ciphertext = fields?.["ciphertext"];
+  const expiresAt = fields?.["expiresAt"];
+  if (
+    typeof envelopeId !== "string" ||
+    typeof kind !== "string" ||
+    typeof ciphertext !== "string" ||
+    typeof expiresAt !== "string"
+  )
+    return undefined;
+  return { envelopeId, kind, ciphertext, expiresAt };
+}
+
+function postedEnvelopes(
+  value: unknown,
+): readonly PostedEnvelope[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parsed = value.flatMap((item: unknown) => {
+    const envelope = postedEnvelope(item);
+    return envelope === undefined ? [] : [envelope];
+  });
+  return parsed.length === value.length ? parsed : undefined;
 }
 
 function body(
   deviceId: string,
-  envelopes: readonly unknown[],
+  envelopes: readonly PostedEnvelope[],
 ): Readonly<Record<string, unknown>> {
   return {
     envelopes: envelopes.map((envelope) => ({
       device_id: deviceId,
-      envelope_id: field(envelope, "envelopeId"),
-      kind: field(envelope, "kind"),
-      ciphertext: field(envelope, "ciphertext"),
-      expires_at: field(envelope, "expiresAt"),
-      push: field(envelope, "kind") === "preview" ? "alert" : "none",
+      envelope_id: envelope.envelopeId,
+      kind: envelope.kind,
+      ciphertext: envelope.ciphertext,
+      expires_at: envelope.expiresAt,
+      push: envelope.kind === "preview" ? "alert" : "none",
     })),
   };
 }
@@ -33,8 +57,9 @@ export async function postEnvelopes(
   request: JsonObject,
 ): Promise<PostOutcome> {
   const at = context.now();
-  const { deviceId, envelopes } = request;
-  if (typeof deviceId !== "string" || !Array.isArray(envelopes))
+  const deviceId = request["deviceId"];
+  const envelopes = postedEnvelopes(request["envelopes"]);
+  if (typeof deviceId !== "string" || envelopes === undefined)
     return { at, failure: "relay-request-invalid" };
   const link = await readLink(context.phoneDirectory).catch(() => undefined);
   if (link === undefined) return { at, failure: "relay-unregistered" };

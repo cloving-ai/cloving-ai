@@ -8,6 +8,7 @@ import {
 import { sqlite } from "solid-objects/database/sqlite";
 import { postEnvelopes } from "./envelope-post.ts";
 import {
+  deviceRemoved,
   PhoneDelivery,
   postEnvelopesEffect,
   type DeviceDelivery,
@@ -29,6 +30,18 @@ function authorized(input: AuthorizationInput): boolean {
   );
 }
 
+function connected(
+  devices: readonly PhoneDevice[],
+  deviceId: unknown,
+): boolean {
+  return devices.some(
+    (device) =>
+      device.deviceId === deviceId &&
+      device.state === "connected" &&
+      device.removedAt === null,
+  );
+}
+
 export interface DeliveryOffer {
   readonly deviceId: string;
   readonly envelopes: readonly PostedEnvelope[];
@@ -41,16 +54,18 @@ export interface RelayStore {
   readonly nextSequence: (deviceId: string) => Promise<number>;
   readonly remove: (deviceId: string) => Promise<boolean>;
   readonly removeAll: () => Promise<number>;
+  readonly delivery: RelayDeliveries;
+  readonly run: (signal: AbortSignal) => Promise<void>;
+  readonly close: () => Promise<void>;
+}
+
+export interface RelayDeliveries {
   readonly offer: (
     decisionId: string,
     offer: DeliveryOffer,
   ) => Promise<boolean>;
-  readonly deliveries: (
-    decisionId: string,
-  ) => Promise<readonly DeviceDelivery[]>;
-  readonly run: (signal: AbortSignal) => Promise<void>;
+  readonly list: (decisionId: string) => Promise<readonly DeviceDelivery[]>;
   readonly drainAt: (now: Date) => Promise<void>;
-  readonly close: () => Promise<void>;
 }
 
 export interface RelayStoreOptions {
@@ -72,15 +87,15 @@ export async function openRelayStore(
   await runtime.install();
   runtime.register(PhoneDevices);
   runtime.register(PhoneDelivery);
-  runtime.registerEffect(postEnvelopesEffect, (request) =>
-    postEnvelopes(
-      { phoneDirectory, now: options.now ?? (() => Date.now()) },
-      request,
-    ),
-  );
   const devices = runtime
     .ref(PhoneDevices, devicesIdentity)
     .with({ authorizationContext: relayPrincipal });
+  const now = options.now ?? (() => Date.now());
+  runtime.registerEffect(postEnvelopesEffect, async (request) => {
+    if (!connected(await devices.devices, request["deviceId"]))
+      return { at: now(), failure: deviceRemoved };
+    return postEnvelopes({ phoneDirectory, now }, request);
+  });
   const delivery = (decisionId: string) =>
     runtime
       .ref(PhoneDelivery, decisionId)
@@ -101,15 +116,15 @@ export async function openRelayStore(
     remove: (deviceId) =>
       devices.remove({ deviceId, removedAt: new Date().toISOString() }),
     removeAll: () => devices.removeAll({ removedAt: new Date().toISOString() }),
-    offer: (decisionId, offer) => delivery(decisionId).offer(offer),
-    deliveries: async (decisionId) => [
-      ...(await delivery(decisionId).deliveries),
-    ],
-    run: (signal) => runtime.run(signal),
-    drainAt: async (now) => {
-      await runtime.testing.runDueReminders({ now });
-      await runtime.testing.drain({ roles: ["actors", "effects"] });
+    delivery: {
+      offer: (decisionId, offer) => delivery(decisionId).offer(offer),
+      list: async (decisionId) => [...(await delivery(decisionId).deliveries)],
+      drainAt: async (now) => {
+        await runtime.testing.runDueReminders({ now });
+        await runtime.testing.drain({ roles: ["actors", "effects"] });
+      },
     },
+    run: (signal) => runtime.run(signal),
     close: () => runtime.close(),
   };
 }

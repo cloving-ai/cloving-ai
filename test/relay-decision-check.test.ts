@@ -125,7 +125,7 @@ async function relayUnderTest(
 
 async function checked(relay: RelayUnderTest): Promise<void> {
   await checkDecisions(relay.context);
-  await relay.store.drainAt(new Date());
+  await relay.store.delivery.drainAt(new Date());
 }
 
 async function withRelay(

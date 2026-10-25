@@ -45,6 +45,13 @@ await test("CLV-191 an unreachable server, a broken link file and a malformed re
       await postEnvelopes(context, { envelopes: request.envelopes }),
       { at, failure: "relay-request-invalid" },
     );
+    assert.deepEqual(
+      await postEnvelopes(context, {
+        deviceId: "phone-1",
+        envelopes: [{ ...request.envelopes[0], ciphertext: 7 }],
+      }),
+      { at, failure: "relay-request-invalid" },
+    );
     const broken = join(root, "broken");
     await mkdir(join(broken, "link.json"), { recursive: true });
     assert.deepEqual(

@@ -1348,13 +1348,19 @@
         "file": "node_modules/solid-objects/dist/actor.d.ts",
         "type": "Actor",
         "members": ["emit"],
-        "users": ["src/broker/actor/authority-actor.ts"]
+        "users": [
+          "src/broker/actor/authority-actor.ts",
+          "src/relay/phone-delivery.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
         "members": ["registerEffect"],
-        "users": ["src/broker/actor/authority-release.ts"]
+        "users": [
+          "src/broker/actor/authority-release.ts",
+          "src/relay/relay-store.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/actor.d.ts",

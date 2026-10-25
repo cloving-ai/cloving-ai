@@ -278,13 +278,19 @@ const reservedMembers = [
     file: `${library}actor.d.ts`,
     type: "Actor",
     members: ["emit"],
-    users: [`${actorDirectory}authority-actor.ts`],
+    users: [
+      `${actorDirectory}authority-actor.ts`,
+      "/candidate/src/relay/phone-delivery.ts",
+    ],
   },
   {
     file: `${library}runtime.d.ts`,
     type: "SolidObjectsRuntime",
     members: ["registerEffect"],
-    users: [`${actorDirectory}authority-release.ts`],
+    users: [
+      `${actorDirectory}authority-release.ts`,
+      "/candidate/src/relay/relay-store.ts",
+    ],
   },
   {
     file: `${library}actor.d.ts`,

@@ -103,7 +103,7 @@ await test("CLV-191 a check skips a refused reply, malformed rows and a run with
       await checkDecisions(context);
       await checkDecisions(context);
       const expiry = async (decisionId: string) =>
-        (await store.deliveries(decisionId))[0]?.envelopes.map(
+        (await store.delivery.list(decisionId))[0]?.envelopes.map(
           (envelope) => envelope.expiresAt,
         );
       assert.deepEqual(await expiry("run-1/a"), [
@@ -114,7 +114,7 @@ await test("CLV-191 a check skips a refused reply, malformed rows and a run with
         "2026-11-02T11:00:00.000Z",
         "2026-11-02T11:00:00.000Z",
       ]);
-      assert.deepEqual(await store.deliveries("run-2/c"), []);
+      assert.deepEqual(await store.delivery.list("run-2/c"), []);
       assert.deepEqual(
         requests.map((request) => request.parameters["runId"] ?? null),
         [null, null, "run-1", "run-2"],

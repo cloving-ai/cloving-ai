@@ -112,12 +112,14 @@ async function offerDecision(
 ): Promise<void> {
   const decisionId = String(plan.decision["decisionId"]);
   const delivered = new Set(
-    (await context.store.deliveries(decisionId)).map((item) => item.deviceId),
+    (await context.store.delivery.list(decisionId)).map(
+      (item) => item.deviceId,
+    ),
   );
   for (const device of plan.devices.filter(
     (item) => !delivered.has(item.deviceId),
   ))
-    await context.store.offer(
+    await context.store.delivery.offer(
       decisionId,
       await sealedOffer(context, { ...plan, device }),
     );

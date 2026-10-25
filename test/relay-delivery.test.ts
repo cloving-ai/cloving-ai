@@ -9,6 +9,7 @@ import {
   registeredLink,
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
+import { knownDevice } from "./phone-heartbeat-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const decisionId = "run-1/review-1";
@@ -48,8 +49,8 @@ async function settled(
   store: RelayStore,
   clock: { now: number },
 ): Promise<string | undefined> {
-  await store.drainAt(new Date(clock.now));
-  return (await store.deliveries(decisionId))[0]?.state;
+  await store.delivery.drainAt(new Date(clock.now));
+  return (await store.delivery.list(decisionId))[0]?.state;
 }
 
 async function withDelivery(
@@ -65,6 +66,8 @@ async function withDelivery(
       now: () => clock.now,
     });
     try {
+      await store.add({ ...knownDevice, state: "checking" });
+      await store.connect(knownDevice.deviceId);
       await body({ server, phoneDirectory, clock, store });
     } finally {
       await store.close();
@@ -82,7 +85,7 @@ await test("CLV-191 the notify command and the phone deliveries share one retry 
 
 await test("CLV-191 a failed post retries after 1 and 5 minutes with the same envelopes", () =>
   withDelivery([500, 503], async ({ server, clock, store }) => {
-    assert.equal(await store.offer(decisionId, offer), true);
+    assert.equal(await store.delivery.offer(decisionId, offer), true);
     assert.equal(await settled(store, clock), "failed");
     clock.now += 59_999;
     assert.equal(await settled(store, clock), "failed");
@@ -94,7 +97,7 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
     assert.equal(await settled(store, clock), "failed");
     clock.now += 1;
     assert.equal(await settled(store, clock), "sent");
-    assert.deepEqual(await store.deliveries(decisionId), [
+    assert.deepEqual(await store.delivery.list(decisionId), [
       {
         deviceId: "phone-1",
         state: "sent",
@@ -121,14 +124,14 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
 
 await test("CLV-191 a delivered decision is not sent again after a restart", () =>
   withDelivery([], async ({ server, phoneDirectory, clock, store }) => {
-    await store.offer(decisionId, offer);
+    await store.delivery.offer(decisionId, offer);
     assert.equal(await settled(store, clock), "sent");
     await store.close();
     const reopened = await openRelayStore(phoneDirectory, {
       now: () => clock.now,
     });
     try {
-      assert.equal(await reopened.offer(decisionId, offer), false);
+      assert.equal(await reopened.delivery.offer(decisionId, offer), false);
       clock.now += 86_400_000;
       assert.equal(await settled(reopened, clock), "sent");
       assert.equal(posts(server).length, 1);
@@ -141,7 +144,7 @@ await test("CLV-191 a delivery stops after five failed attempts, and a lost regi
   withDelivery(
     [500, 500, 500, 500],
     async ({ server, phoneDirectory, clock, store }) => {
-      await store.offer(decisionId, offer);
+      await store.delivery.offer(decisionId, offer);
       await settled(store, clock);
       for (const wait of [60_000, 300_000, 900_000]) {
         clock.now += wait;
@@ -152,10 +155,28 @@ await test("CLV-191 a delivery stops after five failed attempts, and a lost regi
       assert.equal(await settled(store, clock), "failed");
       clock.now += 86_400_000;
       await settled(store, clock);
-      const [delivery] = await store.deliveries(decisionId);
+      const [delivery] = await store.delivery.list(decisionId);
       assert.ok(delivery);
       assert.equal(delivery.attempts, 5);
       assert.equal(delivery.lastFailure, "relay-unregistered");
       assert.equal(posts(server).length, 4);
     },
   ));
+
+await test("CLV-191 a retry does not post to a phone that was removed", () =>
+  withDelivery([500], async ({ server, clock, store }) => {
+    await store.delivery.offer(decisionId, offer);
+    assert.equal(await settled(store, clock), "failed");
+    await store.remove(knownDevice.deviceId);
+    clock.now += 60_000;
+    await settled(store, clock);
+    clock.now += 86_400_000;
+    await settled(store, clock);
+    const [delivery] = await store.delivery.list(decisionId);
+    assert.ok(delivery);
+    assert.deepEqual(
+      [delivery.state, delivery.attempts, delivery.lastFailure],
+      ["failed", 2, "device-removed"],
+    );
+    assert.equal(posts(server).length, 1);
+  }));
