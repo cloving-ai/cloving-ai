@@ -2,7 +2,9 @@ export { loadCycle, type CycleLoad } from "./steps/load-cycle.ts";
 export { protectedEffect } from "./steps/protected-effect.ts";
 export { decisionGate } from "./steps/decision-gate.ts";
 export { handoff } from "./steps/handoff.ts";
+export { runCommand } from "./steps/run-command.ts";
 export type {
+  CommandRequest,
   GateRequest,
   GateResult,
   HandoffRequest,

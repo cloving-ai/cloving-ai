@@ -57,6 +57,12 @@ export interface HandoffRequest {
   readonly input: Readonly<Record<string, HandoffValue>>;
 }
 
+export interface CommandRequest {
+  readonly scope: ProtectedScope;
+  readonly name: string;
+  readonly input: HandoffValue;
+}
+
 export type GateResult =
   | { readonly kind: "opened"; readonly decisionId: string }
   | { readonly kind: "refused"; readonly reason: string }

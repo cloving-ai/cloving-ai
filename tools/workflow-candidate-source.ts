@@ -132,6 +132,11 @@ export function analyzeWorkflowCandidate(
       subpath: "cloving/workflows/steps/handoff",
       name: "handoff",
     }),
+    commandSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/run-command",
+      name: "runCommand",
+    }),
   };
   const facts = sourceFacts(symbols);
   const invalid =

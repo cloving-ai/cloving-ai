@@ -1,5 +1,9 @@
 {
   "roles": {
+    "src/steps/run-command.ts": "step",
+    "test/command-step.test.ts": "test",
+    "test/command-candidate.test.ts": "test",
+    "test/command-sdk.test.ts": "test",
     "src/command-settings.ts": "pure",
     "test/command-settings.test.ts": "test",
     "test/command-declarations.test.ts": "test",
