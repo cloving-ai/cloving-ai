@@ -1100,7 +1100,9 @@
     "test/phone-checks.test.ts": "test",
     "src/relay/relay-heartbeat.ts": "relay",
     "src/relay/relay-control.ts": "relay",
-    "test/phone-heartbeat.test.ts": "test"
+    "test/phone-heartbeat.test.ts": "test",
+    "test/phone-heartbeat-races.test.ts": "test",
+    "test/phone-heartbeat-fixture.ts": "test"
   },
   "allowed": {
     "quality": [

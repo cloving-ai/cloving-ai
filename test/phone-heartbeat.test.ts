@@ -7,86 +7,25 @@ import { phoneRequest } from "../src/cli/phone-client.ts";
 import {
   parseRequest,
   replyLine,
-  record,
   type ServiceRequest,
 } from "../src/protocol.ts";
 import { relayControl } from "../src/relay/relay-control.ts";
-import {
-  heartbeat,
-  heartbeatTiming,
-  runHeartbeats,
-  type HeartbeatContext,
-} from "../src/relay/relay-heartbeat.ts";
-import { relayRequest } from "../src/relay/relay-http.ts";
+import { heartbeat, runHeartbeats } from "../src/relay/relay-heartbeat.ts";
 import { startRelay } from "../src/relay/relay-service.ts";
-import { openRelayStore, type RelayStore } from "../src/relay/relay-store.ts";
+import { openRelayStore } from "../src/relay/relay-store.ts";
+import { heartbeatContext, knownDevice } from "./phone-heartbeat-fixture.ts";
 import {
   fakeRelayServer,
+  registeredLink,
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
-
-async function registeredLink(
-  server: FakeRelayServer,
-  phoneDirectory: string,
-): Promise<void> {
-  const reply = await relayRequest(server.origin, {
-    method: "POST",
-    path: "/api/v1/relay/daemons",
-    body: {},
-  });
-  await mkdir(phoneDirectory, { recursive: true, mode: 0o700 });
-  await writeFile(
-    join(phoneDirectory, "link.json"),
-    JSON.stringify({
-      daemonId: record(reply.body)?.["daemon_id"],
-      origin: server.origin,
-      token: record(reply.body)?.["token"],
-      registeredAt: "2026-10-25T12:00:00Z",
-    }),
-    { mode: 0o600 },
-  );
-}
-
-function context(
-  store: RelayStore,
-  settings: {
-    readonly phoneDirectory: string;
-    readonly waits: number[];
-    readonly stop: AbortController;
-    readonly count: number;
-  },
-): HeartbeatContext {
-  return {
-    phoneDirectory: settings.phoneDirectory,
-    store,
-    lost: () => undefined,
-    timing: heartbeatTiming,
-    wait: (milliseconds) => {
-      settings.waits.push(milliseconds);
-      if (settings.waits.length === settings.count) settings.stop.abort();
-      return Promise.resolve();
-    },
-  };
-}
 
 function beats(server: FakeRelayServer): number {
   return server.requests.filter(
     (request) => request.path === "/api/v1/relay/daemon/heartbeat",
   ).length;
 }
-
-const device = {
-  deviceId: "phone-1",
-  name: "Pixel",
-  platform: "android",
-  agreementPublicKey: "a",
-  answerPublicKey: "b",
-  approvalPublicKey: "c",
-  pairedAt: "2026-10-25T12:00:00Z",
-  state: "connected" as const,
-  removedAt: null,
-};
 
 await test("CLV-190 the relay beats at the interval while registered and backs off after failures", async () => {
   await withFiles({}, async (root) => {
@@ -102,7 +41,7 @@ await test("CLV-190 the relay beats at the interval while registered and backs o
     const stop = new AbortController();
     try {
       await runHeartbeats(
-        context(store, { phoneDirectory, waits, stop, count: 14 }),
+        heartbeatContext(store, { phoneDirectory, waits, stop, count: 14 }),
         stop.signal,
       );
     } finally {
@@ -130,7 +69,7 @@ await test("CLV-190 the relay sends no heartbeat without a registration", async 
     const stop = new AbortController();
     try {
       await runHeartbeats(
-        context(store, { phoneDirectory, waits, stop, count: 3 }),
+        heartbeatContext(store, { phoneDirectory, waits, stop, count: 3 }),
         stop.signal,
       );
     } finally {
@@ -142,20 +81,20 @@ await test("CLV-190 the relay sends no heartbeat without a registration", async 
   });
 });
 
-await test("CLV-190 a revocation at cloving.ai writes a tombstone, and a device that only the server knows stays unknown", async () => {
+await test("CLV-190 a revocation at cloving.ai writes a tombstone, and a knownDevice that only the server knows stays unknown", async () => {
   await withFiles({}, async (root) => {
     const server = await fakeRelayServer();
     const phoneDirectory = join(root, "phone");
     await registeredLink(server, phoneDirectory);
     const store = await openRelayStore(phoneDirectory);
     try {
-      await store.add(device);
+      await store.add(knownDevice);
       server.list({ device_id: "phone-1", revoked_at: "2026-10-25T13:00:00Z" });
       server.list({ device_id: "phone-9", revoked_at: "2026-10-25T13:00:00Z" });
       server.list({ device_id: "phone-1", revoked_at: null });
       const stop = new AbortController();
       const outcome = await heartbeat(
-        context(store, { phoneDirectory, waits: [], stop, count: 1 }),
+        heartbeatContext(store, { phoneDirectory, waits: [], stop, count: 1 }),
       );
       assert.equal(outcome, "beat");
       const devices = await store.devices();
@@ -261,7 +200,12 @@ await test("CLV-190 an unreachable server counts as a failed beat", async () => 
       const stop = new AbortController();
       assert.equal(
         await heartbeat(
-          context(store, { phoneDirectory, waits: [], stop, count: 1 }),
+          heartbeatContext(store, {
+            phoneDirectory,
+            waits: [],
+            stop,
+            count: 1,
+          }),
         ),
         "failed",
       );
@@ -282,7 +226,12 @@ await test("CLV-190 a failing store during the revocations keeps the beat", asyn
       const stop = new AbortController();
       assert.equal(
         await heartbeat(
-          context(closed, { phoneDirectory, waits: [], stop, count: 1 }),
+          heartbeatContext(closed, {
+            phoneDirectory,
+            waits: [],
+            stop,
+            count: 1,
+          }),
         ),
         "beat",
       );
@@ -302,7 +251,7 @@ await test("CLV-190 a broken link file counts as a failed beat, and a stopped lo
       const stopped = new AbortController();
       stopped.abort();
       await runHeartbeats(
-        context(store, {
+        heartbeatContext(store, {
           phoneDirectory: broken,
           waits,
           stop: stopped,
@@ -312,7 +261,7 @@ await test("CLV-190 a broken link file counts as a failed beat, and a stopped lo
       );
       const ended = new AbortController();
       await runHeartbeats(
-        context(store, {
+        heartbeatContext(store, {
           phoneDirectory: broken,
           waits,
           stop: ended,
