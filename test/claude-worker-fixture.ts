@@ -19,6 +19,7 @@ import {
   type ClaudeWorkerSettings,
 } from "../src/daemon/claude-worker.ts";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const fakeClaude = `
 import { execFileSync } from "node:child_process";
@@ -156,8 +157,8 @@ export function alive(processId: number): boolean {
 export async function until(
   reached: () => boolean | Promise<boolean>,
 ): Promise<void> {
-  for (let pass = 0; pass < 1_000 && !(await reached()); pass += 1)
-    await delay(10);
+  const deadline = performance.now() + testMilliseconds(10_000);
+  while (!(await reached()) && performance.now() < deadline) await delay(10);
   if (!(await reached())) throw new Error("The scene did not reach its state.");
 }
 

@@ -797,6 +797,16 @@ The quality report includes elapsed time and the effective limit in milliseconds
 
 The watch scrolling tests launch an isolated headless Chrome process at desktop and phone widths. They require Chrome on the test machine. Run them with `node --test test/watch-scrolling.test.ts`. The fixture serves bundled Preact and board data over loopback and blocks external page resources.
 
+To check the 390 px expansion race, run both phone scrolling scenarios twenty times with the CI timing factor:
+
+```sh
+for run in $(seq 1 20); do
+  CLOVING_CHECK_TIME_FACTOR=3 node --test --test-name-pattern='CLV-(134|196).*390px$' test/watch-scrolling.test.ts || exit 1
+done
+```
+
+The expansion helper waits for two animation frames before horizontal input. Resolving in the first callback can send the gesture before the widened Done column renders, leaving the board at its old horizontal scroll limit even after scrolling settles. The regression delays that rendering pass with `testMilliseconds(250)` and keeps the full card visibility assertion. A failure reports the card, column and board rectangles, both scroll positions and the viewport; compare the card's right edge with the board's right edge to distinguish horizontal clipping from an incomplete vertical scroll.
+
 Before a ticket report, commit your work and run `npm run check:clean`. It refuses uncommitted changes, archives the committed tree of `HEAD` into a temporary directory, copies the worktree's `node_modules`, and runs `node tools/check-quality.ts` there with the same environment and exit code. Ignored build output such as `dist/` is absent, so tests that rely on stale local files fail. The temporary copy is removed after success, failure or SIGINT/SIGTERM interruption.
 
 Set `CLOVING_CHECK_TIME_FACTOR` to a whole number from 1 to 5 (default 1) to multiply the developer gate test and coverage command time limits, the inner hook check limit (5 seconds by default), and the installed hook limit (10 seconds by default). With factor 3, the hook limits are 15 and 30 seconds, respectively.
