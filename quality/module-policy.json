@@ -807,6 +807,8 @@
     "tools/self-update-host.ts": "build",
     "tools/self-host-processes.ts": "build",
     "test/packed-install.test.ts": "test",
+    "test/packed-install-fixture.ts": "test",
+    "test/packed-install-offline.test.ts": "test",
     "tools/copy-workflow-declarations.ts": "build",
     ".github/workflows/ci.yml": "metadata",
     "test/release.test.ts": "test",

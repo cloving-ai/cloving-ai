@@ -7,7 +7,11 @@ import {
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import assert from "node:assert/strict";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
+  installPacked,
+  packedCommand as command,
+} from "./packed-install-fixture.ts";
 import {
   mkdtemp,
   readFile,
@@ -51,26 +55,6 @@ function packageMetadata(value: unknown): value is PackageMetadata {
   );
 }
 
-function command(
-  executable: string,
-  options: {
-    readonly args: readonly string[];
-    readonly cwd: string;
-    readonly env?: NodeJS.ProcessEnv;
-  },
-): string {
-  const result = spawnSync(executable, options.args, {
-    cwd: options.cwd,
-    env: options.env ?? process.env,
-    encoding: "utf8",
-    timeout: 120000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  assert.equal(result.error, undefined, result.stderr);
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  return result.stdout;
-}
-
 async function installed(root: string): Promise<string> {
   await rm(join(checkout, "dist"), { recursive: true, force: true });
   command("npm", { args: ["run", "build"], cwd: checkout });
@@ -95,20 +79,9 @@ async function installed(root: string): Promise<string> {
     ),
     [],
   );
-  await writeFile(
-    join(root, "package.json"),
-    '{"name":"packed-consumer","private":true,"type":"module"}',
-  );
-  command("npm", {
-    args: [
-      "install",
-      "--ignore-scripts",
-      "--omit=dev",
-      "--no-audit",
-      "--no-fund",
-      join(root, String(field(archive, "filename"))),
-    ],
-    cwd: root,
+  await installPacked(root, {
+    archive: join(root, String(field(archive, "filename"))),
+    checkout,
   });
   await packagedFontFiles(join(root, "node_modules/cloving"));
   return join(root, "node_modules/.bin/cloving");
