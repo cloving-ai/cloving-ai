@@ -12,6 +12,9 @@ import {
 const operations: Readonly<Record<string, string>> = {
   "/actions/phone/pair": "phone-pair-start",
   "/actions/phone/cancel": "phone-pair-cancel",
+  "/actions/phone/accept": "phone-pair-accept",
+  "/actions/phone/deny": "phone-pair-deny",
+  "/actions/phone/remove": "phone-remove",
 };
 
 export function isPhoneAction(path: string): boolean {

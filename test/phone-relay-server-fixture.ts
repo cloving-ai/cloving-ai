@@ -42,6 +42,7 @@ export interface FakeRelayServer {
 
 interface Settings {
   readonly pairingMilliseconds?: number;
+  readonly receiptStatus?: number;
 }
 
 interface FakeState {
@@ -162,6 +163,8 @@ function acted(
 ): Reply {
   const { pairing, action, body } = exchange;
   if (action === "deny") pairing.stage = "denied";
+  if (action === "receipt" && state.settings.receiptStatus !== undefined)
+    return [state.settings.receiptStatus, null];
   if (action === "receipt") {
     pairing.stage = "completed";
     pairing.receipt = field(body, "receipt");
@@ -169,6 +172,19 @@ function acted(
   changed(state);
   return action === "deny" || action === "receipt"
     ? [200, pairingView(pairing)]
+    : [404, null];
+}
+
+function removed(
+  state: FakeState,
+  exchange: { readonly daemon: FakeDaemon; readonly path: string },
+): Reply {
+  if (exchange.path === "/api/v1/relay/daemon") {
+    state.revoked.add(exchange.daemon.token);
+    return [204, null];
+  }
+  return exchange.path.startsWith("/api/v1/relay/devices/")
+    ? [204, null]
     : [404, null];
 }
 
@@ -196,6 +212,7 @@ async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
   if (daemon === undefined) return [401, null];
   if (request.method === "POST" && path === "/api/v1/relay/pairings")
     return opened(state, { daemon, body });
+  if (request.method === "DELETE") return removed(state, { daemon, path });
   return pairingRoute(state, { ...exchange, daemon });
 }
 

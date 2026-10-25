@@ -1087,7 +1087,16 @@
     "src/cli/watch-phone-client.ts": "cli",
     "test/watch-phone-actions.test.ts": "test",
     "test/watch-phone-browser.test.ts": "test",
-    "test/watch-phone-view.test.ts": "test"
+    "test/watch-phone-view.test.ts": "test",
+    "src/relay/pairing-checks.ts": "relay",
+    "src/relay/pairing-follow.ts": "relay",
+    "src/relay/phone-operations.ts": "relay",
+    "test/phone-accept.test.ts": "test",
+    "test/phone-fake-phone.ts": "test",
+    "test/cli-phone-devices.test.ts": "test",
+    "test/phone-relay-cases.test.ts": "test",
+    "test/fixtures/phone-pairing.json": "test",
+    "test/fixtures/qr-qrcodegen-1.8.0.json": "test"
   },
   "allowed": {
     "quality": [

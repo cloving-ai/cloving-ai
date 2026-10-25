@@ -33,11 +33,11 @@ async function closed(server: net.Server): Promise<void> {
 
 async function command(
   runtimeDirectory: string | undefined,
-  json: boolean,
+  format: { readonly json: boolean },
 ): Promise<{ status: number; out: string; error: string }> {
   const output = { out: "", error: "" };
   const status = await phoneCommand(
-    { kind: "phone", command: "status", json },
+    { kind: "phone", command: "status", deviceId: null, json: format.json },
     {
       runtimeDirectory,
       terminal: {
@@ -61,7 +61,7 @@ await test("CLV-187 phone status shows the registration and counts the phones", 
       `${JSON.stringify({ ok: true, result: { registered: true, daemonId: "dmn_1", origin: "https://cloving.ai", devices: [{ deviceId: "a" }] } })}\n`,
     );
     try {
-      assert.deepEqual(await command(runtimeDirectory, false), {
+      assert.deepEqual(await command(runtimeDirectory, { json: false }), {
         status: 0,
         out: "Registered as dmn_1 with https://cloving.ai. 1 phone.\n",
         error: "",
@@ -75,7 +75,7 @@ await test("CLV-187 phone status shows the registration and counts the phones", 
     );
     try {
       assert.equal(
-        (await command(runtimeDirectory, false)).out,
+        (await command(runtimeDirectory, { json: false })).out,
         "Not registered. 0 phones.\n",
       );
     } finally {
@@ -92,7 +92,7 @@ await test("CLV-187 phone status reports a relay error and an unknown runtime di
       `${JSON.stringify({ ok: false, error: { code: "phone-relay-failed", detail: "The store failed." } })}\n`,
     );
     try {
-      assert.deepEqual(await command(runtimeDirectory, true), {
+      assert.deepEqual(await command(runtimeDirectory, { json: true }), {
         status: 1,
         out: "",
         error: "phone-relay-failed: The store failed.\n",
@@ -100,7 +100,7 @@ await test("CLV-187 phone status reports a relay error and an unknown runtime di
     } finally {
       await closed(server);
     }
-    const unknown = await command(undefined, true);
+    const unknown = await command(undefined, { json: true });
     assert.equal(unknown.status, 1);
     assert.match(unknown.error, /^runtime-directory-unknown: /);
   });
@@ -194,7 +194,14 @@ await test("CLV-187 the phone arguments accept status and refuse other forms", (
   assert.deepEqual(phoneInvocation(["status", "--json"]), {
     kind: "phone",
     command: "status",
+    deviceId: null,
     json: true,
+  });
+  assert.deepEqual(phoneInvocation(["remove", "phone-1"]), {
+    kind: "phone",
+    command: "remove",
+    deviceId: "phone-1",
+    json: false,
   });
   assert.deepEqual(phoneInvocation(["-h"]), { kind: "phone-help" });
   for (const [argumentsList, code] of [

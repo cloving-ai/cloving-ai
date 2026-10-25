@@ -138,9 +138,12 @@ function productChild(
   );
 }
 
-function hostedChildren(
-  settings: HostProcesses,
-): readonly [Program, ...Program[]] {
+interface Hosted {
+  readonly daemon: Program;
+  readonly programs: readonly Program[];
+}
+
+function hostedChildren(settings: HostProcesses): Hosted {
   const daemon = launched([join(settings.project, "start.mjs")], {
     directory: settings.project,
     environment: process.env,
@@ -158,12 +161,11 @@ function hostedChildren(
         ];
   const relay =
     settings.phoneRelay === "off" ? [] : [productChild(settings, ["relay"])];
-  return [daemon, ...watch, ...relay];
+  return { daemon, programs: [daemon, ...watch, ...relay] };
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
-  const programs = hostedChildren(settings);
-  const daemon = programs[0];
+  const { daemon, programs } = hostedChildren(settings);
   const stopping = new AbortController();
   let updating = false;
   const interrupt = (): void => {

@@ -10,7 +10,16 @@ import {
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
-import { PhoneCode, PhonePanel, timeLeft } from "./watch-phone-view.ts";
+import {
+  PhoneAsk,
+  PhoneCode,
+  PhoneList,
+  PhonePanel,
+  phoneButton,
+  phoneNotices,
+  refusalText,
+  timeLeft,
+} from "./watch-phone-view.ts";
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
@@ -136,7 +145,12 @@ const functions = [
   Review,
   Run,
   timeLeft,
+  refusalText,
+  phoneButton,
+  phoneNotices,
   PhoneCode,
+  PhoneAsk,
+  PhoneList,
   PhonePanel,
   Header,
   RefusedWorkflows,
@@ -204,6 +218,9 @@ a { color: var(--accent-strong); }
 .phone button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
 .phone-pairing div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .phone-qr { width: 196px; height: 196px; border-radius: 8px; }
+.phone-ask { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.phone-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.phone-list li { display: flex; gap: 8px; align-items: center; }
 header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 22px 0 10px; color: var(--muted); font-size: 12px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 800 26px/1.2 var(--heading-font); }
 .brand svg { width: 30px; height: 30px; color: var(--accent); }

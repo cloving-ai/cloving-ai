@@ -1,6 +1,10 @@
 import { chmod, open } from "node:fs/promises";
 import { join } from "node:path";
-import { createRuntime, type AuthorizationInput } from "solid-objects";
+import {
+  createRuntime,
+  Rejected,
+  type AuthorizationInput,
+} from "solid-objects";
 import { sqlite } from "solid-objects/database/sqlite";
 import { PhoneDevices, type PhoneDevice } from "./phone-devices.ts";
 
@@ -16,6 +20,10 @@ function authorized(input: AuthorizationInput): boolean {
 
 export interface RelayStore {
   readonly devices: () => Promise<readonly PhoneDevice[]>;
+  readonly add: (device: PhoneDevice) => Promise<string | undefined>;
+  readonly connect: (deviceId: string) => Promise<boolean>;
+  readonly remove: (deviceId: string) => Promise<boolean>;
+  readonly removeAll: () => Promise<number>;
   readonly close: () => Promise<void>;
 }
 
@@ -37,6 +45,19 @@ export async function openRelayStore(
     .with({ authorizationContext: relayPrincipal });
   return {
     devices: async () => [...(await devices.devices)],
+    add: async (device) => {
+      try {
+        await devices.add({ device });
+        return undefined;
+      } catch (error) {
+        if (error instanceof Rejected) return error.code.replaceAll("_", "-");
+        throw error;
+      }
+    },
+    connect: (deviceId) => devices.connect({ deviceId }),
+    remove: (deviceId) =>
+      devices.remove({ deviceId, removedAt: new Date().toISOString() }),
+    removeAll: () => devices.removeAll({ removedAt: new Date().toISOString() }),
     close: () => runtime.close(),
   };
 }

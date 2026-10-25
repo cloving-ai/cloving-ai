@@ -52,14 +52,15 @@ function blocks(modules: readonly Line[]): number {
   let score = 0;
   modules.forEach((row, rowIndex) => {
     const below = modules[rowIndex + 1];
-    row.forEach((dark, column) => {
+    for (let column = 0; column < row.length; column += 1) {
+      const dark = row[column];
       const same =
         below !== undefined &&
         dark === row[column + 1] &&
         dark === below[column] &&
         dark === below[column + 1];
       if (same) score += 3;
-    });
+    }
   });
   return score;
 }

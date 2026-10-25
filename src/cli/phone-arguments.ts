@@ -1,8 +1,11 @@
+export type PhoneCommandName = "status" | "list" | "remove" | "reset";
+
 export type PhoneInvocation =
   | { readonly kind: "phone-help" }
   | {
       readonly kind: "phone";
-      readonly command: "status";
+      readonly command: PhoneCommandName;
+      readonly deviceId: string | null;
       readonly json: boolean;
     }
   | {
@@ -11,18 +14,29 @@ export type PhoneInvocation =
       readonly json: boolean;
     };
 
-const commands = ["status"] as const;
+const commands: readonly PhoneCommandName[] = [
+  "status",
+  "list",
+  "remove",
+  "reset",
+];
 
 function phoneCommandName(
   name: string | undefined,
-): (typeof commands)[number] | undefined {
+): PhoneCommandName | undefined {
   return commands.find((command) => command === name);
 }
 
-function unexpected(tokens: readonly string[]): string | undefined {
-  const token = tokens.find((given) => given !== "--json");
-  if (token === undefined) return undefined;
-  return token.startsWith("-") ? "unexpected-option" : "unexpected-argument";
+function unexpected(
+  tokens: readonly string[],
+  command: PhoneCommandName,
+): string | undefined {
+  const allowed = command === "remove" ? 1 : 0;
+  const options = tokens.filter((token) => token.startsWith("-"));
+  const subjects = tokens.filter((token) => !token.startsWith("-"));
+  if (options.some((option) => option !== "--json")) return "unexpected-option";
+  if (subjects.length > allowed) return "unexpected-argument";
+  return subjects.length < allowed ? "missing-argument" : undefined;
 }
 
 export function phoneInvocation(
@@ -39,7 +53,8 @@ export function phoneInvocation(
       code: name === undefined ? "missing-argument" : "unknown-command",
       json,
     };
-  const code = unexpected(rest);
+  const code = unexpected(rest, command);
   if (code !== undefined) return { kind: "usage-error", code, json };
-  return { kind: "phone", command, json };
+  const deviceId = rest.find((token) => !token.startsWith("-")) ?? null;
+  return { kind: "phone", command, deviceId, json };
 }

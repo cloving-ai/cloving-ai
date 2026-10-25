@@ -120,7 +120,7 @@ Commands:
   drop       Cancel a run and keep its files.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
-  phone      Show the state of the phone relay.
+  phone      Show, list, remove and reset the connected phones.
   start      Start the service for a repository.
 
 The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
@@ -177,7 +177,15 @@ Exit codes: 0 complete, 1 processing failure, 2 invalid usage.
 `;
 
 export const phoneUsage = `Usage: cloving phone status [--json]
+       cloving phone list [--json]
+       cloving phone remove <device-id> [--json]
+       cloving phone reset [--json]
 
-Shows the state of the phone relay: the registration with cloving.ai and the connected phones.
-cloving start runs the phone relay as a child process. With CLOVING_PHONE_RELAY=off, the relay does not start, and this command says that the relay is off or not started.
+Shows and changes the phones that answer the questions of this computer.
+status shows the registration with cloving.ai and the number of phones.
+list shows each phone with its device ID, name, platform, state and pairing time.
+remove marks one phone removed on this computer, then asks cloving.ai to remove it. A failure at cloving.ai keeps the phone removed and shows a warning.
+reset removes the registration with cloving.ai, marks all phones removed and deletes phone/link.json and phone/daemon-keys.json.
+Connect a phone with the Connect a phone button of the watch page.
+cloving start runs the phone relay as a child process. With CLOVING_PHONE_RELAY=off, the relay does not start, and status says that the relay is off or not started.
 `;

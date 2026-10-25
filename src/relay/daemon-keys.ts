@@ -16,11 +16,11 @@ const fields = [
 ] as const;
 
 export function publicPoint(key: KeyObject): string {
-  const { x = "", y = "" } = key.export({ format: "jwk" });
+  const jwk = key.export({ format: "jwk" });
   return Buffer.concat([
     Buffer.from([4]),
-    Buffer.from(x, "base64url"),
-    Buffer.from(y, "base64url"),
+    Buffer.from(String(jwk.x), "base64url"),
+    Buffer.from(String(jwk.y), "base64url"),
   ]).toString("base64url");
 }
 

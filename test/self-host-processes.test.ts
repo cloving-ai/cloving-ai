@@ -96,11 +96,12 @@ for (const phoneRelay of ["on", "off"])
         ...relay,
         "watch",
       ]);
-      if (phoneRelay === "on")
-        assert.equal(
-          await readFile(join(root, "relay-runtime"), "utf8"),
-          join(root, "host/run"),
-        );
+      assert.equal(
+        await readFile(join(root, "relay-runtime"), "utf8").catch(
+          () => "not started",
+        ),
+        phoneRelay === "on" ? join(root, "host/run") : "not started",
+      );
     });
   });
 

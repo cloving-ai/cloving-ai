@@ -3,21 +3,28 @@ import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import type { Fields, Reply, ServiceRequest } from "../protocol.ts";
+import { followPairing } from "./pairing-follow.ts";
 import {
   pairingSessions,
   RegistrationEnded,
   type OpenPairing,
-  type PairingSessions,
 } from "./pairing-session.ts";
+import {
+  pairAccept,
+  pairDeny,
+  phoneRemove,
+  phoneReset,
+  result,
+  type OperationState,
+} from "./phone-operations.ts";
 import { listenPhoneSocket } from "./phone-socket.ts";
 import { relayOrigin } from "./relay-http.ts";
 import {
   forgetRegistration,
   readLink,
   registration,
-  type RegistrationContext,
 } from "./relay-registration.ts";
-import { openRelayStore, type RelayStore } from "./relay-store.ts";
+import { openRelayStore } from "./relay-store.ts";
 
 export interface RelayPaths {
   readonly runtimeDirectory: string;
@@ -34,12 +41,6 @@ export interface Relay {
   readonly close: () => Promise<void>;
 }
 
-interface RelayState {
-  readonly context: RegistrationContext;
-  readonly store: RelayStore;
-  readonly sessions: PairingSessions;
-}
-
 function unknownOperation(request: ServiceRequest): Reply {
   return {
     kind: "error",
@@ -50,30 +51,45 @@ function unknownOperation(request: ServiceRequest): Reply {
   };
 }
 
-function result(fields: Fields): Reply {
-  return { kind: "result", result: fields };
+function pairingView(open: OpenPairing | undefined): Fields | null {
+  if (open === undefined) return null;
+  const request = open.request;
+  return {
+    pairingId: open.pairingId,
+    expiresAt: open.expiresAt,
+    stage: open.stage,
+    request:
+      request === undefined
+        ? null
+        : {
+            deviceId: request.deviceId,
+            name: request.name,
+            platform: request.platform,
+            code: request.code,
+          },
+  };
 }
 
-async function phoneState(relay: RelayState): Promise<Reply> {
+async function phoneState(relay: OperationState): Promise<Reply> {
   const link = await readLink(relay.context.phoneDirectory);
-  const open = relay.sessions.current();
   return result({
     registered: link !== undefined,
     daemonId: link?.daemonId ?? null,
     origin: link?.origin ?? null,
-    pairing:
-      open === undefined
-        ? null
-        : {
-            pairingId: open.pairingId,
-            expiresAt: open.expiresAt,
-            stage: "open",
-          },
-    devices: await relay.store.devices(),
+    pairing: pairingView(relay.sessions.current()),
+    refusal: relay.sessions.refusal(),
+    devices: (await relay.store.devices()).map((device) => ({
+      deviceId: device.deviceId,
+      name: device.name,
+      platform: device.platform,
+      pairedAt: device.pairedAt,
+      state: device.state,
+      removedAt: device.removedAt,
+    })),
   });
 }
 
-async function opened(relay: RelayState): Promise<OpenPairing> {
+async function opened(relay: OperationState): Promise<OpenPairing> {
   try {
     return await relay.sessions.start(await registration(relay.context));
   } catch (error) {
@@ -83,22 +99,26 @@ async function opened(relay: RelayState): Promise<OpenPairing> {
   }
 }
 
-async function pairStart(relay: RelayState): Promise<Reply> {
+async function pairStart(relay: OperationState): Promise<Reply> {
   const open = relay.sessions.current() ?? (await opened(relay));
   return result({ link: open.link, expiresAt: open.expiresAt });
 }
 
-function pairCancel(relay: RelayState): Promise<Reply> {
+function pairCancel(relay: OperationState): Promise<Reply> {
   relay.sessions.cancel();
   return Promise.resolve(result({ pairing: null }));
 }
 
-const operations: Readonly<
-  Record<string, (relay: RelayState) => Promise<Reply>>
-> = {
+type Operation = (relay: OperationState, parameters: Fields) => Promise<Reply>;
+
+const operations: Readonly<Record<string, Operation>> = {
   "phone-state": phoneState,
   "phone-pair-start": pairStart,
   "phone-pair-cancel": pairCancel,
+  "phone-pair-accept": pairAccept,
+  "phone-pair-deny": pairDeny,
+  "phone-remove": phoneRemove,
+  "phone-reset": phoneReset,
 };
 
 export function computerName(name: string): string {
@@ -109,22 +129,30 @@ export async function startRelay(options: RelayOptions): Promise<Relay> {
   await mkdir(options.runtimeDirectory, { recursive: true, mode: 0o700 });
   await mkdir(options.phoneDirectory, { recursive: true, mode: 0o700 });
   const store = await openRelayStore(options.phoneDirectory);
-  const relay: RelayState = {
+  const follower: { follow: (open: OpenPairing) => Promise<void> } = {
+    follow: () => Promise.resolve(),
+  };
+  const relay: OperationState = {
     context: {
       phoneDirectory: options.phoneDirectory,
       origin: options.origin ?? relayOrigin(undefined),
       computerName: options.computerName ?? computerName(hostname()),
     },
     store,
-    sessions: pairingSessions(options.secret ?? (() => randomBytes(16))),
+    sessions: pairingSessions({
+      secret: options.secret ?? (() => randomBytes(16)),
+      follow: (open) => follower.follow(open),
+    }),
   };
+  follower.follow = (open) => followPairing(relay, open);
   const socket = await listenPhoneSocket(
     join(options.runtimeDirectory, "phone.sock"),
-    (request) =>
-      (
-        operations[request.operation] ??
-        (() => Promise.resolve(unknownOperation(request)))
-      )(relay),
+    (request) => {
+      const operation = operations[request.operation];
+      return operation === undefined
+        ? Promise.resolve(unknownOperation(request))
+        : operation(relay, request.parameters);
+    },
   );
   return {
     close: async () => {

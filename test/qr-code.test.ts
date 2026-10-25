@@ -11,7 +11,7 @@ import { qrPicture } from "../src/phone/qr-picture.ts";
 import reference from "./fixtures/qr-qrcodegen-1.8.0.json" with { type: "json" };
 
 function rows(matrix: readonly (readonly boolean[])[]): readonly string[] {
-  return matrix.map((row) => row.map((dark) => (dark ? "1" : "0")).join(""));
+  return matrix.map((row) => row.map(Number).join(""));
 }
 
 for (const code of reference.codes)
@@ -32,6 +32,41 @@ function bitsAt(
   return value;
 }
 
+const firstFormatPlaces: readonly (readonly [number, number])[] = [
+  [0, 8],
+  [1, 8],
+  [2, 8],
+  [3, 8],
+  [4, 8],
+  [5, 8],
+  [7, 8],
+  [8, 8],
+  [8, 7],
+  [8, 5],
+  [8, 4],
+  [8, 3],
+  [8, 2],
+  [8, 1],
+  [8, 0],
+];
+const secondFormatPlaces: readonly (readonly [number, number])[] = [
+  [8, 44],
+  [8, 43],
+  [8, 42],
+  [8, 41],
+  [8, 40],
+  [8, 39],
+  [8, 38],
+  [8, 37],
+  [38, 8],
+  [39, 8],
+  [40, 8],
+  [41, 8],
+  [42, 8],
+  [43, 8],
+  [44, 8],
+];
+
 await test("CLV-188 version 7-M has the standard format bits, version bits and dark module", () => {
   const code = reference.codes.find((item) => item.version === 7);
   assert.ok(code !== undefined);
@@ -41,22 +76,15 @@ await test("CLV-188 version 7-M has the standard format bits, version bits and d
     0b101010000010010, 0b101000100100101, 0b101111001111100, 0b101101101001011,
     0b100010111111001, 0b100000011001110, 0b100111110010111, 0b100101010100000,
   ];
-  const first: [number, number][] = [
-    ...[0, 1, 2, 3, 4, 5, 7, 8].map((row): [number, number] => [row, 8]),
-    ...[7, 5, 4, 3, 2, 1, 0].map((column): [number, number] => [8, column]),
-  ];
-  const second: [number, number][] = [
-    ...[0, 1, 2, 3, 4, 5, 6, 7].map((index): [number, number] => [
-      8,
-      size - 1 - index,
-    ]),
-    ...[6, 5, 4, 3, 2, 1, 0].map((index): [number, number] => [
-      size - 1 - index,
-      8,
-    ]),
-  ];
-  assert.equal(bitsAt(symbol.modules, first), formatTable[symbol.mask]);
-  assert.equal(bitsAt(symbol.modules, second), formatTable[symbol.mask]);
+  assert.equal(size, 45);
+  assert.equal(
+    bitsAt(symbol.modules, firstFormatPlaces),
+    formatTable[symbol.mask],
+  );
+  assert.equal(
+    bitsAt(symbol.modules, secondFormatPlaces),
+    formatTable[symbol.mask],
+  );
   const versionPlaces = Array.from(
     { length: 18 },
     (_, index): [number, number] => [

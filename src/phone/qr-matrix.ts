@@ -180,11 +180,12 @@ function placeData(canvas: Canvas, codewords: readonly number[]): void {
 function masked(canvas: Canvas, mask: number): boolean[][] {
   const condition = masks[mask] ?? (() => false);
   return canvas.modules.map((row, rowIndex) =>
-    row.map((dark, column) =>
-      canvas.reserved[rowIndex]?.[column] === true
+    Array.from({ length: row.length }, (_, column) => {
+      const dark = row[column] === true;
+      return canvas.reserved[rowIndex]?.[column] === true
         ? dark
-        : dark !== condition(rowIndex, column),
-    ),
+        : dark !== condition(rowIndex, column);
+    }),
   );
 }
 

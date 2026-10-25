@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { phoneRequest } from "../src/cli/phone-client.ts";
 import { canonicalJson } from "../src/phone/canonical-json.ts";
+import { newDaemonKeys, parseDaemonKeys } from "../src/relay/daemon-keys.ts";
 import { relayRequest } from "../src/relay/relay-http.ts";
 import { startRelay } from "../src/relay/relay-service.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -140,4 +141,21 @@ await test("CLV-188 canonical JSON sorts keys, keeps integers and refuses other 
   assert.throws(() => canonicalJson(1.5), /canonical-json-number/);
   assert.throws(() => canonicalJson(2 ** 60), /canonical-json-number/);
   assert.throws(() => canonicalJson(undefined), /canonical-json-value/);
+});
+
+await test("CLV-188 the key file reader accepts only complete key files", () => {
+  const keys = newDaemonKeys();
+  assert.deepEqual(parseDaemonKeys(JSON.stringify(keys)), keys);
+  assert.equal(parseDaemonKeys(undefined), undefined);
+  assert.equal(parseDaemonKeys("null"), undefined);
+  assert.equal(
+    parseDaemonKeys(JSON.stringify({ ...keys, signingPrivateKey: "" })),
+    undefined,
+  );
+  assert.equal(
+    parseDaemonKeys(
+      JSON.stringify({ agreementPublicKey: keys.agreementPublicKey }),
+    ),
+    undefined,
+  );
 });

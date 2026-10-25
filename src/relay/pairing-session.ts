@@ -1,4 +1,5 @@
 import { pairingIdentity, pairingLink } from "./daemon-keys.ts";
+import type { PairingRequest } from "./pairing-checks.ts";
 import { relayRequest } from "./relay-http.ts";
 import type { Registration } from "./relay-registration.ts";
 
@@ -8,6 +9,10 @@ export interface OpenPairing {
   readonly link: string;
   readonly expiresAt: string;
   readonly registration: Registration;
+  readonly stop: AbortController;
+  stage: "open" | "requested" | "checking";
+  request: PairingRequest | undefined;
+  nonce: string | undefined;
 }
 
 export class RegistrationEnded extends Error {
@@ -18,8 +23,15 @@ export class RegistrationEnded extends Error {
 
 export interface PairingSessions {
   readonly current: () => OpenPairing | undefined;
+  readonly refusal: () => string | null;
   readonly start: (registration: Registration) => Promise<OpenPairing>;
+  readonly end: (open: OpenPairing, refusal: string | null) => void;
   readonly cancel: () => void;
+}
+
+export interface SessionSettings {
+  readonly secret: () => Buffer;
+  readonly follow: (open: OpenPairing) => Promise<void>;
 }
 
 function expiry(body: unknown): string {
@@ -32,50 +44,73 @@ function expiry(body: unknown): string {
   return value;
 }
 
-export function pairingSessions(secret: () => Buffer): PairingSessions {
+async function created(
+  registration: Registration,
+  secret: Buffer,
+): Promise<OpenPairing> {
+  const pairingId = pairingIdentity(secret);
+  const reply = await relayRequest(registration.link.origin, {
+    method: "POST",
+    path: "/api/v1/relay/pairings",
+    token: registration.link.token,
+    body: { pairing_id: pairingId },
+  });
+  if (reply.status === 401) throw new RegistrationEnded();
+  if (reply.status !== 201)
+    throw new Error(
+      `pairing-failed: cloving.ai answered ${String(reply.status)}.`,
+    );
+  return {
+    pairingId,
+    secret,
+    expiresAt: expiry(reply.body),
+    registration,
+    stop: new AbortController(),
+    stage: "open",
+    request: undefined,
+    nonce: undefined,
+    link: pairingLink(registration.link.origin, {
+      secret,
+      keys: registration.keys,
+    }),
+  };
+}
+
+export function pairingSessions(settings: SessionSettings): PairingSessions {
   let open: OpenPairing | undefined;
+  let refusal: string | null = null;
   let timer: NodeJS.Timeout | undefined;
-  const cancel = (): void => {
+  const end = (ended: OpenPairing, code: string | null): void => {
+    if (open !== ended) return;
     clearTimeout(timer);
+    ended.stop.abort();
     open = undefined;
+    refusal = code;
   };
   return {
     current: () => open,
-    cancel,
+    refusal: () => refusal,
+    end,
+    cancel: () => {
+      if (open !== undefined) end(open, null);
+    },
     start: async (registration) => {
-      const value = secret();
-      const pairingId = pairingIdentity(value);
-      const reply = await relayRequest(registration.link.origin, {
-        method: "POST",
-        path: "/api/v1/relay/pairings",
-        token: registration.link.token,
-        body: { pairing_id: pairingId },
-      });
-      if (reply.status === 401) throw new RegistrationEnded();
-      if (reply.status !== 201)
-        throw new Error(
-          `pairing-failed: cloving.ai answered ${String(reply.status)}.`,
-        );
-      cancel();
-      const expiresAt = expiry(reply.body);
-      const started: OpenPairing = {
-        pairingId,
-        secret: value,
-        expiresAt,
-        registration,
-        link: pairingLink(registration.link.origin, {
-          secret: value,
-          keys: registration.keys,
-        }),
-      };
+      const started = await created(registration, settings.secret());
       open = started;
+      refusal = null;
       timer = setTimeout(
         () => {
-          if (open === started) cancel();
+          end(
+            started,
+            started.stage === "requested" ? "pairing-expired" : null,
+          );
         },
-        Date.parse(expiresAt) - Date.now(),
+        Date.parse(started.expiresAt) - Date.now(),
       );
       timer.unref();
+      settings.follow(started).catch(() => {
+        end(started, "pairing-failed");
+      });
       return started;
     },
   };

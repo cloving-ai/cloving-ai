@@ -40,6 +40,7 @@ function post(
   watch: Watching,
   exchange: {
     readonly path: string;
+    readonly body?: string;
     readonly headers: Readonly<Record<string, string>>;
   },
 ): Promise<{ readonly status: number | undefined; readonly body: string }> {
@@ -59,7 +60,7 @@ function post(
       },
     );
     sent.on("error", reject);
-    sent.end("{}");
+    sent.end(exchange.body ?? "{}");
   });
 }
 
@@ -156,6 +157,79 @@ await test("CLV-188 phone.json shows the phone state, or that the relay is off",
         headers: actionHeaders(watch, token),
       });
       assert.equal(offAction.status, 200);
+    } finally {
+      await new Promise((settle) => relay.close(settle));
+    }
+  }));
+
+await test("CLV-189 accept, deny and remove without the page token or from another origin are refused, and the devices do not change", () =>
+  withWatchService(service, async (watch, runtimeDirectory) => {
+    const requests: ServiceRequest[] = [];
+    const relay = await fakePhoneRelay(runtimeDirectory, (request) => {
+      requests.push(request);
+      return { kind: "result", result: { deviceId: "phone-1" } };
+    });
+    try {
+      const token = await pageToken(watch);
+      const good = actionHeaders(watch, token);
+      for (const action of ["accept", "deny", "remove"])
+        for (const headers of [
+          { ...good, "x-cloving-token": "c".repeat(64) },
+          { ...good, origin: "http://evil.example" },
+        ]) {
+          const reply = await post(watch, {
+            path: `actions/phone/${action}`,
+            headers,
+          });
+          assert.equal(
+            reply.status,
+            403,
+            `${action} ${JSON.stringify(headers)}`,
+          );
+        }
+      assert.equal(requests.length, 0);
+      for (const action of ["accept", "deny"])
+        assert.equal(
+          (
+            await post(watch, {
+              path: `actions/phone/${action}`,
+              headers: good,
+            })
+          ).status,
+          200,
+        );
+      assert.deepEqual(
+        requests.map((request) => request.operation),
+        ["phone-pair-accept", "phone-pair-deny"],
+      );
+    } finally {
+      await new Promise((settle) => relay.close(settle));
+    }
+  }));
+
+await test("CLV-189 a phone action reports an off relay and refuses a list body, and phone.json reports a relay error", () =>
+  withWatchService(service, async (watch, runtimeDirectory) => {
+    const headers = actionHeaders(watch, await pageToken(watch));
+    const off = await post(watch, { path: "actions/phone/pair", headers });
+    assert.match(off.body, /"code":"phone-relay-off"/);
+    const relay = await fakePhoneRelay(runtimeDirectory, () => ({
+      kind: "error",
+      error: { code: "phone-relay-failed", detail: "The store failed." },
+    }));
+    try {
+      const listed = await post(watch, {
+        path: "actions/phone/pair",
+        headers,
+        body: "[]",
+      });
+      assert.equal(listed.status, 403);
+      const failed = await post(watch, { path: "actions/phone/pair", headers });
+      assert.match(failed.body, /"code":"phone-relay-failed"/);
+      const read = await fetch(`${watch.address}phone.json`);
+      assert.deepEqual(await read.json(), {
+        relay: "on",
+        error: { code: "phone-relay-failed", detail: "The store failed." },
+      });
     } finally {
       await new Promise((settle) => relay.close(settle));
     }

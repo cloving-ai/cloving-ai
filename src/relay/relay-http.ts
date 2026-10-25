@@ -7,6 +7,7 @@ export interface RelayCall {
   readonly token?: string;
   readonly body?: unknown;
   readonly timeoutMilliseconds?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface RelayReply {
@@ -62,6 +63,7 @@ export function relayRequest(
         method: call.method,
         headers: headers(call, payload),
         timeout: call.timeoutMilliseconds ?? 30_000,
+        ...(call.signal === undefined ? {} : { signal: call.signal }),
       },
       (response) => {
         let text = "";

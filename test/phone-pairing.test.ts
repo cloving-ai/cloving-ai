@@ -23,7 +23,7 @@ async function result(
   name: string,
 ): Promise<Readonly<Record<string, unknown>>> {
   const reply = await phoneRequest(runtimeDirectory, operation(name));
-  if (reply?.kind !== "result") assert.fail(JSON.stringify(reply));
+  assert.equal(reply?.kind, "result", JSON.stringify(reply));
   return reply.result;
 }
 
@@ -201,6 +201,7 @@ await test("CLV-188 the open pairing ends at its expiry", async () => {
         pairingId: [...server.pairings.keys()][0],
         expiresAt: started["expiresAt"],
         stage: "open",
+        request: null,
       });
       await new Promise((settle) => setTimeout(settle, 500));
       assert.equal(

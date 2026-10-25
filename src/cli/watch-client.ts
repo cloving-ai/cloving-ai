@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "" };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -120,4 +120,8 @@ draw();
 listen();
 setInterval(draw, 1000);
 setInterval(load, 15000);
+if (actionToken !== null) {
+  phoneLoad();
+  setInterval(phoneLoad, 2000);
+}
 `;
