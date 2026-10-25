@@ -27,6 +27,24 @@ await test("CLV-204 an incomplete repository selector refuses without selecting 
     });
 });
 
+await test("CLV-204 empty and repeated repository selectors refuse instead of choosing a service", () => {
+  assert.deepEqual(parseInvocation(["status", "--repository="]), {
+    kind: "usage-error",
+    code: "missing-value",
+    json: false,
+  });
+  assert.deepEqual(
+    parseInvocation([
+      "status",
+      "--repository",
+      "/example/A",
+      "--repository",
+      "/example/B",
+    ]),
+    { kind: "usage-error", code: "repeated-option", json: false },
+  );
+});
+
 await test("CLV-204 start refuses incomplete selectors and positional arguments", () =>
   withFiles(
     {

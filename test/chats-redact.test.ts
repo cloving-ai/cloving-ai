@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { redactImport } from "../src/chats/redact-import.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 import {
@@ -100,6 +101,17 @@ await test(
   "CLV-103 unavailable runtime and malformed settings fail without outputs",
   chatPlatformScenario(async () => {
     await withFiles(files, async (directory) => {
+      const before = await readdir(directory, { recursive: true });
+      const direct = await redactImport({
+        importId,
+        workingDirectory: directory,
+        runtimeDirectory: undefined,
+        settings: { home: null, privateTexts: [] },
+      });
+      assert.equal(direct.code, "runtime-directory-unknown");
+      assert.equal(direct.recordCount, 0);
+      assert.equal(direct.totalCount, 0);
+      assert.deepEqual(await readdir(directory, { recursive: true }), before);
       const unavailable = spawnSync(
         process.execPath,
         [resolve("src/cli.ts"), "chats", "redact", importId],
