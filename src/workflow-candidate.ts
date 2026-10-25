@@ -54,6 +54,7 @@ const workflowModules = [
   "cloving/workflows/steps/load-cycle",
   "cloving/workflows/steps/protected-effect",
   "cloving/workflows/steps/handoff",
+  "cloving/workflows/steps/wait-for-run",
   "cloving/workflows/steps/run-command",
 ];
 

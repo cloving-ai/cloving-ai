@@ -165,10 +165,13 @@ export function Card(props: {
 }
 
 export function HandoffLinks(props: {
-  readonly run: Pick<WatchCard, "parentRunId" | "childRunIds">;
+  readonly run: Pick<WatchCard, "parentRunId" | "childRunIds" | "awaitedRunId">;
 }): Shown {
-  const { parentRunId, childRunIds } = props.run;
+  const { parentRunId, childRunIds, awaitedRunId } = props.run;
   const links = [
+    ...(awaitedRunId == null
+      ? []
+      : [{ label: "Waiting for run", runId: awaitedRunId }]),
     ...(parentRunId == null
       ? []
       : [{ label: "Parent run", runId: parentRunId }]),

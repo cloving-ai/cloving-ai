@@ -40,6 +40,22 @@ export interface EffectQueries {
   readonly dueLeases: (instant: string) => Promise<readonly DueLease[]>;
   readonly stops: (runId: string) => Promise<readonly string[]>;
   readonly closure: (runId: string) => Promise<RunClosure>;
+  readonly settledAt: (runId: string) => Promise<number | null>;
+}
+
+async function settledAt(
+  connection: SqlConnection,
+  runId: string,
+): Promise<number | null> {
+  const rows = await connection.all(
+    "SELECT recorded_at FROM events WHERE sequence IN (SELECT settled_sequence FROM operations WHERE run_id = ? UNION ALL SELECT min(e.sequence) FROM events e JOIN stopped_operations s ON s.run_id = e.run_id AND s.operation_id = json_extract(e.payload, '$.operationId') WHERE e.run_id = ? AND (EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = s.operation_id AND d.outcome = 'sent') OR (SELECT d.outcome FROM deliveries d WHERE d.operation_id = s.operation_id ORDER BY d.staged_sequence DESC, d.rowid DESC LIMIT 1) NOT IN ('withheld', 'blocked', 'absent')) AND ((e.type = 'run.observed' AND json_extract(e.payload, '$.condition') = 'stopped') OR (e.type = 'operation.reconciled' AND json_extract(e.payload, '$.outcome') = 'stopped')) GROUP BY s.operation_id)",
+    [runId, runId],
+  );
+  if (rows.length === 0) return null;
+  return rows.reduce<number>(
+    (latest, row) => Math.max(latest, Date.parse(text(row, "recorded_at"))),
+    -Infinity,
+  );
 }
 
 async function storedClosure(
@@ -179,6 +195,7 @@ export function effectQueries(
       read((connection) =>
         storedClosure(connection, { runId, stopLimit: settings.stopLimit }),
       ),
+    settledAt: (runId) => read((connection) => settledAt(connection, runId)),
     budget: (runId) => read((connection) => budget(connection, runId)),
     dueLeases: (instant) =>
       read((connection) => dueLeases(connection, instant)),

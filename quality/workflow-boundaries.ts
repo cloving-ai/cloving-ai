@@ -156,6 +156,60 @@ function stepReference(
   return declarations.some((declaration) => stepTarget(declaration, policy));
 }
 
+function retryAssignment(
+  node: ts.Node,
+  ancestors: readonly ts.Node[],
+): boolean {
+  const [property, assignment, statement, source] = ancestors
+    .slice(-4)
+    .reverse();
+  if (!property || !ts.isPropertyAccessExpression(property)) return false;
+  if (!statement || !ts.isExpressionStatement(statement)) return false;
+  if (!source || !ts.isSourceFile(source)) return false;
+  return (
+    property.expression === node &&
+    property.name.text === "maxRetries" &&
+    configuredAssignment(property, assignment)
+  );
+}
+
+function configuredAssignment(
+  property: ts.PropertyAccessExpression,
+  assignment: ts.Node | undefined,
+): boolean {
+  if (!assignment || !ts.isBinaryExpression(assignment)) return false;
+  return (
+    assignment.left === property &&
+    assignment.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    ts.isNumericLiteral(assignment.right) &&
+    boundedRetryCount(Number(assignment.right.text))
+  );
+}
+
+function boundedRetryCount(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 86401;
+}
+
+function retryConfiguration(
+  node: ts.Node,
+  context: {
+    readonly ancestors: readonly ts.Node[];
+    readonly checker: ts.TypeChecker;
+    readonly policy: WorkflowPolicy;
+  },
+): boolean {
+  const { ancestors, checker, policy } = context;
+  const file = node.getSourceFile().fileName;
+  if (policy.roles[file] !== "step" || !retryAssignment(node, ancestors))
+    return false;
+  const symbol = referencedSymbol(node, { parent: ancestors.at(-1), checker });
+  return (symbol?.declarations ?? []).some(
+    (declaration) =>
+      declaration.getSourceFile().fileName === file &&
+      stepTarget(declaration, policy)?.admitted === true,
+  );
+}
+
 export function inspectWorkflowBoundaries(
   program: ts.Program,
   policy: WorkflowPolicy,
@@ -169,7 +223,8 @@ export function inspectWorkflowBoundaries(
       const issues = [
         durableDefinition(node, { parent: ancestors.at(-1), policy, checker }),
         stepReference(node, { ancestors, checker, policy }) &&
-        !directCallReference(node, ancestors)
+        !directCallReference(node, ancestors) &&
+        !retryConfiguration(node, { ancestors, checker, policy })
           ? "step-value-escape"
           : undefined,
       ];

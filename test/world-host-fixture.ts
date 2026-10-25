@@ -264,6 +264,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
         "./workflows/steps/decision-gate": "./src/steps/decision-gate.ts",
         "./workflows/steps/handoff": "./src/steps/handoff.ts",
+        "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",
         "./workflows/steps/run-command": "./src/steps/run-command.ts",
       },
     }),
