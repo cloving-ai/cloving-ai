@@ -5,16 +5,18 @@ import { parseCommand } from "../../authority/commands.ts";
 import type {
   AuthorityCommand,
   AuthorityEvent,
+  RunState,
 } from "../../authority/transitions.ts";
 import { documentBody } from "../../storage/decision-rows.ts";
 import {
   integer,
   optionalText,
   latestSequence,
+  runRow,
   text,
   type SqlConnection,
 } from "../../storage/domain-rows.ts";
-import { storedEvents } from "../authority-restore.ts";
+import { storedEvents, storedRun } from "../authority-restore.ts";
 import { documentDigest } from "../decision-restore.ts";
 import {
   runLinks,
@@ -57,7 +59,12 @@ export interface CompletionCursor {
   readonly terminal?: boolean;
 }
 
+export interface RunRecord extends RunState {
+  readonly sequence: number;
+}
+
 export interface AuthorityQueries {
+  readonly run: (runId: string) => Promise<RunRecord | undefined>;
   readonly manifest: (runId: string) => Promise<ExecutionManifest | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly receipt: (commandId: string) => Promise<CommandRecord | undefined>;
@@ -69,6 +76,19 @@ export interface AuthorityQueries {
   readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
   readonly runOrigins: () => Promise<RunOrigins>;
   readonly runLinks: () => Promise<Readonly<Record<string, RunLinks>>>;
+}
+
+async function run(
+  connection: SqlConnection,
+  runId: string,
+): Promise<RunRecord | undefined> {
+  const row = await connection.get(
+    "SELECT run_id, status, revision, workflow, paused_from, gates, sequence FROM runs WHERE run_id = ?",
+    [runId],
+  );
+  if (row === undefined) return undefined;
+  const record = runRow(row);
+  return { ...storedRun(record), sequence: record.sequence };
 }
 
 async function runOrigins(
@@ -253,6 +273,7 @@ export function authorityQueries(read: Read): AuthorityQueries {
     return links;
   };
   return {
+    run: (runId) => read((connection) => run(connection, runId)),
     manifest: (runId) =>
       read(async (connection) => {
         const row = await connection.get(

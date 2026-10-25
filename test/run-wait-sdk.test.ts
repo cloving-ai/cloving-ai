@@ -82,10 +82,18 @@ await until(async () => (await world.steps.list({ runId: sdkRunId, resolveData: 
 await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.awaitedRunId });
 `,
     );
-    const boundary: unknown = first.lines[0];
-    assert.equal(
-      Reflect.get(Object(boundary), "boundary"),
-      "waiting-for-child",
+    const boundary = first.lines[0];
+    assert.ok(typeof boundary === "object" && boundary !== null, first.stderr);
+    assert.ok(
+      "boundary" in boundary &&
+        "runId" in boundary &&
+        "awaitedRunId" in boundary,
+      first.stderr,
+    );
+    assert.equal(boundary.boundary, "waiting-for-child", first.stderr);
+    assert.ok(
+      typeof boundary.runId === "string" &&
+        typeof boundary.awaitedRunId === "string",
       first.stderr,
     );
     const restarted = await consumer.run(`${prelude}
@@ -108,8 +116,8 @@ try {
     assert.equal(restarted.status, 0, restarted.stderr);
     assert.deepEqual(restarted.lines, [
       {
-        runId: String(Reflect.get(Object(boundary), "runId")),
-        awaitedRunId: String(Reflect.get(Object(boundary), "awaitedRunId")),
+        runId: boundary.runId,
+        awaitedRunId: boundary.awaitedRunId,
       },
     ]);
   }));
@@ -122,10 +130,9 @@ await test("CLV-180 a replay before the wait checkpoint returns the same outcome
 const world = await getWorld();
 const create = world.events.create.bind(world.events);
 world.events.create = async (...given) => {
-  if (given[1]?.eventType === "step_completed") {
-    const step = await world.steps.get(given[0], given[1].correlationId, { resolveData: "none" });
-    if (step.stepName.endsWith("//waitForRun")) return await halt("before-wait-checkpoint");
-  }
+  if (given[1]?.eventType !== "step_completed") return await create(...given);
+  const step = await world.steps.get(given[0], given[1].correlationId, { resolveData: "none" });
+  if (step.stepName.endsWith("//waitForRun")) return await halt("before-wait-checkpoint");
   return await create(...given);
 };
 await launched();
@@ -133,11 +140,10 @@ await source();
 await new Promise(() => undefined);
 `,
     );
-    assert.equal(
-      Reflect.get(Object(first.lines[0]), "boundary"),
-      "before-wait-checkpoint",
-      first.stderr,
-    );
+    const boundary = first.lines[0];
+    assert.ok(typeof boundary === "object" && boundary !== null, first.stderr);
+    assert.ok("boundary" in boundary, first.stderr);
+    assert.equal(boundary.boundary, "before-wait-checkpoint", first.stderr);
     const result = await consumer.run(`${prelude}
 const daemon = await launched();
 try {
