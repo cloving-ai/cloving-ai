@@ -98,6 +98,17 @@ function settled(
   };
 }
 
+function afterClose(
+  delivery: DeviceDelivery,
+  closedAt: number | null,
+): DeviceDelivery {
+  const stopped =
+    delivery.topic === "decision" &&
+    delivery.state === "failed" &&
+    closedAt !== null;
+  return stopped ? { ...delivery, state: "cancelled" } : delivery;
+}
+
 export class PhoneDelivery extends Actor {
   static override readonly actorType = "PhoneDelivery";
 
@@ -166,7 +177,7 @@ export class PhoneDelivery extends Actor {
       (item) => same(item, request) && item.state === "pending",
     );
     if (delivery === undefined) return;
-    const updated = settled(delivery, result);
+    const updated = afterClose(settled(delivery, result), this.closedAt);
     this.deliveries = replaced(this.deliveries, updated);
     if (!ended(updated)) {
       const wait = deliveryBackoffMilliseconds[updated.attempts] ?? 0;

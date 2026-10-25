@@ -1,11 +1,10 @@
-import { record } from "../protocol.ts";
+import { record, type Fields } from "../protocol.ts";
 import { closedEnvelope } from "./decision-envelopes.ts";
 import type { DeviceEnvelopes } from "./phone-delivery.ts";
 import type { OpenDecision } from "./phone-outbox.ts";
 import type { Registration } from "./relay-registration.ts";
 import {
   envelopeExpiry,
-  resultOf,
   rows,
   sealedPost,
   type CheckContext,
@@ -24,15 +23,20 @@ const outcomes: ReadonlySet<unknown> = new Set([
   "expired",
 ]);
 
-async function endingOf(
+async function runOf(
   context: CheckContext,
-  open: OpenDecision,
-): Promise<Ending> {
-  const status = await resultOf(context, {
+  runId: string,
+): Promise<{ readonly run: Fields | undefined } | undefined> {
+  const reply = await context.control({
     operation: "status",
-    parameters: { runId: open.runId },
+    parameters: { runId },
   });
-  const decided = rows(record(status?.["run"])?.["decisions"]).find(
+  if (reply.kind === "result") return { run: record(reply.result["run"]) };
+  return reply.error.code === "unknown-run" ? { run: undefined } : undefined;
+}
+
+function endingFrom(open: OpenDecision, run: Fields | undefined): Ending {
+  const decided = rows(run?.["decisions"]).find(
     (item) => item["decisionId"] === open.decisionId,
   );
   const outcome = decided?.["decision"];
@@ -47,11 +51,21 @@ async function endingOf(
   };
 }
 
+async function endingOf(
+  context: CheckContext,
+  open: OpenDecision,
+): Promise<Ending | undefined> {
+  const found = await runOf(context, open.runId);
+  return found === undefined ? undefined : endingFrom(open, found.run);
+}
+
 async function closeDecision(
   context: CheckContext,
   scope: { readonly registration: Registration; readonly open: OpenDecision },
 ): Promise<void> {
   const { decisionId } = scope.open;
+  const ending = await endingOf(context, scope.open);
+  if (ending === undefined) return;
   const reached = new Set(
     (await context.store.delivery.list(decisionId))
       .filter(
@@ -67,7 +81,6 @@ async function closeDecision(
       device.state === "connected" &&
       device.removedAt === null,
   );
-  const ending = await endingOf(context, scope.open);
   const issued = context.now();
   const closing: DeviceEnvelopes[] = [];
   for (const device of devices) {
