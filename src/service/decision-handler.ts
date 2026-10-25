@@ -82,7 +82,10 @@ export async function decidedOf(
   scope: { readonly state: StoredState; readonly runId: string },
 ): Promise<readonly Fields[]> {
   const decided = typed(scope.state).filter(
-    (gate) => gate.runId === scope.runId && gate.outcome !== null,
+    (gate) =>
+      gate.runId === scope.runId &&
+      gate.outcome !== null &&
+      gate.outcome.decision !== null,
   );
   const shown: Fields[] = [];
   for (const gate of decided) {

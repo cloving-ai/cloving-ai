@@ -11,6 +11,7 @@ import {
   withHarness,
   type Harness,
 } from "./service-fixture.ts";
+import { command } from "./service-views.ts";
 
 const subject = (kind: string, commandId: string): string =>
   digestOf(`${kind} of ${commandId}?`);
@@ -203,5 +204,28 @@ await test("CLV-186 status shows local for a terminal decision and the device ac
         `\\nDecision ${phone.decisionId}: approved by device:pixel8a\\n`,
       ),
     );
+    await service.close();
+  }));
+
+await test("CLV-186 status lists no decision for a gate that closed because its run was dropped", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const waiting = await waitingGate(harness, {
+      service,
+      commandId: "c-1",
+      kind: "approval",
+    });
+    const dropped = await command(harness, {
+      command: "drop",
+      runId: waiting.runId,
+      expectedRevision: 3,
+      commandId: "c-drop",
+    });
+    assert.equal(field(dropped, "kind"), "run-command");
+    const shown = await call(harness, {
+      operation: "status",
+      parameters: { runId: waiting.runId },
+    });
+    assert.deepEqual(field(field(shown, "run"), "decisions"), []);
     await service.close();
   }));

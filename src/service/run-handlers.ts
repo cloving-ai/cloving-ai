@@ -116,7 +116,6 @@ type ShownRun = RunView &
     readonly latestAt: string | null;
     readonly unresolvedEffects: readonly string[];
     readonly feedback: readonly Fields[];
-    readonly decisions: readonly Fields[];
   };
 
 async function viewOf(
@@ -155,7 +154,6 @@ async function viewOf(
     latestAt: times[run.runId] ?? null,
     unresolvedEffects: unresolvedEffects(input),
     feedback: await feedbackOf(context, { state, runId: run.runId }),
-    decisions: await decidedOf(context, { state, runId: run.runId }),
   };
 }
 
@@ -191,7 +189,6 @@ function full(view: ShownRun & WorkerTotals): Fields {
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
     feedback: view.feedback,
-    decisions: view.decisions,
   };
 }
 
@@ -270,6 +267,10 @@ export async function status(
       ...full({ ...view, ...totals }),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
+      decisions: await decidedOf(context, {
+        state: current.state,
+        runId: view.runId,
+      }),
       ...(await metadataOf(context, {
         workflowId: view.workflowId,
         digest: current.state.details[view.runId]?.input,
