@@ -46,6 +46,49 @@ await test("CLV-093 request readiness waits for a fully written process ID", asy
   });
 });
 
+await test("CLV-162 the fake GitHub command publishes its request only after its PID is ready", async () => {
+  const replies = watchReplies({ runs: [stoppedPrRun()] });
+  await withWatchService(
+    {
+      answer: replies.answer,
+      configure: async (runtime) => {
+        const options = await configuredPrWatch(runtime);
+        const program = join(dirname(runtime), "fake gh.mjs");
+        const source = await readFile(program, "utf8");
+        const pidWrite =
+          'writeFileSync(root + "/gh-pid", String(process.pid));';
+        assert.ok(source.includes(pidWrite));
+        await writeFile(
+          program,
+          source.replace(
+            pidWrite,
+            `writeFileSync(root + "/pid-entered", "ready");
+while (!existsSync(root + "/release-pid")) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+${pidWrite}`,
+          ),
+        );
+        return options;
+      },
+    },
+    async (watch, runtime) => {
+      await recordedPrJournal(runtime);
+      await watchData(watch.address);
+      const root = dirname(runtime);
+      await until(async () =>
+        Boolean(
+          await readFile(join(root, "pid-entered"), "utf8").catch(() => ""),
+        ),
+      );
+      await assert.rejects(readFile(join(root, "gh-request")), {
+        code: "ENOENT",
+      });
+      await writeFile(join(root, "release-pid"), "");
+      await ghRequest(runtime);
+      assert.ok(Number(await readFile(join(root, "gh-pid"), "utf8")) > 0);
+    },
+  );
+});
+
 await test("CLV-093 direct watch server without PR settings retains local data and reports configuration status", async () => {
   const replies = watchReplies({ runs: [stoppedPrRun()] });
   await withWatchService(
