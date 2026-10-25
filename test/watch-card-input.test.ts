@@ -67,7 +67,7 @@ await test("CLV-135 forms exclude malformed and nonstring declarations and prese
 async function writeDeclarations(directory: string): Promise<void> {
   const declaration = {
     workflowId: "declared",
-    capabilities: ["chats"],
+    capabilities: ["claude"],
     effectLimit: 1,
     input: {
       maximumBytes: 4096,

@@ -27,7 +27,7 @@ import {
 import type { WorkerTotals } from "../worker-usage.ts";
 import { usageTotals } from "./worker-totals.ts";
 import { commandFields } from "./command-effects.ts";
-import { feedbackOf } from "./decision-handler.ts";
+import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./submission-handler.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 
@@ -267,6 +267,10 @@ export async function status(
       ...full({ ...view, ...totals }),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
+      decisions: await decidedOf(context, {
+        state: current.state,
+        runId: view.runId,
+      }),
       ...(await metadataOf(context, {
         workflowId: view.workflowId,
         digest: current.state.details[view.runId]?.input,

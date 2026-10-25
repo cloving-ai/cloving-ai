@@ -122,6 +122,7 @@ export const textFields = [
   "ticketStatus",
   "issueUpdate",
   "result",
+  "actor",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];
