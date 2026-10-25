@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,6 +9,7 @@ import {
 } from "./candidate-package-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { operatorFiles } from "./workflow-folder-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 async function bundleIds(store: string): Promise<string[]> {
   return (await readdir(store)).filter((name) => !name.startsWith("."));
@@ -148,5 +150,33 @@ await test("CLV-153 startup cannot reconstruct a missing generation but can reta
     assert.deepEqual(
       (await readdir(join(store, ".history"))).sort(),
       [original, current].sort(),
+    );
+  }));
+
+await test("candidate package builds exclude the external compiler from runtime coverage", () =>
+  withFiles({}, async (directory) => {
+    const fixture = new URL("./candidate-package-fixture.ts", import.meta.url);
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `await import(${JSON.stringify(fixture.href)});`,
+      ],
+      {
+        env: { ...process.env, NODE_V8_COVERAGE: directory },
+        timeout: testMilliseconds(30_000),
+        stdio: "pipe",
+      },
+    );
+    const reports = await readdir(directory);
+    assert.ok(reports.length > 0);
+    const contents = await Promise.all(
+      reports.map((name) => readFile(join(directory, name), "utf8")),
+    );
+    assert.ok(contents.some((report) => report.includes(fixture.href)));
+    assert.ok(
+      contents.every((report) => !report.includes("typescript/lib/_tsc.js")),
+      "the TypeScript compiler must not generate runtime coverage",
     );
   }));

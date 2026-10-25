@@ -144,6 +144,8 @@ const actions = {
 };
 const kind = path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
+if (name === "api GET comments" && state.reviewReadMilliseconds)
+  await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));
 const index = state.failures?.findIndex((failure) => failure.call === name) ?? -1;
 const failure = index < 0 ? undefined : state.failures.splice(index, 1)[0];
 if (failure?.after) actions[name]();
