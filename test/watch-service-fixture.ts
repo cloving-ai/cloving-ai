@@ -34,6 +34,9 @@ export async function withWatchService(
     );
     assert.equal(address.kind, "address");
     const server = createServer((socket) => {
+      socket.on("error", (error: NodeJS.ErrnoException) => {
+        if (!["EPIPE", "ECONNRESET"].includes(error.code ?? "")) throw error;
+      });
       let buffered = "";
       socket.on("data", (chunk: Buffer) => {
         buffered += chunk.toString();

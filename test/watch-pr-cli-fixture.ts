@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { until } from "./claude-worker-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
@@ -58,20 +58,21 @@ export async function configuredPrWatch(
     program,
     `import { writeFileSync, existsSync, readFileSync, watch } from "node:fs";
 const root = ${JSON.stringify(root)};
-writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 writeFileSync(root + "/gh-pid", String(process.pid));
 process.on("SIGTERM", () => {});
+let responded = false;
 const watcher = watch(root, respond);
 function respond() {
-  if (!existsSync(root + "/gh-response")) return;
+  if (responded || !existsSync(root + "/gh-response")) return;
+  responded = true;
   watcher.close();
   const output = JSON.parse(readFileSync(root + "/gh-response", "utf8"));
   process.stdout.write(output.stdout);
   process.stderr.write(output.stderr);
   process.exitCode = output.status;
-
 }
 respond();
+writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
 `,
   );
   return {
@@ -89,9 +90,14 @@ respond();
 
 export async function ghRequest(runtime: string): Promise<unknown> {
   const file = join(dirname(runtime), "gh-request");
-  await until(
-    async () => (await readFile(file, "utf8").catch(() => "")) !== "",
-  );
+  await until(async () => {
+    const [request, processId] = await Promise.all([
+      readFile(file, "utf8").catch(() => ""),
+      readFile(join(dirname(runtime), "gh-pid"), "utf8").catch(() => ""),
+    ]);
+    const pid = Number(processId);
+    return request !== "" && Number.isSafeInteger(pid) && pid > 0;
+  });
   const value: unknown = JSON.parse(await readFile(file, "utf8"));
   return value;
 }
@@ -142,20 +148,17 @@ export async function releasePr(
   runtime: string,
   merged: unknown,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(prOutput(merged)),
-  );
+  await releasePrOutput(runtime, prOutput(merged));
 }
 
 export async function releasePrOutput(
   runtime: string,
   output: WatchCommandOutput,
 ): Promise<void> {
-  await writeFile(
-    join(dirname(runtime), "gh-response"),
-    JSON.stringify(output),
-  );
+  const destination = join(dirname(runtime), "gh-response");
+  const pending = `${destination}.pending`;
+  await writeFile(pending, JSON.stringify(output));
+  await rename(pending, destination);
 }
 
 export function stoppedPrRun() {

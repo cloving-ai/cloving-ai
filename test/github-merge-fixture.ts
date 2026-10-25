@@ -70,5 +70,5 @@ export function pausedMerge(scene: GithubScene): readonly string[] {
     }
   `,
   );
-  return [process.execPath, script];
+  return ["env", "-u", "NODE_V8_COVERAGE", process.execPath, script];
 }

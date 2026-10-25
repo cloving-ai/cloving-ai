@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { DeliveryIntent } from "../src/broker/actor/delivery-intents.ts";
 import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
+import { pausedMerge } from "./github-merge-fixture.ts";
 import {
   committed,
   githubIntent,
@@ -82,6 +89,40 @@ function mergedBefore(scene: GithubScene, commit: string): void {
 function localBranch(scene: GithubScene): string {
   return git(scene.repository, ["branch", "--list", "cloving/ticket-one"]);
 }
+
+await test("CLV-067 synthetic GitHub commands do not inherit product coverage recording", () =>
+  withGithub(async (scene) => {
+    const coverage = join(scene.directory, "synthetic-coverage");
+    const observed = join(scene.directory, "coverage-environment.jsonl");
+    const script = join(scene.directory, "fake-gh.mjs");
+    mkdirSync(coverage);
+    writeFileSync(
+      script,
+      `import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(observed)}, JSON.stringify(process.env.NODE_V8_COVERAGE ?? null) + "\\n");
+` + readFileSync(script, "utf8"),
+    );
+    const previous = process.env["NODE_V8_COVERAGE"];
+    process.env["NODE_V8_COVERAGE"] = coverage;
+    try {
+      await opened(scene, scene.worker());
+      await scene.perform(scene.worker({ gh: pausedMerge(scene) }), {
+        method: "open-pr",
+        payload: { title: "Coverage check", body: "Coverage check" },
+      });
+      scene.gh(["api", "repos/{owner}/{repo}/pulls/1"]);
+      const recordings = readFileSync(observed, "utf8")
+        .trim()
+        .split("\n")
+        .map((line): unknown => JSON.parse(line));
+      assert.ok(recordings.length > 1);
+      assert.deepEqual([...new Set(recordings)], [null]);
+      assert.deepEqual(readdirSync(coverage), []);
+    } finally {
+      if (previous === undefined) delete process.env["NODE_V8_COVERAGE"];
+      else process.env["NODE_V8_COVERAGE"] = previous;
+    }
+  }));
 
 await test("CLV-067 the GitHub worker ends an active wait at close with no result and no report, and a new worker with the same journal continues it after its scan and reports the review with the kept intent", () =>
   withGithub(async (scene) => {
@@ -164,7 +205,14 @@ await test("CLV-067 the scan makes no gh call for a kept merge of a cancelled ru
     const worker = scene.worker();
     const commit = await opened(scene, worker);
     const first = scene.worker({
-      check: [process.execPath, "-e", "setTimeout(() => {}, 60_000)"],
+      check: [
+        "env",
+        "-u",
+        "NODE_V8_COVERAGE",
+        process.execPath,
+        "-e",
+        "setTimeout(() => {}, 60_000)",
+      ],
       document: () => Promise.resolve(JSON.stringify({ number: 1, commit })),
     });
     const given = githubIntent({

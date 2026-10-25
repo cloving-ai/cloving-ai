@@ -191,7 +191,7 @@ function made(
     repository: kept.repository,
     worktrees: join(kept.directory, "worktrees"),
     journal: join(kept.directory, "github"),
-    gh: [process.execPath, kept.script],
+    gh: ["env", "-u", "NODE_V8_COVERAGE", process.execPath, kept.script],
     environment: { FAKE_GH_STATE: stateFile, FAKE_GH_ORIGIN: origin },
     timing: fastTiming,
     document: (digest) => Promise.resolve(payloads.get(digest)),
@@ -217,6 +217,7 @@ function called(kept: Kept, parts: readonly string[]): string {
     encoding: "utf8",
     env: {
       ...process.env,
+      NODE_V8_COVERAGE: undefined,
       FAKE_GH_STATE: kept.stateFile,
       FAKE_GH_ORIGIN: kept.origin,
     },

@@ -1,5 +1,10 @@
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
 import {
+  parseCommands,
+  parseCommandSeconds,
+  type LocalCommands,
+} from "../src/command-settings.ts";
+import {
   parseFallbackModels,
   parseTokenPrices,
   type TokenPrices,
@@ -96,6 +101,8 @@ async function profilesFile(): Promise<TurnProfiles> {
 }
 
 interface Commands {
+  readonly commands: LocalCommands;
+  readonly commandSeconds: number;
   readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
@@ -214,6 +221,10 @@ function guide(): string {
 }
 
 const tokenPrices = parseTokenPrices(process.env["CLOVING_TOKEN_PRICES"]);
+const commands = parseCommands(process.env["CLOVING_COMMANDS"]);
+const commandSeconds = parseCommandSeconds(
+  process.env["CLOVING_COMMAND_SECONDS"],
+);
 const fallbackModels = parseFallbackModels(
   process.env["CLOVING_FALLBACK_MODELS"],
 );
@@ -236,6 +247,8 @@ const manifests = await preparedProject({
 });
 await launchers(
   {
+    commands,
+    commandSeconds,
     tokenPrices,
     fallbackModels,
     worker,

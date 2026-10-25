@@ -14,6 +14,7 @@ import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import { record } from "../protocol.ts";
+import type { LocalCommands } from "../command-settings.ts";
 import { issueIdentity } from "../issue-identity.ts";
 import {
   ticketDependencyWaits,
@@ -59,6 +60,7 @@ export interface TicketRegistration {
   readonly capabilities?: readonly string[];
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
+  readonly commands?: readonly string[];
 }
 
 async function ticket(
@@ -256,6 +258,9 @@ export function ticketRegistrationTable(
       functionName: declaration.functionName,
       effectLimit: declaration.effectLimit,
       capabilities: declaration.capabilities,
+      ...(declaration.commands === undefined
+        ? {}
+        : { commands: declaration.commands }),
       submission: declaration.input,
       ...(declaration.stages === undefined
         ? {}
@@ -289,25 +294,11 @@ export async function ticketRegistrations(
   options: {
     readonly table: readonly TicketRegistration[];
     readonly bundleDigest?: string;
+    readonly commands?: LocalCommands;
   },
 ): Promise<TicketRegistrations> {
-  const ids = new Set<string>();
-  for (const row of options.table) {
-    if (ids.has(row.workflowId))
-      return {
-        kind: "rejected",
-        detail: `duplicate-workflow-id: ${row.workflowId}`,
-      };
-    ids.add(row.workflowId);
-  }
-  for (const row of options.table) {
-    const unknown = row.handoffs?.find((target) => !ids.has(target));
-    if (unknown !== undefined)
-      return {
-        kind: "rejected",
-        detail: `unknown-handoff-target: ${row.workflowId} -> ${unknown}`,
-      };
-  }
+  const refusal = registrationRefusal(options.table, options.commands ?? {});
+  if (refusal !== undefined) return { kind: "rejected", detail: refusal };
   const registrations: WorkflowRegistration[] = [];
   for (const row of options.table) {
     const {
@@ -340,4 +331,29 @@ export async function ticketRegistrations(
     });
   }
   return { kind: "admitted", registrations };
+}
+
+function registrationRefusal(
+  table: readonly TicketRegistration[],
+  commands: LocalCommands,
+): string | undefined {
+  const ids = new Set<string>();
+  for (const row of table) {
+    if (ids.has(row.workflowId))
+      return `duplicate-workflow-id: ${row.workflowId}`;
+    ids.add(row.workflowId);
+  }
+  for (const row of table) {
+    const unknown = row.handoffs?.find((target) => !ids.has(target));
+    if (unknown !== undefined)
+      return `unknown-handoff-target: ${row.workflowId} -> ${unknown}`;
+  }
+  for (const row of table) {
+    const unknown = row.commands?.find(
+      (name) => !Object.hasOwn(commands, name),
+    );
+    if (unknown !== undefined)
+      return `command-unknown: ${row.workflowId} -> ${unknown}`;
+  }
+  return undefined;
 }
