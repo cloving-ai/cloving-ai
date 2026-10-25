@@ -49,6 +49,7 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
     "protectedEffect",
     "runCommand",
     "ticketStatus",
+    "waitForRun",
   ]);
 });
 

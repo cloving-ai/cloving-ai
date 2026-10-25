@@ -1076,7 +1076,17 @@
     "test/relay-answer-inbox.test.ts": "test",
     "test/phone-heartbeat-races.test.ts": "test",
     "test/phone-heartbeat-fixture.ts": "test",
-    "test/service-question-fixture.ts": "test"
+    "test/service-question-fixture.ts": "test",
+    "src/run-wait.ts": "pure",
+    "src/steps/wait-for-run.ts": "step",
+    "src/host/run-wait.ts": "host-bridge",
+    "src/service/run-waits.ts": "service",
+    "test/run-wait.test.ts": "test",
+    "test/run-wait-sdk.test.ts": "test",
+    "test/run-wait-display.test.ts": "test",
+    "test/run-wait-candidate.test.ts": "test",
+    "test/run-wait-host.test.ts": "test",
+    "test/run-wait-storage.test.ts": "test"
   },
   "allowed": {
     "quality": [

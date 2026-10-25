@@ -227,6 +227,7 @@ await test("CLV-174 the gate timeout stops signal-resistant test process groups"
       let launcher: number | undefined;
       try {
         await waitFor(() => existsSync(join(directory, "timed-out")));
+        assert.deepEqual(await closed, [0, null]);
         const identity: unknown = JSON.parse(
           readFileSync(join(directory, "identity"), "utf8"),
         );
@@ -247,7 +248,6 @@ await test("CLV-174 the gate timeout stops signal-resistant test process groups"
           /Check execution failed: tests/,
         );
         await waitFor(() => !running(child));
-        assert.deepEqual(await closed, [0, null]);
       } finally {
         stopGroup(launcher);
         stopGroup(supervising.pid);
