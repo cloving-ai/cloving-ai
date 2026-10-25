@@ -210,20 +210,35 @@ await test("CLV-198 two failed checks in a workflow cause only one failed-jobs r
 
 await test("CLV-198 an unfinished workflow waits before requesting its failed jobs", async () => {
   let reads = 0;
-  const { result, calls } = await ciScenario({
-    snapshots: [[failed]],
-    workflow: () => ({
-      ...workflow,
-      status: ++reads === 1 ? "in_progress" : "completed",
-    }),
-    timing: { ciLimitMilliseconds: 20 },
-  });
-  assert.equal(result?.reason, "ci-pending");
-  assert.equal(calls.filter((call) => call[1] === "rerun").length, 1);
-  assert.ok(
-    calls.findIndex((call) => call[1] === "rerun") >
-      calls.findIndex((call) => call[1]?.includes("/actions/runs/88")),
-  );
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  try {
+    const { result, calls } = await ciScenario({
+      snapshots: [[failed]],
+      workflow: () => {
+        reads += 1;
+        now = Math.min(reads - 1, 2) * 10;
+        return {
+          ...workflow,
+          status: reads === 1 ? "in_progress" : "completed",
+        };
+      },
+      reply: (parts) => {
+        if (parts[1] === "rerun") now = 20;
+        return "{}";
+      },
+      timing: { ciLimitMilliseconds: 20 },
+    });
+    assert.equal(result?.reason, "ci-pending");
+    assert.equal(reads, 2);
+    assert.equal(calls.filter((call) => call[1] === "rerun").length, 1);
+    assert.ok(
+      calls.findIndex((call) => call[1] === "rerun") >
+        calls.findIndex((call) => call[1]?.includes("/actions/runs/88")),
+    );
+  } finally {
+    mock.restoreAll();
+  }
 });
 
 await test("CLV-198 malformed workflow attempts fail closed without requesting reruns", async () => {
