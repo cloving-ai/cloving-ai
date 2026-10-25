@@ -76,7 +76,9 @@ await test("CLV-198 failed checks do not start reruns at or after the CI deadlin
   }
 });
 
-await test("CLV-198 newer selected successes supersede a still pending historical rerun", async () => {
+await test("CLV-198 newer selected successes supersede a still pending historical rerun", async (context) => {
+  let now = 0;
+  context.mock.method(Date, "now", () => now++);
   const { result } = await ciScenario({
     snapshots: [
       [failed],
@@ -93,7 +95,9 @@ await test("CLV-198 newer selected successes supersede a still pending historica
   assert.equal(result, undefined);
 });
 
-await test("CLV-198 a passing required check does not wait for unrelated workflow jobs", async () => {
+await test("CLV-198 a passing required check does not wait for unrelated workflow jobs", async (context) => {
+  let now = 0;
+  context.mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result } = await ciScenario({
     environment: { CLOVING_REQUIRED_CHECKS: '["quality_linux"]' },
@@ -105,7 +109,9 @@ await test("CLV-198 a passing required check does not wait for unrelated workflo
   assert.equal(result, undefined);
 });
 
-await test("CLV-198 a fresh second failure starts repair while sibling jobs still run", async () => {
+await test("CLV-198 a fresh second failure starts repair while sibling jobs still run", async (context) => {
+  let now = 0;
+  context.mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result } = await ciScenario({
     snapshots: [[failed], [checkRun({ id: 202, conclusion: "failure" })]],
@@ -208,7 +214,9 @@ await test("CLV-198 two failed checks in a workflow cause only one failed-jobs r
   assert.equal(calls.filter((call) => call[1] === "rerun").length, 1);
 });
 
-await test("CLV-198 an unfinished workflow waits before requesting its failed jobs", async () => {
+await test("CLV-198 an unfinished workflow waits before requesting its failed jobs", async (context) => {
+  let now = 0;
+  context.mock.method(Date, "now", () => now++);
   let reads = 0;
   const { result, calls } = await ciScenario({
     snapshots: [[failed]],
