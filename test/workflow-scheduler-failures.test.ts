@@ -29,6 +29,59 @@ await test("CLV-179 all terminal states release the next scheduled slot", async 
     );
 });
 
+await test("CLV-179 a cancelled scheduled run blocks overlap until its stop is confirmed", () => {
+  let condition = "cancelling";
+  const commands: unknown[] = [];
+  return withScheduler(
+    {
+      initial: { review: progress },
+      handle: () =>
+        Promise.resolve({
+          kind: "result",
+          result: { run: { state: "cancelled", condition } },
+        }),
+      submit: (command) => {
+        commands.push(command);
+        return Promise.resolve({ kind: "accepted", sequence: 1, intents: [] });
+      },
+    },
+    async (scene) => {
+      scene.now(600000);
+      await reached(() => scene.requests.length >= 1);
+      await scene.stop();
+      assert.deepEqual(
+        scene.requests.map((request) => request.operation),
+        ["status"],
+      );
+      assert.deepEqual(commands, [
+        {
+          kind: "record-schedule-skip",
+          commandId: "skip:schedule:review:2",
+          runId: scene.requests[0]?.parameters["runId"],
+          workflowId: "review",
+          slot: 2,
+        },
+      ]);
+      assert.deepEqual(JSON.parse(await scene.saved()), {
+        review: { ...progress, nextAt: 900000, lastSlot: 2 },
+      });
+      condition = "cancelled";
+      await scene.restart();
+      scene.now(900000);
+      await reached(() => scene.requests.length === 3);
+      assert.deepEqual(
+        scene.requests.map((request) => request.operation),
+        ["status", "status", "run"],
+      );
+      assert.equal(
+        scene.requests[2]?.parameters["commandId"],
+        "schedule:review:3",
+      );
+      assert.equal(commands.length, 1);
+    },
+  );
+});
+
 await test("CLV-179 queued, waiting and paused scheduled runs continue to block overlap", async () => {
   for (const state of ["queued", "waiting_gate", "paused"]) {
     const commands: unknown[] = [];

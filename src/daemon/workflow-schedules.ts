@@ -129,6 +129,7 @@ async function active(
   const run = record(reply.result["run"]);
   if (typeof run?.["state"] !== "string")
     throw new Error("invalid-schedule-run");
+  if (run["condition"] === "cancelling") return runId;
   return ["completed", "failed", "cancelled"].includes(run["state"])
     ? undefined
     : runId;
