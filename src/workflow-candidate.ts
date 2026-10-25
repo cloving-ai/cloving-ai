@@ -54,6 +54,7 @@ const workflowModules = [
   "cloving/workflows/steps/load-cycle",
   "cloving/workflows/steps/protected-effect",
   "cloving/workflows/steps/handoff",
+  "cloving/workflows/steps/run-command",
 ];
 
 function isMethodList(value: unknown): value is readonly string[] {
