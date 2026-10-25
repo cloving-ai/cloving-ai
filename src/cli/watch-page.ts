@@ -1,5 +1,6 @@
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
+import { Commands, commandText } from "./command-effects.ts";
 import { watchCardClient } from "./watch-card-client.ts";
 import {
   AddCard,
@@ -73,6 +74,8 @@ import {
 
 const functions = [
   record,
+  commandText,
+  Commands,
   Queue,
   cardReply,
   cardSubmitKey,

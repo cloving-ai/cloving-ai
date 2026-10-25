@@ -2,6 +2,24 @@ import { record } from "./protocol.ts";
 
 export type LocalCommands = Readonly<Record<string, readonly string[]>>;
 
+export const commandLimits = {
+  stdoutBytes: 1_048_576,
+  stderrBytes: 65_536,
+  resultBytes: 3_145_728,
+};
+
+export interface CommandEffect {
+  readonly operationId: string;
+  readonly name: string;
+  readonly state: string;
+  readonly exitCode: number | null;
+  readonly durationMilliseconds: number | null;
+}
+
+export type CommandEffects = (
+  effects: readonly CommandEffect[],
+) => Promise<readonly CommandEffect[]>;
+
 function argumentsList(value: unknown): value is readonly string[] {
   return (
     Array.isArray(value) &&

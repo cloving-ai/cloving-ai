@@ -1,3 +1,4 @@
+import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
@@ -112,6 +113,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly commandEffects?: readonly CommandEffect[];
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly childRunIds?: readonly string[];

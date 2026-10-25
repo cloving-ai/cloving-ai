@@ -1,4 +1,4 @@
-import { issueIdentity } from "../issue-identity.ts";
+import { metadataOf, outcomeOf } from "./run-metadata.ts";
 import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
 import {
   runView,
@@ -9,6 +9,7 @@ import {
 } from "../authority/status.ts";
 import type {
   OperationRecord,
+  OperationView,
   StoredState,
 } from "../broker/actor/authority.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
@@ -25,6 +26,7 @@ import {
 } from "./replies.ts";
 import type { WorkerTotals } from "../worker-usage.ts";
 import { usageTotals } from "./worker-totals.ts";
+import { commandFields } from "./command-effects.ts";
 import { feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./submission-handler.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
@@ -81,11 +83,18 @@ function summaries(
 async function effectInput(
   context: ServiceContext,
   runId: string,
-): Promise<Pick<StatusInput, "budget" | "effects" | "effectEvidence">> {
+): Promise<
+  Pick<StatusInput, "budget" | "effects" | "effectEvidence"> & {
+    readonly commandOperations: readonly OperationView[];
+  }
+> {
   const { effects } = context.authority;
   const budget = await effects.budget(runId);
   const stored = await effects.operations(runId);
   return {
+    commandOperations: stored.filter(
+      (operation) => operation.capability === "command",
+    ),
     budget: budget ? { limit: budget.limit, spent: budget.spent } : null,
     effects: stored.map((operation) => ({
       operationId: operation.operationId,
@@ -101,6 +110,7 @@ async function effectInput(
 
 type ShownRun = RunView &
   RunLinks & {
+    readonly commandOperations: readonly OperationView[];
     readonly input: Fields | null;
     readonly workflowId: string;
     readonly latestAt: string | null;
@@ -116,8 +126,9 @@ async function viewOf(
   const run = isIdentifier(scope.runId) ? state.runs[scope.runId] : undefined;
   if (run === undefined) return undefined;
   const details = state.details[run.runId];
+  const effects = await effectInput(context, run.runId);
   const input = {
-    ...(await effectInput(context, run.runId)),
+    ...effects,
     closure:
       run.status === "cancelled"
         ? await context.authority.effects.closure(run.runId)
@@ -136,6 +147,7 @@ async function viewOf(
   };
   return {
     ...runView(input),
+    commandOperations: effects.commandOperations,
     ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
     input: await submittedInput(context, details?.submission),
     workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
@@ -177,66 +189,6 @@ function full(view: ShownRun & WorkerTotals): Fields {
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
     feedback: view.feedback,
-  };
-}
-
-async function outcomeOf(
-  context: ServiceContext,
-  view: ShownRun,
-): Promise<Fields | null> {
-  if (view.state !== "completed") return null;
-  const event = await context.authority.queries.latestCompletion({
-    runId: view.runId,
-    atOrBefore: view.latestSequence,
-  });
-  const payload = event?.payload ?? {};
-  const kind = payload["outcome"];
-  if (kind === undefined) return null;
-  const { ticketStatus, promotionId, outcomeReason, issueUpdate } = payload;
-  return {
-    kind,
-    reason: outcomeReason ?? null,
-    ...(promotionId === undefined ? {} : { promotionId }),
-    ...(ticketStatus === undefined ? {} : { ticketStatus }),
-    ...(issueUpdate === "failed" ? { issueUpdate } : {}),
-  };
-}
-
-function titleOf(input: Fields | undefined, workflowId: string): string | null {
-  const ticket = input?.["ticket"];
-  if (typeof ticket !== "string") return null;
-  const fallback = `Cloving task ${String(input?.["cycleId"])}`;
-  const lines = ticket.split("\n");
-  if (workflowId === "develop-prompt") {
-    const first = lines.find((line) => /\S/.test(line));
-    return first === undefined
-      ? fallback
-      : first.replace(/^# /, "").trim().slice(0, 200);
-  }
-  const first = lines[0] ?? "";
-  return first.startsWith("# ")
-    ? first.slice(2).trim().slice(0, 200)
-    : fallback;
-}
-
-async function metadataOf(
-  context: ServiceContext,
-  source: {
-    readonly workflowId: string;
-    readonly digest: string | null | undefined;
-  },
-): Promise<Fields> {
-  const document = source.digest
-    ? await context.authority.queries.document(source.digest)
-    : undefined;
-  const input = record(JSON.parse(document ?? "null"));
-  const ticketId = input?.["ticketId"];
-  return {
-    ticketId: typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
-    title: titleOf(input, source.workflowId),
-    ...(source.workflowId === "develop-issue"
-      ? { issueIdentity: issueIdentity(input?.["ticket"]) }
-      : {}),
   };
 }
 
@@ -313,6 +265,7 @@ export async function status(
   return result("run-status", {
     run: {
       ...full({ ...view, ...totals }),
+      ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
       ...(await metadataOf(context, {
         workflowId: view.workflowId,

@@ -1,6 +1,7 @@
 import type { SolidObjectsConfiguration } from "solid-objects";
 import { recoveryBound } from "../../authority/commands.ts";
 import { lineLogger } from "./authority-logger.ts";
+import { commandLimits } from "../../command-settings.ts";
 
 export interface AuthorityTiming {
   readonly leaseMilliseconds: number;
@@ -89,6 +90,8 @@ export function librarySettings(
   return {
     tableNamePrefix: "solid_",
     maxAttempts: 1,
+    maxPayloadBytes: 900_000 + commandLimits.stdoutBytes * 6,
+    maxResultBytes: 900_000 + commandLimits.stdoutBytes * 6,
     logger: lineLogger(log ?? standardError),
     leaseDurationMilliseconds: timing.leaseMilliseconds,
     leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,

@@ -23,6 +23,7 @@ import type {
   ProtectedIntent,
 } from "./delivery-intents.ts";
 import { pinned } from "./pin-check.ts";
+import { commandLimits } from "../../command-settings.ts";
 
 export interface EffectDelivery {
   readonly reader: Database;
@@ -106,7 +107,9 @@ async function called(
     await parts.calls.call(intent.operationId, (signal) =>
       adapterCall(intent, signal),
     ),
-    parts.effects.resultBytes,
+    intent.capability === "command"
+      ? commandLimits.resultBytes
+      : parts.effects.resultBytes,
   );
 }
 

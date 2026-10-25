@@ -115,7 +115,7 @@ function ended(stream: NodeJS.WritableStream): Promise<void> {
   });
 }
 
-function turnEnvironment(
+export function turnEnvironment(
   configuration: string,
   start: TurnStart,
 ): NodeJS.ProcessEnv {

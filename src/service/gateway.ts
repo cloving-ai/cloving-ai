@@ -8,6 +8,7 @@ import {
 import { record } from "../protocol.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
 import type { Registry } from "./registry.ts";
+import { commandLimits } from "../command-settings.ts";
 
 export type Principal = "operator" | "worker" | "controller";
 
@@ -103,6 +104,25 @@ function refusal(
   return undefined;
 }
 
+async function reportLimit(
+  parts: { readonly authority: Authority; readonly textBytes: number },
+  submission: Checked,
+): Promise<number> {
+  if (
+    submission.command["kind"] !== "report-effect" ||
+    !submission.documents.some(
+      (text) => Buffer.byteLength(text) > parts.textBytes,
+    )
+  )
+    return parts.textBytes;
+  const operation = await parts.authority.effects.operation(
+    String(submission.command["operationId"]),
+  );
+  return operation?.capability === "command"
+    ? commandLimits.resultBytes
+    : parts.textBytes;
+}
+
 export function commandGateway(parts: {
   readonly authority: Authority;
   readonly registry: Registry;
@@ -110,7 +130,7 @@ export function commandGateway(parts: {
   readonly textBytes: number;
   readonly pendingWorkerCommands?: number;
 }): Gateway {
-  const { authority, registry, clock, textBytes } = parts;
+  const { authority, registry, clock } = parts;
   const bound = parts.pendingWorkerCommands ?? workerCommandBound;
   let pending = 0;
   async function manifest(
@@ -154,7 +174,7 @@ export function commandGateway(parts: {
       if (copy === undefined) return unserializable;
       const submission = checked(given.principal, copy);
       if (submission === undefined) return invalidCommand;
-      const refused = refusal(submission, textBytes);
+      const refused = refusal(submission, await reportLimit(parts, submission));
       if (refused !== undefined) return refused;
       return submission.principal === "worker"
         ? counted(submission)

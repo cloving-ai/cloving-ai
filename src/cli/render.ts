@@ -1,6 +1,7 @@
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { record, type Fields } from "../protocol.ts";
 import { workflowRefusals } from "../workflow-refusals.ts";
+import { commandText, shownCommands } from "./command-effects.ts";
 
 function show(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -250,6 +251,9 @@ export function runStatus(result: Fields): readonly string[] {
     `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
+    ...shownCommands(part(run, "commandEffects")).map((effect) =>
+      visible(commandText(effect)),
+    ),
     `Next action: ${show(part(run, "nextAction") ?? "none")}${at === null ? "" : ` at ${show(at)}`}`,
     `Human input can help: ${part(run, "humanInputCanHelp") === true ? "yes" : "no"}`,
     ...feedbackLines(part(run, "feedback")),

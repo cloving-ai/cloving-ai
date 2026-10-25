@@ -22,7 +22,9 @@ import {
   type ColumnControls,
 } from "./watch-board-view.ts";
 import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
-import { Decision, Events, Turn } from "./watch-turn.ts";
+export { PullRequest } from "./watch-turn.ts";
+import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
+import { Commands } from "./command-effects.ts";
 import { StartRun } from "./watch-start-view.ts";
 import { record } from "../protocol.ts";
 
@@ -153,38 +155,6 @@ export function Review(props: {
   });
 }
 
-export function PullRequest(props: { readonly run: WatchRun }): Shown {
-  const { pullRequest, reviews, mergeCommit } = props.run;
-  if (pullRequest === null) return null;
-  const link = element("a", {
-    href: pullRequest.url,
-    children: `#${String(pullRequest.number)}`,
-  });
-  const scores = reviews.map((review) =>
-    element("li", {
-      children: `Round ${String(review.round)} · Review ${String(review.score)}/5 · commit ${review.commit.slice(0, 7)}`,
-    }),
-  );
-  const merge =
-    mergeCommit === null
-      ? null
-      : element("p", {
-          class: "meta",
-          children: [
-            "Merge commit ",
-            element("code", { children: mergeCommit }),
-          ],
-        });
-  return element("section", {
-    class: "pull",
-    children: [
-      element("h3", { children: ["Pull request ", link] }),
-      element("ul", { class: "reviews", children: scores }),
-      merge,
-    ],
-  });
-}
-
 export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
@@ -228,6 +198,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       component(Decision, { decision, turn, copying }),
     ),
     turns,
+    component(Commands, { effects: run.commandEffects ?? [] }),
     component(Events, { events: run.events }),
     element("p", { class: "meta foot", children: foot }),
   ];

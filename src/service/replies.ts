@@ -9,8 +9,10 @@ import type { ChangeSignal } from "./changes.ts";
 import type { Gateway } from "./gateway.ts";
 import type { Registry } from "./registry.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
+import type { CommandEffects } from "../command-settings.ts";
 
 export interface ServiceContext {
+  readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
