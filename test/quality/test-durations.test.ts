@@ -163,7 +163,7 @@ function timeoutSupervisor(): string {
   const executionModule = pathToFileURL(
     resolve("quality/test-execution.ts"),
   ).href;
-  return `import { runSupervisedCommand } from ${JSON.stringify(commandModule)}; import { testCommand } from ${JSON.stringify(executionModule)}; import { writeFileSync } from "node:fs"; try { await runSupervisedCommand({ ...testCommand(process.cwd(), { tests: ["main.test.ts"] }), timeoutMilliseconds: ${String(testMilliseconds(1500))} }); } catch (error) { writeFileSync("timed-out", String(error)); }`;
+  return `import { runSupervisedCommand } from ${JSON.stringify(commandModule)}; import { testCommand } from ${JSON.stringify(executionModule)}; import { writeFileSync } from "node:fs"; import { setTimeout } from "node:timers/promises"; try { await runSupervisedCommand({ ...testCommand(process.cwd(), { tests: ["main.test.ts"] }), timeoutMilliseconds: ${String(testMilliseconds(1500))} }); } catch (error) { writeFileSync("timed-out", ""); await setTimeout(100); writeFileSync("timed-out", String(error)); }`;
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const)
@@ -226,7 +226,10 @@ await test("CLV-174 the gate timeout stops signal-resistant test process groups"
       const closed = once(supervising, "close");
       let launcher: number | undefined;
       try {
-        await waitFor(() => existsSync(join(directory, "timed-out")));
+        await waitFor(
+          () =>
+            supervising.exitCode !== null || supervising.signalCode !== null,
+        );
         const identity: unknown = JSON.parse(
           readFileSync(join(directory, "identity"), "utf8"),
         );
