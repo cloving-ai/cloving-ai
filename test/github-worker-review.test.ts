@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { testMilliseconds } from "./test-timing.ts";
 import { journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import {
   committed,
+  fastTiming,
   githubIntent,
   opened,
   pullBody as body,
@@ -121,8 +123,18 @@ await test("CLV-063 the GitHub worker stops the wait with a failure when no revi
 
 await test("CLV-063 the GitHub worker keeps the wait when the trigger comment fails, and does not take the review of an earlier commit for the pushed commit", () =>
   withGithub(async (scene) => {
-    scene.plan({ scores: [3], fail: "pr comment" });
-    const worker = scene.worker();
+    scene.plan({
+      scores: [3],
+      fail: "pr comment",
+      reviewReadMilliseconds: 650,
+    });
+    const worker = scene.worker({
+      timing: {
+        ...fastTiming,
+        triggerMilliseconds: 0,
+        limitMilliseconds: testMilliseconds(2000),
+      },
+    });
     const first = await opened(scene, worker);
     const call = (commit: string): Parameters<GithubScene["perform"]>[1] => ({
       method: "wait-review",
