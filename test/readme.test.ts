@@ -3,8 +3,56 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { commandUsage, usage } from "../src/cli/usage.ts";
+import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
+
+await test("CLV-201 the README names every scanned workflow folder", () => {
+  const loader = readFileSync(
+    join(import.meta.dirname, "../tools/workflow-folders.ts"),
+    "utf8",
+  );
+  const folders = Array.from(
+    loader.matchAll(/parts: \[([^\]]+)\]/g),
+    (match) =>
+      Array.from(String(match[1]).matchAll(/"([^"]+)"/g), (part) =>
+        String(part[1]),
+      ).join("/") + "/",
+  );
+  assert.ok(folders.length > 0);
+  const development = readme
+    .split("## Develop a workflow\n")[1]
+    ?.split("\n## ")[0];
+  assert.ok(development);
+  for (const folder of [...folders, "workflows/"])
+    assert.ok(development.includes("`" + folder + "`"), folder);
+});
+
+await test("CLV-201 the README folder workflow example passes candidate declaration checks", () => {
+  const development = readme.split("## Develop a workflow\n")[1] ?? "";
+  assert.match(development, /`<name>\.ts`/);
+  assert.match(development, /`<name>\.declaration\.json`/);
+  const example = development.match(/```json\n([\s\S]*?)\n```/)?.[1];
+  assert.ok(example);
+  const declaration: unknown = JSON.parse(example);
+  assert.deepEqual(
+    checkWorkflowCandidate({
+      declaration,
+      analysis: {
+        imports: [],
+        effects: [],
+        directEffects: [],
+        unsupportedForms: [],
+        knownCallCount: 0,
+        knownUnitTotal: 0,
+      },
+      installedExports: {},
+    }),
+    [],
+  );
+  assert.match(development, /absolute `XDG_CONFIG_HOME`/);
+  assert.match(development, /otherwise.*`~\/\.config`/);
+});
 
 await test("CLV-099 the README explains the developer gate time factor and default", () => {
   assert.match(
@@ -13,11 +61,18 @@ await test("CLV-099 the README explains the developer gate time factor and defau
   );
 });
 
-await test("CLV-097 installation describes the packaged replacement and pending operator release", () => {
+await test("CLV-201 installation describes the published package without a package version", () => {
   assert.match(readme, /^npm install --global cloving --ignore-scripts$/m);
   assert.doesNotMatch(readme, /npm install --global cloving@/);
   assert.match(readme, /replaces the older Cloving CLI/);
-  assert.match(readme, /Once the operator publishes this package/);
+  assert.doesNotMatch(
+    readme,
+    /not published to npm|registry currently serves that older CLI|Once the operator publishes this package|do not install the npm package with the name cloving/,
+  );
+  assert.doesNotMatch(
+    readme,
+    /cloving@\d|cloving-\d+\.\d+\.\d+|Cloving(?: package)? v?\d+\.\d+\.\d+/i,
+  );
   assert.match(readme, /Node 26\.9\.0 and npm 11\.19\.1/);
   assert.match(readme, /supports macOS and Linux on arm64 and x64/);
   assert.match(readme, /macOS 15 arm64 and Ubuntu 24\.04 x64/);

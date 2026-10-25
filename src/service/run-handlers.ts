@@ -165,6 +165,7 @@ function summary(view: ShownRun): Fields {
     workflowId: view.workflowId,
     state: view.state,
     condition: view.condition,
+    awaitedRunId: view.awaitedRunId,
     revision: view.revision,
     latestSequence: view.latestSequence,
     latestAt: view.latestAt,

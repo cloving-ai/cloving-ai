@@ -263,6 +263,15 @@ function outcomeOf(
   };
 }
 
+function runLinksOf(status: Readonly<Record<string, unknown>>) {
+  return {
+    parentRunId: stamp(status["parentRunId"]),
+    chainId: stamp(status["chainId"]) ?? text(status["runId"]),
+    childRunIds: texts(status["childRunIds"]),
+    awaitedRunId: stamp(status["awaitedRunId"]),
+  };
+}
+
 function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
@@ -276,9 +285,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
-    parentRunId: stamp(status["parentRunId"]),
-    chainId: stamp(status["chainId"]) ?? runId,
-    childRunIds: texts(status["childRunIds"]),
+    ...runLinksOf(status),
     ticketId: ticketId === "" ? null : ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),

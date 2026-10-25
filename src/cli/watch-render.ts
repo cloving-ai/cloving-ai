@@ -77,6 +77,7 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly awaitedRunId?: string | null;
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly childRunIds?: readonly string[];
@@ -114,6 +115,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly awaitedRunId?: string | null;
   readonly commandEffects?: readonly CommandEffect[];
   readonly ciReruns?: readonly CiRerunNotice[];
   readonly parentRunId?: string | null;

@@ -34,6 +34,7 @@ export interface RunView {
   readonly workflow: string;
   readonly state: RunStatus;
   readonly condition: string;
+  readonly awaitedRunId: string | null;
   readonly revision: number;
   readonly latestSequence: number;
   readonly pendingDecisions: readonly string[];
@@ -210,6 +211,8 @@ function running(input: StatusInput): Assessment {
 
 function observed(input: StatusInput): Assessment {
   const observation = input.details?.observation ?? null;
+  const wait = runWaitAssessment(observation);
+  if (wait !== undefined) return wait;
   if (
     observation !== null &&
     Object.hasOwn(observedActions, observation.condition)
@@ -226,6 +229,20 @@ function observed(input: StatusInput): Assessment {
     nextAction: null,
     humanInputCanHelp: false,
   });
+}
+
+function runWaitAssessment(
+  observation: Observation | null,
+): Assessment | undefined {
+  if (observation?.condition === "waiting-run")
+    return assessed("waiting-run", {
+      code: "awaiting-run",
+      detail: `The run waits for run ${observation.evidence ?? "unknown"}.`,
+      nextAction: "await-run",
+      nextActionAt: observation.retryAt,
+      humanInputCanHelp: false,
+    });
+  return undefined;
 }
 
 function waiting(input: StatusInput): Assessment {
@@ -306,6 +323,7 @@ export function runView(input: StatusInput): RunView {
     workflow: run.workflow,
     state: run.status,
     condition: assessment.condition,
+    awaitedRunId: awaitedRun(assessment, observation),
     revision: run.revision,
     latestSequence: input.latestSequence,
     pendingDecisions: input.gates
@@ -334,4 +352,13 @@ export function runView(input: StatusInput): RunView {
     nextActionAt: assessment.nextActionAt ?? null,
     humanInputCanHelp: assessment.humanInputCanHelp,
   };
+}
+
+function awaitedRun(
+  assessment: Assessment,
+  observation: Observation | null,
+): string | null {
+  return assessment.condition === "waiting-run"
+    ? (observation?.evidence ?? null)
+    : null;
 }

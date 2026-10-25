@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { until } from "./claude-worker-fixture.ts";
@@ -10,6 +10,26 @@ import {
   signal,
   withCommandScene,
 } from "./command-worker-fixture.ts";
+
+await test("CLV-201 synthetic commands do not inherit runtime coverage recording", () =>
+  withCommandScene(async (scene) => {
+    const directory = join(scene.directory, "coverage");
+    mkdirSync(directory);
+    const previous = process.env["NODE_V8_COVERAGE"];
+    process.env["NODE_V8_COVERAGE"] = directory;
+    try {
+      const worker = scene.worker(
+        "process.stdout.write(JSON.stringify(process.env.NODE_V8_COVERAGE ?? null));",
+      );
+      await worker.deliver(commandIntent(), signal);
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.reports[0]?.result, "null");
+      assert.deepEqual(readdirSync(directory), []);
+    } finally {
+      if (previous === undefined) delete process.env["NODE_V8_COVERAGE"];
+      else process.env["NODE_V8_COVERAGE"] = previous;
+    }
+  }));
 
 for (const [source, reason, exitCode] of [
   [

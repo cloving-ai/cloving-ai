@@ -184,6 +184,7 @@ const outcomes = [...reportedOutcomes, "accepted", "not-started", "unknown"];
 
 const conditions = [
   "working",
+  "waiting-run",
   "quota-wait",
   "infrastructure-failure",
   "code-failure",

@@ -18,6 +18,7 @@ What works now:
 
 - `cloving start` starts the service for one git repository, with the workflow host, the Claude worker and a watch page.
 - Three workflows from one workflow file: `develop-prompt`, `develop-ticket` and `develop-issue`.
+- `cloving start` loads the bundled `workflows/`, repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
@@ -29,9 +30,7 @@ What does not work yet:
 
 - The Claude worker is not confined. It runs as the current user.
 - An approval does not merge the branch. You merge the branch yourself.
-- `cloving start` loads only the workflow file `workflows/develop-ticket.ts`. A new workflow file also needs changes of the code (see "Develop a workflow").
 - Cloving cannot make a workflow from your earlier chats yet. The issues [#42](https://github.com/cloving-ai/cloving-ai/issues/42), [#43](https://github.com/cloving-ai/cloving-ai/issues/43) and [#44](https://github.com/cloving-ai/cloving-ai/issues/44) are open for this work. Until then, the prompt "Find workflows in your chats" is a guide for a coding agent.
-- This pre-release package is not published to npm.
 
 ### Import selected chats
 
@@ -125,14 +124,14 @@ A run needs these tools:
 - The `claude` command of Claude Code on the search path. The Claude worker runs it as the current user.
 - For `develop-issue` only: the `gh` command with a login, and a GitHub repository that Greptile reviews. The worker uses the `gh` login and the git credentials of the current user.
 
-Once the operator publishes this package, install the executable with:
+Install the executable from npm:
 
 ```sh
 npm install --global cloving --ignore-scripts
 cloving --version
 ```
 
-This package replaces the older Cloving CLI under the same npm name. The registry currently serves that older CLI; the command above is for after this release is published. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
+This package replaces the older Cloving CLI under the same npm name. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
 
 For checkout development, get the code and install the dependencies:
 
@@ -499,7 +498,7 @@ Set up Cloving for my repository REPOSITORY_PATH. Ask me for each value that you
 
 1. Check the platform: macOS or Linux on arm64 or x64, with the Node and npm versions of "engines" in package.json of Cloving. Check that git and the claude command work. If I want develop-issue, check that gh has a login and that Greptile reviews the GitHub repository.
 2. If I have no Cloving checkout, clone https://github.com/cloving-ai/cloving-ai.git to ~/cloving. In the checkout, run: npm ci --ignore-scripts
-3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link, and do not install the npm package with the name cloving. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
+3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
 4. Ask me which tracker has my tickets. Write a ticket command for that tracker in ~/.local/bin. The command gets a ticket ID as its last argument and prints the text of the ticket. For develop-issue, the first line is "# " and the title, and one line is "GitHub issue: OWNER/REPOSITORY#NUMBER". Test the command with one ticket ID, and show me the output.
 5. Start the service in a terminal session that stays open, for example a tmux session. In that session, in my repository, run: CLOVING_TICKET_COMMAND='["TICKET_COMMAND"]' cloving start
    For develop-issue, also set CLOVING_CHECK_COMMAND to the checks of my repository. Give me the address of the watch page.
@@ -589,11 +588,17 @@ Steps:
 
 ## Develop a workflow
 
+`cloving start` loads workflows from three folders:
+
+- The bundled `workflows/` folder in the Cloving package. Startup compiles each TypeScript file in this folder.
+- The repository `.cloving/workflows/` folder.
+- The user `cloving/workflows/` folder under an absolute `XDG_CONFIG_HOME`, otherwise under `~/.config`. An unset or relative `XDG_CONFIG_HOME` uses that default.
+
 A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
 - The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. After a decision, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine the decision before it asks for an effect, as `decided()` in `workflows/develop-ticket.ts` does. If it does not, it does the work of round 1 again.
-- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
+- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
@@ -665,26 +670,33 @@ In this example, an approval completes the run and a denial ends it. `workflows/
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
-`cloving start` compiles the TypeScript files in the application's `workflows` folder. Each file may contain one workflow function, and function names must be unique across files. The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
+The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
 
-To register another workflow, put `<name>.declaration.json` beside `<name>.ts`:
+For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.
+
+The declaration has two fields: `workflow` contains the workflow declaration, and `methods` maps each declared capability to its permitted methods. Each list must contain at least one nonblank method name and no duplicates. Do not add method keys for undeclared capabilities. The `isCandidateDeclaration` check in `src/workflow-candidate.ts` validates this form:
 
 ```json
 {
-  "workflowId": "review-run",
-  "effectLimit": 14,
-  "capabilities": ["claude"],
-  "input": {
-    "maximumBytes": 65536,
-    "fields": {
-      "prompt": { "type": "string" },
-      "rounds": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10,
-        "optional": true
+  "workflow": {
+    "workflowId": "review-run",
+    "effectLimit": 14,
+    "capabilities": ["claude"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "prompt": { "type": "string" },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "optional": true
+        }
       }
     }
+  },
+  "methods": {
+    "claude": ["run-turn"]
   }
 }
 ```
@@ -727,6 +739,21 @@ const runId = await handoff({
 The step returns the target run ID after admission through the operator submission path. It spends one protected-effect unit. The caller’s pinned `handoffs` list must include the target; otherwise the step fails with `handoff-not-declared`. The target validates and resolves the input through its normal submission contract. Refusal fails with `handoff-input-refused` and admits no target run. If the target returns `workflow-active`, the worker makes at most ten attempts, one second apart, then fails with `handoff-start-timeout`. The worker retains the active-target refusal count across restarts. Replays reuse command ID `handoff:<operation ID>` and return the same run ID; separate step calls have distinct operation IDs. After a lost submission reply, recovery replays that same command ID only while the source run, lease, budget and workflow pin still permit dispatch. Status checks and stop never start a target run.
 
 Hand-offs record `parentRunId` and `chainId` (the first run's ID) in the new run's admission. A chain permits at most five runs, including the first; attempting a sixth fails with `chain-limit` and starts no run. This fixed limit follows ancestry, so separate children of the same parent do not consume each other's chain length. The records and limit survive service restarts. `cloving status` shows the parent, chain and child run IDs in text and JSON; watch cards link to parent and child runs across workflows.
+
+Use `waitForRun` to await the outcome of a run that the current run started with `handoff`:
+
+```typescript
+import { handoff, waitForRun } from "cloving/workflows";
+
+const runId = await handoff({ workflowId: "size-ticket", input: {} });
+const outcome = await waitForRun({ runId, maximumWaitSeconds: 60 });
+if (outcome.kind === "handoff_requested" && outcome.promotionId === "size-small")
+  await handoff({ workflowId: "take-ticket", input: {} });
+```
+
+`maximumWaitSeconds` must be an integer from 1 to 86400. The result contains `kind`, `reason` and `promotionId`; absent reason or promotion values are `null`. A wait for an unknown run, a run started by another run, or an invalid bound fails with `run-wait-refused`. Expiry fails with `run-wait-timeout`. Waiting spends no effect units. Several handoffs to a workflow without `when-idle` admission create distinct child runs that can each be awaited.
+
+The compiled SDK step uses durable retries and its original start time, so restarting the daemon preserves the deadline, includes downtime in the wait and replays the same terminal outcome. `cloving status` shows condition `waiting-run` and the awaited run ID (`awaitedRunId` in JSON); watch cards show a link labeled “Waiting for run”.
 
 Optional `stages` contains 1–12 entries in board order. Each entry has a unique `name` (1–64 ASCII letters, digits or hyphens), a unique `label` (1–40 printable characters on one line, without outer spaces), and `operations`, `gateKinds`, or both. At least one selector array must be nonempty. Operations match the `scope.operation` passed to `protectedEffect`, using 1–128 ASCII letters, digits or `._:/-`; gate kinds are `approval` and `question`. Selectors cannot repeat within an array or belong to two stages of the same selector type. Unknown fields and labels `Other`, `Done` and `Stopped` are rejected.
 
