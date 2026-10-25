@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { calls } from "../src/daemon/github-calls.ts";
 import { merge } from "../src/daemon/github-merge.ts";
 import { git } from "./claude-worker-fixture.ts";
@@ -22,24 +25,79 @@ export function checkRun(
   };
 }
 
-export async function ciScenario(options: {
+interface CiScenarioOptions {
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
+  readonly folder?: string;
+  readonly workflow?: () => unknown;
+  readonly attemptJobs?: readonly number[];
+  readonly jobPages?: unknown;
   readonly environment?: Readonly<Record<string, string>>;
   readonly timing?: Partial<GithubTiming>;
   readonly signal?: AbortSignal;
   readonly reply?: (parts: readonly string[]) => string;
-}): Promise<{
+}
+
+function attemptJobsReply(options: CiScenarioOptions): string {
+  if (Object.hasOwn(options, "jobPages"))
+    return JSON.stringify(options.jobPages);
+  const checks = options.snapshots.at(-1) ?? [];
+  const ids =
+    options.attemptJobs ??
+    checks.map((check) => Number(Reflect.get(Object(check), "id")));
+  return JSON.stringify([
+    {
+      jobs: ids.map((id) => ({
+        check_run_url: `https://api.github.com/repos/acme/demo/check-runs/${String(id)}`,
+      })),
+    },
+  ]);
+}
+
+function ciReply(
+  options: CiScenarioOptions,
+  observed: { readonly calls: (readonly string[])[]; readonly times: number[] },
+): Operation["calls"]["gh"] {
+  return async (parts) => {
+    observed.calls.push(parts);
+    if (parts.some((part) => part.includes("/attempts/")))
+      return Promise.resolve(attemptJobsReply(options));
+    if (parts.some((part) => part.includes("/actions/runs/")))
+      return Promise.resolve(
+        JSON.stringify(
+          options.workflow?.() ?? { run_attempt: 2, status: "completed" },
+        ),
+      );
+    if (!parts.some((part) => part.includes("/check-runs")))
+      return Promise.resolve(options.reply?.(parts) ?? "{}");
+    const checks =
+      options.snapshots[
+        Math.min(observed.times.length, options.snapshots.length - 1)
+      ] ?? [];
+    observed.times.push(Date.now());
+    return Promise.resolve(
+      JSON.stringify(
+        Object.hasOwn(options, "pages")
+          ? options.pages
+          : [{ check_runs: checks }],
+      ),
+    );
+  };
+}
+
+export async function ciScenario(options: CiScenarioOptions): Promise<{
   readonly result: Awaited<ReturnType<typeof waitForCi>>;
   readonly calls: readonly (readonly string[])[];
   readonly times: readonly number[];
 }> {
   const calls: (readonly string[])[] = [];
   const times: number[] = [];
+  const folder =
+    options.folder ?? (await mkdtemp(join(tmpdir(), "cloving-ci-")));
   const operation: Operation = {
     target: "ticket/one",
     payload: {},
-    folder: "/journal",
+    folder,
     signal: options.signal ?? new AbortController().signal,
     settings: {
       repository: "/repository",
@@ -54,31 +112,17 @@ export async function ciScenario(options: {
       },
     },
     calls: {
-      gh: async (parts) => {
-        calls.push(parts);
-        if (
-          parts[0] !== "api" ||
-          !parts.some((part) => part.includes("/check-runs"))
-        )
-          return Promise.resolve(options.reply?.(parts) ?? "{}");
-        const checks =
-          options.snapshots[
-            Math.min(times.length, options.snapshots.length - 1)
-          ] ?? [];
-        times.push(Date.now());
-        return Promise.resolve(
-          JSON.stringify(
-            Object.hasOwn(options, "pages")
-              ? options.pages
-              : [{ check_runs: checks }],
-          ),
-        );
-      },
+      gh: ciReply(options, { calls, times }),
       git: () => Promise.reject(new Error("unexpected git call")),
       run: () => Promise.reject(new Error("unexpected local check")),
     },
   };
-  return { result: await waitForCi(operation, "a".repeat(40)), calls, times };
+  try {
+    return { result: await waitForCi(operation, "a".repeat(40)), calls, times };
+  } finally {
+    if (options.folder === undefined)
+      await rm(folder, { recursive: true, force: true });
+  }
 }
 
 export function runningRunReply(parts: readonly string[]): string {

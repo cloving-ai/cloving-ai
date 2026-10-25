@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { watchReader, type WatchReader } from "./watch-reads.ts";
+import { ciRerunNotices } from "./github-ci-progress.ts";
 import { turnOf, watchModel, type GithubRecords } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchModel, WatchTurn } from "./watch-render.ts";
@@ -134,7 +135,11 @@ async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
       known?.started ?? (await stored(join(journal, key, "started.json")));
     if (started === null) continue;
     const result = await stored(join(journal, key, "result.json"));
-    watch.github.set(key, { started, result });
+    watch.github.set(key, {
+      started,
+      result,
+      ciReruns: await ciRerunNotices(join(journal, key)),
+    });
   }
   return keys.flatMap((key) => watch.github.get(key) ?? []);
 }

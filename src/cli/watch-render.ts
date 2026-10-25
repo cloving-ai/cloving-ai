@@ -1,4 +1,5 @@
 import type { CardForm } from "./watch-run-input.ts";
+import type { CiRerunNotice } from "./github-ci-progress.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
@@ -112,6 +113,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly ciReruns?: readonly CiRerunNotice[];
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly childRunIds?: readonly string[];

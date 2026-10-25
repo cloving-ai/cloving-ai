@@ -10,6 +10,7 @@ import {
   type WatchEvent,
   type WatchItem,
   type WatchTurn,
+  type WatchRun,
 } from "./watch-render.ts";
 
 export function Item(props: { readonly item: WatchItem }): Shown {
@@ -172,6 +173,38 @@ export function Events(props: {
         children: `All events (${String(events.length)})`,
       }),
       rows,
+    ],
+  });
+}
+
+export function PullRequest(props: { readonly run: WatchRun }): Shown {
+  const { pullRequest, reviews, mergeCommit } = props.run;
+  if (pullRequest === null) return null;
+  const link = element("a", {
+    href: pullRequest.url,
+    children: `#${String(pullRequest.number)}`,
+  });
+  const scores = reviews.map((review) =>
+    element("li", {
+      children: `Round ${String(review.round)} · Review ${String(review.score)}/5 · commit ${review.commit.slice(0, 7)}`,
+    }),
+  );
+  const merge =
+    mergeCommit === null
+      ? null
+      : element("p", {
+          class: "meta",
+          children: [
+            "Merge commit ",
+            element("code", { children: mergeCommit }),
+          ],
+        });
+  return element("section", {
+    class: "pull",
+    children: [
+      element("h3", { children: ["Pull request ", link] }),
+      element("ul", { class: "reviews", children: scores }),
+      merge,
     ],
   });
 }
