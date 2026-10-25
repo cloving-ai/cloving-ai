@@ -1,5 +1,5 @@
-import { send } from "../cli/client.ts";
-import type { Reply, ServiceRequest } from "../protocol.ts";
+import { follow, send } from "../cli/client.ts";
+import type { Fields, Reply, ServiceRequest } from "../protocol.ts";
 
 const allowed: ReadonlySet<string> = new Set([
   "questions",
@@ -20,4 +20,22 @@ export function relayControl(
       );
     return send(runtimeDirectory, request);
   };
+}
+
+export function relayEvents(
+  runtimeDirectory: string,
+  stream: {
+    readonly after: number;
+    readonly onEvent: (event: Fields) => void;
+    readonly stopped: Promise<void>;
+  },
+): Promise<Reply> {
+  return follow(runtimeDirectory, {
+    request: {
+      operation: "events",
+      parameters: { after: stream.after, follow: true },
+    },
+    onEvent: stream.onEvent,
+    signal: stream.stopped,
+  });
 }

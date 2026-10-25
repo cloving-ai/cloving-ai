@@ -175,6 +175,10 @@ export function signedReceipt(
     pairedAt: values.pairedAt,
     version: 1,
   });
+  return { receipt: signedBy(keys, payload), nonce };
+}
+
+export function signedBy(keys: DaemonKeys, payload: string): SignedMessage {
   const key = createPrivateKey({
     key: Buffer.from(keys.signingPrivateKey, "base64url"),
     format: "der",
@@ -184,10 +188,7 @@ export function signedReceipt(
     key,
     dsaEncoding: "ieee-p1363",
   });
-  return {
-    receipt: { payload, signature: signature.toString("base64url") },
-    nonce,
-  };
+  return { payload, signature: signature.toString("base64url") };
 }
 
 export interface ExpectedCheck {

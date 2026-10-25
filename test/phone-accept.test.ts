@@ -180,9 +180,10 @@ await test("CLV-189 a correct check connects the device", async () => {
     const state = await until(
       setup,
       (current) =>
-        device(current, fixture.device.id)?.["state"] === "connected",
+        device(current, fixture.device.id)?.["state"] === "connected" &&
+        current["pairing"] === null,
     );
-    assert.equal(state["pairing"], null);
+    assert.equal(state["refusal"], null);
   });
 });
 

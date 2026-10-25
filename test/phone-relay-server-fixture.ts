@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { join } from "node:path";
+import { record } from "../src/protocol.ts";
+import { relayRequest } from "../src/relay/relay-http.ts";
 
 export interface RecordedRequest {
   readonly method: string;
@@ -46,6 +50,7 @@ interface Settings {
   readonly receiptStatus?: number;
   readonly startDelayMilliseconds?: number;
   readonly heartbeatStatuses?: number[];
+  readonly envelopeStatuses?: number[];
 }
 
 export interface ListedDevice {
@@ -212,6 +217,20 @@ function pairingRoute(
   return acted(state, { pairing, action: String(action), body });
 }
 
+const daemonRoutes: Readonly<
+  Record<string, (state: FakeState, daemon: FakeDaemon) => Reply>
+> = {
+  "PUT /api/v1/relay/daemon/heartbeat": (state, daemon) => [
+    state.settings.heartbeatStatuses?.shift() ?? 200,
+    { daemon_id: daemon.daemonId },
+  ],
+  "GET /api/v1/relay/devices": (state) => [200, { devices: state.listed }],
+  "POST /api/v1/relay/envelopes": (state) => [
+    state.settings.envelopeStatuses?.shift() ?? 201,
+    { accepted: [] },
+  ],
+};
+
 function daemonRoute(
   state: FakeState,
   exchange: {
@@ -222,14 +241,7 @@ function daemonRoute(
 ): Reply | undefined {
   const { method, path, daemon } = exchange;
   if (method === "DELETE") return removed(state, { daemon, path });
-  if (method === "PUT" && path === "/api/v1/relay/daemon/heartbeat")
-    return [
-      state.settings.heartbeatStatuses?.shift() ?? 200,
-      { daemon_id: daemon.daemonId },
-    ];
-  if (method === "GET" && path === "/api/v1/relay/devices")
-    return [200, { devices: state.listed }];
-  return undefined;
+  return daemonRoutes[`${method} ${path}`]?.(state, daemon);
 }
 
 async function routed(state: FakeState, exchange: Exchange): Promise<Reply> {
@@ -316,4 +328,26 @@ export async function fakeRelayServer(
       await new Promise((settle) => server.close(settle));
     },
   };
+}
+
+export async function registeredLink(
+  server: FakeRelayServer,
+  phoneDirectory: string,
+): Promise<void> {
+  const reply = await relayRequest(server.origin, {
+    method: "POST",
+    path: "/api/v1/relay/daemons",
+    body: {},
+  });
+  await mkdir(phoneDirectory, { recursive: true, mode: 0o700 });
+  await writeFile(
+    join(phoneDirectory, "link.json"),
+    JSON.stringify({
+      daemonId: record(reply.body)?.["daemon_id"],
+      origin: server.origin,
+      token: record(reply.body)?.["token"],
+      registeredAt: "2026-10-25T12:00:00Z",
+    }),
+    { mode: 0o600 },
+  );
 }

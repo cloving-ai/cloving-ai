@@ -7,7 +7,6 @@ import { phoneRequest } from "../src/cli/phone-client.ts";
 import {
   parseRequest,
   replyLine,
-  record,
   type ServiceRequest,
 } from "../src/protocol.ts";
 import { relayControl } from "../src/relay/relay-control.ts";
@@ -17,36 +16,14 @@ import {
   runHeartbeats,
   type HeartbeatContext,
 } from "../src/relay/relay-heartbeat.ts";
-import { relayRequest } from "../src/relay/relay-http.ts";
 import { startRelay } from "../src/relay/relay-service.ts";
 import { openRelayStore, type RelayStore } from "../src/relay/relay-store.ts";
 import {
   fakeRelayServer,
+  registeredLink,
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
-
-async function registeredLink(
-  server: FakeRelayServer,
-  phoneDirectory: string,
-): Promise<void> {
-  const reply = await relayRequest(server.origin, {
-    method: "POST",
-    path: "/api/v1/relay/daemons",
-    body: {},
-  });
-  await mkdir(phoneDirectory, { recursive: true, mode: 0o700 });
-  await writeFile(
-    join(phoneDirectory, "link.json"),
-    JSON.stringify({
-      daemonId: record(reply.body)?.["daemon_id"],
-      origin: server.origin,
-      token: record(reply.body)?.["token"],
-      registeredAt: "2026-10-25T12:00:00Z",
-    }),
-    { mode: 0o600 },
-  );
-}
 
 function context(
   store: RelayStore,

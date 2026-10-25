@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac, createPrivateKey, sign } from "node:crypto";
+import { phoneRequest } from "../src/cli/phone-client.ts";
 import { canonicalJson } from "../src/phone/canonical-json.ts";
 import fixture from "./fixtures/phone-pairing.json" with { type: "json" };
 import type { FakeRelayServer } from "./phone-relay-server-fixture.ts";
@@ -112,4 +113,51 @@ export function signedByAnswerKey(payload: string): {
     dsaEncoding: "ieee-p1363",
   });
   return { payload, signature: signature.toString("base64url") };
+}
+
+async function phoneState(
+  runtimeDirectory: string,
+): Promise<Readonly<Record<string, unknown>>> {
+  const reply = await phoneRequest(runtimeDirectory, {
+    operation: "phone-state",
+    parameters: {},
+  });
+  return reply?.kind === "result" ? reply.result : {};
+}
+
+async function stateWhere(
+  runtimeDirectory: string,
+  wanted: (state: Readonly<Record<string, unknown>>) => boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (wanted(await phoneState(runtimeDirectory))) return;
+    await new Promise((settle) => setTimeout(settle, 20));
+  }
+  assert.fail(JSON.stringify(await phoneState(runtimeDirectory)));
+}
+
+export async function connectedPhone(
+  runtimeDirectory: string,
+  server: FakeRelayServer,
+): Promise<void> {
+  const started = await phoneRequest(runtimeDirectory, {
+    operation: "phone-pair-start",
+    parameters: {},
+  });
+  assert.equal(started?.kind, "result");
+  const pairingId = sendPhoneRequest(server, {
+    link: String(started.result["link"]),
+  });
+  await stateWhere(
+    runtimeDirectory,
+    (state) => Reflect.get(Object(state["pairing"]), "stage") === "requested",
+  );
+  await phoneRequest(runtimeDirectory, {
+    operation: "phone-pair-accept",
+    parameters: { pairingId },
+  });
+  sendPhoneCheck(server, { pairingId });
+  await stateWhere(runtimeDirectory, (state) =>
+    JSON.stringify(state["devices"]).includes('"state":"connected"'),
+  );
 }
