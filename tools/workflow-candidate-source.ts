@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { dirname, relative, sep } from "node:path";
 import {
   candidateProgram,
   resolvedSymbol,
@@ -13,6 +14,7 @@ import {
 } from "./workflow-candidate-syntax.ts";
 import { sourceEffectNodes } from "./workflow-source-effects.ts";
 import { candidateEffectTotals } from "./workflow-candidate-counts.ts";
+import { helperEffectTotals } from "./workflow-candidate-helper-counts.ts";
 import type {
   CandidateAnalysis,
   CandidateEffect,
@@ -117,7 +119,10 @@ export function analyzeWorkflowCandidate(
   readonly analysis: CandidateAnalysis;
   readonly installedExports: InstalledWorkflowExports;
 } {
-  const { program, source, modules } = candidateProgram(text, installed);
+  const { program, source, sources, modules } = candidateProgram(
+    text,
+    installed,
+  );
   const checker = program.getTypeChecker();
   const symbols = {
     checker,
@@ -138,24 +143,80 @@ export function analyzeWorkflowCandidate(
       name: "runCommand",
     }),
   };
+  const facts = sources.map((entry) =>
+    analyzedSource(
+      { ...symbols, source: entry },
+      { program, workflow: source },
+    ),
+  );
+  return {
+    analysis: combineFacts({
+      localSources: Object.keys(installed.helpers ?? {}),
+      facts,
+      expanded: helperEffectTotals({
+        symbols: { ...symbols, source },
+        sources,
+      }),
+    }),
+    installedExports: exportSnapshot(modules, checker),
+  };
+}
+
+function analyzedSource(
+  symbols: CandidateSymbols,
+  input: { readonly program: ts.Program; readonly workflow: ts.SourceFile },
+): CandidateAnalysis {
+  const { source } = symbols;
   const facts = sourceFacts(symbols);
+  const kind = source === input.workflow ? "workflow" : "helper";
+  const path = relative(dirname(input.workflow.fileName), source.fileName)
+    .split(sep)
+    .join("/");
   const invalid =
-    !workflowShape(source) ||
     source.referencedFiles.length > 0 ||
     source.typeReferenceDirectives.length > 0 ||
     source.libReferenceDirectives.length > 0 ||
-    program.getSyntacticDiagnostics(source).length > 0;
+    input.program.getSyntacticDiagnostics(source).length > 0;
   return {
-    analysis: {
-      ...facts,
-      unsupportedForms: [
-        ...facts.unsupportedForms,
-        ...(invalid ? ["workflow-shape"] : []),
-        ...(facts.directEffects.length === 0 && !passiveCandidateModule(source)
-          ? ["module-initialization"]
-          : []),
-      ],
-    },
-    installedExports: exportSnapshot(modules, checker),
+    ...facts,
+    imports: facts.imports.map((entry) =>
+      kind === "workflow" ? entry : { ...entry, source: path },
+    ),
+    unsupportedForms: [
+      ...facts.unsupportedForms,
+      ...(invalid || (kind === "workflow" && !workflowShape(source))
+        ? ["workflow-shape"]
+        : []),
+      ...(facts.directEffects.length === 0 &&
+      !passiveCandidateModule(source, kind)
+        ? ["module-initialization"]
+        : []),
+    ],
+  };
+}
+
+function combineFacts(input: {
+  readonly localSources: readonly string[];
+  readonly facts: readonly CandidateAnalysis[];
+  readonly expanded: ReturnType<typeof helperEffectTotals>;
+}): CandidateAnalysis {
+  const { localSources, facts } = input;
+  return {
+    localSources,
+    imports: facts.flatMap((entry) => entry.imports),
+    effects: facts.flatMap((entry) => entry.effects),
+    directEffects: facts.flatMap((entry) => entry.directEffects),
+    unsupportedForms: [
+      ...facts.flatMap((entry) => entry.unsupportedForms),
+      ...input.expanded.unsupportedForms,
+    ],
+    knownCallCount: Math.max(
+      input.expanded.knownCallCount,
+      facts.reduce((total, entry) => total + entry.knownCallCount, 0),
+    ),
+    knownUnitTotal: Math.max(
+      input.expanded.knownUnitTotal,
+      facts.reduce((total, entry) => total + entry.knownUnitTotal, 0),
+    ),
   };
 }

@@ -167,15 +167,28 @@ async function stageCandidates(
           candidate.baseName,
           candidate.source,
           candidate.declaration,
+          Object.entries(candidate.helpers).sort(([left], [right]) =>
+            left < right ? -1 : Number(left > right),
+          ),
         ]),
       )
       .digest("hex");
-    const file = join(directory, `${name}.ts`);
+    const root =
+      Object.keys(candidate.helpers).length > 0
+        ? join(directory, name)
+        : directory;
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    const file = join(root, `${name}.ts`);
     await writeFile(file, candidate.source);
     await writeFile(
-      join(directory, `${name}.declaration.json`),
+      join(root, `${name}.declaration.json`),
       candidate.declaration,
     );
+    for (const [path, source] of Object.entries(candidate.helpers)) {
+      const destination = join(root, path);
+      await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+      await writeFile(destination, source);
+    }
     staged.push({ candidate, file });
   }
   return staged;

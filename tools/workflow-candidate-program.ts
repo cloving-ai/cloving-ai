@@ -2,6 +2,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import metadata from "#package" with { type: "json" };
+import { workflowHelperPath } from "../src/workflow-candidate.ts";
 
 export const candidatePackageRoot = dirname(
   fileURLToPath(import.meta.resolve("#package")),
@@ -9,6 +10,7 @@ export const candidatePackageRoot = dirname(
 
 export interface CandidatePackageOptions {
   readonly packageRoot?: string;
+  readonly helpers?: Readonly<Record<string, string>>;
 }
 
 export function resolvedSymbol(
@@ -25,10 +27,17 @@ export function candidateProgram(
 ): {
   readonly program: ts.Program;
   readonly source: ts.SourceFile;
+  readonly sources: readonly ts.SourceFile[];
   readonly modules: ReadonlyMap<string, ts.SourceFile>;
 } {
   const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
   const candidate = join(packageRoot, "candidate.ts");
+  const sources = new Map([[candidate, text]]);
+  for (const [name, content] of Object.entries(installed.helpers ?? {})) {
+    if (workflowHelperPath("candidate.ts", `./${name}`) !== name)
+      throw new Error("invalid-workflow-helper");
+    sources.set(join(packageRoot, name), content);
+  }
   const entries = new Map(
     Object.entries(metadata.exports).map(([name, entry]) => [
       `cloving${name.slice(1)}`,
@@ -44,9 +53,9 @@ export function candidateProgram(
     strict: true,
     noEmit: true,
   };
-  const host = trustedHost({ candidate, text, options, entries, packageRoot });
+  const host = trustedHost({ sources, options, entries, packageRoot });
   const program = ts.createProgram(
-    [candidate, ...entries.values()],
+    [...sources.keys(), ...entries.values()],
     options,
     host,
   );
@@ -58,21 +67,29 @@ export function candidateProgram(
     if (!declaration) throw new Error("candidate-surface-unavailable");
     modules.set(name, declaration);
   }
-  return { program, source, modules };
+  return {
+    program,
+    source,
+    modules,
+    sources: [...sources.keys()].map((name) => {
+      const entry = program.getSourceFile(name);
+      if (!entry) throw new Error("candidate-analysis-unavailable");
+      return entry;
+    }),
+  };
 }
 
 function trustedHost(input: {
-  readonly candidate: string;
-  readonly text: string;
+  readonly sources: ReadonlyMap<string, string>;
   readonly options: ts.CompilerOptions;
   readonly entries: ReadonlyMap<string, string>;
   readonly packageRoot: string;
 }): ts.CompilerHost {
-  const { candidate, text, options, entries, packageRoot } = input;
+  const { sources, options, entries, packageRoot } = input;
   const libraries = dirname(ts.getDefaultLibFilePath(options)) + sep;
   const declarations = join(packageRoot, "dist/src") + sep;
   const readFile = (file: string): string | undefined => {
-    if (file === candidate) return text;
+    if (sources.has(file)) return sources.get(file);
     const absolute = resolve(file);
     if (!absolute.endsWith(".d.ts")) return undefined;
     if (!absolute.startsWith(libraries) && !absolute.startsWith(declarations))
@@ -98,7 +115,20 @@ function trustedHost(input: {
             extension: ts.Extension.Dts,
           },
         };
-      if (containingFile === candidate) return { resolvedModule: undefined };
+      if (sources.has(containingFile)) {
+        const importer = containingFile
+          .slice(packageRoot.length + 1)
+          .split(sep)
+          .join("/");
+        const local = workflowHelperPath(importer, name);
+        const target = local && join(packageRoot, local);
+        return {
+          resolvedModule:
+            target && sources.has(target)
+              ? { resolvedFileName: target, extension: ts.Extension.Ts }
+              : undefined,
+        };
+      }
       return ts.resolveModuleName(name, containingFile, options, host);
     });
   return host;

@@ -15,6 +15,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   checkWorkflowCandidate,
+  workflowHelperPath,
   type WorkflowCandidateCode,
 } from "../src/workflow-candidate.ts";
 import {
@@ -32,7 +33,11 @@ export type WorkflowCandidateAdmission =
     };
 
 export async function admitWorkflowCandidate(
-  input: { readonly source: string; readonly declaration: unknown },
+  input: {
+    readonly source: string;
+    readonly declaration: unknown;
+    readonly helpers?: Readonly<Record<string, string>>;
+  },
   installed: CandidatePackageOptions = {},
 ): Promise<WorkflowCandidateAdmission> {
   const { source, declaration } = input;
@@ -40,24 +45,26 @@ export async function admitWorkflowCandidate(
     return { kind: "refused", codes: ["unsupported-source"] };
   try {
     const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
-    const facts = analyzeWorkflowCandidate(source, { packageRoot });
+    const helpers = input.helpers ?? {};
+    const facts = analyzeWorkflowCandidate(source, { packageRoot, helpers });
     const codes = checkWorkflowCandidate({ declaration, ...facts });
     if (codes.length > 0) return { kind: "refused", codes };
-    return await compiledCandidate(source, packageRoot);
+    return await compiledCandidate({ source, helpers, packageRoot });
   } catch {
     return { kind: "refused", codes: ["compile-failed"] };
   }
 }
 
-async function compiledCandidate(
-  source: string,
-  packageRoot: string,
-): Promise<WorkflowCandidateAdmission> {
+async function compiledCandidate(input: {
+  readonly source: string;
+  readonly helpers: Readonly<Record<string, string>>;
+  readonly packageRoot: string;
+}): Promise<WorkflowCandidateAdmission> {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "cloving-candidate-")),
   );
   try {
-    await prepareCandidateProject(directory, { source, packageRoot });
+    await prepareCandidateProject(directory, input);
     if (!(await compile(directory)))
       return { kind: "refused", codes: ["compile-failed"] };
     const artifactDirectory = join(directory, "artifacts");
@@ -72,6 +79,10 @@ async function compiledCandidate(
     )
       return { kind: "refused", codes: ["compile-failed"] };
     const digest = createHash("sha256");
+    for (const [name, content] of Object.entries(input.helpers).sort(
+      ([left], [right]) => (left < right ? -1 : Number(left > right)),
+    ))
+      digest.update(JSON.stringify([name, content]));
     for (const name of [
       "manifest.json",
       "flow.mjs",
@@ -90,7 +101,11 @@ async function compiledCandidate(
 
 async function prepareCandidateProject(
   directory: string,
-  input: { readonly source: string; readonly packageRoot: string },
+  input: {
+    readonly source: string;
+    readonly helpers: Readonly<Record<string, string>>;
+    readonly packageRoot: string;
+  },
 ): Promise<void> {
   const { source, packageRoot } = input;
   await mkdir(join(directory, "workflows"));
@@ -116,6 +131,13 @@ async function prepareCandidateProject(
     }),
   );
   await writeFile(join(directory, "workflows/candidate.ts"), source, "utf8");
+  for (const [name, content] of Object.entries(input.helpers)) {
+    if (workflowHelperPath("candidate.ts", `./${name}`) !== name)
+      throw new Error("invalid-workflow-helper");
+    const path = join(directory, "workflows", name);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content, "utf8");
+  }
 }
 
 function compile(directory: string): Promise<boolean> {

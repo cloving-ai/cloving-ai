@@ -12,6 +12,7 @@ export interface CandidateDeclaration {
 export interface CandidateImport {
   readonly module: string;
   readonly names: readonly string[];
+  readonly source?: string;
 }
 
 export interface CandidateEffect {
@@ -20,6 +21,7 @@ export interface CandidateEffect {
 }
 
 export interface CandidateAnalysis {
+  readonly localSources?: readonly string[];
   readonly imports: readonly CandidateImport[];
   readonly effects: readonly CandidateEffect[];
   readonly directEffects: readonly string[];
@@ -58,6 +60,41 @@ const workflowModules = [
   "cloving/workflows/steps/run-command",
 ];
 
+export function workflowHelperPath(
+  source: string,
+  imported: string,
+): string | undefined {
+  if (!imported.startsWith("./")) return undefined;
+  const parts = [
+    ...source.split("/").slice(0, -1),
+    ...imported.slice(2).split("/"),
+  ];
+  if (
+    parts.length < 2 ||
+    parts.some(
+      (part) =>
+        part.length === 0 ||
+        part === "." ||
+        part === ".." ||
+        part.toUpperCase() === "NODE_MODULES" ||
+        /[\\:\0]/.test(part) ||
+        part.startsWith("~"),
+    )
+  )
+    return undefined;
+  const path = parts.join("/");
+  return path.endsWith(".ts") && !path.endsWith(".d.ts") ? path : undefined;
+}
+
+function allowedImport(
+  entry: CandidateImport,
+  analysis: CandidateAnalysis,
+): boolean {
+  if (workflowModules.includes(entry.module)) return true;
+  const path = workflowHelperPath(entry.source ?? "candidate.ts", entry.module);
+  return path !== undefined && (analysis.localSources ?? []).includes(path);
+}
+
 function isMethodList(value: unknown): value is readonly string[] {
   return (
     Array.isArray(value) &&
@@ -94,7 +131,7 @@ export function checkWorkflowCandidate(
     return ["invalid-declaration"];
   const { analysis, declaration, installedExports } = input;
   const codes: WorkflowCandidateCode[] = [];
-  if (analysis.imports.some((entry) => !workflowModules.includes(entry.module)))
+  if (analysis.imports.some((entry) => !allowedImport(entry, analysis)))
     codes.push("forbidden-import");
   if (
     analysis.imports.some((entry) => {

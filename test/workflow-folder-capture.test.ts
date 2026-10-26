@@ -6,7 +6,7 @@ import filesystem, {
   writeFile,
 } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { test } from "node:test";
 import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
 import {
@@ -15,6 +15,14 @@ import {
 } from "../tools/workflow-folder-capture.ts";
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { validCandidateSource } from "./workflow-candidate-fixtures.ts";
+
+const helperFiles = {
+  ...operatorFiles("project", "project"),
+  "repo/.cloving/workflows/project.ts": `${validCandidateSource.replaceAll("candidate", "project")}\nimport { prompt } from "./helpers/prompts.ts";`,
+  "repo/.cloving/workflows/helpers/prompts.ts":
+    'export function prompt() { return "captured-helper"; }',
+};
 
 function changeAncestorDuringCapture(path: string) {
   const original = filesystem.open;
@@ -111,7 +119,9 @@ function replaceEntryDuringCapture(location: {
     if (
       replaced ||
       !String(openingPath).endsWith(
-        location.target === "workflows" ? "project.ts" : location.target,
+        location.target === "workflows"
+          ? "project.ts"
+          : basename(location.target),
       )
     )
       return original(openingPath, flags);
@@ -143,10 +153,15 @@ function replaceEntryDuringCapture(location: {
   };
 }
 
-for (const target of ["project.ts", "project.declaration.json", "workflows"]) {
+for (const target of [
+  "project.ts",
+  "project.declaration.json",
+  "workflows",
+  "helpers/prompts.ts",
+]) {
   for (const replacement of ["file", "link"] as const) {
     await test(`CLV-124 refuses ${target} replacement by ${replacement} during capture`, () =>
-      withFiles(operatorFiles("project", "project"), async (directory) => {
+      withFiles(helperFiles, async (directory) => {
         const folder = join(directory, "repo/.cloving/workflows");
         const capture = replaceEntryDuringCapture({
           path: target === "workflows" ? folder : join(folder, target),
@@ -172,12 +187,17 @@ for (const target of ["project.ts", "project.declaration.json", "workflows"]) {
 }
 
 await test("CLV-124 admission uses one captured source and declaration even after files change", () =>
-  withFiles(operatorFiles("project", "project"), async (directory) => {
+  withFiles(helperFiles, async (directory) => {
     const original = filesystem.mkdtemp;
     const sourcePath = join(directory, "repo/.cloving/workflows/project.ts");
     const declarationPath = sourcePath.replace(/\.ts$/, ".declaration.json");
     const source = await readFile(sourcePath, "utf8");
     const declaration = await readFile(declarationPath, "utf8");
+    const helperPath = join(
+      directory,
+      "repo/.cloving/workflows/helpers/prompts.ts",
+    );
+    const helper = await readFile(helperPath, "utf8");
     let changed = false;
     const descriptor = Object.getOwnPropertyDescriptor(filesystem, "mkdtemp");
     assert.ok(descriptor);
@@ -188,6 +208,7 @@ await test("CLV-124 admission uses one captured source and declaration even afte
           changed = true;
           await writeFile(sourcePath, "edited-source-sentinel");
           await writeFile(declarationPath, "edited-declaration-sentinel");
+          await writeFile(helperPath, "edited-helper-sentinel");
         }
         return original(...args);
       },
@@ -201,6 +222,7 @@ await test("CLV-124 admission uses one captured source and declaration even afte
       assert.ok(candidate);
       assert.equal(candidate.source, source);
       assert.equal(candidate.declaration, declaration);
+      assert.deepEqual(candidate.helpers, { "helpers/prompts.ts": helper });
     } finally {
       Object.defineProperty(filesystem, "mkdtemp", descriptor);
       syncBuiltinESMExports();

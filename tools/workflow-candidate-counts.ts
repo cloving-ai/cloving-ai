@@ -8,7 +8,7 @@ import {
 } from "./workflow-candidate-syntax.ts";
 import { referenceSymbol } from "./workflow-source-effects.ts";
 
-interface Totals {
+export interface Totals {
   readonly knownCallCount: number;
   readonly knownUnitTotal: number;
 }
@@ -267,9 +267,13 @@ function loopStart(
   };
 }
 
+interface CountSymbols extends CandidateSymbols {
+  readonly localTotals?: (node: ts.Node) => Totals | undefined;
+}
+
 export function candidateEffectTotals(
-  source: ts.SourceFile,
-  symbols: CandidateSymbols,
+  source: ts.Node,
+  symbols: CountSymbols,
 ): Totals {
   function count(node: ts.Node | undefined): Totals {
     if (!node) return zero;
@@ -305,18 +309,46 @@ export function candidateEffectTotals(
       );
     if (ts.isSwitchStatement(node))
       return add(count(node.expression), switchTotals(node.caseBlock, count));
-    let total = protectedCall(node, symbols)
-      ? {
-          knownCallCount: 1,
-          knownUnitTotal: units(node, symbols),
-        }
-      : zero;
-    ts.forEachChild(node, (child) => {
-      total = add(total, count(child));
-    });
-    return total;
+    return nodeTotals(node, { symbols, count });
   }
   return count(source);
+}
+
+function nodeTotals(
+  node: ts.Node,
+  input: {
+    readonly symbols: CountSymbols;
+    readonly count: (node: ts.Node) => Totals;
+  },
+): Totals {
+  const local = input.symbols.localTotals?.(node);
+  if (local && ts.isFunctionLike(node)) return local;
+  let total =
+    local ??
+    (protectedCall(node, input.symbols)
+      ? { knownCallCount: 1, knownUnitTotal: units(node, input.symbols) }
+      : zero);
+  ts.forEachChild(node, (child) => {
+    total = add(total, input.count(child));
+  });
+  return total;
+}
+
+export function candidateLoopRepetitions(
+  node: ts.IterationStatement,
+  symbols: CandidateSymbols,
+): number | undefined {
+  if (ts.isForStatement(node)) return loopIterations(node, symbols);
+  if (
+    ts.isForOfStatement(node) &&
+    ts.isArrayLiteralExpression(node.expression) &&
+    !uncertainLoopBody(node.statement, {
+      checker: symbols.checker,
+      counter: undefined,
+    })
+  )
+    return node.expression.elements.length;
+  return undefined;
 }
 
 function arrayIterations(
