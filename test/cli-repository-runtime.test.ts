@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -8,7 +8,6 @@ import { pathToFileURL } from "node:url";
 import { startRelay } from "../src/relay/relay-service.ts";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
 import { parseInvocation } from "../src/cli/arguments.ts";
-import { chatPlatformScenario } from "./chats-platform-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { fields, items, withHarness } from "./service-fixture.ts";
 
@@ -19,7 +18,7 @@ await test("CLV-204 an incomplete repository selector refuses without selecting 
   for (const argumentsList of [
     ["status", "--repository"],
     ["run", "develop", "--prompt", "task", "--repository"],
-    ["chats", "import", "source.jsonl", "--repository"],
+    ["phone", "status", "--repository"],
   ])
     assert.deepEqual(parseInvocation(argumentsList), {
       kind: "usage-error",
@@ -88,107 +87,6 @@ registerHooks({ load(url, context, next) {
         );
     },
   ));
-
-await test(
-  "CLV-204 chat import and redaction in A use the selected repository B",
-  chatPlatformScenario(() =>
-    withFiles(
-      {
-        "A/file": "",
-        "B/file": "",
-        "source.jsonl": JSON.stringify({
-          type: "user",
-          message: { role: "user", content: "selected synthetic source" },
-        }),
-      },
-      async (root) => {
-        for (const name of ["A", "B"])
-          execFileSync("git", ["init", "-q", join(root, name)]);
-        const repository = join(root, "B");
-        const state = join(root, "state");
-        const location = { directory: join(root, "A"), state };
-        const imported = await cli(location, [
-          "chats",
-          "import",
-          join(root, "source.jsonl"),
-          "--repository",
-          repository,
-        ]);
-        const result = fields(JSON.parse(imported.stdout));
-        assert.equal(result["code"], "import-complete");
-        const runtime = runtimeDirectory({ XDG_STATE_HOME: state }, repository);
-        assert.ok(runtime);
-        const importId = String(result["importId"]);
-        assert.match(
-          await readFile(
-            join(runtime, "chats", importId, "corpus.jsonl"),
-            "utf8",
-          ),
-          /selected synthetic source/,
-        );
-        const redacted = await cli(location, [
-          "--repository",
-          repository,
-          "chats",
-          "redact",
-          importId,
-        ]);
-        assert.equal(
-          fields(JSON.parse(redacted.stdout))["code"],
-          "redaction-complete",
-        );
-      },
-    ),
-  ),
-);
-
-await test("CLV-204 repository selection applies to chat commands before or after their command", () => {
-  const importId = "12345678-1234-4123-8123-123456789abc";
-  for (const argumentsList of [
-    ["chats", "import", "source.jsonl"],
-    ["chats", "redact", importId],
-  ]) {
-    for (const selected of [
-      ["--repository", "/example/project", ...argumentsList],
-      [...argumentsList, "--repository=/example/project"],
-    ]) {
-      assert.deepEqual(parseInvocation(selected), {
-        ...parseInvocation(argumentsList),
-        repository: "/example/project",
-      });
-    }
-  }
-  assert.deepEqual(
-    parseInvocation(["chats", "import", "--", "--repository", "literal"]),
-    { kind: "chats-import", paths: ["--repository", "literal"] },
-  );
-  assert.deepEqual(
-    parseInvocation(["chats", "import", "--", "--prompt", "-literal"]),
-    { kind: "chats-import", paths: ["--prompt", "-literal"] },
-  );
-});
-
-await test(
-  "CLV-204 chat clients outside git give the repository refusal and hint",
-  chatPlatformScenario(() =>
-    withFiles({}, async (root) => {
-      for (const argumentsList of [
-        ["chats", "import", "missing.jsonl"],
-        ["chats", "redact", "12345678-1234-4123-8123-123456789abc"],
-      ])
-        await assert.rejects(
-          cli({ directory: root, state: join(root, "state") }, argumentsList),
-          (error: unknown) => {
-            assert.ok(error instanceof Error && "stdout" in error);
-            const output = fields(JSON.parse(String(error.stdout)));
-            assert.equal(output["code"], "repository-unknown");
-            assert.match(String(output["detail"]), /--repository/);
-            return true;
-          },
-        );
-    }),
-  ),
-);
 
 async function cli(
   location: {

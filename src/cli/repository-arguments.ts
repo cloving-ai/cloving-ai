@@ -22,9 +22,6 @@ export function repositoryArguments(
       options: {
         ...options,
         repository: { type: "string" },
-        root: { type: "string", multiple: true },
-        "exclude-project": { type: "string", multiple: true },
-        "previous-import": { type: "string" },
       },
       tokens: true,
       allowPositionals: true,

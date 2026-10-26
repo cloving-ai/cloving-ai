@@ -1,28 +1,17 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
-import { redactImport } from "../chats/redact-import.ts";
-import { emptyCounts } from "../chats/redaction.ts";
-import { importChats } from "../chats/import.ts";
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import {
-  chatsRedactUsage,
-  chatsImportUsage,
-  phoneUsage,
-  usage,
-  validateUsage,
-} from "./usage.ts";
+import { phoneUsage, usage, validateUsage } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
   help: usage,
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
-  "chats-import-help": chatsImportUsage,
-  "chats-redact-help": chatsRedactUsage,
   "phone-help": phoneUsage,
 };
 
@@ -44,7 +33,6 @@ export async function main(
 ): Promise<void> {
   const repository = context.repository;
   const invocation = parseInvocation(argumentsList);
-  if (refusedInvocation(invocation, repository)) return;
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
     return;
@@ -59,16 +47,6 @@ export async function main(
       runtimeDirectory: runtimeDirectory(process.env, repository),
       terminal,
     });
-  } else if (invocation.kind === "chats-redact") {
-    await redactionCommand(invocation.importId, repository);
-  } else if (invocation.kind === "chats-import") {
-    const result = await importChats({
-      ...invocation,
-      workingDirectory: process.cwd(),
-      runtimeDirectory: runtimeDirectory(process.env, repository),
-    });
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    process.exitCode = result.code === "import-complete" ? 0 : 1;
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
@@ -88,21 +66,6 @@ export async function main(
   }
 }
 
-function refusedInvocation(
-  invocation: Invocation,
-  repository: string | undefined,
-): boolean {
-  if (refuseChatPlatform(invocation)) return true;
-  if (invocation.kind !== "chats-import" && invocation.kind !== "chats-redact")
-    return false;
-  if (runtimeDirectory(process.env, repository) !== undefined) return false;
-  process.stdout.write(
-    `${JSON.stringify({ code: "repository-unknown", detail: "Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR." })}\n`,
-  );
-  process.exitCode = 1;
-  return true;
-}
-
 const terminal = {
   out: (text: string) => process.stdout.write(text),
   error: (text: string) => process.stderr.write(text),
@@ -117,16 +80,6 @@ function watchSettings(watchPr: WatchPrSettings | undefined): {
     ...(watchActions === undefined ? {} : { watchActions }),
     ...(watchPr === undefined ? {} : { watchPr }),
   };
-}
-
-function refuseChatPlatform(invocation: Invocation): boolean {
-  if (process.platform === "darwin") return false;
-  if (invocation.kind !== "chats-import" && invocation.kind !== "chats-redact")
-    return false;
-  process.stdout.write(`${JSON.stringify({ code: "platform-unsupported" })}\n`);
-  process.stderr.write("platform-unsupported: Chat commands require macOS.\n");
-  process.exitCode = 1;
-  return true;
 }
 
 function presentUsageError(
@@ -162,37 +115,4 @@ function present(report: ValidationReport, format: "json" | "human"): void {
   }
   for (const error of report.errors)
     process.stderr.write(`${error.code}: ${error.file}: ${error.detail}\n`);
-}
-
-async function redactionCommand(
-  importId: string,
-  repository?: string,
-): Promise<void> {
-  let privateTexts: unknown = [];
-  try {
-    const setting = process.env["CLOVING_PRIVATE_TEXTS"];
-    if (setting !== undefined) privateTexts = JSON.parse(setting);
-    if (
-      !Array.isArray(privateTexts) ||
-      !privateTexts.every(
-        (item: unknown): item is string =>
-          typeof item === "string" && item.trim() !== "",
-      )
-    )
-      throw new Error("invalid-settings");
-  } catch {
-    process.stdout.write(
-      `${JSON.stringify({ code: "invalid-settings", importId, recordCount: 0, counts: emptyCounts(), totalCount: 0 })}\n`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-  const result = await redactImport({
-    importId,
-    workingDirectory: process.cwd(),
-    runtimeDirectory: runtimeDirectory(process.env, repository),
-    settings: { home: process.env["HOME"] || null, privateTexts },
-  });
-  process.stdout.write(`${JSON.stringify(result)}\n`);
-  process.exitCode = result.code === "redaction-complete" ? 0 : 1;
 }

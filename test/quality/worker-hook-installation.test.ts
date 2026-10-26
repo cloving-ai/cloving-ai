@@ -5,6 +5,11 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { installWorkerHooks } from "../../quality/worker-hook-installation.ts";
 import { withFiles } from "./files-fixture.ts";
+import {
+  hookEnvironment,
+  hookFailureMessage,
+  hookTimeout,
+} from "./worker-hook-fixture.ts";
 
 async function installWithFactor(
   directory: string,
@@ -52,6 +57,7 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
         },
       });
       const replacement = "// eslint-disable\nexport const value = 2;";
+      const started = performance.now();
       const result = spawnSync("/bin/sh", ["-c", installed.command], {
         cwd: workspace,
         input: JSON.stringify({
@@ -60,13 +66,15 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
           tool_input: { file_path: "main.ts", content: replacement },
         }),
         encoding: "utf8",
-        timeout: 10000,
+        timeout: hookTimeout,
+        env: hookEnvironment(),
       });
-      assert.equal(result.error, undefined);
+      const context = hookFailureMessage(result, started);
+      assert.equal(result.error, undefined, context);
       if (result.status === 0)
         await writeFile(join(workspace, "main.ts"), replacement);
-      assert.equal(result.status, 2);
-      assert.match(result.stderr, /unapproved-suppression/);
+      assert.equal(result.status, 2, context);
+      assert.match(result.stderr, /unapproved-suppression/, context);
       assert.equal(
         await readFile(join(workspace, "main.ts"), "utf8"),
         "export const value = 1;\n",
