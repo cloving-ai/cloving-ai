@@ -5,6 +5,7 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly harness?: string;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly estimatedCostUsd: number | null;
   readonly operationId: string;

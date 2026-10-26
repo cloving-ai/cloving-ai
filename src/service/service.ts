@@ -11,10 +11,7 @@ import {
 } from "../broker/actor/authority.ts";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { Reply, ServiceRequest } from "../protocol.ts";
-import {
-  workflowRefusals,
-  type WorkflowRefusal,
-} from "../workflow-refusals.ts";
+import { type WorkflowRefusal } from "../workflow-refusals.ts";
 import { changeSignal } from "./changes.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
@@ -26,7 +23,7 @@ import {
   type WorkflowRegistration,
   type WorkflowBundleStore,
 } from "./registry.ts";
-import { failed, type ServiceContext } from "./replies.ts";
+import { failed, queryMetadata, type ServiceContext } from "./replies.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
@@ -104,6 +101,7 @@ export interface HostPorts {
 }
 
 export interface ServiceOptions {
+  readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
@@ -223,10 +221,7 @@ async function started(
     handle: dispatcher({
       authority,
       registry,
-      ...(options.commandEffects === undefined
-        ? {}
-        : { commandEffects: options.commandEffects }),
-      workflowRefusals: workflowRefusals(options.workflowRefusals),
+      ...queryMetadata(options),
       gateway,
       clock,
       changed: changes.next,

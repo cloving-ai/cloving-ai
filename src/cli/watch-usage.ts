@@ -49,6 +49,9 @@ export function statusTurns(
       emptyTurn(operationId, runId);
     return {
       ...known,
+      ...(typeof fields["harness"] === "string"
+        ? { harness: fields["harness"] }
+        : {}),
       runId,
       operationId,
       outcome: known.outcome === "in work" ? "ended" : known.outcome,

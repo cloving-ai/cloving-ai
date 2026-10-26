@@ -19,7 +19,7 @@ export interface Configuration {
     readonly lanes?: number;
   };
   readonly harness?: {
-    readonly name?: "claude" | "codex";
+    readonly name?: string;
     readonly kind?: "file" | "shell";
     readonly path?: string;
     readonly command?: readonly string[];

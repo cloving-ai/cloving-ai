@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { ticketStatus } from "../ticket-status.ts";
 import { sumPrices } from "../worker-usage.ts";
+import { turnHarness, type HarnessSettings } from "../harness-defaults.ts";
 import {
   profileCommand,
   type TurnProfile,
@@ -12,7 +13,7 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import { type RunningTurn, type TurnEnd, type Worker } from "./claude-turn.ts";
+import { type RunningTurn, type TurnEnd } from "./claude-turn.ts";
 import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import {
   interrupted,
@@ -28,8 +29,7 @@ import {
 } from "./operation-journal.ts";
 import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
-export interface ClaudeWorkerSettings extends RetrySettings {
-  readonly worker?: Worker;
+export interface ClaudeWorkerSettings extends RetrySettings, HarnessSettings {
   readonly profiles?: TurnProfiles;
   readonly workflowId?: (runId: string) => Promise<string | undefined>;
   readonly repository: string;
@@ -42,6 +42,7 @@ export interface ClaudeWorkerSettings extends RetrySettings {
 }
 
 export interface ClaudeWorker extends Delivery {
+  readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
   readonly close: () => Promise<void>;
 }
@@ -67,8 +68,19 @@ interface Parts {
 }
 
 interface Started extends Located {
+  readonly harness: ReturnType<typeof turnHarness>;
   readonly intent: ProtectedIntent;
   readonly tree: WorkTree;
+}
+
+async function recordedHarness(
+  journal: string,
+  operationId: string,
+): Promise<string | undefined> {
+  const { folder } = located(journal, operationId);
+  const started = await read(folder, "started.json").catch(() => undefined);
+  const harness: unknown = Reflect.get(Object(started), "harness");
+  return typeof harness === "string" ? harness : undefined;
 }
 
 function alive(processId: unknown): boolean {
@@ -99,14 +111,15 @@ async function reconciled(
 }
 
 async function resultText(
-  tree: WorkTree,
+  start: Started,
   result: NonNullable<TurnEnd["result"]>,
 ): Promise<{ readonly text?: string; readonly reason?: string }> {
   const fields = {
+    harness: start.harness.worker,
     ticketStatus: ticketStatus(result.text),
     summary: result.text.slice(0, claudeLimits.summaryCharacters),
-    ...(await changes(tree)),
-    worktree: tree.path,
+    ...(await changes(start.tree)),
+    worktree: start.tree.path,
     costUsd: result.costUsd,
     usage: result.usage,
     model: result.model,
@@ -148,8 +161,7 @@ async function outcome(
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
   const { result } = end;
-  const report =
-    result === undefined ? {} : await resultText(running.tree, result);
+  const report = result === undefined ? {} : await resultText(running, result);
   const { text, reason } = report;
   if (
     reason === undefined &&
@@ -187,10 +199,11 @@ async function begun(
   start: Started & { readonly prompt: string; readonly profile: TurnProfile },
 ): Promise<void> {
   const { intent, key, folder, tree, prompt } = start;
+  const { harness } = start;
   const turn = startRetriedTurn(
     {
-      worker: parts.settings.worker ?? "claude",
-      command: profileCommand(parts.settings.command, start.profile),
+      ...harness,
+      command: profileCommand(harness.command, start.profile),
       environment: start.profile.env ?? {},
       turnId: `${intent.runId}-${key}`,
       directory: tree.path,
@@ -200,6 +213,7 @@ async function begun(
     {
       ...parts.settings,
       metadata: {
+        harness: harness.worker,
         operationId: intent.operationId,
         target: intent.target,
         branch: tree.branch,
@@ -275,11 +289,17 @@ async function selectedProfile(
   intent: ProtectedIntent,
 ): Promise<TurnProfile | string> {
   if (intent.method === "run-turn") return {};
-  if (settings.worker === "codex") return "profile-needs-claude";
   const name = intent.method.slice("run-turn:".length);
   const profiles = settings.profiles ?? {};
   const profile = Object.hasOwn(profiles, name) ? profiles[name] : undefined;
   if (profile === undefined) return "unknown-profile";
+  if (
+    turnHarness(settings, profile).worker !== "claude" &&
+    [profile.allowedTools, profile.permissionMode, profile.maxBudgetUsd].some(
+      (value) => value !== undefined,
+    )
+  )
+    return "profile-needs-claude";
   if (profile.workflows === undefined) return profile;
   const workflowId = await runWorkflow(settings, intent.runId);
   if (workflowId === undefined || !profile.workflows.includes(workflowId))
@@ -315,7 +335,14 @@ async function delivered(
   const place = located(settings.journal, intent.operationId);
   const first = await firstTurn(settings, { tree, intent });
   if (aborted()) return failure("claude-start-aborted");
-  await begun(parts, { ...place, intent, tree: first, prompt, profile });
+  await begun(parts, {
+    ...place,
+    intent,
+    tree: first,
+    prompt,
+    profile,
+    harness: turnHarness(settings, profile),
+  });
   return { receipt: place.key, worker };
 }
 
@@ -338,6 +365,9 @@ async function stopped(
 
 export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   if (settings.command.length === 0) throw new Error("invalid-claude-command");
+  turnHarness(settings);
+  for (const profile of Object.values(settings.profiles ?? {}))
+    turnHarness(settings, profile);
   const parts: Parts = {
     settings,
     active: new Map(),
@@ -348,6 +378,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       ? Promise.resolve(failure("unsupported-effect"))
       : run();
   return {
+    harness: (operationId) => recordedHarness(settings.journal, operationId),
     deliver: (intent, signal) =>
       guarded(intent, () =>
         delivered(parts, {

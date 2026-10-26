@@ -1,3 +1,23 @@
+export const shellTurnScript = `
+set +m
+builtin unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN || exit
+builtin export GH_CONFIG_DIR="$1" || exit
+shift
+if [ -n "\${ZSH_VERSION-}" ] && (( \${+aliases[$1]} )); then
+  alias_command="\${aliases[$1]}"
+  builtin unalias -- "$1"
+  shift
+  eval -- "$alias_command"' "$@"'
+elif [ -n "\${BASH_VERSION-}" ] && alias_value=$(builtin alias -- "$1" 2>/dev/null); then
+  eval -- "alias_command=\${alias_value#*=}"
+  builtin unalias -- "$1"
+  shift
+  eval -- "$alias_command"' "$@"'
+else
+  "$@"
+fi
+`;
+
 export const shellDiscoveryScript = `
 set +m
 if [ -z "\${ZSH_VERSION-}" ] && [ -z "\${BASH_VERSION-}" ]; then exit 64; fi
