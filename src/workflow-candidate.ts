@@ -107,7 +107,9 @@ function isMethodList(value: unknown): value is readonly string[] {
   );
 }
 
-function isCandidateDeclaration(value: unknown): value is CandidateDeclaration {
+export function isCandidateDeclaration(
+  value: unknown,
+): value is CandidateDeclaration {
   const fields = record(value);
   if (
     !fields ||

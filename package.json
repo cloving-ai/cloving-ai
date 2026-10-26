@@ -46,6 +46,10 @@
     "./workflows/steps/run-command": {
       "types": "./dist/src/steps/run-command.d.ts",
       "import": "./dist/src/steps/run-command.js"
+    },
+    "./workflows/testing": {
+      "types": "./dist/src/testing.d.ts",
+      "import": "./dist/src/testing.js"
     }
   },
   "files": [

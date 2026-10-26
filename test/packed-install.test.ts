@@ -6,6 +6,7 @@ import {
 } from "./operator-startup-fixture.ts";
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
+import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
@@ -385,6 +386,7 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
     command("git", { args: ["init", "-q"], cwd: root });
     await running(root, await installed(root));
     await packedWorkflowFolders(root);
+    await packedWorkflowTesting(root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
