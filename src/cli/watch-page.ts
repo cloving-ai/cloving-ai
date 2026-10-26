@@ -21,7 +21,12 @@ import {
   timeLeft,
 } from "./watch-phone-view.ts";
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
-import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
+import {
+  priceText,
+  usageText,
+  attemptText,
+  totalsSuffix,
+} from "./usage-render.ts";
 import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
 import {
   Board,
@@ -110,6 +115,7 @@ const functions = [
   usageOf,
   priceText,
   usageText,
+  attemptText,
   totalsSuffix,
   watchHash,
   watchLocation,

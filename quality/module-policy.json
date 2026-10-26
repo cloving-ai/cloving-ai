@@ -1206,7 +1206,17 @@
     "test/doctor-runtime.test.ts": "test",
     "tools/doctor-adoption.ts": "candidate-adapter",
     "test/doctor-errors.test.ts": "test",
-    "test/packed-doctor.ts": "test"
+    "test/packed-doctor.ts": "test",
+    "src/daemon/retry-worktree.ts": "daemon",
+    "test/network-worker-fixture.ts": "test",
+    "test/retry-git-fixture.ts": "test",
+    "test/retry-worktree.test.ts": "test",
+    "test/worker-network-cancel.test.ts": "test",
+    "test/worker-network-continuation.test.ts": "test",
+    "test/worker-network.test.ts": "test",
+    "test/worker-retry-display.test.ts": "test",
+    "test/worker-retry-index.test.ts": "test",
+    "test/worker-network-guards.test.ts": "test"
   },
   "allowed": {
     "quality": [

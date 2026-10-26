@@ -1,4 +1,9 @@
-import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
+import {
+  priceText,
+  usageText,
+  totalsSuffix,
+  attemptTexts,
+} from "./usage-render.ts";
 import { record, type Fields } from "../protocol.ts";
 import { workflowRefusals } from "../workflow-refusals.ts";
 import { commandText, shownCommands } from "./command-effects.ts";
@@ -206,19 +211,18 @@ function outcomeLines(value: unknown): readonly string[] {
   ];
 }
 
+function labelled(label: string, value: unknown): readonly string[] {
+  return typeof value === "string" ? [`  ${label}: ${visible(value)}`] : [];
+}
+
 function workerLines(value: unknown): readonly string[] {
   return (Array.isArray(value) ? value : []).flatMap((turn: unknown) => [
     `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"), part(turn, "estimatedCostUsd"))}`,
-    ...(typeof part(turn, "harness") === "string"
-      ? [`  Harness: ${visible(part(turn, "harness"))}`]
-      : []),
-    ...(typeof part(turn, "model") === "string"
-      ? [`  Model: ${visible(part(turn, "model"))}`]
-      : []),
+    ...labelled("Harness", part(turn, "harness")),
+    ...labelled("Model", part(turn, "model")),
     `  ${usageText(part(turn, "usage"))}`,
-    ...(typeof part(turn, "summary") === "string"
-      ? [`  Report: ${visible(part(turn, "summary"))}`]
-      : []),
+    ...attemptTexts(part(turn, "attempts")).map((text) => `  ${oneLine(text)}`),
+    ...labelled("Report", part(turn, "summary")),
   ]);
 }
 
