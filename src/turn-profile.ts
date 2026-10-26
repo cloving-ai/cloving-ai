@@ -1,4 +1,5 @@
 export interface TurnProfile {
+  readonly harness?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly allowedTools?: readonly string[];
   readonly model?: string;
@@ -10,6 +11,7 @@ export interface TurnProfile {
 export type TurnProfiles = Readonly<Record<string, TurnProfile>>;
 
 const fields = [
+  "harness",
   "env",
   "allowedTools",
   "model",
@@ -50,6 +52,8 @@ function environment(value: unknown): boolean {
 }
 
 function validField(name: string, value: unknown): boolean {
+  if (name === "harness")
+    return typeof value === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(value);
   if (name === "env") return environment(value);
   if (name === "allowedTools" || name === "workflows") return texts(value);
   if (name === "model" || name === "permissionMode") return text(value);
@@ -106,7 +110,11 @@ function retained(
   for (let index = 0; index < argumentsList.length;) {
     const argument = argumentsList[index] ?? "";
     const name = argument.split("=")[0] ?? "";
-    const flag = name === "--allowed-tools" ? "--allowedTools" : name;
+    const aliases: Readonly<Record<string, string>> = {
+      "--allowed-tools": "--allowedTools",
+      "-m": "--model",
+    };
+    const flag = aliases[name] ?? name;
     if (!values.has(flag)) {
       kept.push(argument);
       index += 1;

@@ -8,10 +8,14 @@ import type { Fields, Reply } from "../protocol.ts";
 import type { ChangeSignal } from "./changes.ts";
 import type { Gateway } from "./gateway.ts";
 import type { Registry } from "./registry.ts";
-import type { WorkflowRefusal } from "../workflow-refusals.ts";
+import {
+  workflowRefusals,
+  type WorkflowRefusal,
+} from "../workflow-refusals.ts";
 import type { CommandEffects } from "../command-settings.ts";
 
 export interface ServiceContext {
+  readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
@@ -25,6 +29,25 @@ export interface ServiceContext {
   readonly documentBytes: number;
   readonly worldReports?: () => readonly unknown[];
   readonly changed?: ChangeSignal["next"];
+}
+
+export function queryMetadata(options: {
+  readonly workerHarness?: ServiceContext["workerHarness"];
+  readonly commandEffects?: CommandEffects;
+  readonly workflowRefusals?: readonly WorkflowRefusal[];
+}): Pick<
+  ServiceContext,
+  "workerHarness" | "commandEffects" | "workflowRefusals"
+> {
+  return {
+    ...(options.workerHarness === undefined
+      ? {}
+      : { workerHarness: options.workerHarness }),
+    ...(options.commandEffects === undefined
+      ? {}
+      : { commandEffects: options.commandEffects }),
+    workflowRefusals: workflowRefusals(options.workflowRefusals),
+  };
 }
 
 const codes: Readonly<Record<string, string>> = {

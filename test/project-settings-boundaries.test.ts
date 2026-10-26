@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { configuration } from "../src/configuration-schema.ts";
+import { resolveSettings } from "../src/project-settings.ts";
 import type { TurnProfiles } from "../src/turn-profile.ts";
 import type { TokenPrices } from "../src/token-prices.ts";
 import {
@@ -25,7 +26,7 @@ await test("CLV-205 validated configuration preserves concrete setting types", (
   );
   const command: readonly string[] | undefined = checked.checks?.beforeMerge;
   const lanes: number | undefined = checked.queue?.lanes;
-  const harness: "claude" | "codex" | undefined = checked.harness?.name;
+  const harness: string | undefined = checked.harness?.name;
   const profiles: TurnProfiles | undefined = checked.profiles;
   const prices: TokenPrices | undefined = checked.tokenPrices;
   assert.deepEqual(command, ["npm", "test"]);
@@ -35,6 +36,46 @@ await test("CLV-205 validated configuration preserves concrete setting types", (
   assert.deepEqual(prices, {
     model: { input: 1, cachedInput: 0, output: 2 },
   });
+});
+
+await test("CLV-210 private harness commands stay with their named harness", () => {
+  const result = resolveSettings(
+    { CLOVING_WORKER: "claude" },
+    {
+      project: undefined,
+      private: JSON.stringify({
+        version: 1,
+        harness: { name: "codex", command: ["private-codex"] },
+      }),
+    },
+  );
+  assert.equal(result.environment["CLOVING_CLAUDE_COMMAND"], undefined);
+  assert.equal(
+    result.environment["CLOVING_CODEX_COMMAND"],
+    '["private-codex"]',
+  );
+});
+
+await test("CLV-210 unsupported saved harness commands never become Claude overrides", () => {
+  const result = resolveSettings(
+    { CLOVING_WORKER: "claude" },
+    {
+      project: undefined,
+      private: JSON.stringify({
+        version: 1,
+        harness: { name: "gemini", command: ["private-gemini"] },
+      }),
+    },
+  );
+  assert.equal(result.environment["CLOVING_CLAUDE_COMMAND"], undefined);
+});
+
+await test("CLV-210 configuration permits named harnesses and profile overrides", () => {
+  const harness = { name: "gemini", kind: "shell", path: "gemini" };
+  const profiles = { checker: { harness: "claude", model: "small" } };
+  const checked = configuration({ version: 1, harness, profiles }, "private");
+  assert.deepEqual(checked.harness, harness);
+  assert.deepEqual(checked.profiles, profiles);
 });
 
 await test("CLV-205 a relative XDG config root uses the home configuration directory", () => {
