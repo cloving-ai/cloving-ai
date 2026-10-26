@@ -1,8 +1,11 @@
-import { configuration } from "./configuration-schema.ts";
-import { record } from "./protocol.ts";
-import { isProfilesFile, type TurnProfiles } from "./turn-profile.ts";
+import { configuration, type Configuration } from "./configuration-schema.ts";
+import type { TurnProfiles } from "./turn-profile.ts";
+import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
+
+type SettingValue =
+  string | number | readonly string[] | TurnProfiles | TokenPrices;
 
 const fields: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
@@ -46,7 +49,7 @@ export function configurationRoot(
 function parse(
   contents: string | undefined,
   scope: "project" | "private",
-): Readonly<Record<string, unknown>> {
+): Partial<Configuration> {
   if (contents === undefined) return {};
   let value: unknown;
   try {
@@ -58,30 +61,38 @@ function parse(
 }
 
 function flatten(
-  values: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
-  const entries: [string, unknown][] = [];
-  for (const [name, value] of Object.entries(values)) {
-    if (
-      [
-        "checks",
-        "tickets",
-        "queue",
-        "harness",
-        "notify",
-        "watch",
-        "selfUpdate",
-        "github",
-      ].includes(name)
-    ) {
-      for (const [child, item] of Object.entries(record(value) ?? {}))
-        entries.push([`${name}.${child}`, item]);
-    } else if (name !== "version") entries.push([name, value]);
+  values: Partial<Configuration>,
+): Readonly<Record<string, SettingValue>> {
+  const entries: [string, SettingValue][] = [];
+  const groups: Readonly<
+    Record<string, Readonly<Record<string, SettingValue>> | undefined>
+  > = {
+    checks: values.checks,
+    tickets: values.tickets,
+    queue: values.queue,
+    harness: values.harness,
+    notify: values.notify,
+    watch: values.watch,
+    selfUpdate: values.selfUpdate,
+    github: values.github,
+  };
+  for (const [name, group] of Object.entries(groups)) {
+    if (group === undefined) continue;
+    for (const [child, item] of Object.entries(group))
+      entries.push([`${name}.${child}`, item]);
   }
+  const direct = {
+    profiles: values.profiles,
+    fallbackModels: values.fallbackModels,
+    tokenPrices: values.tokenPrices,
+    privateTexts: values.privateTexts,
+  };
+  for (const [name, value] of Object.entries(direct))
+    if (value !== undefined) entries.push([name, value]);
   return Object.fromEntries(entries);
 }
 
-function encoded(value: unknown): string {
+function encoded(value: SettingValue): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
@@ -97,7 +108,8 @@ export function resolveSettings(
   readonly sources: Readonly<Record<string, SettingSource>>;
 } {
   const project = flatten(parse(files.project, "project"));
-  const privateFile = flatten(parse(files.private, "private"));
+  const privateConfiguration = parse(files.private, "private");
+  const privateFile = flatten(privateConfiguration);
   const values = { ...project, ...privateFile };
   const resolved = { ...environment };
   const sources: Record<string, SettingSource> = {};
@@ -113,11 +125,11 @@ export function resolveSettings(
   for (const field of Object.keys(values))
     sources[field] = Object.hasOwn(privateFile, field) ? "private" : "project";
   for (const [field, variable] of Object.entries(mapped)) {
+    const value = values[field];
     if (environment[variable] !== undefined) sources[field] = "environment";
-    else if (field !== "profiles" && Object.hasOwn(values, field))
-      resolved[variable] = encoded(values[field]);
+    else if (field !== "profiles" && value !== undefined)
+      resolved[variable] = encoded(value);
   }
-  const inline = { profiles: values["profiles"] };
-  const profiles = isProfilesFile(inline) ? inline.profiles : {};
+  const profiles = privateConfiguration.profiles ?? {};
   return { environment: resolved, profiles, sources };
 }

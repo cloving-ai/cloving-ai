@@ -2,11 +2,40 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
+import { configuration } from "../src/configuration-schema.ts";
+import type { TurnProfiles } from "../src/turn-profile.ts";
+import type { TokenPrices } from "../src/token-prices.ts";
 import {
   projectSettings,
   settingsEnvironment,
 } from "../src/cli/project-settings.ts";
 import { settingsScene } from "./project-settings-fixture.ts";
+
+await test("CLV-205 validated configuration preserves concrete setting types", () => {
+  const checked = configuration(
+    {
+      version: 1,
+      checks: { beforeMerge: ["npm", "test"] },
+      queue: { lanes: 2 },
+      harness: { name: "claude" },
+      profiles: { checker: { model: "small" } },
+      tokenPrices: { model: { input: 1, cachedInput: 0, output: 2 } },
+    },
+    "private",
+  );
+  const command: readonly string[] | undefined = checked.checks?.beforeMerge;
+  const lanes: number | undefined = checked.queue?.lanes;
+  const harness: "claude" | "codex" | undefined = checked.harness?.name;
+  const profiles: TurnProfiles | undefined = checked.profiles;
+  const prices: TokenPrices | undefined = checked.tokenPrices;
+  assert.deepEqual(command, ["npm", "test"]);
+  assert.equal(lanes, 2);
+  assert.equal(harness, "claude");
+  assert.deepEqual(profiles, { checker: { model: "small" } });
+  assert.deepEqual(prices, {
+    model: { input: 1, cachedInput: 0, output: 2 },
+  });
+});
 
 await test("CLV-205 a relative XDG config root uses the home configuration directory", () => {
   const fixture = settingsScene();

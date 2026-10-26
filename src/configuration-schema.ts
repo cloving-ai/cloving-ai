@@ -1,6 +1,41 @@
 import project from "./project-config.schema.json" with { type: "json" };
 import privateConfig from "./private-config.schema.json" with { type: "json" };
 import { record } from "./protocol.ts";
+import type { TurnProfiles } from "./turn-profile.ts";
+import type { TokenPrices } from "./token-prices.ts";
+
+export interface Configuration {
+  readonly version: 1;
+  readonly checks?: {
+    readonly beforeMerge?: readonly string[];
+    readonly required?: readonly string[];
+  };
+  readonly tickets?: {
+    readonly command?: readonly string[];
+    readonly nextCommand?: readonly string[];
+  };
+  readonly queue?: {
+    readonly everySeconds?: number;
+    readonly lanes?: number;
+  };
+  readonly harness?: {
+    readonly name?: "claude" | "codex";
+    readonly kind?: "file" | "shell";
+    readonly path?: string;
+    readonly command?: readonly string[];
+  };
+  readonly profiles?: TurnProfiles;
+  readonly fallbackModels?: readonly string[];
+  readonly tokenPrices?: TokenPrices;
+  readonly privateTexts?: readonly string[];
+  readonly notify?: { readonly command?: readonly string[] };
+  readonly watch?: {
+    readonly port?: number | "off";
+    readonly actions?: "on" | "off";
+  };
+  readonly selfUpdate?: { readonly everySeconds?: number };
+  readonly github?: { readonly command?: readonly string[] };
+}
 
 interface Schema {
   readonly type?: string;
@@ -106,23 +141,22 @@ function validate(value: unknown, checked: Checked): void {
   }
   scalar(value, checked);
   if (schema.type === "object") validateObject(value, checked);
-  if (schema.type === "array") {
-    if (!Array.isArray(value)) invalid(field);
-    if (schema.maxItems !== undefined && value.length > schema.maxItems)
-      invalid(field);
-    for (const [index, item] of value.entries())
-      if (schema.items !== undefined)
-        validate(item, {
-          schema: schema.items,
-          field: `${field}.${String(index)}`,
-        });
-  }
+  if (schema.type !== "array") return;
+  if (!Array.isArray(value)) invalid(field);
+  if (schema.maxItems !== undefined && value.length > schema.maxItems)
+    invalid(field);
+  if (schema.items === undefined) return;
+  for (const [index, item] of value.entries())
+    validate(item, {
+      schema: schema.items,
+      field: `${field}.${String(index)}`,
+    });
 }
 
-export function configuration(
+function validateConfiguration(
   value: unknown,
   scope: "project" | "private",
-): Readonly<Record<string, unknown>> {
+): asserts value is Configuration {
   const object = record(value);
   if (object === undefined) invalid("$");
   if (object["version"] !== 1)
@@ -136,5 +170,12 @@ export function configuration(
         throw new Error(`private-setting-in-project-file: ${field}`);
   }
   validate(object, { schema: schemas[scope] ?? {}, field: "" });
-  return object;
+}
+
+export function configuration(
+  value: unknown,
+  scope: "project" | "private",
+): Configuration {
+  validateConfiguration(value, scope);
+  return value;
 }
