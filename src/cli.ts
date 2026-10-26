@@ -117,14 +117,17 @@ function startArguments(input: StartRequest): readonly string[] {
   return [...located, ...argumentsList];
 }
 
-function started(input: StartRequest): Promise<number> {
+function toolProcess(input: {
+  readonly tool: string;
+  readonly argumentsList: readonly string[];
+}): Promise<number> {
   const program = join(
     import.meta.dirname,
     "..",
     "tools",
-    `self-host${extname(import.meta.filename)}`,
+    `${input.tool}${extname(import.meta.filename)}`,
   );
-  const child = spawn(process.execPath, [program, ...startArguments(input)], {
+  const child = spawn(process.execPath, [program, ...input.argumentsList], {
     stdio: "inherit",
     env: {
       ...process.env,
@@ -148,6 +151,13 @@ function started(input: StartRequest): Promise<number> {
       process.off("SIGTERM", terminate);
       settle(stopping && status === 75 ? 0 : (status ?? 1));
     });
+  });
+}
+
+function started(input: StartRequest): Promise<number> {
+  return toolProcess({
+    tool: "self-host",
+    argumentsList: startArguments(input),
   });
 }
 
@@ -197,7 +207,12 @@ async function start(): Promise<number> {
   return status === 0 ? 0 : 1;
 }
 
-if (command === "start") process.exitCode = await start();
+if (command === "workflows" && ["list", "test"].includes(options[0] ?? ""))
+  process.exitCode = await toolProcess({
+    tool: "workflow-command",
+    argumentsList: options,
+  });
+else if (command === "start") process.exitCode = await start();
 else {
   const invocation = parseInvocation(process.argv.slice(2));
   const repository = repositoryDirectory(

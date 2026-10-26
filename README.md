@@ -628,6 +628,37 @@ In this example, an approval completes the run and a denial ends it. `workflows/
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
+Use `cloving workflows list` to inspect bundled, project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.
+
+Put tests beside each folder workflow as `<name>.test.ts`, then run `cloving workflows test <workflow-id>`. Omit the ID to run all available project and user workflow tests. Both commands accept `--repository <directory>`. The Node test runner prints its results and supplies the exit status. Unknown IDs report `unknown-workflow`; known workflows without tests report `workflow-test-missing`. Neither needs a running service.
+
+Tests can import `runScenario` from `cloving/workflows/testing`:
+
+```typescript
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { runScenario } from "cloving/workflows/testing";
+
+await test("develop uses the fake worker result", async () => {
+  const turn = {
+    kind: "completed" as const,
+    operationId: "turn-1",
+    receipt: null,
+    result: "fake result",
+  };
+  const result = await runScenario({
+    workflow: new URL("./develop.ts", import.meta.url).href,
+    exportName: "develop",
+    input: {},
+    turn,
+  });
+  assert.deepEqual(result.outcome, turn);
+  assert.equal(result.requests.length, 1);
+});
+```
+
+Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `gate` supplies a decision-gate result, `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, and `decision` supplies the workflow's second argument. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect or gate results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
+
 The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
 
 For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.

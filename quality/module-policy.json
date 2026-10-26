@@ -1118,7 +1118,15 @@
     "test/config-consumers.test.ts": "test",
     "test/config-required-checks.test.ts": "test",
     "src/project-settings.ts": "pure",
-    "src/repository-identity.ts": "pure"
+    "src/repository-identity.ts": "pure",
+    "tools/workflow-command.ts": "candidate-adapter",
+    "test/cli-workflows.test.ts": "test",
+    "src/testing.ts": "candidate-adapter",
+    "tools/workflow-test-loader.ts": "candidate-adapter",
+    "test/workflow-testing.test.ts": "test",
+    "test/workflow-testing-requests.test.ts": "test",
+    "test/packed-workflow-testing.ts": "test",
+    "test/workflow-test-signals.test.ts": "test"
   },
   "allowed": {
     "quality": [

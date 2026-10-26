@@ -11,6 +11,7 @@
     "tools/compile-workflows.ts",
     "tools/admit-workflow.ts",
     "tools/workflow-folders.ts",
-    "workflows/**/*.ts"
+    "workflows/**/*.ts",
+    "tools/workflow-command.ts"
   ]
 }
