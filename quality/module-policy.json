@@ -1,5 +1,18 @@
 {
   "roles": {
+    "src/decision-wait.ts": "pure",
+    "src/steps/wait-for-decision.ts": "workflow",
+    "src/host/gate-bridge.ts": "host-bridge",
+    "src/host/decision-resume.ts": "host-bridge",
+    "test/decision-wait-sdk.test.ts": "test",
+    "test/quality/decision-wait-policy.test.ts": "test",
+    "test/decision-wait-drop.test.ts": "test",
+    "test/decision-wait-mixed.test.ts": "test",
+    "test/decision-wait-fixture.ts": "test",
+    "test/decision-wait-recovery.test.ts": "test",
+    "test/decision-wait-candidate.test.ts": "test",
+    "test/decision-wait-bridge.test.ts": "test",
+    "test/packed-decision-wait.ts": "test",
     "test/command-journal-failures.test.ts": "test",
     "test/command-journal.test.ts": "test",
     "src/steps/run-command.ts": "step",
@@ -1194,7 +1207,7 @@
     "configuration": ["tooling", "quality"],
     "cli": ["cli", "stdlib", "metadata", "pure", "broker", "network"],
     "pure": ["pure"],
-    "workflow": ["workflow", "pure", "step"],
+    "workflow": ["workflow", "pure", "step", "sdk-runtime"],
     "step": ["pure", "broker"],
     "broker": [
       "broker",
@@ -1412,6 +1425,16 @@
     ],
     "names": [
       {
+        "file": "node_modules/@workflow/core/dist/create-hook.d.ts",
+        "name": "createHook",
+        "users": ["src/steps/wait-for-decision.ts"]
+      },
+      {
+        "file": "node_modules/@workflow/core/dist/runtime/resume-hook.d.ts",
+        "name": "resumeHook",
+        "users": ["src/host/decision-resume.ts"]
+      },
+      {
         "file": "node_modules/solid-objects/dist/transmit.d.ts",
         "name": "registerTransmit",
         "users": []
@@ -1428,6 +1451,21 @@
       }
     ],
     "imports": {
+      "node_modules/workflow/dist/api.d.ts": [
+        "src/host/decision-resume.ts",
+        "src/host/start-delivery.ts",
+        "src/host/world-runs.ts"
+      ],
+      "node_modules/workflow/dist/runtime.d.ts": [
+        "src/host/decision-resume.ts",
+        "src/host/world-host.ts",
+        "src/host/world-runs.ts"
+      ],
+      "node_modules/workflow/dist/index.d.ts": [
+        "src/host/step-bridge-host.ts",
+        "src/host/run-wait.ts",
+        "src/steps/wait-for-decision.ts"
+      ],
       "src/broker/actor/authority-delivery.ts": [
         "src/broker/actor/authority-runtime.ts"
       ],

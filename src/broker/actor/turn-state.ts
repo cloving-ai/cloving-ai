@@ -127,7 +127,7 @@ export async function recoverableIntents(
   connection: SqlConnection,
 ): Promise<readonly DeliveryIntent[]> {
   const rows = await connection.all(
-    "SELECT o.operation_id, o.kind, o.run_id, r.workflow FROM outbox o JOIN runs r ON r.run_id = o.run_id WHERE o.released_sequence IS NULL AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = o.operation_id AND d.outcome IS NULL) AND ((o.kind = 'start-run' AND r.status = 'queued') OR (o.kind = 'continue-run' AND r.status = 'running') OR (o.kind = 'protected-effect' AND r.status = 'running' AND EXISTS (SELECT 1 FROM operations p WHERE p.operation_id = o.operation_id AND p.status = 'dispatch-pending'))) ORDER BY o.created_sequence, o.rowid LIMIT ?",
+    "SELECT o.operation_id, o.kind, o.run_id, r.workflow FROM outbox o JOIN runs r ON r.run_id = o.run_id WHERE o.released_sequence IS NULL AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = o.operation_id AND d.outcome IS NULL) AND ((o.kind = 'start-run' AND r.status = 'queued') OR (o.kind IN ('continue-run', 'resume-hook') AND r.status = 'running') OR (o.kind = 'protected-effect' AND r.status = 'running' AND EXISTS (SELECT 1 FROM operations p WHERE p.operation_id = o.operation_id AND p.status = 'dispatch-pending'))) ORDER BY o.created_sequence, o.rowid LIMIT ?",
     [recoveryBatch],
   );
   const intents: DeliveryIntent[] = [];

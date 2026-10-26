@@ -18,7 +18,7 @@ export interface GateState {
   readonly expiresAt: string | null;
   readonly generation: number;
   readonly revision: number;
-  readonly wait: "registered" | "pending";
+  readonly wait: "registered" | "pending" | "hook";
   readonly outcome: GateOutcome | null;
   readonly openedSequence: number;
 }
@@ -61,6 +61,7 @@ export function openedGate(opening: {
 }): GateState {
   const { payload } = opening;
   const kind = kinds[payload["gateKind"] ?? ""] ?? "untyped";
+  const wait = kind === "untyped" ? "registered" : "pending";
   return {
     runId: opening.runId,
     gateId: payload["gateId"] ?? "",
@@ -71,7 +72,7 @@ export function openedGate(opening: {
     expiresAt: payload["expiresAt"] ?? null,
     generation: opening.generation,
     revision: 1,
-    wait: kind === "untyped" ? "registered" : "pending",
+    wait: payload["waitMode"] === "hook" ? "hook" : wait,
     outcome: null,
     openedSequence: opening.sequence,
   };
@@ -129,5 +130,11 @@ export function continues(gate: GateState): gate is ContinuingGate {
     gate.wait === "registered" &&
     isSettled(gate) &&
     gate.outcome.decision !== null
+  );
+}
+
+export function delivers(gate: GateState): gate is ContinuingGate {
+  return (
+    gate.wait !== "pending" && isSettled(gate) && gate.outcome.decision !== null
   );
 }

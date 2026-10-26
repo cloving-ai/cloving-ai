@@ -11,6 +11,7 @@ import {
   type HandoffValue,
   type ProtectedResult,
   type GateResult,
+  type DecisionResult,
   type RunWaitOutcome,
   type StepBridge,
   type ProtectedRequest,
@@ -24,6 +25,7 @@ export interface StepScenario {
   readonly effects?: Readonly<Record<string, readonly ProtectedResult[]>>;
   readonly gate?: GateResult;
   readonly waits?: readonly RunWaitOutcome[];
+  readonly decisions?: readonly DecisionResult[];
   readonly effectLimit?: number;
 }
 
@@ -37,6 +39,7 @@ export interface WorkflowScenario extends StepScenario {
 export type ScenarioRequest =
   | readonly ["effect", ProtectedRequest]
   | readonly ["gate", GateRequest]
+  | readonly ["waitForDecision", GateRequest]
   | readonly ["handoff", HandoffRequest]
   | readonly ["waitForRun", RunWaitRequest];
 
@@ -67,19 +70,56 @@ export function fakeStepBridge(scenario: StepScenario) {
 
 function scenarioBridge(scenario: StepScenario) {
   const requests: ScenarioRequest[] = [];
+  const waits = [...(scenario.waits ?? [])];
+  const decisions = [...(scenario.decisions ?? [])];
+  const budget = { spent: 0 };
+  const bridge: StepBridge = {
+    ...scenarioEffects(scenario, { requests, budget }),
+    gate: (request) => {
+      requests.push(["gate", request]);
+      return Promise.resolve(
+        scenario.gate ?? {
+          kind: "unavailable",
+          reason: "no-scenario-result",
+        },
+      );
+    },
+    waitForDecision: (request) => {
+      requests.push(["waitForDecision", request]);
+      const decision = decisions.shift();
+      if (decision === undefined)
+        return Promise.reject(new Error("no-scenario-result"));
+      return Promise.resolve(decision);
+    },
+    waitForRun: (request) => {
+      requests.push(["waitForRun", request]);
+      return Promise.resolve(
+        waits.shift() ?? {
+          kind: "unavailable",
+          reason: "no-scenario-result",
+          promotionId: null,
+        },
+      );
+    },
+  };
+  return { bridge, requests, budget };
+}
+
+function scenarioEffects(
+  scenario: StepScenario,
+  state: {
+    readonly requests: ScenarioRequest[];
+    readonly budget: { spent: number };
+  },
+): Pick<StepBridge, "effect" | "handoff"> {
+  const { requests, budget } = state;
   const effects = new Map(
     Object.entries(scenario.effects ?? {}).map(([key, values]) => [
       key,
       [...values],
     ]),
   );
-  const waits = [...(scenario.waits ?? [])];
-  const budget = { spent: 0 };
-  const unavailable = {
-    kind: "unavailable",
-    reason: "no-scenario-result",
-  } as const;
-  const bridge: StepBridge = {
+  return {
     effect: (request) => {
       requests.push(["effect", request]);
       const refusal = spend(scenario, { budget, request });
@@ -88,11 +128,9 @@ function scenarioBridge(scenario: StepScenario) {
         scenario.effects === undefined
           ? scenario.turn
           : effects.get(request.capability + " " + request.method)?.shift();
-      return Promise.resolve(result ?? unavailable);
-    },
-    gate: (request) => {
-      requests.push(["gate", request]);
-      return Promise.resolve(scenario.gate ?? unavailable);
+      return Promise.resolve(
+        result ?? { kind: "unavailable", reason: "no-scenario-result" },
+      );
     },
     handoff: (request) => {
       requests.push(["handoff", request]);
@@ -110,18 +148,7 @@ function scenarioBridge(scenario: StepScenario) {
         },
       );
     },
-    waitForRun: (request) => {
-      requests.push(["waitForRun", request]);
-      return Promise.resolve(
-        waits.shift() ?? {
-          kind: "unavailable",
-          reason: "no-scenario-result",
-          promotionId: null,
-        },
-      );
-    },
   };
-  return { bridge, requests, budget };
 }
 
 function spend(
@@ -181,6 +208,7 @@ function scenarioRequest(value: unknown): value is ScenarioRequest {
     case "effect":
       return protectedRequest(request);
     case "gate":
+    case "waitForDecision":
       return gateRequest(request);
     case "handoff":
       return handoffRequest(request);

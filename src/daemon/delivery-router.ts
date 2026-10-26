@@ -38,7 +38,7 @@ export function deliveryRouter(routes: DeliveryRoutes): Delivery {
   const refusal = (): Promise<AdapterOutcome> => Promise.resolve(refused);
   return {
     deliver: (intent, signal) => {
-      if (!protectedEffect(intent)) return runs.deliver(intent);
+      if (!protectedEffect(intent)) return runs.deliver(intent, signal);
       return workerOf(routes, intent)?.deliver(intent, signal) ?? refusal();
     },
     reconcile: (intent, signal) => {

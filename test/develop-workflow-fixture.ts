@@ -69,6 +69,7 @@ for (const given of cases) {
       return next(given, request, requests.length);
     },
     gate: async (request) => { requests.push(["gate", request]); return given.gate; },
+    waitForDecision: async (request) => { requests.push(["waitForDecision", request]); return given.decision; },
     handoff: async () => given.effects?.handoff?.shift() ?? ({ kind: "completed", result: "target-run" }),
   };
   const workflows = { "develop-prd": developPrd, "develop-ticket": developTicket };

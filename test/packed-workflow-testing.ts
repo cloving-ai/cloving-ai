@@ -24,11 +24,14 @@ await test("global package scenario", async () => {
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { personal } from "./personal.ts";
 await test("global user scenario", async () => {
-  using bridge = fakeStepBridge({ turn: { kind: "completed", operationId: "user", receipt: null, result: "user-result" } });
+  using bridge = fakeStepBridge({ decisions: [{ decision: "approved", answer: null }], turn: { kind: "completed", operationId: "user", receipt: null, result: "user-result" } });
   assert.equal((await personal()).result, "user-result");
-  assert.equal(bridge.requests.length, 1);
+  assert.deepEqual(await waitForDecision({ gateId: "review", kind: "approval", prompt: "Approve?" }), { decision: "approved", answer: null });
+  assert.equal(bridge.requests.length, 2);
+  assert.equal(bridge.requests[1][0], "waitForDecision");
 });`,
 };
 
