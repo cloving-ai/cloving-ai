@@ -275,19 +275,20 @@ async function discoverShell(
 ): Promise<HarnessDiscovery> {
   const { env, files } = options;
   const login = await inspectShell(names, { env, mode: "login" });
-  if (login.reason !== null) return { entries: [], shellReason: login.reason };
-  const interactive = login.bash
-    ? await inspectShell(names, { env, mode: "interactive" })
-    : null;
+  const interactive =
+    login.bash ||
+    (login.reason !== null && basename(env["SHELL"] ?? "") !== "zsh")
+      ? await inspectShell(names, { env, mode: "interactive" })
+      : null;
   const found = [
     ...login.entries.map((entry) => ({ entry, mode: "login" as const })),
-    ...(interactive?.entries ?? []).map((entry) => ({
+    ...(interactive?.bash ? interactive.entries : []).map((entry) => ({
       entry,
       mode: "interactive" as const,
     })),
   ];
   const entries = await probeCandidates(found, { files, env });
-  return { entries, shellReason: interactive?.reason ?? null };
+  return { entries, shellReason: login.reason ?? interactive?.reason ?? null };
 }
 
 async function discoverNames(

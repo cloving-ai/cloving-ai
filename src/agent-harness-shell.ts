@@ -6,13 +6,13 @@ index=0
 for name in "$@"; do
   printf '__CLOVING_HARNESS_START_%s__\\n' "$index"
   if [ -n "\${ZSH_VERSION-}" ]; then
-    kind=$(whence -w -- "$name" 2>/dev/null)
+    kind=$(whence -w -- "$name" 2>/dev/null) || kind=
     printf '%s\\n' "\${kind##*: }"
-    file=$(whence -p -- "$name" 2>/dev/null)
+    file=$(whence -p -- "$name" 2>/dev/null) || file=
   else
-    kind=$(builtin type -t -- "$name" 2>/dev/null)
+    kind=$(builtin type -t -- "$name" 2>/dev/null) || kind=
     printf '%s\\n' "$kind"
-    file=$(builtin type -P -- "$name" 2>/dev/null)
+    file=$(builtin type -P -- "$name" 2>/dev/null) || file=
   fi
   case "$file" in /*|"") ;; *) file="$PWD/$file" ;; esac
   printf '%s\\n' "$file"

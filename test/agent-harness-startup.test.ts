@@ -6,6 +6,41 @@ import { discoverHarnesses, probeHarness } from "../src/agent-harnesses.ts";
 import { withHarnesses } from "./agent-harness-fixture.ts";
 
 for (const shell of ["/bin/zsh", "/bin/bash"]) {
+  await test(`CLV-208 ${shell} tolerates missing lookups with startup errexit enabled`, () =>
+    withHarnesses(async (scene) => {
+      await scene.startup(
+        'set -e\ncodex() { test "$1" = --version && printf "codex-cli 0.106.0\\n"; }\n',
+      );
+      const result = await discoverHarnesses({
+        env: { ...scene.options.env, SHELL: shell },
+      });
+      assert.equal(result.shellReason, null);
+      assert.deepEqual(result.entries, [
+        {
+          name: "codex",
+          kind: "shell",
+          path: "codex",
+          version: "codex-cli 0.106.0",
+          working: true,
+          reason: null,
+        },
+      ]);
+    }));
+}
+
+await test("CLV-208 a failed zsh startup is not retried as Bash", () =>
+  withHarnesses(async (scene) => {
+    await scene.startup('printf "start\\n" >> "$HOME/starts"\nexit 7\n');
+    const result = await discoverHarnesses(scene.options);
+    assert.equal(result.shellReason, "probe-exit");
+    assert.deepEqual(result.entries, []);
+    assert.equal(
+      await readFile(join(scene.directory, "starts"), "utf8"),
+      "start\n",
+    );
+  }));
+
+for (const shell of ["/bin/zsh", "/bin/bash"]) {
   await test(`CLV-208 ${shell} preserves the startup environment for discovered files without duplicate probes`, () =>
     withHarnesses(async (scene) => {
       await mkdir(join(scene.directory, "agents"));
@@ -136,6 +171,44 @@ await test("CLV-208 Bash retries a failed login definition in its interactive st
       },
     ]);
   }));
+
+for (const [startup, reason] of [
+  ["exit 0\n", "shell-protocol"],
+  ["exit 7\n", "probe-exit"],
+  ["/bin/sleep 30\n", "probe-timeout"],
+] as const) {
+  await test(`CLV-208 Bash discovers interactive agents after login reports ${reason}`, () =>
+    withHarnesses(async (scene) => {
+      const path = await scene.file("pi", 'printf "pi 1.2\\n"');
+      await scene.startup(startup);
+      await writeFile(
+        join(scene.directory, ".bashrc"),
+        'codex() { test "$1" = --version && printf "codex-cli 0.107.0\\n"; }\n',
+      );
+      const result = await discoverHarnesses({
+        env: { ...scene.options.env, SHELL: "/bin/bash" },
+      });
+      assert.equal(result.shellReason, reason);
+      assert.deepEqual(result.entries, [
+        {
+          name: "pi",
+          kind: "file",
+          path,
+          version: "pi 1.2",
+          working: true,
+          reason: null,
+        },
+        {
+          name: "codex",
+          kind: "shell",
+          path: "codex",
+          version: "codex-cli 0.107.0",
+          working: true,
+          reason: null,
+        },
+      ]);
+    }));
+}
 
 for (const [startup, reason] of [
   ["exit 0\n", "shell-protocol"],
