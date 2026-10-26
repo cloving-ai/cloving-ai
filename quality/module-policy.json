@@ -732,6 +732,8 @@
     "test/watch-element.test.ts": "test",
     "test/watch-dom.ts": "test",
     "test/watch-view.test.ts": "test",
+    "src/cli/watch-header-view.ts": "cli",
+    "test/watch-information-architecture.test.ts": "test",
     "test/watch-start.test.ts": "test",
     "test/watch-page.test.ts": "test",
     "test/watch-sample.ts": "test",

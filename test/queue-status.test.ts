@@ -84,8 +84,8 @@ await test("CLV-184 watch data and page retain queue lanes and skip reasons", as
     }),
   );
   assert.match(html, /Queue: 1 of 4 lanes busy/);
-  assert.match(html, /900.*ticket-active/);
-  assert.match(html, /901.*ticket-dependency-open.*899/);
+  assert.match(html, /#900 is in work/);
+  assert.match(html, /#901 waits for #899/);
 });
 
 for (const hash of ["", "#workflow=develop-issue"])
@@ -101,6 +101,6 @@ console.log(JSON.stringify({ html: app.inner }));
 `,
     );
     assert.match(String(result["html"]), /Queue: 1 of 4 lanes busy/);
-    assert.match(String(result["html"]), /900.*ticket-active/);
-    assert.match(String(result["html"]), /901.*ticket-dependency-open.*899/);
+    assert.match(String(result["html"]), /#900 is in work/);
+    assert.match(String(result["html"]), /#901 waits for #899/);
   });

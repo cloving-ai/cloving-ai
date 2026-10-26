@@ -69,25 +69,37 @@ import {
   Work,
 } from "./watch-turn.ts";
 import {
-  clove,
   Banner,
   BannerDetail,
   BoardPage,
-  Header,
   Page,
   Phases,
   PullRequest,
   Review,
   RefusedWorkflows,
-  Queue,
   Run,
 } from "./watch-view.ts";
+import {
+  Brand,
+  clove,
+  Header,
+  HeaderActions,
+  HeaderStatus,
+  Queue,
+  queueLanes,
+  skippedText,
+} from "./watch-header-view.ts";
 
 const functions = [
   record,
   commandText,
   Commands,
+  queueLanes,
+  skippedText,
   Queue,
+  Brand,
+  HeaderStatus,
+  HeaderActions,
   cardReply,
   cardSubmitKey,
   cardKey,
@@ -214,14 +226,20 @@ body:has(.board-page) { padding-bottom: 0; overflow: hidden; }
 .workflow-refusals { flex-shrink: 0; max-height: 25dvh; overflow-y: auto; overflow-wrap: anywhere; }
 .workflow-refusals h2 { margin: 8px 0; }
 a { color: var(--accent-strong); }
-.phone { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
-.phone button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.header-status { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.queue-lanes { padding: 2px 8px; border-radius: 999px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.header-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.queue-waiting { flex-shrink: 0; margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+.queue-waiting ul { margin: 6px 0 0; padding: 0 0 0 18px; columns: 220px; column-gap: 24px; max-height: 25dvh; overflow-y: auto; }
+.phone { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0; }
+.phone-pairing { flex-basis: 100%; }
 .phone-pairing div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .phone-qr { width: 196px; height: 196px; border-radius: 8px; }
 .phone-ask { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .phone-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.phone-list li { display: flex; gap: 8px; align-items: center; }
-header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 22px 0 10px; color: var(--muted); font-size: 12px; }
+.phone-list li { display: flex; gap: 8px; align-items: center; color: var(--ink); }
+header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 18px 0 12px; color: var(--muted); font-size: 12px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 800 26px/1.2 var(--heading-font); }
 .brand svg { width: 30px; height: 30px; color: var(--accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
@@ -238,43 +256,45 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .workflows a[aria-current="page"] { border-bottom-color: var(--accent); background: var(--surface); border-radius: 8px 8px 0 0; }
 .workflows span, .card small { color: var(--muted); font-size: 12px; }
 .board { width: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.board h2 { margin: 0 0 8px; font-size: 24px; flex-shrink: 0; }
 .columns { display: flex; align-items: flex-start; gap: ${String(boardSizing.gap)}px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
 @supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }
 .columns::-webkit-scrollbar { height: 12px; }
 .columns::-webkit-scrollbar-track { background: var(--surface-2); }
 .columns::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 6px; }
 .column { flex: 1 0 ${String(boardSizing.minimumColumnWidth)}px; min-width: ${String(boardSizing.minimumColumnWidth)}px; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2); }
-.column-name { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin: 0; padding: 4px 0 10px; color: var(--muted); font: 500 12px/1.5 var(--code-font); }
+.column-name { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin: 0; padding: 4px 0 10px; color: var(--muted); font: 600 13px/1.5 var(--body-font); }
+.column-count { font-variant-numeric: tabular-nums; }
 .column-name > span:first-child { flex: 1; }
 .column-cards { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .column.collapsed { flex: 0 0 ${String(boardSizing.collapsedColumnWidth)}px; min-width: ${String(boardSizing.collapsedColumnWidth)}px; padding: 6px; }
 .collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
-.column-name button, .start-toggle { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
-.column-name button:hover, .start-toggle:hover, .add-card:hover, .add-card-form button:hover { background: var(--surface); }
+header button, .phone button, .column-name button, .add-card, .add-card-form button, .start-card button { font: 500 13px/1.4 var(--body-font); color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
+header button:hover, .phone button:hover, .column-name button:hover, .add-card:hover, .add-card-form button:hover, .start-card button:hover { background: var(--surface-2); }
 .add-card, .add-card-form button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 4px 8px 4px 0; }
-.add-card { width: 100%; text-align: left; }
+.add-card { width: 100%; text-align: left; margin: 4px 0; }
 .add-card-form { padding: 8px 0; overflow-wrap: anywhere; }
 .add-card-form label { display: block; color: var(--ink); margin-bottom: 8px; }
 .add-card-form input, .add-card-form textarea { display: block; width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; color: var(--ink); background: var(--surface); }
 .add-card-form textarea { resize: vertical; }
 .add-card-form button:disabled { opacity: 0.6; cursor: default; }
 .add-card-form p { font-size: 12px; margin: 8px 0; }
-.card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--ink); overflow-wrap: anywhere; background: var(--surface); }
+.card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); overflow-wrap: anywhere; background: var(--surface); }
 .card:hover { outline: 1px solid var(--accent-strong); }
 .card-run { display: grid; gap: 4px; min-width: 0; color: inherit; text-decoration: none; }
 .card-run strong { font-family: var(--heading-font); font-weight: 700; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .completion-mark { font-size: 12px; }
-.card-step, .card-review, .card-cost, .card small { font: 400 12px/1.6 var(--code-font); font-variant-numeric: tabular-nums; }
+.card-step, .card-review, .card-cost { font: 400 12px/1.6 var(--body-font); font-variant-numeric: tabular-nums; }
+.card small { font: 400 11px/1.6 var(--code-font); }
 .card-step, .card-review { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-step { color: var(--muted); }
 .card-step.active { color: var(--accent-strong); }
 .card-review { color: var(--muted); }
 .review-pill { display: inline-block; padding: 1px 5px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); }
-.decision-mark { width: fit-content; padding: 3px 7px; border-radius: 6px; background: linear-gradient(var(--warn-tint), var(--warn-tint)), var(--surface); color: var(--warn); font: 500 12px/1.6 var(--code-font); }
+.decision-mark { width: fit-content; padding: 3px 7px; border-radius: 6px; background: linear-gradient(var(--warn-tint), var(--warn-tint)), var(--surface); color: var(--warn); font: 600 12px/1.6 var(--body-font); }
 .column.stopped { background: var(--surface); box-shadow: inset 0 0 0 1px var(--bad), inset 0 0 0 100vmax var(--bad-tint); }
+.column.stopped.collapsed { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
 .stopped .column-name { color: var(--bad); background: var(--surface); border-radius: 6px; }
-.stopped .card { background: linear-gradient(var(--bad-tint), var(--bad-tint)), var(--surface); box-shadow: inset 0 0 0 1px var(--bad), var(--shadow); }
+.stopped .card { background: linear-gradient(var(--bad-tint), var(--bad-tint)), var(--surface); box-shadow: inset 0 0 0 1px var(--bad); }
 .back { display: block; width: fit-content; margin: 16px 0; }
 .icon { font-weight: 700; color: var(--muted); }
 .good .icon, .phase.done .mark, p.good { color: var(--accent-strong); }

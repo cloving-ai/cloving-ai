@@ -297,7 +297,10 @@ export function Board(props: {
   return element("main", {
     class: "board",
     children: [
-      element("h2", { children: workflow.workflowId }),
+      element("h2", {
+        class: "visually-hidden",
+        children: workflow.workflowId,
+      }),
       element("div", {
         class: "columns",
         children: workflow.columns.map((column, index) =>
