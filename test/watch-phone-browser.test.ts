@@ -7,6 +7,7 @@ import { pageDocument } from "../src/cli/watch-page.ts";
 import { qrMatrix } from "../src/phone/qr-matrix.ts";
 import { qrPicture } from "../src/phone/qr-picture.ts";
 import { boardModel } from "./watch-board-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 
 const link =
@@ -138,7 +139,7 @@ async function phoneBoard(lifetimeMilliseconds: number) {
 
 const helpers = `
 const until = (check, label) => new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => { clearInterval(timer); reject(new Error(label)); }, 8000);
+  const timeout = setTimeout(() => { clearInterval(timer); reject(new Error(label)); }, ${String(testMilliseconds(8000))});
   const timer = setInterval(() => {
     const found = check();
     if (!found) return;
