@@ -9,7 +9,10 @@ import {
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
 import { resolvedSymbol } from "./workflow-candidate-program.ts";
-import { referenceSymbol } from "./workflow-source-effects.ts";
+import {
+  referenceSymbol,
+  typeOnlyEffectNode,
+} from "./workflow-source-effects.ts";
 
 const zero: Totals = { knownCallCount: 0, knownUnitTotal: 0 };
 
@@ -111,6 +114,7 @@ function effectfulFunctions(
 ): ReadonlySet<ts.FunctionDeclaration> {
   const effectful = new Set<ts.FunctionDeclaration>();
   const calls = (node: ts.Node): boolean => {
+    if (typeOnlyEffectNode(node)) return false;
     if (protectedCall(node, input.symbols)) return true;
     if (ts.isIdentifier(node)) {
       const called = input.functionAt(node);
@@ -135,6 +139,7 @@ function inspectHelperReferences(
   },
 ): void {
   function visit(node: ts.Node): void {
+    if (typeOnlyEffectNode(node)) return;
     if (
       source !== input.symbols.source &&
       protectedCall(node, input.symbols) &&

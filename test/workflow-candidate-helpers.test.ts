@@ -43,6 +43,21 @@ for (const [name, body, count] of [
     "await wrapper(); await wrapper(); } async function wrapper() { await invoke();",
     2,
   ],
+  [
+    "type aliases",
+    "type Result = ReturnType<typeof invoke>; await invoke();",
+    1,
+  ],
+  [
+    "interfaces",
+    "interface Result { pending: ReturnType<typeof invoke>; } await invoke();",
+    1,
+  ],
+  [
+    "type annotations",
+    "const result: ReturnType<typeof invoke> = invoke(); await result;",
+    1,
+  ],
 ] as const) {
   await test(`CLV-216 counts helper effects at ${name}`, () => {
     const facts = helperAnalysis(body);
@@ -90,6 +105,31 @@ await test("CLV-216 multiplies helper units", () => {
   );
   assert.equal(facts.analysis.knownCallCount, 4);
   assert.equal(facts.analysis.knownUnitTotal, 12);
+});
+
+await test("CLV-216 admits type-only references inside effectful helpers", () => {
+  const facts = helperAnalysis(
+    "await invoke();",
+    `type Result = ReturnType<typeof perform>; ${effect}`,
+  );
+  assert.equal(facts.analysis.knownCallCount, 1);
+  assert.equal(facts.analysis.knownUnitTotal, 1);
+  assert.deepEqual(
+    checkWorkflowCandidate({ declaration: candidateDeclaration, ...facts }),
+    [],
+  );
+});
+
+await test("CLV-216 keeps callbacks pure when only their return type references an effectful helper", () => {
+  const facts = helperAnalysis(
+    "await invoke(); return [1, 2].map(wrapper); } function wrapper(): ReturnType<typeof invoke> | undefined { return undefined;",
+  );
+  assert.equal(facts.analysis.knownCallCount, 1);
+  assert.equal(facts.analysis.knownUnitTotal, 1);
+  assert.deepEqual(
+    checkWorkflowCandidate({ declaration: candidateDeclaration, ...facts }),
+    [],
+  );
 });
 
 await test("CLV-216 counts fixed loop repetitions inside a repeatedly called helper", () => {
