@@ -44,7 +44,8 @@ function launched(
 }
 
 async function stopped(programs: readonly Program[]): Promise<void> {
-  for (const program of programs) program.child.kill("SIGTERM");
+  for (const program of programs)
+    if (!program.child.killed) program.child.kill("SIGTERM");
   await Promise.all(programs.map((program) => program.ended));
 }
 

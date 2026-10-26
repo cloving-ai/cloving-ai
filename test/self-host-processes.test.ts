@@ -13,6 +13,7 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
+import { reached } from "./self-host-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 
@@ -104,6 +105,47 @@ for (const phoneRelay of ["on", "off"])
       );
     });
   });
+
+await test("CLV-208 host shutdown signals each child once while awaiting its exit", async () => {
+  await withFiles({}, async (root) => {
+    const paths = await programs(root);
+    const prototype = childProcess.ChildProcess.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "kill");
+    assert.ok(descriptor);
+    const kill: unknown = descriptor.value;
+    assert.ok(typeof kill === "function");
+    const signals: Array<number | undefined> = [];
+    prototype.kill = function (signal) {
+      if (signal === "SIGTERM") signals.push(this.pid);
+      return Reflect.apply(kill, this, [signal]) === true;
+    };
+    const hosting = hostedPrograms({
+      ...paths,
+      repository: root,
+      runtime: join(root, "host/run"),
+      directory: join(root, "host"),
+      watchPort: "3663",
+      phoneRelay: "on",
+      updateMilliseconds: undefined,
+    });
+    try {
+      await reached(async () =>
+        (await readyPrograms(root)).length === 3 ? true : undefined,
+      );
+      process.emit("SIGTERM");
+      assert.equal(await hosting, 0);
+      assert.equal(signals.length, 3);
+      assert.equal(new Set(signals).size, 3);
+    } finally {
+      process.emit("SIGTERM");
+      try {
+        await hosting;
+      } finally {
+        Object.defineProperty(prototype, "kill", descriptor);
+      }
+    }
+  });
+});
 
 await test("CLV-085 the host stops and awaits daemon and watch before fast-forwarding", async () => {
   await withUpdateRepository(async ({ root, repository, git, target }) => {

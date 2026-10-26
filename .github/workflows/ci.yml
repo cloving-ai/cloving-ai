@@ -99,6 +99,11 @@
           "run": "npm ci --ignore-scripts"
         },
         {
+          "id": "prepare-shells",
+          "name": "Install zsh when missing",
+          "run": "if ! test -x /bin/zsh; then\n  sudo apt-get update\n  sudo apt-get install -y zsh\nfi"
+        },
+        {
           "run": "npm run check:setup"
         },
         {

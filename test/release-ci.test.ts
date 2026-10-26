@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { job, releaseWorkflow, script, steps } from "./release-fixture.ts";
 
@@ -115,7 +116,8 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
     /process\.arch, process\.env\.CLOVING_CI_ARCHITECTURE/,
   );
   assert.match(linuxQualification, /npm --version/);
-  assert.deepEqual(linuxCommands.slice(2), commands.slice(2));
+  assert.deepEqual(linuxCommands.slice(2, 3), commands.slice(2, 3));
+  assert.deepEqual(linuxCommands.slice(4), commands.slice(3));
   assert.deepEqual(commands.slice(2), [
     "npm ci --ignore-scripts",
     "npm run check:setup",
@@ -170,4 +172,45 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     (step) => step.id === "github-release",
   );
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
+});
+
+await test("CLV-208 Linux CI prepares zsh before setup and skips sudo when installed", async () => {
+  const workflow = await releaseWorkflow();
+  const linuxSteps = steps(workflow, "quality_linux");
+  const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
+  const setup = linuxSteps.findIndex(
+    (step) => step.run === "npm run check:setup",
+  );
+  assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
+  const run = linuxSteps[prepare]?.run;
+  assert.ok(typeof run === "string");
+  const fixture = `
+test() {
+  [[ "$*" == "-x /bin/zsh" ]] || exit 90
+  return "$ZSH_STATUS"
+}
+sudo() {
+  printf '%s\\n' "$*"
+  if [[ "$*" == "apt-get update" ]]; then return "$UPDATE_STATUS"; fi
+}
+`;
+  const command = fixture + run;
+  for (const [zshStatus, updateStatus, status, output] of [
+    ["0", "0", 0, ""],
+    ["1", "0", 0, "apt-get update\napt-get install -y zsh\n"],
+    ["1", "9", 9, "apt-get update\n"],
+  ] as const) {
+    const result = spawnSync(
+      "/bin/bash",
+      ["-e", "-o", "pipefail", "-c", command],
+      {
+        env: { ZSH_STATUS: zshStatus, UPDATE_STATUS: updateStatus },
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(result.stdout, output);
+  }
 });
