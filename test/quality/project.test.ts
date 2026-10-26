@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { format } from "prettier";
 import {
@@ -66,6 +68,20 @@ await test("QG-01 executes every analyzer and the actual fixture test suite", as
     assert.equal(result.files.length, 2);
     assert.deepEqual(result.completed, requiredChecks);
   });
+});
+
+await test("CLV-230 the gate removes the coverage folder of a stopped gate before its tests", async () => {
+  const stale = mkdtempSync(join(tmpdir(), "cloving-test-coverage-"));
+  const old = new Date(Date.now() - 7 * 60 * 60 * 1000);
+  utimesSync(stale, old, old);
+  try {
+    await withFiles(await fixtureFiles(valid), async (directory) => {
+      await checkFixture(directory);
+    });
+    assert.equal(existsSync(stale), false);
+  } finally {
+    rmSync(stale, { recursive: true, force: true });
+  }
 });
 
 await test("CLV-152 reports a near-limit test run without failing the gate", async () => {
