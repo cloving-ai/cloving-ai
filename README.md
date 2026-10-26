@@ -611,6 +611,10 @@ The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd
 
 For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.
 
+Discovery considers files in the folder root and ignores `.d.ts` and `.test.ts` files. Put local TypeScript helpers in subfolders: for example, `develop.ts` can import `./develop/prompts.ts`. Helpers can import further `.ts` files through `./` paths within those subfolders and need no workflow function or declaration. Imports with parent traversal, absolute paths or a `node_modules` component are refused, as are package imports outside the public `cloving/workflows` modules.
+
+Every imported helper must be a regular file, with no links in its path. Its imports and effects receive the same checks as the workflow, and their combined effects count against the workflow's declared limit. Startup captures and retains all imported helper bytes in the workflow generation. Editing a helper changes the digest for new runs; existing runs keep their earlier helpers after restart.
+
 The declaration has two fields: `workflow` contains the workflow declaration, and `methods` maps each declared capability to its permitted methods. Each list must contain at least one nonblank method name and no duplicates. Do not add method keys for undeclared capabilities. The `isCandidateDeclaration` check in `src/workflow-candidate.ts` validates this form:
 
 ```json
@@ -744,6 +748,8 @@ done
 The expansion helper waits for two animation frames before horizontal input. Resolving in the first callback can send the gesture before the widened Done column renders, leaving the board at its old horizontal scroll limit even after scrolling settles. The regression delays that rendering pass with `testMilliseconds(250)` and keeps the full card visibility assertion. A failure reports the card, column and board rectangles, both scroll positions and the viewport; compare the card's right edge with the board's right edge to distinguish horizontal clipping from an incomplete vertical scroll.
 
 Before a ticket report, commit your work and run `npm run check:clean`. It refuses uncommitted changes, archives the committed tree of `HEAD` into a temporary directory, copies the worktree's `node_modules`, and runs `node tools/check-quality.ts` there with the same environment and exit code. Ignored build output such as `dist/` is absent, so tests that rely on stale local files fail. The temporary copy is removed after success, failure or SIGINT/SIGTERM interruption.
+
+After merging dependency changes, run `npm ci --ignore-scripts` in the worktree before checking it. Copied dependencies can belong to an earlier lockfile; `check:clean` copies them unchanged. An `installed-lock-mismatch` requires refreshing that installation and rerunning the checks. If existing `dist/` output produces `generated-output-mismatch`, regenerate it with `npm run build` before rerunning `check:quality`.
 
 Set `CLOVING_CHECK_TIME_FACTOR` to a whole number from 1 to 5 (default 1) to multiply the developer gate test and coverage command time limits, the inner hook check limit (5 seconds by default), and the installed hook limit (10 seconds by default). With factor 3, the hook limits are 15 and 30 seconds, respectively.
 
