@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
-import { chmod, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  readdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
@@ -60,6 +66,45 @@ for (const factor of [undefined, "3"])
       );
     });
 
+async function readyPrograms(root: string): Promise<readonly string[]> {
+  return (await readdir(root))
+    .filter((name) => name.endsWith("-ready"))
+    .map((name) => name.replace(/-ready$/, ""))
+    .sort();
+}
+
+for (const phoneRelay of ["on", "off"])
+  await test(`CLV-187 the host starts the phone relay child unless CLOVING_PHONE_RELAY is off (${phoneRelay})`, async () => {
+    await withFiles({}, async (root) => {
+      const relay = phoneRelay === "on" ? ["relay"] : [];
+      const paths = await programs(root, {
+        daemonMilliseconds: 100,
+        readyPrograms: ["watch", ...relay],
+      });
+      const status = await hostedPrograms({
+        ...paths,
+        repository: root,
+        runtime: join(root, "host/run"),
+        directory: join(root, "host"),
+        watchPort: "3663",
+        phoneRelay,
+        updateMilliseconds: undefined,
+      });
+      assert.equal(status, 0);
+      assert.deepEqual(await readyPrograms(root), [
+        "daemon",
+        ...relay,
+        "watch",
+      ]);
+      assert.equal(
+        await readFile(join(root, "relay-runtime"), "utf8").catch(
+          () => "not started",
+        ),
+        phoneRelay === "on" ? join(root, "host/run") : "not started",
+      );
+    });
+  });
+
 await test("CLV-085 the host stops and awaits daemon and watch before fast-forwarding", async () => {
   await withUpdateRepository(async ({ root, repository, git, target }) => {
     const paths = await programs(root);
@@ -69,6 +114,7 @@ await test("CLV-085 the host stops and awaits daemon and watch before fast-forwa
       runtime: join(root, "host/run"),
       directory: join(root, "host"),
       watchPort: "3663",
+      phoneRelay: "on",
       updateMilliseconds: 300,
     });
     assert.equal(status, 75);
@@ -100,6 +146,7 @@ await test("CLV-085 a local merge can finish after the network deadline", async 
         runtime: join(root, "host/run"),
         directory: join(root, "host"),
         watchPort: "off",
+        phoneRelay: "on",
         updateMilliseconds: 300,
       }),
       75,
@@ -126,6 +173,7 @@ await test("CLV-085 without the setting the host never fetches and preserves nor
         runtime: join(root, "host/run"),
         directory: join(root, "host"),
         watchPort: "3663",
+        phoneRelay: "on",
         updateMilliseconds: undefined,
       }),
       0,
@@ -247,6 +295,7 @@ await test("CLV-093 the watch child gets the service repository while its curren
         runtime: join(root, "host/run"),
         directory: join(root, "host"),
         watchPort: "0",
+        phoneRelay: "on",
         updateMilliseconds: undefined,
       }),
       0,

@@ -184,6 +184,25 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+### Answer decisions from a phone
+
+Cloving can send its pending decisions to the Cloving app on your phone, and the phone can answer them. `cloving start` runs the phone relay as a child process. `CLOVING_PHONE_RELAY` with the value `off` starts no relay. `CLOVING_RELAY_ORIGIN` selects the relay server; the default is `https://cloving.ai`.
+
+To connect a phone:
+
+1. On the watch page, click **Connect a phone**. The page shows a QR code for 10 minutes.
+2. Scan the code with the camera of the phone, or with **Pair a computer** in the app. Sign in to cloving.ai in the app when it asks.
+3. In the app, click Connect. The watch page and the app show the name of the phone and the same 6-digit code.
+4. Click **Accept** on the watch page only when the two codes are the same. The app checks the signed receipt of the computer, and the page shows **Connected**.
+
+After that, each new decision goes to the connected phones. Answer a question with text. Approve or deny an approval with Face ID, a fingerprint or the screen lock of the phone; the phone signs approvals with a key for approvals only. Before the relay sends a decision, it checks the signature, the device, the age of the answer (10 minutes at most) and the prompt that the phone saw. The decision records the actor `device:<device ID>`, and `cloving status <run-id>` shows it. When a decision closes on the computer or expires, the phone removes it.
+
+`cloving phone list` lists the phones. `cloving phone remove <device-id>` removes one phone. `cloving phone reset` removes the registration with cloving.ai and all phones. A removed phone gets no more decisions, and the relay refuses its answers.
+
+What cloving.ai sees: the names of the computer and of each phone, the public keys, the times of the messages, the sizes of the sealed messages (padded to 1, 4, 16 or 64 KiB) and opaque IDs. The decisions, the prompts and the answers are end-to-end encrypted between this computer and your phones (HPKE with P-256 keys that stay on the devices), and each message is signed. cloving.ai cannot read or change them.
+
+The questions of `analyze-chats` are private. Their full text goes only to your own paired phones, end-to-end encrypted, and the app shows it only after it opens the message. The preview for the lock screen keeps a fixed text.
+
 ### Daily loop facts
 
 Run `cloving report --since 24 --json` for a versioned JSON report, or omit `--json` for text. `--since` accepts whole hours from 1 to 168 and defaults to 24. The window includes its start and excludes its end; the command captures the end time once. It reads the daemon's committed events and individual run status through the control socket. Set `CLOVING_WATCH_REPOSITORY` to the service repository to enable GitHub reads; its local origin supplies the host, owner and repository. There is no current-directory fallback. `CLOVING_GH_COMMAND` selects the GitHub command as a JSON argument array, defaulting to `gh`.

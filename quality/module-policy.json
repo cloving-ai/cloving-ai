@@ -439,6 +439,7 @@
     "test/effect-capacity-fixture.ts": "test",
     "test/effect-capacity.test.ts": "test",
     "test/effect-child.ts": "test",
+    "test/decision-actor-command.test.ts": "test",
     "test/effect-commands.test.ts": "test",
     "test/effect-commit.test.ts": "test",
     "test/effect-identity.test.ts": "test",
@@ -510,6 +511,7 @@
     "test/digest-fixture.ts": "test",
     "test/service-answer.test.ts": "test",
     "test/service-claude-cost.test.ts": "test",
+    "test/service-decision-actor.test.ts": "test",
     "test/service-decisions.test.ts": "test",
     "test/service-connections.test.ts": "test",
     "test/service-decision-rules.test.ts": "test",
@@ -992,6 +994,88 @@
     "test/report-fixture.ts": "test",
     "test/report-github.test.ts": "test",
     "test/cli-report.test.ts": "test",
+    "src/relay.ts": "relay",
+    "src/relay/relay-service.ts": "relay",
+    "src/relay/relay-store.ts": "relay",
+    "src/relay/phone-socket.ts": "relay",
+    "src/relay/phone-devices.ts": "relay",
+    "src/phone/phone-link.ts": "pure",
+    "src/cli/phone-arguments.ts": "cli",
+    "src/cli/phone-client.ts": "cli",
+    "src/cli/phone-command.ts": "cli",
+    "test/phone-relay.test.ts": "test",
+    "test/cli-phone.test.ts": "test",
+    "test/quality/relay-policy.test.ts": "test",
+    "test/phone-command.test.ts": "test",
+    "src/phone/qr-data.ts": "pure",
+    "src/phone/qr-matrix.ts": "pure",
+    "src/phone/qr-penalty.ts": "pure",
+    "src/phone/qr-picture.ts": "pure",
+    "src/phone/canonical-json.ts": "pure",
+    "src/relay/daemon-keys.ts": "relay",
+    "src/relay/relay-http.ts": "relay",
+    "src/relay/relay-files.ts": "relay",
+    "src/relay/relay-registration.ts": "relay",
+    "src/relay/pairing-session.ts": "relay",
+    "test/qr-code.test.ts": "test",
+    "test/phone-pairing.test.ts": "test",
+    "test/phone-relay-errors.test.ts": "test",
+    "test/phone-relay-server-fixture.ts": "test",
+    "src/cli/watch-phone.ts": "cli",
+    "src/cli/watch-phone-view.ts": "cli",
+    "src/cli/watch-phone-client.ts": "cli",
+    "test/watch-phone-actions.test.ts": "test",
+    "test/watch-phone-browser.test.ts": "test",
+    "test/watch-phone-view.test.ts": "test",
+    "src/relay/pairing-checks.ts": "relay",
+    "src/relay/pairing-follow.ts": "relay",
+    "src/relay/phone-operations.ts": "relay",
+    "test/phone-accept.test.ts": "test",
+    "test/phone-fake-phone.ts": "test",
+    "test/cli-phone-devices.test.ts": "test",
+    "test/phone-relay-cases.test.ts": "test",
+    "test/fixtures/phone-pairing.json": "test",
+    "test/fixtures/qr-qrcodegen-1.8.0.json": "test",
+    "test/phone-checks.test.ts": "test",
+    "src/relay/relay-heartbeat.ts": "relay",
+    "src/relay/relay-control.ts": "relay",
+    "test/phone-heartbeat.test.ts": "test",
+    "src/delivery-backoff.ts": "pure",
+    "src/relay/hpke.ts": "relay",
+    "src/relay/envelope.ts": "relay",
+    "src/relay/decision-envelopes.ts": "relay",
+    "src/relay/decision-check.ts": "relay",
+    "src/relay/decision-watch.ts": "relay",
+    "src/relay/envelope-post.ts": "relay",
+    "src/relay/phone-delivery.ts": "relay",
+    "test/phone-envelope-fixture.ts": "test",
+    "test/fixtures/hpke-cfrg-p256-sha256-aes256gcm.json": "test",
+    "test/fixtures/phone-envelopes.json": "test",
+    "test/relay-hpke.test.ts": "test",
+    "test/relay-envelope.test.ts": "test",
+    "test/relay-envelope-vectors.test.ts": "test",
+    "test/relay-decision-envelopes.test.ts": "test",
+    "test/relay-delivery.test.ts": "test",
+    "test/relay-decision-check.test.ts": "test",
+    "test/relay-decision-watch.test.ts": "test",
+    "test/relay-envelope-post.test.ts": "test",
+    "test/relay-decision-check-cases.test.ts": "test",
+    "src/relay/phone-outbox.ts": "relay",
+    "src/relay/sealed-post.ts": "relay",
+    "src/relay/decision-close.ts": "relay",
+    "test/relay-check-fixture.ts": "test",
+    "test/relay-decision-close.test.ts": "test",
+    "src/relay/answer-check.ts": "relay",
+    "src/relay/answer-inbox.ts": "relay",
+    "src/relay/phone-inbox.ts": "relay",
+    "test/phone-answer-fixture.ts": "test",
+    "test/phone-relay-inbox-fixture.ts": "test",
+    "test/phone-relay-link-fixture.ts": "test",
+    "test/relay-answer-check.test.ts": "test",
+    "test/relay-answers.test.ts": "test",
+    "test/relay-answer-inbox.test.ts": "test",
+    "test/phone-heartbeat-races.test.ts": "test",
+    "test/phone-heartbeat-fixture.ts": "test",
     "test/service-question-fixture.ts": "test",
     "src/run-wait.ts": "pure",
     "src/steps/wait-for-run.ts": "step",
@@ -1036,7 +1120,8 @@
       "daemon",
       "entry",
       "candidate-adapter",
-      "workflow-bundles"
+      "workflow-bundles",
+      "relay"
     ],
     "build": [
       "build",
@@ -1099,7 +1184,8 @@
       "build",
       "candidate-analysis"
     ],
-    "candidate-analysis": ["candidate-analysis", "tooling"]
+    "candidate-analysis": ["candidate-analysis", "tooling"],
+    "relay": ["relay", "cli", "pure", "stdlib", "network", "actor-runtime"]
   },
   "forbiddenReachability": {
     "pure": [
@@ -1198,6 +1284,16 @@
       "workflow",
       "step",
       "inspector"
+    ],
+    "relay": [
+      "storage",
+      "harness",
+      "step",
+      "workflow",
+      "service",
+      "process",
+      "inspector",
+      "daemon"
     ]
   },
   "reserved": {
@@ -1216,13 +1312,19 @@
         "file": "node_modules/solid-objects/dist/actor.d.ts",
         "type": "Actor",
         "members": ["emit"],
-        "users": ["src/broker/actor/authority-actor.ts"]
+        "users": [
+          "src/broker/actor/authority-actor.ts",
+          "src/relay/phone-delivery.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
         "members": ["registerEffect"],
-        "users": ["src/broker/actor/authority-release.ts"]
+        "users": [
+          "src/broker/actor/authority-release.ts",
+          "src/relay/relay-store.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/actor.d.ts",
@@ -1277,7 +1379,8 @@
         "src/broker/actor/authority-runtime.ts"
       ],
       "node_modules/solid-objects/dist/database/sqlite.d.ts": [
-        "src/broker/actor/authority-runtime.ts"
+        "src/broker/actor/authority-runtime.ts",
+        "src/relay/relay-store.ts"
       ],
       "node:sqlite": ["src/storage/domain-schema.ts"]
     },

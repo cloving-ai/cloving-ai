@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { phoneInvocation, type PhoneInvocation } from "./phone-arguments.ts";
 import {
   isRuntimeCommand,
   runtimeInvocation,
@@ -7,6 +8,7 @@ import {
 } from "./runtime-arguments.ts";
 
 export type Invocation =
+  | PhoneInvocation
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
@@ -83,6 +85,7 @@ function textValues(argumentsList: readonly string[]): readonly string[] {
 }
 
 export function parseInvocation(given: readonly string[]): Invocation {
+  if (given[0] === "phone") return phoneInvocation(given.slice(1));
   const argumentsList = textValues(given);
   const json = given.includes("--json");
   const parsed = parsedArguments(argumentsList);

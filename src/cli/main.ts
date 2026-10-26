@@ -2,15 +2,17 @@ import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
+import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { usage, validateUsage } from "./usage.ts";
+import { phoneUsage, usage, validateUsage } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
   help: usage,
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
+  "phone-help": phoneUsage,
 };
 
 function helpInvocation(
@@ -36,19 +38,18 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
+  } else if (invocation.kind === "phone") {
+    process.exitCode = await phoneCommand(invocation, {
+      runtimeDirectory: runtimeDirectory(process.env),
+      terminal,
+    });
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env),
-      ...(process.env["CLOVING_WATCH_ACTIONS"] === undefined
-        ? {}
-        : { watchActions: process.env["CLOVING_WATCH_ACTIONS"] }),
-      ...(watchPr === undefined ? {} : { watchPr }),
+      ...watchSettings(watchPr),
       client: clientCommand(process.env),
       workingDirectory: process.cwd(),
-      terminal: {
-        out: (text) => process.stdout.write(text),
-        error: (text) => process.stderr.write(text),
-      },
+      terminal,
       identifier: randomUUID,
       interrupted: () =>
         new Promise((settle) => {
@@ -59,6 +60,22 @@ export async function main(
         }),
     });
   }
+}
+
+const terminal = {
+  out: (text: string) => process.stdout.write(text),
+  error: (text: string) => process.stderr.write(text),
+};
+
+function watchSettings(watchPr: WatchPrSettings | undefined): {
+  readonly watchActions?: string;
+  readonly watchPr?: WatchPrSettings;
+} {
+  const watchActions = process.env["CLOVING_WATCH_ACTIONS"];
+  return {
+    ...(watchActions === undefined ? {} : { watchActions }),
+    ...(watchPr === undefined ? {} : { watchPr }),
+  };
 }
 
 function presentUsageError(

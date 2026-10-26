@@ -1,0 +1,61 @@
+{
+  "description": "Shared pairing fixture of the Cloving phone relay (CLV-188, CLV-189). The Node, Swift and Kotlin tests must produce or accept these exact values.",
+  "rules": {
+    "canonicalJson": "RFC 8785 (JCS): sorted keys, no white space, UTF-8, strings, integers, booleans, null, arrays and objects only",
+    "binary": "base64url without padding",
+    "publicKey": "SEC1 uncompressed P-256 point, 65 bytes",
+    "signature": "ECDSA P-256 with SHA-256, IEEE P1363 form (r then s, 64 bytes)",
+    "fingerprint": "first 16 bytes of SHA-256 over canonical JSON {agreementKey, signingKey}",
+    "pairingId": "base64url of the first 16 bytes of SHA-256 over the UTF-8 bytes of 'cloving-pairing-id|' followed by the 16 secret bytes",
+    "link": "origin + '/pair#v1.' + base64url(secret 16 bytes followed by fingerprint 16 bytes)",
+    "mac": "base64url of HMAC-SHA256 with the secret as key over the canonical JSON of the request without mac",
+    "code": "HMAC-SHA256 with the secret as key over the UTF-8 bytes of 'cloving-pair-code|' followed by the 32 bytes of SHA-256 over the canonical request; the 32-byte result read as an unsigned big-endian number, modulo 1000000, six digits with leading zeros",
+    "receipt": "payload = canonical JSON {daemonId, deviceId, kind 'pairing-receipt', nonce, pairedAt, version 1}, signed with the daemon signing key",
+    "check": "payload = canonical JSON {daemonId, deviceId, kind 'pairing-check', nonce (from the receipt), signedAt, version 1}, signed with the device answer key"
+  },
+  "secret": "AAECAwQFBgcICQoLDA0ODw",
+  "computerName": "Studio",
+  "daemon": {
+    "id": "dmn_fixture01",
+    "agreementPrivateKey": "Mj13ClHhqgnO8r1dIQVD2RsA0WTzJJtmyovCsygQr9g",
+    "agreementPublicKey": "BCay4akCDpjoG7t5bysEP6jTEn5bLQ2K5oLEPDXqNtHLIUmMhz3LEEh5xILBIW71R5L6jCKRO55uVzDAn5tOZVs",
+    "signingPrivateKey": "ZkIyV71ahotH7iXWu9dQaMvd0hwGGI51UaT88PoVYKk",
+    "signingPublicKey": "BJ7zP5FRZlKjjw8ZkG917hXCScZ13J58SZCv1dxlOVIMI0FovOxZ2Bqn5UUCjBDCIhQ19mo2inIJwrDrGgbl19A",
+    "fingerprint": "P-b-9pLu8-Ph3MdhuBHAnA"
+  },
+  "pairingId": "hFTJuHTMVi4V2r5sNF2c-Q",
+  "link": "https://cloving.ai/pair#v1.AAECAwQFBgcICQoLDA0ODz_m_vaS7vPj4dzHYbgRwJw",
+  "device": {
+    "id": "EBESExQVFhcYGRobHB0eHw",
+    "name": "Lucas’s iPhone / \"test\"",
+    "agreementPrivateKey": "y6CoxZdX4t50stOr2nLPqFtw6XPMDmtuKhK1Uqzfumo",
+    "agreementPublicKey": "BFoXzElSI5a7l0UNqB-lCYbJvkgbTWl8NpelWPVJmt6u5tmP1IlqpudOycKUjA-DtoUxCxpSsnVSzuDhKAch_zo",
+    "answerPrivateKey": "yYxqu4vjN5C51bho8iReGfH0vGtclzpQbcLb87bGnsg",
+    "answerPublicKey": "BEC790EkcysfVHSeBLPbuC_22JcNbcp0_VWhFgPEij0CDeZQvlBvjOfrjb3P6B2C7SPbvfVfNhzkxEG9S7zkb58",
+    "approvalPrivateKey": "rbQ1BPUoDc3pm6RBiPdzZC6VL8YllW2MssVW8qfEAuA",
+    "approvalPublicKey": "BAdn8TYIk3DK-hNfMa_92jK7H2cuqYM8jBKVei3no02J1zJylo1NDE-YM98nId6181SxpY-bGipiYbuVgKjk3ZQ"
+  },
+  "receiptNonce": "ICEiIyQlJicoKSorLC0uLw",
+  "pairedAt": "2026-10-25T12:00:00Z",
+  "checkSignedAt": "2026-10-25T12:00:05Z",
+  "expiresAt": "2026-10-25T12:10:00Z",
+  "request": {
+    "agreement_public_key": "BFoXzElSI5a7l0UNqB-lCYbJvkgbTWl8NpelWPVJmt6u5tmP1IlqpudOycKUjA-DtoUxCxpSsnVSzuDhKAch_zo",
+    "answer_public_key": "BEC790EkcysfVHSeBLPbuC_22JcNbcp0_VWhFgPEij0CDeZQvlBvjOfrjb3P6B2C7SPbvfVfNhzkxEG9S7zkb58",
+    "approval_public_key": "BAdn8TYIk3DK-hNfMa_92jK7H2cuqYM8jBKVei3no02J1zJylo1NDE-YM98nId6181SxpY-bGipiYbuVgKjk3ZQ",
+    "device_id": "EBESExQVFhcYGRobHB0eHw",
+    "name": "Lucas’s iPhone / \"test\"",
+    "platform": "ios"
+  },
+  "requestCanonical": "{\"agreement_public_key\":\"BFoXzElSI5a7l0UNqB-lCYbJvkgbTWl8NpelWPVJmt6u5tmP1IlqpudOycKUjA-DtoUxCxpSsnVSzuDhKAch_zo\",\"answer_public_key\":\"BEC790EkcysfVHSeBLPbuC_22JcNbcp0_VWhFgPEij0CDeZQvlBvjOfrjb3P6B2C7SPbvfVfNhzkxEG9S7zkb58\",\"approval_public_key\":\"BAdn8TYIk3DK-hNfMa_92jK7H2cuqYM8jBKVei3no02J1zJylo1NDE-YM98nId6181SxpY-bGipiYbuVgKjk3ZQ\",\"device_id\":\"EBESExQVFhcYGRobHB0eHw\",\"name\":\"Lucas’s iPhone / \\\"test\\\"\",\"platform\":\"ios\"}",
+  "mac": "GuGa7UgAm0aAYVNqjeBgjLp4szJ9-ft8p6V8iwj2WBk",
+  "code": "926968",
+  "receipt": {
+    "payload": "{\"daemonId\":\"dmn_fixture01\",\"deviceId\":\"EBESExQVFhcYGRobHB0eHw\",\"kind\":\"pairing-receipt\",\"nonce\":\"ICEiIyQlJicoKSorLC0uLw\",\"pairedAt\":\"2026-10-25T12:00:00Z\",\"version\":1}",
+    "signature": "KF7Sy3TJUQBcqGDNfZ_wG3BdZHkCXah5z4vi4MGGKh6XXwl40WpsY0vNW0TeHZThcxYYICjo1vbw1yFq98AVTg"
+  },
+  "check": {
+    "payload": "{\"daemonId\":\"dmn_fixture01\",\"deviceId\":\"EBESExQVFhcYGRobHB0eHw\",\"kind\":\"pairing-check\",\"nonce\":\"ICEiIyQlJicoKSorLC0uLw\",\"signedAt\":\"2026-10-25T12:00:05Z\",\"version\":1}",
+    "signature": "BxoWvdHDK5pT52VBKWO8PVZqwntTQUsxwOSlQmkERnYR7qOTAclkjzCZsdP7o1TZ_hQoumMM3EAsdC439z83YQ"
+  }
+}

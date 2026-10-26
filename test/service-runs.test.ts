@@ -40,6 +40,7 @@ const initialRunDetails = {
   budget: null,
   effects: [],
   feedback: [],
+  decisions: [],
 };
 
 await test("CLV-008 status gives the state, the revision, the pending decision and the latest sequence of a run as one object", () =>

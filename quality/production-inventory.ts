@@ -23,6 +23,7 @@ export function productionInventory(
     "candidate-adapter",
     "candidate-analysis",
     "workflow-bundles",
+    "relay",
   ]);
   const development = new Set(["quality", "test", "build", "configuration"]);
   const result: string[] = [];

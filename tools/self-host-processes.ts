@@ -13,6 +13,7 @@ export interface HostProcesses {
   readonly directory: string;
   readonly repository: string;
   readonly watchPort: string;
+  readonly phoneRelay: string;
   readonly updateMilliseconds: number | undefined;
 }
 
@@ -116,38 +117,55 @@ async function polled(
   return undefined;
 }
 
-function hostedChildren(
+function productChild(
   settings: HostProcesses,
-): readonly [Program] | readonly [Program, Program] {
+  argumentsList: readonly [string, ...string[]],
+): Program {
+  const [program, ...rest] = argumentsList;
+  return launched(
+    [
+      join(settings.product, `src/${program}${extname(import.meta.filename)}`),
+      ...rest,
+    ],
+    {
+      directory: settings.product,
+      environment: {
+        ...process.env,
+        CLOVING_RUNTIME_DIR: settings.runtime,
+        CLOVING_WATCH_REPOSITORY: settings.repository,
+      },
+    },
+  );
+}
+
+interface Hosted {
+  readonly daemon: Program;
+  readonly programs: readonly Program[];
+}
+
+function hostedChildren(settings: HostProcesses): Hosted {
   const daemon = launched([join(settings.project, "start.mjs")], {
     directory: settings.project,
     environment: process.env,
   });
-  if (settings.watchPort === "off") return [daemon];
-  return [
-    daemon,
-    launched(
-      [
-        join(settings.product, `src/cli${extname(import.meta.filename)}`),
-        "watch",
-        "--port",
-        settings.watchPort,
-      ],
-      {
-        directory: settings.product,
-        environment: {
-          ...process.env,
-          CLOVING_RUNTIME_DIR: settings.runtime,
-          CLOVING_WATCH_REPOSITORY: settings.repository,
-        },
-      },
-    ),
-  ];
+  const watch =
+    settings.watchPort === "off"
+      ? []
+      : [
+          productChild(settings, [
+            "cli",
+            "watch",
+            "--port",
+            settings.watchPort,
+          ]),
+        ];
+  const relay =
+    settings.phoneRelay === "off" ? [] : [productChild(settings, ["relay"])];
+  return { daemon, programs: [daemon, ...watch, ...relay] };
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
-  const programs = hostedChildren(settings);
-  const daemon = programs[0];
+  const { daemon, programs } = hostedChildren(settings);
   const stopping = new AbortController();
   let updating = false;
   const interrupt = (): void => {
