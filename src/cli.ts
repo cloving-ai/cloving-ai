@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { settingsEnvironment } from "./cli/project-settings.ts";
 import { addAbortListener } from "node:events";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
@@ -219,11 +220,18 @@ else {
       ? (invocation.repository ?? process.cwd())
       : process.cwd(),
   );
+  const settingsRepository =
+    process.env["CLOVING_WATCH_REPOSITORY"] ?? repository;
+  const environment =
+    invocation.kind === "watch" && settingsRepository !== undefined
+      ? settingsEnvironment(process.env, settingsRepository)
+      : process.env;
   await main(process.argv.slice(2), {
     repository,
+    environment,
     watchPr: {
       repository: process.env["CLOVING_WATCH_REPOSITORY"],
-      githubCommand: process.env["CLOVING_GH_COMMAND"],
+      githubCommand: environment["CLOVING_GH_COMMAND"],
       execute: watchCommand,
     },
   });

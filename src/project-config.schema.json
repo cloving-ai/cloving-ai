@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "checks": {
+      "type": "object",
+      "properties": {
+        "beforeMerge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tickets": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nextCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "everySeconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 3600
+        },
+        "lanes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cloving project settings",
+  "required": ["version"]
+}

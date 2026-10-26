@@ -1,3 +1,4 @@
+import { settingsEnvironment } from "../cli/project-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
 import { githubRead } from "./github-retry.ts";
@@ -182,12 +183,21 @@ async function failedOutput(
     .slice(0, 6_000);
 }
 
+function requiredCheckNames(operation: Operation): unknown {
+  if (operation.settings.requiredChecks !== undefined)
+    return operation.settings.requiredChecks === null
+      ? undefined
+      : operation.settings.requiredChecks;
+  const setting = settingsEnvironment(
+    { ...process.env, ...operation.settings.environment },
+    operation.settings.repository,
+  )["CLOVING_REQUIRED_CHECKS"];
+  return setting === undefined ? undefined : JSON.parse(setting);
+}
+
 function requiredChecks(operation: Operation): Set<string> | undefined {
-  const setting =
-    operation.settings.environment?.["CLOVING_REQUIRED_CHECKS"] ??
-    process.env["CLOVING_REQUIRED_CHECKS"];
-  if (setting === undefined) return undefined;
-  const names: unknown = JSON.parse(setting);
+  const names = requiredCheckNames(operation);
+  if (names === undefined) return undefined;
   if (
     !Array.isArray(names) ||
     !names.every(

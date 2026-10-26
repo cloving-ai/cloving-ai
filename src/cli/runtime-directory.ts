@@ -1,3 +1,4 @@
+import { repositoryFileName } from "../repository-identity.ts";
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
@@ -32,13 +33,12 @@ function stateRoot(environment: Environment): string | undefined {
   return given(home) ? join(home, ".local", "state") : undefined;
 }
 
-function repositoryRuntimeName(repository: string): string {
+export function repositoryRuntimeName(repository: string): string {
   const canonical = realpathSync(repository);
-  const name = basename(canonical)
-    .replace(/[^A-Za-z0-9_-]/g, "")
-    .slice(0, 24);
-  const id = createHash("sha256").update(canonical).digest("hex").slice(0, 8);
-  return `${name}-${id}`;
+  return repositoryFileName({
+    name: basename(canonical),
+    sha256: createHash("sha256").update(canonical).digest("hex"),
+  });
 }
 
 export function adoptionRecordPath(

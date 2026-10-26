@@ -26,6 +26,7 @@ export function checkRun(
 }
 
 interface CiScenarioOptions {
+  readonly requiredChecks?: readonly string[] | null;
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
   readonly folder?: string;
@@ -100,7 +101,10 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     folder,
     signal: options.signal ?? new AbortController().signal,
     settings: {
-      repository: "/repository",
+      repository: folder,
+      ...(options.requiredChecks === undefined
+        ? {}
+        : { requiredChecks: options.requiredChecks }),
       worktrees: "/worktrees",
       gh: ["gh"],
       environment: options.environment ?? {},

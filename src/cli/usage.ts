@@ -70,6 +70,8 @@ without a successful handoff. A successful handoff resets the count; ordinary re
 Stop the service, inspect the failures and reconcile affected issues, then start with --reset-queue and the same queue settings to clear the failure streak once. Tracked commands are preserved.
 
 The command reads these settings from the environment:
+Settings files: .cloving/config.json in the repository and <config>/cloving/projects/<name>-<id>.json for private settings. Both require version 1. Precedence: environment, private, project, defaults. <config> is an absolute XDG_CONFIG_HOME or ~/.config. The start guide shows each configured field's source. See the packaged project-config.schema.json and private-config.schema.json in dist/src.
+
   CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/<name>-<id>/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set. A recorded legacy adoption takes priority.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs and failed runs send JSON on standard input with no added argument. The setting has no default.
