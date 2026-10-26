@@ -90,6 +90,7 @@ export function librarySettings(
   return {
     tableNamePrefix: "solid_",
     maxAttempts: 1,
+    maxActivationDurationMilliseconds: 50,
     maxPayloadBytes: 900_000 + commandLimits.stdoutBytes * 6,
     maxResultBytes: 900_000 + commandLimits.stdoutBytes * 6,
     logger: lineLogger(log ?? standardError),
