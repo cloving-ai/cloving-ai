@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import { fakeStepBridge, runScenario } from "../src/testing.ts";
@@ -78,4 +80,56 @@ await test("CLV-219 public fake bridges report a missing decision result", async
   using bridge = fakeStepBridge({});
   await assert.rejects(waitForDecision(request), /no-scenario-result/);
   assert.deepEqual(bridge.requests, [["waitForDecision", request]]);
+});
+
+await test("CLV-219 the hook helper waits for its token and disposes on resolution or rejection", async () => {
+  const helper = pathToFileURL(resolve("src/steps/wait-for-decision.ts")).href;
+  const bridge = pathToFileURL(resolve("src/host/step-bridge-host.ts")).href;
+  const script = `
+import assert from "node:assert/strict";
+import { mock } from "node:test";
+import { setImmediate } from "node:timers/promises";
+const log = [];
+let result;
+const sdk = await import("workflow");
+mock.module("workflow", { namedExports: { ...sdk, createHook(options) {
+  log.push(options);
+  return { then: result.promise.then.bind(result.promise), [Symbol.dispose]() { log.push("disposed"); } };
+} } });
+const { waitForDecision } = await import(${JSON.stringify(helper)});
+const { registerStepBridge } = await import(${JSON.stringify(bridge)});
+const remove = registerStepBridge({
+  effect: async () => ({ kind: "unavailable", reason: "unused" }),
+  gate: async () => ({ kind: "unavailable", reason: "unused" }),
+  waitForDecision: async (request) => { assert.deepEqual(request, ${JSON.stringify(request)}); return { token: "run/review" }; },
+});
+try {
+  for (const rejected of [false, true]) {
+    result = Promise.withResolvers();
+    const waiting = waitForDecision(${JSON.stringify(request)});
+    const expected = { decision: "approved", answer: null };
+    let settled = false;
+    const checked = waiting.then((value) => { settled = true; return value; }, (error) => { settled = true; throw error; });
+    await setImmediate();
+    assert.equal(settled, false);
+    assert.deepEqual(log.splice(0), [{ token: "run/review" }]);
+    if (rejected) {
+      const failure = new Error("hook-failed");
+      result.reject(failure);
+      await assert.rejects(checked, (error) => error === failure);
+    } else {
+      result.resolve(expected);
+      assert.deepEqual(await checked, expected);
+    }
+    assert.deepEqual(log.splice(0), ["disposed"]);
+  }
+} finally { remove(); mock.restoreAll(); }
+`;
+  const result = await promisify(execFile)(process.execPath, [
+    "--experimental-test-module-mocks",
+    "--input-type=module",
+    "-e",
+    script,
+  ]);
+  assert.equal(result.stdout, "");
 });

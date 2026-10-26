@@ -3,6 +3,9 @@ import { test } from "node:test";
 import { withConsumer } from "./world-host-fixture.ts";
 import { decisionPrelude, decisionWorkflow } from "./decision-wait-fixture.ts";
 
+const resumeModule = new URL("../src/host/decision-resume.ts", import.meta.url)
+  .href;
+
 const crashes = [
   {
     boundary: "waiting",
@@ -158,5 +161,63 @@ const service = await hosted({ clock: () => now });
 const runId = (await tagged())[0].run;
 `;
     const result = await consumer.run(resumed + expired);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-219 hook recovery requires an unambiguous original SDK run", () =>
+  withConsumer(decisionWorkflow, async (consumer) => {
+    const result = await consumer.run(`${decisionPrelude}
+const { reconciledDecision, deliveredDecision } = await import(${JSON.stringify(resumeModule)});
+const service = await hosted();
+try {
+  const runId = await submitted("recovery-identity");
+  await pendingGate(runId);
+  await hookReady(runId);
+  const intent = { runId, gateId: "review-1", decision: "approved", answer: null };
+  const parts = { runs: taggedRuns, document: async () => undefined };
+  await assert.rejects(reconciledDecision(parts, { runId }), /missing-decision-gate/);
+  await assert.rejects(reconciledDecision({ ...parts, runs: async () => [{ operationId: null, receipt: "foreign" }] }, intent), /missing-decision-run/);
+  const runs = await taggedRuns();
+  await assert.rejects(reconciledDecision({ ...parts, runs: async () => [...runs, ...runs] }, intent), /conflicting-decision-hooks/);
+  assert.deepEqual(await reconciledDecision(parts, intent), { kind: "absent" });
+  await decide(runId);
+  const receipt = await verified(runId);
+  assert.deepEqual(await reconciledDecision(parts, intent), { kind: "accepted", receipt });
+  assert.deepEqual(await deliveredDecision(parts, { intent, signal: undefined }), { receipt });
+  assert.deepEqual(decisions(), [{ decision: "approved", answer: null }]);
+} finally { await service.close(); }
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-219 incomplete or aborted hook deliveries preserve the pending decision", () =>
+  withConsumer(decisionWorkflow, async (consumer) => {
+    const result = await consumer.run(`${decisionPrelude}
+const { deliveredDecision, stoppedDecision } = await import(${JSON.stringify(resumeModule)});
+const service = await hosted();
+try {
+  const runId = await submitted("recovery-validation");
+  await pendingGate(runId);
+  await hookReady(runId);
+  const intent = { runId, gateId: "review-1", decision: "approved" };
+  const parts = { runs: taggedRuns, document: async () => undefined };
+  await assert.rejects(deliveredDecision(parts, { intent: { runId, gateId: "review-1" }, signal: undefined }), /missing-decision/);
+  await assert.rejects(deliveredDecision(parts, { intent: { ...intent, answer: "sha256:missing" }, signal: undefined }), /missing-decision-answer/);
+  const world = await getWorld();
+  const list = world.events.list.bind(world.events);
+  world.events.list = async () => ({ data: [] });
+  try {
+    await assert.rejects(deliveredDecision(parts, { intent, signal: AbortSignal.abort() }), { name: "AbortError" });
+  } finally { world.events.list = list; }
+  const receipt = await sdkRun(runId);
+  for (const status of ["running", "cancelled", "completed", "failed"]) {
+    const cancel = async (given) => { assert.equal(given, receipt); return status; };
+    assert.deepEqual(await stoppedDecision({ ...parts, cancel }, intent), status === "running" ? { kind: "unknown", evidence: "world-run:" + receipt + " running" } : { kind: "stopped", receipt });
+  }
+  assert.equal((await sdkEvents(runId)).filter((event) => event.eventType === "hook_received").length, 0);
+  await decide(runId);
+  await verified(runId);
+} finally { await service.close(); }
+`);
     assert.equal(result.status, 0, result.stderr);
   }));
