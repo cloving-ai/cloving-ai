@@ -678,6 +678,8 @@
     "test/develop-issue-labels.test.ts": "test",
     "test/develop-issue-fixture.ts": "test",
     "test/self-host-fixture.ts": "test",
+    "test/self-host-guard.ts": "test",
+    "test/self-host-guard.test.ts": "test",
     "test/self-host-issue.test.ts": "test",
     "src/cli/watch-board-view.ts": "cli",
     "src/cli/watch-navigation.ts": "cli",
