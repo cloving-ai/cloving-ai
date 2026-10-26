@@ -1,3 +1,6 @@
+import { configurationRoot, resolveSettings } from "../src/project-settings.ts";
+import { repositoryFileName } from "../src/repository-identity.ts";
+import { createHash } from "node:crypto";
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
 import {
   parseCommands,
@@ -12,7 +15,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   preparedProject,
@@ -53,6 +56,38 @@ if (runtimeArgument === undefined)
 const repository = await realpath(
   topLevel(resolve(flag("--repository") ?? process.cwd())),
 );
+async function settingsFile(file: {
+  readonly path: string;
+  readonly scope: string;
+}): Promise<string | undefined> {
+  try {
+    return await readFile(file.path, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return undefined;
+    throw new Error(`unreadable-config-file: ${file.scope}`, { cause: error });
+  }
+}
+
+const projectName = repositoryFileName({
+  name: basename(repository),
+  sha256: createHash("sha256").update(repository).digest("hex"),
+});
+const configuration = resolveSettings(process.env, {
+  project: await settingsFile({
+    path: join(repository, ".cloving/config.json"),
+    scope: "project",
+  }),
+  private: await settingsFile({
+    path: join(
+      configurationRoot(process.env, homedir()),
+      "cloving/projects",
+      `${projectName}.json`,
+    ),
+    scope: "private",
+  }),
+});
+const environment = configuration.environment;
 const selectedRuntime = await adoptRuntimeDirectory({
   runtime: resolve(runtimeArgument),
   repository,
@@ -62,15 +97,15 @@ const selectedRuntime = await adoptRuntimeDirectory({
 const runtime = selectedRuntime.runtime;
 const directory = dirname(runtime);
 const updateMilliseconds = await selfUpdateMilliseconds({
-  seconds: process.env["CLOVING_SELF_UPDATE_SECONDS"],
+  seconds: environment["CLOVING_SELF_UPDATE_SECONDS"],
   repository,
   product:
     extname(import.meta.filename) === ".ts" ? topLevel(product) : product,
 });
 const client = flag("--client") ?? "cloving";
 const project = join(directory, "project");
-const concurrency = Number(process.env["CLOVING_HOST_BOUND"] ?? "8");
-const leaseText = process.env["CLOVING_OWNERSHIP_LEASE_SECONDS"];
+const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
+const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
 const defaultCommand = [
   "claude",
@@ -95,14 +130,14 @@ const defaultCodexCommand = [
 ];
 
 function selectedWorker(): "claude" | "codex" {
-  const worker = process.env["CLOVING_WORKER"] ?? "claude";
+  const worker = environment["CLOVING_WORKER"] ?? "claude";
   if (worker === "claude" || worker === "codex") return worker;
   throw new Error(`The daemon did not start: invalid-worker: ${worker}`);
 }
 
 async function profilesFile(): Promise<TurnProfiles> {
-  const path = process.env["CLOVING_PROFILES"];
-  if (path === undefined) return {};
+  const path = environment["CLOVING_PROFILES"];
+  if (path === undefined) return configuration.profiles;
   try {
     const value: unknown = JSON.parse(await readFile(path, "utf8"));
     if (isProfilesFile(value)) return value.profiles;
@@ -124,6 +159,7 @@ interface Commands {
   readonly nextCommand: readonly string[] | undefined;
   readonly notifyCommand: readonly string[] | undefined;
   readonly githubCommand: readonly string[] | undefined;
+  readonly requiredChecks: readonly string[] | null;
   readonly checkCommand: readonly string[] | undefined;
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
@@ -132,11 +168,11 @@ interface Commands {
 }
 
 function queueLanes(): number {
-  const value = process.env["CLOVING_QUEUE_LANES"];
+  const value = environment["CLOVING_QUEUE_LANES"];
   if (value === undefined) return 1;
   if (!/^[1-4]$/.test(value))
     throw new Error("The daemon did not start: invalid-queue-lanes");
-  if (process.env["CLOVING_QUEUE_SECONDS"] === undefined)
+  if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
     throw new Error("The daemon did not start: queue-lanes-needs-queue");
   return Number(value);
 }
@@ -144,7 +180,7 @@ function queueLanes(): number {
 function queueInterval(
   commands: Pick<Commands, "nextCommand" | "ticketCommand">,
 ): number | undefined {
-  const value = process.env["CLOVING_QUEUE_SECONDS"];
+  const value = environment["CLOVING_QUEUE_SECONDS"];
   if (value === undefined) return undefined;
   const seconds = Number(value);
   if (
@@ -162,7 +198,7 @@ function queueInterval(
 }
 
 function listed(name: string): readonly string[] | undefined {
-  const given = process.env[name];
+  const given = environment[name];
   if (given === undefined) return undefined;
   const list: unknown = JSON.parse(given);
   if (!Array.isArray(list) || !list.every((part) => typeof part === "string"))
@@ -222,6 +258,9 @@ function guide(): string {
     `Runtime directory: ${runtime}`,
     `Work trees: ${join(directory, "worktrees")}`,
     ...(selectedRuntime.note === "" ? [] : [selectedRuntime.note]),
+    ...Object.entries(configuration.sources).map(
+      ([field, source]) => `${field}: ${source}`,
+    ),
     "Commands for a second terminal:",
     `  ${client} run develop-ticket --ticket <ticket-id>`,
     `  ${client} run develop-issue --ticket <ticket-id>`,
@@ -234,13 +273,13 @@ function guide(): string {
   ].join("\n");
 }
 
-const tokenPrices = parseTokenPrices(process.env["CLOVING_TOKEN_PRICES"]);
-const commands = parseCommands(process.env["CLOVING_COMMANDS"]);
+const tokenPrices = parseTokenPrices(environment["CLOVING_TOKEN_PRICES"]);
+const commands = parseCommands(environment["CLOVING_COMMANDS"]);
 const commandSeconds = parseCommandSeconds(
-  process.env["CLOVING_COMMAND_SECONDS"],
+  environment["CLOVING_COMMAND_SECONDS"],
 );
 const fallbackModels = parseFallbackModels(
-  process.env["CLOVING_FALLBACK_MODELS"],
+  environment["CLOVING_FALLBACK_MODELS"],
 );
 const profiles = await profilesFile();
 const worker = selectedWorker();
@@ -257,7 +296,7 @@ const manifests = await preparedProject({
   project,
   repository,
   home: homedir(),
-  xdgConfigHome: process.env["XDG_CONFIG_HOME"],
+  xdgConfigHome: environment["XDG_CONFIG_HOME"],
 });
 await launchers(
   {
@@ -275,6 +314,7 @@ await launchers(
     resetQueue: flags.includes("--reset-queue"),
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
+    requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
   },
@@ -287,6 +327,6 @@ process.exitCode = await hostedPrograms({
   directory,
   repository,
   updateMilliseconds,
-  watchPort: process.env["CLOVING_WATCH_PORT"] ?? "3663",
-  phoneRelay: process.env["CLOVING_PHONE_RELAY"] ?? "on",
+  watchPort: environment["CLOVING_WATCH_PORT"] ?? "3663",
+  phoneRelay: environment["CLOVING_PHONE_RELAY"] ?? "on",
 });

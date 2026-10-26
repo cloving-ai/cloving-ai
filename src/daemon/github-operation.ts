@@ -21,6 +21,7 @@ export const githubTiming: GithubTiming = {
 export interface MethodSettings extends CallSettings {
   readonly worktrees: string;
   readonly timing?: GithubTiming;
+  readonly requiredChecks?: readonly string[] | null;
   readonly check?: readonly string[];
 }
 

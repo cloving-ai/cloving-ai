@@ -1,0 +1,226 @@
+{
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "checks": {
+      "type": "object",
+      "properties": {
+        "beforeMerge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tickets": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nextCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "everySeconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 3600
+        },
+        "lanes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "additionalProperties": false
+    },
+    "harness": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": ["claude", "codex"]
+        },
+        "kind": {
+          "enum": ["file", "shell"]
+        },
+        "path": {
+          "type": "string"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "profiles": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,119}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "env": {
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^(?!(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_CONFIG_DIR)$)[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[^\\u0000]*$"
+            }
+          },
+          "allowedTools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[^\\u0000]*$"
+            }
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[^\\u0000]*$"
+            }
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^[^\\u0000]*$"
+          },
+          "permissionMode": {
+            "type": "string",
+            "pattern": "^[^\\u0000]*$"
+          },
+          "maxBudgetUsd": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "fallbackModels": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "tokenPrices": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "number",
+            "minimum": 0
+          },
+          "cachedInput": {
+            "type": "number",
+            "minimum": 0
+          },
+          "output": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "required": ["input", "cachedInput", "output"]
+      }
+    },
+    "privateTexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notify": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "watch": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "const": "off"
+            }
+          ]
+        },
+        "actions": {
+          "enum": ["on", "off"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "selfUpdate": {
+      "type": "object",
+      "properties": {
+        "everySeconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600
+        }
+      },
+      "additionalProperties": false
+    },
+    "github": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cloving private settings",
+  "required": ["version"]
+}

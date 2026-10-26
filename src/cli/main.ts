@@ -28,6 +28,7 @@ export async function main(
   argumentsList: readonly string[],
   context: {
     readonly watchPr?: WatchPrSettings;
+    readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
   } = { repository: undefined },
 ): Promise<void> {
@@ -50,7 +51,7 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
-      ...watchSettings(context.watchPr),
+      ...watchSettings(context.watchPr, context.environment ?? process.env),
       client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal,
@@ -71,11 +72,14 @@ const terminal = {
   error: (text: string) => process.stderr.write(text),
 };
 
-function watchSettings(watchPr: WatchPrSettings | undefined): {
+function watchSettings(
+  watchPr: WatchPrSettings | undefined,
+  environment: Readonly<NodeJS.ProcessEnv>,
+): {
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
 } {
-  const watchActions = process.env["CLOVING_WATCH_ACTIONS"];
+  const watchActions = environment["CLOVING_WATCH_ACTIONS"];
   return {
     ...(watchActions === undefined ? {} : { watchActions }),
     ...(watchPr === undefined ? {} : { watchPr }),

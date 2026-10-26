@@ -94,6 +94,27 @@ The installed executable includes JavaScript for startup, the watch command and 
 
 For a project-local tarball installation, use `./node_modules/.bin/cloving` wherever the examples below say `cloving`, or add your project's `node_modules/.bin` to the search path. After a build, `npm link` also supplies the executable.
 
+### Repository settings
+
+`cloving start` reads `.cloving/config.json` in the selected repository and a private file at `<config>/cloving/projects/<name>-<id>.json`. The name and ID match the repository's runtime directory. `<config>` is an absolute `XDG_CONFIG_HOME`, or `~/.config` otherwise. Missing files keep the existing defaults. Restart after changing a file.
+
+Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
+
+The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds` and `github.command`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
+
+For example, a shared `.cloving/config.json` can contain:
+
+```json
+{
+  "version": 1,
+  "checks": { "beforeMerge": ["npm", "test"] }
+}
+```
+
+The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to the selected harness: `CLOVING_CLAUDE_COMMAND` overrides it for Claude and `CLOVING_CODEX_COMMAND` for Codex. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map. `harness.kind` accepts `file` or `shell`; its turn behavior and `harness.path` are reserved for the harness integration.
+
+The package includes [the project schema](src/project-config.schema.json) and [the private schema](src/private-config.schema.json), also installed under `dist/src/`. Unknown fields fail with `unknown-setting: <field>`, invalid values with `invalid-setting: <field>`, and unsupported or missing versions with `unsupported-config-version: version`. Private fields in the project file fail with `private-setting-in-project-file: <field>`. Files cannot set runtime directories, ownership leases, host bounds or the watch repository; those remain environment settings.
+
 ## First run
 
 This first run uses `develop-prompt` on a test repository. It needs no ticket command and no GitHub repository.

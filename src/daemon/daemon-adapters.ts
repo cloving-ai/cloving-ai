@@ -50,6 +50,7 @@ export interface DaemonSettings {
   readonly queueLanes?: number;
   readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
+  readonly requiredChecks?: readonly string[] | null;
   readonly checkCommand?: readonly string[];
   readonly privateTexts?: readonly string[];
   readonly concurrency: number;
@@ -77,6 +78,9 @@ function githubOf(
       (await (await given).state()).runs[runId]?.status,
     repository,
     gh: settings.githubCommand ?? ["gh"],
+    ...(settings.requiredChecks === undefined
+      ? {}
+      : { requiredChecks: settings.requiredChecks }),
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "github"),
     ...(settings.privateTexts === undefined
