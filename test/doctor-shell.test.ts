@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
@@ -42,13 +42,9 @@ process.stdout.write(execFileSync(${JSON.stringify(scenario.launcher === "absolu
       assert.equal(output.status, 0);
     }));
 
-await test("CLV-207 shell wrapper probes resolve relative scripts from the generated project and retain failures", () =>
+await test("CLV-207 shell wrapper probes resolve relative scripts from the repository and retain failures", () =>
   withDoctor(async (scene) => {
-    const runtime = runtimeDirectory(scene.environment, scene.repository);
-    assert.ok(runtime);
-    const project = join(dirname(runtime), "project");
-    await mkdir(project, { recursive: true });
-    const script = join(project, "-claude-wrapper.sh");
+    const script = join(scene.repository, "-claude-wrapper.sh");
     const environment = {
       CLOVING_CLAUDE_COMMAND: '["/bin/sh","--","-claude-wrapper.sh"]',
     };
@@ -83,19 +79,36 @@ await test("CLV-207 shell command strings cannot run a turn during a doctor prob
     await assert.rejects(access(marker), { code: "ENOENT" });
   }));
 
-await test("CLV-207 shell wrapper probes use the service start folder for relative resources", () =>
+await test("CLV-207 shell wrapper probes use the repository for relative resources", () =>
   withDoctor(async (scene) => {
-    const runtime = runtimeDirectory(scene.environment, scene.repository);
-    assert.ok(runtime);
-    const project = join(dirname(runtime), "project");
-    await mkdir(project, { recursive: true });
-    await writeFile(join(project, "version.txt"), "2.1.1 (Claude Code)\n");
     await writeFile(
-      join(project, "claude-wrapper.sh"),
+      join(scene.repository, "version.txt"),
+      "2.1.1 (Claude Code)\n",
+    );
+    await writeFile(
+      join(scene.repository, "claude-wrapper.sh"),
       'test "$1" = --version || exit 91\nread -r version < ./version.txt || exit 92\nprintf "%s\\n" "$version"\n',
     );
     const output = await scene.report({
       CLOVING_CLAUDE_COMMAND: '["/bin/sh","./claude-wrapper.sh"]',
+    });
+    assert.equal(check(output, "default-harness")["result"], "ok");
+    assert.equal(output.status, 0);
+  }));
+
+await test("CLV-207 a repository-relative executable harness reads repository resources", () =>
+  withDoctor(async (scene) => {
+    const script = await scene.program(
+      "repository-wrapper",
+      'import { readFileSync } from "node:fs"; if (process.argv[2] !== "--version") process.exit(91); process.stdout.write(readFileSync("./version.txt", "utf8"));',
+    );
+    await rename(script, join(scene.repository, "claude-wrapper"));
+    await writeFile(
+      join(scene.repository, "version.txt"),
+      "2.1.1 (Claude Code)\n",
+    );
+    const output = await scene.report({
+      CLOVING_CLAUDE_COMMAND: '["./claude-wrapper"]',
     });
     assert.equal(check(output, "default-harness")["result"], "ok");
     assert.equal(output.status, 0);
@@ -156,12 +169,8 @@ for (const shell of ["sh", "bash"])
 
 await test("CLV-207 zsh -b ends launcher options before a hyphen-leading script", () =>
   withDoctor(async (scene) => {
-    const runtime = runtimeDirectory(scene.environment, scene.repository);
-    assert.ok(runtime);
-    const project = join(dirname(runtime), "project");
-    await mkdir(project, { recursive: true });
     await writeFile(
-      join(project, "-wrapper.sh"),
+      join(scene.repository, "-wrapper.sh"),
       'test "$1" = --version || exit 91\nprintf "2.1.1 (Claude Code)\\n"\n',
     );
     const output = await scene.report({
@@ -172,17 +181,13 @@ await test("CLV-207 zsh -b ends launcher options before a hyphen-leading script"
   }));
 
 for (const shell of ["sh", "bash"])
-  await test(`CLV-207 ${shell} keeps a failing or unreadable project wrapper ahead of PATH`, () =>
+  await test(`CLV-207 ${shell} keeps a failing or unreadable repository wrapper ahead of PATH`, () =>
     withDoctor(async (scene) => {
-      const runtime = runtimeDirectory(scene.environment, scene.repository);
-      assert.ok(runtime);
-      const project = join(dirname(runtime), "project");
-      await mkdir(project, { recursive: true });
       await writeFile(
         join(scene.root, "bin/wrapper.sh"),
         'printf "2.1.1 (Claude Code)\\n"\n',
       );
-      const local = join(project, "wrapper.sh");
+      const local = join(scene.repository, "wrapper.sh");
       await writeFile(local, "exit 91\n");
       for (const mode of [0o644, 0o000]) {
         await chmod(local, mode);
@@ -197,13 +202,17 @@ for (const shell of ["sh", "bash"])
       }
     }));
 
-await test("CLV-207 script lookup cannot borrow repository cwd or add a zsh PATH fallback", () =>
+await test("CLV-207 script lookup cannot borrow service cwd or add a zsh PATH fallback", () =>
   withDoctor(async (scene) => {
     const body = 'printf "2.1.1 (Claude Code)\\n"\n';
-    await writeFile(join(scene.repository, "repo-only.sh"), body);
+    const runtime = runtimeDirectory(scene.environment, scene.repository);
+    assert.ok(runtime);
+    const project = join(dirname(runtime), "project");
+    await mkdir(project, { recursive: true });
+    await writeFile(join(project, "project-only.sh"), body);
     await writeFile(join(scene.root, "bin/path-only.sh"), body);
     for (const command of [
-      ["/bin/sh", "repo-only.sh"],
+      ["/bin/sh", "project-only.sh"],
       ["/bin/zsh", "path-only.sh"],
     ]) {
       const output = await scene.report({

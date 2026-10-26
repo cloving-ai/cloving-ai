@@ -91,7 +91,7 @@ export async function commandObservation(
 export async function harnessObservations(
   environment: Readonly<NodeJS.ProcessEnv>,
   location: {
-    readonly directory: string | undefined;
+    readonly directory: string;
     readonly settingsValid: boolean;
     readonly probe: ProbeRunner;
     readonly commandEnvironment: Readonly<NodeJS.ProcessEnv>;
@@ -113,20 +113,9 @@ export async function harnessObservations(
       harnesses,
       selected: { result: "skip", detail: "Settings files are invalid" },
     };
-  if (location.directory === undefined)
-    return {
-      harnesses,
-      selected: {
-        result: "skip",
-        detail: "Runtime project prerequisite unavailable",
-      },
-    };
   return {
     harnesses,
-    selected: await selectedHarnessObservation(environment, {
-      ...location,
-      directory: location.directory,
-    }),
+    selected: await selectedHarnessObservation(environment, location),
   };
 }
 

@@ -114,7 +114,7 @@ for (const [name, variable, version] of [
 ] as const)
   await test(`CLV-207 default harness probes configured ${name} outside PATH`, () =>
     withDoctor(async (scene) => {
-      const configured = join(scene.root, "configured-harness");
+      const configured = join(scene.root, name);
       await rename(
         await scene.program(
           "configured",

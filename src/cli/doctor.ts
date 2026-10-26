@@ -115,7 +115,7 @@ async function repositoryObservations(
     PATH: [dirname(process.execPath), environment["PATH"]].join(delimiter),
   };
   const harnesses = await harnessObservations(environment, {
-    directory: project,
+    directory: repository,
     settingsValid,
     probe,
     commandEnvironment: serviceEnvironment,

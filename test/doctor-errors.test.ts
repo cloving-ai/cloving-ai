@@ -115,12 +115,8 @@ await test("CLV-207 malformed adoption records skip checks that need the generat
     await writeFile(record, "{}");
     const output = await scene.report();
     assert.equal(check(output, "runtime-directory")["result"], "fail");
-    for (const code of [
-      "default-harness",
-      "ticket-command",
-      "next-command",
-      "service",
-    ])
+    assert.equal(check(output, "default-harness")["result"], "ok");
+    for (const code of ["ticket-command", "next-command", "service"])
       assert.equal(check(output, code)["result"], "skip");
   }));
 
