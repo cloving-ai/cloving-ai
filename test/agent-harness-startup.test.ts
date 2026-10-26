@@ -161,7 +161,7 @@ for (const [failure, reason] of [
             "codex",
             `printf 'probe\\n' >> "$HOME/probes"\nif test "\${HARNESS_READY-}" != yes; then ${failure}; exit; fi\ntest "$1" = --version && printf 'codex-cli 0.108.0\\n'`,
           );
-          await scene.startup("export HARNESS_READY=yes\n");
+          await scene.startup('PATH="$HOME"\nexport HARNESS_READY=yes\n');
           const result = await discoverHarnesses({
             env: { ...scene.options.env, SHELL: shell },
           });
