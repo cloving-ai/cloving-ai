@@ -9,10 +9,13 @@ import {
 } from "./agent-harness-versions.ts";
 
 import {
+  shellArguments,
   shellBlock,
   shellDiscoveryScript,
   shellEntries,
   shellProbeScript,
+  type ShellEntry,
+  type ShellMode,
 } from "./agent-harness-shell.ts";
 
 export interface HarnessEntry {
@@ -132,21 +135,133 @@ function probeEntry(
   };
 }
 
+async function probeFile(
+  entry: Pick<HarnessEntry, "name" | "path">,
+  env: Environment,
+): Promise<HarnessEntry> {
+  const { name, path } = entry;
+  const output = await runProbe(path, {
+    arguments: [harnessDefinition(name).versionOption],
+    env,
+  });
+  return probeEntry({ name, kind: "file", path }, output);
+}
+
 async function discoverFiles(
   definitions: readonly KnownHarness[],
   env: Environment,
 ): Promise<HarnessEntry[]> {
   const entries = await Promise.all(
-    definitions.map(async (definition) => {
-      const path = await findFile(definition.name, env);
-      if (path === null) return [];
-      const output = await runProbe(path, {
-        arguments: [definition.versionOption],
-        env,
-      });
-      return [
-        probeEntry({ name: definition.name, kind: "file", path }, output),
-      ];
+    definitions.map(async ({ name }) => {
+      const path = await findFile(name, env);
+      return path === null ? [] : [await probeFile({ name, path }, env)];
+    }),
+  );
+  return entries.flat();
+}
+
+interface ShellScan {
+  readonly entries: ShellEntry[];
+  readonly reason: string | null;
+  readonly bash: boolean;
+}
+
+async function inspectShell(
+  names: readonly string[],
+  options: { readonly env: Environment; readonly mode: ShellMode },
+): Promise<ShellScan> {
+  const { env, mode } = options;
+  const shell = env["SHELL"];
+  if (!shell) return { entries: [], reason: "shell-unavailable", bash: false };
+  const output = await runProbe(shell, {
+    arguments: [
+      ...shellArguments(mode),
+      shellDiscoveryScript,
+      "cloving-harnesses",
+      ...names,
+    ],
+    env,
+  });
+  const found = shellEntries(output.stdout, names);
+  const reason = output.exitCode === 64 ? "unsupported-shell" : output.reason;
+  return {
+    entries: reason === null ? (found ?? []) : [],
+    reason: reason ?? (found === null ? "shell-protocol" : null),
+    bash: shellBlock(output.stdout, -1)?.trim() === "bash",
+  };
+}
+
+async function probeShell(
+  candidate: ShellCandidate,
+  env: Environment,
+): Promise<HarnessEntry> {
+  const { entry, mode } = candidate;
+  const { name, kind, path, searchPath } = entry;
+  if (kind === "file")
+    return probeFile({ name, path }, { ...env, PATH: searchPath });
+  const probe = await runProbe(env["SHELL"] ?? "", {
+    arguments: [
+      ...shellArguments(mode),
+      shellProbeScript,
+      "cloving-harness-probe",
+      name,
+    ],
+    env,
+  });
+  const stdout = shellBlock(probe.stdout, 0);
+  return probeEntry(
+    { name, kind, path },
+    {
+      stdout: stdout ?? "",
+      reason: probe.reason ?? (stdout === null ? "shell-protocol" : null),
+    },
+  );
+}
+
+function entryKey(entry: Pick<HarnessEntry, "name" | "kind" | "path">): string {
+  return JSON.stringify([entry.name, entry.kind, entry.path]);
+}
+
+interface ShellCandidate {
+  readonly entry: ShellEntry;
+  readonly mode: ShellMode;
+}
+
+async function probeCandidates(
+  candidates: readonly ShellCandidate[],
+  options: {
+    readonly files: readonly HarnessEntry[];
+    readonly env: Environment;
+  },
+): Promise<HarnessEntry[]> {
+  const { files, env } = options;
+  const settled = new Set(
+    files
+      .filter(
+        (file) =>
+          file.working ||
+          file.reason === "probe-timeout" ||
+          file.reason === "probe-output-limit",
+      )
+      .map(entryKey),
+  );
+  const groups = new Map<string, ShellCandidate[]>();
+  for (const candidate of candidates) {
+    const key = entryKey(candidate.entry);
+    if (settled.has(key)) continue;
+    const group = groups.get(key) ?? [];
+    group.push(candidate);
+    groups.set(key, group);
+  }
+  const entries = await Promise.all(
+    [...groups.values()].map(async (group) => {
+      let result: HarnessEntry[] = [];
+      for (const { entry, mode } of group) {
+        const probe = await probeShell({ entry, mode }, env);
+        result = [probe];
+        if (probe.working) break;
+      }
+      return result;
     }),
   );
   return entries.flat();
@@ -154,52 +269,27 @@ async function discoverFiles(
 
 async function discoverShell(
   names: readonly string[],
-  env: Environment,
+  options: {
+    readonly env: Environment;
+    readonly files: readonly HarnessEntry[];
+  },
 ): Promise<HarnessDiscovery> {
-  const shell = env["SHELL"];
-  if (!shell) return { entries: [], shellReason: "shell-unavailable" };
-  const output = await runProbe(shell, {
-    arguments: [
-      "-l",
-      "-i",
-      "+m",
-      "-c",
-      shellDiscoveryScript,
-      "cloving-harnesses",
-      ...names,
-    ],
-    env,
-  });
-  if (output.exitCode === 64)
-    return { entries: [], shellReason: "unsupported-shell" };
-  if (output.reason !== null)
-    return { entries: [], shellReason: output.reason };
-  const found = shellEntries(output.stdout, names);
-  if (found === null) return { entries: [], shellReason: "shell-protocol" };
-  const entries = await Promise.all(
-    found.map(async (name) => {
-      const probe = await runProbe(shell, {
-        arguments: [
-          "-l",
-          "-i",
-          "+m",
-          "-c",
-          shellProbeScript,
-          "cloving-harness-probe",
-          name,
-        ],
-        env,
-      });
-      const stdout = shellBlock(probe.stdout, 0);
-      return probeEntry(
-        { name, kind: "shell", path: name },
-        {
-          stdout: stdout ?? "",
-          reason: probe.reason ?? (stdout === null ? "shell-protocol" : null),
-        },
-      );
-    }),
-  );
+  const { env, files } = options;
+  const login = await inspectShell(names, { env, mode: "login" });
+  if (login.reason !== null) return { entries: [], shellReason: login.reason };
+  const interactive = login.bash
+    ? await inspectShell(names, { env, mode: "interactive" })
+    : null;
+  if (interactive?.reason)
+    return { entries: [], shellReason: interactive.reason };
+  const found = [
+    ...login.entries.map((entry) => ({ entry, mode: "login" as const })),
+    ...(interactive?.entries ?? []).map((entry) => ({
+      entry,
+      mode: "interactive" as const,
+    })),
+  ];
+  const entries = await probeCandidates(found, { files, env });
   return { entries, shellReason: null };
 }
 
@@ -207,15 +297,17 @@ async function discoverNames(
   definitions: readonly KnownHarness[],
   env: Environment,
 ): Promise<HarnessDiscovery> {
-  const [files, shell] = await Promise.all([
-    discoverFiles(definitions, env),
-    discoverShell(
-      definitions.map(({ name }) => name),
-      env,
-    ),
-  ]);
+  const files = await discoverFiles(definitions, env);
+  const shell = await discoverShell(
+    definitions.map(({ name }) => name),
+    { env, files },
+  );
   return {
-    entries: [...files, ...shell.entries],
+    entries: [
+      ...new Map(
+        [...files, ...shell.entries].map((entry) => [entryKey(entry), entry]),
+      ).values(),
+    ],
     shellReason: shell.shellReason,
   };
 }

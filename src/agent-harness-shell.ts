@@ -1,15 +1,21 @@
 export const shellDiscoveryScript = `
 set +m
 if [ -z "\${ZSH_VERSION-}" ] && [ -z "\${BASH_VERSION-}" ]; then exit 64; fi
+printf '__CLOVING_HARNESS_START_-1__\\n%s\\n\\n__CLOVING_HARNESS_END_-1__\\n' "\${BASH_VERSION:+bash}"
 index=0
 for name in "$@"; do
   printf '__CLOVING_HARNESS_START_%s__\\n' "$index"
   if [ -n "\${ZSH_VERSION-}" ]; then
     kind=$(whence -w -- "$name" 2>/dev/null)
     printf '%s\\n' "\${kind##*: }"
+    file=$(whence -p -- "$name" 2>/dev/null)
   else
-    builtin type -t -- "$name" 2>/dev/null
+    kind=$(builtin type -t -- "$name" 2>/dev/null)
+    printf '%s\\n' "$kind"
+    file=$(builtin type -P -- "$name" 2>/dev/null)
   fi
+  case "$file" in /*|"") ;; *) file="$PWD/$file" ;; esac
+  printf '%s\\n%s\\n' "$file" "$PATH"
   printf '\\n__CLOVING_HARNESS_END_%s__\\n' "$index"
   index=$((index + 1))
 done
@@ -53,14 +59,31 @@ export function shellBlock(output: string, index: number): string | null {
   return finished < 0 ? null : output.slice(began + start.length, finished);
 }
 
+export interface ShellEntry {
+  readonly name: string;
+  readonly kind: "file" | "shell";
+  readonly path: string;
+  readonly searchPath: string;
+}
+
 export function shellEntries(
   output: string,
   names: readonly string[],
-): string[] | null {
+): ShellEntry[] | null {
   const blocks = names.map((_, index) => shellBlock(output, index));
   if (blocks.some((block) => block === null)) return null;
-  return names.filter((_, index) => {
-    const kind = blocks[index]?.trim();
-    return kind === "function" || kind === "alias";
+  return names.flatMap((name, index) => {
+    const [kind, path, searchPath = ""] = (blocks[index] ?? "").split("\n");
+    const entries: ShellEntry[] = [];
+    if (path) entries.push({ name, kind: "file", path, searchPath });
+    if (kind === "function" || kind === "alias")
+      entries.push({ name, kind: "shell", path: name, searchPath });
+    return entries;
   });
+}
+
+export type ShellMode = "login" | "interactive";
+
+export function shellArguments(mode: ShellMode): string[] {
+  return [...(mode === "login" ? ["-l"] : []), "-i", "+m", "-c"];
 }

@@ -1009,7 +1009,10 @@
     "test/agent-harness-fixture.ts": "test",
     "test/agent-harnesses.test.ts": "test",
     "test/agent-harness-shell.test.ts": "test",
-    "test/agent-harness-protocol.test.ts": "test"
+    "test/agent-harness-protocol.test.ts": "test",
+    "test/agent-harness-startup.test.ts": "test",
+    "test/quality/setup-shells.test.ts": "test",
+    "tools/check-shells.ts": "build"
   },
   "allowed": {
     "quality": [

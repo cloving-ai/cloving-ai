@@ -770,6 +770,8 @@ The caller supplies imported symbol names, literal effect pairs (`null` represen
 
 ## Development of Cloving
 
+The shell tests require both zsh at `/bin/zsh` and Bash at `/bin/bash`. macOS includes them. Linux contributors and CI runners must install both before setup; on Ubuntu, install the `zsh` and `bash` system packages. The fixtures exercise zsh 5.9 and Bash 3.2 or 5.2, including their real startup files; neither shell's tests are optional. `npm run check:setup` checks that both executables run and reports a missing prerequisite before compilation.
+
 ```sh
 npm ci --ignore-scripts
 npm run check:setup

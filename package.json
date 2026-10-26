@@ -81,7 +81,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json && node tools/copy-workflow-declarations.ts workflows dist/workflows",
     "build:workflows": "node tools/compile-workflows.ts",
-    "check:setup": "tsc --project tsconfig.json --noEmit",
+    "check:setup": "node tools/check-shells.ts && tsc --project tsconfig.json --noEmit",
     "check:quality": "node tools/check-quality.ts",
     "check:clean": "node tools/check-clean.ts",
     "check:lint": "eslint src tools quality test eslint.config.mjs --max-warnings 0",
