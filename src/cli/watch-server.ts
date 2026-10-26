@@ -5,6 +5,7 @@ import {
   type WatchActions,
 } from "./watch-actions.ts";
 import { observedBoard } from "./watch-pr-board.ts";
+import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
 import type { PrObserver } from "./watch-pr-observer.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -188,6 +189,13 @@ async function fontReply(request: IncomingMessage): Promise<Reply | null> {
   };
 }
 
+function routedAction(
+  path: string,
+): typeof watchAction | typeof phoneAction | null {
+  if (isPhoneAction(path)) return phoneAction;
+  return path === "/actions/run" ? watchAction : null;
+}
+
 async function answered(
   watch: Watch,
   request: IncomingMessage,
@@ -197,13 +205,10 @@ async function answered(
   if (font !== null) return font;
   const url = new URL(String(request.url), "http://localhost");
   if (request.method === "GET") return readReply(watch, url);
-  if (
-    request.method !== "POST" ||
-    url.pathname !== "/actions/run" ||
-    watch.actions === null
-  )
-    return notFound;
-  const body = await watchAction(watch.actions, request).catch(() => null);
+  if (request.method !== "POST" || watch.actions === null) return notFound;
+  const act = routedAction(url.pathname);
+  if (act === null) return notFound;
+  const body = await act(watch.actions, request).catch(() => null);
   return body === null
     ? forbidden
     : { status: 200, type: "application/json", body };
@@ -222,6 +227,12 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
       status: 200,
       type: "text/javascript; charset=utf-8",
       body: await readFile(libraryFile, "utf8"),
+    };
+  if (path === "/phone.json")
+    return {
+      status: 200,
+      type: "application/json",
+      body: await phoneRead(watch.settings.runtimeDirectory),
     };
   if (path !== "/data.json") return notFound;
   const runId = url.searchParams.get("runId");

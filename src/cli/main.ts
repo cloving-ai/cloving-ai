@@ -5,11 +5,13 @@ import { redactImport } from "../chats/redact-import.ts";
 import { emptyCounts } from "../chats/redaction.ts";
 import { importChats } from "../chats/import.ts";
 import { parseInvocation, type Invocation } from "./arguments.ts";
+import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
   chatsRedactUsage,
   chatsImportUsage,
+  phoneUsage,
   usage,
   validateUsage,
 } from "./usage.ts";
@@ -21,6 +23,7 @@ const helpTexts = {
   "validate-help": validateUsage,
   "chats-import-help": chatsImportUsage,
   "chats-redact-help": chatsRedactUsage,
+  "phone-help": phoneUsage,
 };
 
 function helpInvocation(
@@ -47,6 +50,11 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
+  } else if (invocation.kind === "phone") {
+    process.exitCode = await phoneCommand(invocation, {
+      runtimeDirectory: runtimeDirectory(process.env),
+      terminal,
+    });
   } else if (invocation.kind === "chats-redact") {
     await redactionCommand(invocation.importId);
   } else if (invocation.kind === "chats-import") {
@@ -60,16 +68,10 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env),
-      ...(process.env["CLOVING_WATCH_ACTIONS"] === undefined
-        ? {}
-        : { watchActions: process.env["CLOVING_WATCH_ACTIONS"] }),
-      ...(watchPr === undefined ? {} : { watchPr }),
+      ...watchSettings(watchPr),
       client: clientCommand(process.env),
       workingDirectory: process.cwd(),
-      terminal: {
-        out: (text) => process.stdout.write(text),
-        error: (text) => process.stderr.write(text),
-      },
+      terminal,
       identifier: randomUUID,
       interrupted: () =>
         new Promise((settle) => {
@@ -80,6 +82,22 @@ export async function main(
         }),
     });
   }
+}
+
+const terminal = {
+  out: (text: string) => process.stdout.write(text),
+  error: (text: string) => process.stderr.write(text),
+};
+
+function watchSettings(watchPr: WatchPrSettings | undefined): {
+  readonly watchActions?: string;
+  readonly watchPr?: WatchPrSettings;
+} {
+  const watchActions = process.env["CLOVING_WATCH_ACTIONS"];
+  return {
+    ...(watchActions === undefined ? {} : { watchActions }),
+    ...(watchPr === undefined ? {} : { watchPr }),
+  };
 }
 
 function refuseChatPlatform(invocation: Invocation): boolean {
