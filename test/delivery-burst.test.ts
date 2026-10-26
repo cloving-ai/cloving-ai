@@ -2,7 +2,10 @@ import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { InstrumentationEvent } from "solid-objects";
+import { join } from "node:path";
+import { Actor, createRuntime, type InstrumentationEvent } from "solid-objects";
+import { sqlite } from "solid-objects/database/sqlite";
+import { librarySettings } from "../src/broker/actor/authority-settings.ts";
 import type { Authority, Delivery } from "../src/broker/actor/authority.ts";
 import {
   executePinned,
@@ -167,6 +170,44 @@ async function timerTurns(
   );
   return { turns, largestGap };
 }
+
+await test("CLV-053 queued slow turns yield before the timer fairness bound", async () => {
+  class Busy extends Actor {
+    static override readonly actorType = "Busy";
+
+    turn(): void {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  const database = sqlite({
+    path: join(await temporaryDirectory(), "queued.sqlite"),
+  });
+  const runtime = createRuntime({
+    database,
+    ...librarySettings(burstTiming, () => undefined),
+  });
+  const worker = runtime.worker();
+  runtime.register(Busy);
+  try {
+    await runtime.install();
+    for (let turn = 0; turn < 40; turn += 1)
+      await runtime.enqueueInternalMessage({
+        actorType: Busy.actorType,
+        actorId: "busy",
+        operation: "turn",
+      });
+    let processed = 0;
+    const timer = await timerTurns(async () => {
+      processed = await worker.runUntilIdle();
+    });
+    assert.equal(processed, 40);
+    assert.ok(timer.largestGap < 500, JSON.stringify(timer));
+  } finally {
+    await worker.stop();
+    await runtime.close();
+    await database.close();
+  }
+});
 
 await test("CLV-053 burst readiness does not repeatedly load full authority projections", async () => {
   const events: InstrumentationEvent[] = [];
