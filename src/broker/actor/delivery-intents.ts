@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { continues, isSettled, type GateState } from "../../authority/gates.ts";
+import { delivers, isSettled, type GateState } from "../../authority/gates.ts";
 import {
   eligibleIntents,
   type AuthorityState,
   type EffectIntent,
 } from "../../authority/reducer.ts";
-import { gateContinuation } from "../../authority/reduction.ts";
+import { gateDelivery } from "../../authority/reduction.ts";
 import type { ExecutionManifest } from "../../workflow-admission.ts";
 
 export interface DeliveryDecision {
@@ -128,7 +128,7 @@ export function protectedIntent(
 export function gateDecision(
   gate: GateState | undefined,
 ): DeliveryDecision | null {
-  if (gate === undefined || gate.kind === "untyped" || !continues(gate))
+  if (gate === undefined || gate.kind === "untyped" || !delivers(gate))
     return null;
   return {
     gateId: gate.gateId,
@@ -150,7 +150,7 @@ function decisionOf(
       (gate) =>
         gate.runId === intent.runId &&
         isSettled(gate) &&
-        gateContinuation(gate).operationId === intent.operationId,
+        gateDelivery(gate).operationId === intent.operationId,
     ),
   );
 }

@@ -1,8 +1,8 @@
-import { continues, gateKey, type GateState } from "../authority/gates.ts";
+import { delivers, gateKey, type GateState } from "../authority/gates.ts";
 import type { RunState } from "../authority/reducer.ts";
 import type { StoredState } from "../broker/actor/authority.ts";
 import { isDeviceActor } from "../authority/commands.ts";
-import { gateContinuation } from "../authority/reduction.ts";
+import { gateDelivery } from "../authority/reduction.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
 import type { Fields, Reply } from "../protocol.ts";
 import {
@@ -337,8 +337,8 @@ async function continuationState(
   decided: { readonly gate: GateState; readonly run: RunState },
 ): Promise<"admitted" | "held"> {
   const { gate, run } = decided;
-  if (!continues(gate)) return "held";
-  const { operationId } = gateContinuation(gate);
+  if (!delivers(gate)) return "held";
+  const { operationId } = gateDelivery(gate);
   const operation = (await context.authority.operations()).find(
     (item) => item.operationId === operationId,
   );

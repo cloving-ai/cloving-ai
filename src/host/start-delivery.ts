@@ -1,5 +1,10 @@
 import { start } from "workflow/api";
 import { operationTag, runTag, type TaggedRun } from "./world-runs.ts";
+import {
+  deliveredDecision,
+  reconciledDecision,
+  stoppedDecision,
+} from "./decision-resume.ts";
 
 export type WorkflowFunction = (
   input: unknown,
@@ -39,7 +44,10 @@ export interface StartParts {
 
 export interface StartDelivery {
   readonly reconcile: (intent: RunIntent) => Promise<RunOutcome>;
-  readonly deliver: (intent: RunIntent) => Promise<{
+  readonly deliver: (
+    intent: RunIntent,
+    signal?: AbortSignal,
+  ) => Promise<{
     readonly receipt: string;
   }>;
   readonly stop: (intent: RunIntent) => Promise<RunOutcome>;
@@ -123,8 +131,17 @@ async function stopped(
 
 export function startDelivery(parts: StartParts): StartDelivery {
   return {
-    reconcile: (intent) => reconciled(parts, intent),
-    deliver: (intent) => delivered(parts, intent),
-    stop: (intent) => stopped(parts, intent),
+    reconcile: (intent) =>
+      intent.kind === "resume-hook"
+        ? reconciledDecision(parts, intent)
+        : reconciled(parts, intent),
+    deliver: (intent, signal) =>
+      intent.kind === "resume-hook"
+        ? deliveredDecision(parts, { intent, signal })
+        : delivered(parts, intent),
+    stop: (intent) =>
+      intent.kind === "resume-hook"
+        ? stoppedDecision(parts, intent)
+        : stopped(parts, intent),
   };
 }

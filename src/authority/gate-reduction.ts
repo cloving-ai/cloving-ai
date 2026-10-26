@@ -1,5 +1,5 @@
 import {
-  continues,
+  delivers,
   decisionRefusal,
   expiryRefusal,
   gateKey,
@@ -40,8 +40,23 @@ export function gateContinuation(gate: SettledGate): EffectIntent {
   };
 }
 
+export function gateDelivery(gate: SettledGate): EffectIntent {
+  if (gate.wait !== "hook") return gateContinuation(gate);
+  return {
+    kind: "resume-hook",
+    runId: gate.runId,
+    operationId: identity({
+      run: gate.runId,
+      phase: "gate",
+      round: gate.outcome.sequence,
+      operation: "resume-hook",
+      key: gate.gateId,
+    }),
+  };
+}
+
 function continuations(gate: GateState): readonly EffectIntent[] {
-  return continues(gate) ? [gateContinuation(gate)] : [];
+  return delivers(gate) ? [gateDelivery(gate)] : [];
 }
 
 export function opened(state: AuthorityState, recorded: Recorded): Reduction {
@@ -133,7 +148,7 @@ export function registered(
   if (terminal.includes(run.status)) return invalid("terminal-run");
   const gate = gateOf(state, event);
   if (gate === undefined) return invalid("unknown-gate");
-  if (gate.wait === "registered") return invalid("wait-already-registered");
+  if (gate.wait !== "pending") return invalid("wait-already-registered");
   const next: GateState = { ...gate, wait: "registered" };
   return applied(state, {
     ...recorded,

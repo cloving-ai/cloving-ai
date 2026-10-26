@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { getStepMetadata, getWorkflowMetadata } from "workflow";
-import { gateKey } from "../authority/gates.ts";
+import {
+  openBridgeGate,
+  type GateOpening,
+  type GateReceipt,
+  type WaitRegistration,
+} from "./gate-bridge.ts";
+export type {
+  GateOpening,
+  GateReceipt,
+  WaitRegistration,
+} from "./gate-bridge.ts";
 import { runWait, type RunWaitPorts } from "./run-wait.ts";
 import {
   stepBridgeKey,
@@ -53,28 +63,6 @@ interface BridgeIdentity {
 
 export interface BridgeRequest extends ProtectedRequest, BridgeIdentity {
   readonly runId: string;
-}
-
-export interface GateReceipt {
-  readonly kind: string;
-  readonly reason?: string;
-}
-
-export interface GateOpening {
-  readonly runId: string;
-  readonly commandId: string;
-  readonly expectedRevision: number;
-  readonly gateId: string;
-  readonly kind: "question" | "approval";
-  readonly prompt: string;
-  readonly subject: string;
-  readonly expiresAt?: string;
-}
-
-export interface WaitRegistration {
-  readonly runId: string;
-  readonly commandId: string;
-  readonly gateId: string;
 }
 
 export interface BridgeTiming {
@@ -269,87 +257,32 @@ async function effect(
   return await settled(hold, answer.operationId);
 }
 
-interface GateSubject {
-  readonly runId: string;
-  readonly transport: string;
-  readonly request: GateRequest;
-}
-
-function verdict(
+async function gate(
   hold: Hold,
-  receipt: GateReceipt | undefined,
-): GateResult | "committed" | number {
-  if (receipt === undefined || receipt.kind === "failed")
-    return hold.timing.retryMilliseconds;
-  if (committed.includes(receipt.kind)) return "committed";
-  if (receipt.reason === "service-busy") return hold.timing.retryMilliseconds;
-  if (receipt.reason === "stale-revision") return hold.timing.pollMilliseconds;
-  return { kind: "refused", reason: receipt.reason ?? receipt.kind };
-}
-
-async function gateCommand(
-  hold: Hold,
-  send: () => Promise<GateReceipt>,
-): Promise<GateResult | undefined> {
-  for (;;) {
-    await paused(hold, 0);
-    const result = verdict(hold, await send().catch(() => undefined));
-    if (result === "committed") return undefined;
-    if (typeof result !== "number") return result;
-    await paused(hold, result);
-  }
-}
-
-async function opening(hold: Hold, subject: GateSubject): Promise<GateReceipt> {
-  const { runId, transport, request } = subject;
-  const { gateId, kind, prompt } = request;
-  const state = await hold.ports.state();
-  const run = state.runs[runId];
-  if (run === undefined) return { kind: "rejected", reason: "unknown-run" };
-  if (Object.hasOwn(state.gates, gateKey(runId, gateId)))
-    return { kind: "duplicate" };
-  return await hold.ports.openGate({
-    runId,
-    commandId: `${transport}:open:${gateId}`,
-    expectedRevision: run.revision,
-    gateId,
-    kind,
-    prompt,
-    subject: `sha256:${createHash("sha256").update(prompt).digest("hex")}`,
-    ...(request.expiresAt === undefined
-      ? {}
-      : { expiresAt: request.expiresAt }),
-  });
-}
-
-async function gate(hold: Hold, request: GateRequest): Promise<GateResult> {
+  asked: { readonly request: GateRequest; readonly waitMode?: "hook" },
+): Promise<GateResult> {
   const call = hold.ports.call();
   const world = await located(hold, call.worldRunId);
   if (world === undefined)
     return { kind: "unavailable", reason: "unknown-world-run" };
   await inWork(hold, world.runId);
-  const subject = {
+  return await openBridgeGate(hold.ports, {
+    ...asked,
     runId: world.runId,
     transport: transportOf(call),
-    request,
-  };
-  const refusal =
-    (await gateCommand(hold, () => opening(hold, subject))) ??
-    (await gateCommand(hold, () =>
-      hold.ports.registerWait({
-        runId: subject.runId,
-        commandId: `${subject.transport}:wait:${request.gateId}`,
-        gateId: request.gateId,
-      }),
-    ));
-  return refusal ?? { kind: "opened", decisionId: request.gateId };
+  });
 }
 
 export function stepBridge(ports: BridgePorts): StepBridge {
   const hold = { ports, timing: ports.timing ?? bridgeTiming };
   return {
     effect: (request) => effect(hold, request),
-    gate: (request) => gate(hold, request),
+    gate: (request) => gate(hold, { request }),
+    waitForDecision: async (request) => {
+      const result = await gate(hold, { request, waitMode: "hook" });
+      if (result.kind !== "opened") throw new Error(result.reason);
+      return { token: result.decisionId };
+    },
     waitForRun: async (request) => {
       const call = ports.call();
       const world = await located(hold, call.worldRunId);

@@ -5,7 +5,8 @@ import type { RunState } from "./transitions.ts";
 
 export interface OperationSummary {
   readonly operationId: string;
-  readonly kind: "start-run" | "continue-run" | "protected-effect";
+  readonly kind:
+    "start-run" | "continue-run" | "resume-hook" | "protected-effect";
   readonly releasedSequence: number | null;
   readonly outcomes: readonly (string | null)[];
 }

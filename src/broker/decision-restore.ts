@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { Observation, RunDetails } from "../authority/details.ts";
-import { continues, gateKey, type GateState } from "../authority/gates.ts";
+import { delivers, gateKey, type GateState } from "../authority/gates.ts";
 import type { AuthorityState } from "../authority/reducer.ts";
-import { gateContinuation } from "../authority/reduction.ts";
+import { gateDelivery } from "../authority/reduction.ts";
 import type {
   DecisionRows,
   DetailRow,
@@ -16,7 +16,7 @@ export type DecisionState = Pick<
 >;
 
 const kinds = ["question", "approval", "untyped"] as const;
-const waits = ["registered", "pending"] as const;
+const waits = ["registered", "pending", "hook"] as const;
 
 export function documentDigest(body: string): string {
   return `sha256:${createHash("sha256").update(body).digest("hex")}`;
@@ -38,7 +38,7 @@ export function gateRecord(gate: GateState): GateRow {
     answer: gate.outcome?.answer ?? null,
     decidedSequence: gate.outcome?.sequence ?? null,
     openedSequence: gate.openedSequence,
-    continuation: continues(gate) ? gateContinuation(gate).operationId : null,
+    continuation: delivers(gate) ? gateDelivery(gate).operationId : null,
   };
 }
 

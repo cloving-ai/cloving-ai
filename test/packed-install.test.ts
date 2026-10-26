@@ -7,6 +7,11 @@ import {
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
+import {
+  packedDecisionFiles,
+  packedNotifyCommand,
+  runPackedDecision,
+} from "./packed-decision-wait.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
@@ -281,7 +286,7 @@ async function environment(root: string): Promise<NodeJS.ProcessEnv> {
       process.execPath,
       join(root, "fake-worker.mjs"),
     ]),
-    CLOVING_NOTIFY_COMMAND: "[]",
+    CLOVING_NOTIFY_COMMAND: packedNotifyCommand(root),
     CLOVING_NEXT_COMMAND: "[]",
     CLOVING_TICKET_COMMAND: "[]",
     CLOVING_CHECK_COMMAND: "[]",
@@ -341,6 +346,7 @@ async function running(root: string, executable: string): Promise<void> {
     runtimeDirectory: join(root, "host/run"),
   };
   const files = await operatorFiles(fixture);
+  await packedDecisionFiles(root);
   command(executable, { args: ["--help"], cwd: root, env });
   const child = spawn(executable, ["start"], {
     cwd: root,
@@ -362,6 +368,7 @@ async function running(root: string, executable: string): Promise<void> {
     await phoneStatus(root, { executable, env });
     await runOperator(fixture, "project-run");
     await runOperator(fixture, "user-run");
+    await runPackedDecision(root, { executable, env, address });
     for (const [name, bytes] of Object.entries(files))
       assert.equal(await readFile(name, "utf8"), bytes);
     const page = await fetch(address, { signal: AbortSignal.timeout(5000) });
