@@ -50,6 +50,7 @@ interface Settings {
   readonly receiptStatus?: number;
   readonly startDelayMilliseconds?: number;
   readonly heartbeatStatuses?: number[];
+  readonly envelopeStatuses?: number[];
   readonly registerDelayMilliseconds?: number;
   readonly heartbeatDelayMilliseconds?: number;
 }
@@ -218,6 +219,20 @@ function pairingRoute(
   return acted(state, { pairing, action: String(action), body });
 }
 
+const daemonRoutes: Readonly<
+  Record<string, (state: FakeState, daemon: FakeDaemon) => Reply>
+> = {
+  "PUT /api/v1/relay/daemon/heartbeat": (state, daemon) => [
+    state.settings.heartbeatStatuses?.shift() ?? 200,
+    { daemon_id: daemon.daemonId },
+  ],
+  "GET /api/v1/relay/devices": (state) => [200, { devices: state.listed }],
+  "POST /api/v1/relay/envelopes": (state) => [
+    state.settings.envelopeStatuses?.shift() ?? 201,
+    { accepted: [] },
+  ],
+};
+
 function daemonRoute(
   state: FakeState,
   exchange: {
@@ -228,14 +243,7 @@ function daemonRoute(
 ): Reply | undefined {
   const { method, path, daemon } = exchange;
   if (method === "DELETE") return removed(state, { daemon, path });
-  if (method === "PUT" && path === "/api/v1/relay/daemon/heartbeat")
-    return [
-      state.settings.heartbeatStatuses?.shift() ?? 200,
-      { daemon_id: daemon.daemonId },
-    ];
-  if (method === "GET" && path === "/api/v1/relay/devices")
-    return [200, { devices: state.listed }];
-  return undefined;
+  return daemonRoutes[`${method} ${path}`]?.(state, daemon);
 }
 
 function delayOf(settings: Settings, path: string): number {

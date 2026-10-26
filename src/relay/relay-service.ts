@@ -4,6 +4,11 @@ import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import type { Fields, Reply, ServiceRequest } from "../protocol.ts";
+import {
+  watchDecisions,
+  watchTiming,
+  type WatchTiming,
+} from "./decision-watch.ts";
 import { followPairing } from "./pairing-follow.ts";
 import {
   pairingSessions,
@@ -24,13 +29,14 @@ import {
   runHeartbeats,
   type HeartbeatTiming,
 } from "./relay-heartbeat.ts";
+import { relayControl } from "./relay-control.ts";
 import { relayOrigin } from "./relay-http.ts";
 import {
   forgetRegistration,
   readLink,
   registration,
 } from "./relay-registration.ts";
-import { openRelayStore } from "./relay-store.ts";
+import { openRelayStore, type RelayStore } from "./relay-store.ts";
 
 export interface RelayPaths {
   readonly runtimeDirectory: string;
@@ -42,6 +48,7 @@ export interface RelayOptions extends RelayPaths {
   readonly computerName?: string;
   readonly secret?: () => Buffer;
   readonly heartbeatTiming?: HeartbeatTiming;
+  readonly watchTiming?: WatchTiming;
 }
 
 export interface Relay {
@@ -155,10 +162,45 @@ export function computerName(name: string): string {
   return name.replace(/\.local$/, "").slice(0, 64);
 }
 
+function deliveringStore(
+  options: RelayOptions,
+  opened: RelayStore,
+): { readonly store: RelayStore; readonly close: () => Promise<void> } {
+  const stop = new AbortController();
+  const running = opened.run(stop.signal);
+  const watch = watchDecisions(
+    {
+      runtimeDirectory: options.runtimeDirectory,
+      phoneDirectory: options.phoneDirectory,
+      store: opened,
+      control: relayControl(options.runtimeDirectory),
+      now: () => Date.now(),
+    },
+    options.watchTiming ?? watchTiming,
+  );
+  return {
+    store: {
+      ...opened,
+      connect: async (deviceId) => {
+        const found = await opened.connect(deviceId);
+        watch.wake();
+        return found;
+      },
+    },
+    close: async () => {
+      await watch.close();
+      stop.abort();
+      await running;
+    },
+  };
+}
+
 export async function startRelay(options: RelayOptions): Promise<Relay> {
   await mkdir(options.runtimeDirectory, { recursive: true, mode: 0o700 });
   await mkdir(options.phoneDirectory, { recursive: true, mode: 0o700 });
-  const store = await openRelayStore(options.phoneDirectory);
+  const opened = await openRelayStore(options.phoneDirectory);
+  const delivering = deliveringStore(options, opened);
+  const { store } = delivering;
   const follower: { follow: (open: OpenPairing) => Promise<void> } = {
     follow: () => Promise.resolve(),
   };
@@ -206,7 +248,8 @@ export async function startRelay(options: RelayOptions): Promise<Relay> {
       relay.sessions.cancel();
       await beating;
       await socket.close();
-      await store.close();
+      await delivering.close();
+      await opened.close();
     },
   };
 }

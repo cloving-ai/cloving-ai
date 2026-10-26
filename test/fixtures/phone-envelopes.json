@@ -1,0 +1,71 @@
+{
+  "description": "Shared envelope vectors of the phone relay. Node, Swift and Kotlin open the same sealed texts and verify the same signatures. The keys are the keys of phone-pairing.json.",
+  "rules": {
+    "hpke": "RFC 9180 base mode, DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-256-GCM, info cloving-relay-v1",
+    "sealed": "enc (65-byte uncompressed point) followed by the AES-256-GCM ciphertext and its 16-byte tag",
+    "aad": "cloving-relay-v1|<daemon ID>|<device ID>|<kind>",
+    "plaintext": "canonical JSON {payload, signature}: payload is the canonical JSON of the envelope, signature is ECDSA P-256 SHA-256 in IEEE P1363 form over the payload, in base64url",
+    "padding": "the plaintext, then one 0x80 byte, then 0x00 bytes up to 1024, 4096, 16384 or 65536 bytes",
+    "envelope": "version, kind, daemonId, deviceId, sequence, issuedAt, expiresAt, body"
+  },
+  "daemon": {
+    "id": "dmn_fixture01",
+    "signingPublicKey": "BJ7zP5FRZlKjjw8ZkG917hXCScZ13J58SZCv1dxlOVIMI0FovOxZ2Bqn5UUCjBDCIhQ19mo2inIJwrDrGgbl19A"
+  },
+  "device": {
+    "id": "EBESExQVFhcYGRobHB0eHw",
+    "agreementPrivateKey": "y6CoxZdX4t50stOr2nLPqFtw6XPMDmtuKhK1Uqzfumo",
+    "agreementPublicKey": "BFoXzElSI5a7l0UNqB-lCYbJvkgbTWl8NpelWPVJmt6u5tmP1IlqpudOycKUjA-DtoUxCxpSsnVSzuDhKAch_zo"
+  },
+  "decision": {
+    "decisionId": "run-0123456789abcdef0123456789abcdef/review-1",
+    "label": null,
+    "type": "approval",
+    "runId": "run-0123456789abcdef0123456789abcdef",
+    "gateId": "review-1",
+    "prompt": "Approve the merge of the pull request \"Cut the release\"?\nThe tests pass. Café ☕ and 😀 test the UTF-8 path.",
+    "allowed": ["approve", "deny"],
+    "revision": 4,
+    "generation": 2,
+    "subjectDigest": "sha256:abababababababababababababababababababababababababababababababab",
+    "openedAt": "2026-10-25T11:59:00.000Z",
+    "expiresAt": null,
+    "context": [],
+    "feedback": []
+  },
+  "workflowId": "develop-ticket",
+  "target": {
+    "daemonId": "dmn_fixture01",
+    "deviceId": "EBESExQVFhcYGRobHB0eHw",
+    "issuedAt": "2026-10-25T12:00:00.000Z",
+    "expiresAt": "2026-11-01T11:00:00.000Z"
+  },
+  "envelopes": [
+    {
+      "kind": "preview",
+      "sequence": 1,
+      "ephemeralPrivateKey": "AJ5tSCl7SGAhWfBMik4stIfaAn0mS7Jb20gSouvi5HQ",
+      "enc": "BDWX95Q-ZwMTu9jy5pr0RDIystwEeV5ScGMOUiUwrtpCPp--EFNch5H_EPxypaC-rGJlD1Lsl0xmuMqpI2Cw4P4",
+      "sharedSecret": "2Cu9rXssnElpi9Yfr6JdLpHbsY4QWcSQvjRIFUaED28",
+      "aad": "cloving-relay-v1|dmn_fixture01|EBESExQVFhcYGRobHB0eHw|preview",
+      "payload": "{\"body\":{\"decisionId\":\"run-0123456789abcdef0123456789abcdef/review-1\",\"expiresAt\":null,\"label\":null,\"prompt\":\"Approve the merge of the pull request \\\"Cut the release\\\"?\\nThe tests pass. Café ☕ and 😀 test the UTF-8 path.\",\"truncated\":false,\"type\":\"approval\",\"workflowId\":\"develop-ticket\"},\"daemonId\":\"dmn_fixture01\",\"deviceId\":\"EBESExQVFhcYGRobHB0eHw\",\"expiresAt\":\"2026-11-01T11:00:00.000Z\",\"issuedAt\":\"2026-10-25T12:00:00.000Z\",\"kind\":\"preview\",\"sequence\":1,\"version\":1}",
+      "signature": "pu5n9YXrUMI0HjmSoJhgXlwOFVItkmH9TNjIzp1APyegq9QKzGNm3gBp8z0_z3BAGDAgGqfbZ7bs33hKE2pL3A",
+      "plaintextBytes": 644,
+      "paddedBytes": 1024,
+      "sealed": "BDWX95Q-ZwMTu9jy5pr0RDIystwEeV5ScGMOUiUwrtpCPp--EFNch5H_EPxypaC-rGJlD1Lsl0xmuMqpI2Cw4P7YN5jxD2QALTBYU7oy_D6oZd-j6b7XFI-a1IARBMdoS7HVeDPl1MP_yuFCV7BgL1AjasStCcfxGZYw_FfVYb7pt9NfXSUYdpG3DGuD3kt1cCJNyUv7wsyq-_OLRXjj1vVdyahRT1BTD__Ez-jo0V7iSlK2JZaVdEv2BOh4fNg-DPDjPmi8UsLAnwYb670RFShb_Z7Vt3Z0vewnSc6TogZ5142vgU3sqa23IFVWcivB76U13jrF84MM_5EdjUiflVJUdrbJ1gUmF1gWnT45ftHWUD3cbo8Z_nxbehzvMc4-BamJcdlMOvMw9lCFk1eP_wgBP4Z-gVkkTQAkXb3qGR_jXOQg9AHxar5gbfPdlZiPNiRLAyTzgRALzusTb_4Cs2B0G3V0PqhcJoAUxk4uS6bDwrt8dpWjYkd1kuFx6UfgDtFWfySxbiEWmUYDPQX8O1sZBBR5B9vIiX4Zi-nLNofVdlNrum25NmFtdo-ggrScfC8W8zQR3p26ZMmVSpi--T7X31j-DwrgkSMfmiaL_3AR_slZUlBQbBKxysg3pK3f51kYljh8PJNobYmEar2XdlGfrpa3TLUOhbZGem6tRAGLYKsPJPy7tIefElCQyWSlRTCQPACy--V4D71Sv0Qx138JXvXi_oa1YADMrpPskI5zx61CSfZ57lZXsmpjcZlpxXLtyOiXct_fdiud9TOBbTIU5GpQ4hgbQ0W_pVdZ423OxFjsskzFAZ_m0k92cDMzklqMJAHaAy0_TOvZEZbhCDqCBG1pgld9tnNsBxJeyWws78QOMM_61aO4s9a5ptt755J_fPJZPRuDPbqedNV4l5Y7HDtKUQqqMrmcoeP8_E6Mb_7_Et-P8E3sqbQfj7JgqKO_6of8eD6ESWG7a0elmCszrWvkNotOJxl2qjzd8b6AQsnEYs1VC45PnN9MvuIkalOLy7wK9fAQUdqVOC0FVqEuf0W-7LCPVuBbo3hM3he-SfOjWKd6k4dtqKus0qWURBbjqGIBzG5wf_TK8LWUc8ufGKkOJUVXAu-5m0Qj8M8wbdoMLS54WGsob-EbX-QGo5wZFM1-4jQCND3pmar4QxoB5mc9BC1zH8efq3Z9LelXiX8QcOyFBSYPfqUtkar1XcvvLjc8XcFi-IHQtpUp-y8F4d6eqW4AM_ZUt79eYpOCbaTzr2kbQFUM54mdAIG51pd8fWUJJFg-qZ9XMiFrblONoA8V411c4ZmzM8LqYaQaXTlmslqFOk_X7lMLn_RV6NDl3HtWDvV9kxCv3uoByrINM7wJPhEsdqx5pO6Y0YbLz44D4AvQY8zCK6DzA5qUYT5JqBnpLhEYNmV2RbApGP4h-bjP4yTikVm5y78SlOHVu3LqhcSjOERRuebszYu3Yw"
+    },
+    {
+      "kind": "full",
+      "sequence": 2,
+      "ephemeralPrivateKey": "XGnQogQC0DFJjQBQbys-j6b1XIwC9A4uWKSLGDgl_PU",
+      "enc": "BAolmw0adUiba2D2g0H_kqaYdWzacw_WhayPDLzK0x_lIzD3H-EgOicUVm9ogYvzyxeo3Yrog2ev7Zo4qeqEUy8",
+      "sharedSecret": "GXonyJyqPoFHXDkJgkDVsdr7zS-yjA9HFnXhf4PL7Pk",
+      "aad": "cloving-relay-v1|dmn_fixture01|EBESExQVFhcYGRobHB0eHw|full",
+      "payload": "{\"body\":{\"allowed\":[\"approve\",\"deny\"],\"decisionId\":\"run-0123456789abcdef0123456789abcdef/review-1\",\"expiresAt\":null,\"generation\":2,\"label\":null,\"prompt\":\"Approve the merge of the pull request \\\"Cut the release\\\"?\\nThe tests pass. Café ☕ and 😀 test the UTF-8 path.\",\"promptDigest\":\"sha256:b1b26037a30bc32f5e67dd2106bcaa61c37ab41150e9201ca7f28f1a525314c3\",\"revision\":4,\"runId\":\"run-0123456789abcdef0123456789abcdef\",\"subjectDigest\":\"sha256:abababababababababababababababababababababababababababababababab\",\"truncated\":false,\"type\":\"approval\",\"workflowId\":\"develop-ticket\"},\"daemonId\":\"dmn_fixture01\",\"deviceId\":\"EBESExQVFhcYGRobHB0eHw\",\"expiresAt\":\"2026-11-01T11:00:00.000Z\",\"issuedAt\":\"2026-10-25T12:00:00.000Z\",\"kind\":\"full\",\"sequence\":2,\"version\":1}",
+      "signature": "rj2mg43feK0WckxqPeKQTA044LmhtaClSdStECV9d0pePYaZruv0iEY-gXyxKF4quFpqxoIZ8rNDDd-T7t5rUQ",
+      "plaintextBytes": 946,
+      "paddedBytes": 1024,
+      "sealed": "BAolmw0adUiba2D2g0H_kqaYdWzacw_WhayPDLzK0x_lIzD3H-EgOicUVm9ogYvzyxeo3Yrog2ev7Zo4qeqEUy-Z0Ht_wMt8-72R8bpF35bRAvsA8kcUVRNZ2CtV2g7EtdN8epQkFtGf_PItq1brR1sS4G1FFEadUWJUSkvw-YJKSI06K_FOzV8XSQrzQNQU0miha3MqFqvoesK2-L-DnYsOIfp8GEYYac3c2ogt3LyyfKsJXgFyxVRfBT9pMQgP51ObNoDfmGfoAXAg7_WlGUu9cjogJ0flQpijURc577bBZDapaGMg_DDWcaNydqth6N_-gk8HitApEghvholY_Ki9bVtVDVfqUaIZLGMf-bMEvTDvuE6j2Afz9oLCakTqGyWC21gBK5WhXBIIy4pUsHxbRjaQcqYWd7TcZkZD-W65WvhobHE0P2SaQ7vYu-lArqYRuzm6oJDptUa4ayCQwxHGjpHu9_lM8clLK7r1SUwrFWEFWD0zOTNIBrCC8o9reAT0I4pMT-jurrKnEst6N9p5lFryYyYW93xuSsG-T-0ufr3HEXFKN4kkFbTscF08gmXW1gnxNxW9SR0P-IPsOgt_r7aPUIzgVsF1X8nNrP0PSMC--Sxx5k7KCc6RS8VRDOdoDorXvXQm2arxl96XvXPiWPfhBTSGiw2LSxqcsYhcltWa95N3L3Zqevc8isq-Jt3ibrjHm12bh1nFuj0TRFYkYuemymCOhEVnbAZFporZ3Egl4mXcLgLDVbnhp9sTJ_7Ql0QU4O8i6e0WzpJBvBdLllkfBdUd3rZZlCqul5MVwobYYaKRPncZps70P7FQ_0opBzIG2mYKhZXuVMGBoaAdMA9zC98r71Ykbj0I0bG_Qwl9WlGXiF0yswiEGY0PtEhm0K-ZEooKDKFEZFHlIi2XH3tk8AgWEShIZv8QS2wdgeKB6XH9VL9ENzC7cHzCoqCKxQfn57nSXTQj0JFtqpMm_rp0zD3QSaAkDdwMZLSiiy-FqzWV7sFbhgjqhTw6IxJVLXtRpeceSwzOKPArA6tvL0nWr9_iX5Iq8i48ISZd_J4qwqofsXoIF_qwLFrkmppGOtNkid2ee7zy5Evqfzl-CvpwA5mVOtaZ6LYJbNUPfoBFndS6uG0_hvdAYr5hHn41u_laYHZ0ZDlLtEbTABX2Xox5S1kKJ88ykJZzjaOB8M6Ky3Yenad0pxo7UXX5oNHYBg7D6sHVxrNM1yknhP4A-QkpBZ_o0pmSRVC37xtKw4V3LLS8fCEprS-fgTrLRYdHO_T-mQL4fldIJy8u9Kb3hwjFYHHMiiPHC83Qgc5uZaIJJn42Q04DzSr_d8cf1L6U2p3e5ASIRZO9fcc1xLOWZpKEbvgS1LQ6POkREtmsAkTXhSWtXRlRR63lNZQwp5Oesau9jrxSKonxfHVjZxLEU3oO1J0fY3KI7een1FNKuw6m3uSDtXLq3LQB0-g80g"
+    }
+  ]
+}

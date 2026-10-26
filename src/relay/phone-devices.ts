@@ -17,6 +17,8 @@ export class PhoneDevices extends Actor {
 
   devices: PhoneDevice[] = [];
 
+  sequences: { readonly deviceId: string; readonly sequence: number }[] = [];
+
   add({ device }: { readonly device: PhoneDevice }): PhoneDevice {
     const removed = this.devices.some(
       (item) => item.deviceId === device.deviceId && item.removedAt !== null,
@@ -30,6 +32,17 @@ export class PhoneDevices extends Actor {
       device,
     ];
     return device;
+  }
+
+  nextSequence({ deviceId }: { readonly deviceId: string }): number {
+    const sequence =
+      (this.sequences.find((item) => item.deviceId === deviceId)?.sequence ??
+        0) + 1;
+    this.sequences = [
+      ...this.sequences.filter((item) => item.deviceId !== deviceId),
+      { deviceId, sequence },
+    ];
+    return sequence;
   }
 
   connect({ deviceId }: { readonly deviceId: string }): boolean {

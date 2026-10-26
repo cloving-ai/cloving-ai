@@ -32,6 +32,15 @@ function readKeys(phoneDirectory: string): Promise<DaemonKeys | undefined> {
   );
 }
 
+export async function storedRegistration(
+  phoneDirectory: string,
+): Promise<Registration | undefined> {
+  const link = await readLink(phoneDirectory);
+  const keys = await readKeys(phoneDirectory);
+  if (link === undefined || keys === undefined) return undefined;
+  return { link, keys };
+}
+
 export async function forgetRegistration(
   phoneDirectory: string,
 ): Promise<void> {

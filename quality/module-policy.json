@@ -1040,6 +1040,26 @@
     "src/relay/relay-heartbeat.ts": "relay",
     "src/relay/relay-control.ts": "relay",
     "test/phone-heartbeat.test.ts": "test",
+    "src/delivery-backoff.ts": "pure",
+    "src/relay/hpke.ts": "relay",
+    "src/relay/envelope.ts": "relay",
+    "src/relay/decision-envelopes.ts": "relay",
+    "src/relay/decision-check.ts": "relay",
+    "src/relay/decision-watch.ts": "relay",
+    "src/relay/envelope-post.ts": "relay",
+    "src/relay/phone-delivery.ts": "relay",
+    "test/phone-envelope-fixture.ts": "test",
+    "test/fixtures/hpke-cfrg-p256-sha256-aes256gcm.json": "test",
+    "test/fixtures/phone-envelopes.json": "test",
+    "test/relay-hpke.test.ts": "test",
+    "test/relay-envelope.test.ts": "test",
+    "test/relay-envelope-vectors.test.ts": "test",
+    "test/relay-decision-envelopes.test.ts": "test",
+    "test/relay-delivery.test.ts": "test",
+    "test/relay-decision-check.test.ts": "test",
+    "test/relay-decision-watch.test.ts": "test",
+    "test/relay-envelope-post.test.ts": "test",
+    "test/relay-decision-check-cases.test.ts": "test",
     "test/phone-heartbeat-races.test.ts": "test",
     "test/phone-heartbeat-fixture.ts": "test",
     "test/service-question-fixture.ts": "test",
@@ -1278,13 +1298,19 @@
         "file": "node_modules/solid-objects/dist/actor.d.ts",
         "type": "Actor",
         "members": ["emit"],
-        "users": ["src/broker/actor/authority-actor.ts"]
+        "users": [
+          "src/broker/actor/authority-actor.ts",
+          "src/relay/phone-delivery.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
         "members": ["registerEffect"],
-        "users": ["src/broker/actor/authority-release.ts"]
+        "users": [
+          "src/broker/actor/authority-release.ts",
+          "src/relay/relay-store.ts"
+        ]
       },
       {
         "file": "node_modules/solid-objects/dist/actor.d.ts",
