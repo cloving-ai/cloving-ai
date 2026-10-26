@@ -1,4 +1,5 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { link, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readRetainedWorkflowBundle } from "./workflow-bundles.ts";
 
@@ -31,7 +32,17 @@ export async function adoptRuntimeDirectory(
     repository,
     runtimeDirectory: legacyRuntime,
   });
-  await writeFile(adoptionRecord, contents, { flag: "wx", mode: 0o600 });
+  const temporary = `${adoptionRecord}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, contents, {
+      flag: "wx",
+      mode: 0o600,
+      flush: true,
+    });
+    await link(temporary, adoptionRecord);
+  } finally {
+    await rm(temporary, { force: true });
+  }
   return { runtime: legacyRuntime, note: "" };
 }
 

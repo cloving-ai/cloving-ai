@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import filesystem from "node:fs/promises";
 import {
   chmod,
   mkdir,
@@ -7,6 +8,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
@@ -54,6 +56,17 @@ function retain(root: string, repository: string) {
   });
 }
 
+async function prepareBundles(root: string, contents: string): Promise<void> {
+  if (["foreign", "mixed"].includes(contents))
+    await retain(root, join(root, "other"));
+  if (!["mixed", "damaged", "unreadable"].includes(contents)) return;
+  const id = await retain(root, join(root, "repository"));
+  const bundle = join(root, "state/cloving/workflow-bundles", id);
+  if (contents === "damaged")
+    await writeFile(join(bundle, "artifacts/flow.mjs"), "damaged");
+  if (contents === "unreadable") await chmod(join(bundle, "bundle.json"), 0);
+}
+
 await test("CLV-204 start adopts only its retained bundles and clients reuse the record", () =>
   withFiles(files, async (root) => {
     const input = selection(root);
@@ -91,20 +104,91 @@ await test("CLV-204 start adopts only its retained bundles and clients reuse the
     );
   }));
 
+await test("CLV-204 clients only see complete adoption records", () =>
+  withFiles(files, async (root) => {
+    const input = selection(root);
+    await retain(root, input.repository);
+    const original = filesystem.writeFile;
+    let observed = false;
+    filesystem.writeFile = async (path, contents) => {
+      await original(path, "{");
+      observed = true;
+      assert.equal(
+        runtimeDirectory(input.environment, input.repository),
+        input.runtime,
+      );
+      await original(path, contents);
+    };
+    syncBuiltinESMExports();
+    try {
+      assert.equal(
+        (await adoptRuntimeDirectory(input)).runtime,
+        input.legacyRuntime,
+      );
+      assert.equal(observed, true);
+      assert.equal(
+        runtimeDirectory(input.environment, input.repository),
+        input.legacyRuntime,
+      );
+      assert.deepEqual(await readdir(dirname(input.adoptionRecord)), [
+        basename(input.adoptionRecord),
+      ]);
+    } finally {
+      filesystem.writeFile = original;
+      syncBuiltinESMExports();
+    }
+  }));
+
+await test("CLV-204 failed adoption writes leave no published record", () =>
+  withFiles(files, async (root) => {
+    const input = selection(root);
+    await retain(root, input.repository);
+    const original = filesystem.writeFile;
+    filesystem.writeFile = async (path) => {
+      await original(path, "{");
+      throw new Error("interrupted-write");
+    };
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(adoptRuntimeDirectory(input), /interrupted-write/);
+      assert.equal(
+        runtimeDirectory(input.environment, input.repository),
+        input.runtime,
+      );
+      assert.deepEqual(await readdir(dirname(input.adoptionRecord)), []);
+    } finally {
+      filesystem.writeFile = original;
+      syncBuiltinESMExports();
+    }
+    assert.equal(
+      (await adoptRuntimeDirectory(input)).runtime,
+      input.legacyRuntime,
+    );
+  }));
+
+await test("CLV-204 adoption cannot replace an existing record", () =>
+  withFiles(files, async (root) => {
+    const input = selection(root);
+    await retain(root, input.repository);
+    await mkdir(dirname(input.adoptionRecord), { recursive: true });
+    const existing = JSON.stringify({
+      schemaVersion: 1,
+      repository: input.repository,
+      runtimeDirectory: join(root, "existing/run"),
+    });
+    await writeFile(input.adoptionRecord, existing);
+    await assert.rejects(adoptRuntimeDirectory(input), { code: "EEXIST" });
+    assert.equal(await readFile(input.adoptionRecord, "utf8"), existing);
+    assert.deepEqual(await readdir(dirname(input.adoptionRecord)), [
+      basename(input.adoptionRecord),
+    ]);
+  }));
+
 for (const contents of ["empty", "foreign", "mixed", "damaged", "unreadable"]) {
   await test(`CLV-204 legacy ${contents} bundles prevent adoption and produce a note`, () =>
     withFiles(files, async (root) => {
       const input = selection(root);
-      if (["foreign", "mixed"].includes(contents))
-        await retain(root, join(root, "other"));
-      if (["mixed", "damaged", "unreadable"].includes(contents)) {
-        const id = await retain(root, input.repository);
-        const bundle = join(root, "state/cloving/workflow-bundles", id);
-        if (contents === "damaged")
-          await writeFile(join(bundle, "artifacts/flow.mjs"), "damaged");
-        if (contents === "unreadable")
-          await chmod(join(bundle, "bundle.json"), 0);
-      }
+      await prepareBundles(root, contents);
       try {
         const result = await adoptRuntimeDirectory(input);
         assert.equal(result.runtime, input.runtime);

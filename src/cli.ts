@@ -179,21 +179,21 @@ async function start(): Promise<number> {
     typeof selected === "string" ? selected : process.cwd(),
   );
   const runtime = runtimeDirectory(process.env, repository);
-  if (runtime !== undefined) {
-    let status = await started({ runtime, argumentsList: options, repository });
-    const restarting = options.filter((option) => option !== "--reset-queue");
-    while (status === 75)
-      status = await started({
-        runtime,
-        argumentsList: restarting,
-        repository,
-      });
-    return status === 0 ? 0 : 1;
+  if (runtime === undefined) {
+    process.stderr.write(
+      "repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.\n",
+    );
+    return 1;
   }
-  process.stderr.write(
-    "repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.\n",
-  );
-  return 1;
+  let status = await started({ runtime, argumentsList: options, repository });
+  const restarting = options.filter((option) => option !== "--reset-queue");
+  while (status === 75)
+    status = await started({
+      runtime,
+      argumentsList: restarting,
+      repository,
+    });
+  return status === 0 ? 0 : 1;
 }
 
 if (command === "start") process.exitCode = await start();
