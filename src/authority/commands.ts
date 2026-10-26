@@ -77,7 +77,7 @@ const shapes: Readonly<Record<string, Shape>> = {
   "register-wait": { required: ["gateId"] },
   "decide-gate": {
     required: ["gateId", "decision", "expectedRevision"],
-    optional: ["generation", "subject", "answer"],
+    optional: ["generation", "subject", "answer", "actor"],
     groups: [["generation", "subject"]],
     consistent: (fields) => {
       const typed = fields["generation"] !== undefined;
@@ -329,7 +329,14 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   condition: (value) => typeof value === "string" && conditions.includes(value),
   expiresAt: isInstant,
   retryAt: isInstant,
+  actor: isDeviceActor,
 };
+
+export function isDeviceActor(value: unknown): value is string {
+  return (
+    typeof value === "string" && /^device:[A-Za-z0-9_-]{1,64}$/.test(value)
+  );
+}
 
 export function isIdentifier(value: unknown): value is string {
   return typeof value === "string" && identifier.test(value);
