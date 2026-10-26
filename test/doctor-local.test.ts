@@ -285,21 +285,25 @@ await test("CLV-207 settings repairs name both concrete files when schema errors
     });
     await writeFile(
       privateFile,
-      JSON.stringify({ version: 1, harness: { name: "missing-harness" } }),
+      JSON.stringify({ version: 1, harness: { name: 7 } }),
     );
-    assert.ok(
-      String(check(await scene.report(), "settings-files")["fix"]).includes(
-        privateFile,
-      ),
-    );
+    const privateCheck = check(await scene.report(), "settings-files");
+    assert.equal(privateCheck["result"], "fail");
+    assert.equal(privateCheck["detail"], "invalid-setting: harness.name");
+    const projectFile = join(scene.repository, ".cloving/config.json");
+    for (const file of [privateFile, projectFile])
+      assert.ok(String(privateCheck["fix"]).includes(file));
     await writeFile(privateFile, '{"version":1}');
     await settings(scene, {
       version: 1,
       privateTexts: ["not allowed in project"],
     });
-    assert.ok(
-      String(check(await scene.report(), "settings-files")["fix"]).includes(
-        join(scene.repository, ".cloving/config.json"),
-      ),
+    const projectCheck = check(await scene.report(), "settings-files");
+    assert.equal(projectCheck["result"], "fail");
+    assert.equal(
+      projectCheck["detail"],
+      "private-setting-in-project-file: privateTexts",
     );
+    for (const file of [privateFile, projectFile])
+      assert.ok(String(projectCheck["fix"]).includes(file));
   }));
