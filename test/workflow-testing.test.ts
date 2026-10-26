@@ -18,7 +18,7 @@ const source = `import { protectedEffect } from ${JSON.stringify(effectModule)};
 export async function sample(input) {
   return await protectedEffect({
     scope: { phase: "work", operation: "turn", round: 1 },
-    capability: "claude", method: "run-turn", target: "sample", payload: input, units: 1,
+    capability: "claude", method: "run-turn", target: "sample", payload: JSON.stringify(input), units: 1,
   });
 }`;
 const completed = {
@@ -27,6 +27,48 @@ const completed = {
   receipt: null,
   result: "scenario-result",
 } as const;
+
+await test("CLV-224 fake handoffs share the effect budget and charge one unit", async () => {
+  {
+    using bridge = fakeStepBridge({ effectLimit: 0 });
+    await assert.rejects(handoff({ workflowId: "other", input: {} }), {
+      message: "budget-exhausted",
+    });
+    assert.equal(bridge.spent, 0);
+  }
+  {
+    using bridge = fakeStepBridge({
+      effectLimit: 2,
+      effects: { handoff: [{ ...completed, result: "queued-run" }] },
+      turn: completed,
+    });
+    assert.equal(
+      await handoff({ workflowId: "other", input: {} }),
+      "queued-run",
+    );
+    assert.equal(bridge.spent, 1);
+    assert.equal(
+      await handoff({ workflowId: "other", input: {} }),
+      "target-run",
+    );
+    assert.equal(bridge.spent, 2);
+    assert.deepEqual(
+      await protectedEffect({
+        scope: { phase: "work", operation: "turn", round: 1 },
+        capability: "claude",
+        method: "run-turn",
+        target: "sample",
+        payload: "",
+        units: 1,
+      }),
+      { kind: "refused", reason: "budget-exhausted" },
+    );
+    await assert.rejects(handoff({ workflowId: "other", input: {} }), {
+      message: "budget-exhausted",
+    });
+    assert.equal(bridge.spent, 2);
+  }
+});
 
 await test("CLV-224 a portable scenario captures requests and returns fake step results", () =>
   withFiles({ "sample.mjs": source }, async (root) => {
@@ -40,6 +82,28 @@ await test("CLV-224 a portable scenario captures requests and returns fake step 
     assert.equal(result.requests.length, 1);
     assert.deepEqual(result.requests[0]?.[0], "effect");
   }));
+
+await test("CLV-224 refused effects preserve the next queued scenario result", async () => {
+  using bridge = fakeStepBridge({
+    effects: { "claude run-turn": [completed] },
+    effectLimit: 1,
+  });
+  const request = {
+    scope: { phase: "work", operation: "turn", round: 1 },
+    capability: "claude",
+    method: "run-turn",
+    target: "sample",
+    payload: "",
+    units: 2,
+  };
+  assert.deepEqual(await protectedEffect(request), {
+    kind: "refused",
+    reason: "budget-exhausted",
+  });
+  assert.equal(bridge.spent, 0);
+  assert.deepEqual(await protectedEffect({ ...request, units: 1 }), completed);
+  assert.equal(bridge.spent, 1);
+});
 
 await test("CLV-224 fake bridges restore prior descriptors and refuse an active host", async () => {
   const key = Symbol.for("cloving.step-bridge/v1");
@@ -155,6 +219,29 @@ await test("CLV-224 scenarios consume effect queues and apply the declared fake 
       reason: "no-scenario-result",
     });
   }));
+
+await test("CLV-224 scenario results are independent of import and workflow logging", () =>
+  withFiles(
+    {
+      "logged.mjs": `console.log("import log");
+process.stdout.write('{"outcome":"untrusted stdout"}');
+export async function logged() {
+  console.log("workflow log");
+  process.stdout.write("x".repeat(2_000_000));
+  console.error("workflow error log");
+  process.stderr.write("y".repeat(2_000_000));
+  return "logged result";
+}`,
+    },
+    async (root) => {
+      const result = await runScenario({
+        workflow: join(root, "logged.mjs"),
+        exportName: "logged",
+        input: null,
+      });
+      assert.deepEqual(result, { outcome: "logged result", requests: [] });
+    },
+  ));
 
 await test("CLV-224 scenarios support decisions, gates, handoffs and run waits", () => {
   const helpers = pathToFileURL(resolve("src/workflows.ts")).href;

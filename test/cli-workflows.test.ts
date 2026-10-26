@@ -154,6 +154,50 @@ await test("CLV-224 project and user tests import the packaged fake bridge", () 
     },
   ));
 
+await test("CLV-224 workflow tests use the selected repository as their working directory", () =>
+  withFiles(
+    {
+      ...Object.fromEntries(
+        Object.entries(operatorFiles("project", "develop")).map(
+          ([file, bytes]) => [file.replace("repo/", "selected/"), bytes],
+        ),
+      ),
+      ...operatorFiles("user", "personal"),
+      "repo/marker": "caller",
+      "selected/marker": "selected repository",
+      "selected/.cloving/workflows/develop.test.ts": workflowTest("develop")
+        .replace(
+          "import assert",
+          'import { readFile } from "node:fs/promises";\nimport assert',
+        )
+        .replace(
+          "const result =",
+          'assert.equal(await readFile("marker", "utf8"), "selected repository");\n  const result =',
+        )
+        .replace(
+          'new URL("./develop.ts", import.meta.url).href',
+          '".cloving/workflows/develop.ts"',
+        ),
+      "config/cloving/workflows/personal.test.ts": workflowTest("personal")
+        .replace(
+          "import assert",
+          'import { readFile } from "node:fs/promises";\nimport assert',
+        )
+        .replace(
+          "const result =",
+          'assert.equal(await readFile("marker", "utf8"), "selected repository");\n  const result =',
+        ),
+    },
+    (root) => {
+      const result = cli(root, {
+        args: ["test", "--repository", "../selected"],
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /portable develop scenario/);
+      assert.match(result.stdout, /portable personal scenario/);
+    },
+  ));
+
 await test("CLV-224 workflow test preserves assertion output and the runner failure status", () =>
   withFiles(
     {

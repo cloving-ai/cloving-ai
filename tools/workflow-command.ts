@@ -45,15 +45,19 @@ export async function workflowCommand(
   }
   const temporary = await mkdtemp(join(tmpdir(), "cloving-workflows-"));
   try {
+    const repository = resolve(selected.repository ?? process.cwd());
     const result = await preparedProject({
       product: resolve(import.meta.dirname, ".."),
       project: join(temporary, "project"),
-      repository: resolve(selected.repository ?? process.cwd()),
+      repository,
       home: homedir(),
       xdgConfigHome: process.env["XDG_CONFIG_HOME"],
     });
     if (selected.command === "test")
-      return await testWorkflows(result.workflows, selected.id);
+      return await testWorkflows(result.workflows, {
+        id: selected.id,
+        repository,
+      });
     presentWorkflows(result.workflows, { json: selected.json === true });
     return 0;
   } catch (error) {
@@ -84,8 +88,9 @@ function presentWorkflows(
 
 async function testWorkflows(
   workflows: readonly WorkflowListing[],
-  id: string | undefined,
+  options: { readonly id: string | undefined; readonly repository: string },
 ): Promise<number> {
+  const { id, repository } = options;
   const selected = workflows.filter(
     (workflow) =>
       workflow.scope !== "bundled" &&
@@ -114,10 +119,13 @@ async function testWorkflows(
     );
     return 1;
   }
-  return await runTests(files);
+  return await runTests(files, repository);
 }
 
-function runTests(files: readonly string[]): Promise<number> {
+function runTests(
+  files: readonly string[],
+  repository: string,
+): Promise<number> {
   return new Promise((settle, reject) => {
     const child = spawn(
       process.execPath,
@@ -129,6 +137,7 @@ function runTests(files: readonly string[]): Promise<number> {
         ...files,
       ],
       {
+        cwd: repository,
         stdio: "inherit",
         env: { ...process.env, NODE_TEST_CONTEXT: undefined },
       },
