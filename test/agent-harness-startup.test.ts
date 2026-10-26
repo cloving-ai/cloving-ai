@@ -149,6 +149,43 @@ await test("CLV-208 retries an unusable caller PATH file with its shell PATH", (
     ]);
   }));
 
+for (const [failure, reason] of [
+  ["/bin/sleep 30", "probe-timeout"],
+  ["printf '%070000d' 1", "probe-output-limit"],
+] as const) {
+  await test(`CLV-208 shell startup repairs a caller PATH file after ${reason}`, async () => {
+    await Promise.all(
+      ["/bin/zsh", "/bin/bash"].map((shell) =>
+        withHarnesses(async (scene) => {
+          const path = await scene.file(
+            "codex",
+            `printf 'probe\\n' >> "$HOME/probes"\nif test "\${HARNESS_READY-}" != yes; then ${failure}; exit; fi\ntest "$1" = --version && printf 'codex-cli 0.108.0\\n'`,
+          );
+          await scene.startup("export HARNESS_READY=yes\n");
+          const result = await discoverHarnesses({
+            env: { ...scene.options.env, SHELL: shell },
+          });
+          assert.equal(result.shellReason, null);
+          assert.deepEqual(result.entries, [
+            {
+              name: "codex",
+              kind: "file",
+              path,
+              version: "codex-cli 0.108.0",
+              working: true,
+              reason: null,
+            },
+          ]);
+          assert.equal(
+            await readFile(join(scene.directory, "probes"), "utf8"),
+            "probe\nprobe\n",
+          );
+        }),
+      ),
+    );
+  });
+}
+
 await test("CLV-208 Bash retries a failed login definition in its interactive startup mode", () =>
   withHarnesses(async (scene) => {
     await scene.startup('codex() { printf "Error: unavailable\\n"; }\n');

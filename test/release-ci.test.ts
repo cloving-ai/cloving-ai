@@ -194,14 +194,15 @@ sudo() {
   if [[ "$*" == "apt-get update" ]]; then return "$UPDATE_STATUS"; fi
 }
 `;
+  const command = fixture + run;
   for (const [zshStatus, updateStatus, status, output] of [
     ["0", "0", 0, ""],
     ["1", "0", 0, "apt-get update\napt-get install -y zsh\n"],
     ["1", "9", 9, "apt-get update\n"],
   ] as const) {
-    const result: ReturnType<typeof spawnSync> = spawnSync(
+    const result = spawnSync(
       "/bin/bash",
-      ["-e", "-o", "pipefail", "-c", fixture + run],
+      ["-e", "-o", "pipefail", "-c", command],
       {
         env: { ZSH_STATUS: zshStatus, UPDATE_STATUS: updateStatus },
         encoding: "utf8",
@@ -209,7 +210,7 @@ sudo() {
       },
     );
     assert.equal(result.error, undefined);
-    assert.equal(result.status, status, String(result.stderr));
+    assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);
   }
 });

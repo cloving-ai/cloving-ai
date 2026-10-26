@@ -234,16 +234,7 @@ async function probeCandidates(
   },
 ): Promise<HarnessEntry[]> {
   const { files, env } = options;
-  const settled = new Set(
-    files
-      .filter(
-        (file) =>
-          file.working ||
-          file.reason === "probe-timeout" ||
-          file.reason === "probe-output-limit",
-      )
-      .map(entryKey),
-  );
+  const settled = new Set(files.filter((file) => file.working).map(entryKey));
   const groups = new Map<string, ShellCandidate[]>();
   for (const candidate of candidates) {
     const key = entryKey(candidate.entry);

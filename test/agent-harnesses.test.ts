@@ -142,13 +142,13 @@ await test("CLV-208 PATH chooses its first executable file and skips directories
     );
   }));
 
-await test("CLV-208 file probes stop at ten seconds", () =>
+await test("CLV-208 file probes and shell retries each stop at ten seconds", () =>
   withHarnesses(async (scene) => {
     await scene.file("pi", '/bin/sleep 30; printf "pi 1.2\\n"');
     const began = performance.now();
     const result = await discoverHarnesses(scene.options);
     const elapsed = performance.now() - began;
-    assert.ok(elapsed >= 10000 && elapsed < 15000);
+    assert.ok(elapsed >= 20000 && elapsed < 25000);
     assert.deepEqual(
       result.entries.map(({ reason, working }) => ({ reason, working })),
       [{ reason: "probe-timeout", working: false }],
