@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import ts from "typescript";
-import type { WorkflowCandidateCode } from "../src/workflow-candidate.ts";
+import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
+import {
+  isCandidateDeclaration,
+  type CandidateDeclaration,
+  type WorkflowCandidateCode,
+} from "../src/workflow-candidate.ts";
 import { record } from "../src/protocol.ts";
 import {
   workflowConflicts,
@@ -65,7 +70,17 @@ export interface WorkflowFolderRefusal extends WorkflowLabel {
   )[];
 }
 
+export interface WorkflowListing {
+  readonly scope: "bundled" | "project" | "user";
+  readonly workflowId: string | null;
+  readonly file: string;
+  readonly admitted: boolean;
+  readonly codes: readonly string[];
+  readonly declaration?: CandidateDeclaration | WorkflowDeclaration;
+}
+
 export interface WorkflowFolderResult {
+  readonly workflows: readonly WorkflowListing[];
   readonly repository: string;
   readonly candidates: readonly WorkflowFolderCandidate[];
   readonly refusals: readonly WorkflowFolderRefusal[];
@@ -216,6 +231,60 @@ async function scanFolders(
   return { repository, snapshots };
 }
 
+function workflowFolder(
+  input: WorkflowFolderInput,
+  scope: "project" | "user",
+): string {
+  const configuration =
+    input.xdgConfigHome && isAbsolute(input.xdgConfigHome)
+      ? input.xdgConfigHome
+      : join(input.home, ".config");
+  return scope === "project"
+    ? join(input.repository, ".cloving", "workflows")
+    : join(configuration, "cloving", "workflows");
+}
+
+function folderListings(
+  input: WorkflowFolderInput,
+  found: {
+    readonly repository: string;
+    readonly snapshots: readonly DiscoveredWorkflow[];
+    readonly refusals: readonly WorkflowFolderRefusal[];
+  },
+): WorkflowListing[] {
+  const { repository, snapshots, refusals } = found;
+  const workflows = snapshots.map((entry): WorkflowListing => {
+    const snapshot = entry.kind === "captured" ? entry.snapshot : entry;
+    const declaration = parsedDeclaration(snapshot.declaration ?? "");
+    const refusal = refusals.find(
+      (item) => item.scope === snapshot.scope && item.label === snapshot.label,
+    );
+    const folder = workflowFolder({ ...input, repository }, snapshot.scope);
+    return {
+      scope: snapshot.scope,
+      workflowId: isCandidateDeclaration(declaration)
+        ? declaration.workflow.workflowId
+        : null,
+      file: join(folder, snapshot.baseName + ".ts"),
+      admitted: refusal === undefined,
+      codes: refusal?.codes ?? [],
+      ...(isCandidateDeclaration(declaration) ? { declaration } : {}),
+    };
+  });
+  return [
+    ...workflows,
+    ...refusals
+      .filter((refusal) => refusal.label === "workflows/")
+      .map((refusal) => ({
+        scope: refusal.scope,
+        workflowId: null,
+        file: workflowFolder({ ...input, repository }, refusal.scope),
+        admitted: false,
+        codes: refusal.codes,
+      })),
+  ];
+}
+
 export async function loadWorkflowFolders(
   input: WorkflowFolderInput,
   installed: CandidatePackageOptions = {},
@@ -259,6 +328,7 @@ export async function loadWorkflowFolders(
       });
   }
   return {
+    workflows: folderListings(input, { repository, snapshots, refusals }),
     repository,
     candidates: candidates.sort(compareLabels),
     refusals: refusals.sort(compareLabels),

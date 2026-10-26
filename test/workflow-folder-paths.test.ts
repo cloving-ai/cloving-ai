@@ -49,6 +49,7 @@ await test("CLV-124 missing folders are empty and never created", () =>
   withFiles({ "repo/marker": "" }, async (directory) => {
     const result = await loadWorkflowFolders(folderInput(directory));
     assert.deepEqual(result, {
+      workflows: [],
       repository: join(directory, "repo"),
       candidates: [],
       refusals: [],

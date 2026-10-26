@@ -1106,7 +1106,15 @@
     "test/agent-harness-protocol.test.ts": "test",
     "test/agent-harness-startup.test.ts": "test",
     "test/quality/setup-shells.test.ts": "test",
-    "tools/check-shells.ts": "build"
+    "tools/check-shells.ts": "build",
+    "tools/workflow-command.ts": "candidate-adapter",
+    "test/cli-workflows.test.ts": "test",
+    "src/testing.ts": "candidate-adapter",
+    "tools/workflow-test-loader.ts": "candidate-adapter",
+    "test/workflow-testing.test.ts": "test",
+    "test/workflow-testing-requests.test.ts": "test",
+    "test/packed-workflow-testing.ts": "test",
+    "test/workflow-test-signals.test.ts": "test"
   },
   "allowed": {
     "quality": [

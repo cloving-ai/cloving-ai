@@ -29,6 +29,7 @@ import {
 import {
   loadWorkflowFolders,
   type WorkflowFolderCandidate,
+  type WorkflowListing,
 } from "./workflow-folders.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
 import { retainWorkflowBundle } from "./workflow-bundles.ts";
@@ -46,6 +47,7 @@ interface ProjectSettings {
 }
 
 export interface RegisteredWorkflows {
+  readonly workflows: readonly WorkflowListing[];
   readonly repository: string;
   readonly bundleDigest: string;
   readonly manifests: Readonly<Record<string, string>>;
@@ -245,6 +247,51 @@ async function copyWorkflow(
     await writeFile(join(project, "workflows", sidecar), declaration);
 }
 
+function bundledListings(input: {
+  readonly product: string;
+  readonly files: readonly string[];
+  readonly manifests: ReturnType<typeof workflowManifests>;
+  readonly declarations: readonly DeclaredWorkflow[];
+}): WorkflowListing[] {
+  const { product, files, manifests, declarations } = input;
+  const byFunction = new Map(
+    declarations.map(({ functionName, ...declaration }) => [
+      functionName,
+      declaration,
+    ]),
+  );
+  return Object.entries(manifests).map(([functionName, manifest]) => {
+    const declaration = byFunction.get(functionName);
+    const file = files.find(
+      (file) => basename(file, extname(file)) === manifest.name,
+    );
+    return {
+      scope: "bundled" as const,
+      workflowId: declaration?.workflowId ?? manifest.name,
+      file: join(product, "workflows", file ?? manifest.name),
+      admitted: true,
+      codes: [],
+      ...(declaration === undefined ? {} : { declaration }),
+    };
+  });
+}
+
+async function writeManifests(
+  project: string,
+  compiled: ReturnType<typeof workflowManifests>,
+): Promise<Record<string, string>> {
+  const manifests: Record<string, string> = {};
+  for (const [functionName, manifest] of Object.entries(compiled)) {
+    const path = join(project, `${manifest.name}.workflow.json`);
+    await writeFile(path, JSON.stringify(manifest));
+    Object.defineProperty(manifests, functionName, {
+      value: path,
+      enumerable: true,
+    });
+  }
+  return manifests;
+}
+
 export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
@@ -271,17 +318,10 @@ export async function preparedProject(
       operatorDeclaration({ ...candidate, project }, compiled),
     ),
   ];
-  const manifests: Record<string, string> = {};
-  for (const [functionName, manifest] of Object.entries(
+  const manifests = await writeManifests(
+    project,
     workflowManifests(compiled, combined),
-  )) {
-    const path = join(project, `${manifest.name}.workflow.json`);
-    await writeFile(path, JSON.stringify(manifest));
-    Object.defineProperty(manifests, functionName, {
-      value: path,
-      enumerable: true,
-    });
-  }
+  );
   await writeFile(join(project, "declarations.json"), JSON.stringify(combined));
   await writeFile(
     join(project, "dependencies.json"),
@@ -295,7 +335,15 @@ export async function preparedProject(
     repository: folders.repository,
     directory: join(dirname(project), "workflow-bundles"),
   });
+  const workflows = bundledListings({
+    product,
+    files,
+    manifests: bundled,
+    declarations,
+  });
+  workflows.push(...folders.workflows);
   return {
+    workflows,
     repository: folders.repository,
     bundleDigest,
     manifests,
