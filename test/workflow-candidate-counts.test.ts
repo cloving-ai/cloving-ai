@@ -10,6 +10,13 @@ import {
 
 const effect = `await ${candidateEffectExpression};`;
 
+await test("CLV-216 preserves runtime accounting for recursion without local imports", () => {
+  assert.deepEqual(
+    checked(`${effect} if (input.units) await candidate(input);`, 1).codes,
+    [],
+  );
+});
+
 function checked(body: string, limit: number) {
   const facts = analyzeWorkflowCandidate(candidateSource(body));
   const declaration = {
