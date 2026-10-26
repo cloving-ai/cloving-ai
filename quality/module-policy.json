@@ -803,6 +803,7 @@
     "test/self-update-lock.test.ts": "test",
     "test/self-update.test.ts": "test",
     "test/self-host-processes.test.ts": "test",
+    "test/self-host-fixture-cleanup.test.ts": "test",
     "test/self-host-processes-fixture.ts": "test",
     "test/cli-start-fixture.ts": "test",
     "test/cli-start-restart.test.ts": "test",
