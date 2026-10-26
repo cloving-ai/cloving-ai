@@ -50,8 +50,15 @@ await test("CLV-207 bundled queue requires and fails an absent next command", ()
 
 await test("CLV-207 the effective harness command uses the service search path", () =>
   withDoctor(async (scene) => {
+    const marker = join(scene.root, "service-node-probed");
+    await scene.program("node", "process.exit(91)");
+    await writeFile(
+      join(scene.repository, "worker.mjs"),
+      `import assert from "node:assert/strict"; import { writeFileSync } from "node:fs"; assert.deepEqual(process.argv.slice(2), ["--version"]); writeFileSync(${JSON.stringify(marker)}, "probed"); console.log("2.1.1 (Claude Code)");`,
+    );
     const output = await scene.report({
       CLOVING_CLAUDE_COMMAND: '["node","worker.mjs"]',
     });
     assert.equal(check(output, "default-harness")["result"], "ok");
+    await assert.doesNotReject(access(marker));
   }));

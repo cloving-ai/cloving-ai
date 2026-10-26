@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { test } from "node:test";
 import { check, githubReads, withDoctor } from "./doctor-fixture.ts";
 
@@ -46,7 +47,7 @@ await test("CLV-207 login failures skip dependent GitHub reads and name the conf
     assert.equal(check(output, "greptile-review")["result"], "skip");
   }));
 
-await test("CLV-207 a non GitHub origin fails without contacting it", () =>
+await test("CLV-207 a local origin fails without contacting it", () =>
   withDoctor(async (scene) => {
     execFileSync("git", [
       "-C",
@@ -54,7 +55,7 @@ await test("CLV-207 a non GitHub origin fails without contacting it", () =>
       "remote",
       "set-url",
       "origin",
-      "git@gitlab.com:example/project.git",
+      "file:///local/project.git",
     ]);
     const output = await scene.report();
     assert.equal(check(output, "github-origin")["result"], "fail");
@@ -63,6 +64,89 @@ await test("CLV-207 a non GitHub origin fails without contacting it", () =>
       /remote set-url origin/,
     );
     assert.equal(check(output, "greptile-review")["result"], "skip");
+  }));
+
+for (const origin of [
+  "git@github.example.test:example/project.git",
+  "https://github.example.test/example/project.git",
+])
+  await test(`CLV-207 Enterprise origin ${origin} scopes login and every GitHub read to its host`, () =>
+    withDoctor(async (scene) => {
+      execFileSync("git", [
+        "-C",
+        scene.repository,
+        "remote",
+        "set-url",
+        "origin",
+        origin,
+      ]);
+      const configured = await scene.program(
+        "enterprise-gh",
+        `
+import assert from "node:assert/strict";
+import { appendFileSync } from "node:fs";
+const arguments_ = process.argv.slice(2);
+appendFileSync(${JSON.stringify(join(scene.root, "github-reads"))}, JSON.stringify(arguments_) + "\\n");
+const [command, subcommand] = arguments_;
+if (command === "pr") {
+  assert.equal(subcommand, "list");
+  assert.equal(arguments_[arguments_.indexOf("--repo") + 1], "github.example.test/example/project");
+  console.log('[{"number":1}]');
+} else {
+  assert.equal(arguments_[arguments_.indexOf("--hostname") + 1], "github.example.test");
+  if (command === "auth") {
+    assert.equal(subcommand, "status");
+  } else {
+    assert.equal(command, "api");
+    assert.equal(arguments_[arguments_.indexOf("--method") + 1], "GET");
+    console.log(arguments_.at(-1).includes("pulls/1/comments") ? '[{"user":{"login":"greptile-apps[bot]"}}]' : '[]');
+  }
+}
+`,
+      );
+      await scene.program("gh", "process.exit(91)");
+      const output = await scene.report({
+        CLOVING_GH_COMMAND: JSON.stringify([configured]),
+        GH_HOST: "unrelated.example.test",
+      });
+      for (const code of ["github-origin", "gh-login", "greptile-review"])
+        assert.equal(check(output, code)["result"], "ok", code);
+      assert.match(
+        String(check(output, "github-origin")["detail"]),
+        /github\.example\.test/,
+      );
+      const reads = await githubReads(scene);
+      assert.equal(reads.trim().split("\n").length, 5);
+      for (const endpoint of [
+        "pulls/1/reviews",
+        "issues/1/comments",
+        "pulls/1/comments",
+      ])
+        assert.ok(reads.includes(endpoint), endpoint);
+      assert.equal(output.status, 0);
+    }));
+
+await test("CLV-207 Enterprise login failures name a repair for the origin host and skip dependent reads", () =>
+  withDoctor(async (scene) => {
+    execFileSync("git", [
+      "-C",
+      scene.repository,
+      "remote",
+      "set-url",
+      "origin",
+      "git@github.example.test:example/project.git",
+    ]);
+    const configured = await scene.program("enterprise-gh", "process.exit(1)");
+    const output = await scene.report({
+      CLOVING_GH_COMMAND: JSON.stringify([configured]),
+    });
+    assert.equal(check(output, "gh-login")["result"], "fail");
+    assert.match(
+      String(check(output, "gh-login")["fix"]),
+      /enterprise-gh.*auth login --hostname github\.example\.test/,
+    );
+    assert.equal(check(output, "greptile-review")["result"], "skip");
+    assert.equal(output.status, 1);
   }));
 
 await test("CLV-207 no pull requests skips Greptile with an installation and first PR fix", () =>

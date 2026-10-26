@@ -42,12 +42,12 @@ async function origin(context: GithubContext): Promise<{
   });
   const identity =
     output.reason === null ? prRepository(output.stdout.trim()) : null;
-  const valid = identity?.host === "github.com";
+  const valid = identity !== null;
   return {
     observation: {
       result: valid ? "ok" : "fail",
       detail: valid
-        ? `GitHub origin ${identity.owner}/${identity.repository}`
+        ? `GitHub origin ${identity.host}/${identity.owner}/${identity.repository}`
         : "origin is absent or is not on GitHub",
     },
     identity: valid ? identity : null,
@@ -77,6 +77,8 @@ async function botActivity(
         "api",
         "--method",
         "GET",
+        "--hostname",
+        identity.host,
         "--paginate",
         "--slurp",
         `repos/${identity.owner}/${identity.repository}/${endpoint}?per_page=100`,
@@ -102,7 +104,7 @@ async function greptile(
       "pr",
       "list",
       "--repo",
-      `${identity.owner}/${identity.repository}`,
+      `${identity.host}/${identity.owner}/${identity.repository}`,
       "--state",
       "all",
       "--limit",
@@ -152,6 +154,7 @@ export async function githubObservations(
       : (listedSetting(environment["CLOVING_GH_COMMAND"]) ?? []);
   const context = { repository, environment, command, probe };
   const found = await origin(context);
+  const host = found.identity?.host ?? "github.com";
   const observations: Partial<Record<DoctorCode, DoctorObservation>> = {
     "github-origin": found.observation,
     "greptile-review": {
@@ -159,12 +162,12 @@ export async function githubObservations(
       detail: "GitHub login or origin prerequisite unavailable",
     },
   };
-  const loginFix = `Log in with the configured command: ${command.map(shellArgument).join(" ")} auth login`;
+  const loginFix = `Log in with the configured command: ${command.map(shellArgument).join(" ")} auth login --hostname ${shellArgument(host)}`;
   try {
-    await read(context, ["auth", "status", "--hostname", "github.com"]);
+    await read(context, ["auth", "status", "--hostname", host]);
     observations["gh-login"] = {
       result: "ok",
-      detail: "Configured GitHub command is authenticated",
+      detail: `Configured GitHub command is authenticated on ${host}`,
     };
   } catch (error) {
     observations["gh-login"] = {

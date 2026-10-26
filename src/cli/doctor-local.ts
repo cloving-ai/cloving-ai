@@ -164,6 +164,21 @@ async function missingFile(path: string): Promise<boolean> {
   }
 }
 
+function launcherVersionArguments(
+  program: string,
+  arguments_: readonly string[],
+): readonly string[] {
+  if (program === "node") {
+    const script = arguments_[arguments_[0] === "--" ? 1 : 0];
+    return script !== undefined && !script.startsWith("-")
+      ? ["--", script, "--version"]
+      : [];
+  }
+  return arguments_.length === 0 || ["claude", "codex"].includes(program)
+    ? ["--version"]
+    : [];
+}
+
 async function harnessVersionArguments(
   command: readonly string[],
   location: {
@@ -174,7 +189,7 @@ async function harnessVersionArguments(
   const [program = "", ...arguments_] = command;
   const shell = basename(program);
   if (!["sh", "bash", "dash", "zsh", "ksh"].includes(shell))
-    return ["--version"];
+    return launcherVersionArguments(shell, arguments_);
   const index = shellScriptIndex(arguments_, shell);
   const script = index === undefined ? undefined : arguments_[index];
   if (script === undefined) return [];
@@ -244,7 +259,7 @@ async function selectedHarnessObservation(
     (await usableHarnessCommand(command, location));
   return {
     result: usable && effective.result === "ok" ? "ok" : "fail",
-    detail: `harness ${name}${environment["CLOVING_WORKER"] === undefined ? " (default)" : ""}; probe ${usable ? "ok" : "failed"}; ${effective.detail}`,
+    detail: `harness ${name}${environment["CLOVING_WORKER"] === undefined ? " (default)" : ""}; probe ${usable ? "ok" : "failed or unsupported command"}; ${effective.detail}`,
   };
 }
 

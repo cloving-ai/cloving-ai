@@ -134,7 +134,7 @@ The package includes [the project schema](src/project-config.schema.json) and [t
 
 Run `cloving doctor` from the repository before starting the service. It lists each requirement with a fixed code, `ok`, `fail` or `skip`, and a fixing command. Required failures and skipped prerequisites exit with status 1. `cloving doctor --json` prints the same checks as `{ "version": 1, "checks": [...] }` for setup agents.
 
-Doctor probes harness versions and effective executable paths without running a turn. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
+Doctor probes harness versions and effective executable paths without running a turn. Shell scripts and simple `node script` wrappers receive `--version` from the repository folder; unsupported launcher arguments fail the probe. GitHub login and reads use the origin's host, including GitHub Enterprise. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
 
 ## First run
 

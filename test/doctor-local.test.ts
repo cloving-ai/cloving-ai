@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
@@ -146,6 +153,80 @@ for (const body of ["process.exit(1)", 'console.log("no version")'])
       assert.equal(check(output, "default-harness")["result"], "fail");
       assert.equal(output.status, 1);
     }));
+
+await test("CLV-207 Node wrappers cannot substitute the launcher version for a missing or failing worker", () =>
+  withDoctor(async (scene) => {
+    const command = {
+      CLOVING_CLAUDE_COMMAND: JSON.stringify([
+        process.execPath,
+        "worker.mjs",
+        "-p",
+        "must not run a turn",
+      ]),
+    };
+    for (const body of [
+      undefined,
+      "process.exit(91)",
+      'console.log("no version")',
+    ]) {
+      if (body !== undefined)
+        await writeFile(join(scene.repository, "worker.mjs"), body);
+      const output = await scene.report(command);
+      assert.equal(check(output, "harnesses")["result"], "ok");
+      assert.equal(check(output, "default-harness")["result"], "fail");
+      assert.equal(output.status, 1);
+    }
+  }));
+
+await test("CLV-207 Node wrapper probes keep the repository script and replace turn arguments with --version", () =>
+  withDoctor(async (scene) => {
+    await writeFile(
+      join(scene.repository, "version.txt"),
+      "2.1.1 (Claude Code)\n",
+    );
+    await writeFile(
+      join(scene.repository, "worker.mjs"),
+      'import assert from "node:assert/strict"; import { readFileSync, writeFileSync } from "node:fs"; assert.deepEqual(process.argv.slice(2), ["--version"]); writeFileSync(process.env.DOCTOR_PROBE_MARKER, "probed"); process.stdout.write(readFileSync("./version.txt", "utf8"));',
+    );
+    for (const prefix of [[], ["--"]]) {
+      const marker = join(scene.root, `node-probe-${String(prefix.length)}`);
+      const output = await scene.report({
+        DOCTOR_PROBE_MARKER: marker,
+        CLOVING_CLAUDE_COMMAND: JSON.stringify([
+          process.execPath,
+          ...prefix,
+          "worker.mjs",
+          "-p",
+          "must not run a turn",
+        ]),
+      });
+      assert.equal(check(output, "default-harness")["result"], "ok");
+      assert.equal(output.status, 0);
+      assert.equal(await readFile(marker, "utf8"), "probed");
+    }
+  }));
+
+await test("CLV-207 unsupported launcher arguments cannot run a turn or pass on a launcher version", () =>
+  withDoctor(async (scene) => {
+    const marker = join(scene.root, "turn-started");
+    const launcher = await scene.program(
+      "unsupported-launcher",
+      `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "called"); console.log("9.9.9");`,
+    );
+    for (const command of [
+      [launcher, "worker.mjs"],
+      [process.execPath],
+      [process.execPath, "--version", "missing-worker.mjs"],
+      [process.execPath, "-e", `throw new Error("must not execute")`],
+    ]) {
+      const output = await scene.report({
+        CLOVING_CLAUDE_COMMAND: JSON.stringify(command),
+      });
+      assert.equal(check(output, "default-harness")["result"], "fail");
+      assert.equal(output.status, 1);
+    }
+    await assert.rejects(access(marker), { code: "ENOENT" });
+  }));
 
 for (const [code, variable] of [
   ["ticket-command", "CLOVING_TICKET_COMMAND"],
