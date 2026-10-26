@@ -10,7 +10,7 @@ function given(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
-function quoted(value: string): string {
+export function shellArgument(value: string): string {
   return /^[A-Za-z0-9_./-]+$/.test(value)
     ? value
     : `'${value.replaceAll("'", "'\\''")}'`;
@@ -22,8 +22,8 @@ export function clientCommand(
 ): string {
   const explicit = environment["CLOVING_RUNTIME_DIR"];
   return given(explicit)
-    ? `CLOVING_RUNTIME_DIR=${quoted(explicit)} cloving`
-    : `cloving${repository === undefined ? "" : ` --repository ${quoted(repository)}`}`;
+    ? `CLOVING_RUNTIME_DIR=${shellArgument(explicit)} cloving`
+    : `cloving${repository === undefined ? "" : ` --repository ${shellArgument(repository)}`}`;
 }
 
 function stateRoot(environment: Environment): string | undefined {

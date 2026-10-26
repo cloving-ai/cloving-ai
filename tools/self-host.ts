@@ -1,3 +1,7 @@
+import {
+  defaultClaudeCommand,
+  defaultCodexCommand,
+} from "../src/harness-command.ts";
 import { configurationRoot, resolveSettings } from "../src/project-settings.ts";
 import { repositoryFileName } from "../src/repository-identity.ts";
 import { createHash } from "node:crypto";
@@ -107,28 +111,6 @@ const project = join(directory, "project");
 const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
-const defaultCommand = [
-  "claude",
-  "-p",
-  "--output-format",
-  "stream-json",
-  "--verbose",
-  "--permission-mode",
-  "acceptEdits",
-  "--allowedTools",
-  "Bash,Read,Edit,Write,Glob,Grep,WebSearch,WebFetch",
-  "--max-budget-usd",
-  "5",
-];
-const defaultCodexCommand = [
-  "codex",
-  "exec",
-  "--json",
-  "--dangerously-bypass-approvals-and-sandbox",
-  "--skip-git-repo-check",
-  "-",
-];
-
 function selectedWorker(): "claude" | "codex" {
   const worker = environment["CLOVING_WORKER"] ?? "claude";
   if (worker === "claude" || worker === "codex") return worker;
@@ -286,7 +268,7 @@ const worker = selectedWorker();
 const command =
   worker === "codex"
     ? (listed("CLOVING_CODEX_COMMAND") ?? defaultCodexCommand)
-    : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
+    : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultClaudeCommand);
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const lanes = queueLanes();

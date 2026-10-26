@@ -1,3 +1,4 @@
+import { packedDoctor } from "./packed-doctor.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import {
   operatorFiles,
@@ -384,7 +385,9 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
   const root = await realpath(await mkdtemp(join(tmpdir(), "cloving-packed-")));
   try {
     command("git", { args: ["init", "-q"], cwd: root });
-    await running(root, await installed(root));
+    const executable = await installed(root);
+    await packedDoctor(root);
+    await running(root, executable);
     await packedWorkflowFolders(root);
     await packedWorkflowTesting(root);
   } finally {

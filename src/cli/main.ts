@@ -1,11 +1,13 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import type { ProbeRunner } from "./probe-command.ts";
+import { doctorCommand } from "./doctor.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { phoneUsage, usage, validateUsage } from "./usage.ts";
+import { commandUsage, phoneUsage, usage, validateUsage } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
@@ -13,6 +15,7 @@ const helpTexts = {
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
+  "doctor-help": String(commandUsage["doctor"]),
 };
 
 function helpInvocation(
@@ -28,6 +31,7 @@ export async function main(
   argumentsList: readonly string[],
   context: {
     readonly watchPr?: WatchPrSettings;
+    readonly doctorProbe?: ProbeRunner;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
   } = { repository: undefined },
@@ -43,6 +47,15 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
+  } else if (invocation.kind === "doctor") {
+    if (context.doctorProbe === undefined)
+      throw new Error("doctor-probe-unavailable");
+    process.exitCode = await doctorCommand({
+      probe: context.doctorProbe,
+      repository,
+      environment: context.environment ?? process.env,
+      json: invocation.json,
+    });
   } else if (invocation.kind === "phone") {
     process.exitCode = await phoneCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),

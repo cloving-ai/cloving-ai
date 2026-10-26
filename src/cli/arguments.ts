@@ -12,6 +12,8 @@ export type Invocation = { readonly repository?: string } & (
   | PhoneInvocation
   | { readonly kind: "help" }
   | { readonly kind: "version" }
+  | { readonly kind: "doctor-help" }
+  | { readonly kind: "doctor"; readonly json: boolean }
   | { readonly kind: "validate-help" }
   | {
       readonly kind: "validate";
@@ -111,6 +113,7 @@ function selectedInvocation(given: readonly string[]): Invocation {
   const { values, positionals, tokens } = parsed;
   const [command, ...remaining] = positionals;
   if (command === undefined) return topLevel(values);
+  if (command === "doctor") return doctorInvocation(values, remaining);
   if (command === "workflows" && remaining[0] === "validate")
     return validation(values, remaining.slice(1));
   const outcome = runtimeInvocation({
@@ -121,6 +124,18 @@ function selectedInvocation(given: readonly string[]): Invocation {
   if (typeof outcome === "string")
     return { kind: "usage-error", code: outcome, json };
   return outcome;
+}
+
+function doctorInvocation(
+  values: Parsed["values"],
+  remaining: readonly string[],
+): Invocation {
+  const json = values.json === true;
+  if (unexpected(values, ["help", "json"]))
+    return { kind: "usage-error", code: "unexpected-option", json };
+  if (remaining.length > 0)
+    return { kind: "usage-error", code: "unexpected-argument", json };
+  return values.help ? { kind: "doctor-help" } : { kind: "doctor", json };
 }
 
 function parsedArguments(argumentsList: readonly string[]): Parsed | string {
@@ -155,6 +170,7 @@ function knownCommand(positionals: readonly string[]): boolean {
   const [command, subcommand] = positionals;
   if (command === undefined) return true;
   if (command === "workflows") return subcommand === "validate";
+  if (command === "doctor") return true;
   return isRuntimeCommand(command);
 }
 
