@@ -113,6 +113,23 @@ For example, a shared `.cloving/config.json` can contain:
 
 The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to the selected harness: `CLOVING_CLAUDE_COMMAND` overrides it for Claude and `CLOVING_CODEX_COMMAND` for Codex. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map. `harness.kind` accepts `file` or `shell`; its turn behavior and `harness.path` are reserved for the harness integration.
 
+Read and change settings with the configuration commands:
+
+```sh
+cloving config list
+cloving config get checks.beforeMerge --json
+cloving config set checks.beforeMerge '["npm","test"]'
+cloving config set privateTexts '["acme"]'
+cloving config set queue.lanes 2 --private
+cloving config unset queue.lanes --private
+```
+
+All four commands accept `--json` and `--repository <directory>`. Use the setting names listed above; `profiles` and `tokenPrices` are whole JSON maps, and dictionary subpaths are unknown settings. Values are parsed as JSON, falling back to text. Changes are validated before writing and go to the field's default file; `--private` writes an override in the private file. `list` and `get` show each value's source, including `default`, and all hidden file values. JSON results have `schemaVersion: 1`; list returns a `settings` array, get returns `field`, `value`, `source` and `hidden`. A default `null` means no configured value. Mutation results include `field`, `scope`, `action` and `notice`; notice is null when no service is running.
+
+Each change holds a file lock from read through atomic replacement, keeping the previous bytes as `<file>.bak`. A first write needs no backup. Private files, backups and temporary files have mode 0600. Locks from stopped processes are reclaimed; a live lock waits at most ten seconds, then exits with `settings-locked`. Invalid settings and unknown fields exit with status 2 without changing a file. For a running service, the result explains whether to restart to use the new value or whether an environment or private source will keep hiding it after a restart. Settings do not reload automatically.
+
+Changing or unsetting `harness.name` clears kind, path and command. Changing or unsetting kind clears path and command; changing or unsetting path clears command. This keeps the previous harness's configuration from carrying into a new selection.
+
 The package includes [the project schema](src/project-config.schema.json) and [the private schema](src/private-config.schema.json), also installed under `dist/src/`. Unknown fields fail with `unknown-setting: <field>`, invalid values with `invalid-setting: <field>`, and unsupported or missing versions with `unsupported-config-version: version`. Private fields in the project file fail with `private-setting-in-project-file: <field>`. Files cannot set runtime directories, ownership leases, host bounds or the watch repository; those remain environment settings.
 
 ## First run

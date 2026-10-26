@@ -8,7 +8,11 @@ await test("CLV-201 start help supports an installed package without a checkout"
   assert.doesNotMatch(String(commandUsage["start"]), /development checkout/);
 });
 
-const program = ["self-host.ts", "self-host-processes.ts"]
+const program = [
+  "../src/harness-defaults.ts",
+  "self-host.ts",
+  "self-host-processes.ts",
+]
   .map((file) =>
     readFileSync(join(import.meta.dirname, "../tools", file), "utf8"),
   )

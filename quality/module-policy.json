@@ -1128,7 +1128,21 @@
     "test/workflow-testing.test.ts": "test",
     "test/workflow-testing-requests.test.ts": "test",
     "test/packed-workflow-testing.ts": "test",
-    "test/workflow-test-signals.test.ts": "test"
+    "test/workflow-test-signals.test.ts": "test",
+    "src/cli/config-arguments.ts": "cli",
+    "src/cli/config-command.ts": "cli",
+    "src/cli/config-file.ts": "cli",
+    "src/configuration-change.ts": "pure",
+    "src/configuration-display.ts": "pure",
+    "test/config-cli-fixture.ts": "test",
+    "test/config-cli.test.ts": "test",
+    "src/cli/config-lock.ts": "cli",
+    "src/cli/config-notice.ts": "cli",
+    "test/config-lock.test.ts": "test",
+    "test/config-notice.test.ts": "test",
+    "src/harness-defaults.ts": "pure",
+    "test/config-boundaries.test.ts": "test",
+    "test/config-io.test.ts": "test"
   },
   "allowed": {
     "quality": [
