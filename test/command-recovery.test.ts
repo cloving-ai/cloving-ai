@@ -94,7 +94,11 @@ await test("CLV-178 a stop before or during command execution cannot start anoth
       kind: "absent",
     });
     await worker.deliver(commandIntent(), signal);
-    await until(() => existsSync(join(scene.directory, "calls")));
+    await until(
+      () =>
+        existsSync(join(scene.directory, "calls")) &&
+        readFileSync(join(scene.directory, "calls"), "utf8") === "one\n",
+    );
     const stopped = await worker.stop(commandIntent(), signal);
     assert.equal(stopped.kind, "stopped");
     assert.deepEqual(await worker.deliver(commandIntent(), signal), stopped);

@@ -102,7 +102,8 @@ await test("CLV-187 phone status reports a relay error and an unknown runtime di
     }
     const unknown = await command(undefined, { json: true });
     assert.equal(unknown.status, 1);
-    assert.match(unknown.error, /^runtime-directory-unknown: /);
+    assert.match(unknown.error, /^repository-unknown: /);
+    assert.match(unknown.error, /--repository/);
   });
 });
 

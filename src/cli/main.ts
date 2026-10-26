@@ -26,8 +26,12 @@ function helpInvocation(
 
 export async function main(
   argumentsList: readonly string[],
-  watchPr?: WatchPrSettings,
+  context: {
+    readonly watchPr?: WatchPrSettings;
+    readonly repository: string | undefined;
+  } = { repository: undefined },
 ): Promise<void> {
+  const repository = context.repository;
   const invocation = parseInvocation(argumentsList);
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
@@ -40,14 +44,14 @@ export async function main(
     await validationCommand(invocation);
   } else if (invocation.kind === "phone") {
     process.exitCode = await phoneCommand(invocation, {
-      runtimeDirectory: runtimeDirectory(process.env),
+      runtimeDirectory: runtimeDirectory(process.env, repository),
       terminal,
     });
   } else {
     process.exitCode = await runtimeCommand(invocation, {
-      runtimeDirectory: runtimeDirectory(process.env),
-      ...watchSettings(watchPr),
-      client: clientCommand(process.env),
+      runtimeDirectory: runtimeDirectory(process.env, repository),
+      ...watchSettings(context.watchPr),
+      client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal,
       identifier: randomUUID,

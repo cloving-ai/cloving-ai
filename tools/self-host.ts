@@ -21,13 +21,19 @@ import {
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
+import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
 
 function flag(name: string): string | undefined {
-  const index = flags.lastIndexOf(name);
-  return index === -1 ? undefined : flags[index + 1];
+  const index = flags.findLastIndex(
+    (argument) => argument === name || argument.startsWith(`${name}=`),
+  );
+  const argument = flags[index];
+  return argument === name
+    ? flags[index + 1]
+    : argument?.slice(name.length + 1);
 }
 
 function topLevel(given: string): string {
@@ -44,11 +50,17 @@ function topLevel(given: string): string {
 const runtimeArgument = flag("--runtime");
 if (runtimeArgument === undefined)
   throw new Error("The start program needs --runtime. Use: cloving start");
-const runtime = resolve(runtimeArgument);
-const directory = dirname(runtime);
 const repository = await realpath(
   topLevel(resolve(flag("--repository") ?? process.cwd())),
 );
+const selectedRuntime = await adoptRuntimeDirectory({
+  runtime: resolve(runtimeArgument),
+  repository,
+  legacyRuntime: flag("--legacy-runtime"),
+  adoptionRecord: flag("--adoption-record"),
+});
+const runtime = selectedRuntime.runtime;
+const directory = dirname(runtime);
 const updateMilliseconds = await selfUpdateMilliseconds({
   seconds: process.env["CLOVING_SELF_UPDATE_SECONDS"],
   repository,
@@ -207,7 +219,9 @@ function guide(): string {
   return [
     "Cloving runs. Stop it with Control-C.",
     `Repository: ${repository}`,
+    `Runtime directory: ${runtime}`,
     `Work trees: ${join(directory, "worktrees")}`,
+    ...(selectedRuntime.note === "" ? [] : [selectedRuntime.note]),
     "Commands for a second terminal:",
     `  ${client} run develop-ticket --ticket <ticket-id>`,
     `  ${client} run develop-issue --ticket <ticket-id>`,

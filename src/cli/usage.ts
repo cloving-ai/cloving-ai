@@ -70,7 +70,7 @@ without a successful handoff. A successful handoff resets the count; ordinary re
 Stop the service, inspect the failures and reconcile affected issues, then start with --reset-queue and the same queue settings to clear the failure streak once. Tracked commands are preserved.
 
 The command reads these settings from the environment:
-  CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set.
+  CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/<name>-<id>/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set. A recorded legacy adoption takes priority.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs and failed runs send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
@@ -120,7 +120,7 @@ Commands:
   phone      Show, list, remove and reset the connected phones.
   start      Start the service for a repository.
 
-The runtime commands need a Cloving service. CLOVING_RUNTIME_DIR names its runtime directory.
+The runtime commands need a Cloving service. They use the current git repository; --repository <directory> selects another repository. CLOVING_RUNTIME_DIR overrides its runtime directory.
 Use npm exec -- cloving ... for a project-local installation.
 `;
 

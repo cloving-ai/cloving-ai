@@ -30,6 +30,7 @@ async function start(root: string): Promise<ChildProcess> {
     await mkdir(join(root, folder), { recursive: true });
   for (const file of [
     "self-host.ts",
+    "self-host-runtime.ts",
     "self-host-project.ts",
     "workflow-bundles.ts",
     "workflow-bundle-dependencies.ts",
@@ -79,6 +80,8 @@ function launch(root: string): ChildProcess {
         CLOVING_WORKER: "claude",
         CLOVING_CLAUDE_COMMAND: '["true"]',
         CLOVING_QUEUE_SECONDS: undefined,
+        CLOVING_QUEUE_LANES: undefined,
+        CLOVING_SELF_UPDATE_SECONDS: undefined,
         CLOVING_PROFILES: undefined,
         XDG_CONFIG_HOME: join(root, "configuration"),
       },

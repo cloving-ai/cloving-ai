@@ -343,9 +343,9 @@ export function runtimeCommand(
     return Promise.resolve(
       failed(environment, {
         error: {
-          code: "runtime-directory-unknown",
+          code: "repository-unknown",
           detail:
-            "No runtime directory is known. Set CLOVING_RUNTIME_DIR to the runtime directory of the service.",
+            "Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.",
         },
         format: { json: invocation.json },
       }),

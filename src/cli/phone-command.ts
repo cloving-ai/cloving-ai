@@ -129,7 +129,7 @@ export async function phoneCommand(
   const { runtimeDirectory } = context;
   if (runtimeDirectory === undefined) {
     context.terminal.error(
-      "runtime-directory-unknown: Set CLOVING_RUNTIME_DIR to the runtime directory of the service.\n",
+      "repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.\n",
     );
     return 1;
   }
