@@ -288,4 +288,5 @@ process.exitCode = await hostedPrograms({
   repository,
   updateMilliseconds,
   watchPort: process.env["CLOVING_WATCH_PORT"] ?? "3663",
+  phoneRelay: process.env["CLOVING_PHONE_RELAY"] ?? "on",
 });

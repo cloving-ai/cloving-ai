@@ -31,7 +31,7 @@ console.log(JSON.stringify({ initial, opened, closed: app.all("form").length, re
       areas: form.source === "prompt" ? 1 : 0,
     });
     assert.equal(result["closed"], 0);
-    assert.deepEqual(result["requests"], ["data.json"]);
+    assert.deepEqual(result["requests"], ["phone.json", "data.json"]);
   });
 }
 
@@ -151,7 +151,10 @@ console.log(JSON.stringify({ add: app.all("button").some((node) => node.text ===
 `,
     );
     assert.equal(result["add"], false);
-    assert.deepEqual(result["requests"], ["data.json"]);
+    assert.deepEqual(
+      result["requests"],
+      forms === undefined ? ["data.json"] : ["phone.json", "data.json"],
+    );
   });
 }
 

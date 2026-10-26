@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { phoneInvocation, type PhoneInvocation } from "./phone-arguments.ts";
 import { repositoryArguments } from "./repository-arguments.ts";
 import {
   isRuntimeCommand,
@@ -8,6 +9,7 @@ import {
 } from "./runtime-arguments.ts";
 
 export type Invocation = { readonly repository?: string } & (
+  | PhoneInvocation
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
@@ -109,11 +111,18 @@ export function parseInvocation(given: readonly string[]): Invocation {
     : { ...invocation, repository: selected.repository };
 }
 
-function selectedInvocation(given: readonly string[]): Invocation {
+function localInvocation(given: readonly string[]): Invocation | undefined {
   if (given[0] === "chats" && given[1] === "import")
     return chatsImport(given.slice(2));
   if (given[0] === "chats" && given[1] === "redact")
     return chatsRedact(given.slice(2));
+  if (given[0] === "phone") return phoneInvocation(given.slice(1));
+  return undefined;
+}
+
+function selectedInvocation(given: readonly string[]): Invocation {
+  const local = localInvocation(given);
+  if (local !== undefined) return local;
   const argumentsList = textValues(given);
   const json = given.includes("--json");
   const parsed = parsedArguments(argumentsList);

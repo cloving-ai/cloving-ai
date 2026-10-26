@@ -88,6 +88,8 @@ The command reads these settings from the environment:
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
   CLOVING_WATCH_ACTIONS            The value off removes the board run form and its write endpoint. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
+  CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
+  CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
   CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, which the workflow develop-issue uses for pull requests and develop-prd uses for issues. The watch board also uses it to read pull request status. The default is gh.
@@ -117,6 +119,7 @@ Commands:
   drop       Cancel a run and keep its files.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
+  phone      Show, list, remove and reset the connected phones.
   start      Start the service for a repository.
 
 The runtime commands need a Cloving service. They use the current git repository; --repository <directory> selects another repository. CLOVING_RUNTIME_DIR overrides its runtime directory.
@@ -170,4 +173,18 @@ Write redacted.jsonl and redaction.json beside the original corpus with mode 060
 HOME supplies the home folder. CLOVING_PRIVATE_TEXTS is an optional JSON list of nonblank strings.
 Originals and metadata remain private. Redaction does not authorize model use or guarantee removal of every private value.
 Exit codes: 0 complete, 1 processing failure, 2 invalid usage.
+`;
+
+export const phoneUsage = `Usage: cloving phone status [--json]
+       cloving phone list [--json]
+       cloving phone remove <device-id> [--json]
+       cloving phone reset [--json]
+
+Shows and changes the phones that answer the questions of this computer.
+status shows the registration with cloving.ai and the number of phones.
+list shows each phone with its device ID, name, platform, state and pairing time.
+remove marks one phone removed on this computer, then asks cloving.ai to remove it. A failure at cloving.ai keeps the phone removed and shows a warning.
+reset removes the registration with cloving.ai, marks all phones removed and deletes phone/link.json and phone/daemon-keys.json.
+Connect a phone with the Connect a phone button of the watch page.
+cloving start runs the phone relay as a child process. With CLOVING_PHONE_RELAY=off, the relay does not start, and status says that the relay is off or not started.
 `;

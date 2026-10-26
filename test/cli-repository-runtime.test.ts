@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { startRelay } from "../src/relay/relay-service.ts";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { chatPlatformScenario } from "./chats-platform-fixture.ts";
@@ -291,6 +292,62 @@ await test("CLV-204 outside git refuses with repository-unknown and a repository
           /change.*repository|repository.*change/i,
         );
         assert.match(String(output.detail), /--repository/);
+        return true;
+      },
+    );
+  }));
+
+await test("CLV-204 phone clients use the repository default and explicit repository selection", () =>
+  withFiles({ "A/file": "", "B/file": "" }, async (root) => {
+    const repository = join(root, "B");
+    const state = join(root, "state");
+    for (const name of ["A", "B"])
+      execFileSync("git", ["init", "-q", join(root, name)]);
+    const runtime = runtimeDirectory({ XDG_STATE_HOME: state }, repository);
+    assert.ok(runtime);
+    const relay = await startRelay({
+      runtimeDirectory: runtime,
+      phoneDirectory: join(root, "phone"),
+    });
+    try {
+      const own = await cli({ directory: repository, state }, [
+        "phone",
+        "status",
+        "--json",
+      ]);
+      assert.equal(fields(JSON.parse(own.stdout))["relay"], "on");
+      const other = await cli({ directory: join(root, "A"), state }, [
+        "phone",
+        "status",
+        "--json",
+      ]);
+      assert.deepEqual(JSON.parse(other.stdout), { relay: "off" });
+      for (const directory of [root, join(root, "A")]) {
+        for (const argumentsList of [
+          ["--repository", repository, "phone", "status", "--json"],
+          ["phone", "status", "--json", `--repository=${repository}`],
+        ]) {
+          const selected = await cli({ directory, state }, argumentsList);
+          assert.equal(selected.stdout, own.stdout);
+        }
+      }
+    } finally {
+      await relay.close();
+    }
+  }));
+
+await test("CLV-204 phone clients outside git give the repository refusal and hint", () =>
+  withFiles({}, async (root) => {
+    await assert.rejects(
+      cli({ directory: root, state: join(root, "state") }, [
+        "phone",
+        "status",
+        "--json",
+      ]),
+      (error: unknown) => {
+        assert.ok(error instanceof Error && "stderr" in error);
+        assert.match(String(error.stderr), /^repository-unknown: /);
+        assert.match(String(error.stderr), /--repository/);
         return true;
       },
     );

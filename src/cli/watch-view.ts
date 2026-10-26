@@ -1,4 +1,5 @@
 import type { CardControls } from "./watch-card-view.ts";
+import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
@@ -270,6 +271,7 @@ export interface PageProps {
   readonly copying: Copying;
   readonly columns?: ColumnControls;
   readonly start?: StartControls;
+  readonly phone?: PhoneControls | undefined;
 }
 
 export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
@@ -340,6 +342,9 @@ export function BoardPage(
     class: "board-page",
     children: [
       component(Header, { model, stale, start }),
+      props.phone === undefined
+        ? null
+        : component(PhonePanel, { phone: props.phone, now }),
       component(Queue, { model }),
       down,
       component(RefusedWorkflows, { model }),
