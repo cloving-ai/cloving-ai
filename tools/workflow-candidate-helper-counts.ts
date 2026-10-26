@@ -19,10 +19,13 @@ const zero: Totals = { knownCallCount: 0, knownUnitTotal: 0 };
 export function helperEffectTotals(input: {
   readonly symbols: CandidateSymbols;
   readonly sources: readonly ts.SourceFile[];
-}): Totals & { readonly unsupportedForms: readonly string[] } {
+}): {
+  readonly totals?: Totals;
+  readonly unsupportedForms: readonly string[];
+} {
   const { symbols, sources } = input;
   const unsupportedForms: string[] = [];
-  if (sources.length === 1) return { ...zero, unsupportedForms };
+  if (sources.length === 1) return { unsupportedForms };
   const active = new Set<ts.FunctionDeclaration>();
   const totals = new Map<ts.FunctionDeclaration, Totals>();
   const functions = localFunctions(sources);
@@ -52,7 +55,7 @@ export function helperEffectTotals(input: {
   }
   const effectful = effectfulFunctions({ functions, functionAt, symbols });
   if ([...effectful].every((entry) => entry.getSourceFile() === symbols.source))
-    return { ...zero, unsupportedForms };
+    return { unsupportedForms };
   for (const source of sources)
     inspectHelperReferences(source, {
       functionAt,
@@ -66,7 +69,7 @@ export function helperEffectTotals(input: {
       entry.getSourceFile() === symbols.source &&
       (ts.getCombinedModifierFlags(entry) & ts.ModifierFlags.Export) !== 0,
   );
-  return { ...(workflow ? count(workflow) : zero), unsupportedForms };
+  return { totals: workflow ? count(workflow) : zero, unsupportedForms };
 }
 
 function localFunctions(sources: readonly ts.SourceFile[]) {
@@ -146,15 +149,16 @@ function inspectHelperReferences(
       !checkedHelperContext(node, input.symbols)
     )
       input.unsupportedForms.push("uncheckable-helper-effects");
-    if (ts.isIdentifier(node)) {
-      const declaration = input.functionAt(node);
-      if (
-        declaration &&
-        input.effectful.has(declaration) &&
-        !checkedHelperReference(node, input.symbols)
-      )
-        input.unsupportedForms.push("uncheckable-helper-effects");
-    }
+    const declaration = ts.isIdentifier(node)
+      ? input.functionAt(node)
+      : undefined;
+    if (
+      declaration &&
+      input.effectful.has(declaration) &&
+      ts.isIdentifier(node) &&
+      !checkedHelperReference(node, input.symbols)
+    )
+      input.unsupportedForms.push("uncheckable-helper-effects");
     ts.forEachChild(node, visit);
   }
   visit(source);

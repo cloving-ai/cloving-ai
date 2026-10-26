@@ -210,13 +210,11 @@ function combineFacts(input: {
       ...facts.flatMap((entry) => entry.unsupportedForms),
       ...input.expanded.unsupportedForms,
     ],
-    knownCallCount: Math.max(
-      input.expanded.knownCallCount,
+    knownCallCount:
+      input.expanded.totals?.knownCallCount ??
       facts.reduce((total, entry) => total + entry.knownCallCount, 0),
-    ),
-    knownUnitTotal: Math.max(
-      input.expanded.knownUnitTotal,
+    knownUnitTotal:
+      input.expanded.totals?.knownUnitTotal ??
       facts.reduce((total, entry) => total + entry.knownUnitTotal, 0),
-    ),
   };
 }

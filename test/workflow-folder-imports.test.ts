@@ -185,6 +185,36 @@ export async function prompt() { return await ${candidateEffectExpression}; }`;
   );
 });
 
+await test("CLV-216 admits distinct helpers in mutually exclusive branches", () =>
+  withFiles(
+    {
+      ...helperFiles(),
+      "repo/.cloving/workflows/develop.ts": `
+import { prompt } from "./develop/prompts.ts";
+import { alternative } from "./develop/alternative.ts";
+export async function develop(input: { units: number }) {
+  "use workflow";
+  type Result = ReturnType<typeof prompt>;
+  if (input.units) return await prompt();
+  else return await alternative();
+}`,
+      "repo/.cloving/workflows/develop/prompts.ts": `
+import { protectedEffect } from "cloving/workflows";
+export async function prompt() { return await ${candidateEffectExpression}; }`,
+      "repo/.cloving/workflows/develop/alternative.ts": `
+import { protectedEffect } from "cloving/workflows";
+export async function alternative() { return await ${candidateEffectExpression}; }`,
+    },
+    async (directory) => {
+      const result = await loadWorkflowFolders(folderInput(directory));
+      assert.deepEqual(result.refusals, []);
+      assert.deepEqual(
+        result.candidates.map(({ label }) => label),
+        ["develop.ts"],
+      );
+    },
+  ));
+
 await test("CLV-216 helper bytes affect the artifact digest even when the export is unused", () =>
   withFiles(helperFiles(), async (directory) => {
     const first = await loadWorkflowFolders(folderInput(directory));

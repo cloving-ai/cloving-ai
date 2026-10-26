@@ -107,6 +107,45 @@ await test("CLV-216 multiplies helper units", () => {
   assert.equal(facts.analysis.knownUnitTotal, 12);
 });
 
+for (const body of [
+  "if (input.units) await first(); else await second();",
+  "return input.units ? await first() : await second();",
+  "switch (input.units) { case 1: await first(); break; default: await second(); }",
+]) {
+  await test(`CLV-216 counts alternative helper files by calls: ${body}`, () => {
+    const facts = analyzeHelpers(
+      `import { first } from "./helpers/first.ts";
+import { second } from "./helpers/second.ts";
+${candidateSource(body)}`,
+      {
+        packageRoot: candidatePackageRoot,
+        helpers: {
+          "helpers/first.ts": `import { protectedEffect } from "cloving/workflows";
+export async function first() { ${effect} }`,
+          "helpers/second.ts": `import { protectedEffect } from "cloving/workflows";
+export async function second() { ${effect.replace("units: 1", "units: 3")} }`,
+        },
+      },
+    );
+    assert.equal(facts.analysis.knownCallCount, 1);
+    assert.equal(facts.analysis.knownUnitTotal, 3);
+    assert.deepEqual(
+      checkWorkflowCandidate({
+        declaration: {
+          ...candidateDeclaration,
+          workflow: { ...candidateDeclaration.workflow, effectLimit: 3 },
+        },
+        ...facts,
+      }),
+      [],
+    );
+    assert.deepEqual(
+      checkWorkflowCandidate({ declaration: candidateDeclaration, ...facts }),
+      ["effect-limit"],
+    );
+  });
+}
+
 await test("CLV-216 admits type-only references inside effectful helpers", () => {
   const facts = helperAnalysis(
     "await invoke();",
