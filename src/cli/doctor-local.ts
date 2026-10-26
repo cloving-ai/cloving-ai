@@ -3,10 +3,14 @@ import {
   defaultCodexCommand,
 } from "../harness-command.ts";
 import { access, constants, stat } from "node:fs/promises";
-import { delimiter, resolve } from "node:path";
+import { basename, delimiter, resolve } from "node:path";
+import {
+  harnessDefinition,
+  harnessVersion,
+} from "../agent-harness-versions.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import type { ProbeRunner } from "./probe-command.ts";
-import { discoverHarnesses, probeHarness } from "./harness-probes.ts";
+import { discoverHarnesses } from "./harness-probes.ts";
 import { qualifiedNode } from "./toolchain.ts";
 
 export function listedSetting(
@@ -41,6 +45,17 @@ export async function executableProgram(
     readonly environment: Readonly<NodeJS.ProcessEnv>;
   },
 ): Promise<string | undefined> {
+  return accessibleFile(program, { ...location, mode: constants.X_OK });
+}
+
+async function accessibleFile(
+  program: string,
+  location: {
+    readonly directory: string;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+    readonly mode: number;
+  },
+): Promise<string | undefined> {
   const paths = program.includes("/")
     ? [program]
     : (location.environment["PATH"] ?? "")
@@ -49,7 +64,7 @@ export async function executableProgram(
   for (const candidate of paths) {
     const path = resolve(location.directory, candidate);
     try {
-      await access(path, constants.X_OK);
+      await access(path, location.mode);
       if ((await stat(path)).isFile()) return path;
     } catch {
       continue;
@@ -124,22 +139,104 @@ interface HarnessCommandLocation {
   readonly probe: ProbeRunner;
 }
 
+function shellScriptIndex(
+  arguments_: readonly string[],
+  shell: string,
+): number | undefined {
+  const terminators = shell === "zsh" ? ["--", "-b"] : ["--"];
+  let optionOperand = false;
+  for (const [index, argument] of arguments_.entries()) {
+    if (optionOperand) {
+      optionOperand = false;
+      continue;
+    }
+    if (terminators.includes(argument)) return index + 1;
+    if (
+      /^-[^-oO]*c/.test(argument) ||
+      ["--command", "--version", "--help"].includes(argument)
+    )
+      return undefined;
+    if (
+      /^[-+][^-]*[oO]$/.test(argument) ||
+      ["--rcfile", "--init-file", "--emulate"].includes(argument)
+    ) {
+      optionOperand = true;
+      continue;
+    }
+    if (/^[-+]/.test(argument)) continue;
+    return index;
+  }
+  return undefined;
+}
+
+async function missingFile(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return false;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ENOENT";
+  }
+}
+
+async function harnessVersionArguments(
+  command: readonly string[],
+  location: {
+    readonly directory: string;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+  },
+): Promise<readonly string[]> {
+  const [program = "", ...arguments_] = command;
+  const shell = basename(program);
+  if (!["sh", "bash", "dash", "zsh", "ksh"].includes(shell))
+    return ["--version"];
+  const index = shellScriptIndex(arguments_, shell);
+  const script = index === undefined ? undefined : arguments_[index];
+  if (script === undefined) return [];
+  let path = resolve(location.directory, script);
+  if (
+    !script.includes("/") &&
+    ["sh", "bash", "dash"].includes(shell) &&
+    (await missingFile(path))
+  )
+    path =
+      (await accessibleFile(script, { ...location, mode: constants.R_OK })) ??
+      path;
+  return [...arguments_.slice(0, index), path, "--version"];
+}
+
 async function usableHarnessCommand(
   command: string,
   location: HarnessCommandLocation,
 ): Promise<boolean> {
-  const program = listedSetting(command)?.[0];
+  const configured = listedSetting(command) ?? [];
+  const program = configured[0];
   if (!program) return false;
+  const arguments_ = await harnessVersionArguments(configured, {
+    directory: location.directory,
+    environment: location.commandEnvironment,
+  });
+  if (arguments_.length === 0) return false;
   const path = await executableProgram(program, {
     directory: location.directory,
     environment: location.commandEnvironment,
   });
   if (path === undefined) return false;
-  const discovery = await probeHarness(path, {
+  const directory = await stat(location.directory).then(
+    (entry) => (entry.isDirectory() ? location.directory : undefined),
+    () => undefined,
+  );
+  const output = await location.probe(path, {
+    arguments: arguments_,
     env: location.commandEnvironment,
-    probe: location.probe,
+    ...(directory === undefined ? {} : { directory }),
   });
-  return discovery.entries.some((entry) => entry.working);
+  return (
+    output.reason === null &&
+    harnessVersion(
+      output.stdout,
+      harnessDefinition(basename(path)).versionPattern,
+    ) !== null
+  );
 }
 
 async function selectedHarnessObservation(

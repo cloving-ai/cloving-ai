@@ -1145,6 +1145,7 @@
     "test/doctor-github.test.ts": "test",
     "test/doctor-guard.test.ts": "test",
     "test/doctor-local.test.ts": "test",
+    "test/doctor-shell.test.ts": "test",
     "test/doctor-report.test.ts": "test",
     "test/doctor-requirements.test.ts": "test",
     "test/doctor-runtime.test.ts": "test",

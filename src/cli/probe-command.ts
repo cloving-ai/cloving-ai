@@ -4,8 +4,8 @@ interface ProbeChild {
   readonly pid?: number | undefined;
   readonly stdout: Readable;
   kill(signal: NodeJS.Signals): boolean;
-  once(event: "error", listener: (error: Error) => void): unknown;
-  once(event: "close", listener: (code: number | null) => void): unknown;
+  once(event: "error", listener: (error: Error) => void): this;
+  once(event: "close", listener: (code: number | null) => void): this;
 }
 
 interface ProbeEffects {
@@ -19,7 +19,7 @@ interface ProbeEffects {
       readonly detached: true;
     };
   }) => ProbeChild;
-  readonly kill: (identifier: number, signal: NodeJS.Signals) => unknown;
+  readonly kill: (identifier: number, signal: NodeJS.Signals) => boolean;
 }
 
 export interface ProbeOptions {
