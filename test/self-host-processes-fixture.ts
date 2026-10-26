@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,6 +30,10 @@ createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok:
     : ""
 }
 const timer = setInterval(() => {}, 1000);
+const parent = process.ppid;
+setInterval(() => {
+  if (process.ppid !== parent) process.exit(0);
+}, 200).unref();
 process.on("SIGINT", () => process.emit("SIGTERM"));
 process.on("SIGTERM", () => setTimeout(() => {
   writeFileSync(${JSON.stringify(join(root, `${name}-stopped`))}, "stopped");
@@ -101,7 +106,7 @@ process.exitCode = await running;`,
       killSignal: "SIGKILL",
     });
   } finally {
-    await cleanedProcesses(root);
+    await stopFixturePrograms(root);
   }
 }
 
@@ -133,9 +138,18 @@ merge();
 `;
 }
 
-async function cleanedProcesses(root: string): Promise<void> {
-  for (const marker of ["git-pid", "daemon-ready", "watch-ready"]) {
-    const pid = Number(await readFile(join(root, marker), "utf8"));
+const fixtureMarkers = [
+  "git-pid",
+  "daemon-ready",
+  "watch-ready",
+  "relay-ready",
+];
+
+export async function stopFixturePrograms(root: string): Promise<void> {
+  for (const marker of fixtureMarkers) {
+    const file = join(root, marker);
+    if (!existsSync(file)) continue;
+    const pid = Number(await readFile(file, "utf8"));
     if (!Number.isSafeInteger(pid) || pid <= 0)
       throw new Error(`invalid fixture PID: ${marker}`);
     try {
