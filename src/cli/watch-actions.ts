@@ -28,7 +28,10 @@ export function watchHost(request: IncomingMessage): boolean {
   );
 }
 
-function authorized(actions: WatchActions, request: IncomingMessage): boolean {
+export function actionAllowed(
+  actions: WatchActions,
+  request: IncomingMessage,
+): boolean {
   return (
     watchHost(request) &&
     request.headers.origin === `http://${request.headers.host ?? ""}` &&
@@ -39,7 +42,7 @@ function authorized(actions: WatchActions, request: IncomingMessage): boolean {
   );
 }
 
-async function bodyOf(request: IncomingMessage): Promise<unknown> {
+export async function actionBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -60,8 +63,8 @@ export async function watchAction(
   actions: WatchActions,
   request: IncomingMessage,
 ): Promise<string | null> {
-  if (!authorized(actions, request)) return null;
-  const given = cardRunRequest(actions.forms, await bodyOf(request));
+  if (!actionAllowed(actions, request)) return null;
+  const given = cardRunRequest(actions.forms, await actionBody(request));
   if (given === null) return null;
   const status = await send(actions.runtimeDirectory, {
     operation: "status",

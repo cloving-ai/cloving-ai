@@ -6,6 +6,7 @@ import {
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { send } from "../cli/client.ts";
+import { deliveryBackoffMilliseconds } from "../delivery-backoff.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import {
   decisionNotification,
@@ -193,7 +194,7 @@ async function prepareDelivery(
       lastFailure: "attempt interrupted",
     });
   if (entry.attempts === 5) return undefined;
-  const backoff = [0, 60_000, 300_000, 900_000, 3_600_000][entry.attempts] ?? 0;
+  const backoff = deliveryBackoffMilliseconds[entry.attempts] ?? 0;
   if (
     entry.lastAttemptAt !== null &&
     Date.now() - entry.lastAttemptAt < backoff

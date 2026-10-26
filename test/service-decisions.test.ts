@@ -97,6 +97,7 @@ await test("CLV-008 an answer returns the committed receipt and the continuation
         decisionId: waiting.decisionId,
         runId: waiting.runId,
         decision: "answered",
+        actor: null,
         commandId: "c-decide",
         replayed: false,
         receipt: {

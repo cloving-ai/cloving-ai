@@ -134,7 +134,7 @@ await test("CLV-007 brokers compose brokers, storage composes storage, tests rea
   assert.ok(policy.forbiddenReachability["cli"]?.includes("storage"));
 });
 
-await test("CLV-042 only brokers and tests reach the actor runtime, and pure, command line, workflow and step code cannot reach it", () => {
+await test("CLV-042 only brokers, the phone relay and tests reach the actor runtime, and pure, command line, workflow and step code cannot reach it", () => {
   const policy = admittedModulePolicy(directory, {
     files,
     roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
@@ -153,7 +153,7 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
       .filter(([, targets]) => targets.includes("actor-runtime"))
       .map(([role]) => role)
       .sort(),
-    ["broker", "test"],
+    ["broker", "relay", "test"],
   );
   assert.deepEqual(policy.allowed["actor-runtime"], []);
   assert.deepEqual(
@@ -164,7 +164,7 @@ await test("CLV-042 only brokers and tests reach the actor runtime, and pure, co
   );
 });
 
-await test("CLV-008 only service, command line and test code can import the socket module, only quality, build, candidate adapter, daemon, entry and test code can import the process module, and only the daemon and tests reach the service", () => {
+await test("CLV-008 only service, command line, phone relay and test code can import the socket module, only quality, build, candidate adapter, daemon, entry and test code can import the process module, and only the daemon and tests reach the service", () => {
   const policy = admittedModulePolicy(directory, {
     files,
     roles: { "src/admission.ts": "pure", "test/admission.test.ts": "test" },
@@ -178,7 +178,7 @@ await test("CLV-008 only service, command line and test code can import the sock
     [policy.roles["node:net"], policy.roles["node:child_process"]],
     ["network", "process"],
   );
-  assert.deepEqual(importers("network"), ["cli", "service", "test"]);
+  assert.deepEqual(importers("network"), ["cli", "relay", "service", "test"]);
   assert.deepEqual(importers("process"), [
     "build",
     "candidate-adapter",
@@ -237,7 +237,15 @@ await test("CLV-049 each role with a reachability list cannot reach the inspecto
       )
       .map(([role]) => role)
       .sort(),
-    ["candidate-adapter", "cli", "pure", "service", "step", "workflow"],
+    [
+      "candidate-adapter",
+      "cli",
+      "pure",
+      "relay",
+      "service",
+      "step",
+      "workflow",
+    ],
   );
   assert.deepEqual(
     lists

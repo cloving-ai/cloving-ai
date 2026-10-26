@@ -102,3 +102,16 @@ await test("CLV-161 retained bundle storage remains in the production coverage i
     );
   });
 });
+
+await test("CLV-187 the phone relay code is in the production coverage inventory", async () => {
+  await withProgram({ "relay.ts": "export const value = 1;" }, (program) => {
+    const files = program.getRootFileNames();
+    assert.deepEqual(
+      productionInventory(program, {
+        files,
+        roles: Object.fromEntries(files.map((file) => [file, "relay"])),
+      }).map((file) => basename(file)),
+      ["relay.ts"],
+    );
+  });
+});
