@@ -129,7 +129,7 @@ const finalStatuses: readonly OperationStatus[] = [
   "cancelled",
 ];
 
-export const runOperations = ["start-run", "continue-run"];
+export const runOperations = ["start-run", "continue-run", "resume-hook"];
 
 export function namesRunIntent(operationId: string, runId: string): boolean {
   const scope = operationScope(operationId);

@@ -19,6 +19,7 @@ interface Revised extends Identified {
 }
 
 export interface GateOpening extends Revised {
+  readonly waitMode?: "hook";
   readonly gateId: string;
   readonly kind: "question" | "approval";
   readonly prompt: string;

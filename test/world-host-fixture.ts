@@ -257,11 +257,14 @@ async function linkedPackages(directory: string): Promise<void> {
       name: "cloving",
       version,
       type: "module",
+      dependencies: { workflow: "5.1.0" },
       exports: {
         "./workflows": "./src/workflows.ts",
         "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",
         "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
         "./workflows/steps/decision-gate": "./src/steps/decision-gate.ts",
+        "./workflows/steps/wait-for-decision":
+          "./src/steps/wait-for-decision.ts",
         "./workflows/steps/handoff": "./src/steps/handoff.ts",
         "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",
         "./workflows/steps/run-command": "./src/steps/run-command.ts",

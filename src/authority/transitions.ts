@@ -21,7 +21,8 @@ export interface RunState {
 }
 
 export interface EffectIntent {
-  readonly kind: "start-run" | "continue-run" | "protected-effect";
+  readonly kind:
+    "start-run" | "continue-run" | "resume-hook" | "protected-effect";
   readonly runId: string;
   readonly operationId: string;
 }
@@ -95,6 +96,7 @@ export const textFields = [
   "resolver",
   "gateId",
   "gateKind",
+  "waitMode",
   "subject",
   "prompt",
   "expiresAt",

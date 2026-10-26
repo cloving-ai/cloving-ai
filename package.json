@@ -35,6 +35,10 @@
       "types": "./dist/src/steps/decision-gate.d.ts",
       "import": "./dist/src/steps/decision-gate.js"
     },
+    "./workflows/steps/wait-for-decision": {
+      "types": "./dist/src/steps/wait-for-decision.d.ts",
+      "import": "./dist/src/steps/wait-for-decision.js"
+    },
     "./workflows/steps/handoff": {
       "types": "./dist/src/steps/handoff.d.ts",
       "import": "./dist/src/steps/handoff.js"
