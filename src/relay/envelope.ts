@@ -5,7 +5,7 @@ import type { DaemonKeys } from "./daemon-keys.ts";
 import { sealTo } from "./hpke.ts";
 import { signedBy } from "./pairing-checks.ts";
 
-export type EnvelopeKind = "preview" | "full" | "closed";
+export type EnvelopeKind = "preview" | "full" | "closed" | "receipt";
 
 export interface Envelope {
   readonly version: 1;

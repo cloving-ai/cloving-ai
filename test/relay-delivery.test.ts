@@ -16,6 +16,7 @@ const decisionId = "run-1/review-1";
 
 const offer = {
   runId: "run-1",
+  promptDigest: `sha256:${"b".repeat(64)}`,
   deviceId: "phone-1",
   envelopes: [
     {

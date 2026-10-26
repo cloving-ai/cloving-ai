@@ -37,7 +37,10 @@ const pushes: Readonly<Record<EnvelopeKind, string>> = {
   preview: "alert",
   full: "none",
   closed: "passive",
+  receipt: "none",
 };
+
+const collapsing: ReadonlySet<EnvelopeKind> = new Set(["preview", "closed"]);
 
 const envelopeLifetimeMilliseconds = 7 * 86_400_000 - 3_600_000;
 
@@ -87,9 +90,8 @@ export async function sealedPost(
     ciphertext: sealed.toString("base64url"),
     expiresAt: sealing.expiresAt,
     push: pushes[envelope.kind],
-    collapseId:
-      envelope.kind === "full"
-        ? null
-        : collapseId(registration.keys, sealing.decisionId),
+    collapseId: collapsing.has(envelope.kind)
+      ? collapseId(registration.keys, sealing.decisionId)
+      : null,
   };
 }

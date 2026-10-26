@@ -45,7 +45,7 @@ function postedEnvelopes(
   return parsed.length === value.length ? parsed : undefined;
 }
 
-function body(
+export function envelopesBody(
   deviceId: string,
   envelopes: readonly PostedEnvelope[],
 ): Readonly<Record<string, unknown>> {
@@ -77,7 +77,7 @@ export async function postEnvelopes(
     method: "POST",
     path: "/api/v1/relay/envelopes",
     token: link.token,
-    body: body(deviceId, envelopes),
+    body: envelopesBody(deviceId, envelopes),
   }).catch(() => undefined);
   if (reply === undefined) return { at, failure: "relay-unreachable" };
   if (reply.status !== 201)

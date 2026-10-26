@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import type { Fields, Reply, ServiceRequest } from "../protocol.ts";
+import { inboxTiming, runInbox, type InboxTiming } from "./answer-inbox.ts";
 import {
   watchDecisions,
   watchTiming,
@@ -49,6 +50,7 @@ export interface RelayOptions extends RelayPaths {
   readonly secret?: () => Buffer;
   readonly heartbeatTiming?: HeartbeatTiming;
   readonly watchTiming?: WatchTiming;
+  readonly inboxTiming?: InboxTiming;
 }
 
 export interface Relay {
@@ -167,17 +169,20 @@ function deliveringStore(
   opened: RelayStore,
 ): { readonly store: RelayStore; readonly close: () => Promise<void> } {
   const stop = new AbortController();
+  const reading = new AbortController();
   const running = opened.run(stop.signal);
-  const watch = watchDecisions(
-    {
-      runtimeDirectory: options.runtimeDirectory,
-      phoneDirectory: options.phoneDirectory,
-      store: opened,
-      control: relayControl(options.runtimeDirectory),
-      now: () => Date.now(),
-    },
-    options.watchTiming ?? watchTiming,
-  );
+  const context = {
+    runtimeDirectory: options.runtimeDirectory,
+    phoneDirectory: options.phoneDirectory,
+    store: opened,
+    control: relayControl(options.runtimeDirectory),
+    now: () => Date.now(),
+  };
+  const watch = watchDecisions(context, options.watchTiming ?? watchTiming);
+  const answers = runInbox(context, {
+    signal: reading.signal,
+    timing: options.inboxTiming ?? inboxTiming,
+  });
   return {
     store: {
       ...opened,
@@ -188,6 +193,8 @@ function deliveringStore(
       },
     },
     close: async () => {
+      reading.abort();
+      await answers;
       await watch.close();
       stop.abort();
       await running;

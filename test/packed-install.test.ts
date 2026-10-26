@@ -310,6 +310,28 @@ function registrations(
     assert.ok(items(field(document, "workflows")).includes(workflow));
 }
 
+async function phoneStatus(
+  root: string,
+  settings: { executable: string; env: NodeJS.ProcessEnv },
+): Promise<void> {
+  let status: unknown = {};
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    status = JSON.parse(
+      command(settings.executable, {
+        args: ["phone", "status", "--json"],
+        cwd: root,
+        env: settings.env,
+      }),
+    );
+    if (field(status, "relay") === "on") break;
+    await delay(testMilliseconds(100));
+  }
+  assert.deepEqual(
+    [field(status, "relay"), field(status, "registered")],
+    ["on", false],
+  );
+}
+
 async function running(root: string, executable: string): Promise<void> {
   const env = await environment(root);
   const fixture = {
@@ -336,6 +358,7 @@ async function running(root: string, executable: string): Promise<void> {
   try {
     const address = await ready(child, output);
     registrations(root, { executable, env });
+    await phoneStatus(root, { executable, env });
     await runOperator(fixture, "project-run");
     await runOperator(fixture, "user-run");
     for (const [name, bytes] of Object.entries(files))

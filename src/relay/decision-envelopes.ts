@@ -24,7 +24,7 @@ export interface DecisionSource {
 const previewBytes = 2048;
 const fullBytes = 65_535;
 
-function promptDigest(prompt: string): string {
+export function promptDigest(prompt: string): string {
   return `sha256:${createHash("sha256").update(prompt).digest("hex")}`;
 }
 
@@ -62,6 +62,18 @@ function envelopeOf(
   content: { readonly kind: EnvelopeKind; readonly body: Fields },
 ): Envelope {
   return { version: 1, ...source.target, ...content };
+}
+
+export function receiptEnvelope(source: {
+  readonly receipt: Fields;
+  readonly target: EnvelopeTarget;
+}): Envelope {
+  return {
+    version: 1,
+    ...source.target,
+    kind: "receipt",
+    body: source.receipt,
+  };
 }
 
 export function closedEnvelope(source: {

@@ -144,6 +144,7 @@ await test("CLV-192 a decision of a run that the service no longer knows closes 
   await withCaseStore(async ({ phoneDirectory, store }) => {
     await store.delivery.offer("run-gone/a", {
       runId: "run-gone",
+      promptDigest: `sha256:${"c".repeat(64)}`,
       deviceId: fixtureDevice.deviceId,
       envelopes: [],
     });

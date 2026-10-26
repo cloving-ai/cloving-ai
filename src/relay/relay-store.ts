@@ -18,6 +18,7 @@ import {
   type PostedEnvelope,
 } from "./phone-delivery.ts";
 import { PhoneDevices, type PhoneDevice } from "./phone-devices.ts";
+import { PhoneInbox, type InboxWork } from "./phone-inbox.ts";
 import {
   outboxIdentity,
   PhoneOutbox,
@@ -26,10 +27,12 @@ import {
 
 const relayPrincipal = Object.freeze({ principal: "phone-relay" });
 const devicesIdentity = "phone";
+const inboxIdentity = "phone";
 const relayActors: ReadonlySet<string> = new Set([
   PhoneDevices.actorType,
   PhoneDelivery.actorType,
   PhoneOutbox.actorType,
+  PhoneInbox.actorType,
 ]);
 
 function authorized(input: AuthorizationInput): boolean {
@@ -57,6 +60,7 @@ function postRefusal(
 
 export interface DeliveryOffer {
   readonly runId: string;
+  readonly promptDigest: string;
   readonly deviceId: string;
   readonly envelopes: readonly PostedEnvelope[];
 }
@@ -74,6 +78,7 @@ export interface RelayStore {
   readonly remove: (deviceId: string) => Promise<boolean>;
   readonly removeAll: () => Promise<number>;
   readonly delivery: RelayDeliveries;
+  readonly inbox: RelayInbox;
   readonly run: (signal: AbortSignal) => Promise<void>;
   readonly close: () => Promise<void>;
 }
@@ -89,8 +94,19 @@ export interface RelayDeliveries {
   ) => Promise<boolean>;
   readonly open: () => Promise<readonly OpenDecision[]>;
   readonly list: (decisionId: string) => Promise<readonly DeviceDelivery[]>;
+  readonly promptDigest: (decisionId: string) => Promise<string | null>;
   readonly sweep: () => Promise<number>;
   readonly drainAt: (now: Date) => Promise<void>;
+}
+
+export interface RelayInbox {
+  readonly cursor: () => Promise<number>;
+  readonly work: (answerId: string) => Promise<InboxWork | undefined>;
+  readonly record: (work: InboxWork) => Promise<InboxWork>;
+  readonly complete: (done: {
+    readonly answerId: string;
+    readonly sequence: number;
+  }) => Promise<void>;
 }
 
 export interface RelayStoreOptions {
@@ -111,6 +127,7 @@ function relayDeliveries(runtime: SolidObjectsRuntime): RelayDeliveries {
       return delivery(decisionId).offer({
         deviceId: offer.deviceId,
         envelopes: offer.envelopes,
+        promptDigest: offer.promptDigest,
       });
     },
     close: async (decisionId, closing) => {
@@ -120,6 +137,7 @@ function relayDeliveries(runtime: SolidObjectsRuntime): RelayDeliveries {
     },
     open: async () => [...(await outbox.decisions)],
     list: async (decisionId) => [...(await delivery(decisionId).deliveries)],
+    promptDigest: async (decisionId) => delivery(decisionId).promptDigest,
     sweep: async () => {
       const retired = [...(await outbox.retired)];
       for (const decisionId of retired) {
@@ -134,6 +152,19 @@ function relayDeliveries(runtime: SolidObjectsRuntime): RelayDeliveries {
       await runtime.testing.runDueReminders({ now });
       await runtime.testing.drain({ roles: ["actors", "effects"] });
     },
+  };
+}
+
+function relayInbox(runtime: SolidObjectsRuntime): RelayInbox {
+  const inbox = runtime
+    .ref(PhoneInbox, inboxIdentity)
+    .with({ authorizationContext: relayPrincipal });
+  return {
+    cursor: async () => inbox.cursor,
+    work: async (answerId) =>
+      (await inbox.work).find((item) => item.answerId === answerId),
+    record: (work) => inbox.record(work),
+    complete: (done) => inbox.complete(done),
   };
 }
 
@@ -154,6 +185,7 @@ export async function openRelayStore(
   runtime.register(PhoneDevices);
   runtime.register(PhoneDelivery);
   runtime.register(PhoneOutbox);
+  runtime.register(PhoneInbox);
   const devices = runtime
     .ref(PhoneDevices, devicesIdentity)
     .with({ authorizationContext: relayPrincipal });
@@ -180,6 +212,7 @@ export async function openRelayStore(
       devices.remove({ deviceId, removedAt: new Date().toISOString() }),
     removeAll: () => devices.removeAll({ removedAt: new Date().toISOString() }),
     delivery: relayDeliveries(runtime),
+    inbox: relayInbox(runtime),
     run: (signal) => runtime.run(signal),
     close: () => runtime.close(),
   };
