@@ -1092,7 +1092,17 @@
     "test/self-host-runtime.test.ts": "test",
     "test/cli-repository-runtime.test.ts": "test",
     "test/self-host-default-runtime.test.ts": "test",
-    "src/cli/repository-arguments.ts": "cli"
+    "src/cli/repository-arguments.ts": "cli",
+    "src/agent-harnesses.ts": "entry",
+    "src/agent-harness-shell.ts": "pure",
+    "src/agent-harness-versions.ts": "pure",
+    "test/agent-harness-fixture.ts": "test",
+    "test/agent-harnesses.test.ts": "test",
+    "test/agent-harness-shell.test.ts": "test",
+    "test/agent-harness-protocol.test.ts": "test",
+    "test/agent-harness-startup.test.ts": "test",
+    "test/quality/setup-shells.test.ts": "test",
+    "tools/check-shells.ts": "build"
   },
   "allowed": {
     "quality": [
