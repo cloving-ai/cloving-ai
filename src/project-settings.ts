@@ -96,6 +96,15 @@ function encoded(value: SettingValue): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+function harnessCommandVariable(
+  name: SettingValue | undefined,
+): Readonly<Record<string, string>> {
+  if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
+  if (name === undefined || name === "claude")
+    return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
+  return {};
+}
+
 export function resolveSettings(
   environment: Readonly<NodeJS.ProcessEnv>,
   files: {
@@ -105,6 +114,7 @@ export function resolveSettings(
 ): {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly profiles: TurnProfiles;
+  readonly harness?: Configuration["harness"];
   readonly sources: Readonly<Record<string, SettingSource>>;
 } {
   const project = configurationValues(
@@ -115,12 +125,9 @@ export function resolveSettings(
   const values = { ...project, ...privateFile };
   const resolved = { ...environment };
   const sources: Record<string, SettingSource> = {};
-  const worker = environment["CLOVING_WORKER"] ?? values["harness.name"];
-  const commandVariable =
-    worker === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND";
   const mapped = {
     ...settingVariables,
-    "harness.command": commandVariable,
+    ...harnessCommandVariable(values["harness.name"]),
     profiles: "CLOVING_PROFILES",
     ...Object.fromEntries(environmentOnly.map((name) => [name, name])),
   };
@@ -133,5 +140,12 @@ export function resolveSettings(
       resolved[variable] = encoded(value);
   }
   const profiles = privateConfiguration.profiles ?? {};
-  return { environment: resolved, profiles, sources };
+  return {
+    environment: resolved,
+    profiles,
+    sources,
+    ...(privateConfiguration.harness === undefined
+      ? {}
+      : { harness: privateConfiguration.harness }),
+  };
 }

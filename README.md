@@ -111,7 +111,7 @@ For example, a shared `.cloving/config.json` can contain:
 }
 ```
 
-The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to the selected harness: `CLOVING_CLAUDE_COMMAND` overrides it for Claude and `CLOVING_CODEX_COMMAND` for Codex. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map. `harness.kind` accepts `file` or `shell`; its turn behavior and `harness.path` are reserved for the harness integration.
+The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to `harness.name`: `CLOVING_CLAUDE_COMMAND` overrides it for Claude and `CLOVING_CODEX_COMMAND` for Codex. Without a saved command, `harness.path` replaces the program in that worker's default command. `harness.kind` accepts `file` or `shell`; shell harnesses run through `SHELL -l -i -c`, with command parts passed as separate arguments. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map.
 
 Read and change settings with the configuration commands:
 
@@ -207,7 +207,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs and failed runs. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
-- `CLOVING_PROFILES`: a JSON file of named Claude turn profiles, read once when the service starts.
+- `CLOVING_PROFILES`: a JSON file of named turn profiles, read once when the service starts.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
 - `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board; default `on`.
@@ -361,7 +361,9 @@ The built-in table uses standard short-context prices read on **2026-10-18** fro
 
 `CLOVING_TOKEN_PRICES` accepts a JSON object mapping model names to non-negative finite `input`, `cachedInput` and `output` prices per million tokens. Its entries override matching built-in entries and retain the others. Estimates use the reported model or the worker command's model argument, with `estimatedCostUsd` totals only when every ended turn has an estimate. There is no live price lookup; estimates do not change budgets or limits.
 
-`CLOVING_WORKER` selects `claude` (the default) or `codex`. With `codex`, `CLOVING_CODEX_COMMAND` replaces the native Codex command and must still emit native Codex events. A shared-format wrapper uses `CLOVING_CLAUDE_COMMAND` with the `claude` worker selection. Its last JSONL result supplies `total_cost_usd` and `usage.input_tokens`, `usage.cache_read_input_tokens` and `usage.output_tokens`, including on errors. Report only the usage and price of that command call; the wrapper must normalize resumed sessions or multi-input accounting. Cloving does not infer the output format from the executable or model name or reconstruct missing usage from old logs.
+Each turn selects its harness in this order: profile `harness`, `CLOVING_WORKER`, private `harness.name`, then `claude`. `CLOVING_WORKER` changes the default for one start; a profile can still override it. Supported workers are `claude` and `codex`; a configured harness without a worker stops startup with `harness-no-worker` and its name. Private command, path and kind settings apply only to the matching harness. Status, its JSON and watch show each turn's harness.
+
+With `codex`, `CLOVING_CODEX_COMMAND` replaces the native Codex command and must still emit native Codex events. A shared-format wrapper uses `CLOVING_CLAUDE_COMMAND` with the `claude` worker selection. Its last JSONL result supplies `total_cost_usd` and `usage.input_tokens`, `usage.cache_read_input_tokens` and `usage.output_tokens`, including on errors. Report only the usage and price of that command call; the wrapper must normalize resumed sessions or multi-input accounting. Cloving does not infer the output format from the executable or model name or reconstruct missing usage from old logs.
 
 Set `CLOVING_PROFILES` to a file such as:
 
@@ -369,6 +371,7 @@ Set `CLOVING_PROFILES` to a file such as:
 {
   "profiles": {
     "checker": {
+      "harness": "claude",
       "env": { "REVIEW_ONLY": "1", "TURN_NAME": "{turn}" },
       "allowedTools": ["Read", "Grep", "Skill", "Agent"],
       "maxBudgetUsd": 15,
@@ -379,9 +382,9 @@ Set `CLOVING_PROFILES` to a file such as:
 }
 ```
 
-A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional; `model` and `permissionMode` also override the corresponding Claude command flags. Unspecified fields keep the service defaults, and `run-turn` keeps the original command. Flags after `--` remain unchanged.
+A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional. `harness`, `env`, `workflows` and `model` work with each harness. `model` replaces existing `-m`, `--model` or `--model=` options, or adds one model option. Only `allowedTools`, `permissionMode` and `maxBudgetUsd` require Claude; using them with another harness gives `profile-needs-claude`. Unspecified fields keep the selected worker's defaults. Flags after `--` remain unchanged.
 
-`workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile`, disallowed workflows with `profile-not-allowed`, and Codex profiles with `profile-needs-claude`.
+`workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile` and disallowed workflows with `profile-not-allowed`.
 
 To run a Claude or Codex turn on an existing branch, a custom workflow sets
 the effect target to `branch:feature-search`. The service finds that branch's

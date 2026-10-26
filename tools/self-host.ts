@@ -1,6 +1,7 @@
 import {
-  defaultCommand,
-  defaultCodexCommand,
+  turnHarness,
+  type HarnessSettings,
+  type NativeHarness,
 } from "../src/harness-defaults.ts";
 import { configurationRoot, resolveSettings } from "../src/project-settings.ts";
 import { repositoryFileName } from "../src/repository-identity.ts";
@@ -113,9 +114,17 @@ const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
 
 function selectedWorker(): "claude" | "codex" {
-  const worker = environment["CLOVING_WORKER"] ?? "claude";
-  if (worker === "claude" || worker === "codex") return worker;
-  throw new Error(`The daemon did not start: invalid-worker: ${worker}`);
+  return nativeWorker(environment["CLOVING_WORKER"] ?? "claude");
+}
+
+function nativeWorker(name: string): NativeHarness {
+  try {
+    return turnHarness({ worker: name }).worker;
+  } catch (error) {
+    throw new Error(`The daemon did not start: harness-no-worker: ${name}`, {
+      cause: error,
+    });
+  }
 }
 
 async function profilesFile(): Promise<TurnProfiles> {
@@ -130,7 +139,7 @@ async function profilesFile(): Promise<TurnProfiles> {
   throw new Error("The daemon did not start: invalid-profiles");
 }
 
-interface Commands {
+interface Commands extends HarnessSettings {
   readonly commands: LocalCommands;
   readonly commandSeconds: number;
   readonly fallbackModels: readonly string[];
@@ -266,10 +275,27 @@ const fallbackModels = parseFallbackModels(
 );
 const profiles = await profilesFile();
 const worker = selectedWorker();
-const command =
-  worker === "codex"
-    ? (listed("CLOVING_CODEX_COMMAND") ?? defaultCodexCommand)
-    : (listed("CLOVING_CLAUDE_COMMAND") ?? defaultCommand);
+function nativeCommands(): Readonly<
+  Partial<Record<NativeHarness, readonly string[]>>
+> {
+  const names = new Set([
+    worker,
+    ...Object.values(profiles).map((profile) =>
+      nativeWorker(profile.harness ?? worker),
+    ),
+  ]);
+  return Object.fromEntries(
+    [...names].flatMap((name) => {
+      const command = listed(
+        name === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND",
+      );
+      return command === undefined ? [] : [[name, command]];
+    }),
+  );
+}
+const workerCommands = nativeCommands();
+const harness = configuration.harness ?? {};
+const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const lanes = queueLanes();
@@ -288,6 +314,9 @@ await launchers(
     tokenPrices,
     fallbackModels,
     worker,
+    workerCommands,
+    harness,
+    shell: environment["SHELL"] ?? "/bin/sh",
     profiles,
     command,
     ticketCommand,

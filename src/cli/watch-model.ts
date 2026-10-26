@@ -166,7 +166,9 @@ export function turnOf(records: TurnRecords): WatchTurn {
   const result = record(records.result);
   const outcome = text(result["outcome"]);
   const report = record(parsed(text(result["result"])));
+  const harness = text(started["harness"]) || text(report["harness"]);
   return {
+    ...(harness === "" ? {} : { harness }),
     key: records.key,
     operationId: text(started["operationId"]),
     usage: usageOf(report["usage"]),

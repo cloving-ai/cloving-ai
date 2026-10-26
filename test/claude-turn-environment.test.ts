@@ -58,13 +58,13 @@ await test("CLV-075 CLV-083 each Claude and Codex turn starts with empty gh conf
       const ended = await running.ended;
       assert.equal(ended.exitCode, 0);
       const result: unknown = JSON.parse(String(ended.result?.text));
-      assert.deepEqual(Reflect.get(Object(result), "tokens"), []);
-      assert.deepEqual(Reflect.get(Object(result), "entries"), []);
-      assert.notEqual(Reflect.get(Object(result), "folder"), config);
-      assert.equal(
-        existsSync(String(Reflect.get(Object(result), "folder"))),
-        false,
-      );
+      assert.ok(typeof result === "object" && result !== null);
+      assert.deepEqual(Reflect.get(result, "tokens"), []);
+      assert.deepEqual(Reflect.get(result, "entries"), []);
+      const folder: unknown = Reflect.get(result, "folder");
+      assert.ok(typeof folder === "string");
+      assert.notEqual(folder, config);
+      assert.equal(existsSync(folder), false);
     }
     assert.equal(existsSync(join(config, "hosts.yml")), true);
   } finally {
@@ -116,3 +116,55 @@ await test("CLV-075 removes temporary gh configuration after failed and stopped 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+for (const shell of ["/bin/bash", "/bin/zsh"]) {
+  await test(`CLV-210 ${shell} startup cannot restore GitHub credentials to shell turns`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cloving-shell-env-"));
+    try {
+      const config = join(directory, "operator config");
+      mkdirSync(config);
+      writeFileSync(join(config, "hosts.yml"), "operator credential");
+      const startup = `
+export ${names.map((name) => `${name}=startup-credential`).join(" ")}
+export GH_CONFIG_DIR="${config}"
+turn_worker() { "$@"; }
+alias turn_alias='turn_worker'
+`;
+      writeFileSync(join(directory, ".bash_profile"), startup);
+      writeFileSync(join(directory, ".zshrc"), startup);
+      for (const worker of ["claude", "codex"] as const) {
+        for (const prefix of [[], ["turn_worker"], ["turn_alias"]]) {
+          const running = startTurn({
+            worker,
+            shell,
+            command: [
+              ...prefix,
+              process.execPath,
+              "--input-type=module",
+              "-e",
+              script,
+              worker,
+            ],
+            environment: { HOME: directory, ZDOTDIR: directory },
+            directory,
+            folder: directory,
+            prompt: "Research",
+          });
+          const ended = await running.ended;
+          assert.equal(ended.exitCode, 0);
+          const result: unknown = JSON.parse(String(ended.result?.text));
+          assert.ok(typeof result === "object" && result !== null);
+          assert.deepEqual(Reflect.get(result, "tokens"), []);
+          assert.deepEqual(Reflect.get(result, "entries"), []);
+          const folder: unknown = Reflect.get(result, "folder");
+          assert.ok(typeof folder === "string");
+          assert.ok(folder.startsWith(join(directory, "gh-config-")));
+          assert.equal(existsSync(folder), false);
+        }
+      }
+      assert.equal(existsSync(join(config, "hosts.yml")), true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}

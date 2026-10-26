@@ -209,6 +209,9 @@ function outcomeLines(value: unknown): readonly string[] {
 function workerLines(value: unknown): readonly string[] {
   return (Array.isArray(value) ? value : []).flatMap((turn: unknown) => [
     `Worker turn ${visible(part(turn, "operationId"))}: ${priceText(part(turn, "costUsd"), part(turn, "estimatedCostUsd"))}`,
+    ...(typeof part(turn, "harness") === "string"
+      ? [`  Harness: ${visible(part(turn, "harness"))}`]
+      : []),
     `  ${usageText(part(turn, "usage"))}`,
   ]);
 }

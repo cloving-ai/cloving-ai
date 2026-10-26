@@ -171,6 +171,7 @@ export async function startDaemon(
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
+    workerHarness: worker.harness,
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,

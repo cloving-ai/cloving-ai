@@ -21,15 +21,14 @@ import type { TokenPrices } from "../token-prices.ts";
 import type { LocalCommands } from "../command-settings.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
-import type { Worker } from "./claude-turn.ts";
+import type { HarnessSettings } from "../harness-defaults.ts";
 import type { DeliveryIntent } from "../broker/actor/delivery-intents.ts";
 
-export interface DaemonSettings {
+export interface DaemonSettings extends HarnessSettings {
   readonly commands?: LocalCommands;
   readonly commandSeconds?: number;
   readonly fallbackModels?: readonly string[];
   readonly tokenPrices?: TokenPrices;
-  readonly worker?: Worker;
   readonly profiles?: TurnProfiles;
   readonly directory: string;
   readonly runtimeDirectory: string;
@@ -90,6 +89,16 @@ function githubOf(
   });
 }
 
+function workerHarness(settings: DaemonSettings) {
+  return {
+    worker: settings.worker ?? settings.harness?.name ?? "claude",
+    workerCommands: settings.workerCommands ?? {},
+    harness: settings.harness ?? {},
+    shell: settings.shell ?? process.env["SHELL"] ?? "/bin/sh",
+    command: settings.command,
+  };
+}
+
 export function adapters(
   settings: DaemonSettings,
   options: {
@@ -97,7 +106,7 @@ export function adapters(
     readonly generations: ReturnType<typeof workflowGenerations>;
   },
 ): Adapters {
-  const { directory, repository, command } = settings;
+  const { directory, repository } = settings;
   const { given, generations } = options;
   const document = async (digest: string): Promise<string | undefined> =>
     (await given).document(digest);
@@ -107,11 +116,10 @@ export function adapters(
   const worker = claudeWorker({
     fallbackModels: settings.fallbackModels ?? [],
     tokenPrices: settings.tokenPrices ?? {},
-    worker: settings.worker ?? "claude",
+    ...workerHarness(settings),
     profiles: settings.profiles ?? {},
     workflowId: async (runId) => (await given).workflow.id(runId),
     repository,
-    command,
     document,
     report,
     worktrees: join(directory, "worktrees"),

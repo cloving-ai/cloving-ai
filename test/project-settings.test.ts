@@ -39,6 +39,13 @@ for (const [scope, field, variable, value] of mappedSettings)
         child === undefined
           ? { [parent]: value }
           : { [parent]: { [child]: value } };
+      if (field === "harness.command")
+        Object.assign(setting, {
+          harness: {
+            name: variable === "CLOVING_CODEX_COMMAND" ? "codex" : "claude",
+            command: value,
+          },
+        });
       const worker =
         variable === "CLOVING_CODEX_COMMAND" ? { CLOVING_WORKER: "codex" } : {};
       fixture.write(

@@ -9,6 +9,7 @@ import {
   type WorkerAttemptUsage,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
+import { shellTurnScript } from "../agent-harness-shell.ts";
 
 export type Worker = "claude" | "codex";
 
@@ -32,6 +33,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly shell?: string;
   readonly worker?: Worker;
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -143,12 +145,26 @@ function spawnTurn(start: TurnStart): {
   readonly configuration: string;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const [executable = "", ...fixed] = start.command;
+  const command =
+    start.shell === undefined
+      ? start.command
+      : [
+          start.shell,
+          "-l",
+          "-i",
+          "-c",
+          shellTurnScript,
+          "cloving-harness",
+          configuration,
+          ...start.command,
+        ];
+  const [executable = "", ...fixed] = command;
   try {
     const child = spawn(executable, fixed, {
       cwd: start.directory,
       env: turnEnvironment(configuration, start),
       stdio: ["pipe", "pipe", "pipe"],
+      detached: start.shell !== undefined,
     });
     return { child, configuration };
   } catch (error) {
@@ -233,6 +249,27 @@ function turnOutput(
   };
 }
 
+function signalTurn(
+  turn: {
+    readonly child: ChildProcessWithoutNullStreams;
+    readonly start: TurnStart;
+  },
+  signal: NodeJS.Signals,
+): void {
+  const { child, start } = turn;
+  if (start.shell === undefined || child.pid === undefined) {
+    child.kill(signal);
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch (error) {
+    const code: unknown = Reflect.get(Object(error), "code");
+    if (code !== "ESRCH" && code !== "EPERM") throw error;
+    child.kill(signal);
+  }
+}
+
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
@@ -258,9 +295,11 @@ export function startTurn(start: TurnStart): RunningTurn {
         rmSync(configuration, { recursive: true, force: true });
       }),
     stop: (graceMilliseconds) => {
-      child.kill("SIGTERM");
+      signalTurn({ child, start }, "SIGTERM");
       timers.push(
-        setTimeout(() => child.kill("SIGKILL"), graceMilliseconds).unref(),
+        setTimeout(() => {
+          signalTurn({ child, start }, "SIGKILL");
+        }, graceMilliseconds).unref(),
       );
     },
   };
