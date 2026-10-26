@@ -119,10 +119,8 @@ function effectfulFunctions(
   const calls = (node: ts.Node): boolean => {
     if (typeOnlyEffectNode(node)) return false;
     if (protectedCall(node, input.symbols)) return true;
-    if (ts.isIdentifier(node)) {
-      const called = input.functionAt(node);
-      if (called && effectful.has(called)) return true;
-    }
+    const called = ts.isIdentifier(node) ? input.functionAt(node) : undefined;
+    if (called && effectful.has(called)) return true;
     return ts.forEachChild(node, (child) => calls(child) || undefined) ?? false;
   };
   let previous = -1;
