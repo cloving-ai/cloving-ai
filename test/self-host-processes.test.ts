@@ -109,21 +109,16 @@ for (const phoneRelay of ["on", "off"])
 await test("CLV-208 host shutdown signals each child once while awaiting its exit", async () => {
   await withFiles({}, async (root) => {
     const paths = await programs(root);
-    const spawn = childProcess.spawn;
+    const prototype = childProcess.ChildProcess.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "kill");
+    assert.ok(descriptor);
+    const kill: unknown = descriptor.value;
+    assert.ok(typeof kill === "function");
     const signals: Array<number | undefined> = [];
-    Object.defineProperty(childProcess, "spawn", {
-      configurable: true,
-      value: (...argumentsList: Parameters<typeof spawn>) => {
-        const child = spawn(...argumentsList);
-        const kill = child.kill.bind(child);
-        child.kill = (signal) => {
-          if (signal === "SIGTERM") signals.push(child.pid);
-          return kill(signal);
-        };
-        return child;
-      },
-    });
-    syncBuiltinESMExports();
+    prototype.kill = function (signal) {
+      if (signal === "SIGTERM") signals.push(this.pid);
+      return Reflect.apply(kill, this, [signal]) === true;
+    };
     const hosting = hostedPrograms({
       ...paths,
       repository: root,
@@ -146,8 +141,7 @@ await test("CLV-208 host shutdown signals each child once while awaiting its exi
       try {
         await hosting;
       } finally {
-        childProcess.spawn = spawn;
-        syncBuiltinESMExports();
+        Object.defineProperty(prototype, "kill", descriptor);
       }
     }
   });
