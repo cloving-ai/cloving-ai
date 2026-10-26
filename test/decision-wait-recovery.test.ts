@@ -1,10 +1,64 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import { withConsumer } from "./world-host-fixture.ts";
 import { decisionPrelude, decisionWorkflow } from "./decision-wait-fixture.ts";
 
 const resumeModule = new URL("../src/host/decision-resume.ts", import.meta.url)
   .href;
+
+await test("CLV-219 decision delivery and recovery find hooks across all SDK event pages", async () => {
+  const script = `
+import assert from "node:assert/strict";
+import { mock } from "node:test";
+let received = true;
+const resumes = [];
+const reads = [];
+const token = "cloving-decision/v1/run-1/review-1";
+const created = { eventType: "hook_created", correlationId: "hook-1", eventData: { token } };
+const accepted = { eventType: "hook_received", correlationId: "hook-1" };
+mock.module("workflow/runtime", { namedExports: { getWorld: async () => ({ events: {
+  list: async ({ runId, resolveData, pagination }) => {
+    assert.equal(runId, "sdk-run");
+    assert.equal(resolveData, "none");
+    const cursor = pagination?.cursor;
+    reads.push(cursor ?? null);
+    if (cursor === undefined) return { data: [{ eventType: "run_created" }], hasMore: true, cursor: "created" };
+    assert.equal(pagination.limit, 1000);
+    assert.equal(pagination.sortOrder, "asc");
+    if (cursor === "created") return { data: [created], hasMore: true, cursor: "received" };
+    assert.equal(cursor, "received");
+    return { data: received ? [accepted] : [], hasMore: false, cursor: null };
+  },
+} }) } });
+mock.module("workflow/api", { namedExports: { resumeHook: async (given, result) => {
+  resumes.push([given, result]);
+  received = true;
+} } });
+const { reconciledDecision, deliveredDecision } = await import(${JSON.stringify(resumeModule)});
+const operationId = JSON.stringify(["cloving-operation", 0, "run-1", "develop", "start-run", null, null]);
+const parts = { runs: async () => [{ operationId, receipt: "sdk-run" }], document: async () => undefined };
+const intent = { runId: "run-1", gateId: "review-1", decision: "approved", answer: null };
+try {
+  assert.deepEqual(await reconciledDecision(parts, intent), { kind: "accepted", receipt: "sdk-run" });
+  assert.deepEqual(await deliveredDecision(parts, { intent, signal: undefined }), { receipt: "sdk-run" });
+  assert.deepEqual(resumes, []);
+  received = false;
+  assert.deepEqual(await reconciledDecision(parts, intent), { kind: "absent" });
+  assert.deepEqual(await deliveredDecision(parts, { intent, signal: AbortSignal.timeout(1000) }), { receipt: "sdk-run" });
+  assert.deepEqual(resumes, [[token, { decision: "approved", answer: null }]]);
+  assert.deepEqual(reads, Array.from({ length: 4 }, () => [null, "created", "received"]).flat());
+} finally { mock.restoreAll(); }
+`;
+  const result = await promisify(execFile)(process.execPath, [
+    "--experimental-test-module-mocks",
+    "--input-type=module",
+    "-e",
+    script,
+  ]);
+  assert.equal(result.stdout, "");
+});
 
 const crashes = [
   {

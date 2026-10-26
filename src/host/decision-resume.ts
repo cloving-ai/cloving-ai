@@ -29,11 +29,21 @@ async function runSubject(
   receipt: string,
   token: string,
 ): Promise<ResumeSubject> {
-  const events = (
-    await (
-      await getWorld()
-    ).events.list({ runId: receipt, resolveData: "none" })
-  ).data;
+  const world = await getWorld();
+  let page = await world.events.list({
+    runId: receipt,
+    resolveData: "none",
+    pagination: { limit: 1000, sortOrder: "asc" },
+  });
+  const events = [...page.data];
+  while (page.hasMore && page.cursor !== null) {
+    page = await world.events.list({
+      runId: receipt,
+      resolveData: "none",
+      pagination: { limit: 1000, sortOrder: "asc", cursor: page.cursor },
+    });
+    events.push(...page.data);
+  }
   const created = events.find(
     (event) =>
       event.eventType === "hook_created" && event.eventData.token === token,
