@@ -20,6 +20,12 @@ export async function programs(
   await mkdir(project);
   const program = (name: string): string => `
 import { existsSync, writeFileSync } from "node:fs";
+const parent = process.ppid;
+if (parent === 1) process.exit(0);
+writeFileSync(${JSON.stringify(join(root, `${name}-started`))}, String(process.pid));
+setInterval(() => {
+  if (process.ppid !== parent) process.exit(0);
+}, 200).unref();
 ${name === "watch" ? `await new Promise(resolve => setTimeout(resolve, ${String(options.watchStartupMilliseconds ?? 0)}));` : ""}
 ${
   name === "daemon"
@@ -30,10 +36,6 @@ createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok:
     : ""
 }
 const timer = setInterval(() => {}, 1000);
-const parent = process.ppid;
-setInterval(() => {
-  if (process.ppid !== parent) process.exit(0);
-}, 200).unref();
 process.on("SIGINT", () => process.emit("SIGTERM"));
 process.on("SIGTERM", () => setTimeout(() => {
   writeFileSync(${JSON.stringify(join(root, `${name}-stopped`))}, "stopped");

@@ -78,3 +78,30 @@ await test("CLV-231 a fixture program stops when its parent process ends", async
     await rm(root, { recursive: true, force: true });
   }
 });
+
+await test("CLV-231 a fixture program stops when its parent ends during its startup delay", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-fixture-early-"));
+  const { product } = await programs(root, {
+    watchStartupMilliseconds: testMilliseconds(1500),
+  });
+  const started = join(root, "watch-started");
+  const parent = spawn(
+    process.execPath,
+    [
+      "-e",
+      `require("node:child_process").spawn(process.execPath, [${JSON.stringify(join(product, "src/cli.ts"))}], { stdio: "ignore" }); setInterval(() => {}, 1000);`,
+    ],
+    { stdio: "ignore" },
+  );
+  let program = 0;
+  try {
+    program = await readyProcess(started);
+    parent.kill("SIGKILL");
+    assert.equal(existsSync(join(root, "watch-ready")), false);
+    assert.equal(await ended(program), true);
+  } finally {
+    parent.kill("SIGKILL");
+    if (program > 0 && alive(program)) process.kill(program, "SIGKILL");
+    await rm(root, { recursive: true, force: true });
+  }
+});
