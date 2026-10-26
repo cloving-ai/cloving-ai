@@ -155,6 +155,7 @@ function spawnTurn(start: TurnStart): {
           "-c",
           shellTurnScript,
           "cloving-harness",
+          configuration,
           ...start.command,
         ];
   const [executable = "", ...fixed] = command;

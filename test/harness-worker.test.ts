@@ -83,17 +83,20 @@ await test("CLV-210 stopping a shell turn stops its native process and escalates
         environment: { HOME: scene.directory },
       });
       try {
-        await until(() => existsSync(ready));
+        await until(
+          () => existsSync(ready) && Number(readFileSync(ready, "utf8")) > 0,
+        );
         running.stop(25);
         const ended = await Promise.race([
           running.ended.then(() => true),
           delay(2000, false, { ref: false }),
         ]);
         assert.equal(ended, true, "shell turn did not stop its native process");
+        await until(() => !alive(Number(readFileSync(ready, "utf8"))));
         assert.equal(alive(Number(readFileSync(ready, "utf8"))), false);
       } finally {
-        const pid = Number(readFileSync(ready, "utf8"));
-        if (alive(pid)) process.kill(pid, "SIGKILL");
+        const pid = existsSync(ready) ? Number(readFileSync(ready, "utf8")) : 0;
+        if (pid > 0 && alive(pid)) process.kill(pid, "SIGKILL");
         running.stop(0);
         await running.ended;
       }
@@ -188,12 +191,18 @@ console.log(JSON.stringify({type:"result",is_error:false,result:JSON.stringify({
         harness: { name: "claude", kind: "shell" },
       },
     });
-    assert.deepEqual(observed["arguments"], [
+    const argumentsList = observed["arguments"];
+    assert.ok(Array.isArray(argumentsList));
+    const configuration: unknown = argumentsList[5];
+    assert.ok(String(configuration).includes("/gh-config-"));
+    assert.equal(existsSync(String(configuration)), false);
+    assert.deepEqual(argumentsList, [
       "-l",
       "-i",
       "-c",
       shellTurnScript,
       "cloving-harness",
+      configuration,
       ...parts,
     ]);
   }));
