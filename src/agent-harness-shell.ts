@@ -27,23 +27,16 @@ set +m
 printf '__CLOVING_HARNESS_START_0__\\n'
 if [ "$2" = file ]; then
   command -- "$1" --version
-elif [ -n "\${ZSH_VERSION-}" ]; then
-  if (( \${+aliases[$1]} )); then
-    alias_command="\${aliases[$1]}"
-    builtin unalias -- "$1"
-    eval -- "$alias_command"' --version'
-  else
-    "$1" --version
-  fi
-elif [ -n "\${BASH_VERSION-}" ]; then
-  alias_value=$(builtin alias -- "$1" 2>/dev/null)
-  if [ $? -eq 0 ]; then
-    eval -- "alias_command=\${alias_value#*=}"
-    builtin unalias -- "$1"
-    eval -- "$alias_command"' --version'
-  else
-    "$1" --version
-  fi
+elif [ -n "\${ZSH_VERSION-}" ] && (( \${+aliases[$1]} )); then
+  alias_command="\${aliases[$1]}"
+  builtin unalias -- "$1"
+  eval -- "$alias_command"' --version'
+elif [ -n "\${BASH_VERSION-}" ] && alias_value=$(builtin alias -- "$1" 2>/dev/null); then
+  eval -- "alias_command=\${alias_value#*=}"
+  builtin unalias -- "$1"
+  eval -- "$alias_command"' --version'
+elif [ -n "\${ZSH_VERSION-}" ] || [ -n "\${BASH_VERSION-}" ]; then
+  "$1" --version
 else
   exit 64
 fi
