@@ -120,7 +120,9 @@ await test("CLV-210 a profile harness beats the worker override and never inheri
         },
       },
     });
-    assert.equal(Reflect.get(Object(observed["env"]), "REVIEW_ONLY"), "yes");
+    const environment = observed["env"];
+    assert.ok(typeof environment === "object" && environment !== null);
+    assert.equal(Reflect.get(environment, "REVIEW_ONLY"), "yes");
   }));
 
 await test("CLV-210 Codex accepts shared profile fields and replaces its model", () =>
@@ -194,8 +196,9 @@ console.log(JSON.stringify({type:"result",is_error:false,result:JSON.stringify({
     const argumentsList = observed["arguments"];
     assert.ok(Array.isArray(argumentsList));
     const configuration: unknown = argumentsList[5];
-    assert.ok(String(configuration).includes("/gh-config-"));
-    assert.equal(existsSync(String(configuration)), false);
+    assert.ok(typeof configuration === "string");
+    assert.ok(configuration.includes("/gh-config-"));
+    assert.equal(existsSync(configuration), false);
     assert.deepEqual(argumentsList, [
       "-l",
       "-i",

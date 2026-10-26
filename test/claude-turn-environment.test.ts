@@ -58,13 +58,13 @@ await test("CLV-075 CLV-083 each Claude and Codex turn starts with empty gh conf
       const ended = await running.ended;
       assert.equal(ended.exitCode, 0);
       const result: unknown = JSON.parse(String(ended.result?.text));
-      assert.deepEqual(Reflect.get(Object(result), "tokens"), []);
-      assert.deepEqual(Reflect.get(Object(result), "entries"), []);
-      assert.notEqual(Reflect.get(Object(result), "folder"), config);
-      assert.equal(
-        existsSync(String(Reflect.get(Object(result), "folder"))),
-        false,
-      );
+      assert.ok(typeof result === "object" && result !== null);
+      assert.deepEqual(Reflect.get(result, "tokens"), []);
+      assert.deepEqual(Reflect.get(result, "entries"), []);
+      const folder: unknown = Reflect.get(result, "folder");
+      assert.ok(typeof folder === "string");
+      assert.notEqual(folder, config);
+      assert.equal(existsSync(folder), false);
     }
     assert.equal(existsSync(join(config, "hosts.yml")), true);
   } finally {
@@ -153,9 +153,11 @@ alias turn_alias='turn_worker'
           const ended = await running.ended;
           assert.equal(ended.exitCode, 0);
           const result: unknown = JSON.parse(String(ended.result?.text));
-          assert.deepEqual(Reflect.get(Object(result), "tokens"), []);
-          assert.deepEqual(Reflect.get(Object(result), "entries"), []);
-          const folder = String(Reflect.get(Object(result), "folder"));
+          assert.ok(typeof result === "object" && result !== null);
+          assert.deepEqual(Reflect.get(result, "tokens"), []);
+          assert.deepEqual(Reflect.get(result, "entries"), []);
+          const folder: unknown = Reflect.get(result, "folder");
+          assert.ok(typeof folder === "string");
           assert.ok(folder.startsWith(join(directory, "gh-config-")));
           assert.equal(existsSync(folder), false);
         }
