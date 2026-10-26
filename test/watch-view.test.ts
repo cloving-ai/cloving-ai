@@ -59,7 +59,7 @@ function banner(run: Partial<WatchRun>): string {
 
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the steps of the run, its pending decision, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
-    `<span>updated ${shownClock("21:34:41")}</span></header>`,
+    `<span>updated ${shownClock("21:34:41")}</span></div></header>`,
     '<a class="back" href="#workflow=develop-ticket">← Back to develop-ticket</a>',
     '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
@@ -165,7 +165,7 @@ await test("CLV-016 the full page shows a selected run and plain words for no tu
   ]);
   assert.equal(
     page(null).slice(page(null).indexOf("<span>")),
-    '<span></span></header><p class="meta">The page waits for the first data of the watch tool.</p>',
+    '<span></span></div></header><p class="meta">The page waits for the first data of the watch tool.</p>',
   );
 });
 
@@ -173,7 +173,7 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
   const props = { selected: "run-2", now: at("21:34:41"), copying: noCopy };
   const stale = rendered(component(Page, { ...props, model, stale: true }));
   positions(stale, [
-    '<span class="bad">The watch tool does not answer.</span></header>',
+    '<span class="bad">The watch tool does not answer.</span></div></header>',
     '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
   ]);
 });
