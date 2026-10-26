@@ -7,6 +7,8 @@ import {
   type FileHandle,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
+import ts from "typescript";
+import { workflowHelperPath } from "../src/workflow-candidate.ts";
 
 export type WorkflowCaptureCode =
   | "unsafe-workflow-path"
@@ -138,6 +140,18 @@ async function openSource(
 }
 
 async function inspectFile(folder: WorkflowFolder, name: string) {
+  const parts = name.split("/");
+  const fileName = parts.pop();
+  if (!fileName || parts.some((part) => !safeComponent(part)))
+    throw new Error("unsafe-workflow-path");
+  let parent = folder;
+  for (const part of parts) {
+    const path = join(parent.path, part);
+    const stats = await lstat(path, { bigint: true });
+    if (!stats.isDirectory()) throw new Error("unsafe-workflow-path");
+    parent = { path, components: [...parent.components, { path, stats }] };
+  }
+  await verifyFolder(parent);
   const path = join(folder.path, name);
   const stats = await lstat(path, { bigint: true });
   if (!stats.isFile()) throw new Error("unsafe-workflow-path");
@@ -146,7 +160,7 @@ async function inspectFile(folder: WorkflowFolder, name: string) {
     throw new Error("workflow-source-changed");
   if (!contained(folder.path, resolved))
     throw new Error("unsafe-workflow-path");
-  return { path, name, stats };
+  return { path, name, stats, folder: parent, fileName };
 }
 
 async function captureFile(
@@ -154,7 +168,10 @@ async function captureFile(
   file: Awaited<ReturnType<typeof inspectFile>>,
 ) {
   const { stats } = file;
-  const handle = await openSource(folder, file.name).catch(changedPathError);
+  await verifyFolder(folder);
+  const handle = await openSource(file.folder, file.fileName).catch(
+    changedPathError,
+  );
   try {
     if (!sameSnapshot(stats, await handle.stat({ bigint: true })))
       throw new Error("workflow-source-changed");
@@ -189,10 +206,41 @@ async function captureFiles(folder: WorkflowFolder, names: readonly string[]) {
     }
   }
   for (const file of captured) {
+    await verifyFolder(file.folder);
     if (!sameSnapshot(file.stats, await capturedStats(file.path)))
       throw new Error("workflow-source-changed");
   }
   return { captured, codes };
+}
+
+async function captureImports(
+  folder: WorkflowFolder,
+  snapshot: Awaited<ReturnType<typeof captureFiles>>,
+) {
+  const { captured, codes } = snapshot;
+  const helpers: Record<string, string> = {};
+  for (const source of captured) {
+    if (!source.name.endsWith(".ts")) continue;
+    for (const imported of ts.preProcessFile(source.bytes.toString("utf8"))
+      .importedFiles) {
+      const name = workflowHelperPath(source.name, imported.fileName);
+      if (!name || captured.some((file) => file.name === name)) continue;
+      const result = await captureFiles(folder, [name]);
+      codes.push(...result.codes);
+      captured.push(...result.captured);
+      const text = decodedFile(
+        { bytes: result.captured[0]?.bytes, code: "unsupported-source" },
+        codes,
+      );
+      if (text !== undefined) helpers[name] = text;
+    }
+  }
+  for (const file of captured) {
+    await verifyFolder(file.folder);
+    if (!sameSnapshot(file.stats, await capturedStats(file.path)))
+      throw new Error("workflow-source-changed");
+  }
+  return helpers;
 }
 
 function decodedFile(
@@ -221,6 +269,7 @@ export async function captureWorkflowCandidate(
     name,
     declarationName,
   ]);
+  const helpers = await captureImports(folder, { captured, codes });
   await verifyFolder(folder);
   const source = decodedFile(
     {
@@ -239,6 +288,7 @@ export async function captureWorkflowCandidate(
   return {
     source,
     declaration,
+    helpers,
     codes: [
       ...new Set(
         codes.includes("unsafe-workflow-path")

@@ -315,15 +315,19 @@ function passiveInitializer(node: ts.Expression | undefined): boolean {
   return inner ? passiveInitializer(inner) : passiveCompound(node);
 }
 
-function passiveStatement(node: ts.Statement): boolean {
+function passiveStatement(
+  node: ts.Statement,
+  kind: "workflow" | "helper",
+): boolean {
   if (ts.isVariableStatement(node))
     return (
       (node.declarationList.flags & ts.NodeFlags.Const) !== 0 &&
       node.declarationList.declarations.every(
         (declaration) =>
-          (ts.getCombinedModifierFlags(declaration) &
-            ts.ModifierFlags.Export) ===
-            0 &&
+          (kind === "helper" ||
+            (ts.getCombinedModifierFlags(declaration) &
+              ts.ModifierFlags.Export) ===
+              0) &&
           ts.isIdentifier(declaration.name) &&
           passiveInitializer(declaration.initializer),
       )
@@ -339,6 +343,9 @@ function passiveStatement(node: ts.Statement): boolean {
   );
 }
 
-export function passiveCandidateModule(source: ts.SourceFile): boolean {
-  return source.statements.every(passiveStatement);
+export function passiveCandidateModule(
+  source: ts.SourceFile,
+  kind: "workflow" | "helper" = "workflow",
+): boolean {
+  return source.statements.every((node) => passiveStatement(node, kind));
 }

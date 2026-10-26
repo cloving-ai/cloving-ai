@@ -5,10 +5,15 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { withFiles } from "./quality/files-fixture.ts";
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
+import { validCandidateSource } from "./workflow-candidate-fixtures.ts";
 
 export async function packedWorkflowFolders(root: string): Promise<void> {
   const files = {
     ...operatorFiles("project", "project"),
+    "repo/.cloving/workflows/project.ts": `import { prompt } from "./project/prompts.ts";\n${validCandidateSource.replaceAll("candidate", "project").replace('payload: "synthetic"', "payload: prompt()")}`,
+    "repo/.cloving/workflows/project/prompts.ts":
+      'export function prompt() { return "packed-helper"; }',
+    "repo/.cloving/workflows/project.test.ts": "ignored test source",
     ...operatorFiles("user", "user"),
     ...operatorFiles("user", "refused"),
     "config/cloving/workflows/refused.declaration.json": "{}",
