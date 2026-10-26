@@ -32,6 +32,7 @@ export interface PhoneControls {
   readonly stage: string | null;
   readonly connected: string | null;
   readonly refusal: string | null;
+  readonly reason: string | null;
   readonly devices: readonly PhoneDevice[];
   readonly busy: boolean;
   readonly message: string;
@@ -127,6 +128,7 @@ export function PhoneList(props: { readonly phone: PhoneControls }): Shown {
 
 export function phoneNotices(phone: PhoneControls): Shown {
   const lines = [
+    phone.reason === "registration-lost" ? "Connect your phones again." : null,
     phone.connected === null ? null : `Connected: ${phone.connected}`,
     phone.refusal === null ? null : refusalText(phone.refusal),
     phone.message === "" ? null : phone.message,

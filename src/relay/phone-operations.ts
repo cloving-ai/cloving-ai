@@ -12,6 +12,7 @@ export interface OperationState {
   readonly context: RegistrationContext;
   readonly store: RelayStore;
   readonly sessions: PairingSessions;
+  readonly registration: { lost: boolean };
 }
 
 export function result(fields: Fields): Reply {

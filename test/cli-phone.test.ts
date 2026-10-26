@@ -61,6 +61,7 @@ await test("CLV-187 phone status shows the relay state, or that the relay is off
         origin: null,
         pairing: null,
         refusal: null,
+        reason: null,
         devices: [],
       });
       const text = await cloving(runtimeDirectory, ["phone", "status"]);

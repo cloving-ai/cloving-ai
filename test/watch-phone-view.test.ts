@@ -14,6 +14,7 @@ const controls: PhoneControls = {
   stage: null,
   connected: null,
   refusal: null,
+  reason: null,
   devices: [],
   busy: false,
   message: "",
@@ -151,4 +152,11 @@ await test("CLV-189 the Remove button of a phone sends its device ID", () => {
   assert.ok(typeof click === "function");
   Reflect.apply(click, undefined, []);
   assert.deepEqual(removed, ["phone-1"]);
+});
+
+await test("CLV-190 the phone panel asks to connect the phones again after a lost registration", () => {
+  assert.equal(
+    shown({ reason: "registration-lost" }),
+    "Connect a phone Connect your phones again.",
+  );
 });

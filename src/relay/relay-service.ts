@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { mkdir } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -18,6 +19,11 @@ import {
   type OperationState,
 } from "./phone-operations.ts";
 import { listenPhoneSocket } from "./phone-socket.ts";
+import {
+  heartbeatTiming,
+  runHeartbeats,
+  type HeartbeatTiming,
+} from "./relay-heartbeat.ts";
 import { relayOrigin } from "./relay-http.ts";
 import {
   forgetRegistration,
@@ -35,6 +41,7 @@ export interface RelayOptions extends RelayPaths {
   readonly origin?: string;
   readonly computerName?: string;
   readonly secret?: () => Buffer;
+  readonly heartbeatTiming?: HeartbeatTiming;
 }
 
 export interface Relay {
@@ -78,6 +85,7 @@ async function phoneState(relay: OperationState): Promise<Reply> {
     origin: link?.origin ?? null,
     pairing: pairingView(relay.sessions.current()),
     refusal: relay.sessions.refusal(),
+    reason: relay.registration.lost ? "registration-lost" : null,
     devices: (await relay.store.devices()).map((device) => ({
       deviceId: device.deviceId,
       name: device.name,
@@ -116,6 +124,7 @@ function sharedStart(relay: OperationState): Promise<OpenPairing> {
 
 async function pairStart(relay: OperationState): Promise<Reply> {
   const open = relay.sessions.current() ?? (await sharedStart(relay));
+  relay.registration.lost = false;
   return result({ link: open.link, expiresAt: open.expiresAt });
 }
 
@@ -164,6 +173,7 @@ export async function startRelay(options: RelayOptions): Promise<Relay> {
       secret: options.secret ?? (() => randomBytes(16)),
       follow: (open) => follower.follow(open),
     }),
+    registration: { lost: false },
   };
   follower.follow = (open) => followPairing(relay, open);
   const socket = await listenPhoneSocket(
@@ -175,9 +185,26 @@ export async function startRelay(options: RelayOptions): Promise<Relay> {
         : operation(relay, request.parameters);
     },
   );
+  const stop = new AbortController();
+  const beating = runHeartbeats(
+    {
+      phoneDirectory: options.phoneDirectory,
+      store,
+      timing: options.heartbeatTiming ?? heartbeatTiming,
+      lost: () => {
+        relay.registration.lost = true;
+        relay.sessions.cancel();
+      },
+      wait: (milliseconds, signal) =>
+        delay(milliseconds, undefined, { signal }).catch(() => undefined),
+    },
+    stop.signal,
+  );
   return {
     close: async () => {
+      stop.abort();
       relay.sessions.cancel();
+      await beating;
       await socket.close();
       await store.close();
     },

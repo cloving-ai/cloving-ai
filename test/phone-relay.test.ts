@@ -31,6 +31,7 @@ await test("CLV-187 the relay serves phone-state on a private phone.sock with a 
           origin: null,
           pairing: null,
           refusal: null,
+          reason: null,
           devices: [],
         },
       });
@@ -68,6 +69,7 @@ await test("CLV-187 phone-state reads the registration from phone/link.json", as
           origin: "https://cloving.ai",
           pairing: null,
           refusal: null,
+          reason: null,
           devices: [],
         },
       });
