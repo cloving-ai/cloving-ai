@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import {
+import { spawnSync } from "node:child_process";
+import filesystem, {
   chmodSync,
   existsSync,
   mkdirSync,
@@ -8,6 +9,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -16,6 +18,8 @@ import {
   releaseCoverageFolder,
   removeStaleCoverageFolders,
 } from "../../quality/coverage-folders.ts";
+import { checkTests } from "../../quality/test-execution.ts";
+import { withFiles } from "./files-fixture.ts";
 
 const hour = 60 * 60 * 1000;
 const now = Date.parse("2026-10-26T12:00:00Z");
@@ -138,6 +142,51 @@ await test("CLV-230 other folders and owner files of removed folders are handled
   }
 });
 
+await test("CLV-230 an owner entry that is not a regular file counts as no owner", () => {
+  const place = scene();
+  try {
+    const folder = place.folder("pipe", { ageHours: 1 });
+    const made = spawnSync("mkfifo", [`${folder}.owner`]);
+    assert.equal(made.status, 0, String(made.stderr));
+    place.clean([]);
+    assert.equal(existsSync(folder), true);
+    assert.deepEqual(place.warnings, []);
+  } finally {
+    rmSync(place.root, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-230 a listing failure gives a warning, and the cleanup ends", () => {
+  const warnings: string[] = [];
+  removeStaleCoverageFolders({
+    root: join(tmpdir(), "cloving-coverage-folders-missing-root"),
+    now: () => now,
+    running: () => false,
+    warn: (text) => warnings.push(text),
+  });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] ?? "", /not listed/);
+});
+
+await test("CLV-230 a release ignores an owner file that another gate removed first", () => {
+  const place = scene();
+  const unlink = filesystem.unlinkSync;
+  try {
+    const folder = place.folder("raced", { ageHours: 0, owner: 4106 });
+    filesystem.unlinkSync = (path) => {
+      unlink(path);
+      throw Object.assign(new Error("already removed"), { code: "ENOENT" });
+    };
+    syncBuiltinESMExports();
+    releaseCoverageFolder(folder);
+    assert.equal(existsSync(folder), false);
+  } finally {
+    filesystem.unlinkSync = unlink;
+    syncBuiltinESMExports();
+    rmSync(place.root, { recursive: true, force: true });
+  }
+});
+
 await test("CLV-230 a released folder leaves no owner file", () => {
   const place = scene();
   try {
@@ -148,4 +197,50 @@ await test("CLV-230 a released folder leaves no owner file", () => {
   } finally {
     rmSync(place.root, { recursive: true, force: true });
   }
+});
+
+function ownerText(path: string): string {
+  try {
+    return filesystem.readFileSync(path, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+await test("CLV-230 the test check marks its coverage folder with its process ID and removes the mark", async () => {
+  const owned = () =>
+    filesystem
+      .readdirSync(tmpdir())
+      .filter(
+        (name) =>
+          name.startsWith("cloving-test-coverage-") &&
+          name.endsWith(".owner") &&
+          ownerText(join(tmpdir(), name)) === String(process.pid),
+      );
+  await withFiles(
+    {
+      "main.test.ts": [
+        'import assert from "node:assert/strict";',
+        'import { readdirSync, readFileSync } from "node:fs";',
+        'import { join } from "node:path";',
+        'import { test } from "node:test";',
+        `const root = ${JSON.stringify(tmpdir())};`,
+        "function ownerText(path) {",
+        '  try { return readFileSync(path, "utf8").trim(); } catch { return ""; }',
+        "}",
+        'await test("sees the owner mark", () => {',
+        "  const marks = readdirSync(root).filter((name) =>",
+        '    name.startsWith("cloving-test-coverage-") && name.endsWith(".owner") &&',
+        `    ownerText(join(root, name)) === "${String(process.pid)}");`,
+        "  assert.equal(marks.length, 1);",
+        "});",
+      ].join("\n"),
+    },
+    async (directory) => {
+      await checkTests(directory, {
+        files: [join(directory, "main.test.ts")],
+      });
+    },
+  );
+  assert.deepEqual(owned(), []);
 });

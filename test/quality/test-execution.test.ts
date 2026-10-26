@@ -3,7 +3,7 @@ import childProcess from "node:child_process";
 import filesystem from "node:fs";
 import { readdir, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import { availableParallelism, tmpdir } from "node:os";
+import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { runSupervisedCommand } from "../../quality/command.ts";
@@ -109,42 +109,6 @@ await test("CLV-101 fails the gate when coverage cleanup exhausts its retries", 
     filesystem.rmSync = remove;
     syncBuiltinESMExports();
   }
-});
-
-await test("CLV-230 the test check marks its coverage folder with its process ID and removes the mark", async () => {
-  const owned = () =>
-    filesystem
-      .readdirSync(tmpdir())
-      .filter(
-        (name) =>
-          name.startsWith("cloving-test-coverage-") &&
-          name.endsWith(".owner") &&
-          filesystem.readFileSync(join(tmpdir(), name), "utf8").trim() ===
-            String(process.pid),
-      );
-  await withFiles(
-    {
-      "main.test.ts": [
-        'import assert from "node:assert/strict";',
-        'import { readdirSync, readFileSync } from "node:fs";',
-        'import { join } from "node:path";',
-        'import { test } from "node:test";',
-        `const root = ${JSON.stringify(tmpdir())};`,
-        'await test("sees the owner mark", () => {',
-        "  const marks = readdirSync(root).filter((name) =>",
-        '    name.startsWith("cloving-test-coverage-") && name.endsWith(".owner") &&',
-        `    readFileSync(join(root, name), "utf8").trim() === "${String(process.pid)}");`,
-        "  assert.equal(marks.length, 1);",
-        "});",
-      ].join("\n"),
-    },
-    async (directory) => {
-      await checkTests(directory, {
-        files: [join(directory, "main.test.ts")],
-      });
-    },
-  );
-  assert.deepEqual(owned(), []);
 });
 
 await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
