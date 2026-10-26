@@ -1,6 +1,20 @@
 const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
 
+export const configUsage = `Usage: cloving config list [--json]
+       cloving config get <field> [--json]
+       cloving config set <field> <value> [--private] [--json]
+       cloving config unset <field> [--private] [--json]
+
+Reads and changes settings for the current repository; --repository selects another repository.
+Values use JSON when valid, otherwise text. Every change is checked before writing.
+Fields use their default project or private file; --private selects the private file.
+list and get show the effective source and hidden file values. Unconfigured values use defaults; null means no value.
+Changes keep the previous file as .bak and replace the file atomically under a lock.
+A live lock waits at most ten seconds, then exits with settings-locked.
+Private files, backups and temporary files have mode 0600. Changes require a service restart.
+`;
+
 export const commandUsage: Readonly<Record<string, string>> = {
   report: `Usage: cloving report [--since <hours>] [--json]
 
@@ -124,6 +138,7 @@ Commands:
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   phone      Show, list, remove and reset the connected phones.
+  config     Read and change repository settings.
   start      Start the service for a repository.
 
 The runtime commands need a Cloving service. They use the current git repository; --repository <directory> selects another repository. CLOVING_RUNTIME_DIR overrides its runtime directory.

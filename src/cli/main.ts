@@ -1,11 +1,12 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { configCommand } from "./config-command.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { phoneUsage, usage, validateUsage } from "./usage.ts";
+import { configUsage, phoneUsage, usage, validateUsage } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
@@ -13,6 +14,7 @@ const helpTexts = {
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
+  "config-help": configUsage,
 };
 
 function helpInvocation(
@@ -43,6 +45,8 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
+  } else if (invocation.kind === "config") {
+    process.exitCode = await configCommand(invocation, repository);
   } else if (invocation.kind === "phone") {
     process.exitCode = await phoneCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),

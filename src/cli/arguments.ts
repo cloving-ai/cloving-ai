@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { configInvocation, type ConfigInvocation } from "./config-arguments.ts";
 import { repositoryArguments } from "./repository-arguments.ts";
 import { phoneInvocation, type PhoneInvocation } from "./phone-arguments.ts";
 import {
@@ -10,6 +11,8 @@ import {
 
 export type Invocation = { readonly repository?: string } & (
   | PhoneInvocation
+  | ConfigInvocation
+  | { readonly kind: "config-help" }
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "validate-help" }
@@ -102,6 +105,12 @@ export function parseInvocation(given: readonly string[]): Invocation {
 }
 
 function selectedInvocation(given: readonly string[]): Invocation {
+  if (given[0] === "config") {
+    const outcome = configInvocation(given.slice(1));
+    return typeof outcome === "string"
+      ? { kind: "usage-error", code: outcome, json: given.includes("--json") }
+      : outcome;
+  }
   if (given[0] === "phone") return phoneInvocation(given.slice(1));
   const argumentsList = textValues(given);
   const json = given.includes("--json");
