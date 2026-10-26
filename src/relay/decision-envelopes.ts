@@ -64,6 +64,22 @@ function envelopeOf(
   return { version: 1, ...source.target, ...content };
 }
 
+export function closedEnvelope(source: {
+  readonly ending: {
+    readonly decisionId: string;
+    readonly outcome: string;
+    readonly actor: string | null;
+  };
+  readonly target: EnvelopeTarget;
+}): Envelope {
+  return {
+    version: 1,
+    ...source.target,
+    kind: "closed",
+    body: source.ending,
+  };
+}
+
 export function previewEnvelope(source: DecisionSource): Envelope {
   const { decision, workflowId } = source;
   const prompt = String(operationalDecision(decision, workflowId)["prompt"]);

@@ -15,6 +15,7 @@ import { withFiles } from "./quality/files-fixture.ts";
 const decisionId = "run-1/review-1";
 
 const offer = {
+  runId: "run-1",
   deviceId: "phone-1",
   envelopes: [
     {
@@ -22,12 +23,16 @@ const offer = {
       kind: "preview",
       ciphertext: "AAAA",
       expiresAt: "2026-11-01T11:00:00.000Z",
+      push: "alert",
+      collapseId: "collapse-1",
     },
     {
       envelopeId: "env-full-1",
       kind: "full",
       ciphertext: "BBBB",
       expiresAt: "2026-11-01T11:00:00.000Z",
+      push: "none",
+      collapseId: null,
     },
   ],
 };
@@ -100,6 +105,7 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
     assert.deepEqual(await store.delivery.list(decisionId), [
       {
         deviceId: "phone-1",
+        topic: "decision",
         state: "sent",
         attempts: 3,
         lastAttemptAt: clock.now,
@@ -117,7 +123,8 @@ await test("CLV-191 a failed post retries after 1 and 5 minutes with the same en
         kind: envelope.kind,
         ciphertext: envelope.ciphertext,
         expires_at: envelope.expiresAt,
-        push: envelope.kind === "preview" ? "alert" : "none",
+        push: envelope.push,
+        collapse_id: envelope.collapseId,
       })),
     });
   }));
@@ -179,6 +186,43 @@ await test("CLV-191 a retry does not post to a phone that was removed", () =>
       ["failed", 2, "device-removed"],
     );
     assert.equal(posts(server).length, 1);
+  }));
+
+await test("CLV-192 a decision post that fails after the close gets no retry, and the closed post retries", () =>
+  withDelivery([500, 500], async ({ server, clock, store }) => {
+    await store.delivery.offer(decisionId, offer);
+    await store.delivery.close(decisionId, {
+      devices: [
+        {
+          deviceId: "phone-1",
+          envelopes: [
+            {
+              envelopeId: "env-closed-1",
+              kind: "closed",
+              ciphertext: "CCCC",
+              expiresAt: "2026-11-01T11:00:00.000Z",
+              push: "passive",
+              collapseId: "collapse-1",
+            },
+          ],
+        },
+      ],
+      at: clock.now,
+    });
+    await settled(store, clock);
+    clock.now += 86_400_000;
+    await settled(store, clock);
+    assert.deepEqual(
+      (await store.delivery.list(decisionId)).map((item) => [
+        item.topic,
+        item.state,
+      ]),
+      [
+        ["decision", "cancelled"],
+        ["closed", "sent"],
+      ],
+    );
+    assert.equal(posts(server).length, 3);
   }));
 
 await test("CLV-191 a phone that pairs again keeps its delivery and gets the retry after it connects", () =>

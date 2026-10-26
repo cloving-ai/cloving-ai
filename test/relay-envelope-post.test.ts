@@ -15,6 +15,8 @@ const request = {
       kind: "full",
       ciphertext: "AAAA",
       expiresAt: "2026-11-01T11:00:00.000Z",
+      push: "none",
+      collapseId: null,
     },
   ],
 };
@@ -49,6 +51,13 @@ await test("CLV-191 an unreachable server, a broken link file and a malformed re
       await postEnvelopes(context, {
         deviceId: "phone-1",
         envelopes: [{ ...request.envelopes[0], ciphertext: 7 }],
+      }),
+      { at, failure: "relay-request-invalid" },
+    );
+    assert.deepEqual(
+      await postEnvelopes(context, {
+        deviceId: "phone-1",
+        envelopes: [{ ...request.envelopes[0], collapseId: 7 }, "x"],
       }),
       { at, failure: "relay-request-invalid" },
     );
