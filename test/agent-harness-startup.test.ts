@@ -6,14 +6,16 @@ import { discoverHarnesses, probeHarness } from "../src/agent-harnesses.ts";
 import { withHarnesses } from "./agent-harness-fixture.ts";
 
 for (const shell of ["/bin/zsh", "/bin/bash"]) {
-  await test(`CLV-208 ${shell} finds executable files added by shell startup without duplicate probes`, () =>
+  await test(`CLV-208 ${shell} preserves the startup environment for discovered files without duplicate probes`, () =>
     withHarnesses(async (scene) => {
       await mkdir(join(scene.directory, "agents"));
       const path = await scene.file(
         "agents/codex",
-        'printf "probe\\n" >> "$HOME/probes"\ntest "$1" = --version && test "$PATH" = "$HOME/agents:$HOME" && printf "codex-cli 0.101.0\\n"',
+        'printf "probe\\n" >> "$HOME/probes"\ntest "$1" = --version && test "$PATH" = "$HOME/agents:$HOME" && test "$NODE_OPTIONS" = --no-warnings && test "$LD_LIBRARY_PATH" = "$HOME/lib" && printf "codex-cli 0.101.0\\n"',
       );
-      await scene.startup('PATH="$HOME/agents:$HOME"\n');
+      await scene.startup(
+        'PATH="$HOME/agents:$HOME"\nexport NODE_OPTIONS=--no-warnings LD_LIBRARY_PATH="$HOME/lib"\n',
+      );
       const result = await discoverHarnesses({
         env: { ...scene.options.env, SHELL: shell },
       });
@@ -134,3 +136,40 @@ await test("CLV-208 Bash retries a failed login definition in its interactive st
       },
     ]);
   }));
+
+for (const [startup, reason] of [
+  ["exit 0\n", "shell-protocol"],
+  ["exit 7\n", "probe-exit"],
+  ["/bin/sleep 30\n", "probe-timeout"],
+] as const) {
+  await test(`CLV-208 Bash retains login entries when the extra scan reports ${reason}`, () =>
+    withHarnesses(async (scene) => {
+      const path = await scene.file("pi", 'printf "pi 1.2\\n"');
+      await scene.startup(
+        'codex() { test "$1" = --version && printf "codex-cli 0.105.0\\n"; }\n',
+      );
+      await writeFile(join(scene.directory, ".bashrc"), startup);
+      const result = await discoverHarnesses({
+        env: { ...scene.options.env, SHELL: "/bin/bash" },
+      });
+      assert.equal(result.shellReason, reason);
+      assert.deepEqual(result.entries, [
+        {
+          name: "pi",
+          kind: "file",
+          path,
+          version: "pi 1.2",
+          working: true,
+          reason: null,
+        },
+        {
+          name: "codex",
+          kind: "shell",
+          path: "codex",
+          version: "codex-cli 0.105.0",
+          working: true,
+          reason: null,
+        },
+      ]);
+    }));
+}

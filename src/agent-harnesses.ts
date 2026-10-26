@@ -196,15 +196,14 @@ async function probeShell(
   env: Environment,
 ): Promise<HarnessEntry> {
   const { entry, mode } = candidate;
-  const { name, kind, path, searchPath } = entry;
-  if (kind === "file")
-    return probeFile({ name, path }, { ...env, PATH: searchPath });
+  const { name, kind, path } = entry;
   const probe = await runProbe(env["SHELL"] ?? "", {
     arguments: [
       ...shellArguments(mode),
       shellProbeScript,
       "cloving-harness-probe",
-      name,
+      path,
+      kind,
     ],
     env,
   });
@@ -280,8 +279,6 @@ async function discoverShell(
   const interactive = login.bash
     ? await inspectShell(names, { env, mode: "interactive" })
     : null;
-  if (interactive?.reason)
-    return { entries: [], shellReason: interactive.reason };
   const found = [
     ...login.entries.map((entry) => ({ entry, mode: "login" as const })),
     ...(interactive?.entries ?? []).map((entry) => ({
@@ -290,7 +287,7 @@ async function discoverShell(
     })),
   ];
   const entries = await probeCandidates(found, { files, env });
-  return { entries, shellReason: null };
+  return { entries, shellReason: interactive?.reason ?? null };
 }
 
 async function discoverNames(
@@ -323,28 +320,28 @@ export async function probeHarness(
   options: HarnessOptions = {},
 ): Promise<HarnessDiscovery> {
   const env = options.env ?? process.env;
-  if (!target.includes("/")) {
-    const found = await discoverNames([harnessDefinition(target)], env);
-    if (found.entries.length > 0) return found;
-    return {
-      ...found,
-      entries: [
-        probeEntry(
-          { name: target, kind: "file", path: target },
-          { stdout: "", reason: "not-found" },
-        ),
-      ],
+  if (target.includes("/")) {
+    const path = await findFile(target, env);
+    const entry = {
+      name: basename(target),
+      kind: "file" as const,
+      path: path ?? target,
     };
+    const output =
+      path === null
+        ? { stdout: "", reason: "not-found" }
+        : await runProbe(path, { arguments: ["--version"], env });
+    return { entries: [probeEntry(entry, output)], shellReason: null };
   }
-  const path = await findFile(target, env);
-  const entry = {
-    name: basename(target),
-    kind: "file" as const,
-    path: path ?? target,
+  const found = await discoverNames([harnessDefinition(target)], env);
+  if (found.entries.length > 0) return found;
+  return {
+    ...found,
+    entries: [
+      probeEntry(
+        { name: target, kind: "file", path: target },
+        { stdout: "", reason: "not-found" },
+      ),
+    ],
   };
-  const output =
-    path === null
-      ? { stdout: "", reason: "not-found" }
-      : await runProbe(path, { arguments: ["--version"], env });
-  return { entries: [probeEntry(entry, output)], shellReason: null };
 }

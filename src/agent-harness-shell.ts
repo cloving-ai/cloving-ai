@@ -15,7 +15,7 @@ for name in "$@"; do
     file=$(builtin type -P -- "$name" 2>/dev/null)
   fi
   case "$file" in /*|"") ;; *) file="$PWD/$file" ;; esac
-  printf '%s\\n%s\\n' "$file" "$PATH"
+  printf '%s\\n' "$file"
   printf '\\n__CLOVING_HARNESS_END_%s__\\n' "$index"
   index=$((index + 1))
 done
@@ -25,7 +25,9 @@ exit 0
 export const shellProbeScript = `
 set +m
 printf '__CLOVING_HARNESS_START_0__\\n'
-if [ -n "\${ZSH_VERSION-}" ]; then
+if [ "$2" = file ]; then
+  command -- "$1" --version
+elif [ -n "\${ZSH_VERSION-}" ]; then
   if (( \${+aliases[$1]} )); then
     alias_command="\${aliases[$1]}"
     builtin unalias -- "$1"
@@ -63,7 +65,6 @@ export interface ShellEntry {
   readonly name: string;
   readonly kind: "file" | "shell";
   readonly path: string;
-  readonly searchPath: string;
 }
 
 export function shellEntries(
@@ -73,11 +74,11 @@ export function shellEntries(
   const blocks = names.map((_, index) => shellBlock(output, index));
   if (blocks.some((block) => block === null)) return null;
   return names.flatMap((name, index) => {
-    const [kind, path, searchPath = ""] = (blocks[index] ?? "").split("\n");
+    const [kind, path] = (blocks[index] ?? "").split("\n");
     const entries: ShellEntry[] = [];
-    if (path) entries.push({ name, kind: "file", path, searchPath });
+    if (path) entries.push({ name, kind: "file", path });
     if (kind === "function" || kind === "alias")
-      entries.push({ name, kind: "shell", path: name, searchPath });
+      entries.push({ name, kind: "shell", path: name });
     return entries;
   });
 }
