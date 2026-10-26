@@ -14,6 +14,7 @@ export interface WatchItem {
 }
 
 export interface WatchTurn {
+  readonly harness?: string;
   readonly estimatedCostUsd: number | null;
   readonly operationId: string;
   readonly usage: WorkerUsage;

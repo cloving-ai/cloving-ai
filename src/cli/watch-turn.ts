@@ -64,6 +64,9 @@ export function Turn(props: {
         children: heading.filter((part) => part !== "").join(" · "),
       }),
       element("p", { class: "meta", children: place }),
+      turn.harness === undefined
+        ? null
+        : element("p", { class: "meta", children: `Harness: ${turn.harness}` }),
       element("p", {
         class: "turn-usage",
         children: usageText(turn.usage),

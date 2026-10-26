@@ -1,5 +1,9 @@
 {
   "roles": {
+    "test/turn-harness.test.ts": "test",
+    "test/harness-worker.test.ts": "test",
+    "test/harness-status.test.ts": "test",
+    "test/cli-start-harness.test.ts": "test",
     "test/command-journal-failures.test.ts": "test",
     "test/command-journal.test.ts": "test",
     "src/steps/run-command.ts": "step",

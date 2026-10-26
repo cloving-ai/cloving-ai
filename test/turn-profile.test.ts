@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isProfilesFile } from "../src/turn-profile.ts";
+import { isProfilesFile, profileCommand } from "../src/turn-profile.ts";
+
+await test("CLV-210 profiles can select a harness", () => {
+  assert.equal(
+    isProfilesFile({ profiles: { checker: { harness: "claude" } } }),
+    true,
+  );
+  for (const harness of [1, null, "", "two words", "bad\0name"])
+    assert.equal(isProfilesFile({ profiles: { checker: { harness } } }), false);
+});
+
+await test("CLV-210 profile models replace every native model option", () => {
+  for (const options of [
+    ["-m", "old"],
+    ["--model", "old"],
+    ["--model=old"],
+    ["-m", "old", "--model=duplicate"],
+  ])
+    assert.deepEqual(
+      profileCommand(["codex", "exec", ...options, "--json"], { model: "new" }),
+      ["codex", "exec", "--json", "--model", "new"],
+    );
+});
 
 await test("CLV-086 profile files validate names, optional fields and positive finite budgets", () => {
   const valid = [

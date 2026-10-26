@@ -102,6 +102,6 @@ await test("CLV-083 start refuses an unknown worker", () =>
     const { refused } = await scene();
     assert.match(
       await refused("8", { CLOVING_WORKER: "other" }),
-      /invalid-worker/,
+      /harness-no-worker: other/,
     );
   }));
