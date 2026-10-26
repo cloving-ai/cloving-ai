@@ -33,7 +33,11 @@ const defaults: Readonly<Record<string, SettingValue>> = {
   "github.command": ["gh"],
 };
 
-function effectiveValue(field: string, value: DisplayValue): DisplayValue {
+function effectiveValue(setting: {
+  readonly field: string;
+  readonly value: DisplayValue;
+}): DisplayValue {
+  const { field, value } = setting;
   if (field === "tokenPrices") return parseTokenPrices(JSON.stringify(value));
   return value;
 }
@@ -93,7 +97,7 @@ export function configurationEntries(input: {
     return {
       field,
       ...selected,
-      value: effectiveValue(field, selected.value),
+      value: effectiveValue({ field, value: selected.value }),
       hidden,
     };
   });
