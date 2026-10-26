@@ -151,6 +151,7 @@ async function launched(
     process.execPath,
     [
       fileURLToPath(new URL("./self-host-guard.ts", import.meta.url)),
+      String(process.pid),
       process.execPath,
       entry,
       "start",
