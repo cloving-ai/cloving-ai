@@ -137,6 +137,14 @@ async function checkProjectTests(
     files,
     roles: options.architecture.roles,
   });
+  removeStaleCoverageFolders({
+    root: tmpdir(),
+    now: () => Date.now(),
+    running: processRunning,
+    warn: (text) => {
+      process.stderr.write(`Warning: ${text}\n`);
+    },
+  });
   await checkTests(directory, {
     files,
     ...(options.commandOptions
@@ -155,6 +163,11 @@ import { sourceFiles } from "./source-files.ts";
 import type { SourceOptions } from "./source-files.ts";
 import { inspectStructure } from "./structure.ts";
 import { checkTests } from "./test-execution.ts";
+import { tmpdir } from "node:os";
+import {
+  processRunning,
+  removeStaleCoverageFolders,
+} from "./coverage-folders.ts";
 import { checkSuppressions } from "./suppression-approval.ts";
 import { inspectTestIntegrity } from "./test-integrity.ts";
 import type { DependencyPolicy } from "./dependency-policy.ts";
