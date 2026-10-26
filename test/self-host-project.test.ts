@@ -7,6 +7,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import nodeModule, { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { preparedProject } from "../tools/self-host-project.ts";
@@ -47,6 +48,28 @@ await mkdir("artifacts", { recursive: true });
 for (const name of ["client.mjs", "flow.mjs", "steps.mjs", "flow.mjs.__wf_tmp.js.debug.json", "steps.mjs.debug.json"])
   await writeFile("artifacts/" + name, "synthetic compiled artifact");
 await writeFile("artifacts/manifest.json", ${JSON.stringify(JSON.stringify(manifest))});`;
+}
+
+for (const name of ["workflow", "@workflow/core"]) {
+  await test(`CLV-219 source bootstrap refuses an unavailable ${name} manifest before compilation`, () =>
+    withFiles({ "repo/marker": "" }, async (root) => {
+      const settings = await project(root, manifestCompiler({}));
+      const original = nodeModule.findPackageJSON;
+      nodeModule.findPackageJSON = (specifier, parent) =>
+        specifier === name ? undefined : original(specifier, parent);
+      syncBuiltinESMExports();
+      try {
+        await assert.rejects(preparedProject(settings), {
+          message: `missing-runtime-dependency: ${name}`,
+        });
+        await assert.rejects(lstat(join(settings.project, "artifacts")), {
+          code: "ENOENT",
+        });
+      } finally {
+        nodeModule.findPackageJSON = original;
+        syncBuiltinESMExports();
+      }
+    }));
 }
 
 await test("CLV-124 missing operator folders preserve bundled startup and remain absent", () =>
