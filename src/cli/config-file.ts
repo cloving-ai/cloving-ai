@@ -5,6 +5,7 @@ import {
   readFile,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -26,10 +27,15 @@ export async function readConfigFile(
   }
 }
 
-async function atomicWrite(path: string, text: string): Promise<void> {
+async function atomicWrite(
+  path: string,
+  contents: { readonly text: string; readonly mode?: number },
+): Promise<void> {
+  const { text, mode = 0o600 } = contents;
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, text, { mode: 0o600, flag: "wx" });
+    if (mode !== 0o600) await chmod(temporary, mode);
     await rename(temporary, path);
   } finally {
     await rm(temporary, { force: true });
@@ -52,9 +58,13 @@ export async function changeConfigFile(
 async function writeChange(path: string, change: SettingChange): Promise<void> {
   const previous = await readConfigFile(path);
   const next = changedConfiguration(previous, change);
-  if (previous !== undefined) {
-    if (change.scope === "private") await chmod(path, 0o600);
-    await atomicWrite(`${path}.bak`, previous);
-  }
-  await atomicWrite(path, next);
+  const mode =
+    previous !== undefined && change.scope === "project"
+      ? (await stat(path)).mode & 0o777
+      : 0o600;
+  if (previous !== undefined && change.scope === "private")
+    await chmod(path, 0o600);
+  if (previous !== undefined)
+    await atomicWrite(`${path}.bak`, { text: previous });
+  await atomicWrite(path, { text: next, mode });
 }

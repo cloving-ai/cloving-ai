@@ -4,7 +4,7 @@ import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
-type SettingValue =
+export type SettingValue =
   string | number | readonly string[] | TurnProfiles | TokenPrices;
 
 export const settingVariables: Readonly<Record<string, string>> = {

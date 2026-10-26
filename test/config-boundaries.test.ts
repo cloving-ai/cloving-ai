@@ -3,6 +3,62 @@ import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { configScene } from "./config-cli-fixture.ts";
 import { parseInvocation } from "../src/cli/arguments.ts";
+import { parseTokenPrices } from "../src/token-prices.ts";
+import { settingValue } from "../src/configuration-change.ts";
+
+await test("CLV-206 setting values narrow to finite JSON data or plain text", () => {
+  for (const [text, expected] of [
+    [
+      '{"nested":[null,true,false,2,"text"]}',
+      { nested: [null, true, false, 2, "text"] },
+    ],
+    ["null", null],
+    ["plain text", "plain text"],
+  ] as const)
+    assert.deepEqual(settingValue(text), expected);
+  for (const text of ["1e400", "[1e400]", '{"input":1e400}'])
+    assert.throws(() => settingValue(text), /invalid-setting-value/);
+});
+
+for (const source of ["private", "environment"] as const)
+  await test(`CLV-206 ${source} token prices include built-in models in get and list`, () => {
+    using fixture = configScene();
+    const saved = { custom: { input: 3, cachedInput: 1, output: 8 } };
+    const override = {
+      "gpt-6.1-sol": { input: 5, cachedInput: 2, output: 9 },
+    };
+    fixture.write(fixture.privateFile, { version: 1, tokenPrices: saved });
+    const environment =
+      source === "environment"
+        ? { CLOVING_TOKEN_PRICES: JSON.stringify(override) }
+        : {};
+    const expected = {
+      field: "tokenPrices",
+      source,
+      value: parseTokenPrices(
+        JSON.stringify(source === "environment" ? override : saved),
+      ),
+      hidden:
+        source === "environment" ? [{ source: "private", value: saved }] : [],
+    };
+    const get = fixture.run(["get", "tokenPrices", "--json"], environment);
+    assert.equal(get.status, 0, get.stderr);
+    assert.deepEqual(JSON.parse(get.stdout), {
+      schemaVersion: 1,
+      ...expected,
+    });
+    const list = fixture.run(["list", "--json"], environment);
+    assert.equal(list.status, 0, list.stderr);
+    const listed: unknown = JSON.parse(list.stdout);
+    assert.ok(listed && typeof listed === "object" && "settings" in listed);
+    assert.ok(Array.isArray(listed.settings));
+    assert.deepEqual(
+      listed.settings.find(
+        (item: { field: string }) => item.field === "tokenPrices",
+      ),
+      expected,
+    );
+  });
 
 await test("CLV-206 collection settings change as whole JSON maps and reject dictionary subpaths", () => {
   using fixture = configScene();

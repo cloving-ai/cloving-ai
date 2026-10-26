@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   readlinkSync,
   rmSync,
   symlinkSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -17,6 +19,38 @@ import {
 } from "../src/cli/config-lock.ts";
 import { configScene } from "./config-cli-fixture.ts";
 import { adoptionRecordPath } from "../src/cli/runtime-directory.ts";
+
+for (const mode of [0o644, 0o660])
+  await test(`CLV-206 project edits preserve shared permissions ${mode.toString(8)} and protect backups`, () => {
+    using fixture = configScene();
+    fixture.write(fixture.project, {
+      version: 1,
+      queue: { lanes: 2 },
+      checks: { required: ["unit"] },
+    });
+    chmodSync(fixture.project, mode);
+    for (const args of [
+      ["set", "queue.lanes", "3"],
+      ["unset", "checks.required"],
+    ]) {
+      const previous = readFileSync(fixture.project, "utf8");
+      const result = fixture.run(args);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(statSync(fixture.project).mode & 0o777, mode);
+      assert.equal(statSync(`${fixture.project}.bak`).mode & 0o777, 0o600);
+      assert.equal(readFileSync(`${fixture.project}.bak`, "utf8"), previous);
+    }
+  });
+
+await test("CLV-206 private edits restrict an earlier readable file and its backup", () => {
+  using fixture = configScene();
+  fixture.write(fixture.privateFile, { version: 1, privateTexts: ["old"] });
+  chmodSync(fixture.privateFile, 0o644);
+  const result = fixture.run(["set", "privateTexts", '["new"]']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(statSync(fixture.privateFile).mode & 0o777, 0o600);
+  assert.equal(statSync(`${fixture.privateFile}.bak`).mode & 0o777, 0o600);
+});
 
 await test("CLV-206 malformed runtime metadata does not turn a successful settings edit into an error", () => {
   using fixture = configScene();

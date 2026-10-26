@@ -173,3 +173,26 @@ for (const action of ["set", "unset"])
         privateTexts: ["keep"],
       });
     });
+
+for (const [field, value] of [
+  ["name", "claude"],
+  ["kind", "file"],
+  ["path", "saved-agent"],
+] as const)
+  await test(`CLV-206 repeating harness.${field} preserves saved worker options`, () => {
+    using fixture = configScene();
+    const saved = {
+      version: 1,
+      harness: {
+        name: "claude",
+        kind: "file",
+        path: "saved-agent",
+        command: ["custom-claude", "--saved-option"],
+      },
+      privateTexts: ["keep"],
+    };
+    fixture.write(fixture.privateFile, saved);
+    const result = fixture.run(["set", `harness.${field}`, value]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(fixture.read(fixture.privateFile), saved);
+  });
