@@ -1,4 +1,4 @@
-export const defaultClaudeCommand = [
+export const defaultCommand = [
   "claude",
   "-p",
   "--output-format",

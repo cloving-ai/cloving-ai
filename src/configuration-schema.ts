@@ -179,3 +179,45 @@ export function configuration(
   validateConfiguration(value, scope);
   return value;
 }
+
+export function settingScope(field: string): "project" | "private" {
+  fieldSchema(field);
+  const root = field.split(".")[0] ?? "";
+  return Object.hasOwn(project.properties, root) ? "project" : "private";
+}
+
+function fieldSchema(field: string): Schema {
+  if (!settingFields().includes(field))
+    throw new Error(`unknown-setting: ${field}`);
+  let schema: Schema = privateConfig;
+  for (const name of field.split(".")) {
+    if (schema.type !== "object") throw new Error(`unknown-setting: ${field}`);
+    const child = childSchema(name, { schema, field });
+    if (typeof child !== "object") throw new Error(`unknown-setting: ${field}`);
+    schema = child;
+  }
+  return schema;
+}
+
+export function validateSetting(field: string, value: unknown): void {
+  const schema = fieldSchema(field);
+  if (
+    schema.minimum !== undefined &&
+    schema.maximum !== undefined &&
+    typeof value === "number" &&
+    (value < schema.minimum || value > schema.maximum)
+  )
+    throw new Error(
+      `invalid-setting: ${field} must be from ${String(schema.minimum)} to ${String(schema.maximum)}`,
+    );
+  validate(value, { schema, field });
+}
+
+export function settingFields(): readonly string[] {
+  return Object.entries(privateConfig.properties).flatMap(([name, schema]) => {
+    if (name === "version") return [];
+    return "properties" in schema
+      ? Object.keys(schema.properties).map((child) => `${name}.${child}`)
+      : [name];
+  });
+}

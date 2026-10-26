@@ -4,15 +4,19 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { commandUsage } from "../src/cli/usage.ts";
 import {
-  defaultClaudeCommand,
+  defaultCommand,
   defaultCodexCommand,
-} from "../src/harness-command.ts";
+} from "../src/harness-defaults.ts";
 
 await test("CLV-201 start help supports an installed package without a checkout", () => {
   assert.doesNotMatch(String(commandUsage["start"]), /development checkout/);
 });
 
-const program = ["self-host.ts", "self-host-processes.ts"]
+const program = [
+  "../src/harness-defaults.ts",
+  "self-host.ts",
+  "self-host-processes.ts",
+]
   .map((file) =>
     readFileSync(join(import.meta.dirname, "../tools", file), "utf8"),
   )
@@ -92,7 +96,7 @@ await test("CLV-070 run help names next as an input source and explains the rese
 });
 
 await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by default", () => {
-  assert.deepEqual(defaultClaudeCommand, [
+  assert.deepEqual(defaultCommand, [
     "claude",
     "-p",
     "--output-format",
@@ -117,9 +121,7 @@ await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by
 
 await test("CLV-075 the default Claude command allows web research and help describes develop-prd", () => {
   const tools =
-    defaultClaudeCommand[
-      defaultClaudeCommand.indexOf("--allowedTools") + 1
-    ]?.split(",");
+    defaultCommand[defaultCommand.indexOf("--allowedTools") + 1]?.split(",");
   assert.ok(tools?.includes("WebSearch"));
   assert.ok(tools?.includes("WebFetch"));
   for (const name of ["CLOVING_PRIVATE_TEXTS", "CLOVING_GH_COMMAND"])

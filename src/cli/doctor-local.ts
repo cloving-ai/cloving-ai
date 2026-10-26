@@ -1,7 +1,4 @@
-import {
-  defaultClaudeCommand,
-  defaultCodexCommand,
-} from "../harness-command.ts";
+import { defaultCommand, defaultCodexCommand } from "../harness-defaults.ts";
 import { access, constants, stat } from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import {
@@ -248,9 +245,7 @@ async function selectedHarnessObservation(
     name === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND";
   const command =
     environment[variable] ??
-    JSON.stringify(
-      name === "codex" ? defaultCodexCommand : defaultClaudeCommand,
-    );
+    JSON.stringify(name === "codex" ? defaultCodexCommand : defaultCommand);
   const effective = await commandObservation(command, {
     directory: location.directory,
     environment: location.commandEnvironment,

@@ -4,10 +4,10 @@ import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
-type SettingValue =
+export type SettingValue =
   string | number | readonly string[] | TurnProfiles | TokenPrices;
 
-const fields: Readonly<Record<string, string>> = {
+export const settingVariables: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
   "checks.required": "CLOVING_REQUIRED_CHECKS",
   "tickets.command": "CLOVING_TICKET_COMMAND",
@@ -46,7 +46,7 @@ export function configurationRoot(
     : `${environment["HOME"] ?? home}/.config`;
 }
 
-function parse(
+export function parseConfiguration(
   contents: string | undefined,
   scope: "project" | "private",
 ): Partial<Configuration> {
@@ -60,7 +60,7 @@ function parse(
   return configuration(value, scope);
 }
 
-function flatten(
+export function configurationValues(
   values: Partial<Configuration>,
 ): Readonly<Record<string, SettingValue>> {
   const entries: [string, SettingValue][] = [];
@@ -107,9 +107,11 @@ export function resolveSettings(
   readonly profiles: TurnProfiles;
   readonly sources: Readonly<Record<string, SettingSource>>;
 } {
-  const project = flatten(parse(files.project, "project"));
-  const privateConfiguration = parse(files.private, "private");
-  const privateFile = flatten(privateConfiguration);
+  const project = configurationValues(
+    parseConfiguration(files.project, "project"),
+  );
+  const privateConfiguration = parseConfiguration(files.private, "private");
+  const privateFile = configurationValues(privateConfiguration);
   const values = { ...project, ...privateFile };
   const resolved = { ...environment };
   const sources: Record<string, SettingSource> = {};
@@ -117,7 +119,7 @@ export function resolveSettings(
   const commandVariable =
     worker === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND";
   const mapped = {
-    ...fields,
+    ...settingVariables,
     "harness.command": commandVariable,
     profiles: "CLOVING_PROFILES",
     ...Object.fromEntries(environmentOnly.map((name) => [name, name])),

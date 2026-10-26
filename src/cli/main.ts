@@ -1,4 +1,5 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { configCommand } from "./config-command.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { doctorCommand } from "./doctor.ts";
 import { randomUUID } from "node:crypto";
@@ -7,7 +8,13 @@ import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { commandUsage, phoneUsage, usage, validateUsage } from "./usage.ts";
+import {
+  commandUsage,
+  configUsage,
+  phoneUsage,
+  usage,
+  validateUsage,
+} from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
@@ -16,6 +23,7 @@ const helpTexts = {
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
   "doctor-help": String(commandUsage["doctor"]),
+  "config-help": configUsage,
 };
 
 function helpInvocation(
@@ -36,7 +44,7 @@ export async function main(
     readonly repository: string | undefined;
   } = { repository: undefined },
 ): Promise<void> {
-  const repository = context.repository;
+  const { repository, environment = process.env } = context;
   const invocation = parseInvocation(argumentsList);
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
@@ -53,9 +61,11 @@ export async function main(
     process.exitCode = await doctorCommand({
       probe: context.doctorProbe,
       repository,
-      environment: context.environment ?? process.env,
+      environment,
       json: invocation.json,
     });
+  } else if (invocation.kind === "config") {
+    process.exitCode = await configCommand(invocation, repository);
   } else if (invocation.kind === "phone") {
     process.exitCode = await phoneCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
@@ -64,7 +74,7 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
-      ...watchSettings(context.watchPr, context.environment ?? process.env),
+      ...watchSettings(context.watchPr, environment),
       client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal,

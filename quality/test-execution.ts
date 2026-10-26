@@ -4,8 +4,12 @@ import {
   type CheckCommand,
   type CommandOptions,
 } from "./command.ts";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
+import {
+  claimCoverageFolder,
+  releaseCoverageFolder,
+} from "./coverage-folders.ts";
 import { join, relative, resolve } from "node:path";
 import { availableParallelism, tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
@@ -98,6 +102,7 @@ export async function checkTests(
   if (tests.length === 0)
     throw new Error("Cannot accept an empty test inventory");
   const temporary = mkdtempSync(join(tmpdir(), "cloving-test-coverage-"));
+  claimCoverageFolder(temporary, process.pid);
   const checked = [
     ...new Set([...files, ...(options.coverageFiles ?? [])]),
   ].sort();
@@ -107,7 +112,7 @@ export async function checkTests(
     if (before !== sourceSnapshot(checked))
       throw new Error("test-source-changed");
   } finally {
-    rmSync(temporary, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    releaseCoverageFolder(temporary);
   }
 }
 
