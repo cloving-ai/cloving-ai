@@ -98,12 +98,31 @@ await test("CLV-201 installation describes the published package without a packa
   assert.match(readme, /Node 26\.9\.0 and npm 11\.19\.1/);
   assert.match(readme, /supports macOS and Linux on arm64 and x64/);
   assert.match(readme, /macOS 15 arm64 and Ubuntu 24\.04 x64/);
-  assert.match(readme, /Chat import and redaction currently require macOS/);
-  assert.match(readme, /`platform-unsupported` before file access/);
+  assert.doesNotMatch(
+    readme,
+    /Chat import and redaction currently require macOS/,
+  );
+  assert.doesNotMatch(readme, /`platform-unsupported` before file access/);
   assert.match(readme, /without a source checkout/);
   assert.doesNotMatch(
     readme,
     /do not install it by name from npm|cloving-0\.4\.0\.tgz/,
+  );
+});
+
+await test("CLV-203 the README omits retired chat commands and corpus sections", () => {
+  assert.doesNotMatch(readme, /cloving chats (?:import|redact)/);
+  assert.doesNotMatch(
+    readme,
+    /^### (?:Import selected chats|Redact an imported corpus|Validate process analysis data)$/m,
+  );
+});
+
+await test("CLV-203 development setup refreshes installed dependencies after a merge", () => {
+  const development = readme.split("## Development of Cloving\n")[1] ?? "";
+  assert.match(
+    development,
+    /After a merge or branch update changes `package\.json` or `package-lock\.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks/,
   );
 });
 

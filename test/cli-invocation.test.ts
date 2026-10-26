@@ -10,6 +10,8 @@ await test("CLV-008 help lists only the implemented commands", async () => {
       assert.equal(result.status, 0);
       assert.match(result.stdout, /cloving workflows validate <manifest-path>/);
       assert.doesNotMatch(result.stdout, /not implemented/);
+      assert.doesNotMatch(result.stdout, /chats import/);
+      assert.doesNotMatch(result.stdout, /\bchats\b/);
       assert.match(result.stdout, /^ {2}run {2,}Submit one run/m);
       assert.doesNotMatch(
         result.stdout,
@@ -26,6 +28,29 @@ await test("CLV-008 help lists only the implemented commands", async () => {
 
 for (const [name, argumentsList, code] of [
   ["an unknown command", ["frobnicate"], "unknown-command"],
+  ["a removed chats command", ["chats"], "unknown-command"],
+  ["a removed chats import", ["chats", "import"], "unknown-command"],
+  [
+    "a removed chats import with a file",
+    ["chats", "import", "--", "transcript.jsonl"],
+    "unknown-command",
+  ],
+  ["a removed chats redact", ["chats", "redact"], "unknown-command"],
+  [
+    "a removed chats redact with an import ID",
+    ["chats", "redact", "12345678-1234-4123-8123-123456789abc"],
+    "unknown-command",
+  ],
+  [
+    "removed chats import help",
+    ["chats", "import", "--help"],
+    "unknown-command",
+  ],
+  [
+    "removed chats redact help",
+    ["chats", "redact", "--help"],
+    "unknown-command",
+  ],
   ["an unknown option", ["--nope"], "unknown-option"],
   ["a missing manifest path", ["workflows", "validate"], "missing-argument"],
   [
