@@ -6,7 +6,7 @@ import { access, constants, stat } from "node:fs/promises";
 import { delimiter, resolve } from "node:path";
 import type { DoctorObservation } from "../doctor-report.ts";
 import type { ProbeRunner } from "./probe-command.ts";
-import { discoverHarnesses, type HarnessDiscovery } from "./harness-probes.ts";
+import { discoverHarnesses, probeHarness } from "./harness-probes.ts";
 import { qualifiedNode } from "./toolchain.ts";
 
 export function listedSetting(
@@ -114,18 +114,37 @@ export async function harnessObservations(
     selected: await selectedHarnessObservation(environment, {
       ...location,
       directory: location.directory,
-      discovery,
     }),
   };
 }
 
+interface HarnessCommandLocation {
+  readonly directory: string;
+  readonly commandEnvironment: Readonly<NodeJS.ProcessEnv>;
+  readonly probe: ProbeRunner;
+}
+
+async function usableHarnessCommand(
+  command: string,
+  location: HarnessCommandLocation,
+): Promise<boolean> {
+  const program = listedSetting(command)?.[0];
+  if (!program) return false;
+  const path = await executableProgram(program, {
+    directory: location.directory,
+    environment: location.commandEnvironment,
+  });
+  if (path === undefined) return false;
+  const discovery = await probeHarness(path, {
+    env: location.commandEnvironment,
+    probe: location.probe,
+  });
+  return discovery.entries.some((entry) => entry.working);
+}
+
 async function selectedHarnessObservation(
   environment: Readonly<NodeJS.ProcessEnv>,
-  location: {
-    readonly directory: string;
-    readonly commandEnvironment: Readonly<NodeJS.ProcessEnv>;
-    readonly discovery: HarnessDiscovery;
-  },
+  location: HarnessCommandLocation,
 ): Promise<DoctorObservation> {
   const name = environment["CLOVING_WORKER"] ?? "claude";
   const variable =
@@ -141,9 +160,7 @@ async function selectedHarnessObservation(
   });
   const usable =
     ["claude", "codex"].includes(name) &&
-    location.discovery.entries.some(
-      (entry) => entry.name === name && entry.working,
-    );
+    (await usableHarnessCommand(command, location));
   return {
     result: usable && effective.result === "ok" ? "ok" : "fail",
     detail: `harness ${name}${environment["CLOVING_WORKER"] === undefined ? " (default)" : ""}; probe ${usable ? "ok" : "failed"}; ${effective.detail}`,

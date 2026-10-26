@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
@@ -107,6 +107,45 @@ await test("CLV-207 no usable harness fails both harness checks without running 
     assert.equal(check(output, "harnesses")["result"], "fail");
     assert.equal(check(output, "default-harness")["result"], "fail");
   }));
+
+for (const [name, variable, version] of [
+  ["claude", "CLOVING_CLAUDE_COMMAND", "2.1.1 (Claude Code)"],
+  ["codex", "CLOVING_CODEX_COMMAND", "codex-cli 0.100.0"],
+] as const)
+  await test(`CLV-207 default harness probes configured ${name} outside PATH`, () =>
+    withDoctor(async (scene) => {
+      const configured = join(scene.root, "configured-harness");
+      await rename(
+        await scene.program(
+          "configured",
+          `if (process.argv[2] !== "--version") process.exit(91); console.log(${JSON.stringify(version)})`,
+        ),
+        configured,
+      );
+      await scene.program("claude", "process.exit(1)");
+      await scene.program("codex", "process.exit(1)");
+      const output = await scene.report({
+        CLOVING_WORKER: name,
+        [variable]: JSON.stringify([configured]),
+      });
+      assert.equal(check(output, "harnesses")["result"], "fail");
+      assert.equal(check(output, "default-harness")["result"], "ok");
+      assert.ok(
+        String(check(output, "default-harness")["detail"]).includes(configured),
+      );
+    }));
+
+for (const body of ["process.exit(1)", 'console.log("no version")'])
+  await test(`CLV-207 working bare harness cannot hide configured probe failure: ${body}`, () =>
+    withDoctor(async (scene) => {
+      const configured = await scene.program("configured", body);
+      const output = await scene.report({
+        CLOVING_CLAUDE_COMMAND: JSON.stringify([configured]),
+      });
+      assert.equal(check(output, "harnesses")["result"], "ok");
+      assert.equal(check(output, "default-harness")["result"], "fail");
+      assert.equal(output.status, 1);
+    }));
 
 for (const [code, variable] of [
   ["ticket-command", "CLOVING_TICKET_COMMAND"],

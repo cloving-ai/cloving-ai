@@ -85,12 +85,11 @@ export function requiredDoctorCodes(
   const bundled = workflows
     .filter((workflow) => workflow.scope === "bundled")
     .map((workflow) => workflow.workflowId);
-  if (bundled.includes("develop-issue")) {
-    codes.add("check-command");
-    if (options.queueSeconds !== undefined) {
-      codes.add("next-command");
-      codes.add("queue-interval");
-    }
+  const issue = bundled.includes("develop-issue");
+  if (issue) codes.add("check-command");
+  if (issue && options.queueSeconds !== undefined) {
+    codes.add("next-command");
+    codes.add("queue-interval");
   }
   if (
     bundled.some((name) => ["develop-ticket", "develop-issue"].includes(name))
