@@ -3,7 +3,11 @@ import { execFileSync } from "node:child_process";
 import { mkdir, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
+import {
+  candidatePackageRoot,
+  loadWorkflowFolders,
+} from "./candidate-package-fixture.ts";
+import { analyzeWorkflowCandidate } from "../tools/workflow-candidate-source.ts";
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { candidateEffectExpression } from "./workflow-candidate-fixtures.ts";
@@ -153,6 +157,33 @@ export async function prompt() { return await ${candidateEffectExpression}; }`,
       assert.deepEqual(result.refusals[0]?.codes, ["effect-limit"]);
     },
   ));
+
+await test("CLV-216 charges repeated calls to the same helper against the effect limit", async () => {
+  const source = `
+import { prompt } from "./develop/prompts.ts";
+export async function develop() { "use workflow"; await prompt(); return await prompt(); }`;
+  const helper = `
+import { protectedEffect } from "cloving/workflows";
+export async function prompt() { return await ${candidateEffectExpression}; }`;
+  const { analysis } = analyzeWorkflowCandidate(source, {
+    packageRoot: candidatePackageRoot,
+    helpers: { "develop/prompts.ts": helper },
+  });
+  assert.equal(analysis.knownCallCount, 2);
+  assert.equal(analysis.knownUnitTotal, 2);
+  await withFiles(
+    {
+      ...helperFiles(),
+      "repo/.cloving/workflows/develop.ts": source,
+      "repo/.cloving/workflows/develop/prompts.ts": helper,
+    },
+    async (directory) => {
+      const result = await loadWorkflowFolders(folderInput(directory));
+      assert.deepEqual(result.candidates, []);
+      assert.deepEqual(result.refusals[0]?.codes, ["effect-limit"]);
+    },
+  );
+});
 
 await test("CLV-216 helper bytes affect the artifact digest even when the export is unused", () =>
   withFiles(helperFiles(), async (directory) => {

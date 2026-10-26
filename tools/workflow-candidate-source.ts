@@ -14,6 +14,7 @@ import {
 } from "./workflow-candidate-syntax.ts";
 import { sourceEffectNodes } from "./workflow-source-effects.ts";
 import { candidateEffectTotals } from "./workflow-candidate-counts.ts";
+import { helperEffectTotals } from "./workflow-candidate-helper-counts.ts";
 import type {
   CandidateAnalysis,
   CandidateEffect,
@@ -152,6 +153,10 @@ export function analyzeWorkflowCandidate(
     analysis: combineFacts({
       localSources: Object.keys(installed.helpers ?? {}),
       facts,
+      expanded: helperEffectTotals({
+        symbols: { ...symbols, source },
+        sources,
+      }),
     }),
     installedExports: exportSnapshot(modules, checker),
   };
@@ -193,6 +198,7 @@ function analyzedSource(
 function combineFacts(input: {
   readonly localSources: readonly string[];
   readonly facts: readonly CandidateAnalysis[];
+  readonly expanded: ReturnType<typeof helperEffectTotals>;
 }): CandidateAnalysis {
   const { localSources, facts } = input;
   return {
@@ -200,14 +206,17 @@ function combineFacts(input: {
     imports: facts.flatMap((entry) => entry.imports),
     effects: facts.flatMap((entry) => entry.effects),
     directEffects: facts.flatMap((entry) => entry.directEffects),
-    unsupportedForms: facts.flatMap((entry) => entry.unsupportedForms),
-    knownCallCount: facts.reduce(
-      (total, entry) => total + entry.knownCallCount,
-      0,
+    unsupportedForms: [
+      ...facts.flatMap((entry) => entry.unsupportedForms),
+      ...input.expanded.unsupportedForms,
+    ],
+    knownCallCount: Math.max(
+      input.expanded.knownCallCount,
+      facts.reduce((total, entry) => total + entry.knownCallCount, 0),
     ),
-    knownUnitTotal: facts.reduce(
-      (total, entry) => total + entry.knownUnitTotal,
-      0,
+    knownUnitTotal: Math.max(
+      input.expanded.knownUnitTotal,
+      facts.reduce((total, entry) => total + entry.knownUnitTotal, 0),
     ),
   };
 }
