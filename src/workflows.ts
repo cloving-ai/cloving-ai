@@ -2,6 +2,13 @@ export { loadCycle, type CycleLoad } from "./steps/load-cycle.ts";
 export { protectedEffect } from "./steps/protected-effect.ts";
 export { decisionGate } from "./steps/decision-gate.ts";
 export { waitForDecision } from "./steps/wait-for-decision.ts";
+export { reviewByPerson } from "./steps/review-by-person.ts";
+export type {
+  ReviewSubject,
+  CommitReviewSubject,
+  DraftReviewSubject,
+  ReviewResult,
+} from "./review-subject.ts";
 export { handoff } from "./steps/handoff.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
 export { runCommand } from "./steps/run-command.ts";

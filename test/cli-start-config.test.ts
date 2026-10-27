@@ -79,6 +79,10 @@ await test("CLV-205 invalid project settings stop start before preparing the dae
       ],
       [{ queue: { lane: 2 } }, "unknown-setting: queue.lane"],
       [
+        { workflows: { folder: "/srv/workflows" } },
+        "private-setting-in-project-file: workflows",
+      ],
+      [
         { checks: { beforeMerge: "npm test" } },
         "invalid-setting: checks.beforeMerge",
       ],

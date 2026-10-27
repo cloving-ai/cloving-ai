@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds` and `github.command`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
+The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -590,6 +590,8 @@ Steps:
 - The repository `.cloving/workflows/` folder.
 - The user `cloving/workflows/` folder under an absolute `XDG_CONFIG_HOME`, otherwise under `~/.config`. An unset or relative `XDG_CONFIG_HOME` uses that default.
 
+The private setting `workflows.folder` replaces the user folder with an absolute folder path, for example a private git repository of your own workflows. Set it with `cloving config set workflows.folder <path>`. Cloving reads the folder where it is. The folder itself must not be a symbolic link; a link in the path above it is allowed. `cloving workflows list` shows its workflows with the scope `user`.
+
 A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
@@ -685,6 +687,20 @@ export async function review(input: { cycleId: string }) {
 ```
 
 `waitForDecision` accepts the same request as `decisionGate` and returns `{ decision, answer }`. The decision is `approved`, `denied`, `answered` or `expired`. An optional `expiresAt` resumes the wait with `expired` and `answer: null`. The SDK hook survives daemon restarts and replay. Gate IDs belong to a run, so different runs can use the same gate ID. The existing questions, decision commands and binding values apply; dropping the run cancels the wait. `waitForDecision` is also exported by `cloving/workflows`.
+
+Use `reviewByPerson` to request approval of an immutable commit or draft:
+
+```ts
+import { reviewByPerson } from "cloving/workflows/steps/review-by-person";
+
+const review = await reviewByPerson({
+  subject: { draft: "The proposed issue text." },
+});
+```
+
+Call it inside a workflow. The result is `{ accepted, feedback, commit, subjectDigest }`; only an approval sets `accepted` to `true`. Feedback contains the decision's answer, or an empty string. A commit subject is `{ commit, target }`, where `commit` is the full 40 or 64 character lowercase commit ID and `target` identifies the run's work tree. To review an existing pull, supply its `commit` together with the run target. A draft subject is `{ draft, commit? }`, where the optional commit identifies its base; the result's `commit` is always `null` for a draft. Drafts must contain text, and commit subjects need a nonempty target.
+
+The SHA-256 `subjectDigest` identifies the exact subject, including a draft's text and optional base commit. A changed subject opens a different approval. Repeating the same subject within a run reuses its recorded decision. The helper returns that decision in the original call through `waitForDecision`, and is also exported by `cloving/workflows`. Workflow tests supply its decisions through the fake bridge's `decisions` queue; person reviews consume no protected effect budget.
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 

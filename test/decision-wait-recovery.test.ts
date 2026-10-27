@@ -62,6 +62,32 @@ try {
 
 const crashes = [
   {
+    boundary: "before-open-checkpoint",
+    script: `
+const world = await getWorld();
+const create = world.events.create.bind(world.events);
+world.events.create = async (...given) => {
+  if (given[1]?.eventType === "step_completed") {
+    const step = await world.steps.get(given[0], given[1].correlationId, { resolveData: "none" });
+    if (step.stepName.endsWith("//openDecisionWait")) {
+      writeFileSync("open-returned", "");
+      await until(() => existsSync("approved"));
+      return await halt("before-open-checkpoint", { receipt: given[0] });
+    }
+  }
+  return await create(...given);
+};
+const service = await hosted();
+const runId = await submitted("crash");
+await until(() => existsSync("open-returned"));
+assert.equal((await sdkEvents(runId)).some((event) => event.eventType === "hook_created"), false);
+assert.equal((await decide(runId)).kind, "decision-recorded");
+writeFileSync("approved", "");
+await new Promise(() => undefined);
+`,
+    decisionPending: false,
+  },
+  {
     boundary: "waiting",
     script: `
 const service = await hosted();

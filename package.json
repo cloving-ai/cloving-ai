@@ -35,6 +35,14 @@
       "types": "./dist/src/steps/decision-gate.d.ts",
       "import": "./dist/src/steps/decision-gate.js"
     },
+    "./workflows/steps/review-subject": {
+      "types": "./dist/src/steps/review-subject.d.ts",
+      "import": "./dist/src/steps/review-subject.js"
+    },
+    "./workflows/steps/review-by-person": {
+      "types": "./dist/src/steps/review-by-person.d.ts",
+      "import": "./dist/src/steps/review-by-person.js"
+    },
     "./workflows/steps/wait-for-decision": {
       "types": "./dist/src/steps/wait-for-decision.d.ts",
       "import": "./dist/src/steps/wait-for-decision.js"

@@ -47,6 +47,7 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
     "handoff",
     "loadCycle",
     "protectedEffect",
+    "reviewByPerson",
     "runCommand",
     "ticketStatus",
     "waitForDecision",

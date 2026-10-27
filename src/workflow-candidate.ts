@@ -54,6 +54,8 @@ const workflowModules = [
   "cloving/workflows",
   "cloving/workflows/steps/decision-gate",
   "cloving/workflows/steps/wait-for-decision",
+  "cloving/workflows/steps/review-by-person",
+  "cloving/workflows/steps/review-subject",
   "cloving/workflows/steps/load-cycle",
   "cloving/workflows/steps/protected-effect",
   "cloving/workflows/steps/handoff",
