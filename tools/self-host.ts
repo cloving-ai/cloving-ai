@@ -4,7 +4,12 @@ import {
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
-import { projectConfiguration } from "./project-configuration.ts";
+import { absoluteWorkflowFolder } from "../src/project-settings.ts";
+import {
+  projectConfiguration,
+  projectRoot,
+  topLevel,
+} from "./project-configuration.ts";
 import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
 import {
   parseCommands,
@@ -16,8 +21,7 @@ import {
   parseTokenPrices,
   type TokenPrices,
 } from "../src/token-prices.ts";
-import { execFileSync } from "node:child_process";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -43,23 +47,10 @@ function flag(name: string): string | undefined {
     : argument?.slice(name.length + 1);
 }
 
-function topLevel(given: string): string {
-  try {
-    return execFileSync("git", ["-C", given, "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return given;
-  }
-}
-
 const runtimeArgument = flag("--runtime");
 if (runtimeArgument === undefined)
   throw new Error("The start program needs --runtime. Use: cloving start");
-const repository = await realpath(
-  topLevel(resolve(flag("--repository") ?? process.cwd())),
-);
+const repository = await projectRoot(flag("--repository") ?? process.cwd());
 const configuration = await projectConfiguration(repository, process.env);
 const environment = configuration.environment;
 const selectedRuntime = await adoptRuntimeDirectory({
@@ -273,7 +264,7 @@ const manifests = await preparedProject({
   repository,
   home: homedir(),
   xdgConfigHome: environment["XDG_CONFIG_HOME"],
-  userFolder: environment["CLOVING_WORKFLOW_FOLDER"],
+  userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
 });
 await launchers(
   {

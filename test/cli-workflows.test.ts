@@ -34,18 +34,24 @@ const entry = resolve("src/cli.ts");
 
 function cli(
   root: string,
-  invocation: { readonly args: readonly string[]; readonly entry?: string },
+  invocation: {
+    readonly args: readonly string[];
+    readonly entry?: string;
+    readonly directory?: string;
+    readonly environment?: NodeJS.ProcessEnv;
+  },
 ) {
   return spawnSync(
     process.execPath,
     [invocation.entry ?? entry, "workflows", ...invocation.args],
     {
-      cwd: join(root, "repo"),
+      cwd: invocation.directory ?? join(root, "repo"),
       env: {
         ...process.env,
         HOME: root,
         XDG_CONFIG_HOME: join(root, "config"),
         CLOVING_RUNTIME_DIR: join(root, "service/run"),
+        ...invocation.environment,
       },
       encoding: "utf8",
       timeout: 30000,
@@ -325,36 +331,60 @@ await test("CLV-224 listing and test selection preserve workflow filenames with 
     },
   ));
 
+async function privateFolderSetting(root: string): Promise<void> {
+  const settings = privateSettingsPath(
+    { HOME: root, XDG_CONFIG_HOME: join(root, "config") },
+    join(root, "repo"),
+  );
+  await mkdir(dirname(settings), { recursive: true });
+  await writeFile(
+    settings,
+    JSON.stringify({
+      version: 1,
+      workflows: { folder: join(root, "private/workflows") },
+    }),
+  );
+}
+
+function userRows(output: string): unknown[] {
+  const rows: unknown = JSON.parse(output);
+  assert.ok(Array.isArray(rows));
+  return rows
+    .map((row) => record(row))
+    .filter((row) => row?.["scope"] === "user")
+    .map((row) => [row?.["workflowId"], row?.["file"]]);
+}
+
 await test("CLV-227 list reads the user folder from the private workflows.folder setting", () =>
   withFiles(
     {
       "repo/marker": "",
+      "repo/nested/marker": "",
       ...operatorFiles("user", "home"),
       ...privateFolderFiles("own"),
     },
     async (root) => {
-      const settings = privateSettingsPath(
-        { HOME: root, XDG_CONFIG_HOME: join(root, "config") },
-        join(root, "repo"),
-      );
-      await mkdir(dirname(settings), { recursive: true });
-      await writeFile(
-        settings,
-        JSON.stringify({
-          version: 1,
-          workflows: { folder: join(root, "private/workflows") },
-        }),
-      );
-      const result = cli(root, { args: ["list", "--json"] });
-      assert.equal(result.status, 0, result.stdout + result.stderr);
-      const rows: unknown = JSON.parse(result.stdout);
-      assert.ok(Array.isArray(rows));
-      assert.deepEqual(
-        rows
-          .map((row) => record(row))
-          .filter((row) => row?.["scope"] === "user")
-          .map((row) => [row?.["workflowId"], row?.["file"]]),
-        [["own", join(root, "private/workflows/own.ts")]],
-      );
+      await privateFolderSetting(root);
+      spawnSync("git", ["init", "-q", join(root, "repo")]);
+      for (const directory of [join(root, "repo"), join(root, "repo/nested")]) {
+        const result = cli(root, { args: ["list", "--json"], directory });
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.deepEqual(userRows(result.stdout), [
+          ["own", join(root, "private/workflows/own.ts")],
+        ]);
+      }
     },
   ));
+
+await test("CLV-227 a relative CLOVING_WORKFLOW_FOLDER stops the workflows command", () =>
+  withFiles({ "repo/marker": "" }, (root) => {
+    const result = cli(root, {
+      args: ["list", "--json"],
+      environment: { CLOVING_WORKFLOW_FOLDER: "relative-workflows" },
+    });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(
+      result.stderr,
+      /CLOVING_WORKFLOW_FOLDER must be an absolute path/,
+    );
+  }));

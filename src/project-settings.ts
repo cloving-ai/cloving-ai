@@ -37,6 +37,15 @@ const environmentOnly = [
   "CLOVING_RELAY_ORIGIN",
 ];
 
+export function absoluteWorkflowFolder(
+  folder: string | undefined,
+): string | undefined {
+  if (folder === undefined || folder.startsWith("/")) return folder;
+  throw new Error(
+    "invalid-setting: CLOVING_WORKFLOW_FOLDER must be an absolute path",
+  );
+}
+
 export function configurationRoot(
   environment: Readonly<NodeJS.ProcessEnv>,
   home: string,

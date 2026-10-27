@@ -1,6 +1,7 @@
-import { projectConfiguration } from "./project-configuration.ts";
+import { absoluteWorkflowFolder } from "../src/project-settings.ts";
+import { projectConfiguration, projectRoot } from "./project-configuration.ts";
 import { spawn } from "node:child_process";
-import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { lstat, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -53,9 +54,10 @@ export async function workflowCommand(
       repository,
       home: homedir(),
       xdgConfigHome: process.env["XDG_CONFIG_HOME"],
-      userFolder: (
-        await projectConfiguration(await realpath(repository), process.env)
-      ).environment["CLOVING_WORKFLOW_FOLDER"],
+      userFolder: absoluteWorkflowFolder(
+        (await projectConfiguration(await projectRoot(repository), process.env))
+          .environment["CLOVING_WORKFLOW_FOLDER"],
+      ),
     });
     if (selected.command === "test")
       return await testWorkflows(result.workflows, {

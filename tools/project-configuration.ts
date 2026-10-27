@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { configurationRoot, resolveSettings } from "../src/project-settings.ts";
 import { repositoryFileName } from "../src/repository-identity.ts";
 
@@ -16,6 +17,21 @@ async function settingsFile(file: {
       return undefined;
     throw new Error(`unreadable-config-file: ${file.scope}`, { cause: error });
   }
+}
+
+export function topLevel(given: string): string {
+  try {
+    return execFileSync("git", ["-C", given, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return given;
+  }
+}
+
+export function projectRoot(given: string): Promise<string> {
+  return realpath(topLevel(resolve(given)));
 }
 
 export async function projectConfiguration(
