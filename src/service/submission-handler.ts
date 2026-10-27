@@ -12,6 +12,7 @@ import { record, type Fields, type Reply } from "../protocol.ts";
 import {
   checkResolution,
   checkSubmission,
+  hasTicketField,
   normalizedRequest,
   type CheckedResolution,
 } from "../submission.ts";
@@ -220,8 +221,10 @@ function admissionRefusal(
   },
 ): Reply | undefined {
   const { workflowId, commandId, submission, activeTickets } = request;
+  const tickets =
+    workflowId === "develop-issue" || hasTicketField(workflow.submission);
   if (
-    workflowId === "develop-issue" &&
+    tickets &&
     typeof submission["ticket"] === "string" &&
     activeTickets.some((input) => input["ticketId"] === submission["ticket"])
   )
@@ -229,8 +232,7 @@ function admissionRefusal(
       commandId,
       detail: "An active run already works on this ticket.",
     });
-  if (workflowId === "develop-issue" && submission["ticket"] !== "next")
-    return undefined;
+  if (tickets && submission["ticket"] !== "next") return undefined;
   return capacityRefusal(workflow, request);
 }
 
@@ -331,7 +333,11 @@ async function activeWorkflow(
       const text = digest
         ? await context.authority.queries.document(digest)
         : undefined;
-      return record(JSON.parse(text ?? "null")) ?? {};
+      const input = record(JSON.parse(text ?? "null")) ?? {};
+      const ticket = record(record(input["input"])?.["ticket"]);
+      return ticket === undefined
+        ? input
+        : { ...input, ticketId: ticket["id"], ticket: ticket["text"] };
     }),
   );
 }
@@ -365,6 +371,7 @@ export function submissionHandler(
     const workflowId = String(parameters["workflowId"]);
     if (
       workflowId === "develop-issue" ||
+      hasTicketField(context.registry.byId(workflowId)?.submission) ||
       context.registry.byId(workflowId)?.admission !== undefined
     )
       keys.push(`workflow:${workflowId}`);

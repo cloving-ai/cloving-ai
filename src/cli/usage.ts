@@ -30,8 +30,8 @@ Unsupported facts and unreadable sources are unavailable.
   run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
-With --ticket, the workflow gets the ticket ID and reads the ticket itself.
-With --next (the same as --ticket next), develop-issue and develop-ticket select a ready ticket through CLOVING_NEXT_COMMAND.
+With --ticket, the daemon reads the ticket at admission. A declared ticket field receives { id, text } inside input.
+With --next (the same as --ticket next), ticket workflows select a ready ticket through CLOVING_NEXT_COMMAND.
 Success means a committed receipt. It does not mean completed work.
 `,
   status: `Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]

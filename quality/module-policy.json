@@ -646,6 +646,7 @@
     "tools/self-host-workflows.ts": "build",
     "test/self-host-workflows.test.ts": "test",
     "test/ticket-registration.test.ts": "test",
+    "test/declared-ticket.test.ts": "test",
     "src/daemon/daemon.ts": "daemon",
     "src/daemon/host-environment.ts": "daemon",
     "src/daemon/ticket-registration.ts": "daemon",

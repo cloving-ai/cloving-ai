@@ -31,6 +31,32 @@ const manifests = workflowManifests({
   },
 });
 
+await test("CLV-217 accepts one ticket field named ticket", () => {
+  assert.ok(
+    isWorkflowDeclaration({
+      ...declaration,
+      input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+    }),
+  );
+});
+
+await test("CLV-217 rejects ticket fields with another name or multiple ticket fields", () => {
+  for (const fields of [
+    { issue: { type: "ticket" } },
+    { ticket: { type: "ticket" }, issue: { type: "ticket" } },
+    { ticket: { type: "ticket", minimum: 1 } },
+    { ticket: { type: "ticket", maximum: 10 } },
+    { ticket: { type: ["ticket"] } },
+  ])
+    assert.equal(
+      isWorkflowDeclaration({
+        ...declaration,
+        input: { maximumBytes: 4096, fields },
+      }),
+      false,
+    );
+});
+
 await test("CLV-168 reads declared handoff targets without changing their order", async () => {
   for (const handoffs of [[], ["b"], ["b", "review-run", "A".repeat(64)]])
     await withFiles(

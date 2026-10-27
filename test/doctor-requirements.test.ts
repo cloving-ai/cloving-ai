@@ -15,6 +15,36 @@ const issue: DoctorWorkflow = {
   capabilities: ["github"],
 };
 
+await test("CLV-217 a declared ticket field requires a ticket command", async () => {
+  await withDoctor(async (scene) => {
+    const folder = join(scene.repository, ".cloving/workflows");
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      join(folder, "custom.ts"),
+      'throw new Error("must not run")',
+    );
+    await writeFile(
+      join(folder, "custom.declaration.json"),
+      JSON.stringify({
+        workflow: {
+          workflowId: "custom",
+          capabilities: ["claude"],
+          effectLimit: 1,
+          input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+        },
+        methods: { claude: ["turn"] },
+      }),
+    );
+    const workflows = (
+      await doctorWorkflows(scene.repository, scene.environment)
+    ).filter((workflow) => workflow.scope === "project");
+    assert.equal(workflows.length, 1);
+    const codes = requiredDoctorCodes(workflows, { queueSeconds: undefined });
+    assert.ok(codes.includes("ticket-command"));
+    assert.ok(!codes.includes("next-command"));
+  });
+});
+
 await test("CLV-207 a user workflow with github makes both GitHub checks required", () => {
   const codes = requiredDoctorCodes(
     [{ scope: "user", workflowId: "custom", capabilities: ["github"] }],

@@ -11,6 +11,36 @@ const contract = {
   },
 } as const;
 
+await test("CLV-217 ticket fields accept IDs and require the other required fields", () => {
+  const ticketContract = {
+    maximumBytes: 4096,
+    fields: { ticket: { type: "ticket" }, rounds: { type: "integer" } },
+  } as const;
+  for (const source of ["ticket", "input"])
+    assert.equal(
+      checkSubmission(ticketContract, {
+        workflowId: "develop",
+        source,
+        submission: { ticket: "312", rounds: 1 },
+      }).kind,
+      "valid",
+    );
+  for (const submission of [
+    { ticket: "312" },
+    { ticket: { id: "312", text: "untrusted" }, rounds: 1 },
+    { ticket: " ", rounds: 1 },
+    { ticket: 312, rounds: 1 },
+  ])
+    assert.equal(
+      checkSubmission(ticketContract, {
+        workflowId: "develop",
+        source: "input",
+        submission,
+      }).kind,
+      "rejected",
+    );
+});
+
 await test("CLV-089 integer and boolean submissions retain their values", () => {
   const submission = { prompt: "Check the change.", rounds: 3, publish: false };
   assert.deepEqual(
