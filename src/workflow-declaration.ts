@@ -1,5 +1,9 @@
 import { record, type Fields } from "./protocol.ts";
-import type { SubmissionContract, SubmissionField } from "./submission.ts";
+import {
+  hasTicketField,
+  type SubmissionContract,
+  type SubmissionField,
+} from "./submission.ts";
 
 export interface WorkflowStage {
   readonly name: string;
@@ -18,10 +22,30 @@ export interface WorkflowDeclaration {
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly queue?: boolean;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
   readonly functionName: string;
+}
+
+export type WorkflowQueueCode =
+  "queue-needs-ticket-field" | "queue-input-incomplete";
+
+export function workflowQueueRefusals(
+  value: unknown,
+): readonly WorkflowQueueCode[] {
+  const declaration = record(value);
+  if (declaration?.["queue"] !== true || !isInput(declaration["input"]))
+    return [];
+  const input = declaration["input"];
+  if (!hasTicketField(input)) return ["queue-needs-ticket-field"];
+  return Object.entries(input.fields).some(
+    ([name, rule]) =>
+      name !== "ticket" && (rule === "string" || rule.optional !== true),
+  )
+    ? ["queue-input-incomplete"]
+    : [];
 }
 
 function keys(
@@ -193,19 +217,29 @@ export function isWorkflowDeclaration(
       "stages",
       "handoffs",
       "commands",
+      "queue",
     ])
   )
     return false;
-  const { workflowId, effectLimit, capabilities, input, handoffs } =
-    declaration;
+  const { workflowId, effectLimit, capabilities, input } = declaration;
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 100 }) &&
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
+    declaredOptions(declaration)
+  );
+}
+
+function declaredOptions(declaration: Fields): boolean {
+  return (
+    (!Object.hasOwn(declaration, "queue") ||
+      typeof declaration["queue"] === "boolean") &&
+    workflowQueueRefusals(declaration).length === 0 &&
     (!Object.hasOwn(declaration, "stages") ||
       isWorkflowStages(declaration["stages"])) &&
-    (!Object.hasOwn(declaration, "handoffs") || isWorkflowNames(handoffs))
+    (!Object.hasOwn(declaration, "handoffs") ||
+      isWorkflowNames(declaration["handoffs"]))
   );
 }

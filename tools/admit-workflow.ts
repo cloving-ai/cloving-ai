@@ -15,6 +15,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   checkWorkflowCandidate,
+  candidateDeclarationRefusals,
   workflowHelperPath,
   type WorkflowCandidateCode,
 } from "../src/workflow-candidate.ts";
@@ -41,6 +42,8 @@ export async function admitWorkflowCandidate(
   installed: CandidatePackageOptions = {},
 ): Promise<WorkflowCandidateAdmission> {
   const { source, declaration } = input;
+  const refusal = candidateDeclarationRefusals(declaration);
+  if (refusal.length > 0) return { kind: "refused", codes: refusal };
   if (Buffer.from(source, "utf8").toString("utf8") !== source)
     return { kind: "refused", codes: ["unsupported-source"] };
   try {

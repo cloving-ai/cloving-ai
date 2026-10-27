@@ -1,6 +1,8 @@
 import { record } from "./protocol.ts";
 import {
   isWorkflowDeclaration,
+  workflowQueueRefusals,
+  type WorkflowQueueCode,
   type WorkflowDeclaration,
 } from "./workflow-declaration.ts";
 
@@ -35,6 +37,7 @@ export type InstalledWorkflowExports = Readonly<
 >;
 
 export type WorkflowCandidateCode =
+  | WorkflowQueueCode
   | "invalid-declaration"
   | "forbidden-import"
   | "missing-export"
@@ -133,7 +136,7 @@ export function checkWorkflowCandidate(
   input: WorkflowCandidateInput,
 ): readonly WorkflowCandidateCode[] {
   if (!isCandidateDeclaration(input.declaration))
-    return ["invalid-declaration"];
+    return candidateDeclarationRefusals(input.declaration);
   const { analysis, declaration, installedExports } = input;
   const codes: WorkflowCandidateCode[] = [];
   if (analysis.imports.some((entry) => !allowedImport(entry, analysis)))
@@ -172,4 +175,12 @@ export function checkWorkflowCandidate(
   if (analysis.directEffects.length > 0) codes.push("direct-effect");
   if (analysis.unsupportedForms.length > 0) codes.push("unsupported-source");
   return [...new Set(codes)].sort();
+}
+
+export function candidateDeclarationRefusals(
+  value: unknown,
+): readonly WorkflowCandidateCode[] {
+  if (isCandidateDeclaration(value)) return [];
+  const codes = workflowQueueRefusals(record(value)?.["workflow"]);
+  return codes.length > 0 ? codes : ["invalid-declaration"];
 }

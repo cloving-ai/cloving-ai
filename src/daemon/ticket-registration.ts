@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
-import type {
-  DeclaredWorkflow,
-  WorkflowStage,
+import {
+  workflowQueueRefusals,
+  type DeclaredWorkflow,
+  type WorkflowStage,
 } from "../workflow-declaration.ts";
 import type {
   Resolution,
@@ -53,6 +54,7 @@ export interface TicketSource {
 }
 
 export interface TicketRegistration {
+  readonly queue?: boolean;
   readonly workflowId: string;
   readonly functionName: string;
   readonly resolver: Resolver;
@@ -255,6 +257,7 @@ export function ticketRegistrationTable(
       resolver: promptResolver(source.repository),
     },
     ...declarations.map((declaration) => ({
+      ...(declaration.queue === undefined ? {} : { queue: declaration.queue }),
       workflowId: declaration.workflowId,
       functionName: declaration.functionName,
       effectLimit: declaration.effectLimit,
@@ -282,6 +285,9 @@ function declaredResolver(
   return {
     id: "declared-input",
     version: "1",
+    ...(tickets?.skippedTickets === undefined
+      ? {}
+      : { skippedTickets: tickets.skippedTickets }),
     resolve: async (request) => {
       const resolution =
         tickets !== undefined && Object.hasOwn(request.submission, "ticket")
@@ -357,6 +363,8 @@ function registrationRefusal(
   table: readonly TicketRegistration[],
   commands: LocalCommands,
 ): string | undefined {
+  const queueRefusal = queueRegistrationRefusal(table);
+  if (queueRefusal !== undefined) return queueRefusal;
   const ids = new Set<string>();
   for (const row of table) {
     if (ids.has(row.workflowId))
@@ -374,6 +382,19 @@ function registrationRefusal(
     );
     if (unknown !== undefined)
       return `command-unknown: ${row.workflowId} -> ${unknown}`;
+  }
+  return undefined;
+}
+
+function queueRegistrationRefusal(
+  table: readonly TicketRegistration[],
+): string | undefined {
+  const queued = table.filter((row) => row.queue === true);
+  if (queued.length > 1)
+    return `queue-workflow-conflict: ${queued.map((row) => row.workflowId).join(", ")}`;
+  for (const row of queued) {
+    const codes = workflowQueueRefusals({ queue: true, input: row.submission });
+    if (codes.length > 0) return `${codes.join(", ")}: ${row.workflowId}`;
   }
   return undefined;
 }

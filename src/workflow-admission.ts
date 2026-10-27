@@ -31,6 +31,7 @@ export interface AdmissionPolicy {
 }
 
 export interface ExecutionManifest {
+  readonly queue?: boolean;
   readonly name: string;
   readonly workflowId: string;
   readonly steps: readonly string[];

@@ -110,10 +110,11 @@ function identity(entry: DiscoveredWorkflow) {
     ts.ScriptTarget.Latest,
     true,
   );
-  const workflowId = record(
-    record(parsedDeclaration(snapshot.declaration ?? ""))?.["workflow"],
-  )?.["workflowId"];
+  const parsed = parsedDeclaration(snapshot.declaration ?? "");
+  const declaration = record(record(parsed)?.["workflow"]);
+  const workflowId = declaration?.["workflowId"];
   return {
+    queue: isCandidateDeclaration(parsed) && parsed.workflow.queue === true,
     baseName: snapshot.baseName,
     workflowId: typeof workflowId === "string" ? workflowId : undefined,
     functionNames: source.statements

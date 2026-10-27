@@ -1,3 +1,4 @@
+import { activeQueueRuns } from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ interface QueueSettings {
   readonly intervalMilliseconds: number;
   readonly lanes?: number;
   readonly resetQueue?: boolean;
+  readonly workflowId?: string;
 }
 
 interface QueueJournal {
@@ -207,29 +209,6 @@ async function completed(
   return pendingRuns;
 }
 
-async function active(runtimeDirectory: string): Promise<number> {
-  let count = 0;
-  let after: string | null = "";
-  do {
-    const reply = await send(runtimeDirectory, {
-      operation: "status",
-      parameters: { after, limit: 500 },
-    });
-    if (reply.kind === "error") throw new Error(reply.error.code);
-    const runs = reply.result["runs"];
-    if (!Array.isArray(runs)) throw new Error("invalid-run-list");
-    count += runs.filter((value: unknown) => {
-      const run = record(value);
-      return run?.["workflowId"] === "develop-issue" && !terminal(run);
-    }).length;
-    const next = reply.result["next"];
-    if (next !== null && (typeof next !== "string" || next <= after))
-      throw new Error("invalid-run-page");
-    after = next;
-  } while (after !== null);
-  return count;
-}
-
 async function submit(
   settings: QueueSettings,
   pending: QueueJournal,
@@ -240,7 +219,7 @@ async function submit(
   const reply = await send(settings.runtimeDirectory, {
     operation: "run",
     parameters: {
-      workflowId: "develop-issue",
+      workflowId: settings.workflowId ?? "develop-issue",
       source: "ticket",
       submission: { ticket: "next" },
       commandId,
@@ -368,7 +347,7 @@ async function cycle(
       await holding(pendingRuns);
       continue;
     }
-    const activeRuns = await active(settings.runtimeDirectory);
+    const activeRuns = await activeQueueRuns(settings);
     const held = await holding(activeRuns);
     if (activeRuns >= lanes || activeRuns < pendingRuns) continue;
     if (held) continue;
