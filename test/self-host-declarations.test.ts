@@ -14,7 +14,7 @@ const declaration = {
   workflowId: "review-run",
   effectLimit: 14,
   capabilities: ["claude"],
-  stages: [{ name: "draft", label: "Draft", operations: ["write-draft"] }],
+  stages: [{ name: "draft", label: "Draft", gateIds: ["write-draft"] }],
   input: {
     maximumBytes: 65_536,
     fields: {

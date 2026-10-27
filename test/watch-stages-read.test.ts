@@ -8,6 +8,8 @@ import {
   boardTime,
   sampleStages,
   stagedModel,
+  reviewStages,
+  paginatedReviewHistory,
   stageEvent,
 } from "./watch-board-fixture.ts";
 import {
@@ -15,6 +17,48 @@ import {
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
+
+await test("CLV-234 ID-only metadata and successive gates agree in the reader, projection and data.json", async () => {
+  for (let count = 0; count <= reviewStages.length; count += 1) {
+    const history = reviewStages.slice(0, count).map((stage, index) =>
+      stageEvent(index + 1, {
+        gateId: stage.gateIds[0],
+        gateKind: "approval",
+      }),
+    );
+    const status = {
+      ...fields(boardRun("sample-run", { workflowId: "sample" })["status"]),
+      latestSequence: count,
+    };
+    const workflowStages = { sample: reviewStages };
+    const { answer } = watchReplies({
+      runs: count === 0 ? [] : [status],
+      events: history,
+      workflows: ["sample"],
+      workflowStages,
+    });
+    await withWatchService(answer, async (watch, runtimeDirectory) => {
+      const read = await watchReader(runtimeDirectory).read(boardTime);
+      assert.deepEqual(read.workflowStages, workflowStages);
+      const expected = stagedModel(history, {
+        workflowStages,
+        runs: read.runs,
+        summaries: read.summaries,
+      }).workflows;
+      assert.deepEqual((await watchData(watch.address))["workflows"], expected);
+      const cards = expected.flatMap((board) =>
+        board.columns.flatMap((column) => column.cards),
+      );
+      assert.deepEqual(
+        cards.map((card) => card.currentStep),
+        history.slice(-1).map((event) => ({
+          name: reviewStages[count - 1]?.label,
+          startedAt: event.recordedAt,
+        })),
+      );
+    });
+  }
+});
 
 await test("CLV-128 the watch server carries stage metadata for an empty board", async () => {
   const { answer } = watchReplies({
@@ -32,26 +76,7 @@ await test("CLV-128 the watch server carries stage metadata for an empty board",
 });
 
 await test("CLV-128 paginated committed history and fresh reader rebuild match the full pure projection", async () => {
-  const events = Array.from({ length: 1003 }, (_, index) => ({
-    sequence: index * 2 + 1,
-    recordedAt: boardTime,
-    type: "effect.reported",
-    payload: {},
-  }));
-  const starts = new Map([
-    [
-      2001,
-      { ...stageEvent(2001, { gateKind: "approval" }), recordedAt: boardTime },
-    ],
-    [
-      2003,
-      {
-        ...stageEvent(2003, { operation: "write-draft" }),
-        recordedAt: "2026-10-14T01:00:00Z",
-      },
-    ],
-  ]);
-  const history = events.map((event) => starts.get(event.sequence) ?? event);
+  const history = paginatedReviewHistory();
   const status = {
     ...fields(boardRun("sample-run", { workflowId: "sample" })["status"]),
     latestSequence: 2005,
@@ -60,10 +85,17 @@ await test("CLV-128 paginated committed history and fresh reader rebuild match t
     runs: [status],
     events: history,
     workflows: ["sample"],
-    workflowStages: { sample: sampleStages },
+    workflowStages: { sample: reviewStages },
   });
   await withWatchService(answer, async (watch, runtimeDirectory) => {
-    const expected = stagedModel(history, { summaries: [status] }).workflows;
+    const expected = stagedModel(history, {
+      summaries: [status],
+      workflowStages: { sample: reviewStages },
+    }).workflows;
+    assert.deepEqual(expected[0]?.columns[1]?.cards[0]?.currentStep, {
+      name: "Team review",
+      startedAt: "2026-10-14T01:00:00Z",
+    });
     for (let rebuild = 0; rebuild < 2; rebuild += 1) {
       const reader = watchReader(runtimeDirectory);
       const read = await reader.read(boardTime);
@@ -84,6 +116,37 @@ await test("CLV-128 paginated committed history and fresh reader rebuild match t
     const served = await watchData(watch.address);
     assert.deepEqual(served["workflows"], expected);
   });
+});
+
+await test("CLV-234 invalid ID metadata discards only the affected workflow's stages", async () => {
+  for (const gateIds of [[""], ["team-review", "team-review"], null]) {
+    const { answer } = watchReplies({
+      runs: [],
+      workflows: ["sample", "invalid"],
+      workflowStages: {
+        sample: reviewStages,
+        invalid: [
+          {
+            name: "invalid",
+            label: "Invalid",
+            operations: ["write-draft"],
+            gateIds,
+          },
+        ],
+      },
+    });
+    await withWatchService(answer, async (watch, runtimeDirectory) => {
+      const read = await watchReader(runtimeDirectory).read(boardTime);
+      assert.deepEqual(read.workflowStages, { sample: reviewStages });
+      assert.deepEqual(
+        (await watchData(watch.address))["workflows"],
+        boardModel([], {
+          workflows: ["sample", "invalid"],
+          workflowStages: { sample: reviewStages },
+        }).workflows,
+      );
+    });
+  }
 });
 
 await test("CLV-128 absent or malformed service stage metadata keeps the legacy fallback", async () => {

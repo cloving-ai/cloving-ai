@@ -6,9 +6,123 @@ import {
   boardRun,
   boardTime,
   sampleStages,
+  reviewStageHistory,
+  reviewStagePositions,
   stagedModel,
+  reviewStages,
   stageEvent,
 } from "./watch-board-fixture.ts";
+
+await test("CLV-234 an exact gate ID precedes kind selection in either declaration order", () => {
+  for (const stages of [
+    [sampleStages[1], ...reviewStages],
+    [...reviewStages, sampleStages[1]],
+  ]) {
+    for (const gateKind of ["approval", "question", undefined]) {
+      const event = stageEvent(1, {
+        gateId: "team-review",
+        ...(gateKind === undefined ? {} : { gateKind }),
+      });
+      const model = stagedModel([event], {
+        workflowStages: { sample: stages },
+      });
+      assert.deepEqual(model.runs[0]?.currentStep, {
+        name: "Team review",
+        startedAt: event.recordedAt,
+      });
+    }
+  }
+});
+
+await test("CLV-234 gate IDs fall back by kind then Other with exact case and no prefix matching", () => {
+  const stages = [
+    { name: "fallback", label: "Fallback", gateKinds: ["approval"] },
+    { name: "id", label: "Exact", gateIds: ["review"] },
+  ] as const;
+  for (const gateId of [
+    undefined,
+    null,
+    1,
+    {},
+    ["review"],
+    "REVIEW",
+    "review-2",
+    "unused",
+  ]) {
+    for (const gateKind of ["approval", "question"]) {
+      const event = stageEvent(1, { gateId, gateKind });
+      const model = stagedModel([event], {
+        workflowStages: { sample: stages },
+      });
+      assert.deepEqual(model.runs[0]?.currentStep, {
+        name: gateKind === "approval" ? "Fallback" : "Other",
+        startedAt: event.recordedAt,
+      });
+    }
+  }
+  const effect = stageEvent(2, { operation: "write-draft" });
+  const event = {
+    ...effect,
+    payload: { ...effect.payload, gateId: "review", gateKind: "approval" },
+  };
+  assert.equal(
+    stagedModel([event], {
+      workflowStages: { sample: [...sampleStages, stages[1]] },
+    }).runs[0]?.currentStep.name,
+    "Draft",
+  );
+});
+
+await test("CLV-234 same-kind gate histories move exactly one card by committed sequence", () => {
+  const stages = [...reviewStages, sampleStages[0]];
+  const history = reviewStageHistory;
+  for (const [index, [name, source]] of reviewStagePositions.entries()) {
+    const events = history.slice(0, index + 1);
+    for (const input of [
+      events,
+      events.toReversed(),
+      [...events.slice(1), events[0]],
+    ]) {
+      const model = stagedModel(input, { workflowStages: { sample: stages } });
+      const column = model.workflows[0]?.columns.find(
+        (item) => item.name === name,
+      );
+      assert.equal(
+        model.workflows[0]?.columns.flatMap((item) => item.cards).length,
+        1,
+      );
+      assert.deepEqual(column?.cards[0]?.currentStep, {
+        name,
+        startedAt: history[source]?.recordedAt,
+      });
+    }
+  }
+});
+
+await test("CLV-234 separate workflows reuse gate IDs without adding cards for unused selectors", () => {
+  const events = [
+    stageEvent(1, { gateId: "team-review", gateKind: "approval" }),
+  ];
+  const model = boardModel(
+    [
+      boardRun("a", { workflowId: "first", events }),
+      boardRun("b", { workflowId: "second", events }),
+    ],
+    {
+      workflows: ["first", "second"],
+      workflowStages: { first: reviewStages, second: reviewStages },
+    },
+  );
+  for (const workflow of model.workflows) {
+    assert.equal(workflow.columns.flatMap((column) => column.cards).length, 1);
+    assert.equal(
+      workflow.columns[1]?.cards[0]?.currentStep?.name,
+      "Team review",
+    );
+    assert.equal(workflow.columns[0]?.cards.length, 0);
+    assert.equal(workflow.columns[2]?.cards.length, 0);
+  }
+});
 
 await test("CLV-128 staged boards declare ordered columns with or without runs", () => {
   for (const runs of [[], [boardRun("sample-run", { workflowId: "sample" })]]) {
@@ -143,7 +257,7 @@ await test("CLV-128 unstaged and develop-issue boards preserve their columns and
   ];
   const ordinary = boardModel(runs);
   const supplied = boardModel(runs, {
-    workflowStages: { "develop-issue": sampleStages },
+    workflowStages: { "develop-issue": reviewStages },
   });
   assert.deepEqual(supplied, ordinary);
   assert.equal(
@@ -186,7 +300,13 @@ await test("CLV-128 terminal rules override stages and retain inclusive bounds a
       }),
     ),
   ];
-  const capped = stagedModel([], { runs }).workflows[0];
+  const capped = stagedModel([], {
+    workflowStages: { sample: reviewStages },
+    runs: runs.map((run) => ({
+      ...run,
+      events: [stageEvent(1, { gateId: "team-review" })],
+    })),
+  }).workflows[0];
   for (const [column, prefix] of [
     ["Done", "done"],
     ["Stopped", "stopped"],
@@ -229,7 +349,11 @@ await test("CLV-128 terminal retention is inclusive, excludes future times and o
         state: "completed",
         outcome: "other",
       }),
-    ],
+    ].map((run) => ({
+      ...run,
+      events: [stageEvent(1, { gateId: "team-review" })],
+    })),
+    workflowStages: { sample: reviewStages },
   }).workflows[0];
   assert.deepEqual(
     boundary?.columns

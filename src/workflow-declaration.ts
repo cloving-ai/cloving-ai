@@ -6,6 +6,7 @@ export interface WorkflowStage {
   readonly label: string;
   readonly operations?: readonly string[];
   readonly gateKinds?: readonly ("approval" | "question")[];
+  readonly gateIds?: readonly string[];
 }
 
 export type WorkflowStages = Readonly<Record<string, readonly WorkflowStage[]>>;
@@ -114,18 +115,21 @@ function isStageLabel(label: unknown): boolean {
 
 function isStage(value: unknown): value is WorkflowStage {
   const stage = record(value);
-  if (!keys(stage, ["name", "label", "operations", "gateKinds"])) return false;
+  if (!keys(stage, ["name", "label", "operations", "gateKinds", "gateIds"]))
+    return false;
   const { name, label } = stage;
   const operations = Object.hasOwn(stage, "operations")
     ? stage["operations"]
     : [];
   const gateKinds = Object.hasOwn(stage, "gateKinds") ? stage["gateKinds"] : [];
+  const gateIds = Object.hasOwn(stage, "gateIds") ? stage["gateIds"] : [];
   return (
     matches(name, /^[A-Za-z0-9-]{1,64}$/) &&
     isStageLabel(label) &&
     selectors(operations, /^[A-Za-z0-9._:/-]{1,128}$/) &&
     selectors(gateKinds, /^(approval|question)$/) &&
-    operations.length + gateKinds.length > 0
+    selectors(gateIds, /^[A-Za-z0-9._:/-]{1,128}$/) &&
+    operations.length + gateKinds.length + gateIds.length > 0
   );
 }
 
@@ -144,7 +148,8 @@ export function isWorkflowStages(
     unique(stages.map((stage) => stage.name)) &&
     unique(stages.map((stage) => stage.label)) &&
     unique(stages.flatMap((stage) => stage.operations ?? [])) &&
-    unique(stages.flatMap((stage) => stage.gateKinds ?? []))
+    unique(stages.flatMap((stage) => stage.gateKinds ?? [])) &&
+    unique(stages.flatMap((stage) => stage.gateIds ?? []))
   );
 }
 

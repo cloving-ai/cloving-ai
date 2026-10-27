@@ -30,6 +30,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
+import { reviewStages } from "./watch-board-fixture.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -112,7 +113,39 @@ async function installed(root: string): Promise<string> {
     cwd: root,
   });
   await packagedFontFiles(join(root, "node_modules/cloving"));
+  await packedStages(root);
   return join(root, "node_modules/.bin/cloving");
+}
+
+async function packedStages(root: string): Promise<void> {
+  const declaration = await readFile(
+    join(root, "node_modules/cloving/dist/src/workflow-declaration.d.ts"),
+    "utf8",
+  );
+  assert.match(declaration, /readonly gateIds\?: readonly string\[\]/);
+  await writeFile(
+    join(root, "stages.mjs"),
+    `
+import assert from "node:assert/strict";
+import { isWorkflowDeclaration } from "./node_modules/cloving/dist/src/workflow-declaration.js";
+import { currentStepOf } from "./node_modules/cloving/dist/src/cli/watch-board.js";
+import { workflowDeclarations, workflowManifests } from "./node_modules/cloving/dist/tools/self-host-workflows.js";
+import { mkdir, writeFile } from "node:fs/promises";
+const declaration = { workflowId: "review-flow", effectLimit: 1, capabilities: ["claude"], input: { maximumBytes: 4096, fields: {} } };
+assert.ok(isWorkflowDeclaration(declaration));
+const stages = ${JSON.stringify(reviewStages)};
+assert.ok(isWorkflowDeclaration({ ...declaration, stages }));
+await mkdir("stage-workflows");
+await writeFile("stage-workflows/review-flow.js", "export {};");
+const manifests = workflowManifests({ workflows: { "stage-workflows/review-flow.js": { review: { workflowId: "workflow//./review-flow//review" } } } });
+for (const value of [declaration, { ...declaration, stages }]) {
+  await writeFile("stage-workflows/review-flow.declaration.json", JSON.stringify(value));
+  assert.deepEqual(await workflowDeclarations("stage-workflows", manifests), [{ ...value, functionName: "review" }]);
+}
+assert.deepEqual(currentStepOf([{ sequence: 1, type: "gate.opened", recordedAt: "2026-10-14T12:00:00Z", payload: { gateId: "team-review", gateKind: "approval" } }], { workflowId: "review-flow", stages }), { name: "Team review", startedAt: "2026-10-14T12:00:00Z" });
+`,
+  );
+  command(process.execPath, { args: ["stages.mjs"], cwd: root });
 }
 
 async function ready(
