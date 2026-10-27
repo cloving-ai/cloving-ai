@@ -47,6 +47,8 @@
     "test/command-declarations.test.ts": "test",
     "test/command-pins.test.ts": "test",
     "test/cli-start-commands.test.ts": "test",
+    "test/daemon-bundle-fixture.ts": "test",
+    "test/daemon-retained.test.ts": "test",
     "src/daemon/workflow-generations.ts": "daemon",
     "test/workflow-generations.test.ts": "test",
     "test/service-bundles.test.ts": "test",

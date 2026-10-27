@@ -1,40 +1,13 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { queuePrelude } from "./daemon-queue-fixture.ts";
-import { productRoot, withConsumer } from "./world-host-fixture.ts";
+import { withConsumer } from "./world-host-fixture.ts";
 import { workflowBundleLoader } from "../tools/self-host-workflows.ts";
-
-const workflow = `
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
-export async function develop(input, continuation) {
-  "use workflow";
-  if (continuation !== undefined) return { kind: "completed" };
-  await decisionGate({ gateId: "bundle-question", kind: "question", prompt: "Continue this bundle?" });
-  return { kind: "waiting_for_decision" };
-}
-`;
-
-const bundleModule = JSON.stringify(
-  pathToFileURL(join(productRoot, "tools/workflow-bundles.ts")).href,
-);
-const fixtureModule = JSON.stringify(
-  pathToFileURL(join(productRoot, "test/service-fixture.ts")).href,
-);
-
-const bundlePrelude = `${queuePrelude}
-import { cpSync, mkdirSync } from "node:fs";
-import { retainWorkflowBundle } from ${bundleModule};
-import { digestOf } from ${fixtureModule};
-mkdirSync("bundle-project");
-for (const name of ["workflows", "artifacts"])
-  cpSync(name, "bundle-project/" + name, { recursive: true, dereference: true });
-for (const [name, contents] of Object.entries({ "package.json": '{"type":"module"}', "declarations.json": "[]", "dependencies.json": "{}" }))
-  writeFileSync("bundle-project/" + name, contents);
-const bundleDigest = await retainWorkflowBundle({ project: directory + "/bundle-project", repository: directory, directory: directory + "/workflow-bundles" });
-const bundlePath = "workflow-bundles/" + bundleDigest;
-`;
+import {
+  bundlePrelude,
+  workflow,
+  versionedWorkflow,
+  currentGeneration,
+} from "./daemon-bundle-fixture.ts";
 
 for (const damage of ["missing", "damaged", "present"]) {
   await test(`CLV-161 the daemon pins and checks a ${damage} bundle for a compiled waiting workflow`, () =>
@@ -71,46 +44,25 @@ process.exit(0);
     }));
 }
 
-const versionedWorkflow =
-  `
-import { appendFileSync } from "node:fs";
-export const before = 1;
-export async function finish() {
-  "use step";
-  appendFileSync("executions", "original-step\\n");
-  return { kind: "completed", step: "original-step" };
-}
-` +
-  workflow.replace(
-    'return { kind: "completed" }',
-    'return { ...await finish(), flow: "original-flow" }',
-  );
-
-await test("CLV-161 an intact old bundle continues after a daemon update using its own workflow code", () =>
+await test("CLV-162 startup loads an unfinished run's retained code before continuing it beside edited code", () =>
   withConsumer(versionedWorkflow, async (original) =>
     withConsumer(
       versionedWorkflow.replaceAll("original-", "current-"),
       async (current) => {
-        const result =
-          await original.run(`${bundlePrelude}${workflowBundleLoader()}
+        const result = await original.run(
+          `${bundlePrelude}${workflowBundleLoader()}
 const first = await launched({ bundleDigest, queueMilliseconds: undefined });
 const admitted = await submitted("original");
 const runId = admitted.runId;
 await until(async () => (await shown(runId)).state === "waiting_gate");
 await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
 await first.close();
-cpSync(${JSON.stringify(current.directory)}, "current-project", { recursive: true, dereference: true, filter: (source) => !source.includes("node_modules") });
-cpSync("bundle-project/package.json", "current-project/package.json");
-for (const name of ["declarations.json", "dependencies.json"])
-  cpSync("bundle-project/" + name, "current-project/" + name);
-cpSync("develop.workflow.json", "current-project/develop.workflow.json");
-const currentDigest = await retainWorkflowBundle({ project: directory + "/current-project", repository: directory, directory: directory + "/workflow-bundles" });
-assert.notEqual(currentDigest, bundleDigest);
-const currentClient = await import("./current-project/artifacts/client.mjs");
-const currentHandler = await import("./current-project/artifacts/flow.mjs");
+${currentGeneration}
 const manifests = { developTicket: directory + "/current-project/develop.workflow.json", developPrd: directory + "/current-project/develop.workflow.json" };
-const daemon = await launched({ bundleDigest: currentDigest, manifests, queueMilliseconds: undefined, workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop }, handler: currentHandler.POST, loadBundle: loadWorkflowBundle });
+const loaded = [];
+const daemon = await launched({ bundleDigest: currentDigest, manifests, queueMilliseconds: undefined, workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); return await loadWorkflowBundle(directory); } });
 try {
+  assert.deepEqual(loaded, [directory + "/" + bundlePath]);
   const answer = await asked("decision", { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId: "answer" });
   assert.equal(answer.kind, "decision-recorded", JSON.stringify(answer));
   await until(async () => { const run = await shown(runId); return run.state === "completed" || run.reason.code === "pinned-workflow-unavailable"; });
@@ -126,7 +78,9 @@ try {
   assert.equal(readFileSync("executions", "utf8"), "original-step\\ncurrent-step\\n");
 } finally { await daemon.close(); }
 process.exit(0);
-`);
+`,
+          { CURRENT_PROJECT: current.directory },
+        );
         assert.equal(result.status, 0, result.stderr);
       },
     ),
