@@ -3,6 +3,7 @@ import { record, type Fields } from "./protocol.ts";
 export type SubmissionField =
   | { readonly type: "string"; readonly optional?: boolean }
   | { readonly type: "boolean"; readonly optional?: boolean }
+  | { readonly type: "ticket"; readonly optional?: boolean }
   | {
       readonly type: "integer";
       readonly optional?: boolean;
@@ -13,6 +14,13 @@ export type SubmissionField =
 export interface SubmissionContract {
   readonly maximumBytes: number;
   readonly fields: Readonly<Record<string, "string" | SubmissionField>>;
+}
+
+export function hasTicketField(
+  contract: SubmissionContract | undefined,
+): boolean {
+  const rule = contract?.fields["ticket"];
+  return rule !== undefined && rule !== "string" && rule.type === "ticket";
 }
 
 export type SubmissionCheck =
@@ -56,12 +64,15 @@ function invalidField(
   return Object.entries(contract.fields).find(([key, rule]) => {
     if (rule !== "string" && rule.optional && !Object.hasOwn(submission, key))
       return false;
-    return !validValue(rule, submission[key]);
+    return !validValue(
+      rule === "string" ? { type: "string" } : rule,
+      submission[key],
+    );
   })?.[0];
 }
 
-function validValue(rule: "string" | SubmissionField, value: unknown): boolean {
-  if (rule === "string" || rule.type === "string")
+function validValue(rule: SubmissionField, value: unknown): boolean {
+  if (rule.type === "string" || rule.type === "ticket")
     return typeof value === "string" && value.trim().length > 0;
   if (rule.type === "boolean") return typeof value === "boolean";
   return (

@@ -27,6 +27,7 @@ await test("CLV-139 usage and cost estimates retain each attempt model and its o
     const attempts = ["gpt-6.1-sol", "gpt-6.1-sol", "gpt-6-astra"].map(
       (model, index) => ({
         attempt: index + 1,
+        retryKind: index < 2 ? "capacity" : null,
         model,
         usage: {
           input_tokens: (index + 1) * 1_000_000,

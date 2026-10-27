@@ -17,7 +17,10 @@ export async function watchCardForms(
     if (!isWorkflowDeclaration(value)) continue;
     const entries = Object.entries(value.input.fields);
     if (
-      !entries.every(([, rule]) => rule === "string" || rule.type === "string")
+      !entries.every(
+        ([, rule]) =>
+          rule === "string" || rule.type === "string" || rule.type === "ticket",
+      )
     )
       continue;
     if (forms.some((form) => form.workflowId === value.workflowId)) continue;
@@ -26,7 +29,7 @@ export async function watchCardForms(
       source: "input",
       fields: entries.map(([name, rule]) => ({
         name,
-        label: name,
+        label: rule !== "string" && rule.type === "ticket" ? "Ticket ID" : name,
         multiline: false,
         optional: rule !== "string" && rule.optional === true,
       })),

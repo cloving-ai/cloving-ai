@@ -1,4 +1,9 @@
-import { priceOf, usageOf } from "../worker-usage.ts";
+import {
+  attemptsOf,
+  priceOf,
+  usageOf,
+  type WorkerAttemptUsage,
+} from "../worker-usage.ts";
 
 export function priceText(value: unknown, estimate?: unknown): string {
   const price = priceOf(value);
@@ -64,3 +69,15 @@ export function statusJson(result: Fields): Fields {
 }
 
 import { record, type Fields } from "../protocol.ts";
+
+export function attemptText(attempt: WorkerAttemptUsage): string {
+  const kind =
+    attempt.retryKind === undefined
+      ? ""
+      : ` · retryKind: ${String(attempt.retryKind)}`;
+  return `Attempt ${String(attempt.attempt)} · ${attempt.model ?? "Model not known"}${kind} · ${priceText(attempt.costUsd, attempt.estimatedCostUsd)}`;
+}
+
+export function attemptTexts(value: unknown): readonly string[] {
+  return (attemptsOf(value) ?? []).map(attemptText);
+}

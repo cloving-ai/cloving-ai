@@ -47,6 +47,8 @@
     "test/command-declarations.test.ts": "test",
     "test/command-pins.test.ts": "test",
     "test/cli-start-commands.test.ts": "test",
+    "test/daemon-bundle-fixture.ts": "test",
+    "test/daemon-retained.test.ts": "test",
     "src/daemon/workflow-generations.ts": "daemon",
     "test/workflow-generations.test.ts": "test",
     "test/service-bundles.test.ts": "test",
@@ -646,6 +648,7 @@
     "tools/self-host-workflows.ts": "build",
     "test/self-host-workflows.test.ts": "test",
     "test/ticket-registration.test.ts": "test",
+    "test/declared-ticket.test.ts": "test",
     "src/daemon/daemon.ts": "daemon",
     "src/daemon/host-environment.ts": "daemon",
     "src/daemon/ticket-registration.ts": "daemon",
@@ -1221,7 +1224,17 @@
     "test/doctor-runtime.test.ts": "test",
     "tools/doctor-adoption.ts": "candidate-adapter",
     "test/doctor-errors.test.ts": "test",
-    "test/packed-doctor.ts": "test"
+    "test/packed-doctor.ts": "test",
+    "src/daemon/retry-worktree.ts": "daemon",
+    "test/network-worker-fixture.ts": "test",
+    "test/retry-git-fixture.ts": "test",
+    "test/retry-worktree.test.ts": "test",
+    "test/worker-network-cancel.test.ts": "test",
+    "test/worker-network-continuation.test.ts": "test",
+    "test/worker-network.test.ts": "test",
+    "test/worker-retry-display.test.ts": "test",
+    "test/worker-retry-index.test.ts": "test",
+    "test/worker-network-guards.test.ts": "test"
   },
   "allowed": {
     "quality": [

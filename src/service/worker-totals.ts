@@ -1,13 +1,11 @@
 import { record, type Fields } from "../protocol.ts";
 import {
   priceOf,
-  modelUsageOf,
   usageOf,
-  tokenCount,
+  attemptsOf,
   workerTotals,
   type WorkerTotals,
   type WorkerTurnUsage,
-  type WorkerAttemptUsage,
 } from "../worker-usage.ts";
 import type { ServiceContext } from "./replies.ts";
 
@@ -17,32 +15,6 @@ function reportFields(text: string | undefined): Fields {
   } catch {
     return {};
   }
-}
-
-function attemptsOf(value: unknown): readonly WorkerAttemptUsage[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((entry: unknown) => {
-    const fields = record(entry) ?? {};
-    const attempt = tokenCount(fields["attempt"]);
-    const model = fields["model"];
-    const models = modelUsageOf(fields["models"]);
-    if (
-      attempt === null ||
-      attempt === 0 ||
-      (model !== null && typeof model !== "string")
-    )
-      return [];
-    return [
-      {
-        attempt,
-        model,
-        ...(models === undefined ? {} : { models }),
-        usage: usageOf(fields["usage"]),
-        costUsd: priceOf(fields["costUsd"]),
-        estimatedCostUsd: priceOf(fields["estimatedCostUsd"]),
-      },
-    ];
-  });
 }
 
 export async function usageTotals(

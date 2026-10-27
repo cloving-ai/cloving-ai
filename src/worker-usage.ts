@@ -1,3 +1,5 @@
+export type RetryKind = "capacity" | "network";
+
 export interface WorkerUsage {
   readonly cache_creation_input_tokens?: number | null;
   readonly input_tokens: number | null;
@@ -18,6 +20,7 @@ export interface WorkerTurnUsage {
 
 export interface WorkerAttemptUsage {
   readonly models?: readonly WorkerModelUsage[];
+  readonly retryKind?: RetryKind | null;
   readonly attempt: number;
   readonly model: string | null;
   readonly usage: WorkerUsage;
@@ -122,4 +125,49 @@ export function workerTotals(
       workerTurns.map((turn) => turn.estimatedCostUsd),
     ),
   };
+}
+
+function retryKindField(value: unknown): {
+  readonly retryKind?: RetryKind | null;
+} {
+  return value === null || value === "capacity" || value === "network"
+    ? { retryKind: value }
+    : {};
+}
+
+export function attemptsOf(
+  value: unknown,
+): readonly WorkerAttemptUsage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry: unknown) => {
+    const fields = typeof entry === "object" && entry !== null ? entry : {};
+    const field = (name: string): unknown => Reflect.get(fields, name);
+    const attempt = tokenCount(field("attempt"));
+    const model = field("model");
+    const models = modelUsageOf(field("models"));
+    if (
+      attempt === null ||
+      attempt === 0 ||
+      (model !== null && typeof model !== "string")
+    )
+      return [];
+    return [
+      {
+        ...retryKindField(field("retryKind")),
+        attempt,
+        model,
+        ...(models === undefined ? {} : { models }),
+        usage: usageOf(field("usage")),
+        costUsd: priceOf(field("costUsd")),
+        estimatedCostUsd: priceOf(field("estimatedCostUsd")),
+      },
+    ];
+  });
+}
+
+export function attemptFields(value: unknown): {
+  readonly attempts?: readonly WorkerAttemptUsage[];
+} {
+  const attempts = attemptsOf(value);
+  return attempts === undefined ? {} : { attempts };
 }
