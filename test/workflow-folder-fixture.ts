@@ -22,6 +22,15 @@ export function operatorFiles(scope: "project" | "user", name: string) {
   };
 }
 
+export function privateFolderFiles(name: string) {
+  return Object.fromEntries(
+    Object.entries(operatorFiles("user", name)).map(([path, contents]) => [
+      path.replace("config/cloving/workflows", "private/workflows"),
+      contents,
+    ]),
+  );
+}
+
 export function folderInput(directory: string): WorkflowFolderInput {
   return {
     repository: join(directory, "repo"),

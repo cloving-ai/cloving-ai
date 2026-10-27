@@ -3,7 +3,13 @@ import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./quality/files-fixture.ts";
-import { operatorFiles } from "./workflow-folder-fixture.ts";
+import {
+  operatorFiles,
+  privateFolderFiles,
+} from "./workflow-folder-fixture.ts";
+import { privateSettingsPath } from "../src/cli/project-settings.ts";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { record } from "../src/protocol.ts";
 import { lstat, readFile, symlink, writeFile } from "node:fs/promises";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
@@ -316,5 +322,39 @@ await test("CLV-224 listing and test selection preserve workflow filenames with 
       const result = cli(root, { args: ["test", "spaced"] });
       assert.equal(result.status, 0, result.stdout + result.stderr);
       assert.match(result.stdout, /portable spaced scenario/);
+    },
+  ));
+
+await test("CLV-227 list reads the user folder from the private workflows.folder setting", () =>
+  withFiles(
+    {
+      "repo/marker": "",
+      ...operatorFiles("user", "home"),
+      ...privateFolderFiles("own"),
+    },
+    async (root) => {
+      const settings = privateSettingsPath(
+        { HOME: root, XDG_CONFIG_HOME: join(root, "config") },
+        join(root, "repo"),
+      );
+      await mkdir(dirname(settings), { recursive: true });
+      await writeFile(
+        settings,
+        JSON.stringify({
+          version: 1,
+          workflows: { folder: join(root, "private/workflows") },
+        }),
+      );
+      const result = cli(root, { args: ["list", "--json"] });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      const rows: unknown = JSON.parse(result.stdout);
+      assert.ok(Array.isArray(rows));
+      assert.deepEqual(
+        rows
+          .map((row) => record(row))
+          .filter((row) => row?.["scope"] === "user")
+          .map((row) => [row?.["workflowId"], row?.["file"]]),
+        [["own", join(root, "private/workflows/own.ts")]],
+      );
     },
   ));

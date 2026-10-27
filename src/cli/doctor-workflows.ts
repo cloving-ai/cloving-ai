@@ -23,7 +23,8 @@ export async function doctorWorkflows(
     ["project", join(repository, ".cloving/workflows")],
     [
       "user",
-      join(configurationRoot(environment, homedir()), "cloving/workflows"),
+      environment["CLOVING_WORKFLOW_FOLDER"] ??
+        join(configurationRoot(environment, homedir()), "cloving/workflows"),
     ],
   ] as const) {
     const files = await readdir(folder).catch((error: unknown) => {
