@@ -13,7 +13,9 @@ function transient(error: unknown): boolean {
   return (
     (status === undefined ||
       (typeof status === "number" && Number.isNaN(status))) &&
-    /TLS handshake timeout|connection reset|i\/o timeout|\bEOF\b/i.test(detail)
+    /TLS handshake timeout|connection reset|i\/o timeout|\bEOF\b|error connecting to/i.test(
+      detail,
+    )
   );
 }
 
