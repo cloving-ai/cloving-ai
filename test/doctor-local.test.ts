@@ -7,10 +7,15 @@ import {
   rename,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
-import { check, settings, withDoctor } from "./doctor-fixture.ts";
+import {
+  check,
+  settings,
+  withDoctor,
+  type DoctorScene,
+} from "./doctor-fixture.ts";
 
 const codes = [
   "git-repository",
@@ -306,4 +311,69 @@ await test("CLV-207 settings repairs name both concrete files when schema errors
     );
     for (const file of [privateFile, projectFile])
       assert.ok(String(projectCheck["fix"]).includes(file));
+  }));
+
+async function savedHarness(
+  scene: DoctorScene,
+  harness: { readonly kind: "file" | "shell"; readonly path: string },
+) {
+  const file = privateSettingsPath(scene.environment, scene.repository);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(
+    file,
+    JSON.stringify({ version: 1, harness: { name: "claude", ...harness } }),
+  );
+}
+
+await test("CLV-207 default-harness probes the saved harness path outside the search path", () =>
+  withDoctor(async (scene) => {
+    const saved = join(scene.root, "installed", "claude");
+    await mkdir(dirname(saved), { recursive: true });
+    await rename(join(scene.root, "bin", "claude"), saved);
+    await savedHarness(scene, { kind: "file", path: saved });
+    const output = await scene.report();
+    assert.equal(check(output, "default-harness")["result"], "ok");
+  }));
+
+await test("CLV-207 a working bare claude does not hide a broken saved harness path", () =>
+  withDoctor(async (scene) => {
+    await savedHarness(scene, {
+      kind: "file",
+      path: join(scene.root, "missing", "claude"),
+    });
+    const output = await scene.report();
+    assert.equal(check(output, "default-harness")["result"], "fail");
+  }));
+
+await test("CLV-207 default-harness probes a shell harness through the login shell", () =>
+  withDoctor(async (scene) => {
+    const calls = join(scene.root, "shell-calls");
+    const shell = await scene.program(
+      "login-shell",
+      `import { appendFileSync } from "node:fs"; const [, , ...argv] = process.argv; appendFileSync(${JSON.stringify(calls)}, JSON.stringify(argv) + "\\n"); const program = argv[5]; if (program !== "claude-alias" || argv[6] !== "--version") process.exit(127); console.log("2.1.1 (Claude Code)");`,
+    );
+    await savedHarness(scene, { kind: "shell", path: "claude-alias" });
+    const output = await scene.report({ SHELL: shell });
+    const selected = check(output, "default-harness");
+    assert.equal(selected["result"], "ok", String(selected["detail"]));
+    const recorded = (await readFile(calls, "utf8"))
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line): unknown => JSON.parse(line));
+    assert.ok(
+      recorded.some(
+        (call) =>
+          JSON.stringify(call) ===
+          JSON.stringify([
+            "-l",
+            "-i",
+            "-c",
+            'exec "$@"',
+            "cloving-harness",
+            "claude-alias",
+            "--version",
+          ]),
+      ),
+      JSON.stringify(recorded),
+    );
   }));

@@ -36,8 +36,10 @@ function settings(
   environment: Readonly<NodeJS.ProcessEnv>,
 ) {
   try {
+    const resolved = projectSettings(environment, repository);
     return {
-      environment: projectSettings(environment, repository).environment,
+      environment: resolved.environment,
+      harness: resolved.harness,
       observation: {
         result: "ok",
         detail: "Settings files are valid",
@@ -119,6 +121,7 @@ async function repositoryObservations(
     settingsValid,
     probe,
     commandEnvironment: serviceEnvironment,
+    harness: "harness" in configured ? configured.harness : undefined,
   });
   observations["harnesses"] = harnesses.harnesses;
   observations["default-harness"] = harnesses.selected;

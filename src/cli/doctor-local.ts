@@ -1,4 +1,8 @@
-import { defaultCommand, defaultCodexCommand } from "../harness-defaults.ts";
+import {
+  turnHarness,
+  type HarnessSettings,
+  type NativeHarness,
+} from "../harness-defaults.ts";
 import { access, constants, stat } from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import {
@@ -95,6 +99,7 @@ export async function harnessObservations(
     readonly settingsValid: boolean;
     readonly probe: ProbeRunner;
     readonly commandEnvironment: Readonly<NodeJS.ProcessEnv>;
+    readonly harness?: HarnessSettings["harness"];
   },
 ): Promise<{
   readonly harnesses: DoctorObservation;
@@ -240,26 +245,115 @@ async function usableHarnessCommand(
   );
 }
 
+function nativeCommands(
+  environment: Readonly<NodeJS.ProcessEnv>,
+): Readonly<Partial<Record<NativeHarness, readonly string[]>>> {
+  return Object.fromEntries(
+    (["claude", "codex"] as const).flatMap((name) => {
+      const command = listedSetting(
+        environment[
+          name === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND"
+        ],
+      );
+      return command === undefined ? [] : [[name, command]];
+    }),
+  );
+}
+
+function selectedHarness(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  harness: HarnessSettings["harness"],
+): ReturnType<typeof turnHarness> | undefined {
+  try {
+    return turnHarness({
+      ...(environment["CLOVING_WORKER"] === undefined
+        ? {}
+        : { worker: environment["CLOVING_WORKER"] }),
+      workerCommands: nativeCommands(environment),
+      ...(harness === undefined ? {} : { harness }),
+      shell: environment["SHELL"] ?? "/bin/sh",
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+async function usableShellHarness(
+  selected: ReturnType<typeof turnHarness> & { readonly shell: string },
+  location: HarnessCommandLocation,
+): Promise<boolean> {
+  const output = await location.probe(selected.shell, {
+    arguments: [
+      "-l",
+      "-i",
+      "-c",
+      'exec "$@"',
+      "cloving-harness",
+      selected.command[0] ?? selected.worker,
+      "--version",
+    ],
+    env: location.commandEnvironment,
+  });
+  return (
+    output.reason === null &&
+    harnessVersion(
+      output.stdout,
+      harnessDefinition(selected.worker).versionPattern,
+    ) !== null
+  );
+}
+
+async function selectedProbe(
+  selected: ReturnType<typeof turnHarness>,
+  location: HarnessCommandLocation,
+): Promise<{
+  readonly usable: boolean;
+  readonly effective: DoctorObservation;
+}> {
+  const shell = selected.shell;
+  if (shell !== undefined)
+    return {
+      usable: await usableShellHarness({ ...selected, shell }, location),
+      effective: {
+        result: "ok",
+        detail: `${JSON.stringify(selected.command)} through the login shell ${shell}`,
+      },
+    };
+  const command = JSON.stringify(selected.command);
+  return {
+    usable: await usableHarnessCommand(command, location),
+    effective: await commandObservation(command, {
+      directory: location.directory,
+      environment: location.commandEnvironment,
+    }),
+  };
+}
+
+function configuredHarnessName(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  harness: HarnessSettings["harness"],
+): string | undefined {
+  return environment["CLOVING_WORKER"] ?? harness?.name;
+}
+
 async function selectedHarnessObservation(
   environment: Readonly<NodeJS.ProcessEnv>,
-  location: HarnessCommandLocation,
+  location: HarnessCommandLocation & {
+    readonly harness?: HarnessSettings["harness"];
+  },
 ): Promise<DoctorObservation> {
-  const name = environment["CLOVING_WORKER"] ?? "claude";
-  const variable =
-    name === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND";
-  const command =
-    environment[variable] ??
-    JSON.stringify(name === "codex" ? defaultCodexCommand : defaultCommand);
-  const effective = await commandObservation(command, {
-    directory: location.directory,
-    environment: location.commandEnvironment,
-  });
-  const usable =
-    ["claude", "codex"].includes(name) &&
-    (await usableHarnessCommand(command, location));
+  const configured = configuredHarnessName(environment, location.harness);
+  const selected = selectedHarness(environment, location.harness);
+  if (selected === undefined)
+    return {
+      result: "fail",
+      detail: `harness ${configured ?? "claude"}; harness-no-worker`,
+    };
+  const { usable, effective } = await selectedProbe(selected, location);
+  const label = configured === undefined ? " (default)" : "";
   return {
     result: usable && effective.result === "ok" ? "ok" : "fail",
-    detail: `harness ${name}${environment["CLOVING_WORKER"] === undefined ? " (default)" : ""}; probe ${usable ? "ok" : "failed or unsupported command"}; ${effective.detail}`,
+    detail: `harness ${selected.worker}${label}; probe ${usable ? "ok" : "failed or unsupported command"}; ${effective.detail}`,
   };
 }
 
