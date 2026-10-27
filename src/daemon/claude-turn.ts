@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
+import { cursorStream } from "./cursor-stream.ts";
+import { opencodeStream } from "./opencode-stream.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import type { NativeHarness } from "../harness-defaults.ts";
@@ -150,27 +152,51 @@ export function turnEnvironment(
   );
   if (start.turnId !== undefined) environment["CLOVING_TURN_ID"] = start.turnId;
   environment["GH_CONFIG_DIR"] = configuration;
+  if (start.worker === "opencode")
+    environment["OPENCODE_PERMISSION"] = '{"*":"allow"}';
   return environment;
 }
 
-function turnCommand(start: TurnStart): readonly string[] {
-  if (start.worker === "gemini") return [...start.command, "-p", start.prompt];
-  if (start.worker !== "grok") return start.command;
+function turnCommand(start: TurnStart): {
+  readonly parts: readonly string[];
+  readonly standardInput: string | undefined;
+} {
+  if (start.worker === "gemini")
+    return {
+      parts: [...start.command, "-p", start.prompt],
+      standardInput: undefined,
+    };
+  if (start.worker === "opencode")
+    return {
+      parts: [...start.command, start.prompt],
+      standardInput: undefined,
+    };
+  if (
+    start.worker === "cursor-agent" &&
+    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
+  )
+    return {
+      parts: [...start.command, start.prompt],
+      standardInput: undefined,
+    };
+  if (start.worker !== "grok")
+    return { parts: start.command, standardInput: start.prompt };
   const command = [...start.command];
   const index = command.findIndex(
     (argument, position) =>
       position > 0 && ["-p", "--single"].includes(argument),
   );
   command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
-  return command;
+  return { parts: command, standardInput: undefined };
 }
 
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
+  readonly standardInput: string | undefined;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const parts = turnCommand(start);
+  const { parts, standardInput } = turnCommand(start);
   const command =
     start.shell === undefined
       ? parts
@@ -192,7 +218,11 @@ function spawnTurn(start: TurnStart): {
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return { child, configuration };
+    return {
+      child,
+      configuration,
+      standardInput,
+    };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
@@ -232,12 +262,25 @@ function activityOutput(start: TurnStart) {
   return output;
 }
 
+function streamAdapter(worker: Worker | undefined) {
+  if (worker === "codex") return codexStream();
+  if (worker === "cursor-agent") return cursorStream();
+  if (worker === "gemini") return geminiStream();
+  return undefined;
+}
+
 function turnOutput(
   start: TurnStart,
-  stdout: ChildProcessWithoutNullStreams["stdout"],
+  child: ChildProcessWithoutNullStreams,
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
-  const translated = nativeStream(start.worker);
+  const translated = start.worker === "opencode" ? opencodeStream() : undefined;
+  const adapter = translated ?? streamAdapter(start.worker);
+  const { stdout, stderr } = child;
+  if (translated !== undefined) {
+    stderr.setEncoding("utf8");
+    stderr.on("data", translated.stderr);
+  }
   const stream: Stream = {
     pending: "",
     result: undefined,
@@ -256,22 +299,22 @@ function turnOutput(
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (translated === undefined) output.write(chunk);
+    if (adapter === undefined) output.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
-    if (translated !== undefined) {
-      written(lines.flatMap(translated.line));
+    if (adapter !== undefined) {
+      written(lines.flatMap(adapter.line));
       return;
     }
     received(lines);
   });
   return async (exitCode) => {
-    if (translated !== undefined) {
-      written(translated.line(stream.pending));
-      written([translated.result(exitCode)]);
+    if (adapter !== undefined) {
+      written(adapter.line(stream.pending));
+      written([adapter.result(exitCode)]);
     }
     await ended(output);
-    if (translated === undefined) received([stream.pending]);
+    if (adapter === undefined) received([stream.pending]);
     const result = stream.result;
     return result === undefined
       ? undefined
@@ -280,12 +323,6 @@ function turnOutput(
           model: result.model ?? stream.model ?? commandModel(start.command),
         };
   };
-}
-
-function nativeStream(worker: Worker | undefined) {
-  if (worker === "codex") return codexStream();
-  if (worker === "gemini") return geminiStream();
-  return undefined;
 }
 
 function signalTurn(
@@ -310,8 +347,8 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): RunningTurn {
-  const { child, configuration } = spawnTurn(start);
-  const output = turnOutput(start, child.stdout);
+  const { child, configuration, standardInput } = spawnTurn(start);
+  const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
   if (start.worker === "grok") {
     child.stderr.setEncoding("utf8");
@@ -319,11 +356,7 @@ export function startTurn(start: TurnStart): RunningTurn {
   }
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
-  child.stdin.end(
-    start.worker === "gemini" || start.worker === "grok"
-      ? undefined
-      : start.prompt,
-  );
+  child.stdin.end(standardInput);
   const closed = new Promise<number | null>((settle) => {
     child.once("error", () => undefined);
     child.once("close", settle);

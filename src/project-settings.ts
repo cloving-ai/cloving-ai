@@ -96,9 +96,11 @@ function encoded(value: SettingValue): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function harnessCommandVariable(
+function harnessCommandMapping(
   name: SettingValue | undefined,
 ): Readonly<Record<string, string>> {
+  if (name === "opencode")
+    return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
   if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
   if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
   if (name === "gemini") return { "harness.command": "CLOVING_GEMINI_COMMAND" };
@@ -129,7 +131,7 @@ export function resolveSettings(
   const sources: Record<string, SettingSource> = {};
   const mapped = {
     ...settingVariables,
-    ...harnessCommandVariable(values["harness.name"]),
+    ...harnessCommandMapping(values["harness.name"]),
     profiles: "CLOVING_PROFILES",
     ...Object.fromEntries(environmentOnly.map((name) => [name, name])),
   };

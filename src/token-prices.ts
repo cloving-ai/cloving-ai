@@ -6,6 +6,7 @@ import {
   type WorkerModelUsage,
 } from "./worker-usage.ts";
 import { record } from "./protocol.ts";
+import type { NativeHarness } from "./harness-defaults.ts";
 
 export interface TokenPrice {
   readonly input: number;
@@ -123,34 +124,48 @@ export function replaceCommandModel(
   });
 }
 
+interface SinglePricing {
+  readonly worker: NativeHarness;
+  readonly price: TokenPrice | undefined;
+}
+
+interface ModelPricing {
+  readonly worker: "gemini";
+  readonly models: readonly WorkerModelUsage[];
+  readonly prices: TokenPrices;
+}
+
 export function estimatedCostUsd(
   usage: WorkerUsage,
-  pricing:
-    | {
-        readonly worker: "claude" | "codex" | "gemini" | "grok";
-        readonly price: TokenPrice | undefined;
-      }
-    | {
-        readonly worker: "gemini";
-        readonly models: readonly WorkerModelUsage[];
-        readonly prices: TokenPrices;
-      },
+  pricing: SinglePricing | ModelPricing,
 ): number | null {
-  if ("models" in pricing)
-    return sumPrices(
-      pricing.models.map(({ model, usage: counts }) =>
-        estimatedCostUsd(counts, {
-          worker: "gemini",
-          price: priceForModel(pricing.prices, model),
-        }),
-      ),
-    );
+  return "models" in pricing
+    ? modelCostUsd(pricing)
+    : singleCostUsd(usage, pricing);
+}
+
+function modelCostUsd(pricing: ModelPricing): number | null {
+  return sumPrices(
+    pricing.models.map(({ model, usage: counts }) =>
+      singleCostUsd(counts, {
+        worker: "gemini",
+        price: priceForModel(pricing.prices, model),
+      }),
+    ),
+  );
+}
+
+function singleCostUsd(
+  usage: WorkerUsage,
+  pricing: SinglePricing,
+): number | null {
   const { worker, price } = pricing;
   const counts = usageOf(usage);
   const cached = counts.cache_read_input_tokens;
   const output = counts.output_tokens;
   if (
     price === undefined ||
+    (worker === "cursor-agent" && counts.cache_creation_input_tokens !== 0) ||
     counts.input_tokens === null ||
     cached === null ||
     output === null

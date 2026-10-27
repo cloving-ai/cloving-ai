@@ -28,6 +28,16 @@ export const defaultGeminiCommand = [
   "yolo",
 ];
 
+export const defaultCursorCommand = [
+  "cursor-agent",
+  "-p",
+  "--output-format",
+  "stream-json",
+  "--force",
+];
+
+export const defaultOpencodeCommand = ["opencode", "run", "--format", "json"];
+
 export const defaultGrokCommand = [
   "grok",
   "--output-format",
@@ -36,13 +46,16 @@ export const defaultGrokCommand = [
   "-p",
 ];
 
-export type NativeHarness = "claude" | "codex" | "gemini" | "grok";
+export type NativeHarness =
+  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent";
 
 const defaultCommands = {
   claude: defaultCommand,
   codex: defaultCodexCommand,
   gemini: defaultGeminiCommand,
   grok: defaultGrokCommand,
+  opencode: defaultOpencodeCommand,
+  "cursor-agent": defaultCursorCommand,
 };
 
 export interface HarnessSettings {
@@ -85,18 +98,21 @@ function nativeCommand(
 
 export function harnessDefaults(value: unknown): {
   readonly command: readonly string[];
-  readonly variable: string;
+  readonly variable?: string;
 } {
   const name =
     typeof value === "string" && nativeHarness(value) ? value : "claude";
+  const variable = {
+    claude: "CLOVING_CLAUDE_COMMAND",
+    codex: "CLOVING_CODEX_COMMAND",
+    gemini: "CLOVING_GEMINI_COMMAND",
+    grok: "CLOVING_GROK_COMMAND",
+    opencode: "CLOVING_OPENCODE_COMMAND",
+    "cursor-agent": undefined,
+  }[name];
   return {
     command: defaultCommands[name],
-    variable: {
-      claude: "CLOVING_CLAUDE_COMMAND",
-      codex: "CLOVING_CODEX_COMMAND",
-      grok: "CLOVING_GROK_COMMAND",
-      gemini: "CLOVING_GEMINI_COMMAND",
-    }[name],
+    ...(variable === undefined ? {} : { variable }),
   };
 }
 

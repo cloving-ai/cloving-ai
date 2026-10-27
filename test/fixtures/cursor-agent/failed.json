@@ -1,0 +1,31 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "session_id": "cursor-session",
+    "model": "Claude 4 Sonnet",
+    "permissionMode": "default"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Working."
+        }
+      ]
+    },
+    "session_id": "cursor-session"
+  },
+  {
+    "type": "result",
+    "subtype": "error_during_execution",
+    "duration_ms": 1234,
+    "duration_api_ms": 1234,
+    "is_error": true,
+    "result": "Selected model is at capacity. Please try a different model.",
+    "session_id": "cursor-session"
+  }
+]

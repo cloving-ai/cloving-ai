@@ -13,9 +13,13 @@ await test("CLV-008 help lists only the implemented commands", async () => {
       assert.doesNotMatch(result.stdout, /chats import/);
       assert.doesNotMatch(result.stdout, /\bchats\b/);
       assert.match(result.stdout, /^ {2}run {2,}Submit one run/m);
+      assert.match(
+        result.stdout,
+        /^ {2}doctor {2,}Check repository requirements/m,
+      );
       assert.doesNotMatch(
         result.stdout,
-        /\battach\b|\bdoctor\b|\binit\b|\bmcp\b|develop-ticket/,
+        /\battach\b|\binit\b|\bmcp\b|develop-ticket/,
       );
       assert.equal(result.stderr, "");
     }
