@@ -258,6 +258,7 @@ async function finished(
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
+      attempts.start.worker === "opencode" ||
       attempts.start.worker === "grok" ||
       !capacityRefusal(end.result) ||
       milliseconds === undefined

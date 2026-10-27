@@ -173,9 +173,16 @@ for (const call of ["api PUT merge", "api GET pull", "api GET check-runs"]) {
   }
 }
 
+const connectionFailure =
+  "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n";
+
 for (const call of ["api GET pull", "api GET check-runs"]) {
-  for (const detail of ["connection reset", "gh: unavailable (HTTP 502)"]) {
-    await test(`CLV-194 retries ${detail} from ${call}`, () =>
+  for (const detail of [
+    "connection reset",
+    "gh: unavailable (HTTP 502)",
+    connectionFailure,
+  ]) {
+    await test(`CLV-194 retries ${detail.replace(/\n.*/s, "")} from ${call}`, () =>
       withGithub(async (scene) => {
         const worker = scene.worker();
         const commit = await opened(scene, worker);
