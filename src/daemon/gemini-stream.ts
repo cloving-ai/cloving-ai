@@ -57,45 +57,60 @@ function statistics(
       : sumUsage(state.models.map((entry) => entry.usage));
 }
 
+function completed(
+  event: Readonly<Record<string, unknown>>,
+  state: State,
+): void {
+  statistics(event, state);
+  state.success = event["status"] === "success";
+  if (!state.success)
+    state.failure =
+      text(record(event["error"])?.["message"]) ||
+      "Gemini result was not successful";
+}
+
+function message(
+  event: Readonly<Record<string, unknown>>,
+  state: State,
+): readonly string[] {
+  if (event["role"] !== "assistant") {
+    if (event["role"] === "user") state.continuing = false;
+    return [];
+  }
+  const content = text(event["content"]);
+  state.message =
+    state.continuing && event["delta"] === true
+      ? state.message + content
+      : content;
+  state.continuing = true;
+  return [
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: content }] },
+    }),
+  ];
+}
+
 function received(
   event: Readonly<Record<string, unknown>>,
   state: State,
 ): readonly string[] {
-  const type = event["type"];
-  if (type === "init") {
-    state.model = text(event["model"]) || null;
-    state.sessionId = text(event["session_id"]) || null;
-  }
   if (event["severity"] === "error")
     state.failure = text(event["message"]) || "Gemini error";
-  if (type === "result") {
-    statistics(event, state);
-    state.success = event["status"] === "success";
-    if (!state.success)
-      state.failure =
-        text(record(event["error"])?.["message"]) ||
-        "Gemini result was not successful";
+  switch (event["type"]) {
+    case "init":
+      state.model = text(event["model"]) || null;
+      state.sessionId = text(event["session_id"]) || null;
+      break;
+    case "result":
+      completed(event, state);
+      break;
+    case "message":
+      return message(event, state);
+    case "tool_use":
+    case "tool_result":
+      state.continuing = false;
   }
-  if (type === "message" && event["role"] === "assistant") {
-    const content = text(event["content"]);
-    state.message =
-      state.continuing && event["delta"] === true
-        ? state.message + content
-        : content;
-    state.continuing = true;
-    return [
-      JSON.stringify({
-        type: "assistant",
-        message: { content: [{ type: "text", text: content }] },
-      }),
-    ];
-  }
-  if (
-    type === "tool_use" ||
-    type === "tool_result" ||
-    (type === "message" && event["role"] === "user")
-  )
-    state.continuing = false;
   return [];
 }
 

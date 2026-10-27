@@ -278,6 +278,11 @@ const worker = selectedWorker();
 function nativeCommands(): Readonly<
   Partial<Record<NativeHarness, readonly string[]>>
 > {
+  const variables: Readonly<Record<NativeHarness, string>> = {
+    claude: "CLOVING_CLAUDE_COMMAND",
+    codex: "CLOVING_CODEX_COMMAND",
+    gemini: "CLOVING_GEMINI_COMMAND",
+  };
   const names = new Set([
     worker,
     ...Object.values(profiles).map((profile) =>
@@ -286,7 +291,7 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].flatMap((name) => {
-      const command = listed(`CLOVING_${name.toUpperCase()}_COMMAND`);
+      const command = listed(variables[name]);
       return command === undefined ? [] : [[name, command]];
     }),
   );

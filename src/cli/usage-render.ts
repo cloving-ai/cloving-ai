@@ -31,3 +31,33 @@ export function totalsSuffix(state: unknown): string {
     ? ""
     : " so far";
 }
+
+export function statusJson(result: Fields): Fields {
+  const run = record(result["run"]);
+  if (result["kind"] !== "run-status" || run === undefined) return result;
+  const turns = run["workerTurns"];
+  return {
+    ...result,
+    run: {
+      ...run,
+      costDisplay: priceText(run["claudeCostUsd"], run["estimatedCostUsd"]),
+      ...(Array.isArray(turns)
+        ? {
+            workerTurns: turns.map((turn: unknown) => {
+              const fields = record(turn);
+              if (fields === undefined) return turn;
+              return {
+                ...fields,
+                costDisplay: priceText(
+                  fields["costUsd"],
+                  fields["estimatedCostUsd"],
+                ),
+              };
+            }),
+          }
+        : {}),
+    },
+  };
+}
+
+import { record, type Fields } from "../protocol.ts";

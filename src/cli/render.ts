@@ -235,33 +235,7 @@ function modelLines(attempts: unknown): readonly string[] {
   });
 }
 
-export function statusJson(result: Fields): Fields {
-  const run = record(result["run"]);
-  if (result["kind"] !== "run-status" || run === undefined) return result;
-  const turns = run["workerTurns"];
-  return {
-    ...result,
-    run: {
-      ...run,
-      costDisplay: priceText(run["claudeCostUsd"], run["estimatedCostUsd"]),
-      ...(Array.isArray(turns)
-        ? {
-            workerTurns: turns.map((turn: unknown) => {
-              const fields = record(turn);
-              if (fields === undefined) return turn;
-              return {
-                ...fields,
-                costDisplay: priceText(
-                  fields["costUsd"],
-                  fields["estimatedCostUsd"],
-                ),
-              };
-            }),
-          }
-        : {}),
-    },
-  };
-}
+export { statusJson } from "./usage-render.ts";
 
 function inputText(value: unknown): string {
   const text = visible(record(value) ?? null);

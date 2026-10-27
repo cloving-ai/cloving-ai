@@ -11,6 +11,56 @@ import {
   modelUsage,
 } from "./gemini-fixture.ts";
 import { rendered } from "../src/cli/render.ts";
+import { geminiStream } from "../src/daemon/gemini-stream.ts";
+import { streamResult } from "../src/daemon/claude-turn.ts";
+
+await test("CLV-211 Gemini ignores stream noise and warnings and keeps the last complete message", () => {
+  const stream = geminiStream();
+  for (const line of ["not JSON", "null", "[]"]) stream.line(line);
+  for (const event of [
+    { type: "init" },
+    { type: "error", severity: "warning", message: "Temporary warning" },
+    { type: "message", role: "assistant", content: "Earlier message" },
+    { type: "message", role: "assistant", content: "Final message" },
+    {
+      type: "result",
+      status: "success",
+      stats: { input_tokens: 20, cached: 5, output_tokens: 3 },
+    },
+  ])
+    stream.line(JSON.stringify(event));
+  const result = streamResult(stream.result(0));
+  assert.ok(result);
+  assert.equal(result.failed, false);
+  assert.equal(result.text, "Final message");
+  assert.equal(result.model, null);
+  assert.equal(result.sessionId, null);
+  assert.equal(result.models, undefined);
+  assert.deepEqual(result.usage, {
+    input_tokens: 20,
+    cache_read_input_tokens: 5,
+    output_tokens: 3,
+  });
+});
+
+for (const scenario of [
+  {
+    event: { type: "error", severity: "error" },
+    expected: "Gemini error",
+  },
+  {
+    event: { type: "result", status: "error" },
+    expected: "Gemini result was not successful",
+  },
+])
+  await test(`CLV-211 Gemini retains a missing error message as ${scenario.expected}`, () => {
+    const stream = geminiStream();
+    stream.line(JSON.stringify(scenario.event));
+    const result = streamResult(stream.result(0));
+    assert.ok(result);
+    assert.equal(result.failed, true);
+    assert.equal(result.text, scenario.expected);
+  });
 
 await test("CLV-211 Gemini prices each model separately and discounts inclusive cache once", () =>
   withScene(async (scene) => {
@@ -31,11 +81,22 @@ await test("CLV-211 Gemini prices each model separately and discounts inclusive 
     assert.equal(report["costUsd"], null);
   }));
 
-await test("CLV-211 missing model prices and absent counts remain visibly unknown", async () => {
-  for (const events of [modelStream, chunkStream])
-    await withScene(async (scene) => {
+for (const scenario of [
+  {
+    name: "a model price is missing",
+    events: modelStream,
+    usage: /Input tokens: 1500000/,
+  },
+  {
+    name: "token counts are absent",
+    events: chunkStream,
+    usage: /Token usage not known/,
+  },
+])
+  await test(`CLV-211 Gemini status is explicit when ${scenario.name}`, () =>
+    withScene(async (scene) => {
       const worker = scene.worker("bare", {
-        harness: { name: "gemini", path: fakeGemini(scene, { events }) },
+        harness: { name: "gemini", path: fakeGemini(scene, scenario) },
         tokenPrices: {
           "gemini-test-pro": { input: 2, cachedInput: 0.5, output: 8 },
         },
@@ -49,9 +110,8 @@ await test("CLV-211 missing model prices and absent counts remain visibly unknow
         run: { ...report, workerTurns: [{ ...report, operationId: "op" }] },
       });
       assert.match(text, /Price not known/);
-      if (events === chunkStream) assert.match(text, /Token usage not known/);
-    });
-});
+      assert.match(text, scenario.usage);
+    }));
 
 await test("CLV-211 Gemini retains usage of each model and totals it once", () =>
   withScene(async (scene) => {
@@ -107,6 +167,12 @@ for (const failure of [
     exitCode: 1,
     expected: /Command failed/,
   },
+  {
+    name: "nonzero exit after success",
+    events: chunkStream,
+    exitCode: 1,
+    expected: /gemini ended with code 1/,
+  },
 ])
   await test(`CLV-211 Gemini fails for ${failure.name}`, () =>
     withScene(async (scene) => {
@@ -120,7 +186,7 @@ for (const failure of [
       await until(() => scene.reports.length === 1);
       assert.equal(scene.reports[0]?.outcome, "failed");
       assert.match(
-        String(resultOf(scene.reports[0]?.result)["summary"]),
+        String(resultOf(scene.reports[0].result)["summary"]),
         failure.expected,
       );
     }));
@@ -134,7 +200,7 @@ await test("CLV-211 a Gemini default joins the last assistant chunks and commits
     await worker.deliver(intent(), new AbortController().signal);
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
-    const report = resultOf(scene.reports[0]?.result);
+    const report = resultOf(scene.reports[0].result);
     assert.equal(report["summary"], geminiReport);
     assert.equal(report["harness"], "gemini");
     assert.equal(report["model"], "gemini-test-pro");

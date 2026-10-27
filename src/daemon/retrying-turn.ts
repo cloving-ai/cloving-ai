@@ -118,22 +118,33 @@ function attemptUsage(
   const { end, attempt } = completion;
   const model = end.result?.model ?? attemptCommand(attempts, attempt).model;
   const usage = end.result?.usage ?? usageOf(null);
-  const worker = attempts.start.worker ?? "claude";
-  const models = end.result?.models;
-  const prices = attempts.options.tokenPrices ?? {};
   return {
     attempt,
     model,
     ...(end.result?.models === undefined ? {} : { models: end.result.models }),
     usage,
     costUsd: end.result?.costUsd ?? null,
-    estimatedCostUsd: estimatedCostUsd(
-      usage,
-      worker === "gemini" && models !== undefined
-        ? { worker, models, prices }
-        : { worker, price: priceForModel(prices, model) },
-    ),
+    estimatedCostUsd: attemptEstimate(attempts, { end, model, usage }),
   };
+}
+
+function attemptEstimate(
+  attempts: Attempts,
+  result: {
+    readonly end: TurnEnd;
+    readonly model: string | null;
+    readonly usage: ReturnType<typeof usageOf>;
+  },
+): number | null {
+  const worker = attempts.start.worker ?? "claude";
+  const models = result.end.result?.models;
+  const prices = attempts.options.tokenPrices ?? {};
+  return estimatedCostUsd(
+    result.usage,
+    worker === "gemini" && models !== undefined
+      ? { worker, models, prices }
+      : { worker, price: priceForModel(prices, result.model) },
+  );
 }
 
 async function launched(attempts: Attempts): Promise<RunningTurn | undefined> {
