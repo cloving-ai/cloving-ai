@@ -10,6 +10,7 @@ import {
   programs,
   stopFixturePrograms,
 } from "./self-host-processes-fixture.ts";
+import { scene, withoutChildren } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 function alive(processId: number): boolean {
@@ -32,6 +33,38 @@ async function readyProcess(file: string): Promise<number> {
   while (Date.now() < deadline && !existsSync(file)) await delay(50);
   return Number(await readFile(file, "utf8"));
 }
+
+async function signalledProcesses(
+  use: () => Promise<void>,
+): Promise<readonly number[]> {
+  const original = Object.getOwnPropertyDescriptor(process, "kill");
+  const kill = process.kill.bind(process);
+  const signalled: number[] = [];
+  process.kill = (processId: number, signal?: string | number) => {
+    signalled.push(processId);
+    return kill(processId, signal);
+  };
+  try {
+    await withoutChildren(use);
+  } finally {
+    if (original) Object.defineProperty(process, "kill", original);
+    else Reflect.deleteProperty(process, "kill");
+  }
+  return signalled;
+}
+
+await test("CLV-231 a later scene does not signal the process group of a child from an earlier scene", async () => {
+  let earlier = 0;
+  await withoutChildren(async () => {
+    earlier = (await (await scene()).start()).pid ?? 0;
+  });
+  assert.ok(earlier > 0);
+  const signalled = await signalledProcesses(() => Promise.resolve());
+  assert.deepEqual(
+    signalled.filter((processId) => processId === -earlier),
+    [],
+  );
+});
 
 await test("CLV-231 the fixture cleanup stops the daemon and watch programs when the git fixture never started", async () => {
   const root = await mkdtemp(join(tmpdir(), "cloving-fixture-cleanup-"));
