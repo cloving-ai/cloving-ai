@@ -47,22 +47,23 @@ function assistantText(event: Fields): string | null {
   return blocks.map((block) => text(block?.["text"]) ?? "").join("");
 }
 
-function toolCall(
-  key: string,
-  value: unknown,
+function functionToolCall(
+  fields: Fields,
 ): { name: string; input: Fields } | undefined {
-  const fields = record(value);
-  if (fields === undefined) return undefined;
-  if (key === "function") {
-    const name = text(fields["name"]);
-    if (!name) return undefined;
-    try {
-      const input = record(JSON.parse(String(fields["arguments"])));
-      return input === undefined ? undefined : { name, input };
-    } catch {
-      return undefined;
-    }
+  const name = text(fields["name"]);
+  if (!name) return undefined;
+  try {
+    const input = record(JSON.parse(String(fields["arguments"])));
+    return input === undefined ? undefined : { name, input };
+  } catch {
+    return undefined;
   }
+}
+
+function nativeToolCall(
+  key: string,
+  fields: Fields,
+): { name: string; input: Fields } | undefined {
   if (!key.endsWith("ToolCall")) return undefined;
   const args = record(fields["args"]);
   if (args === undefined) return undefined;
@@ -73,6 +74,17 @@ function toolCall(
         : key.slice(0, 1).toUpperCase() + key.slice(1, -8),
     input: { ...args, file_path: args["path"] },
   };
+}
+
+function toolCall(
+  key: string,
+  value: unknown,
+): { name: string; input: Fields } | undefined {
+  const fields = record(value);
+  if (fields === undefined) return undefined;
+  return key === "function"
+    ? functionToolCall(fields)
+    : nativeToolCall(key, fields);
 }
 
 function toolActivity(event: Fields, state: CursorState): string[] {
