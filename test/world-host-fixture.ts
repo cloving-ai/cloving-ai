@@ -258,6 +258,9 @@ async function linkedPackages(directory: string): Promise<void> {
     "step-bridge.ts",
     "workflow-contracts.ts",
     "ticket-status.ts",
+    "broker/operation-digest.ts",
+    "review-subject.ts",
+    "protocol.ts",
     "steps",
   ])
     await cp(join(productRoot, "src", name), join(product, "src", name), {
