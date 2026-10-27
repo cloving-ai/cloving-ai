@@ -64,21 +64,17 @@ function invalidField(
   return Object.entries(contract.fields).find(([key, rule]) => {
     if (rule !== "string" && rule.optional && !Object.hasOwn(submission, key))
       return false;
-    return !validValue(rule, submission[key]);
+    return !validValue(
+      rule === "string" ? { type: "string" } : rule,
+      submission[key],
+    );
   })?.[0];
 }
 
-function validValue(rule: "string" | SubmissionField, value: unknown): boolean {
-  if (rule === "string" || rule.type === "string" || rule.type === "ticket")
+function validValue(rule: SubmissionField, value: unknown): boolean {
+  if (rule.type === "string" || rule.type === "ticket")
     return typeof value === "string" && value.trim().length > 0;
   if (rule.type === "boolean") return typeof value === "boolean";
-  return validInteger(rule, value);
-}
-
-function validInteger(
-  rule: Extract<SubmissionField, { readonly type: "integer" }>,
-  value: unknown,
-): boolean {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&
