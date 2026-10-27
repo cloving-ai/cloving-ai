@@ -210,3 +210,70 @@ await test("CLV-214 the private Cursor default runs once in its work tree with a
       "Apply the change",
     );
   }));
+
+await test("CLV-214 large UTF-8 Cursor documents use stdin without a large argument", () =>
+  withScene(async (scene) => {
+    const prompt =
+      "Implement \"quoted\" and 'literal' text.\n" + "語".repeat(70000);
+    const worker = scene.worker("unused", {
+      harness: fakeCursor(scene, { output: cursorFixture("completed") }),
+      document: () => Promise.resolve(prompt),
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const invocations = readFileSync(
+      join(scene.directory, "cursor-invocations.jsonl"),
+      "utf8",
+    )
+      .trim()
+      .split("\n");
+    assert.equal(invocations.length, 1);
+    const invocation = resultOf(invocations[0]);
+    assert.deepEqual(invocation["arguments"], [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--force",
+    ]);
+    assert.equal(invocation["input"], prompt);
+    assert.equal(
+      invocation["directory"],
+      resultOf(scene.reports[0].result)["worktree"],
+    );
+  }));
+
+for (const shell of ["/bin/bash", "/bin/zsh"])
+  await test(`CLV-214 ${shell} carries a maximum-size Cursor document through stdin`, () =>
+    withScene(async (scene) => {
+      const prompt = "x".repeat(1_048_576);
+      const worker = scene.worker("unused", {
+        harness: {
+          ...fakeCursor(scene, { output: cursorFixture("completed") }),
+          kind: "shell",
+        },
+        shell,
+        document: () => Promise.resolve(prompt),
+        profiles: {
+          isolated: {
+            env: { HOME: scene.directory, ZDOTDIR: scene.directory },
+          },
+        },
+      });
+      await worker.deliver(
+        intent({ method: "run-turn:isolated" }),
+        new AbortController().signal,
+      );
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.reports[0]?.outcome, "completed");
+      const invocation = resultOf(
+        readFileSync(join(scene.directory, "cursor-invocations.jsonl"), "utf8"),
+      );
+      assert.equal(invocation["input"], prompt);
+      assert.deepEqual(invocation["arguments"], [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--force",
+      ]);
+    }));

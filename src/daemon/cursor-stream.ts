@@ -7,6 +7,7 @@ interface CursorState {
   report: string;
   error: string | null;
   terminal: Fields | undefined;
+  toolCalls: Set<string>;
 }
 
 function text(value: unknown): string | null {
@@ -46,6 +47,61 @@ function assistantText(event: Fields): string | null {
   return blocks.map((block) => text(block?.["text"]) ?? "").join("");
 }
 
+function toolCall(
+  key: string,
+  value: unknown,
+): { name: string; input: Fields } | undefined {
+  const fields = record(value);
+  if (fields === undefined) return undefined;
+  if (key === "function") {
+    const name = text(fields["name"]);
+    if (!name) return undefined;
+    try {
+      const input = record(JSON.parse(String(fields["arguments"])));
+      return input === undefined ? undefined : { name, input };
+    } catch {
+      return undefined;
+    }
+  }
+  if (!key.endsWith("ToolCall")) return undefined;
+  const args = record(fields["args"]);
+  if (args === undefined) return undefined;
+  return {
+    name:
+      key === "shellToolCall"
+        ? "Bash"
+        : key.slice(0, 1).toUpperCase() + key.slice(1, -8),
+    input: { ...args, file_path: args["path"] },
+  };
+}
+
+function toolActivity(event: Fields, state: CursorState): string[] {
+  if (!["started", "completed"].includes(String(event["subtype"]))) return [];
+  const callId = text(event["call_id"]);
+  if (callId !== null && state.toolCalls.has(callId)) return [];
+  const tools = record(event["tool_call"]) ?? {};
+  const messages = Object.entries(tools).flatMap(([key, value]) => {
+    const tool = toolCall(key, value);
+    if (tool === undefined) return [];
+    return [
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: callId,
+              ...tool,
+            },
+          ],
+        },
+      }),
+    ];
+  });
+  if (callId !== null && messages.length > 0) state.toolCalls.add(callId);
+  return messages;
+}
+
 function failure(state: CursorState, exitCode: number | null): string | null {
   if (state.error !== null) return state.error;
   if (exitCode !== 0)
@@ -82,6 +138,7 @@ export function cursorStream(): {
     report: "",
     error: null,
     terminal: undefined,
+    toolCalls: new Set(),
   };
   return {
     line: (line) => {
@@ -93,6 +150,7 @@ export function cursorStream(): {
       }
       const event = record(value) ?? {};
       received(event, state);
+      if (event["type"] === "tool_call") return toolActivity(event, state);
       return event["type"] === "result" ? [] : [line];
     },
     result: (exitCode) => result(state, exitCode),

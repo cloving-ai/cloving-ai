@@ -24,7 +24,10 @@ export function fakeCursor(
     `#!${process.execPath}
 import { appendFileSync, readdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-appendFileSync(${JSON.stringify(record)}, JSON.stringify({arguments:process.argv.slice(2),directory:process.cwd(),environment:process.env,configuration:readdirSync(process.env.GH_CONFIG_DIR)}) + "\\n");
+let input = "";
+process.stdin.setEncoding("utf8");
+for await (const chunk of process.stdin) input += chunk;
+appendFileSync(${JSON.stringify(record)}, JSON.stringify({input,arguments:process.argv.slice(2),directory:process.cwd(),environment:process.env,configuration:readdirSync(process.env.GH_CONFIG_DIR)}) + "\\n");
 writeFileSync("change.txt", "updated");
 execFileSync("git", ["add", "change.txt"]);
 execFileSync("git", ["-c", "user.name=Worker", "-c", "user.email=worker@example.invalid", "commit", "-m", "Apply the change"]);

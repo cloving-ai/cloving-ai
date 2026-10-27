@@ -145,12 +145,15 @@ export function turnEnvironment(
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
+  readonly standardInput: string | undefined;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const argumentsList =
-    start.worker === "cursor-agent"
-      ? [...start.command, start.prompt]
-      : start.command;
+  const promptArgument =
+    start.worker === "cursor-agent" &&
+    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
+      ? [start.prompt]
+      : [];
+  const argumentsList = [...start.command, ...promptArgument];
   const command =
     start.shell === undefined
       ? argumentsList
@@ -172,7 +175,11 @@ function spawnTurn(start: TurnStart): {
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return { child, configuration };
+    return {
+      child,
+      configuration,
+      standardInput: promptArgument.length === 0 ? start.prompt : undefined,
+    };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
@@ -283,11 +290,11 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): RunningTurn {
-  const { child, configuration } = spawnTurn(start);
+  const { child, configuration, standardInput } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
-  child.stdin.end(start.worker === "cursor-agent" ? undefined : start.prompt);
+  child.stdin.end(standardInput);
   const closed = new Promise<number | null>((settle) => {
     child.once("error", () => undefined);
     child.once("close", settle);

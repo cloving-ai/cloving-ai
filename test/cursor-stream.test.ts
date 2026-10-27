@@ -6,6 +6,91 @@ import { estimatedCostUsd } from "../src/token-prices.ts";
 import { usageOf, sumUsage } from "../src/worker-usage.ts";
 import { usageText } from "../src/cli/usage-render.ts";
 import { cursorFixture } from "./cursor-fixture.ts";
+import { activityOf } from "../src/cli/watch-model.ts";
+
+await test("CLV-214 documented Cursor file tools reach watch activity once per call", () => {
+  const stream = cursorStream();
+  const fixture = cursorFixture("completed").split("\n");
+  const activity = fixture.flatMap(stream.line).flatMap(activityOf);
+  assert.ok(
+    activity.some(
+      (item) => item.kind === "tool" && item.text === "Write: change.txt",
+    ),
+  );
+  const started = {
+    type: "tool_call",
+    subtype: "started",
+    call_id: "read-1",
+    tool_call: { readToolCall: { args: { path: "README.md" } } },
+  };
+  assert.deepEqual(stream.line(JSON.stringify(started)).flatMap(activityOf), [
+    { kind: "tool", text: "Read: README.md" },
+  ]);
+  assert.deepEqual(
+    stream
+      .line(JSON.stringify({ ...started, subtype: "completed" }))
+      .flatMap(activityOf),
+    [],
+  );
+  assert.equal(
+    streamResult(stream.result(0))?.text,
+    "Implemented the change.\nTicket status: complete",
+  );
+});
+
+await test("CLV-214 Cursor commands and edits reach the shared tool activity reader", () => {
+  const stream = cursorStream();
+  for (const [key, args, expected] of [
+    ["shellToolCall", { command: "npm test" }, "Bash: npm test"],
+    ["editToolCall", { path: "src/index.ts" }, "Edit: src/index.ts"],
+  ] as const) {
+    const event = {
+      type: "tool_call",
+      subtype: "started",
+      call_id: key,
+      tool_call: { [key]: { args } },
+    };
+    assert.deepEqual(stream.line(JSON.stringify(event)).flatMap(activityOf), [
+      { kind: "tool", text: expected },
+    ]);
+    assert.deepEqual(
+      stream
+        .line(JSON.stringify({ ...event, subtype: "completed" }))
+        .flatMap(activityOf),
+      [],
+    );
+  }
+});
+
+await test("CLV-214 documented Cursor function tools show activity and malformed tools stay ignored", () => {
+  const stream = cursorStream();
+  const event = {
+    type: "tool_call",
+    subtype: "started",
+    call_id: "function-1",
+    tool_call: {
+      function: { name: "Grep", arguments: '{"pattern":"needle"}' },
+    },
+  };
+  assert.deepEqual(stream.line(JSON.stringify(event)).flatMap(activityOf), [
+    { kind: "tool", text: "Grep: needle" },
+  ]);
+  for (const tool_call of [
+    null,
+    {},
+    { writeToolCall: {} },
+    { function: { name: "Grep", arguments: "invalid" } },
+  ]) {
+    assert.deepEqual(
+      stream
+        .line(
+          JSON.stringify({ type: "tool_call", subtype: "started", tool_call }),
+        )
+        .flatMap(activityOf),
+      [],
+    );
+  }
+});
 
 await test("CLV-214 only assistant text blocks update the Cursor report", () => {
   const stream = cursorStream();
