@@ -34,6 +34,7 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "expire-lease": "lease.expired",
   "report-effect": "effect.reported",
   "record-outcome": "operation.reconciled",
+  "record-schedule-skip": "schedule.skipped",
 };
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -49,6 +50,10 @@ interface Shape {
 const revised: Shape = { required: ["expectedRevision"] };
 
 const shapes: Readonly<Record<string, Shape>> = {
+  "record-schedule-skip": {
+    required: ["workflowId", "slot"],
+    validators: { slot: positive },
+  },
   "admit-run": {
     required: ["workflow"],
     optional: [

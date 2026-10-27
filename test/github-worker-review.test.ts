@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { testMilliseconds } from "./test-timing.ts";
 import { journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import {
@@ -63,21 +63,36 @@ await test("CLV-063 the GitHub worker asks Greptile for a review with one commen
     scene.plan({ scores: [4], waitForTrigger: true });
     const worker = scene.worker();
     const commit = await opened(scene, worker);
-    const report = await scene.perform(worker, {
-      method: "wait-review",
-      payload: { number: 1, commit },
-    });
-    assert.equal(resultOf(report.result)["score"], 4);
-    assert.deepEqual(scene.state().triggers, [1]);
-    assert.ok(
-      scene
-        .state()
-        .calls.some(
-          (call) =>
-            JSON.stringify(call) ===
-            JSON.stringify(["pr", "comment", "1", "--body", "@greptileai"]),
-        ),
-    );
+    let now = 0;
+    mock.method(Date, "now", () => now);
+    try {
+      const pending = scene.perform(worker, {
+        method: "wait-review",
+        payload: { number: 1, commit },
+      });
+      await until(() =>
+        scene
+          .state()
+          .calls.some((call) =>
+            call.some((part) => part.includes("issues/1/comments")),
+          ),
+      );
+      now = fastTiming.triggerMilliseconds;
+      const report = await pending;
+      assert.equal(resultOf(report.result)["score"], 4);
+      assert.deepEqual(scene.state().triggers, [1]);
+      assert.ok(
+        scene
+          .state()
+          .calls.some(
+            (call) =>
+              JSON.stringify(call) ===
+              JSON.stringify(["pr", "comment", "1", "--body", "@greptileai"]),
+          ),
+      );
+    } finally {
+      mock.restoreAll();
+    }
   }));
 
 await test("CLV-063 the GitHub worker stops the wait with a failure when no review comes in the time limit", () =>
