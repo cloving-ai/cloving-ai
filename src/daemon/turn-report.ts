@@ -1,12 +1,19 @@
-import { ticketStatus } from "../ticket-status.ts";
+import { ticketStatus, type TicketStatus } from "../ticket-status.ts";
 import { sumPrices } from "../worker-usage.ts";
-import { changes, type WorkTree } from "./work-tree.ts";
+import { changes, type Changes, type WorkTree } from "./work-tree.ts";
 import type { StreamResult } from "./claude-turn.ts";
 
-interface ReportFields {
-  readonly summary: string;
-  readonly [name: string]: unknown;
-}
+type ReportFields = Changes &
+  Pick<
+    StreamResult,
+    "costUsd" | "usage" | "model" | "attempts" | "sessionId" | "turns"
+  > & {
+    readonly harness: string;
+    readonly ticketStatus: TicketStatus;
+    readonly summary: string;
+    readonly worktree: string;
+    readonly estimatedCostUsd: number | null;
+  };
 
 interface ReportLimits {
   readonly summaryCharacters: number;
@@ -72,6 +79,8 @@ export async function turnReport(
   },
   result: StreamResult,
 ): Promise<{ readonly text?: string; readonly reason?: string }> {
+  if (result.ticketStatusTooLarge === true)
+    return { reason: "claude-result-too-large" };
   const { harness, tree, limits } = start;
   return boundedReport(
     {

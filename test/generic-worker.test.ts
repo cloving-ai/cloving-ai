@@ -202,6 +202,23 @@ await test("CLV-215 a generic nonzero exit reports the stderr tail", () =>
     );
   }));
 
+await test("CLV-215 an oversized streamed ticket status fails the generic turn", () =>
+  withScene(async (scene) => {
+    const script = join(scene.directory, "oversized-status.mjs");
+    writeFileSync(
+      script,
+      'process.stdout.write("Remaining:\\n- " + "r".repeat(100000) + "\\nTicket status: partial");',
+    );
+    const worker = scene.worker("bare", {
+      harness: { name: "mytool", turn: [process.execPath, script] },
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "failed");
+    assert.equal(scene.reports[0].reason, "claude-result-too-large");
+    assert.equal(scene.reports[0].result, undefined);
+  }));
+
 await test("CLV-215 generic profiles reject model options before starting a turn", () =>
   withScene(async (scene) => {
     const worker = scene.worker("bare", {

@@ -169,6 +169,7 @@ async function begun(
   const turn = startRetriedTurn(
     {
       ...harness,
+      resultBytes: claudeLimits.resultBytes,
       command: profileCommand(harness.command, start.profile),
       environment: start.profile.env ?? {},
       turnId: `${intent.runId}-${key}`,

@@ -1206,7 +1206,10 @@
     "test/generic-worker.test.ts": "test",
     "test/generic-settings.test.ts": "test",
     "test/doctor-generic-harness.test.ts": "test",
-    "test/self-host-generic.test.ts": "test"
+    "test/self-host-generic.test.ts": "test",
+    "src/ticket-status-stream.ts": "pure",
+    "test/ticket-status-stream.test.ts": "test",
+    "test/text-output.test.ts": "test"
   },
   "allowed": {
     "quality": [

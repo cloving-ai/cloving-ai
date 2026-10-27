@@ -18,6 +18,7 @@ import { shellTurnScript } from "../agent-harness-shell.ts";
 export type Worker = string;
 
 export interface StreamResult {
+  readonly ticketStatusTooLarge?: true;
   readonly ticketStatus?: TicketStatus;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly pricingModel?: string | null;
@@ -39,6 +40,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly resultBytes?: number;
   readonly output?: "text";
   readonly shell?: string;
   readonly worker?: Worker;
@@ -241,7 +243,8 @@ function turnOutput(
   child: ChildProcessWithoutNullStreams,
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
-  if (start.output === "text") return textOutput(child, output);
+  if (start.output === "text")
+    return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
   const translated = start.worker === "opencode" ? opencodeStream() : undefined;
   const native = start.worker === "codex" ? codexStream() : translated;
   const { stdout, stderr } = child;
