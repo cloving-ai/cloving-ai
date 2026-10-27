@@ -5,6 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { testMilliseconds } from "./test-timing.ts";
 
 const entry = join(import.meta.dirname, "../src/cli.ts");
@@ -148,7 +149,14 @@ async function launched(
 ): Promise<Launch> {
   const child = spawn(
     process.execPath,
-    [entry, "start", ...(settings.argumentsList ?? [])],
+    [
+      fileURLToPath(new URL("./self-host-guard.ts", import.meta.url)),
+      String(process.pid),
+      process.execPath,
+      entry,
+      "start",
+      ...(settings.argumentsList ?? []),
+    ],
     {
       cwd: settings.repository,
       env: {
