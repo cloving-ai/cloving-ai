@@ -245,7 +245,7 @@ async function linkedPackages(directory: string): Promise<void> {
   const version: unknown = Reflect.get(Object(manifest), "version");
   const modules = join(directory, "node_modules");
   const product = join(modules, "cloving");
-  await mkdir(product, { recursive: true });
+  await mkdir(join(product, "src/broker"), { recursive: true });
   for (const entry of [...Object.keys(dependencies ?? {}), "@workflow/core"]) {
     await mkdir(dirname(join(modules, entry)), { recursive: true });
     await symlink(
@@ -258,6 +258,9 @@ async function linkedPackages(directory: string): Promise<void> {
     "step-bridge.ts",
     "workflow-contracts.ts",
     "ticket-status.ts",
+    "review-subject.ts",
+    "protocol.ts",
+    "broker/operation-digest.ts",
     "steps",
   ])
     await cp(join(productRoot, "src", name), join(product, "src", name), {
