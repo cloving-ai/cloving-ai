@@ -15,6 +15,7 @@ import { lstat, readFile, symlink, writeFile } from "node:fs/promises";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 import { withHarness } from "./service-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const workflowTest = (name: string, expected = "scenario-result"): string => `
 import assert from "node:assert/strict";
@@ -54,7 +55,7 @@ function cli(
         ...invocation.environment,
       },
       encoding: "utf8",
-      timeout: 30000,
+      timeout: testMilliseconds(30000),
     },
   );
 }
