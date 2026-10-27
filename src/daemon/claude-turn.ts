@@ -3,6 +3,7 @@ import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
+import { opencodeStream } from "./opencode-stream.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
 import type { NativeHarness } from "../harness-defaults.ts";
 import {
@@ -145,6 +146,8 @@ export function turnEnvironment(
   );
   if (start.turnId !== undefined) environment["CLOVING_TURN_ID"] = start.turnId;
   environment["GH_CONFIG_DIR"] = configuration;
+  if (start.worker === "opencode")
+    environment["OPENCODE_PERMISSION"] = '{"*":"allow"}';
   return environment;
 }
 
@@ -152,6 +155,11 @@ function turnCommand(start: TurnStart): {
   readonly parts: readonly string[];
   readonly standardInput: string | undefined;
 } {
+  if (start.worker === "opencode")
+    return {
+      parts: [...start.command, start.prompt],
+      standardInput: undefined,
+    };
   if (
     start.worker === "cursor-agent" &&
     Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
@@ -251,10 +259,16 @@ function streamAdapter(worker: Worker | undefined) {
 
 function turnOutput(
   start: TurnStart,
-  stdout: ChildProcessWithoutNullStreams["stdout"],
+  child: ChildProcessWithoutNullStreams,
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
-  const adapter = streamAdapter(start.worker);
+  const translated = start.worker === "opencode" ? opencodeStream() : undefined;
+  const adapter = translated ?? streamAdapter(start.worker);
+  const { stdout, stderr } = child;
+  if (translated !== undefined) {
+    stderr.setEncoding("utf8");
+    stderr.on("data", translated.stderr);
+  }
   const stream: Stream = {
     pending: "",
     result: undefined,
@@ -322,7 +336,7 @@ function signalTurn(
 
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration, standardInput } = spawnTurn(start);
-  const output = turnOutput(start, child.stdout);
+  const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
   if (start.worker === "grok") {
     child.stderr.setEncoding("utf8");

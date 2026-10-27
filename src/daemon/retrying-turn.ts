@@ -245,6 +245,10 @@ async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
   });
 }
 
+function retriesCapacity(worker: string | undefined): boolean {
+  return !["cursor-agent", "opencode", "grok"].includes(worker ?? "");
+}
+
 async function finished(
   attempts: Attempts,
   first: RunningTurn,
@@ -258,8 +262,7 @@ async function finished(
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
-      attempts.start.worker === "cursor-agent" ||
-      attempts.start.worker === "grok" ||
+      !retriesCapacity(attempts.start.worker) ||
       !capacityRefusal(end.result) ||
       milliseconds === undefined
     )
