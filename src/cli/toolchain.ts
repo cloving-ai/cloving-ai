@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import type { ToolchainIdentity } from "../workflow-admission.ts";
 
-const qualifiedNode = "v26.9.0";
+export const qualifiedNode = "v26.9.0";
 
 export async function observedToolchain(
   start: string,

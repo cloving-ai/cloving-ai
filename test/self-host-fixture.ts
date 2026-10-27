@@ -224,6 +224,6 @@ export function items(value: unknown): readonly unknown[] {
 
 export function withoutChildren(scene: () => Promise<void>): Promise<void> {
   return scene().finally(async () => {
-    for (const child of children) await stopChildGroup(child);
+    for (const child of children.splice(0)) await stopChildGroup(child);
   });
 }

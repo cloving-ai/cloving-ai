@@ -1,3 +1,5 @@
+import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
+import { packedDoctor } from "./packed-doctor.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import {
   operatorFiles,
@@ -28,13 +30,6 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
-import {
-  candidateDeclaration,
-  candidateEffectExpression,
-  candidateSource,
-  combinedCandidateSource,
-  validCandidateSource,
-} from "./workflow-candidate-fixtures.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -224,42 +219,6 @@ async function inventory(root: string): Promise<void> {
   assert.equal(field(compiler, "version"), "6.0.3");
 }
 
-async function candidateAdmission(root: string): Promise<void> {
-  await writeFile(
-    join(root, "candidate-admission.mjs"),
-    `
-import assert from "node:assert/strict";
-import { admitWorkflowCandidate } from "./node_modules/cloving/dist/tools/admit-workflow.js";
-const declaration = ${JSON.stringify(candidateDeclaration)};
-const admitted = await admitWorkflowCandidate({ source: ${JSON.stringify(validCandidateSource)}, declaration });
-assert.equal(admitted.kind, "admitted");
-assert.match(admitted.artifactDigest, /^[0-9a-f]{64}$/);
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(combinedCandidateSource)}, declaration }), { kind: "refused", codes: ["missing-export", "undeclared-effect"] });
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`process.exit(99);\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`Math.valueOf().random();\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
-const earlyExit = await admitWorkflowCandidate({ source: ${JSON.stringify(candidateSource(`for (let index = 0; index < 3; index++) { await ${candidateEffectExpression}; break; }`).replace('"cloving/workflows"', '"cloving/workflows/steps/protected-effect"'))}, declaration });
-assert.equal(earlyExit.kind, "admitted");
-const commandSource = ${JSON.stringify(`import { runCommand } from "cloving/workflows/steps/run-command";
-export async function scan() {
-  "use workflow";
-  return await runCommand({ scope: { phase: "scan", operation: "reviews", round: 1 }, name: "review-requests", input: {} });
-}`)};
-const commandDeclaration = { workflow: { ...declaration.workflow, capabilities: ["command"], commands: ["review-requests"] }, methods: { command: ["run:review-requests"] } };
-const command = await admitWorkflowCandidate({ source: commandSource, declaration: commandDeclaration });
-assert.equal(command.kind, "admitted", JSON.stringify(command));
-assert.match(command.artifactDigest, /^[0-9a-f]{64}$/);
-process.stdout.write("candidate-admission-ok");
-`,
-  );
-  assert.equal(
-    command(process.execPath, {
-      args: ["--no-strip-types", "candidate-admission.mjs"],
-      cwd: root,
-    }),
-    "candidate-admission-ok",
-  );
-}
-
 async function environment(root: string): Promise<NodeJS.ProcessEnv> {
   await writeFile(
     join(root, "fake-worker.mjs"),
@@ -377,7 +336,7 @@ async function running(root: string, executable: string): Promise<void> {
     await servedFonts(address, join(root, "node_modules/cloving"));
     await artifacts(root);
     await inventory(root);
-    await candidateAdmission(root);
+    await packedCandidateAdmission(root);
     child.kill("SIGTERM");
     assert.equal(await boundedExit(closed), 0);
     assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });
@@ -391,7 +350,9 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
   const root = await realpath(await mkdtemp(join(tmpdir(), "cloving-packed-")));
   try {
     command("git", { args: ["init", "-q"], cwd: root });
-    await running(root, await installed(root));
+    const executable = await installed(root);
+    await packedDoctor(root);
+    await running(root, executable);
     await packedWorkflowFolders(root);
     await packedWorkflowTesting(root);
   } finally {

@@ -12,6 +12,7 @@
     "tools/admit-workflow.ts",
     "tools/workflow-folders.ts",
     "workflows/**/*.ts",
-    "tools/workflow-command.ts"
+    "tools/workflow-command.ts",
+    "tools/doctor-adoption.ts"
   ]
 }

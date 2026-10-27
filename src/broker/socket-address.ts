@@ -10,8 +10,11 @@ export type SocketAddress =
 
 const maximumBytes = 103;
 
-export function socketAddress(path: string): SocketAddress {
-  const [shortest] = [path, relative(process.cwd(), path)]
+export function socketAddress(
+  path: string,
+  options: { readonly directory: string } = { directory: process.cwd() },
+): SocketAddress {
+  const [shortest] = [path, relative(options.directory, path)]
     .filter((candidate) => candidate.length > 0)
     .sort((left, right) => Buffer.byteLength(left) - Buffer.byteLength(right));
   if (shortest === undefined || Buffer.byteLength(shortest) > maximumBytes)

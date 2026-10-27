@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { commandUsage } from "../src/cli/usage.ts";
+import {
+  defaultCommand,
+  defaultCodexCommand,
+} from "../src/harness-defaults.ts";
 
 await test("CLV-201 start help supports an installed package without a checkout", () => {
   assert.doesNotMatch(String(commandUsage["start"]), /development checkout/);
@@ -100,14 +104,7 @@ await test("CLV-070 run help names next as an input source and explains the rese
 });
 
 await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by default", () => {
-  const argumentsOf = (name: string): string[] =>
-    [
-      ...(
-        program.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`))?.[1] ??
-        ""
-      ).matchAll(/"([^"]*)"/g),
-    ].map((match) => match[1] ?? "");
-  assert.deepEqual(argumentsOf("defaultCommand"), [
+  assert.deepEqual(defaultCommand, [
     "claude",
     "-p",
     "--output-format",
@@ -120,7 +117,7 @@ await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by
     "--max-budget-usd",
     "5",
   ]);
-  assert.deepEqual(argumentsOf("defaultCodexCommand"), [
+  assert.deepEqual(defaultCodexCommand, [
     "codex",
     "exec",
     "--json",
@@ -131,12 +128,10 @@ await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by
 });
 
 await test("CLV-075 the default Claude command allows web research and help describes develop-prd", () => {
-  const command = program.slice(
-    program.indexOf("const defaultCommand"),
-    program.indexOf("interface Commands"),
-  );
-  assert.match(command, /--allowedTools[\s\S]*WebSearch/);
-  assert.match(command, /--allowedTools[\s\S]*WebFetch/);
+  const tools =
+    defaultCommand[defaultCommand.indexOf("--allowedTools") + 1]?.split(",");
+  assert.ok(tools?.includes("WebSearch"));
+  assert.ok(tools?.includes("WebFetch"));
   for (const name of ["CLOVING_PRIVATE_TEXTS", "CLOVING_GH_COMMAND"])
     assert.match(
       String(commandUsage["start"])
