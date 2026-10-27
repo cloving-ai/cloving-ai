@@ -182,7 +182,7 @@ for (const call of ["api GET pull", "api GET check-runs"]) {
     "gh: unavailable (HTTP 502)",
     connectionFailure,
   ]) {
-    await test(`CLV-194 retries ${detail.split("\n")[0] ?? detail} from ${call}`, () =>
+    await test(`CLV-194 retries ${detail.replace(/\n.*/s, "")} from ${call}`, () =>
       withGithub(async (scene) => {
         const worker = scene.worker();
         const commit = await opened(scene, worker);
