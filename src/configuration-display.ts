@@ -67,7 +67,8 @@ export function configurationEntries(input: {
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
-      const value = input.environment[variable];
+      const value =
+        variable === undefined ? undefined : input.environment[variable];
       return value === undefined ? [] : [[field, settingValue(value)]];
     }),
   );

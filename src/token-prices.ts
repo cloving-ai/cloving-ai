@@ -1,5 +1,6 @@
 import { priceOf, usageOf, type WorkerUsage } from "./worker-usage.ts";
 import { record } from "./protocol.ts";
+import type { NativeHarness } from "./harness-defaults.ts";
 
 export interface TokenPrice {
   readonly input: number;
@@ -120,7 +121,7 @@ export function replaceCommandModel(
 export function estimatedCostUsd(
   usage: WorkerUsage,
   pricing: {
-    readonly worker: "claude" | "codex" | "grok" | "opencode";
+    readonly worker: NativeHarness;
     readonly price: TokenPrice | undefined;
   },
 ): number | null {
@@ -130,6 +131,7 @@ export function estimatedCostUsd(
   const output = counts.output_tokens;
   if (
     price === undefined ||
+    (worker === "cursor-agent" && counts.cache_creation_input_tokens !== 0) ||
     counts.input_tokens === null ||
     cached === null ||
     output === null

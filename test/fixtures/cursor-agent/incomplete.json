@@ -1,0 +1,35 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "session_id": "cursor-session",
+    "model": "Claude 4 Sonnet",
+    "permissionMode": "default"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Working."
+        }
+      ]
+    },
+    "session_id": "cursor-session"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Implemented the change.\nTicket status: complete"
+        }
+      ]
+    },
+    "session_id": "cursor-session"
+  }
+]

@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { addAbortListener } from "node:events";
+import { rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -85,7 +86,10 @@ async function polled(
     readonly stop: () => Promise<void>;
   },
 ): Promise<number | undefined> {
-  if (settings.updateMilliseconds === undefined) return;
+  if (settings.updateMilliseconds === undefined) {
+    await rm(join(settings.directory, "pending-self-update"), { force: true });
+    return;
+  }
   const cancelled = (): boolean => lifecycle.stopping.aborted;
   const updater = selfUpdater({
     directory: settings.directory,
