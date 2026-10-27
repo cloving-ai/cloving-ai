@@ -20,7 +20,22 @@ export const defaultCodexCommand = [
   "-",
 ];
 
-export type NativeHarness = "claude" | "codex";
+export const defaultOpencodeCommand = ["opencode", "run", "--format", "json"];
+
+export function defaultHarnessCommand(name: unknown): readonly string[] {
+  if (name === "codex") return defaultCodexCommand;
+  if (name === "opencode") return defaultOpencodeCommand;
+  return defaultCommand;
+}
+
+export function harnessCommandVariable(name: unknown): string | undefined {
+  if (name === "opencode") return "CLOVING_OPENCODE_COMMAND";
+  if (name === "codex") return "CLOVING_CODEX_COMMAND";
+  if (name === undefined || name === "claude") return "CLOVING_CLAUDE_COMMAND";
+  return undefined;
+}
+
+export type NativeHarness = "claude" | "codex" | "opencode";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -56,8 +71,13 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = name === "codex" ? defaultCodexCommand : defaultCommand;
+  const defaults = defaultHarnessCommand(name);
   return [saved.path ?? name, ...defaults.slice(1)];
+}
+
+function nativeHarness(name: string): NativeHarness {
+  if (name === "claude" || name === "codex" || name === "opencode") return name;
+  throw new Error(`harness-no-worker: ${name}`);
 }
 
 export function turnHarness(
@@ -68,10 +88,9 @@ export function turnHarness(
   readonly command: readonly string[];
   readonly shell?: string;
 } {
-  const name =
-    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  if (name !== "claude" && name !== "codex")
-    throw new Error(`harness-no-worker: ${name}`);
+  const name = nativeHarness(
+    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude",
+  );
   const saved = matchingHarness(settings, name);
   return {
     worker: name,

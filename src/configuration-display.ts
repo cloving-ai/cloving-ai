@@ -6,7 +6,10 @@ import {
   type SettingValue,
 } from "./project-settings.ts";
 import { settingValue, type JsonValue } from "./configuration-change.ts";
-import { defaultCommand, defaultCodexCommand } from "./harness-defaults.ts";
+import {
+  defaultHarnessCommand,
+  harnessCommandVariable,
+} from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 
@@ -63,7 +66,7 @@ export function configurationEntries(input: {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",
     "harness.command":
-      worker === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND",
+      harnessCommandVariable(worker) ?? "CLOVING_CLAUDE_COMMAND",
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
@@ -74,8 +77,7 @@ export function configurationEntries(input: {
   if (input.profiles !== undefined) environment["profiles"] = input.profiles;
   const effectiveDefaults: Readonly<Record<string, SettingValue>> = {
     ...defaults,
-    "harness.command":
-      worker === "codex" ? defaultCodexCommand : defaultCommand,
+    "harness.command": defaultHarnessCommand(worker),
   };
   const fields = input.field === undefined ? settingFields() : [input.field];
   return fields.map((field) => {

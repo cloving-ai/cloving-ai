@@ -1,4 +1,5 @@
 import { configuration, type Configuration } from "./configuration-schema.ts";
+import { harnessCommandVariable } from "./harness-defaults.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 
@@ -96,13 +97,11 @@ function encoded(value: SettingValue): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function harnessCommandVariable(
+function harnessCommandMapping(
   name: SettingValue | undefined,
 ): Readonly<Record<string, string>> {
-  if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
-  if (name === undefined || name === "claude")
-    return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
-  return {};
+  const variable = harnessCommandVariable(name);
+  return variable === undefined ? {} : { "harness.command": variable };
 }
 
 export function resolveSettings(
@@ -127,7 +126,7 @@ export function resolveSettings(
   const sources: Record<string, SettingSource> = {};
   const mapped = {
     ...settingVariables,
-    ...harnessCommandVariable(values["harness.name"]),
+    ...harnessCommandMapping(values["harness.name"]),
     profiles: "CLOVING_PROFILES",
     ...Object.fromEntries(environmentOnly.map((name) => [name, name])),
   };

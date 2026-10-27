@@ -1,5 +1,10 @@
 {
   "roles": {
+    "test/opencode-settings.test.ts": "test",
+    "test/self-host-opencode.test.ts": "test",
+    "src/daemon/opencode-stream.ts": "pure",
+    "test/opencode-fixture.ts": "test",
+    "test/opencode-worker.test.ts": "test",
     "src/decision-wait.ts": "pure",
     "src/steps/wait-for-decision.ts": "workflow",
     "src/host/gate-bridge.ts": "host-bridge",

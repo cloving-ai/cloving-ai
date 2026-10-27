@@ -49,6 +49,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ["CLOVING_WORKER", /claude.*codex.*default is claude/],
   ["CLOVING_CODEX_COMMAND", /JSON list.*codex exec.*no sandbox/],
   [
+    "CLOVING_OPENCODE_COMMAND",
+    /JSON list.*opencode run --format json.*one argument.*OPENCODE_PERMISSION/,
+  ],
+  [
     "CLOVING_WATCH_REPOSITORY",
     /service repository.*local origin.*current-directory default/,
   ],
@@ -80,7 +84,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 24);
+  assert.equal(names.length, 25);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

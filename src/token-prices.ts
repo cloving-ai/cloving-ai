@@ -120,7 +120,7 @@ export function replaceCommandModel(
 export function estimatedCostUsd(
   usage: WorkerUsage,
   pricing: {
-    readonly worker: "claude" | "codex";
+    readonly worker: "claude" | "codex" | "opencode";
     readonly price: TokenPrice | undefined;
   },
 ): number | null {
