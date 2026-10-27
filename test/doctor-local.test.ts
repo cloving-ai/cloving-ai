@@ -355,3 +355,16 @@ await test("CLV-207 a working bare grok does not hide a broken CLOVING_GROK_COMM
     );
     assert.equal(selected["result"], "fail", String(selected["detail"]));
   }));
+
+await test("CLV-207 default-harness probes a working Cursor Agent worker without a command variable", () =>
+  withDoctor(async (scene) => {
+    await scene.program(
+      "cursor-agent",
+      'if (process.argv[2] !== "--version") process.exit(91); console.log("2026.01.28-a1b2c3d")',
+    );
+    const selected = check(
+      await scene.report({ CLOVING_WORKER: "cursor-agent" }),
+      "default-harness",
+    );
+    assert.equal(selected["result"], "ok", String(selected["detail"]));
+  }));

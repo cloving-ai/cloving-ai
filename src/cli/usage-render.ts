@@ -17,6 +17,9 @@ export function usageText(value: unknown): string {
   return [
     ["Input tokens", usage.input_tokens],
     ["Cache read tokens", usage.cache_read_input_tokens],
+    ...(usage.cache_creation_input_tokens === undefined
+      ? []
+      : [["Cache write tokens", usage.cache_creation_input_tokens]]),
     ["Output tokens", usage.output_tokens],
   ]
     .map(
