@@ -36,3 +36,18 @@ for (const module of [
     });
     assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
   });
+
+const subjectSource = `import { snapshotReviewSubject } from "cloving/workflows/steps/review-subject";
+export async function review(): Promise<string> {
+  "use workflow";
+  const snapshot = await snapshotReviewSubject({ draft: "A draft for review." });
+  return snapshot.prompt;
+}`;
+
+await test("CLV-220 a workflow imports the review subject step from its published path", () => {
+  const facts = analyzeWorkflowCandidate(subjectSource);
+  assert.deepEqual(
+    checkWorkflowCandidate({ declaration: candidateDeclaration, ...facts }),
+    [],
+  );
+});
