@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { getStepMetadata, getWorkflowMetadata } from "workflow";
 import {
   openBridgeGate,
+  waitForBridgeDecision,
   type GateOpening,
   type GateReceipt,
   type WaitRegistration,
@@ -13,6 +14,8 @@ export type {
   WaitRegistration,
 } from "./gate-bridge.ts";
 import { runWait, type RunWaitPorts } from "./run-wait.ts";
+import { reconciledDecision } from "./decision-resume.ts";
+import { taggedRuns } from "./world-runs.ts";
 import {
   stepBridgeKey,
   type GateRequest,
@@ -78,6 +81,10 @@ export const bridgeTiming: BridgeTiming = {
 };
 
 export interface BridgePorts {
+  readonly decisionReceived?: (
+    runId: string,
+    gateId: string,
+  ) => Promise<boolean>;
   readonly runWait?: RunWaitPorts;
   readonly call: () => StepCall;
   readonly run: (
@@ -257,31 +264,48 @@ async function effect(
   return await settled(hold, answer.operationId);
 }
 
-async function gate(
-  hold: Hold,
-  asked: { readonly request: GateRequest; readonly waitMode?: "hook" },
-): Promise<GateResult> {
+async function gateSubject(hold: Hold, request: GateRequest) {
   const call = hold.ports.call();
   const world = await located(hold, call.worldRunId);
-  if (world === undefined)
-    return { kind: "unavailable", reason: "unknown-world-run" };
+  if (world === undefined) return undefined;
   await inWork(hold, world.runId);
-  return await openBridgeGate(hold.ports, {
-    ...asked,
+  return {
+    request,
     runId: world.runId,
     transport: transportOf(call),
-  });
+  };
+}
+
+async function gate(hold: Hold, request: GateRequest): Promise<GateResult> {
+  const subject = await gateSubject(hold, request);
+  if (subject === undefined)
+    return { kind: "unavailable", reason: "unknown-world-run" };
+  return await openBridgeGate(hold.ports, subject);
 }
 
 export function stepBridge(ports: BridgePorts): StepBridge {
   const hold = { ports, timing: ports.timing ?? bridgeTiming };
   return {
     effect: (request) => effect(hold, request),
-    gate: (request) => gate(hold, { request }),
+    gate: (request) => gate(hold, request),
     waitForDecision: async (request) => {
-      const result = await gate(hold, { request, waitMode: "hook" });
-      if (result.kind !== "opened") throw new Error(result.reason);
-      return { token: result.decisionId };
+      const subject = await gateSubject(hold, request);
+      if (subject === undefined) throw new Error("unknown-world-run");
+      return await waitForBridgeDecision(
+        {
+          ...ports,
+          decisionReceived:
+            ports.decisionReceived ??
+            (async (runId, gateId) =>
+              (
+                await reconciledDecision(
+                  { runs: taggedRuns, document: ports.document },
+                  { runId, gateId },
+                )
+              ).kind === "accepted"),
+        },
+        subject,
+      );
     },
     waitForRun: async (request) => {
       const call = ports.call();
