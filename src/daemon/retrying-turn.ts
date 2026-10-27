@@ -22,6 +22,7 @@ import {
   type TurnStart,
 } from "./claude-turn.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
+import { nativeHarness } from "../harness-defaults.ts";
 
 export interface RetrySettings {
   readonly tokenPrices?: TokenPrices;
@@ -101,7 +102,7 @@ function attemptCommand(attempts: Attempts, attempt: number) {
   const fallback = options.fallbackModels?.[attempt - 3];
   const command =
     fallback === undefined ? original : replaceCommandModel(original, fallback);
-  const model = commandModel(command);
+  const model = start.output === "text" ? null : commandModel(command);
   return {
     command,
     model,
@@ -124,18 +125,21 @@ function attemptUsage(
   };
   const model = result.model ?? attemptCommand(attempts, attempt).model;
   const usage = result.usage;
+  const worker = attempts.start.worker ?? "claude";
   return {
     attempt,
     model,
     usage,
     costUsd: result.costUsd,
-    estimatedCostUsd: estimatedCostUsd(usage, {
-      worker: attempts.start.worker ?? "claude",
-      price: priceForModel(
-        attempts.options.tokenPrices ?? {},
-        result.pricingModel === undefined ? model : result.pricingModel,
-      ),
-    }),
+    estimatedCostUsd: nativeHarness(worker)
+      ? estimatedCostUsd(usage, {
+          worker,
+          price: priceForModel(
+            attempts.options.tokenPrices ?? {},
+            result.pricingModel === undefined ? model : result.pricingModel,
+          ),
+        })
+      : null,
   };
 }
 
@@ -245,6 +249,14 @@ async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
   });
 }
 
+function retryable(attempts: Attempts, end: TurnEnd): boolean {
+  return (
+    attempts.start.output !== "text" &&
+    ["claude", "codex"].includes(attempts.start.worker ?? "claude") &&
+    capacityRefusal(end.result)
+  );
+}
+
 async function finished(
   attempts: Attempts,
   first: RunningTurn,
@@ -258,9 +270,7 @@ async function finished(
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
-      attempts.start.worker === "opencode" ||
-      attempts.start.worker === "grok" ||
-      !capacityRefusal(end.result) ||
+      !retryable(attempts, end) ||
       milliseconds === undefined
     )
       break;

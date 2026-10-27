@@ -6,7 +6,7 @@ import {
   type SettingValue,
 } from "./project-settings.ts";
 import { settingValue, type JsonValue } from "./configuration-change.ts";
-import { harnessDefaults } from "./harness-defaults.ts";
+import { harnessDefaults, nativeHarness } from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 
@@ -25,6 +25,7 @@ export interface SettingEntry extends ValueSource {
 const defaults: Readonly<Record<string, SettingValue>> = {
   "queue.lanes": 1,
   "harness.name": "claude",
+  "harness.output": "text",
   tokenPrices: builtInPriceTable.prices,
   fallbackModels: [],
   profiles: {},
@@ -55,15 +56,18 @@ export function configurationEntries(input: {
   const privateFile = configurationValues(
     parseConfiguration(input.private, "private"),
   );
-  const harness = harnessDefaults(
+  const name =
     input.environment["CLOVING_WORKER"] ??
-      privateFile["harness.name"] ??
-      "claude",
-  );
+    privateFile["harness.name"] ??
+    "claude";
+  const harness =
+    typeof name === "string" && nativeHarness(name)
+      ? harnessDefaults(name)
+      : undefined;
   const variables = {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",
-    "harness.command": harness.variable,
+    ...(harness === undefined ? {} : { "harness.command": harness.variable }),
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
@@ -74,30 +78,41 @@ export function configurationEntries(input: {
   if (input.profiles !== undefined) environment["profiles"] = input.profiles;
   const effectiveDefaults: Readonly<Record<string, SettingValue>> = {
     ...defaults,
-    "harness.command": harness.command,
+    ...(harness === undefined ? {} : { "harness.command": harness.command }),
   };
   const fields = input.field === undefined ? settingFields() : [input.field];
-  return fields.map((field) => {
-    settingScope(field);
-    const layers: readonly [Source, Settings][] = [
-      ["environment", environment],
-      ["private", privateFile],
-      ["project", project],
-    ];
-    const configured = layers.flatMap(([source, values]) => {
-      const value = values[field];
-      return value === undefined ? [] : [{ source, value }];
-    });
-    const [effective, ...hidden] = configured;
-    const selected: ValueSource = effective ?? {
-      source: "default",
-      value: effectiveDefaults[field] ?? null,
-    };
-    return {
-      field,
-      ...selected,
-      value: effectiveValue({ field, value: selected.value }),
-      hidden,
-    };
+  const layers: readonly [Source, Settings][] = [
+    ["environment", environment],
+    ["private", privateFile],
+    ["project", project],
+  ];
+  return fields.map((field) =>
+    settingEntry(field, { layers, effectiveDefaults }),
+  );
+}
+
+function settingEntry(
+  field: string,
+  sources: {
+    readonly layers: readonly [Source, Settings][];
+    readonly effectiveDefaults: Settings;
+  },
+): SettingEntry {
+  const { layers, effectiveDefaults } = sources;
+  settingScope(field);
+  const configured = layers.flatMap(([source, values]) => {
+    const value = values[field];
+    return value === undefined ? [] : [{ source, value }];
   });
+  const [effective, ...hidden] = configured;
+  const selected: ValueSource = effective ?? {
+    source: "default",
+    value: effectiveDefaults[field] ?? null,
+  };
+  return {
+    field,
+    ...selected,
+    value: effectiveValue({ field, value: selected.value }),
+    hidden,
+  };
 }

@@ -1200,7 +1200,13 @@
     "test/doctor-runtime.test.ts": "test",
     "tools/doctor-adoption.ts": "candidate-adapter",
     "test/doctor-errors.test.ts": "test",
-    "test/packed-doctor.ts": "test"
+    "test/packed-doctor.ts": "test",
+    "src/daemon/text-output.ts": "daemon",
+    "src/daemon/turn-report.ts": "daemon",
+    "test/generic-worker.test.ts": "test",
+    "test/generic-settings.test.ts": "test",
+    "test/doctor-generic-harness.test.ts": "test",
+    "test/self-host-generic.test.ts": "test"
   },
   "allowed": {
     "quality": [

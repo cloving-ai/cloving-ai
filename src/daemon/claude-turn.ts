@@ -3,7 +3,8 @@ import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
-import type { NativeHarness } from "../harness-defaults.ts";
+import { textOutput } from "./text-output.ts";
+import type { TicketStatus } from "../ticket-status.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
 import {
   priceOf,
@@ -14,9 +15,10 @@ import {
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 
-export type Worker = NativeHarness;
+export type Worker = string;
 
 export interface StreamResult {
+  readonly ticketStatus?: TicketStatus;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly pricingModel?: string | null;
   readonly subtype?: string;
@@ -37,6 +39,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly output?: "text";
   readonly shell?: string;
   readonly worker?: Worker;
   readonly turnId?: string;
@@ -151,6 +154,10 @@ export function turnEnvironment(
 }
 
 function turnCommand(start: TurnStart): readonly string[] {
+  if (start.output === "text")
+    return start.command.map((part) =>
+      part === "{prompt}" ? start.prompt : part,
+    );
   if (start.worker === "opencode") return [...start.command, start.prompt];
   if (start.worker !== "grok") return start.command;
   const command = [...start.command];
@@ -234,6 +241,7 @@ function turnOutput(
   child: ChildProcessWithoutNullStreams,
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
+  if (start.output === "text") return textOutput(child, output);
   const translated = start.worker === "opencode" ? opencodeStream() : undefined;
   const native = start.worker === "codex" ? codexStream() : translated;
   const { stdout, stderr } = child;
@@ -317,7 +325,9 @@ export function startTurn(start: TurnStart): RunningTurn {
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
   child.stdin.end(
-    start.worker === "grok" || start.worker === "opencode"
+    start.worker === "grok" ||
+      start.worker === "opencode" ||
+      (start.output === "text" && start.command.includes("{prompt}"))
       ? undefined
       : start.prompt,
   );

@@ -3,6 +3,7 @@ import privateConfig from "./private-config.schema.json" with { type: "json" };
 import { record } from "./protocol.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
+import { isTurnCommand } from "./harness-defaults.ts";
 
 export interface Configuration {
   readonly version: 1;
@@ -20,6 +21,8 @@ export interface Configuration {
   };
   readonly harness?: {
     readonly name?: string;
+    readonly turn?: readonly string[];
+    readonly output?: "text";
     readonly kind?: "file" | "shell";
     readonly path?: string;
     readonly command?: readonly string[];
@@ -89,6 +92,7 @@ function bounds(value: number, { schema, field }: Checked): void {
 
 function scalar(value: unknown, checked: Checked): void {
   const { schema, field } = checked;
+  if (field === "harness.turn" && !isTurnCommand(value)) invalid(field);
   if ("const" in schema && value !== schema.const) invalid(field);
   if (schema.enum !== undefined && !schema.enum.includes(value)) invalid(field);
   if (schema.type === "string") text(value, checked);
