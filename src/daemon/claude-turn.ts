@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
+import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import type { TicketStatus } from "../ticket-status.ts";
@@ -155,28 +156,50 @@ export function turnEnvironment(
   return environment;
 }
 
-function turnCommand(start: TurnStart): readonly string[] {
+function turnCommand(start: TurnStart): {
+  readonly parts: readonly string[];
+  readonly standardInput: string | undefined;
+} {
   if (start.output === "text")
-    return start.command.map((part) =>
-      part === "{prompt}" ? start.prompt : part,
-    );
-  if (start.worker === "opencode") return [...start.command, start.prompt];
-  if (start.worker !== "grok") return start.command;
+    return {
+      parts: start.command.map((part) =>
+        part === "{prompt}" ? start.prompt : part,
+      ),
+      standardInput: start.command.includes("{prompt}")
+        ? undefined
+        : start.prompt,
+    };
+  if (start.worker === "opencode")
+    return {
+      parts: [...start.command, start.prompt],
+      standardInput: undefined,
+    };
+  if (
+    start.worker === "cursor-agent" &&
+    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
+  )
+    return {
+      parts: [...start.command, start.prompt],
+      standardInput: undefined,
+    };
+  if (start.worker !== "grok")
+    return { parts: start.command, standardInput: start.prompt };
   const command = [...start.command];
   const index = command.findIndex(
     (argument, position) =>
       position > 0 && ["-p", "--single"].includes(argument),
   );
   command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
-  return command;
+  return { parts: command, standardInput: undefined };
 }
 
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
+  readonly standardInput: string | undefined;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const parts = turnCommand(start);
+  const { parts, standardInput } = turnCommand(start);
   const command =
     start.shell === undefined
       ? parts
@@ -198,7 +221,11 @@ function spawnTurn(start: TurnStart): {
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return { child, configuration };
+    return {
+      child,
+      configuration,
+      standardInput,
+    };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
@@ -238,6 +265,12 @@ function activityOutput(start: TurnStart) {
   return output;
 }
 
+function streamAdapter(worker: Worker | undefined) {
+  if (worker === "codex") return codexStream();
+  if (worker === "cursor-agent") return cursorStream();
+  return undefined;
+}
+
 function turnOutput(
   start: TurnStart,
   child: ChildProcessWithoutNullStreams,
@@ -246,7 +279,7 @@ function turnOutput(
   if (start.output === "text")
     return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
   const translated = start.worker === "opencode" ? opencodeStream() : undefined;
-  const native = start.worker === "codex" ? codexStream() : translated;
+  const adapter = translated ?? streamAdapter(start.worker);
   const { stdout, stderr } = child;
   if (translated !== undefined) {
     stderr.setEncoding("utf8");
@@ -270,22 +303,22 @@ function turnOutput(
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (native === undefined) output.write(chunk);
+    if (adapter === undefined) output.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
-    if (native !== undefined) {
-      written(lines.flatMap(native.line));
+    if (adapter !== undefined) {
+      written(lines.flatMap(adapter.line));
       return;
     }
     received(lines);
   });
   return async (exitCode) => {
-    if (native !== undefined) {
-      written(native.line(stream.pending));
-      written([native.result(exitCode)]);
+    if (adapter !== undefined) {
+      written(adapter.line(stream.pending));
+      written([adapter.result(exitCode)]);
     }
     await ended(output);
-    if (native === undefined) received([stream.pending]);
+    if (adapter === undefined) received([stream.pending]);
     const result = stream.result;
     return result === undefined
       ? undefined
@@ -318,7 +351,7 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): RunningTurn {
-  const { child, configuration } = spawnTurn(start);
+  const { child, configuration, standardInput } = spawnTurn(start);
   const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
   if (start.worker === "grok") {
@@ -327,13 +360,7 @@ export function startTurn(start: TurnStart): RunningTurn {
   }
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
-  child.stdin.end(
-    start.worker === "grok" ||
-      start.worker === "opencode" ||
-      (start.output === "text" && start.command.includes("{prompt}"))
-      ? undefined
-      : start.prompt,
-  );
+  child.stdin.end(standardInput);
   const closed = new Promise<number | null>((settle) => {
     child.once("error", () => undefined);
     child.once("close", settle);

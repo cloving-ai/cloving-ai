@@ -293,7 +293,8 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].filter(nativeHarness).flatMap((name) => {
-      const command = listed(harnessDefaults(name).variable);
+      const variable = harnessDefaults(name).variable;
+      const command = variable === undefined ? undefined : listed(variable);
       return command === undefined ? [] : [[name, command]];
     }),
   );

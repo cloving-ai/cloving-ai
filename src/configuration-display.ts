@@ -67,7 +67,9 @@ export function configurationEntries(input: {
   const variables = {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",
-    ...(harness === undefined ? {} : { "harness.command": harness.variable }),
+    ...(harness?.variable === undefined
+      ? {}
+      : { "harness.command": harness.variable }),
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
