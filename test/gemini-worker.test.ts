@@ -271,3 +271,26 @@ await test("CLV-211 a Gemini default joins the last assistant chunks and commits
       Array.isArray(report["commits"]) && report["commits"].length === 1,
     );
   }));
+
+await test("CLV-211 a large Gemini document goes through stdin without a large argument", () =>
+  withScene(async (scene) => {
+    const prompt =
+      "Implement \"quoted\" and 'literal' text.\n" + "語".repeat(70000);
+    const worker = scene.worker("bare", {
+      harness: { name: "gemini", path: fakeGemini(scene) },
+      document: () => Promise.resolve(prompt),
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const observed = resultOf(
+      readFileSync(join(scene.directory, "gemini-observed.json"), "utf8"),
+    );
+    assert.deepEqual(observed["arguments"], [
+      "--output-format",
+      "stream-json",
+      "--approval-mode",
+      "yolo",
+    ]);
+    assert.equal(observed["stdin"], prompt);
+  }));

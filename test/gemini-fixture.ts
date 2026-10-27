@@ -102,6 +102,7 @@ export function fakeGemini(
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readdirSync } from "node:fs";
 let stdin = "";
+process.stdin.setEncoding("utf8");
 for await (const chunk of process.stdin) stdin += chunk;
 writeFileSync(${JSON.stringify(join(scene.directory, "gemini-observed.json"))}, JSON.stringify({arguments:process.argv.slice(2), stdin, directory:process.cwd(), tokens:Object.keys(process.env).filter((key) => /^(GH|GITHUB)(_ENTERPRISE)?_TOKEN$/.test(key)), configuration:readdirSync(process.env.GH_CONFIG_DIR)}));
 writeFileSync("HELLO.md", "Hello.\\n");
