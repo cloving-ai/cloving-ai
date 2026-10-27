@@ -1,3 +1,4 @@
+import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -214,11 +215,9 @@ function userLocation(input: WorkflowFolderInput): {
   readonly root: string;
   readonly parts: readonly string[];
 } {
-  if (input.userFolder !== undefined)
-    return {
-      root: dirname(input.userFolder),
-      parts: [basename(input.userFolder)],
-    };
+  const folder = absoluteWorkflowFolder(input.userFolder);
+  if (folder !== undefined)
+    return { root: dirname(folder), parts: [basename(folder)] };
   const configuration =
     input.xdgConfigHome && isAbsolute(input.xdgConfigHome)
       ? input.xdgConfigHome

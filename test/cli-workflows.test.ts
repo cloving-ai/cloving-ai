@@ -346,13 +346,19 @@ async function privateFolderSetting(root: string): Promise<void> {
   );
 }
 
-function userRows(output: string): unknown[] {
+function userRows(output: string): [string, string][] {
   const rows: unknown = JSON.parse(output);
   assert.ok(Array.isArray(rows));
   return rows
     .map((row) => record(row))
     .filter((row) => row?.["scope"] === "user")
-    .map((row) => [row?.["workflowId"], row?.["file"]]);
+    .map((row): [string, string] => {
+      const id = row?.["workflowId"];
+      const file = row?.["file"];
+      assert.ok(typeof id === "string");
+      assert.ok(typeof file === "string");
+      return [id, file];
+    });
 }
 
 await test("CLV-227 list reads the user folder from the private workflows.folder setting", () =>

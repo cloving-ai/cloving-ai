@@ -199,3 +199,14 @@ await test("CLV-227 a configured user folder may have a linked ancestor but not 
       ]);
     },
   ));
+
+await test("CLV-227 the loader refuses a relative configured user folder", () =>
+  withFiles({ "repo/marker": "" }, async (directory) => {
+    await assert.rejects(
+      loadWorkflowFolders({
+        ...folderInput(directory),
+        userFolder: "relative-workflows",
+      }),
+      /CLOVING_WORKFLOW_FOLDER must be an absolute path/,
+    );
+  }));
