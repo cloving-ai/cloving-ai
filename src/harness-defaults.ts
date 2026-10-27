@@ -20,6 +20,8 @@ export const defaultCodexCommand = [
   "-",
 ];
 
+export const defaultOpencodeCommand = ["opencode", "run", "--format", "json"];
+
 export const defaultGrokCommand = [
   "grok",
   "--output-format",
@@ -28,7 +30,7 @@ export const defaultGrokCommand = [
   "-p",
 ];
 
-export type NativeHarness = "claude" | "codex" | "grok";
+export type NativeHarness = "claude" | "codex" | "grok" | "opencode";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -69,7 +71,7 @@ function nativeCommand(
 }
 
 function nativeHarness(name: string): name is NativeHarness {
-  return ["claude", "codex", "grok"].includes(name);
+  return ["claude", "codex", "grok", "opencode"].includes(name);
 }
 
 export function harnessDefaults(value: unknown): {
@@ -83,11 +85,13 @@ export function harnessDefaults(value: unknown): {
       claude: defaultCommand,
       codex: defaultCodexCommand,
       grok: defaultGrokCommand,
+      opencode: defaultOpencodeCommand,
     }[name],
     variable: {
       claude: "CLOVING_CLAUDE_COMMAND",
       codex: "CLOVING_CODEX_COMMAND",
       grok: "CLOVING_GROK_COMMAND",
+      opencode: "CLOVING_OPENCODE_COMMAND",
     }[name],
   };
 }
