@@ -1169,6 +1169,8 @@
     "src/project-settings.ts": "pure",
     "src/repository-identity.ts": "pure",
     "tools/workflow-command.ts": "candidate-adapter",
+    "tools/project-configuration.ts": "candidate-adapter",
+    "test/project-configuration.test.ts": "test",
     "test/cli-workflows.test.ts": "test",
     "src/testing.ts": "candidate-adapter",
     "tools/workflow-test-loader.ts": "candidate-adapter",

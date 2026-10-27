@@ -23,6 +23,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "watch.actions": "CLOVING_WATCH_ACTIONS",
   "selfUpdate.everySeconds": "CLOVING_SELF_UPDATE_SECONDS",
   "github.command": "CLOVING_GH_COMMAND",
+  "workflows.folder": "CLOVING_WORKFLOW_FOLDER",
 };
 
 const environmentOnly = [
@@ -35,6 +36,15 @@ const environmentOnly = [
   "CLOVING_PHONE_RELAY",
   "CLOVING_RELAY_ORIGIN",
 ];
+
+export function absoluteWorkflowFolder(
+  folder: string | undefined,
+): string | undefined {
+  if (folder === undefined || folder.startsWith("/")) return folder;
+  throw new Error(
+    "invalid-setting: CLOVING_WORKFLOW_FOLDER must be an absolute path",
+  );
+}
 
 export function configurationRoot(
   environment: Readonly<NodeJS.ProcessEnv>,
@@ -75,6 +85,7 @@ export function configurationValues(
     watch: values.watch,
     selfUpdate: values.selfUpdate,
     github: values.github,
+    workflows: values.workflows,
   };
   for (const [name, group] of Object.entries(groups)) {
     if (group === undefined) continue;

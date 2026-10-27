@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds` and `github.command`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
+The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -605,6 +605,8 @@ Steps:
 - The bundled `workflows/` folder in the Cloving package. Startup compiles each TypeScript file in this folder.
 - The repository `.cloving/workflows/` folder.
 - The user `cloving/workflows/` folder under an absolute `XDG_CONFIG_HOME`, otherwise under `~/.config`. An unset or relative `XDG_CONFIG_HOME` uses that default.
+
+The private setting `workflows.folder` replaces the user folder with an absolute folder path, for example a private git repository of your own workflows. Set it with `cloving config set workflows.folder <path>`. Cloving reads the folder where it is. The folder itself must not be a symbolic link; a link in the path above it is allowed. `cloving workflows list` shows its workflows with the scope `user`.
 
 A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
 

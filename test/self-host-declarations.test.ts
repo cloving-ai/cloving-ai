@@ -32,6 +32,7 @@ async function start(root: string): Promise<ChildProcess> {
     "self-host.ts",
     "self-host-runtime.ts",
     "self-host-project.ts",
+    "project-configuration.ts",
     "workflow-bundles.ts",
     "workflow-bundle-dependencies.ts",
     "workflow-folders.ts",

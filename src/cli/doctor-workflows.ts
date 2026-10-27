@@ -2,7 +2,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DoctorWorkflow } from "../doctor-report.ts";
-import { configurationRoot } from "../project-settings.ts";
+import {
+  configurationRoot,
+  absoluteWorkflowFolder,
+} from "../project-settings.ts";
 import { isCandidateDeclaration } from "../workflow-candidate.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 
@@ -23,7 +26,8 @@ export async function doctorWorkflows(
     ["project", join(repository, ".cloving/workflows")],
     [
       "user",
-      join(configurationRoot(environment, homedir()), "cloving/workflows"),
+      absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]) ??
+        join(configurationRoot(environment, homedir()), "cloving/workflows"),
     ],
   ] as const) {
     const files = await readdir(folder).catch((error: unknown) => {
