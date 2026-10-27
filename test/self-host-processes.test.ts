@@ -3,6 +3,7 @@ import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import {
   chmod,
+  mkdir,
   readdir,
   readFile,
   realpath,
@@ -226,6 +227,31 @@ await test("CLV-085 without the setting the host never fetches and preserves nor
       await readFile(join(root, "watch-stopped"), "utf8"),
       "stopped",
     );
+  });
+});
+
+await test("CLV-085 a host without self-update removes a pending mark that an earlier host left", async () => {
+  await withUpdateRepository(async ({ root, repository }) => {
+    const paths = await programs(root, {
+      daemonMilliseconds: 100,
+      watchStartupMilliseconds: 300,
+    });
+    const mark = join(root, "host", "pending-self-update");
+    await mkdir(join(root, "host"), { recursive: true });
+    await writeFile(mark, `${String(Date.now())}\n`);
+    assert.equal(
+      await hostedPrograms({
+        ...paths,
+        repository,
+        runtime: join(root, "host/run"),
+        directory: join(root, "host"),
+        watchPort: "3663",
+        phoneRelay: "on",
+        updateMilliseconds: undefined,
+      }),
+      0,
+    );
+    await assert.rejects(readFile(mark), { code: "ENOENT" });
   });
 });
 
