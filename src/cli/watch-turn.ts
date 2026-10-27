@@ -1,4 +1,4 @@
-import { priceText, usageText } from "./usage-render.ts";
+import { priceText, usageText, attemptText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -71,6 +71,12 @@ export function Turn(props: {
         class: "turn-usage",
         children: usageText(turn.usage),
       }),
+      ...(turn.attempts ?? []).map((attempt) =>
+        element("p", {
+          class: "turn-attempt",
+          children: attemptText(attempt),
+        }),
+      ),
       element("div", { class: "activity", children: activity }),
     ],
   });

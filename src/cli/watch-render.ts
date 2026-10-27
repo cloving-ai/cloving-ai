@@ -1,7 +1,7 @@
 import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
 import type { CiRerunNotice } from "./github-ci-progress.ts";
-import type { WorkerUsage } from "../worker-usage.ts";
+import type { WorkerUsage, WorkerAttemptUsage } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
@@ -14,6 +14,7 @@ export interface WatchItem {
 }
 
 export interface WatchTurn {
+  readonly attempts?: readonly WorkerAttemptUsage[];
   readonly harness?: string;
   readonly estimatedCostUsd: number | null;
   readonly operationId: string;
