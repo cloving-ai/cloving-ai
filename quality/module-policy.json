@@ -1,5 +1,10 @@
 {
   "roles": {
+    "test/opencode-settings.test.ts": "test",
+    "test/self-host-opencode.test.ts": "test",
+    "src/daemon/opencode-stream.ts": "pure",
+    "test/opencode-fixture.ts": "test",
+    "test/opencode-worker.test.ts": "test",
     "test/grok-cli.test.ts": "test",
     "test/grok-result.test.ts": "test",
     "src/grok-result.ts": "pure",
