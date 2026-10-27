@@ -141,7 +141,7 @@ await test("CLV-231 the guard passes SIGTERM to the daemon and ends with its exi
     child.kill("SIGTERM");
     const code = await Promise.race([
       closed,
-      delay(testMilliseconds(5000), "no exit"),
+      delay(testMilliseconds(5000), "no exit", { ref: false }),
     ]);
     assert.equal(code, 75);
     assert.equal(await ended(daemon), true);
