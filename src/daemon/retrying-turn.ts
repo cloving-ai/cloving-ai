@@ -116,16 +116,25 @@ function attemptUsage(
   completion: { readonly end: TurnEnd; readonly attempt: number },
 ): WorkerAttemptUsage {
   const { end, attempt } = completion;
-  const model = end.result?.model ?? attemptCommand(attempts, attempt).model;
-  const usage = end.result?.usage ?? usageOf(null);
+  const result = end.result ?? {
+    model: null,
+    usage: usageOf(null),
+    costUsd: null,
+    pricingModel: undefined,
+  };
+  const model = result.model ?? attemptCommand(attempts, attempt).model;
+  const usage = result.usage;
   return {
     attempt,
     model,
     usage,
-    costUsd: end.result?.costUsd ?? null,
+    costUsd: result.costUsd,
     estimatedCostUsd: estimatedCostUsd(usage, {
       worker: attempts.start.worker ?? "claude",
-      price: priceForModel(attempts.options.tokenPrices ?? {}, model),
+      price: priceForModel(
+        attempts.options.tokenPrices ?? {},
+        result.pricingModel === undefined ? model : result.pricingModel,
+      ),
     }),
   };
 }
@@ -250,6 +259,7 @@ async function finished(
     if (
       cancelled(attempts) ||
       attempts.start.worker === "cursor-agent" ||
+      attempts.start.worker === "grok" ||
       !capacityRefusal(end.result) ||
       milliseconds === undefined
     )

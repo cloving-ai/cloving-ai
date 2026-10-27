@@ -6,11 +6,7 @@ import {
   type SettingValue,
 } from "./project-settings.ts";
 import { settingValue, type JsonValue } from "./configuration-change.ts";
-import {
-  defaultCommand,
-  defaultCodexCommand,
-  defaultCursorCommand,
-} from "./harness-defaults.ts";
+import { harnessDefaults } from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 
@@ -46,16 +42,6 @@ function effectiveValue(setting: {
   return value;
 }
 
-function harnessDefaults(worker: string): {
-  readonly command: readonly string[];
-  readonly variable?: string;
-} {
-  if (worker === "cursor-agent") return { command: defaultCursorCommand };
-  if (worker === "codex")
-    return { command: defaultCodexCommand, variable: "CLOVING_CODEX_COMMAND" };
-  return { command: defaultCommand, variable: "CLOVING_CLAUDE_COMMAND" };
-}
-
 export function configurationEntries(input: {
   readonly project: string | undefined;
   readonly private: string | undefined;
@@ -69,11 +55,11 @@ export function configurationEntries(input: {
   const privateFile = configurationValues(
     parseConfiguration(input.private, "private"),
   );
-  const savedWorker = privateFile["harness.name"];
-  const worker =
+  const harness = harnessDefaults(
     input.environment["CLOVING_WORKER"] ??
-    (typeof savedWorker === "string" ? savedWorker : "claude");
-  const harness = harnessDefaults(worker);
+      privateFile["harness.name"] ??
+      "claude",
+  );
   const variables = {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",

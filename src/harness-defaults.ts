@@ -28,7 +28,15 @@ export const defaultCursorCommand = [
   "--force",
 ];
 
-export type NativeHarness = "claude" | "codex" | "cursor-agent";
+export const defaultGrokCommand = [
+  "grok",
+  "--output-format",
+  "streaming-messages-json",
+  "--always-approve",
+  "-p",
+];
+
+export type NativeHarness = "claude" | "codex" | "grok" | "cursor-agent";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -64,16 +72,35 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = {
-    claude: defaultCommand,
-    codex: defaultCodexCommand,
-    "cursor-agent": defaultCursorCommand,
-  }[name];
+  const defaults = harnessDefaults(name).command;
   return [saved.path ?? name, ...defaults.slice(1)];
 }
 
 function nativeHarness(name: string): name is NativeHarness {
-  return ["claude", "codex", "cursor-agent"].includes(name);
+  return ["claude", "codex", "grok", "cursor-agent"].includes(name);
+}
+
+export function harnessDefaults(value: unknown): {
+  readonly command: readonly string[];
+  readonly variable?: string;
+} {
+  const name =
+    typeof value === "string" && nativeHarness(value) ? value : "claude";
+  const variable = {
+    claude: "CLOVING_CLAUDE_COMMAND",
+    codex: "CLOVING_CODEX_COMMAND",
+    grok: "CLOVING_GROK_COMMAND",
+    "cursor-agent": undefined,
+  }[name];
+  return {
+    command: {
+      claude: defaultCommand,
+      codex: defaultCodexCommand,
+      grok: defaultGrokCommand,
+      "cursor-agent": defaultCursorCommand,
+    }[name],
+    ...(variable === undefined ? {} : { variable }),
+  };
 }
 
 export function turnHarness(

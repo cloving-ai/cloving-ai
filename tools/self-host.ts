@@ -1,5 +1,6 @@
 import {
   turnHarness,
+  harnessDefaults,
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
@@ -286,11 +287,7 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].flatMap((name) => {
-      const variable = {
-        claude: "CLOVING_CLAUDE_COMMAND",
-        codex: "CLOVING_CODEX_COMMAND",
-        "cursor-agent": undefined,
-      }[name];
+      const variable = harnessDefaults(name).variable;
       const command = variable === undefined ? undefined : listed(variable);
       return command === undefined ? [] : [[name, command]];
     }),

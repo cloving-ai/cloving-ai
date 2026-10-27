@@ -1,5 +1,11 @@
 {
   "roles": {
+    "test/grok-cli.test.ts": "test",
+    "test/grok-result.test.ts": "test",
+    "src/grok-result.ts": "pure",
+    "test/grok-worker-fixture.ts": "test",
+    "test/grok-worker.test.ts": "test",
+    "test/grok-configuration.test.ts": "test",
     "src/decision-wait.ts": "pure",
     "src/steps/wait-for-decision.ts": "workflow",
     "src/host/gate-bridge.ts": "host-bridge",

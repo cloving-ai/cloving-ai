@@ -6,6 +6,8 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly summary?: string;
+  readonly model?: string;
   readonly harness?: string;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly estimatedCostUsd: number | null;
