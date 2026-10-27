@@ -4,7 +4,6 @@ import {
   cp,
   mkdir,
   mkdtemp,
-  readdir,
   readFile,
   realpath,
   rm,
@@ -14,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { record } from "../src/protocol.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 export const productRoot = join(import.meta.dirname, "..");
@@ -238,19 +238,31 @@ function child(
 }
 
 async function linkedPackages(directory: string): Promise<void> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(productRoot, "package.json"), "utf8"),
+  );
+  const dependencies = record(Reflect.get(Object(manifest), "dependencies"));
+  const version: unknown = Reflect.get(Object(manifest), "version");
   const modules = join(directory, "node_modules");
-  await mkdir(modules);
-  for (const entry of await readdir(join(productRoot, "node_modules")))
+  const product = join(modules, "cloving");
+  await mkdir(product, { recursive: true });
+  for (const entry of [...Object.keys(dependencies ?? {}), "@workflow/core"]) {
+    await mkdir(dirname(join(modules, entry)), { recursive: true });
     await symlink(
       join(productRoot, "node_modules", entry),
       join(modules, entry),
     );
-  const manifest: unknown = JSON.parse(
-    await readFile(join(productRoot, "package.json"), "utf8"),
-  );
-  const version: unknown = Reflect.get(Object(manifest), "version");
-  const product = join(modules, "cloving");
-  await cp(join(productRoot, "src"), join(product, "src"), { recursive: true });
+  }
+  for (const name of [
+    "workflows.ts",
+    "step-bridge.ts",
+    "workflow-contracts.ts",
+    "ticket-status.ts",
+    "steps",
+  ])
+    await cp(join(productRoot, "src", name), join(product, "src", name), {
+      recursive: true,
+    });
   await writeFile(
     join(product, "package.json"),
     JSON.stringify({

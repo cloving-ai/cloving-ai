@@ -4,6 +4,7 @@ import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { operatorFiles } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const files = {
   ...operatorFiles("project", "develop"),
@@ -82,7 +83,7 @@ export async function packedWorkflowTesting(root: string): Promise<void> {
             XDG_CONFIG_HOME: join(directory, "config"),
           },
           encoding: "utf8",
-          timeout: 30000,
+          timeout: testMilliseconds(30000),
         },
       );
       assert.equal(result.status, 0, result.stdout + result.stderr);

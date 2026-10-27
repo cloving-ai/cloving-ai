@@ -1,5 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
-import { priceOf, usageOf } from "../worker-usage.ts";
+import { priceOf, usageOf, attemptFields } from "../worker-usage.ts";
 import type { WatchTurn } from "./watch-render.ts";
 
 function text(value: unknown): string {
@@ -49,6 +49,7 @@ export function statusTurns(
       emptyTurn(operationId, runId);
     return {
       ...known,
+      ...attemptFields(fields["attempts"]),
       ...(typeof fields["harness"] === "string"
         ? { harness: fields["harness"] }
         : {}),

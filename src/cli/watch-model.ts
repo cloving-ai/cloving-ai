@@ -7,7 +7,7 @@ import {
 import { isTicketStatus } from "../ticket-status.ts";
 import { isPromotionId } from "../workflow-contracts.ts";
 import { priceFields, statusTurns } from "./watch-usage.ts";
-import { priceOf, usageOf } from "../worker-usage.ts";
+import { priceOf, usageOf, attemptFields } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type {
   WatchDecision,
@@ -168,6 +168,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
   const report = record(parsed(text(result["result"])));
   const harness = text(started["harness"]) || text(report["harness"]);
   return {
+    ...attemptFields(report["attempts"]),
     ...(harness === "" ? {} : { harness }),
     key: records.key,
     operationId: text(started["operationId"]),

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { capacityRefusal, streamResult } from "../src/daemon/claude-turn.ts";
+import {
+  capacityRefusal,
+  retryKind,
+  streamResult,
+} from "../src/daemon/claude-turn.ts";
 
 const capacity = "Selected model is at capacity. Please try a different model.";
 
@@ -24,4 +28,52 @@ await test("CLV-127 only fixed provider capacity failures permit a retry", () =>
   ])
     assert.equal(capacityRefusal(result(fields)), false);
   assert.equal(capacityRefusal(undefined), false);
+});
+
+await test("CLV-229 unreachable API failures are network failures, never capacity refusals", () => {
+  const network = streamResult(
+    JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      terminal_reason: "api_error",
+      result: "API Error: Can't reach the API server ... (ENOTFOUND)",
+    }),
+  );
+  assert.equal(capacityRefusal(network), false);
+  assert.equal(retryKind(network), "network");
+});
+
+await test("CLV-229 network classification requires a failed result and the exact leading text", () => {
+  for (const fields of [
+    { result: "API Error: 400 invalid request" },
+    { result: "API Error: server failed" },
+    { result: "quoted: API Error: Can't reach the API server" },
+    { result: "API Error: Can't reach the API server", is_error: false },
+  ]) {
+    const result = streamResult(
+      JSON.stringify({
+        type: "result",
+        is_error: true,
+        terminal_reason: "api_error",
+        ...fields,
+      }),
+    );
+    assert.equal(retryKind(result), null);
+  }
+  assert.equal(retryKind(undefined), null);
+});
+
+await test("CLV-229 a network result takes precedence over a retained assistant overload", () => {
+  const result = streamResult(
+    JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      error: "overloaded",
+      result: "API Error: Can't reach the API server ... (ENOTFOUND)",
+    }),
+  );
+  assert.equal(retryKind(result), "network");
+  assert.equal(capacityRefusal(result), false);
 });

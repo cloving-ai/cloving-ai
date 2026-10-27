@@ -9,6 +9,40 @@ import {
 } from "../src/cli/watch-run-input.ts";
 import { withHarness } from "./service-fixture.ts";
 
+await test("CLV-217 declared ticket forms show Ticket ID and submit the ticket string", () =>
+  withHarness(async (harness) => {
+    const directory = harness.projectDirectory;
+    await writeFile(
+      join(directory, "ticket.declaration.json"),
+      JSON.stringify({
+        workflowId: "ticket-workflow",
+        capabilities: ["claude"],
+        effectLimit: 1,
+        input: {
+          maximumBytes: 4096,
+          fields: {
+            ticket: { type: "ticket" },
+            note: { type: "string", optional: true },
+          },
+        },
+      }),
+    );
+    const forms = await watchCardForms(directory);
+    const form = forms.find((item) => item.workflowId === "ticket-workflow");
+    assert.deepEqual(form?.fields, [
+      { name: "ticket", label: "Ticket ID", multiline: false, optional: false },
+      { name: "note", label: "note", multiline: false, optional: true },
+    ]);
+    assert.partialDeepStrictEqual(
+      cardRunRequest(forms, {
+        workflowId: "ticket-workflow",
+        commandId: "ticket-form",
+        fields: { ticket: "312" },
+      }),
+      { parameters: { submission: { ticket: "312" } } },
+    );
+  }));
+
 await test("CLV-135 forms exclude malformed and nonstring declarations and preserve optional string fields", () =>
   withHarness(async (harness) => {
     const directory = join(harness.projectDirectory, "declarations");

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { HostPorts } from "../service/service.ts";
 import type { WorkflowFunction } from "../host/start-delivery.ts";
 import type { WorkflowHandler } from "../host/world-host.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
@@ -76,4 +77,23 @@ export function workflowGenerations(settings: {
     available: async (manifest: ExecutionManifest) =>
       (await resolve(manifest)) === undefined ? undefined : manifest,
   };
+}
+
+export async function prepareWorkflowGenerations(
+  ports: {
+    readonly state: HostPorts["state"];
+    readonly workflow: Pick<HostPorts["workflow"], "manifest">;
+  },
+  generations: Pick<ReturnType<typeof workflowGenerations>, "resolve">,
+): Promise<void> {
+  const prepared = new Set<string>();
+  for (const run of Object.values((await ports.state()).runs)) {
+    if (
+      ["completed", "failed", "cancelled"].includes(run.status) ||
+      prepared.has(run.workflow)
+    )
+      continue;
+    prepared.add(run.workflow);
+    await generations.resolve(await ports.workflow.manifest(run.runId));
+  }
 }

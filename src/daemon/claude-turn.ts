@@ -1,3 +1,4 @@
+import { turnCommand } from "./turn-command.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ import {
   usageOf,
   type WorkerUsage,
   type WorkerAttemptUsage,
+  type RetryKind,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
@@ -35,6 +37,8 @@ export interface StreamResult {
 }
 
 export interface TurnEnd {
+  readonly reason?: string;
+  readonly detail?: string;
   readonly stopped?: boolean;
   readonly exitCode: number | null;
   readonly result: StreamResult | undefined;
@@ -84,7 +88,15 @@ function textOf(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function networkFailure(result: StreamResult | undefined): boolean {
+  return (
+    result?.failed === true &&
+    result.text.startsWith("API Error: Can't reach the API server")
+  );
+}
+
 export function capacityRefusal(result: StreamResult | undefined): boolean {
+  if (networkFailure(result)) return false;
   return (
     result?.failed === true &&
     ["success", "error_during_execution"].includes(
@@ -93,6 +105,19 @@ export function capacityRefusal(result: StreamResult | undefined): boolean {
     (result.text ===
       "Selected model is at capacity. Please try a different model." ||
       result.errorType === "overloaded")
+  );
+}
+
+export function retryKind(result: StreamResult | undefined): RetryKind | null {
+  if (networkFailure(result)) return "network";
+  return capacityRefusal(result) ? "capacity" : null;
+}
+
+export function succeeded(end: TurnEnd): boolean {
+  return (
+    end.reason === undefined &&
+    end.exitCode === 0 &&
+    end.result?.failed === false
   );
 }
 
@@ -156,43 +181,6 @@ export function turnEnvironment(
   return environment;
 }
 
-function turnCommand(start: TurnStart): {
-  readonly parts: readonly string[];
-  readonly standardInput: string | undefined;
-} {
-  if (start.output === "text")
-    return {
-      parts: start.command.map((part) =>
-        part === "{prompt}" ? start.prompt : part,
-      ),
-      standardInput: start.command.includes("{prompt}")
-        ? undefined
-        : start.prompt,
-    };
-  if (start.worker === "opencode")
-    return {
-      parts: [...start.command, start.prompt],
-      standardInput: undefined,
-    };
-  if (
-    start.worker === "cursor-agent" &&
-    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
-  )
-    return {
-      parts: [...start.command, start.prompt],
-      standardInput: undefined,
-    };
-  if (start.worker !== "grok")
-    return { parts: start.command, standardInput: start.prompt };
-  const command = [...start.command];
-  const index = command.findIndex(
-    (argument, position) =>
-      position > 0 && ["-p", "--single"].includes(argument),
-  );
-  command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
-  return { parts: command, standardInput: undefined };
-}
-
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
@@ -221,11 +209,7 @@ function spawnTurn(start: TurnStart): {
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return {
-      child,
-      configuration,
-      standardInput,
-    };
+    return { child, configuration, standardInput };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;

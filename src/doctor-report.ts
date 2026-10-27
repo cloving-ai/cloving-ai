@@ -1,3 +1,5 @@
+import { hasTicketField, type SubmissionContract } from "./submission.ts";
+
 export const doctorCodes = [
   "git-repository",
   "node-version",
@@ -65,6 +67,7 @@ export interface DoctorWorkflow {
   readonly scope: "bundled" | "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
+  readonly input?: SubmissionContract;
 }
 
 export function requiredDoctorCodes(
@@ -92,6 +95,7 @@ export function requiredDoctorCodes(
     codes.add("queue-interval");
   }
   if (
+    workflows.some((workflow) => hasTicketField(workflow.input)) ||
     bundled.some((name) => ["develop-ticket", "develop-issue"].includes(name))
   )
     codes.add("ticket-command");

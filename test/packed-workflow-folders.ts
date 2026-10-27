@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { withFiles } from "./quality/files-fixture.ts";
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
 import { validCandidateSource } from "./workflow-candidate-fixtures.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 export async function packedWorkflowFolders(root: string): Promise<void> {
   const files = {
@@ -37,7 +38,7 @@ process.stdout.write(JSON.stringify({
 }));
 `,
       ],
-      { cwd: root, encoding: "utf8", timeout: 30000 },
+      { cwd: root, encoding: "utf8", timeout: testMilliseconds(30000) },
     );
     const value: unknown = JSON.parse(output);
     assert.deepEqual(value, {

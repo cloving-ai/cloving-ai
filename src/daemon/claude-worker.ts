@@ -11,7 +11,7 @@ import type {
   DeliveryIntent,
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
-import { type RunningTurn, type TurnEnd } from "./claude-turn.ts";
+import { succeeded, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
 import { turnReport } from "./turn-report.ts";
 import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import {
@@ -57,7 +57,10 @@ const worker = "claude";
 interface Active {
   readonly turn: Promise<RunningTurn>;
   readonly concluded: Promise<void>;
-  readonly stopping: { requested: boolean };
+  readonly stopping: {
+    requested: boolean;
+    readonly controller: AbortController;
+  };
 }
 
 interface Parts {
@@ -129,17 +132,13 @@ async function outcome(
           result,
         );
   const { text, reason } = report;
-  if (
-    reason === undefined &&
-    text !== undefined &&
-    end.exitCode === 0 &&
-    result?.failed === false
-  )
+  if (succeeded(end) && reason === undefined && text !== undefined)
     return { outcome: "completed", result: text, endedAt };
   if (running.stopping.requested) return { outcome: "stopped", endedAt };
   return {
     outcome: "failed",
-    reason: reason ?? "claude-turn-failed",
+    reason: end.reason ?? reason ?? "claude-turn-failed",
+    ...(end.detail === undefined ? {} : { detail: end.detail }),
     ...(text === undefined ? {} : { result: text }),
     endedAt,
   };
@@ -166,6 +165,7 @@ async function begun(
 ): Promise<void> {
   const { intent, key, folder, tree, prompt } = start;
   const { harness } = start;
+  const stopping = { requested: false, controller: new AbortController() };
   const turn = startRetriedTurn(
     {
       ...harness,
@@ -179,6 +179,7 @@ async function begun(
     },
     {
       ...parts.settings,
+      stopping: stopping.controller,
       metadata: {
         harness: harness.worker,
         operationId: intent.operationId,
@@ -189,7 +190,6 @@ async function begun(
       },
     },
   );
-  const stopping = { requested: false };
   parts.active.set(key, {
     turn,
     stopping,
@@ -329,6 +329,7 @@ async function delivered(
 
 async function halted(parts: Parts, active: Active): Promise<void> {
   active.stopping.requested = true;
+  active.stopping.controller.abort();
   const turn = await active.turn.catch(() => undefined);
   turn?.stop(parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds);
   await active.concluded;

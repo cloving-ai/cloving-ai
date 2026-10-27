@@ -67,7 +67,9 @@ function isField(value: unknown): value is SubmissionField {
     return false;
   if (fields["type"] === "integer") return integerBounds(fields);
   return (
-    (fields["type"] === "string" || fields["type"] === "boolean") &&
+    (fields["type"] === "string" ||
+      fields["type"] === "boolean" ||
+      fields["type"] === "ticket") &&
     !Object.hasOwn(fields, "minimum") &&
     !Object.hasOwn(fields, "maximum")
   );
@@ -80,7 +82,10 @@ function isInput(value: unknown): value is SubmissionContract {
   return (
     integer(input["maximumBytes"], { minimum: 1, maximum: 1_048_576 }) &&
     fields !== undefined &&
-    Object.values(fields).every(isField)
+    Object.entries(fields).every(
+      ([name, rule]) =>
+        isField(rule) && (rule.type !== "ticket" || name === "ticket"),
+    )
   );
 }
 
