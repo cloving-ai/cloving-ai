@@ -247,6 +247,21 @@ async function usableShellHarness(
   );
 }
 
+const envOptionsWithValue = ["-u", "--unset", "-C", "--chdir"];
+
+function unwrappedCommand(command: readonly string[]): readonly string[] {
+  if (basename(command[0] ?? "") !== "env") return command;
+  let index = 1;
+  while (index < command.length) {
+    const part = command[index] ?? "";
+    if (envOptionsWithValue.includes(part)) index += 2;
+    else if (part.startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(part))
+      index += 1;
+    else return command.slice(index);
+  }
+  return command;
+}
+
 async function selectedProbe(
   selected: ReturnType<typeof turnHarness>,
   location: HarnessCommandLocation,
@@ -263,7 +278,7 @@ async function selectedProbe(
         detail: `${JSON.stringify(selected.command)} through the login shell ${shell}`,
       },
     };
-  const command = JSON.stringify(selected.command);
+  const command = JSON.stringify(unwrappedCommand(selected.command));
   return {
     usable: await usableHarnessCommand(command, {
       ...location,
