@@ -118,15 +118,21 @@ function attemptUsage(
   const { end, attempt } = completion;
   const model = end.result?.model ?? attemptCommand(attempts, attempt).model;
   const usage = end.result?.usage ?? usageOf(null);
+  const worker = attempts.start.worker ?? "claude";
+  const models = end.result?.models;
+  const prices = attempts.options.tokenPrices ?? {};
   return {
     attempt,
     model,
+    ...(end.result?.models === undefined ? {} : { models: end.result.models }),
     usage,
     costUsd: end.result?.costUsd ?? null,
-    estimatedCostUsd: estimatedCostUsd(usage, {
-      worker: attempts.start.worker ?? "claude",
-      price: priceForModel(attempts.options.tokenPrices ?? {}, model),
-    }),
+    estimatedCostUsd: estimatedCostUsd(
+      usage,
+      worker === "gemini" && models !== undefined
+        ? { worker, models, prices }
+        : { worker, price: priceForModel(prices, model) },
+    ),
   };
 }
 
@@ -249,6 +255,7 @@ async function finished(
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
+      attempts.start.worker === "gemini" ||
       !capacityRefusal(end.result) ||
       milliseconds === undefined
     )

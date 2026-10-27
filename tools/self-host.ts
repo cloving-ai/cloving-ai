@@ -113,7 +113,7 @@ const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
 
-function selectedWorker(): "claude" | "codex" {
+function selectedWorker(): NativeHarness {
   return nativeWorker(environment["CLOVING_WORKER"] ?? "claude");
 }
 
@@ -286,9 +286,7 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].flatMap((name) => {
-      const command = listed(
-        name === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND",
-      );
+      const command = listed(`CLOVING_${name.toUpperCase()}_COMMAND`);
       return command === undefined ? [] : [[name, command]];
     }),
   );

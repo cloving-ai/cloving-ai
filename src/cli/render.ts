@@ -213,7 +213,26 @@ function workerLines(value: unknown): readonly string[] {
       ? [`  Harness: ${visible(part(turn, "harness"))}`]
       : []),
     `  ${usageText(part(turn, "usage"))}`,
+    ...(typeof part(turn, "model") === "string"
+      ? [`  Model: ${visible(part(turn, "model"))}`]
+      : []),
+    ...modelLines(part(turn, "attempts")),
+    ...(typeof part(turn, "summary") === "string"
+      ? [`  Report: ${visible(part(turn, "summary"))}`]
+      : []),
   ]);
+}
+
+function modelLines(attempts: unknown): readonly string[] {
+  if (!Array.isArray(attempts)) return [];
+  return attempts.flatMap((attempt: unknown) => {
+    const models = part(attempt, "models");
+    if (!Array.isArray(models)) return [];
+    return models.map(
+      (model: unknown) =>
+        `  ${visible(part(model, "model"))}: ${usageText(part(model, "usage"))}`,
+    );
+  });
 }
 
 export function statusJson(result: Fields): Fields {

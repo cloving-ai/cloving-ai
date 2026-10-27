@@ -1,4 +1,10 @@
-import { priceOf, usageOf, type WorkerUsage } from "./worker-usage.ts";
+import {
+  priceOf,
+  sumPrices,
+  usageOf,
+  type WorkerUsage,
+  type WorkerModelUsage,
+} from "./worker-usage.ts";
 import { record } from "./protocol.ts";
 
 export interface TokenPrice {
@@ -119,11 +125,26 @@ export function replaceCommandModel(
 
 export function estimatedCostUsd(
   usage: WorkerUsage,
-  pricing: {
-    readonly worker: "claude" | "codex";
-    readonly price: TokenPrice | undefined;
-  },
+  pricing:
+    | {
+        readonly worker: "claude" | "codex" | "gemini";
+        readonly price: TokenPrice | undefined;
+      }
+    | {
+        readonly worker: "gemini";
+        readonly models: readonly WorkerModelUsage[];
+        readonly prices: TokenPrices;
+      },
 ): number | null {
+  if ("models" in pricing)
+    return sumPrices(
+      pricing.models.map(({ model, usage: counts }) =>
+        estimatedCostUsd(counts, {
+          worker: "gemini",
+          price: priceForModel(pricing.prices, model),
+        }),
+      ),
+    );
   const { worker, price } = pricing;
   const counts = usageOf(usage);
   const cached = counts.cache_read_input_tokens;
@@ -135,7 +156,7 @@ export function estimatedCostUsd(
     output === null
   )
     return null;
-  const input = counts.input_tokens - (worker === "codex" ? cached : 0);
+  const input = counts.input_tokens - (worker === "claude" ? 0 : cached);
   if (input < 0) return null;
   return priceOf(
     (input / 1_000_000) * price.input +

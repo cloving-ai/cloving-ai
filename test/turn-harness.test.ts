@@ -74,13 +74,13 @@ await test("CLV-210 matching harness commands precede saved commands and saved p
 
 await test("CLV-210 unsupported harnesses identify the missing worker", () => {
   for (const settings of [
-    { worker: "gemini" },
-    { harness: { name: "gemini" } },
+    { worker: "unsupported" },
+    { harness: { name: "unsupported" } },
   ])
     assert.throws(() => turnHarness(settings), {
-      message: "harness-no-worker: gemini",
+      message: "harness-no-worker: unsupported",
     });
-  assert.throws(() => turnHarness({}, { harness: "gemini" }), {
-    message: "harness-no-worker: gemini",
+  assert.throws(() => turnHarness({}, { harness: "unsupported" }), {
+    message: "harness-no-worker: unsupported",
   });
 });

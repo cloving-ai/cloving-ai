@@ -25,14 +25,16 @@ const folder = process.env.GH_CONFIG_DIR;
 const names = ${JSON.stringify(names)};
 const result = { folder, entries: folder ? readdirSync(folder) : null, tokens: names.filter((name) => name in process.env) };
 if (folder) writeFileSync(join(folder, "hosts.yml"), "left over from a turn");
-const message = process.argv[1] === "codex"
+const message = process.argv[1] === "gemini"
+  ? { type: "message", role: "assistant", content: JSON.stringify(result) }
+  : process.argv[1] === "codex"
   ? { type: "item.completed", item: { type: "agent_message", text: JSON.stringify(result) } }
   : { type: "result", result: JSON.stringify(result) };
 process.stdout.write(JSON.stringify(message) + "\\n");
-process.stdout.write(JSON.stringify({ type: "turn.completed" }) + "\\n");
+process.stdout.write(JSON.stringify({ type: process.argv[1] === "gemini" ? "result" : "turn.completed", status: "success" }) + "\\n");
 `;
 
-await test("CLV-075 CLV-083 each Claude and Codex turn starts with empty gh configuration and no GitHub tokens", async () => {
+await test("CLV-075 CLV-083 each Claude, Codex and Gemini turn starts with empty gh configuration and no GitHub tokens", async () => {
   const directory = mkdtempSync(join(tmpdir(), "cloving-turn-env-"));
   const saved = { ...process.env };
   try {
@@ -41,7 +43,14 @@ await test("CLV-075 CLV-083 each Claude and Codex turn starts with empty gh conf
     writeFileSync(join(config, "hosts.yml"), "operator credential");
     process.env["GH_CONFIG_DIR"] = config;
     for (const name of names) process.env[name] = "test-credential";
-    for (const worker of ["claude", "claude", "codex", "codex"] as const) {
+    for (const worker of [
+      "claude",
+      "claude",
+      "codex",
+      "codex",
+      "gemini",
+      "gemini",
+    ] as const) {
       const running = startTurn({
         worker,
         command: [
@@ -132,7 +141,7 @@ alias turn_alias='turn_worker'
 `;
       writeFileSync(join(directory, ".bash_profile"), startup);
       writeFileSync(join(directory, ".zshrc"), startup);
-      for (const worker of ["claude", "codex"] as const) {
+      for (const worker of ["claude", "codex", "gemini"] as const) {
         for (const prefix of [[], ["turn_worker"], ["turn_alias"]]) {
           const running = startTurn({
             worker,

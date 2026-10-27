@@ -1,6 +1,7 @@
 import { record, type Fields } from "../protocol.ts";
 import {
   priceOf,
+  modelUsageOf,
   usageOf,
   tokenCount,
   workerTotals,
@@ -24,6 +25,7 @@ function attemptsOf(value: unknown): readonly WorkerAttemptUsage[] | undefined {
     const fields = record(entry) ?? {};
     const attempt = tokenCount(fields["attempt"]);
     const model = fields["model"];
+    const models = modelUsageOf(fields["models"]);
     if (
       attempt === null ||
       attempt === 0 ||
@@ -34,6 +36,7 @@ function attemptsOf(value: unknown): readonly WorkerAttemptUsage[] | undefined {
       {
         attempt,
         model,
+        ...(models === undefined ? {} : { models }),
         usage: usageOf(fields["usage"]),
         costUsd: priceOf(fields["costUsd"]),
         estimatedCostUsd: priceOf(fields["estimatedCostUsd"]),
@@ -62,10 +65,14 @@ export async function usageTotals(
         : await queries.document(operation.result),
     );
     const attempts = attemptsOf(report["attempts"]);
+    const model = report["model"];
+    const summary = report["summary"];
     const harness =
       report["harness"] ??
       (await context.workerHarness?.(operation.operationId));
     turns.push({
+      ...(typeof model === "string" ? { model } : {}),
+      ...(typeof summary === "string" ? { summary } : {}),
       ...(typeof harness === "string" ? { harness } : {}),
       ...(attempts === undefined ? {} : { attempts }),
       operationId: operation.operationId,

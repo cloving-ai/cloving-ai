@@ -1164,7 +1164,11 @@
     "test/config-notice.test.ts": "test",
     "src/harness-defaults.ts": "pure",
     "test/config-boundaries.test.ts": "test",
-    "test/config-io.test.ts": "test"
+    "test/config-io.test.ts": "test",
+    "src/daemon/gemini-stream.ts": "daemon",
+    "test/gemini-fixture.ts": "test",
+    "test/gemini-worker.test.ts": "test",
+    "test/gemini-status.test.ts": "test"
   },
   "allowed": {
     "quality": [

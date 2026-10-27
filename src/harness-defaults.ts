@@ -20,7 +20,21 @@ export const defaultCodexCommand = [
   "-",
 ];
 
-export type NativeHarness = "claude" | "codex";
+export const defaultGeminiCommand = [
+  "gemini",
+  "--output-format",
+  "stream-json",
+  "--approval-mode",
+  "yolo",
+];
+
+export type NativeHarness = "claude" | "codex" | "gemini";
+
+const defaultCommands = {
+  claude: defaultCommand,
+  codex: defaultCodexCommand,
+  gemini: defaultGeminiCommand,
+};
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -56,7 +70,7 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = name === "codex" ? defaultCodexCommand : defaultCommand;
+  const defaults = defaultCommands[name];
   return [saved.path ?? name, ...defaults.slice(1)];
 }
 
@@ -70,7 +84,7 @@ export function turnHarness(
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  if (name !== "claude" && name !== "codex")
+  if (name !== "claude" && name !== "codex" && name !== "gemini")
     throw new Error(`harness-no-worker: ${name}`);
   const saved = matchingHarness(settings, name);
   return {

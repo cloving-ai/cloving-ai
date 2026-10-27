@@ -5,6 +5,8 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly model?: string;
+  readonly summary?: string;
   readonly harness?: string;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly estimatedCostUsd: number | null;
@@ -14,11 +16,28 @@ export interface WorkerTurnUsage {
 }
 
 export interface WorkerAttemptUsage {
+  readonly models?: readonly WorkerModelUsage[];
   readonly attempt: number;
   readonly model: string | null;
   readonly usage: WorkerUsage;
   readonly costUsd: number | null;
   readonly estimatedCostUsd: number | null;
+}
+
+export interface WorkerModelUsage {
+  readonly model: string;
+  readonly usage: WorkerUsage;
+}
+
+export function modelUsageOf(
+  value: unknown,
+): readonly WorkerModelUsage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry: unknown) => {
+    const model: unknown = Reflect.get(Object(entry), "model");
+    if (typeof model !== "string") return [];
+    return [{ model, usage: usageOf(Reflect.get(Object(entry), "usage")) }];
+  });
 }
 
 export interface WorkerTotals {

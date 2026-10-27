@@ -2,18 +2,23 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
+import { geminiStream } from "./gemini-stream.ts";
+import type { NativeHarness } from "../harness-defaults.ts";
 import {
   priceOf,
+  modelUsageOf,
   usageOf,
   type WorkerUsage,
   type WorkerAttemptUsage,
+  type WorkerModelUsage,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 
-export type Worker = "claude" | "codex";
+export type Worker = NativeHarness;
 
 export interface StreamResult {
+  readonly models?: readonly WorkerModelUsage[];
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly subtype?: string;
   readonly errorType?: string;
@@ -91,7 +96,9 @@ export function streamResult(line: string): StreamResult | undefined {
   const record: unknown = parsed(line);
   const field = (name: string): unknown => Reflect.get(Object(record), name);
   if (field("type") !== "result") return undefined;
+  const models = modelUsageOf(field("models"));
   return {
+    ...(models === undefined ? {} : { models }),
     ...(typeof field("subtype") === "string"
       ? { subtype: String(field("subtype")) }
       : {}),
@@ -145,9 +152,13 @@ function spawnTurn(start: TurnStart): {
   readonly configuration: string;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
+  const parts =
+    start.worker === "gemini"
+      ? [...start.command, "-p", start.prompt]
+      : start.command;
   const command =
     start.shell === undefined
-      ? start.command
+      ? parts
       : [
           start.shell,
           "-l",
@@ -156,7 +167,7 @@ function spawnTurn(start: TurnStart): {
           shellTurnScript,
           "cloving-harness",
           configuration,
-          ...start.command,
+          ...parts,
         ];
   const [executable = "", ...fixed] = command;
   try {
@@ -207,7 +218,7 @@ function turnOutput(
   stdout: ChildProcessWithoutNullStreams["stdout"],
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
-  const codex = start.worker === "codex" ? codexStream() : undefined;
+  const translated = nativeStream(start.worker);
   const stream: Stream = {
     pending: "",
     result: undefined,
@@ -223,22 +234,22 @@ function turnOutput(
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (codex === undefined) output.write(chunk);
+    if (translated === undefined) output.write(chunk);
     const lines = `${stream.pending}${chunk}`.split("\n");
     stream.pending = lines.pop() ?? "";
-    if (codex !== undefined) {
-      written(lines.flatMap(codex.line));
+    if (translated !== undefined) {
+      written(lines.flatMap(translated.line));
       return;
     }
     received(lines);
   });
   return async (exitCode) => {
-    if (codex !== undefined) {
-      written(codex.line(stream.pending));
-      written([codex.result(exitCode)]);
+    if (translated !== undefined) {
+      written(translated.line(stream.pending));
+      written([translated.result(exitCode)]);
     }
     await ended(output);
-    if (codex === undefined) received([stream.pending]);
+    if (translated === undefined) received([stream.pending]);
     const result = stream.result;
     return result === undefined
       ? undefined
@@ -247,6 +258,12 @@ function turnOutput(
           model: result.model ?? stream.model ?? commandModel(start.command),
         };
   };
+}
+
+function nativeStream(worker: Worker | undefined) {
+  if (worker === "codex") return codexStream();
+  if (worker === "gemini") return geminiStream();
+  return undefined;
 }
 
 function signalTurn(
@@ -275,7 +292,7 @@ export function startTurn(start: TurnStart): RunningTurn {
   const output = turnOutput(start, child.stdout);
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
-  child.stdin.end(start.prompt);
+  child.stdin.end(start.worker === "gemini" ? undefined : start.prompt);
   const closed = new Promise<number | null>((settle) => {
     child.once("error", () => undefined);
     child.once("close", settle);
