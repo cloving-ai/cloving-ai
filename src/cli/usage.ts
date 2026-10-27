@@ -16,6 +16,11 @@ Private files, backups and temporary files have mode 0600. Changes require a ser
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
+  doctor: `Usage: cloving doctor [--json] [--repository <directory>]
+
+Checks repository requirements without repairs, model turns or GitHub writes.
+Required failures or skipped prerequisites exit with status 1.
+`,
   report: `Usage: cloving report [--since <hours>] [--json]
 
 Reads loop facts without writing state. Hours are a whole number from 1 to 168; default 24.
@@ -127,6 +132,7 @@ Commands:
   workflows list      List bundled, project and user workflows and refusal codes.
   workflows test      Run project and user workflow tests without a service.
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
+  doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
   report     Report loop facts and seven-day baselines.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createProbeRunner } from "./cli/probe-command.ts";
 import { settingsEnvironment } from "./cli/project-settings.ts";
 import { addAbortListener } from "node:events";
 import { execFile, execFileSync, spawn } from "node:child_process";
@@ -229,6 +230,10 @@ else {
   await main(process.argv.slice(2), {
     repository,
     environment,
+    doctorProbe: createProbeRunner({
+      spawn: (input) => spawn(input.executable, input.arguments, input.options),
+      kill: (identifier, signal) => process.kill(identifier, signal),
+    }),
     watchPr: {
       repository: process.env["CLOVING_WATCH_REPOSITORY"],
       githubCommand: environment["CLOVING_GH_COMMAND"],
