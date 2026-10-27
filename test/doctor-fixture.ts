@@ -3,6 +3,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
 
@@ -143,6 +144,18 @@ export async function settings(scene: DoctorScene, value: unknown) {
   const path = join(scene.repository, ".cloving/config.json");
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(value));
+}
+
+export async function savedHarness(
+  scene: DoctorScene,
+  harness: { readonly kind: "file" | "shell"; readonly path: string },
+) {
+  const file = privateSettingsPath(scene.environment, scene.repository);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(
+    file,
+    JSON.stringify({ version: 1, harness: { name: "claude", ...harness } }),
+  );
 }
 
 export async function githubReads(scene: DoctorScene) {

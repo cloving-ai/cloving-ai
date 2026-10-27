@@ -6,6 +6,11 @@ import {
 import { access, constants, stat } from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import {
+  shellArguments,
+  shellBlock,
+  shellProbeScript,
+} from "../agent-harness-shell.ts";
+import {
   harnessDefinition,
   harnessVersion,
 } from "../agent-harness-versions.ts";
@@ -284,20 +289,18 @@ async function usableShellHarness(
 ): Promise<boolean> {
   const output = await location.probe(selected.shell, {
     arguments: [
-      "-l",
-      "-i",
-      "-c",
-      'exec "$@"',
-      "cloving-harness",
+      ...shellArguments("login"),
+      shellProbeScript,
+      "cloving-harness-probe",
       selected.command[0] ?? selected.worker,
-      "--version",
+      "shell",
     ],
     env: location.commandEnvironment,
   });
   return (
     output.reason === null &&
     harnessVersion(
-      output.stdout,
+      shellBlock(output.stdout, 0) ?? "",
       harnessDefinition(selected.worker).versionPattern,
     ) !== null
   );
