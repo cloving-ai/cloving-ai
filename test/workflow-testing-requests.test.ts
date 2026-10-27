@@ -53,6 +53,7 @@ function requestDetails([kind, request]: ScenarioRequest) {
     case "effect":
       return [request.capability, request.scope.stage?.visit, request.resource];
     case "gate":
+    case "waitForDecision":
       return request.expiresAt;
     case "handoff":
       return request.input;

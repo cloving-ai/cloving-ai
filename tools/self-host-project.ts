@@ -69,8 +69,17 @@ async function initializeProject(
   for (const file of files) await copyWorkflow(settings, file);
   const modules = join(project, "node_modules");
   await mkdir(join(modules, "cloving"), { recursive: true });
-  for (const name of Object.keys(packageMetadata.dependencies)) {
-    const location = findPackageJSON(name, join(product, "package.json"));
+  const dependencies = new Map(
+    Object.keys(packageMetadata.dependencies).map(
+      (name) => [name, join(product, "package.json")] as const,
+    ),
+  );
+  const sdk = findPackageJSON("workflow", join(product, "package.json"));
+  if (sdk === undefined)
+    throw new Error("missing-runtime-dependency: workflow");
+  dependencies.set("@workflow/core", sdk);
+  for (const [name, from] of dependencies) {
+    const location = findPackageJSON(name, from);
     if (location === undefined)
       throw new Error(`missing-runtime-dependency: ${name}`);
     await mkdir(dirname(join(modules, name)), { recursive: true });

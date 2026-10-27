@@ -23,7 +23,7 @@ import {
   type Move,
 } from "./transitions.ts";
 
-export { gateContinuation } from "./gate-reduction.ts";
+export { gateContinuation, gateDelivery } from "./gate-reduction.ts";
 export type { Reduction } from "./reduction-state.ts";
 
 function moved(type: Move): Handler {

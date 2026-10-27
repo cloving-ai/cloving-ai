@@ -42,6 +42,7 @@ export interface DeliveryParts {
 const eligibleStatus: Readonly<Record<string, string>> = {
   "start-run": "queued",
   "continue-run": "running",
+  "resume-hook": "running",
 };
 
 interface RunAttempt {

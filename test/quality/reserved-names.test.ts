@@ -266,6 +266,16 @@ await test("CLV-054 the protected check of the product tree has the reserved nam
   assert.ok(reserved);
   assert.deepEqual(reserved.names, [
     {
+      file: "/candidate/node_modules/@workflow/core/dist/create-hook.d.ts",
+      name: "createHook",
+      users: ["/candidate/src/steps/wait-for-decision.ts"],
+    },
+    {
+      file: "/candidate/node_modules/@workflow/core/dist/runtime/resume-hook.d.ts",
+      name: "resumeHook",
+      users: ["/candidate/src/host/decision-resume.ts"],
+    },
+    {
       file: `${actorLibrary}transmit.d.ts`,
       name: "registerTransmit",
       users: [],

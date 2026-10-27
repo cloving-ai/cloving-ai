@@ -323,6 +323,21 @@ await test("CLV-054 the protected check of the product tree has the reserved mem
   assert.ok(reserved);
   assert.deepEqual(reserved.members, reservedMembers);
   assert.deepEqual(reserved.imports, {
+    "/candidate/node_modules/workflow/dist/api.d.ts": [
+      "/candidate/src/host/decision-resume.ts",
+      "/candidate/src/host/start-delivery.ts",
+      "/candidate/src/host/world-runs.ts",
+    ],
+    "/candidate/node_modules/workflow/dist/runtime.d.ts": [
+      "/candidate/src/host/decision-resume.ts",
+      "/candidate/src/host/world-host.ts",
+      "/candidate/src/host/world-runs.ts",
+    ],
+    "/candidate/node_modules/workflow/dist/index.d.ts": [
+      "/candidate/src/host/step-bridge-host.ts",
+      "/candidate/src/host/run-wait.ts",
+      "/candidate/src/steps/wait-for-decision.ts",
+    ],
     [`${actorDirectory}authority-delivery.ts`]: [
       `${actorDirectory}authority-runtime.ts`,
     ],

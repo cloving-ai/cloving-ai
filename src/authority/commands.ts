@@ -69,10 +69,12 @@ const shapes: Readonly<Record<string, Shape>> = {
   "mark-started": revised,
   "open-gate": {
     required: ["gateId", "expectedRevision"],
-    optional: ["gateKind", "subject", "prompt", "expiresAt"],
+    optional: ["gateKind", "subject", "prompt", "expiresAt", "waitMode"],
+    validators: { waitMode: (value) => value === "hook" },
     groups: [["gateKind", "subject", "prompt"]],
     consistent: (fields) =>
-      fields["expiresAt"] === undefined || fields["gateKind"] !== undefined,
+      (fields["expiresAt"] === undefined && fields["waitMode"] === undefined) ||
+      fields["gateKind"] !== undefined,
   },
   "register-wait": { required: ["gateId"] },
   "decide-gate": {
