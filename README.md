@@ -672,6 +672,20 @@ export async function review(input: { cycleId: string }) {
 
 `waitForDecision` accepts the same request as `decisionGate` and returns `{ decision, answer }`. The decision is `approved`, `denied`, `answered` or `expired`. An optional `expiresAt` resumes the wait with `expired` and `answer: null`. The SDK hook survives daemon restarts and replay. Gate IDs belong to a run, so different runs can use the same gate ID. The existing questions, decision commands and binding values apply; dropping the run cancels the wait. `waitForDecision` is also exported by `cloving/workflows`.
 
+Use `reviewByPerson` to request approval of an immutable commit or draft:
+
+```ts
+import { reviewByPerson } from "cloving/workflows/steps/review-by-person";
+
+const review = await reviewByPerson({
+  subject: { draft: "The proposed issue text." },
+});
+```
+
+Call it inside a workflow. The result is `{ accepted, feedback, commit, subjectDigest }`; only an approval sets `accepted` to `true`. Feedback contains the decision's answer, or an empty string. A commit subject is `{ commit, target }`, where `commit` is the full 40 or 64 character lowercase commit ID and `target` identifies the run's work tree. To review an existing pull, supply its `commit` together with the run target. A draft subject is `{ draft, commit? }`, where the optional commit identifies its base; the result's `commit` is always `null` for a draft. Drafts must contain text, and commit subjects need a nonempty target.
+
+The SHA-256 `subjectDigest` identifies the exact subject, including a draft's text and optional base commit. A changed subject opens a different approval. Repeating the same subject within a run reuses its recorded decision. The helper returns that decision in the original call through `waitForDecision`, and is also exported by `cloving/workflows`. Workflow tests supply its decisions through the fake bridge's `decisions` queue; person reviews consume no protected effect budget.
+
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
 Use `cloving workflows list` to inspect bundled, project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.

@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { gateKey } from "../authority/gates.ts";
 import { decisionToken } from "../decision-wait.ts";
-import type { GateRequest, GateResult } from "../step-bridge.ts";
+import { record } from "../protocol.ts";
+import type {
+  DecisionResult,
+  DecisionWait,
+  GateRequest,
+  GateResult,
+} from "../step-bridge.ts";
 
 export interface GateReceipt {
   readonly kind: string;
@@ -53,6 +59,19 @@ interface GateHold {
 
 const committed = ["accepted", "duplicate"];
 
+function promptDigest(request: GateRequest): string {
+  return `sha256:${createHash("sha256").update(request.prompt).digest("hex")}`;
+}
+
+function sameHookSubject(value: unknown, request: GateRequest): boolean {
+  const gate = record(value);
+  return (
+    gate?.["subject"] === promptDigest(request) &&
+    gate["kind"] === request.kind &&
+    gate["wait"] === "hook"
+  );
+}
+
 async function paused(hold: GateHold, milliseconds: number): Promise<void> {
   await delay(milliseconds, undefined, { signal: hold.ports.stopped }).catch(
     () => undefined,
@@ -101,8 +120,15 @@ async function opening(
   const state = await hold.ports.state();
   const run = state.runs[runId];
   if (run === undefined) return { kind: "rejected", reason: "unknown-run" };
-  if (Object.hasOwn(state.gates, gateKey(runId, gateId)))
+  const key = gateKey(runId, gateId);
+  if (Object.hasOwn(state.gates, key)) {
+    if (
+      subject.waitMode === "hook" &&
+      !sameHookSubject(state.gates[key], request)
+    )
+      return { kind: "rejected", reason: "gate-subject-changed" };
     return { kind: "duplicate" };
+  }
   return await hold.ports.openGate({
     ...(subject.waitMode === undefined ? {} : { waitMode: subject.waitMode }),
     runId,
@@ -111,7 +137,7 @@ async function opening(
     gateId,
     kind,
     prompt,
-    subject: `sha256:${createHash("sha256").update(prompt).digest("hex")}`,
+    subject: promptDigest(request),
     ...(request.expiresAt === undefined
       ? {}
       : { expiresAt: request.expiresAt }),
@@ -141,4 +167,54 @@ export async function openBridgeGate(
     }),
   );
   return waited ?? { kind: "opened", decisionId: subject.request.gateId };
+}
+
+export async function waitForBridgeDecision(
+  ports: GatePorts & {
+    readonly document: (digest: string) => Promise<string | undefined>;
+    readonly decisionReceived: (
+      runId: string,
+      gateId: string,
+    ) => Promise<boolean>;
+  },
+  subject: GateSubject,
+): Promise<DecisionWait> {
+  const hold = {
+    ports,
+    timing: ports.timing ?? { pollMilliseconds: 20, retryMilliseconds: 1000 },
+  };
+  await paused(hold, 0);
+  const state = await ports.state();
+  const key = gateKey(subject.runId, subject.request.gateId);
+  const gate = state.gates[key];
+  if (
+    Object.hasOwn(state.gates, key) &&
+    !sameHookSubject(gate, subject.request)
+  )
+    throw new Error("gate-subject-changed");
+  const outcome = record(record(gate)?.["outcome"]);
+  if (
+    outcome !== undefined &&
+    (await ports.decisionReceived(subject.runId, subject.request.gateId))
+  )
+    return await storedDecision(ports, outcome);
+  const opening = await openBridgeGate(ports, { ...subject, waitMode: "hook" });
+  if (opening.kind !== "opened") throw new Error(opening.reason);
+  return { token: opening.decisionId };
+}
+
+async function storedDecision(
+  ports: { readonly document: (digest: string) => Promise<string | undefined> },
+  outcome: Readonly<Record<string, unknown>>,
+): Promise<DecisionResult> {
+  const decision = (
+    ["approved", "denied", "answered", "expired"] as const
+  ).find((value) => value === outcome["decision"]);
+  if (decision === undefined) throw new Error("invalid-decision-outcome");
+  const digest = outcome["answer"];
+  if (digest !== null && typeof digest !== "string")
+    throw new Error("invalid-decision-answer");
+  const answer = digest === null ? null : await ports.document(digest);
+  if (answer === undefined) throw new Error("missing-decision-answer");
+  return { decision, answer };
 }
