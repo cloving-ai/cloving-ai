@@ -25,13 +25,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
+import { reviewByPerson } from "cloving/workflows/steps/review-by-person";
 import { personal } from "./personal.ts";
 await test("global user scenario", async () => {
-  using bridge = fakeStepBridge({ decisions: [{ decision: "approved", answer: null }], turn: { kind: "completed", operationId: "user", receipt: null, result: "user-result" } });
+  using bridge = fakeStepBridge({ decisions: [{ decision: "approved", answer: null }, { decision: "denied", answer: "Revise the draft." }], turn: { kind: "completed", operationId: "user", receipt: null, result: "user-result" } });
   assert.equal((await personal()).result, "user-result");
   assert.deepEqual(await waitForDecision({ gateId: "review", kind: "approval", prompt: "Approve?" }), { decision: "approved", answer: null });
   assert.equal(bridge.requests.length, 2);
   assert.equal(bridge.requests[1][0], "waitForDecision");
+  const review = await reviewByPerson({ subject: { draft: "The packed draft." } });
+  assert.deepEqual({ ...review, subjectDigest: "digest" }, { accepted: false, feedback: "Revise the draft.", commit: null, subjectDigest: "digest" });
+  assert.match(review.subjectDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(bridge.requests[2][0], "waitForDecision");
 });`,
 };
 
