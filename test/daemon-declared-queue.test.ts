@@ -126,7 +126,7 @@ process.exit(0);
   }));
 
 for (const retained of [false, true]) {
-  await test(`CLV-218 moving the queue after a crash preserves old lanes and tickets with old registration ${String(retained)}`, () =>
+  await test(`CLV-218 moving the queue after a crash preserves and releases old lanes and tickets with old registration ${String(retained)}`, () =>
     withConsumer(queueWorkflow, async (consumer) => {
       const first = await consumer.runUntil(
         "old-queue",
@@ -153,6 +153,15 @@ try {
   assert.equal((await submitted("old-ticket", { workflowId: "other", submission: { ticket: "900" } })).code, "ticket-active");
   assert.equal((await submitted("old-lane", { workflowId: "other", submission: { ticket: "902" } })).code, "workflow-active");
   assert.equal((await asked("status")).queue.busy, 2);
+  const prior = (await runs()).find(run => run.workflowId === "develop");
+  writeFileSync("next.mjs", 'process.stdout.write("902");');
+  writeFileSync("outcome-900", "blocked");
+  await until(async () => (await shown(prior.runId)).state === "completed");
+  await until(async () => (await runs()).length === 3);
+  const status = await asked("status");
+  assert.equal(status.queue.busy, 2);
+  assert.deepEqual(status.queue.skipped.map(item => item.ticketId).sort(), ["901", "902"]);
+  assert.deepEqual(status.runs.map(run => run.workflowId).sort(), ["develop", "other", "other"]);
 } finally { await daemon.close(); }
 process.exit(0);
 `);
