@@ -10,9 +10,11 @@ interface RuntimeSelection {
   readonly adoptionRecord: string | undefined;
 }
 
-export async function adoptRuntimeDirectory(
-  input: RuntimeSelection,
-): Promise<{ readonly runtime: string; readonly note: string }> {
+export async function selectRuntimeDirectory(input: RuntimeSelection): Promise<{
+  readonly runtime: string;
+  readonly note: string;
+  readonly adoptionRecord?: string;
+}> {
   const { runtime, repository, legacyRuntime, adoptionRecord } = input;
   if (
     legacyRuntime === undefined ||
@@ -26,6 +28,18 @@ export async function adoptRuntimeDirectory(
       runtime,
       note: `Legacy runtime ${legacyRuntime} was not adopted: retained bundles are absent, damaged or belong to another repository.`,
     };
+  return { runtime: legacyRuntime, note: "", adoptionRecord };
+}
+
+export async function adoptRuntimeDirectory(
+  input: RuntimeSelection,
+): Promise<{ readonly runtime: string; readonly note: string }> {
+  const selected = await selectRuntimeDirectory(input);
+  const adoptionRecord = selected.adoptionRecord;
+  if (adoptionRecord === undefined)
+    return { runtime: selected.runtime, note: selected.note };
+  const { repository } = input;
+  const legacyRuntime = selected.runtime;
   await mkdir(dirname(adoptionRecord), { recursive: true, mode: 0o700 });
   const contents = JSON.stringify({
     schemaVersion: 1,

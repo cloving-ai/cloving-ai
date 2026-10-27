@@ -1,12 +1,20 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { configCommand } from "./config-command.ts";
+import type { ProbeRunner } from "./probe-command.ts";
+import { doctorCommand } from "./doctor.ts";
 import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
-import { configUsage, phoneUsage, usage, validateUsage } from "./usage.ts";
+import {
+  commandUsage,
+  configUsage,
+  phoneUsage,
+  usage,
+  validateUsage,
+} from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
 
 const helpTexts = {
@@ -14,6 +22,7 @@ const helpTexts = {
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
+  "doctor-help": String(commandUsage["doctor"]),
   "config-help": configUsage,
 };
 
@@ -30,11 +39,12 @@ export async function main(
   argumentsList: readonly string[],
   context: {
     readonly watchPr?: WatchPrSettings;
+    readonly doctorProbe?: ProbeRunner;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
   } = { repository: undefined },
 ): Promise<void> {
-  const repository = context.repository;
+  const { repository, environment = process.env } = context;
   const invocation = parseInvocation(argumentsList);
   if (helpInvocation(invocation)) {
     process.stdout.write(helpTexts[invocation.kind]);
@@ -45,6 +55,15 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
+  } else if (invocation.kind === "doctor") {
+    if (context.doctorProbe === undefined)
+      throw new Error("doctor-probe-unavailable");
+    process.exitCode = await doctorCommand({
+      probe: context.doctorProbe,
+      repository,
+      environment,
+      json: invocation.json,
+    });
   } else if (invocation.kind === "config") {
     process.exitCode = await configCommand(invocation, repository);
   } else if (invocation.kind === "phone") {
@@ -55,7 +74,7 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
-      ...watchSettings(context.watchPr, context.environment ?? process.env),
+      ...watchSettings(context.watchPr, environment),
       client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal,

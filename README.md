@@ -132,6 +132,10 @@ Changing or unsetting `harness.name` clears kind, path and command. Changing or 
 
 The package includes [the project schema](src/project-config.schema.json) and [the private schema](src/private-config.schema.json), also installed under `dist/src/`. Unknown fields fail with `unknown-setting: <field>`, invalid values with `invalid-setting: <field>`, and unsupported or missing versions with `unsupported-config-version: version`. Private fields in the project file fail with `private-setting-in-project-file: <field>`. Files cannot set runtime directories, ownership leases, host bounds or the watch repository; those remain environment settings.
 
+Run `cloving doctor` from the repository before starting the service. It lists each requirement with a fixed code, `ok`, `fail` or `skip`, and a fixing command. Required failures and skipped prerequisites exit with status 1. `cloving doctor --json` prints the same checks as `{ "version": 1, "checks": [...] }` for setup agents.
+
+Doctor probes harness versions and effective executable paths without running a turn. Shell scripts and simple `node script` wrappers receive `--version` from the repository folder; unsupported launcher arguments fail the probe. GitHub login and reads use the origin's host, including GitHub Enterprise. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
+
 ## First run
 
 This first run uses `develop-prompt` on a test repository. It needs no ticket command and no GitHub repository.
