@@ -22,20 +22,15 @@ export const defaultCodexCommand = [
 
 export const defaultOpencodeCommand = ["opencode", "run", "--format", "json"];
 
-export function defaultHarnessCommand(name: unknown): readonly string[] {
-  if (name === "codex") return defaultCodexCommand;
-  if (name === "opencode") return defaultOpencodeCommand;
-  return defaultCommand;
-}
+export const defaultGrokCommand = [
+  "grok",
+  "--output-format",
+  "streaming-messages-json",
+  "--always-approve",
+  "-p",
+];
 
-export function harnessCommandVariable(name: unknown): string | undefined {
-  if (name === "opencode") return "CLOVING_OPENCODE_COMMAND";
-  if (name === "codex") return "CLOVING_CODEX_COMMAND";
-  if (name === undefined || name === "claude") return "CLOVING_CLAUDE_COMMAND";
-  return undefined;
-}
-
-export type NativeHarness = "claude" | "codex" | "opencode";
+export type NativeHarness = "claude" | "codex" | "grok" | "opencode";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -71,13 +66,34 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = defaultHarnessCommand(name);
+  const defaults = harnessDefaults(name).command;
   return [saved.path ?? name, ...defaults.slice(1)];
 }
 
-function nativeHarness(name: string): NativeHarness {
-  if (name === "claude" || name === "codex" || name === "opencode") return name;
-  throw new Error(`harness-no-worker: ${name}`);
+function nativeHarness(name: string): name is NativeHarness {
+  return ["claude", "codex", "grok", "opencode"].includes(name);
+}
+
+export function harnessDefaults(value: unknown): {
+  readonly command: readonly string[];
+  readonly variable: string;
+} {
+  const name =
+    typeof value === "string" && nativeHarness(value) ? value : "claude";
+  return {
+    command: {
+      claude: defaultCommand,
+      codex: defaultCodexCommand,
+      grok: defaultGrokCommand,
+      opencode: defaultOpencodeCommand,
+    }[name],
+    variable: {
+      claude: "CLOVING_CLAUDE_COMMAND",
+      codex: "CLOVING_CODEX_COMMAND",
+      grok: "CLOVING_GROK_COMMAND",
+      opencode: "CLOVING_OPENCODE_COMMAND",
+    }[name],
+  };
 }
 
 export function turnHarness(
@@ -88,9 +104,9 @@ export function turnHarness(
   readonly command: readonly string[];
   readonly shell?: string;
 } {
-  const name = nativeHarness(
-    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude",
-  );
+  const name =
+    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
+  if (!nativeHarness(name)) throw new Error(`harness-no-worker: ${name}`);
   const saved = matchingHarness(settings, name);
   return {
     worker: name,

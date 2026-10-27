@@ -1,6 +1,6 @@
 import {
   turnHarness,
-  harnessCommandVariable,
+  harnessDefaults,
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
@@ -287,7 +287,7 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].flatMap((name) => {
-      const command = listed(harnessCommandVariable(name) ?? "");
+      const command = listed(harnessDefaults(name).variable);
       return command === undefined ? [] : [[name, command]];
     }),
   );

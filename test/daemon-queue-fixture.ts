@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 import { startDaemon } from ${product("src/daemon/daemon.ts")};
 import { call } from ${product("test/service-fixture.ts")};
 import { runIdentity } from ${product("src/service/submission-handler.ts")};
+import { testMilliseconds } from ${product("test/test-timing.ts")};
 const directory = process.cwd();
 const runtimeDirectory = directory + "/runtime";
 const compiled = JSON.parse(readFileSync("artifacts/manifest.json", "utf8"));
@@ -57,7 +58,8 @@ const commands = () => {
   return Array.isArray(value) ? value : value.commands;
 };
 const until = async (read) => {
-  for (let pass = 0; pass < 300; pass += 1) {
+  const deadline = performance.now() + testMilliseconds(6000);
+  while (performance.now() < deadline) {
     const value = await read();
     if (value) return value;
     await delay(20);

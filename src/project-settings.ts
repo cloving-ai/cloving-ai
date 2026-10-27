@@ -1,5 +1,4 @@
 import { configuration, type Configuration } from "./configuration-schema.ts";
-import { harnessCommandVariable } from "./harness-defaults.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 
@@ -100,8 +99,13 @@ function encoded(value: SettingValue): string {
 function harnessCommandMapping(
   name: SettingValue | undefined,
 ): Readonly<Record<string, string>> {
-  const variable = harnessCommandVariable(name);
-  return variable === undefined ? {} : { "harness.command": variable };
+  if (name === "opencode")
+    return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
+  if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
+  if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
+  if (name === undefined || name === "claude")
+    return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
+  return {};
 }
 
 export function resolveSettings(
