@@ -182,6 +182,8 @@ async function launched(
 }
 
 export function ended(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null)
+    return Promise.resolve(child.exitCode);
   return new Promise((settle) => {
     child.once("close", settle);
     child.kill("SIGTERM");

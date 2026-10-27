@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   candidatePackageRoot,
   preparedProject,
@@ -10,6 +11,29 @@ import {
 import { withFiles } from "./quality/files-fixture.ts";
 import { operatorFiles } from "./workflow-folder-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
+
+await test("CLV-219 a source bootstrap client resolves the SDK hook runtime", () =>
+  withFiles({ "repo/marker": "" }, (root) => {
+    const project = join(root, "project");
+    preparedProject({
+      project,
+      repository: join(root, "repo"),
+      home: root,
+      xdgConfigHome: join(root, "config"),
+    });
+    const client = pathToFileURL(join(project, "artifacts/client.mjs"));
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--no-strip-types",
+        "--input-type=module",
+        "-e",
+        `const workflows = await import(${JSON.stringify(client.href)}); console.log(typeof workflows.developTicket);`,
+      ],
+      { cwd: project, encoding: "utf8", timeout: testMilliseconds(10000) },
+    );
+    assert.equal(output, "function\n");
+  }));
 
 async function bundleIds(store: string): Promise<string[]> {
   return (await readdir(store)).filter((name) => !name.startsWith("."));

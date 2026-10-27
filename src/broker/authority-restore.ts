@@ -203,6 +203,7 @@ export function projectedState(
 const intentKinds: readonly EffectIntent["kind"][] = [
   "start-run",
   "continue-run",
+  "resume-hook",
   "protected-effect",
 ];
 

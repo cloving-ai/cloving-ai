@@ -1,5 +1,19 @@
 {
   "roles": {
+    "test/packed-candidate-admission.ts": "test",
+    "src/decision-wait.ts": "pure",
+    "src/steps/wait-for-decision.ts": "workflow",
+    "src/host/gate-bridge.ts": "host-bridge",
+    "src/host/decision-resume.ts": "host-bridge",
+    "test/decision-wait-sdk.test.ts": "test",
+    "test/quality/decision-wait-policy.test.ts": "test",
+    "test/decision-wait-drop.test.ts": "test",
+    "test/decision-wait-mixed.test.ts": "test",
+    "test/decision-wait-fixture.ts": "test",
+    "test/decision-wait-recovery.test.ts": "test",
+    "test/decision-wait-candidate.test.ts": "test",
+    "test/decision-wait-bridge.test.ts": "test",
+    "test/packed-decision-wait.ts": "test",
     "test/turn-harness.test.ts": "test",
     "test/harness-worker.test.ts": "test",
     "test/harness-status.test.ts": "test",
@@ -1217,30 +1231,11 @@
       "process",
       "pure"
     ],
-    "configuration": [
-      "tooling",
-      "quality"
-    ],
-    "cli": [
-      "cli",
-      "stdlib",
-      "metadata",
-      "pure",
-      "broker",
-      "network"
-    ],
-    "pure": [
-      "pure"
-    ],
-    "workflow": [
-      "workflow",
-      "pure",
-      "step"
-    ],
-    "step": [
-      "pure",
-      "broker"
-    ],
+    "configuration": ["tooling", "quality"],
+    "cli": ["cli", "stdlib", "metadata", "pure", "broker", "network"],
+    "pure": ["pure"],
+    "workflow": ["workflow", "pure", "step", "sdk-runtime"],
+    "step": ["pure", "broker"],
     "broker": [
       "broker",
       "storage",
@@ -1249,13 +1244,8 @@
       "pure",
       "actor-runtime"
     ],
-    "storage": [
-      "storage",
-      "stdlib"
-    ],
-    "harness": [
-      "stdlib"
-    ],
+    "storage": ["storage", "stdlib"],
+    "harness": ["stdlib"],
     "actor-runtime": [],
     "service": [
       "service",
@@ -1265,15 +1255,8 @@
       "network",
       "workflow-bundles"
     ],
-    "workflow-bundles": [
-      "stdlib"
-    ],
-    "host-bridge": [
-      "host-bridge",
-      "sdk-runtime",
-      "pure",
-      "stdlib"
-    ],
+    "workflow-bundles": ["stdlib"],
+    "host-bridge": ["host-bridge", "sdk-runtime", "pure", "stdlib"],
     "daemon": [
       "daemon",
       "service",
@@ -1288,12 +1271,7 @@
     "process": [],
     "network": [],
     "inspector": [],
-    "entry": [
-      "cli",
-      "pure",
-      "stdlib",
-      "process"
-    ],
+    "entry": ["cli", "pure", "stdlib", "process"],
     "candidate-adapter": [
       "candidate-adapter",
       "workflow-bundles",
@@ -1305,18 +1283,8 @@
       "build",
       "candidate-analysis"
     ],
-    "candidate-analysis": [
-      "candidate-analysis",
-      "tooling"
-    ],
-    "relay": [
-      "relay",
-      "cli",
-      "pure",
-      "stdlib",
-      "network",
-      "actor-runtime"
-    ]
+    "candidate-analysis": ["candidate-analysis", "tooling"],
+    "relay": ["relay", "cli", "pure", "stdlib", "network", "actor-runtime"]
   },
   "forbiddenReachability": {
     "pure": [
@@ -1442,9 +1410,7 @@
       {
         "file": "node_modules/solid-objects/dist/actor.d.ts",
         "type": "Actor",
-        "members": [
-          "emit"
-        ],
+        "members": ["emit"],
         "users": [
           "src/broker/actor/authority-actor.ts",
           "src/relay/phone-delivery.ts"
@@ -1453,9 +1419,7 @@
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
-        "members": [
-          "registerEffect"
-        ],
+        "members": ["registerEffect"],
         "users": [
           "src/broker/actor/authority-release.ts",
           "src/relay/relay-store.ts"
@@ -1464,41 +1428,39 @@
       {
         "file": "node_modules/solid-objects/dist/actor.d.ts",
         "type": "Actor",
-        "members": [
-          "transmit"
-        ],
+        "members": ["transmit"],
         "users": []
       },
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
-        "members": [
-          "registerCommitAction"
-        ],
-        "users": [
-          "src/broker/actor/runtime-parts.ts"
-        ]
+        "members": ["registerCommitAction"],
+        "users": ["src/broker/actor/runtime-parts.ts"]
       },
       {
         "file": "node_modules/solid-objects/dist/runtime.d.ts",
         "type": "SolidObjectsRuntime",
-        "members": [
-          "registerComponent",
-          "effectWorker",
-          "executeEffect"
-        ],
+        "members": ["registerComponent", "effectWorker", "executeEffect"],
         "users": []
       },
       {
         "file": "src/host/start-delivery.ts",
         "type": "StartDelivery",
         "members": [],
-        "users": [
-          "src/daemon/delivery-router.ts"
-        ]
+        "users": ["src/daemon/delivery-router.ts"]
       }
     ],
     "names": [
+      {
+        "file": "node_modules/@workflow/core/dist/create-hook.d.ts",
+        "name": "createHook",
+        "users": ["src/steps/wait-for-decision.ts"]
+      },
+      {
+        "file": "node_modules/@workflow/core/dist/runtime/resume-hook.d.ts",
+        "name": "resumeHook",
+        "users": ["src/host/decision-resume.ts"]
+      },
       {
         "file": "node_modules/solid-objects/dist/transmit.d.ts",
         "name": "registerTransmit",
@@ -1512,12 +1474,25 @@
       {
         "file": "node_modules/@workflow/core/dist/runtime/start.d.ts",
         "name": "start",
-        "users": [
-          "src/host/start-delivery.ts"
-        ]
+        "users": ["src/host/start-delivery.ts"]
       }
     ],
     "imports": {
+      "node_modules/workflow/dist/api.d.ts": [
+        "src/host/decision-resume.ts",
+        "src/host/start-delivery.ts",
+        "src/host/world-runs.ts"
+      ],
+      "node_modules/workflow/dist/runtime.d.ts": [
+        "src/host/decision-resume.ts",
+        "src/host/world-host.ts",
+        "src/host/world-runs.ts"
+      ],
+      "node_modules/workflow/dist/index.d.ts": [
+        "src/host/step-bridge-host.ts",
+        "src/host/run-wait.ts",
+        "src/steps/wait-for-decision.ts"
+      ],
       "src/broker/actor/authority-delivery.ts": [
         "src/broker/actor/authority-runtime.ts"
       ],
@@ -1531,17 +1506,9 @@
         "src/broker/actor/authority-runtime.ts",
         "src/relay/relay-store.ts"
       ],
-      "node:sqlite": [
-        "src/storage/domain-schema.ts"
-      ]
+      "node:sqlite": ["src/storage/domain-schema.ts"]
     },
-    "exempt": [
-      "test",
-      "quality",
-      "build",
-      "configuration",
-      "tooling"
-    ]
+    "exempt": ["test", "quality", "build", "configuration", "tooling"]
   },
   "automaticPaths": {
     "pure": "src/",

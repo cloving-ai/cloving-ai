@@ -7,7 +7,30 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { withFiles } from "./quality/files-fixture.ts";
 import { stopChild, stopChildGroup } from "./stop-child.ts";
+import { ended as endedDaemon } from "./self-host-fixture.ts";
 import { killVerificationGroup } from "../quality/verification-process-group.ts";
+
+await test("CLV-219 the legacy workflow fixture observes a daemon that already closed", async () => {
+  for (const signal of [undefined, "SIGTERM"] as const) {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        signal === undefined
+          ? "process.exit(7)"
+          : "setInterval(() => {}, 1000)",
+      ],
+      { stdio: "ignore" },
+    );
+    const closed = once(child, "close");
+    if (signal !== undefined) child.kill(signal);
+    await closed;
+    assert.equal(
+      await Promise.race([endedDaemon(child), delay(100, "waiting")]),
+      signal === undefined ? 7 : null,
+    );
+  }
+});
 
 for (const stop of [stopChild, stopChildGroup])
   await test(`CLV-145 ${stop.name} waits for a covered child exit and leaves complete coverage`, async () => {

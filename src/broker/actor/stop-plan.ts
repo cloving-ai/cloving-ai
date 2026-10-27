@@ -48,7 +48,7 @@ function present(
   };
 }
 
-const kinds = ["start-run", "continue-run"] as const;
+const kinds = ["start-run", "continue-run", "resume-hook"] as const;
 
 function intentOf(
   state: AuthorityState,

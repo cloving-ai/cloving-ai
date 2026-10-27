@@ -44,6 +44,13 @@ export interface GateRequest {
   readonly expiresAt?: string;
 }
 
+export interface DecisionResult {
+  readonly decision: "approved" | "denied" | "answered" | "expired";
+  readonly answer: string | null;
+}
+
+export type DecisionWait = { readonly token: string } | DecisionResult;
+
 export type HandoffValue =
   | string
   | number
@@ -82,6 +89,7 @@ export type GateResult =
 export interface StepBridge {
   readonly effect: (request: ProtectedRequest) => Promise<ProtectedResult>;
   readonly gate: (request: GateRequest) => Promise<GateResult>;
+  readonly waitForDecision?: (request: GateRequest) => Promise<DecisionWait>;
   readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
   readonly waitForRun?: (request: RunWaitRequest) => Promise<RunWaitOutcome>;
 }

@@ -1,3 +1,4 @@
+import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
 import { packedDoctor } from "./packed-doctor.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import {
@@ -8,6 +9,11 @@ import {
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
+import {
+  packedDecisionFiles,
+  packedNotifyCommand,
+  runPackedDecision,
+} from "./packed-decision-wait.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
@@ -24,13 +30,6 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
-import {
-  candidateDeclaration,
-  candidateEffectExpression,
-  candidateSource,
-  combinedCandidateSource,
-  validCandidateSource,
-} from "./workflow-candidate-fixtures.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -220,42 +219,6 @@ async function inventory(root: string): Promise<void> {
   assert.equal(field(compiler, "version"), "6.0.3");
 }
 
-async function candidateAdmission(root: string): Promise<void> {
-  await writeFile(
-    join(root, "candidate-admission.mjs"),
-    `
-import assert from "node:assert/strict";
-import { admitWorkflowCandidate } from "./node_modules/cloving/dist/tools/admit-workflow.js";
-const declaration = ${JSON.stringify(candidateDeclaration)};
-const admitted = await admitWorkflowCandidate({ source: ${JSON.stringify(validCandidateSource)}, declaration });
-assert.equal(admitted.kind, "admitted");
-assert.match(admitted.artifactDigest, /^[0-9a-f]{64}$/);
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(combinedCandidateSource)}, declaration }), { kind: "refused", codes: ["missing-export", "undeclared-effect"] });
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`process.exit(99);\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
-assert.deepEqual(await admitWorkflowCandidate({ source: ${JSON.stringify(`Math.valueOf().random();\n${validCandidateSource}`)}, declaration }), { kind: "refused", codes: ["direct-effect"] });
-const earlyExit = await admitWorkflowCandidate({ source: ${JSON.stringify(candidateSource(`for (let index = 0; index < 3; index++) { await ${candidateEffectExpression}; break; }`).replace('"cloving/workflows"', '"cloving/workflows/steps/protected-effect"'))}, declaration });
-assert.equal(earlyExit.kind, "admitted");
-const commandSource = ${JSON.stringify(`import { runCommand } from "cloving/workflows/steps/run-command";
-export async function scan() {
-  "use workflow";
-  return await runCommand({ scope: { phase: "scan", operation: "reviews", round: 1 }, name: "review-requests", input: {} });
-}`)};
-const commandDeclaration = { workflow: { ...declaration.workflow, capabilities: ["command"], commands: ["review-requests"] }, methods: { command: ["run:review-requests"] } };
-const command = await admitWorkflowCandidate({ source: commandSource, declaration: commandDeclaration });
-assert.equal(command.kind, "admitted", JSON.stringify(command));
-assert.match(command.artifactDigest, /^[0-9a-f]{64}$/);
-process.stdout.write("candidate-admission-ok");
-`,
-  );
-  assert.equal(
-    command(process.execPath, {
-      args: ["--no-strip-types", "candidate-admission.mjs"],
-      cwd: root,
-    }),
-    "candidate-admission-ok",
-  );
-}
-
 async function environment(root: string): Promise<NodeJS.ProcessEnv> {
   await writeFile(
     join(root, "fake-worker.mjs"),
@@ -282,7 +245,7 @@ async function environment(root: string): Promise<NodeJS.ProcessEnv> {
       process.execPath,
       join(root, "fake-worker.mjs"),
     ]),
-    CLOVING_NOTIFY_COMMAND: "[]",
+    CLOVING_NOTIFY_COMMAND: packedNotifyCommand(root),
     CLOVING_NEXT_COMMAND: "[]",
     CLOVING_TICKET_COMMAND: "[]",
     CLOVING_CHECK_COMMAND: "[]",
@@ -342,6 +305,7 @@ async function running(root: string, executable: string): Promise<void> {
     runtimeDirectory: join(root, "host/run"),
   };
   const files = await operatorFiles(fixture);
+  await packedDecisionFiles(root);
   command(executable, { args: ["--help"], cwd: root, env });
   const child = spawn(executable, ["start"], {
     cwd: root,
@@ -363,6 +327,7 @@ async function running(root: string, executable: string): Promise<void> {
     await phoneStatus(root, { executable, env });
     await runOperator(fixture, "project-run");
     await runOperator(fixture, "user-run");
+    await runPackedDecision(root, { executable, env, address });
     for (const [name, bytes] of Object.entries(files))
       assert.equal(await readFile(name, "utf8"), bytes);
     const page = await fetch(address, { signal: AbortSignal.timeout(5000) });
@@ -371,7 +336,7 @@ async function running(root: string, executable: string): Promise<void> {
     await servedFonts(address, join(root, "node_modules/cloving"));
     await artifacts(root);
     await inventory(root);
-    await candidateAdmission(root);
+    await packedCandidateAdmission(root);
     child.kill("SIGTERM");
     assert.equal(await boundedExit(closed), 0);
     assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });
