@@ -1174,6 +1174,7 @@
     "test/config-io.test.ts": "test",
     "src/cli/doctor-github.ts": "cli",
     "src/cli/doctor-local.ts": "cli",
+    "src/cli/doctor-harness.ts": "cli",
     "src/cli/doctor-runtime.ts": "cli",
     "src/cli/doctor-service.ts": "cli",
     "src/cli/doctor-workflows.ts": "cli",

@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { harnessObservations } from "../src/cli/doctor-harness.ts";
+import type { ProbeOptions, ProbeRunner } from "../src/cli/probe-command.ts";
 import { check, savedHarness, withDoctor } from "./doctor-fixture.ts";
+import { withFiles } from "./quality/files-fixture.ts";
+
+function recordingProbe(calls: ProbeOptions[]): ProbeRunner {
+  return (_executable, options) => {
+    calls.push(options);
+    return Promise.resolve({ stdout: "", reason: "probe-failed" });
+  };
+}
 
 for (const shell of ["/bin/bash", "/bin/zsh"]) {
   await test(`CLV-207 default-harness probes saved ${shell} aliases and functions as worker turns run them`, () =>
@@ -33,3 +43,20 @@ alias claude_broken='${join(scene.root, "missing", "claude")}'
       }
     }));
 }
+
+await test("CLV-207 default-harness probes a saved shell harness from the repository folder", () =>
+  withFiles({ "README.md": "A project.\n" }, async (directory) => {
+    const calls: ProbeOptions[] = [];
+    await harnessObservations(
+      { SHELL: "/bin/zsh", PATH: "/usr/bin" },
+      {
+        directory,
+        settingsValid: true,
+        probe: recordingProbe(calls),
+        commandEnvironment: { PATH: "/usr/bin" },
+        harness: { name: "claude", kind: "shell", path: "claude_alias" },
+      },
+    );
+    const probe = calls.find((call) => call.arguments.includes("claude_alias"));
+    assert.equal(probe?.directory, directory);
+  }));

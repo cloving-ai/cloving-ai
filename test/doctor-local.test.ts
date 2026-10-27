@@ -327,3 +327,31 @@ await test("CLV-207 a working bare claude does not hide a broken saved harness p
     const output = await scene.report();
     assert.equal(check(output, "default-harness")["result"], "fail");
   }));
+
+const workingGrok =
+  'if (process.argv[2] !== "--version") process.exit(91); console.log("1.4.0")';
+
+await test("CLV-207 default-harness probes a working Grok worker with its default arguments", () =>
+  withDoctor(async (scene) => {
+    await scene.program("grok", workingGrok);
+    const selected = check(
+      await scene.report({ CLOVING_WORKER: "grok" }),
+      "default-harness",
+    );
+    assert.equal(selected["result"], "ok", String(selected["detail"]));
+  }));
+
+await test("CLV-207 a working bare grok does not hide a broken CLOVING_GROK_COMMAND", () =>
+  withDoctor(async (scene) => {
+    await scene.program("grok", workingGrok);
+    const selected = check(
+      await scene.report({
+        CLOVING_WORKER: "grok",
+        CLOVING_GROK_COMMAND: JSON.stringify([
+          join(scene.root, "missing", "grok"),
+        ]),
+      }),
+      "default-harness",
+    );
+    assert.equal(selected["result"], "fail", String(selected["detail"]));
+  }));

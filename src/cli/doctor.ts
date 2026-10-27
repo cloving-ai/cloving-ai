@@ -14,9 +14,9 @@ import { githubObservations } from "./doctor-github.ts";
 import { bundledDoctorWorkflows, doctorWorkflows } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
+import { harnessObservations } from "./doctor-harness.ts";
 import {
   commandObservation,
-  harnessObservations,
   nodeObservation,
   privateTextsObservation,
   queueObservation,
