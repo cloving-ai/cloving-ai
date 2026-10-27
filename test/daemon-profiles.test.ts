@@ -44,3 +44,30 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-213 profile scenario waits honor the scaled elapsed-time deadline", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+import { syncBuiltinESMExports } from "node:module";
+import timers from "node:timers/promises";
+let elapsed = 0;
+Object.defineProperty(performance, "now", { value: () => elapsed });
+timers.setTimeout = async (milliseconds) => { elapsed += milliseconds; };
+syncBuiltinESMExports();
+process.env.CLOVING_CHECK_TIME_FACTOR = "1";
+await assert.rejects(until(async () => elapsed >= 7000), { message: "queue-condition-not-reached" });
+assert.equal(elapsed, 6000);
+elapsed = 0;
+process.env.CLOVING_CHECK_TIME_FACTOR = "3";
+await until(async () => elapsed >= 7000);
+assert.equal(elapsed, 7000);
+elapsed = 0;
+await assert.rejects(until(async () => false), { message: "queue-condition-not-reached" });
+assert.equal(elapsed, 18000);
+elapsed = 0;
+await assert.rejects(until(async () => { elapsed += 2000; return false; }), { message: "queue-condition-not-reached" });
+assert.ok(elapsed >= 18000 && elapsed <= 20020);
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
