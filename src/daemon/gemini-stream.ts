@@ -89,6 +89,23 @@ function message(
   ];
 }
 
+function toolUse(event: Readonly<Record<string, unknown>>): readonly string[] {
+  return [
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            name: text(event["tool_name"]),
+            input: record(event["parameters"]) ?? {},
+          },
+        ],
+      },
+    }),
+  ];
+}
+
 function received(
   event: Readonly<Record<string, unknown>>,
   state: State,
@@ -107,20 +124,7 @@ function received(
       return message(event, state);
     case "tool_use":
       state.continuing = false;
-      return [
-        JSON.stringify({
-          type: "assistant",
-          message: {
-            content: [
-              {
-                type: "tool_use",
-                name: text(event["tool_name"]),
-                input: event["parameters"],
-              },
-            ],
-          },
-        }),
-      ];
+      return toolUse(event);
     case "tool_result":
       state.continuing = false;
   }

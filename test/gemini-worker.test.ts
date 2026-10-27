@@ -21,6 +21,40 @@ import { geminiStream } from "../src/daemon/gemini-stream.ts";
 import { streamResult } from "../src/daemon/claude-turn.ts";
 import { activityOf } from "../src/cli/watch-model.ts";
 
+for (const scenario of [
+  {
+    name: "object",
+    parameters: { file_path: "HELLO.md" },
+    input: { file_path: "HELLO.md" },
+  },
+  { name: "missing", parameters: undefined, input: {} },
+  { name: "null", parameters: null, input: {} },
+  { name: "array", parameters: ["HELLO.md"], input: {} },
+  { name: "string", parameters: "HELLO.md", input: {} },
+  { name: "number", parameters: 1, input: {} },
+  { name: "boolean", parameters: true, input: {} },
+])
+  await test(`CLV-211 Gemini validates ${scenario.name} tool parameters before logging activity`, () => {
+    const stream = geminiStream();
+    const lines = stream.line(
+      JSON.stringify({
+        type: "tool_use",
+        tool_name: "write_file",
+        parameters: scenario.parameters,
+      }),
+    );
+    assert.deepEqual(lines, [
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", name: "write_file", input: scenario.input },
+          ],
+        },
+      }),
+    ]);
+  });
+
 await test("CLV-211 Gemini ignores stream noise and warnings and keeps the last complete message", () => {
   const stream = geminiStream();
   for (const line of ["not JSON", "null", "[]"]) stream.line(line);
