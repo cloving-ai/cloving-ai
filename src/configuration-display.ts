@@ -6,7 +6,11 @@ import {
   type SettingValue,
 } from "./project-settings.ts";
 import { settingValue, type JsonValue } from "./configuration-change.ts";
-import { defaultCommand, defaultCodexCommand } from "./harness-defaults.ts";
+import {
+  defaultCommand,
+  defaultCodexCommand,
+  defaultCursorCommand,
+} from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 
@@ -42,6 +46,16 @@ function effectiveValue(setting: {
   return value;
 }
 
+function harnessDefaults(worker: string): {
+  readonly command: readonly string[];
+  readonly variable?: string;
+} {
+  if (worker === "cursor-agent") return { command: defaultCursorCommand };
+  if (worker === "codex")
+    return { command: defaultCodexCommand, variable: "CLOVING_CODEX_COMMAND" };
+  return { command: defaultCommand, variable: "CLOVING_CLAUDE_COMMAND" };
+}
+
 export function configurationEntries(input: {
   readonly project: string | undefined;
   readonly private: string | undefined;
@@ -55,27 +69,27 @@ export function configurationEntries(input: {
   const privateFile = configurationValues(
     parseConfiguration(input.private, "private"),
   );
+  const savedWorker = privateFile["harness.name"];
   const worker =
     input.environment["CLOVING_WORKER"] ??
-    privateFile["harness.name"] ??
-    "claude";
+    (typeof savedWorker === "string" ? savedWorker : "claude");
+  const harness = harnessDefaults(worker);
   const variables = {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",
-    "harness.command":
-      worker === "codex" ? "CLOVING_CODEX_COMMAND" : "CLOVING_CLAUDE_COMMAND",
+    "harness.command": harness.variable,
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
-      const value = input.environment[variable];
+      const value =
+        variable === undefined ? undefined : input.environment[variable];
       return value === undefined ? [] : [[field, settingValue(value)]];
     }),
   );
   if (input.profiles !== undefined) environment["profiles"] = input.profiles;
   const effectiveDefaults: Readonly<Record<string, SettingValue>> = {
     ...defaults,
-    "harness.command":
-      worker === "codex" ? defaultCodexCommand : defaultCommand,
+    "harness.command": harness.command,
   };
   const fields = input.field === undefined ? settingFields() : [input.field];
   return fields.map((field) => {

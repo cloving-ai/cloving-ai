@@ -20,7 +20,15 @@ export const defaultCodexCommand = [
   "-",
 ];
 
-export type NativeHarness = "claude" | "codex";
+export const defaultCursorCommand = [
+  "cursor-agent",
+  "-p",
+  "--output-format",
+  "stream-json",
+  "--force",
+];
+
+export type NativeHarness = "claude" | "codex" | "cursor-agent";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -56,8 +64,16 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = name === "codex" ? defaultCodexCommand : defaultCommand;
+  const defaults = {
+    claude: defaultCommand,
+    codex: defaultCodexCommand,
+    "cursor-agent": defaultCursorCommand,
+  }[name];
   return [saved.path ?? name, ...defaults.slice(1)];
+}
+
+function nativeHarness(name: string): name is NativeHarness {
+  return ["claude", "codex", "cursor-agent"].includes(name);
 }
 
 export function turnHarness(
@@ -70,8 +86,7 @@ export function turnHarness(
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  if (name !== "claude" && name !== "codex")
-    throw new Error(`harness-no-worker: ${name}`);
+  if (!nativeHarness(name)) throw new Error(`harness-no-worker: ${name}`);
   const saved = matchingHarness(settings, name);
   return {
     worker: name,

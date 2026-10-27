@@ -1,0 +1,35 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "session_id": "cursor-session",
+    "model": "Claude 4 Sonnet",
+    "permissionMode": "default"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Working."
+        }
+      ]
+    },
+    "session_id": "cursor-session"
+  },
+  {
+    "type": "error",
+    "message": "Cursor request failed."
+  },
+  {
+    "type": "result",
+    "subtype": "success",
+    "duration_ms": 1234,
+    "duration_api_ms": 1234,
+    "is_error": false,
+    "result": "Working.Implemented the change.\nTicket status: complete",
+    "session_id": "cursor-session"
+  }
+]

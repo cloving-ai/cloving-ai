@@ -249,6 +249,7 @@ async function finished(
     const milliseconds = waits[ends.length - 1];
     if (
       cancelled(attempts) ||
+      attempts.start.worker === "cursor-agent" ||
       !capacityRefusal(end.result) ||
       milliseconds === undefined
     )

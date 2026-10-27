@@ -1,4 +1,5 @@
 export interface WorkerUsage {
+  readonly cache_creation_input_tokens?: number | null;
   readonly input_tokens: number | null;
   readonly cache_read_input_tokens: number | null;
   readonly output_tokens: number | null;
@@ -43,6 +44,13 @@ export function tokenCount(value: unknown): number | null {
 export function usageOf(value: unknown): WorkerUsage {
   const fields = typeof value === "object" && value !== null ? value : {};
   return {
+    ...(Object.hasOwn(fields, "cache_creation_input_tokens")
+      ? {
+          cache_creation_input_tokens: tokenCount(
+            Reflect.get(fields, "cache_creation_input_tokens"),
+          ),
+        }
+      : {}),
     input_tokens: tokenCount(Reflect.get(fields, "input_tokens")),
     cache_read_input_tokens: tokenCount(
       Reflect.get(fields, "cache_read_input_tokens"),
@@ -60,6 +68,15 @@ function total(values: readonly (number | null)[]): number | null {
 
 export function sumUsage(values: readonly WorkerUsage[]): WorkerUsage {
   return {
+    ...(values.some((value) =>
+      Object.hasOwn(value, "cache_creation_input_tokens"),
+    )
+      ? {
+          cache_creation_input_tokens: total(
+            values.map((value) => value.cache_creation_input_tokens ?? null),
+          ),
+        }
+      : {}),
     input_tokens: total(values.map((value) => value.input_tokens)),
     cache_read_input_tokens: total(
       values.map((value) => value.cache_read_input_tokens),
