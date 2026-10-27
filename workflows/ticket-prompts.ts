@@ -67,6 +67,13 @@ export function part(
   return typeof value === "string" ? value : "";
 }
 
+function worker(turn: Readonly<Record<string, unknown>>): string {
+  const harness = turn["harness"];
+  return typeof harness === "string" && harness !== ""
+    ? `the ${harness} worker`
+    : "the worker";
+}
+
 function denial(round: number): string {
   return round < lastRound
     ? "Deny with a feedback text to send the work back to the worker for one more round. Deny with no text to reject the work."
@@ -79,7 +86,7 @@ export function review(
 ): string {
   const turn = fields(turnResult.result);
   return [
-    `Review the work of the Claude worker for ${named(input)}.`,
+    `Review the work of ${worker(turn)} for ${named(input)}.`,
     `Round: ${String(turnResult.round)} of ${String(lastRound)}`,
     `Branch: ${part(turn, "branch")}`,
     `Work tree: ${part(turn, "worktree")}`,

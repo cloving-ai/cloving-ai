@@ -22,7 +22,7 @@ What works now:
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
-- The watch page shows the runs, the events and the work of the Claude worker as it occurs.
+- The watch page shows the runs, the events and the work of the worker as it occurs.
 
 What does not work yet:
 
@@ -198,7 +198,7 @@ Each repository has its own default runtime directory: `<root>/cloving/<name>-<i
 
 On start, Cloving keeps the old default runtime path only when all retained workflow bundles beside it validate for this repository. It records that choice under `<state>/cloving/adopted-runtime/<name>-<id>.json`, where state is `XDG_STATE_HOME` or `~/.local/state`. Clients reuse the record. With no bundles, foreign or mixed repositories, or damaged bundles, start uses the new default and prints a note with the old path. No state moves. The directory above the runtime directory still holds the authority state, Local World data, turn records and git work trees. Set a different `CLOVING_WATCH_PORT` for a second service.
 
-`cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the Claude worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
+`cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. It opens an inline form: **Issue number** for `develop-issue`, **Ticket ID** for `develop-ticket`, **Idea** for `develop-prd` and **Task** for `develop-prompt`. Declared workflows use the string fields in their bundled declaration. Unsupported inputs have no control. Select **Add card**, press Enter in a one-line field, or Command/Control+Enter in a text area to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream. For `workflow-active`, add `cloving: ready` to the issue to queue it.
 

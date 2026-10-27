@@ -148,3 +148,11 @@ await test("CLV-075 the default Claude command allows web research and help desc
 await test("CLV-202 start help omits retired analysis settings", () => {
   assert.doesNotMatch(String(commandUsage["start"]), /CLOVING_ANALYSIS_/);
 });
+
+await test("the watch and start help texts say the worker, because the worker can be any harness", () => {
+  assert.match(
+    String(commandUsage["watch"]),
+    /the work of the worker and each pending decision/,
+  );
+  assert.match(String(commandUsage["start"]), /the worker and the watch page/);
+});

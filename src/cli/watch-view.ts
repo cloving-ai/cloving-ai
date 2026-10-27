@@ -48,8 +48,10 @@ export function BannerDetail(props: Timed): Shown {
       ? ""
       : ` · last output ${elapsed(turn.activeAt, now)} ago`;
   const last = turn.activity.at(-1)?.text ?? "The worker starts.";
+  const worker =
+    turn.harness === undefined ? "The worker" : `The ${turn.harness} worker`;
   return [
-    `Claude works for ${elapsed(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}`,
+    `${worker} works for ${elapsed(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}`,
     element("span", { class: "now", children: last }),
   ];
 }

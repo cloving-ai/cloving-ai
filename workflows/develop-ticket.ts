@@ -257,7 +257,7 @@ export async function developTicket(
   });
   if (turn.kind !== "completed")
     return blocked(cycleId, {
-      reason: `The Claude turn has the result ${turn.kind}.`,
+      reason: `The worker turn has the result ${turn.kind}.`,
       evidenceId: "claude-turn",
     });
   const gate = await decisionGate({
