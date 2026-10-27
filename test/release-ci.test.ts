@@ -27,7 +27,7 @@ await test("CI cancels the older runs of a branch or a pull request, and keeps e
   const workflow = await releaseWorkflow();
   assert.deepEqual(workflow.concurrency, {
     group:
-      "ci-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && github.run_id || github.head_ref || github.ref }}",
+      "ci-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && github.run_id || github.ref }}",
     "cancel-in-progress": true,
   });
 });
