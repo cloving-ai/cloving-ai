@@ -121,14 +121,14 @@ async function opening(
   const run = state.runs[runId];
   if (run === undefined) return { kind: "rejected", reason: "unknown-run" };
   const key = gateKey(runId, gateId);
-  if (Object.hasOwn(state.gates, key)) {
-    if (
-      subject.waitMode === "hook" &&
-      !sameHookSubject(state.gates[key], request)
-    )
-      return { kind: "rejected", reason: "gate-subject-changed" };
-    return { kind: "duplicate" };
-  }
+  const exists = Object.hasOwn(state.gates, key);
+  if (
+    exists &&
+    subject.waitMode === "hook" &&
+    !sameHookSubject(state.gates[key], request)
+  )
+    return { kind: "rejected", reason: "gate-subject-changed" };
+  if (exists) return { kind: "duplicate" };
   return await hold.ports.openGate({
     ...(subject.waitMode === undefined ? {} : { waitMode: subject.waitMode }),
     runId,
