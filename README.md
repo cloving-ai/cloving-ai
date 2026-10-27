@@ -340,6 +340,10 @@ In the ticket text returned by `CLOVING_TICKET_COMMAND`, each `#N` in a sentence
 
 An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-not-available`. Missing configuration gives `next-source-not-configured`. Multiple IDs, an invalid ID, or `next` as the selected ID give `invalid-ticket-id`. Use only one of `--next`, `--ticket`, `--prompt` and `--input`.
 
+A saved harness named `grok` runs `grok --output-format streaming-messages-json --always-approve -p <turn text>` in the work tree. `CLOVING_GROK_COMMAND` replaces its command; the turn text follows `-p` or `--single` as one argument, or is appended if neither flag is present. Grok runs without approval prompts and has the same GitHub credential isolation as the other workers. Completion requires exit status 0 and a terminal result with `subtype: "success"` and `is_error: false`. The terminal result supplies the report and ticket status. Grok capacity errors are not retried.
+
+Grok token counts come only from the terminal result, including its subagents. Input includes uncached input and cache creation; cache reads and output remain separate. Missing, all-zero or stderr-warned incomplete usage shows `Token usage not known`. An estimate requires complete usage attributed to exactly one model with a configured price. Mixed models and missing prices show `Price not known`. Grok uses token-based estimates and ignores its projected cost field. No Grok model prices are built in.
+
 ### Review rounds of `develop-ticket` and `develop-prompt`
 
 Worker turns retry an exact Codex capacity refusal or a Claude overload after 60 seconds, then 180 seconds, for at most three attempts. Each retry keeps the work tree, profile, budget and limits, and asks the worker to continue from the current work. The step keeps one operation identity and sums usage across attempts. Private turn journals and turn usage retain each attempt's model, token counts and cost estimate. Stopping during a wait returns `stopped`; a daemon restart fails the recorded operation for existing recovery. Other failures are not retried.

@@ -65,7 +65,11 @@ export async function usageTotals(
     const harness =
       report["harness"] ??
       (await context.workerHarness?.(operation.operationId));
+    const summary = report["summary"];
+    const model = report["model"];
     turns.push({
+      ...(typeof summary === "string" ? { summary } : {}),
+      ...(typeof model === "string" ? { model } : {}),
       ...(typeof harness === "string" ? { harness } : {}),
       ...(attempts === undefined ? {} : { attempts }),
       operationId: operation.operationId,

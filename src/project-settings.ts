@@ -99,6 +99,7 @@ function encoded(value: SettingValue): string {
 function harnessCommandVariable(
   name: SettingValue | undefined,
 ): Readonly<Record<string, string>> {
+  if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
   if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
   if (name === undefined || name === "claude")
     return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
