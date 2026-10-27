@@ -79,14 +79,6 @@ function phoneState(flow: PhoneFlow): unknown {
 }
 
 function phoneReply(path: string, lifetimeMilliseconds: number): unknown {
-  if (path === "/phone.json")
-    return {
-      relay: "on",
-      registered: true,
-      pairing: null,
-      refusal: null,
-      devices: [],
-    };
   if (path !== "/actions/phone/pair") return { pairing: null };
   return {
     link,
@@ -101,15 +93,22 @@ async function phoneBoard(lifetimeMilliseconds: number) {
     boardModel([], { workflows: ["develop-issue"] }),
   );
   const actions: string[] = [];
+  const flow: PhoneFlow = { phase: "idle" };
   const served = (path: string): Served => {
     if (path === "/preact.mjs")
       return { type: "text/javascript", body: library };
     if (path === "/data.json") return { type: "application/json", body: model };
     if (path.startsWith("/actions/phone/")) actions.push(path);
+    if (path === "/actions/phone/pair") flow.phase = "open";
+    if (path === "/actions/phone/cancel") flow.phase = "idle";
     if (path === "/phone.json" || path.startsWith("/actions/phone/"))
       return {
         type: "application/json",
-        body: JSON.stringify(phoneReply(path, lifetimeMilliseconds)),
+        body: JSON.stringify(
+          path === "/phone.json"
+            ? phoneState(flow)
+            : phoneReply(path, lifetimeMilliseconds),
+        ),
       };
     return { type: "text/html", body: pageDocument("a".repeat(64)) };
   };
@@ -161,13 +160,17 @@ await test("CLV-188 Connect a phone shows the QR code, and Cancel removes it", a
     const shown = await until(code, "no QR code");
     const text = document.querySelector(".phone").textContent;
     const box = shown.getAttribute("viewBox");
+    const pairing = await (await fetch("phone.json")).json();
     button("Cancel").click();
-    await until(() => !code() && button("Connect a phone"), "QR code stays after Cancel");
-    return { text, box };
+    await until(() => !code() && button("Connect a phone")?.disabled === false, "QR code stays after Cancel");
+    const cancelled = await (await fetch("phone.json")).json();
+    return { text, box, stage: pairing.pairing?.stage ?? null, cancelled: cancelled.pairing };
   })()`);
   assert.match(String(result["text"]), /Scan with your phone camera/);
   assert.match(String(result["text"]), /\d+:\d\d left/);
   assert.equal(result["box"], "0 0 45 45");
+  assert.equal(result["stage"], "open");
+  assert.equal(result["cancelled"], null);
   assert.deepEqual(board.actions, [
     "/actions/phone/pair",
     "/actions/phone/cancel",
