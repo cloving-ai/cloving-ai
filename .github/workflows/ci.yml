@@ -8,6 +8,10 @@
   "permissions": {
     "contents": "read"
   },
+  "concurrency": {
+    "group": "ci-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && github.run_id || github.head_ref || github.ref }}",
+    "cancel-in-progress": true
+  },
   "defaults": {
     "run": {
       "shell": "bash"

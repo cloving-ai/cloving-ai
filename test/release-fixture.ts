@@ -36,6 +36,10 @@ interface WorkflowJob {
 export interface ReleaseWorkflow {
   readonly on: Readonly<Record<string, StringRecord>>;
   readonly permissions: StringRecord;
+  readonly concurrency?: {
+    readonly group: string;
+    readonly "cancel-in-progress": boolean;
+  };
   readonly jobs: {
     readonly quality: WorkflowJob;
     readonly quality_linux: WorkflowJob;
