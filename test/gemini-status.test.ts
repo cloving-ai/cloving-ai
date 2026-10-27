@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { modelUsageOf, usageOf } from "../src/worker-usage.ts";
 import { call, field, runCli, withHarness } from "./service-fixture.ts";
 import { reportTurn, workerScene } from "./worker-report-fixture.ts";
 import { intent, until, withScene } from "./claude-worker-fixture.ts";
@@ -52,3 +53,18 @@ await test("CLV-211 status retains Gemini reports and model counts after restart
     await verify();
     await reopened.close();
   }));
+
+await test("CLV-211 model usage keeps only object entries with a model name", () => {
+  const usage = { input_tokens: 3, output_tokens: 2 };
+  assert.deepEqual(
+    modelUsageOf([
+      5,
+      null,
+      "gemini-test-pro",
+      { usage },
+      { model: "m", usage },
+    ]),
+    [{ model: "m", usage: usageOf(usage) }],
+  );
+  assert.equal(modelUsageOf({ model: "m" }), undefined);
+});

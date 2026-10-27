@@ -35,9 +35,10 @@ export function modelUsageOf(
 ): readonly WorkerModelUsage[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((entry: unknown) => {
-    const model: unknown = Reflect.get(Object(entry), "model");
+    if (typeof entry !== "object" || entry === null) return [];
+    const model: unknown = Reflect.get(entry, "model");
     if (typeof model !== "string") return [];
-    return [{ model, usage: usageOf(Reflect.get(Object(entry), "usage")) }];
+    return [{ model, usage: usageOf(Reflect.get(entry, "usage")) }];
   });
 }
 
