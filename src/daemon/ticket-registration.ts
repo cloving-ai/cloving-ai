@@ -283,16 +283,20 @@ function declaredResolver(
     id: "declared-input",
     version: "1",
     resolve: async (request) => {
-      let input = request.submission;
-      if (tickets !== undefined && Object.hasOwn(input, "ticket")) {
-        const resolution = await tickets.resolve(request);
-        if (resolution.kind === "rejected") return resolution;
-        const ticket = record(resolution.input) ?? {};
-        input = {
-          ...input,
-          ticket: { id: ticket["ticketId"], text: ticket["ticket"] },
-        };
-      }
+      const resolution =
+        tickets !== undefined && Object.hasOwn(request.submission, "ticket")
+          ? await tickets.resolve(request)
+          : undefined;
+      if (resolution?.kind === "rejected") return resolution;
+      const ticket =
+        resolution === undefined ? undefined : (record(resolution.input) ?? {});
+      const input =
+        ticket === undefined
+          ? request.submission
+          : {
+              ...request.submission,
+              ticket: { id: ticket["ticketId"], text: ticket["ticket"] },
+            };
       return {
         kind: "resolved",
         input: {
