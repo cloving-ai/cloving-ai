@@ -1172,6 +1172,8 @@
     "tools/project-configuration.ts": "candidate-adapter",
     "test/project-configuration.test.ts": "test",
     "test/cli-workflows.test.ts": "test",
+    "test/cli-workflows-fixture.ts": "test",
+    "test/cli-workflow-folder.test.ts": "test",
     "src/testing.ts": "candidate-adapter",
     "tools/workflow-test-loader.ts": "candidate-adapter",
     "test/workflow-testing.test.ts": "test",
