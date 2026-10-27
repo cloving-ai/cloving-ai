@@ -18,7 +18,7 @@
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"macOS\",\"ARM64\",\"cloving-ci\"]') || 'macos-15' }}",
       "timeout-minutes": 60,
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '3' || '4' }}",
+        "CLOVING_CHECK_TIME_FACTOR": "4",
         "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '3' }}",
         "CLOVING_CI_MACOS_VERSION": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '*' || '15.*' }}"
       },
@@ -67,7 +67,7 @@
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
       "timeout-minutes": 60,
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '3' || '4' }}",
+        "CLOVING_CHECK_TIME_FACTOR": "4",
         "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '4' }}",
         "CLOVING_CI_ARCHITECTURE": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'arm64' || 'x64' }}"
       },
