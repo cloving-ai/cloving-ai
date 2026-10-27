@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import {
+  spawnSync,
+  type SpawnSyncOptionsWithStringEncoding,
+} from "node:child_process";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -9,6 +12,34 @@ import { lstat, readFile, symlink, writeFile } from "node:fs/promises";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 import { withHarness } from "./service-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
+
+await test("CLV-211 workflow CLI checks use the configured CI time budget", async () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  try {
+    await withFiles(
+      { "repo/entry.ts": 'process.stdout.write("fixture completed");' },
+      (root) => {
+        for (const [factor, timeout] of [
+          ["1", 30000],
+          ["3", 90000],
+        ] as const) {
+          process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+          assert.equal(cliOptions(root).timeout, timeout);
+          const result = cli(root, {
+            args: [],
+            entry: join(root, "repo/entry.ts"),
+          });
+          assert.equal(result.status, 0, result.stderr);
+          assert.equal(result.stdout, "fixture completed");
+        }
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+});
 
 const workflowTest = (name: string, expected = "scenario-result"): string => `
 import assert from "node:assert/strict";
@@ -33,18 +64,22 @@ function cli(
   return spawnSync(
     process.execPath,
     [invocation.entry ?? entry, "workflows", ...invocation.args],
-    {
-      cwd: join(root, "repo"),
-      env: {
-        ...process.env,
-        HOME: root,
-        XDG_CONFIG_HOME: join(root, "config"),
-        CLOVING_RUNTIME_DIR: join(root, "service/run"),
-      },
-      encoding: "utf8",
-      timeout: 30000,
-    },
+    cliOptions(root),
   );
+}
+
+function cliOptions(root: string): SpawnSyncOptionsWithStringEncoding {
+  return {
+    cwd: join(root, "repo"),
+    env: {
+      ...process.env,
+      HOME: root,
+      XDG_CONFIG_HOME: join(root, "config"),
+      CLOVING_RUNTIME_DIR: join(root, "service/run"),
+    },
+    encoding: "utf8",
+    timeout: testMilliseconds(30000),
+  };
 }
 
 await test("CLV-224 list reports folder admission and declarations without a service", () =>

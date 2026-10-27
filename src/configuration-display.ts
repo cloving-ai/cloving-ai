@@ -6,7 +6,7 @@ import {
   type SettingValue,
 } from "./project-settings.ts";
 import { settingValue, type JsonValue } from "./configuration-change.ts";
-import { defaultHarnessCommand } from "./harness-defaults.ts";
+import { harnessDefaults } from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 
@@ -55,14 +55,15 @@ export function configurationEntries(input: {
   const privateFile = configurationValues(
     parseConfiguration(input.private, "private"),
   );
-  const savedWorker = privateFile["harness.name"];
-  const worker =
+  const harness = harnessDefaults(
     input.environment["CLOVING_WORKER"] ??
-    (typeof savedWorker === "string" ? savedWorker : "claude");
+      privateFile["harness.name"] ??
+      "claude",
+  );
   const variables = {
     ...settingVariables,
     profiles: "CLOVING_PROFILES",
-    "harness.command": `CLOVING_${worker.toUpperCase()}_COMMAND`,
+    "harness.command": harness.variable,
   };
   const environment: Record<string, DisplayValue> = Object.fromEntries(
     Object.entries(variables).flatMap(([field, variable]) => {
@@ -73,7 +74,7 @@ export function configurationEntries(input: {
   if (input.profiles !== undefined) environment["profiles"] = input.profiles;
   const effectiveDefaults: Readonly<Record<string, SettingValue>> = {
     ...defaults,
-    "harness.command": defaultHarnessCommand(worker),
+    "harness.command": harness.command,
   };
   const fields = input.field === undefined ? settingFields() : [input.field];
   return fields.map((field) => {

@@ -28,12 +28,21 @@ export const defaultGeminiCommand = [
   "yolo",
 ];
 
-export type NativeHarness = "claude" | "codex" | "gemini";
+export const defaultGrokCommand = [
+  "grok",
+  "--output-format",
+  "streaming-messages-json",
+  "--always-approve",
+  "-p",
+];
+
+export type NativeHarness = "claude" | "codex" | "gemini" | "grok";
 
 const defaultCommands = {
   claude: defaultCommand,
   codex: defaultCodexCommand,
   gemini: defaultGeminiCommand,
+  grok: defaultGrokCommand,
 };
 
 export interface HarnessSettings {
@@ -70,8 +79,25 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = defaultHarnessCommand(name);
+  const defaults = harnessDefaults(name).command;
   return [saved.path ?? name, ...defaults.slice(1)];
+}
+
+export function harnessDefaults(value: unknown): {
+  readonly command: readonly string[];
+  readonly variable: string;
+} {
+  const name =
+    typeof value === "string" && nativeHarness(value) ? value : "claude";
+  return {
+    command: defaultCommands[name],
+    variable: {
+      claude: "CLOVING_CLAUDE_COMMAND",
+      codex: "CLOVING_CODEX_COMMAND",
+      grok: "CLOVING_GROK_COMMAND",
+      gemini: "CLOVING_GEMINI_COMMAND",
+    }[name],
+  };
 }
 
 export function turnHarness(
@@ -95,8 +121,4 @@ export function turnHarness(
 
 function nativeHarness(name: string): name is NativeHarness {
   return Object.hasOwn(defaultCommands, name);
-}
-
-export function defaultHarnessCommand(name: string): readonly string[] {
-  return nativeHarness(name) ? defaultCommands[name] : defaultCommand;
 }

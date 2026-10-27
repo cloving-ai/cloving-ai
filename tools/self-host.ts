@@ -1,5 +1,6 @@
 import {
   turnHarness,
+  harnessDefaults,
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
@@ -278,11 +279,6 @@ const worker = selectedWorker();
 function nativeCommands(): Readonly<
   Partial<Record<NativeHarness, readonly string[]>>
 > {
-  const variables: Readonly<Record<NativeHarness, string>> = {
-    claude: "CLOVING_CLAUDE_COMMAND",
-    codex: "CLOVING_CODEX_COMMAND",
-    gemini: "CLOVING_GEMINI_COMMAND",
-  };
   const names = new Set([
     worker,
     ...Object.values(profiles).map((profile) =>
@@ -291,7 +287,7 @@ function nativeCommands(): Readonly<
   ]);
   return Object.fromEntries(
     [...names].flatMap((name) => {
-      const command = listed(variables[name]);
+      const command = listed(harnessDefaults(name).variable);
       return command === undefined ? [] : [[name, command]];
     }),
   );

@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
+import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import type { NativeHarness } from "../harness-defaults.ts";
 import {
@@ -20,6 +21,7 @@ export type Worker = NativeHarness;
 export interface StreamResult {
   readonly models?: readonly WorkerModelUsage[];
   readonly attempts?: readonly WorkerAttemptUsage[];
+  readonly pricingModel?: string | null;
   readonly subtype?: string;
   readonly errorType?: string;
   readonly model: string | null;
@@ -91,7 +93,10 @@ export function capacityRefusal(result: StreamResult | undefined): boolean {
   );
 }
 
-export function streamResult(line: string): StreamResult | undefined {
+export function streamResult(
+  line: string,
+  worker?: Worker,
+): StreamResult | undefined {
   if (!line.includes('"result"')) return undefined;
   const record: unknown = parsed(line);
   const field = (name: string): unknown => Reflect.get(Object(record), name);
@@ -112,6 +117,7 @@ export function streamResult(line: string): StreamResult | undefined {
     model: textOf(field("model")),
     sessionId: textOf(field("session_id")),
     turns: numberOf(field("num_turns")),
+    ...(worker === "grok" ? grokResultFields(record) : {}),
   };
 }
 
@@ -147,15 +153,24 @@ export function turnEnvironment(
   return environment;
 }
 
+function turnCommand(start: TurnStart): readonly string[] {
+  if (start.worker === "gemini") return [...start.command, "-p", start.prompt];
+  if (start.worker !== "grok") return start.command;
+  const command = [...start.command];
+  const index = command.findIndex(
+    (argument, position) =>
+      position > 0 && ["-p", "--single"].includes(argument),
+  );
+  command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
+  return command;
+}
+
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const parts =
-    start.worker === "gemini"
-      ? [...start.command, "-p", start.prompt]
-      : start.command;
+  const parts = turnCommand(start);
   const command =
     start.shell === undefined
       ? parts
@@ -184,7 +199,11 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
-function receivedLines(stream: Stream, lines: readonly string[]): void {
+function receivedLines(
+  stream: Stream,
+  input: { readonly lines: readonly string[]; readonly worker?: Worker },
+): void {
+  const { lines, worker } = input;
   for (const line of lines) {
     const event = parsed(line);
     const field = (name: string): unknown => Reflect.get(Object(event), name);
@@ -193,7 +212,7 @@ function receivedLines(stream: Stream, lines: readonly string[]): void {
       stream.errorType = textOf(field("error"));
     if (type === "system" || type === "result")
       stream.model = textOf(field("model")) ?? stream.model;
-    const result = streamResult(line);
+    const result = streamResult(line, worker);
     if (result !== undefined) {
       const errorType = result.errorType ?? stream.errorType;
       stream.result = {
@@ -226,7 +245,10 @@ function turnOutput(
     errorType: null,
   };
   const received = (lines: readonly string[]): void => {
-    receivedLines(stream, lines);
+    receivedLines(stream, {
+      lines,
+      ...(start.worker === undefined ? {} : { worker: start.worker }),
+    });
   };
   const written = (lines: readonly string[]): void => {
     for (const line of lines) output.write(`${line}\n`);
@@ -290,9 +312,18 @@ function signalTurn(
 export function startTurn(start: TurnStart): RunningTurn {
   const { child, configuration } = spawnTurn(start);
   const output = turnOutput(start, child.stdout);
+  const warnings = grokUsageWarnings();
+  if (start.worker === "grok") {
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", warnings.write);
+  }
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
-  child.stdin.end(start.worker === "gemini" ? undefined : start.prompt);
+  child.stdin.end(
+    start.worker === "gemini" || start.worker === "grok"
+      ? undefined
+      : start.prompt,
+  );
   const closed = new Promise<number | null>((settle) => {
     child.once("error", () => undefined);
     child.once("close", settle);
@@ -303,9 +334,13 @@ export function startTurn(start: TurnStart): RunningTurn {
     ended: closed
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);
+        const result = await output(exitCode);
         return {
           exitCode,
-          result: await output(exitCode),
+          result:
+            result !== undefined && warnings.incomplete()
+              ? { ...result, usage: usageOf(null), costUsd: null }
+              : result,
         };
       })
       .finally(() => {

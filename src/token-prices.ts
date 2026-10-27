@@ -127,7 +127,7 @@ export function estimatedCostUsd(
   usage: WorkerUsage,
   pricing:
     | {
-        readonly worker: "claude" | "codex" | "gemini";
+        readonly worker: "claude" | "codex" | "gemini" | "grok";
         readonly price: TokenPrice | undefined;
       }
     | {
@@ -156,7 +156,9 @@ export function estimatedCostUsd(
     output === null
   )
     return null;
-  const input = counts.input_tokens - (worker === "claude" ? 0 : cached);
+  const input =
+    counts.input_tokens -
+    (worker === "codex" || worker === "gemini" ? cached : 0);
   if (input < 0) return null;
   return priceOf(
     (input / 1_000_000) * price.input +
