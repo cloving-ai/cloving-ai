@@ -14,6 +14,7 @@ import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import { record } from "../protocol.ts";
+import { hasTicketField, type SubmissionContract } from "../submission.ts";
 import type { LocalCommands } from "../command-settings.ts";
 import { issueIdentity } from "../issue-identity.ts";
 import {
@@ -268,24 +269,39 @@ export function ticketRegistrationTable(
       ...(declaration.handoffs === undefined
         ? {}
         : { handoffs: declaration.handoffs }),
-      resolver: declaredResolver(source.repository),
+      resolver: declaredResolver(source, declaration.input),
     })),
   ];
 }
 
-function declaredResolver(repository: string): Resolver {
+function declaredResolver(
+  source: TicketSource,
+  contract: SubmissionContract,
+): Resolver {
+  const tickets = hasTicketField(contract) ? issueResolver(source) : undefined;
   return {
     id: "declared-input",
     version: "1",
-    resolve: (request) =>
-      Promise.resolve({
+    resolve: async (request) => {
+      let input = request.submission;
+      if (tickets !== undefined && Object.hasOwn(input, "ticket")) {
+        const resolution = await tickets.resolve(request);
+        if (resolution.kind === "rejected") return resolution;
+        const ticket = record(resolution.input) ?? {};
+        input = {
+          ...input,
+          ticket: { id: ticket["ticketId"], text: ticket["ticket"] },
+        };
+      }
+      return {
         kind: "resolved",
         input: {
           cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
-          repository,
-          input: request.submission,
+          repository: source.repository,
+          input,
         },
-      }),
+      };
+    },
   };
 }
 

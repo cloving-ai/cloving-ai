@@ -3,6 +3,7 @@ import { record, type Fields } from "./protocol.ts";
 export type SubmissionField =
   | { readonly type: "string"; readonly optional?: boolean }
   | { readonly type: "boolean"; readonly optional?: boolean }
+  | { readonly type: "ticket"; readonly optional?: boolean }
   | {
       readonly type: "integer";
       readonly optional?: boolean;
@@ -13,6 +14,13 @@ export type SubmissionField =
 export interface SubmissionContract {
   readonly maximumBytes: number;
   readonly fields: Readonly<Record<string, "string" | SubmissionField>>;
+}
+
+export function hasTicketField(
+  contract: SubmissionContract | undefined,
+): boolean {
+  const rule = contract?.fields["ticket"];
+  return rule !== undefined && rule !== "string" && rule.type === "ticket";
 }
 
 export type SubmissionCheck =
@@ -61,9 +69,16 @@ function invalidField(
 }
 
 function validValue(rule: "string" | SubmissionField, value: unknown): boolean {
-  if (rule === "string" || rule.type === "string")
+  if (rule === "string" || rule.type === "string" || rule.type === "ticket")
     return typeof value === "string" && value.trim().length > 0;
   if (rule.type === "boolean") return typeof value === "boolean";
+  return validInteger(rule, value);
+}
+
+function validInteger(
+  rule: Extract<SubmissionField, { readonly type: "integer" }>,
+  value: unknown,
+): boolean {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&
