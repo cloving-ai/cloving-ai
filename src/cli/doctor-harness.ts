@@ -193,7 +193,9 @@ function workerCommands(
   environment: Readonly<NodeJS.ProcessEnv>,
   name: string,
 ): Readonly<Partial<Record<NativeHarness, readonly string[]>>> {
-  const command = listedSetting(environment[harnessDefaults(name).variable]);
+  const variable = harnessDefaults(name).variable;
+  if (variable === undefined) return {};
+  const command = listedSetting(environment[variable]);
   return command === undefined ? {} : { [name]: command };
 }
 
