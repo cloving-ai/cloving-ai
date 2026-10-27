@@ -1,6 +1,7 @@
+import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import ts from "typescript";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
 import {
@@ -29,6 +30,7 @@ export interface WorkflowFolderInput {
   readonly repository: string;
   readonly home: string;
   readonly xdgConfigHome?: string | undefined;
+  readonly userFolder?: string | undefined;
   readonly bundled: readonly WorkflowReservation[];
 }
 
@@ -209,24 +211,31 @@ async function captureEntry(
   }
 }
 
+function userLocation(input: WorkflowFolderInput): {
+  readonly root: string;
+  readonly parts: readonly string[];
+} {
+  const folder = absoluteWorkflowFolder(input.userFolder);
+  if (folder !== undefined)
+    return { root: dirname(folder), parts: [basename(folder)] };
+  const configuration =
+    input.xdgConfigHome && isAbsolute(input.xdgConfigHome)
+      ? input.xdgConfigHome
+      : join(input.home, ".config");
+  return { root: configuration, parts: ["cloving", "workflows"] };
+}
+
 async function scanFolders(
   input: WorkflowFolderInput,
   refusals: WorkflowFolderRefusal[],
 ) {
   const repository = await realpath(input.repository);
-  const configuration =
-    input.xdgConfigHome && isAbsolute(input.xdgConfigHome)
-      ? input.xdgConfigHome
-      : join(input.home, ".config");
   const snapshots = [
     ...(await scanFolder(
       { scope: "project", root: repository, parts: [".cloving", "workflows"] },
       refusals,
     )),
-    ...(await scanFolder(
-      { scope: "user", root: configuration, parts: ["cloving", "workflows"] },
-      refusals,
-    )),
+    ...(await scanFolder({ scope: "user", ...userLocation(input) }, refusals)),
   ];
   return { repository, snapshots };
 }
@@ -235,13 +244,10 @@ function workflowFolder(
   input: WorkflowFolderInput,
   scope: "project" | "user",
 ): string {
-  const configuration =
-    input.xdgConfigHome && isAbsolute(input.xdgConfigHome)
-      ? input.xdgConfigHome
-      : join(input.home, ".config");
-  return scope === "project"
-    ? join(input.repository, ".cloving", "workflows")
-    : join(configuration, "cloving", "workflows");
+  if (scope === "project")
+    return join(input.repository, ".cloving", "workflows");
+  const { root, parts } = userLocation(input);
+  return join(root, ...parts);
 }
 
 function folderListings(

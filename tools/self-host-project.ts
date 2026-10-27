@@ -44,6 +44,7 @@ interface ProjectSettings {
   readonly repository: string;
   readonly home: string;
   readonly xdgConfigHome?: string | undefined;
+  readonly userFolder?: string | undefined;
 }
 
 export interface RegisteredWorkflows {

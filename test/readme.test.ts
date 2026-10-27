@@ -12,13 +12,13 @@ await test("CLV-201 the README names every scanned workflow folder", () => {
     join(import.meta.dirname, "../tools/workflow-folders.ts"),
     "utf8",
   );
-  const folders = Array.from(
-    loader.matchAll(/parts: \[([^\]]+)\]/g),
-    (match) =>
-      Array.from(String(match[1]).matchAll(/"([^"]+)"/g), (part) =>
-        String(part[1]),
-      ).join("/") + "/",
-  );
+  const folders = Array.from(loader.matchAll(/parts: \[([^\]]+)\]/g), (match) =>
+    Array.from(String(match[1]).matchAll(/"([^"]+)"/g), (part) =>
+      String(part[1]),
+    ),
+  )
+    .filter((parts) => parts.length > 0)
+    .map((parts) => parts.join("/") + "/");
   assert.ok(folders.length > 0);
   const development = readme
     .split("## Develop a workflow\n")[1]

@@ -3,7 +3,11 @@ import { mkdir, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
-import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
+import {
+  folderInput,
+  operatorFiles,
+  privateFolderFiles,
+} from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 for (const scope of ["project", "user"] as const) {
@@ -143,3 +147,66 @@ await test("CLV-124 scans only direct TypeScript candidates and refuses special 
       ]);
     },
   ));
+
+await test("CLV-227 a configured user folder replaces the home user folder", () =>
+  withFiles(
+    {
+      "repo/marker": "",
+      ...operatorFiles("user", "home"),
+      ...privateFolderFiles("own"),
+    },
+    async (directory) => {
+      const result = await loadWorkflowFolders({
+        ...folderInput(directory),
+        userFolder: join(directory, "private/workflows"),
+      });
+      assert.deepEqual(result.refusals, []);
+      assert.deepEqual(
+        result.workflows.map((entry) => [
+          entry.scope,
+          entry.workflowId,
+          entry.file,
+        ]),
+        [["user", "own", join(directory, "private/workflows/own.ts")]],
+      );
+    },
+  ));
+
+await test("CLV-227 a configured user folder may have a linked ancestor but not be a link", () =>
+  withFiles(
+    { "repo/marker": "", ...privateFolderFiles("own") },
+    async (directory) => {
+      await symlink(join(directory, "private"), join(directory, "alias"));
+      const linkedAncestor = await loadWorkflowFolders({
+        ...folderInput(directory),
+        userFolder: join(directory, "alias/workflows"),
+      });
+      assert.deepEqual(linkedAncestor.refusals, []);
+      assert.deepEqual(
+        linkedAncestor.candidates.map((entry) => entry.scope),
+        ["user"],
+      );
+      await symlink(
+        join(directory, "private/workflows"),
+        join(directory, "linked"),
+      );
+      const linkedFolder = await loadWorkflowFolders({
+        ...folderInput(directory),
+        userFolder: join(directory, "linked"),
+      });
+      assert.deepEqual(linkedFolder.refusals, [
+        { scope: "user", label: "workflows/", codes: ["unsafe-workflow-path"] },
+      ]);
+    },
+  ));
+
+await test("CLV-227 the loader refuses a relative configured user folder", () =>
+  withFiles({ "repo/marker": "" }, async (directory) => {
+    await assert.rejects(
+      loadWorkflowFolders({
+        ...folderInput(directory),
+        userFolder: "relative-workflows",
+      }),
+      /CLOVING_WORKFLOW_FOLDER must be an absolute path/,
+    );
+  }));
