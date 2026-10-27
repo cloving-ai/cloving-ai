@@ -62,6 +62,10 @@
     "./workflows/testing": {
       "types": "./dist/src/testing.d.ts",
       "import": "./dist/src/testing.js"
+    },
+    "./workflows/steps/sleep": {
+      "types": "./dist/src/steps/sleep.d.ts",
+      "import": "./dist/src/steps/sleep.js"
     }
   },
   "files": [

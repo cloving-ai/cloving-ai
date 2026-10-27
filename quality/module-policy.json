@@ -1,5 +1,13 @@
 {
   "roles": {
+    "src/steps/sleep.ts": "workflow",
+    "test/command-polling-fixture.ts": "test",
+    "test/command-polling.test.ts": "test",
+    "test/sleep.test.ts": "test",
+    "test/sleep-candidate.test.ts": "test",
+    "test/sleep-sdk.test.ts": "test",
+    "test/sleep-testing.test.ts": "test",
+    "test/quality/sleep-policy.test.ts": "test",
     "src/review-subject.ts": "pure",
     "src/steps/review-subject.ts": "step",
     "src/steps/review-by-person.ts": "workflow",
@@ -1534,7 +1542,8 @@
       "node_modules/workflow/dist/index.d.ts": [
         "src/host/step-bridge-host.ts",
         "src/host/run-wait.ts",
-        "src/steps/wait-for-decision.ts"
+        "src/steps/wait-for-decision.ts",
+        "src/steps/sleep.ts"
       ],
       "src/broker/actor/authority-delivery.ts": [
         "src/broker/actor/authority-runtime.ts"

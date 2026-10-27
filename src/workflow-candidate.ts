@@ -61,6 +61,7 @@ const workflowModules = [
   "cloving/workflows/steps/handoff",
   "cloving/workflows/steps/wait-for-run",
   "cloving/workflows/steps/run-command",
+  "cloving/workflows/steps/sleep",
 ];
 
 export function workflowHelperPath(

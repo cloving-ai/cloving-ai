@@ -41,7 +41,8 @@ export type ScenarioRequest =
   | readonly ["gate", GateRequest]
   | readonly ["waitForDecision", GateRequest]
   | readonly ["handoff", HandoffRequest]
-  | readonly ["waitForRun", RunWaitRequest];
+  | readonly ["waitForRun", RunWaitRequest]
+  | readonly ["sleep", { readonly seconds: number }];
 
 export interface ScenarioResult {
   readonly spent?: number;
@@ -52,10 +53,22 @@ export interface ScenarioResult {
 export function fakeStepBridge(scenario: StepScenario) {
   const { bridge, requests, budget } = scenarioBridge(scenario);
   const key = Symbol.for(stepBridgeKey);
+  const sleepKey = Symbol.for("WORKFLOW_SLEEP");
   const previous = Object.getOwnPropertyDescriptor(globalThis, key);
-  if (Reflect.get(globalThis, key) !== undefined)
+  const previousSleep = Object.getOwnPropertyDescriptor(globalThis, sleepKey);
+  if (
+    Reflect.get(globalThis, key) !== undefined ||
+    Reflect.get(globalThis, sleepKey) !== undefined
+  )
     throw new Error("workflow-testing-host-active");
   Object.defineProperty(globalThis, key, { configurable: true, value: bridge });
+  Object.defineProperty(globalThis, sleepKey, {
+    configurable: true,
+    value: (milliseconds: number): Promise<void> => {
+      requests.push(["sleep", { seconds: milliseconds / 1000 }]);
+      return Promise.resolve();
+    },
+  });
   return {
     requests,
     get spent() {
@@ -64,6 +77,9 @@ export function fakeStepBridge(scenario: StepScenario) {
     [Symbol.dispose]() {
       if (previous === undefined) Reflect.deleteProperty(globalThis, key);
       else Object.defineProperty(globalThis, key, previous);
+      if (previousSleep === undefined)
+        Reflect.deleteProperty(globalThis, sleepKey);
+      else Object.defineProperty(globalThis, sleepKey, previousSleep);
     },
   };
 }
@@ -213,13 +229,29 @@ function scenarioRequest(value: unknown): value is ScenarioRequest {
     case "handoff":
       return handoffRequest(request);
     case "waitForRun":
-      return (
-        typeof request["runId"] === "string" &&
-        typeof request["maximumWaitSeconds"] === "number"
-      );
+      return runWaitRequest(request);
+    case "sleep":
+      return sleepRequest(request);
     default:
       return false;
   }
+}
+
+function runWaitRequest(request: Readonly<Record<string, unknown>>): boolean {
+  return (
+    typeof request["runId"] === "string" &&
+    typeof request["maximumWaitSeconds"] === "number"
+  );
+}
+
+function sleepRequest(request: Readonly<Record<string, unknown>>): boolean {
+  const seconds = request["seconds"];
+  return (
+    typeof seconds === "number" &&
+    Number.isInteger(seconds) &&
+    seconds >= 1 &&
+    seconds <= 86400
+  );
 }
 
 function gateRequest(request: Readonly<Record<string, unknown>>): boolean {

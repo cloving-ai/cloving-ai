@@ -258,6 +258,9 @@ async function linkedPackages(directory: string): Promise<void> {
     "step-bridge.ts",
     "workflow-contracts.ts",
     "ticket-status.ts",
+    "review-subject.ts",
+    "protocol.ts",
+    "broker/operation-digest.ts",
     "steps",
   ])
     await cp(join(productRoot, "src", name), join(product, "src", name), {
@@ -282,6 +285,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/handoff": "./src/steps/handoff.ts",
         "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",
         "./workflows/steps/run-command": "./src/steps/run-command.ts",
+        "./workflows/steps/sleep": "./src/steps/sleep.ts",
       },
     }),
   );

@@ -12,6 +12,7 @@ export type {
 export { handoff } from "./steps/handoff.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
 export { runCommand } from "./steps/run-command.ts";
+export { sleep } from "./steps/sleep.ts";
 export type {
   CommandRequest,
   GateRequest,
