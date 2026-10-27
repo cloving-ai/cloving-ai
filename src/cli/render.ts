@@ -212,7 +212,13 @@ function workerLines(value: unknown): readonly string[] {
     ...(typeof part(turn, "harness") === "string"
       ? [`  Harness: ${visible(part(turn, "harness"))}`]
       : []),
+    ...(typeof part(turn, "model") === "string"
+      ? [`  Model: ${visible(part(turn, "model"))}`]
+      : []),
     `  ${usageText(part(turn, "usage"))}`,
+    ...(typeof part(turn, "summary") === "string"
+      ? [`  Report: ${visible(part(turn, "summary"))}`]
+      : []),
   ]);
 }
 

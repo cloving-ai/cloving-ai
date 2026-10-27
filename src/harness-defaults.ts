@@ -20,7 +20,15 @@ export const defaultCodexCommand = [
   "-",
 ];
 
-export type NativeHarness = "claude" | "codex";
+export const defaultGrokCommand = [
+  "grok",
+  "--output-format",
+  "streaming-messages-json",
+  "--always-approve",
+  "-p",
+];
+
+export type NativeHarness = "claude" | "codex" | "grok";
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -56,8 +64,32 @@ function nativeCommand(
     return settings.command;
   const saved = matchingHarness(settings, name);
   if (saved.command !== undefined) return saved.command;
-  const defaults = name === "codex" ? defaultCodexCommand : defaultCommand;
+  const defaults = harnessDefaults(name).command;
   return [saved.path ?? name, ...defaults.slice(1)];
+}
+
+function nativeHarness(name: string): name is NativeHarness {
+  return ["claude", "codex", "grok"].includes(name);
+}
+
+export function harnessDefaults(value: unknown): {
+  readonly command: readonly string[];
+  readonly variable: string;
+} {
+  const name =
+    typeof value === "string" && nativeHarness(value) ? value : "claude";
+  return {
+    command: {
+      claude: defaultCommand,
+      codex: defaultCodexCommand,
+      grok: defaultGrokCommand,
+    }[name],
+    variable: {
+      claude: "CLOVING_CLAUDE_COMMAND",
+      codex: "CLOVING_CODEX_COMMAND",
+      grok: "CLOVING_GROK_COMMAND",
+    }[name],
+  };
 }
 
 export function turnHarness(
@@ -70,8 +102,7 @@ export function turnHarness(
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  if (name !== "claude" && name !== "codex")
-    throw new Error(`harness-no-worker: ${name}`);
+  if (!nativeHarness(name)) throw new Error(`harness-no-worker: ${name}`);
   const saved = matchingHarness(settings, name);
   return {
     worker: name,
