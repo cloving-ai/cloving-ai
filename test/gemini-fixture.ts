@@ -18,7 +18,7 @@ export const chunkStream = [
     type: "tool_use",
     tool_name: "write_file",
     tool_id: "write",
-    parameters: {},
+    parameters: { file_path: "HELLO.md", content: "Hello.\n" },
   },
   { type: "tool_result", tool_id: "write", status: "success" },
   { type: "message", role: "assistant", content: "Added ", delta: true },

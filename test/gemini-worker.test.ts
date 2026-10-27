@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { intent, resultOf, until, withScene } from "./claude-worker-fixture.ts";
+import {
+  intent,
+  journalKey,
+  resultOf,
+  until,
+  withScene,
+} from "./claude-worker-fixture.ts";
 import {
   chunkStream,
   fakeGemini,
@@ -13,6 +19,7 @@ import {
 import { rendered } from "../src/cli/render.ts";
 import { geminiStream } from "../src/daemon/gemini-stream.ts";
 import { streamResult } from "../src/daemon/claude-turn.ts";
+import { activityOf } from "../src/cli/watch-model.ts";
 
 await test("CLV-211 Gemini ignores stream noise and warnings and keeps the last complete message", () => {
   const stream = geminiStream();
@@ -205,6 +212,14 @@ await test("CLV-211 a Gemini default joins the last assistant chunks and commits
     assert.equal(report["harness"], "gemini");
     assert.equal(report["model"], "gemini-test-pro");
     assert.deepEqual(report["ticketStatus"], { kind: "complete" });
+    const lines = readFileSync(
+      join(scene.journal, journalKey("operation-1"), "turn.jsonl"),
+      "utf8",
+    ).split("\n");
+    assert.deepEqual(
+      lines.flatMap(activityOf).filter((item) => item.kind === "tool"),
+      [{ kind: "tool", text: "write_file: HELLO.md" }],
+    );
     const observed = resultOf(
       readFileSync(join(scene.directory, "gemini-observed.json"), "utf8"),
     );

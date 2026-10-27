@@ -73,10 +73,8 @@ function message(
   event: Readonly<Record<string, unknown>>,
   state: State,
 ): readonly string[] {
-  if (event["role"] !== "assistant") {
-    if (event["role"] === "user") state.continuing = false;
-    return [];
-  }
+  if (event["role"] === "user") state.continuing = false;
+  if (event["role"] !== "assistant") return [];
   const content = text(event["content"]);
   state.message =
     state.continuing && event["delta"] === true
@@ -108,6 +106,21 @@ function received(
     case "message":
       return message(event, state);
     case "tool_use":
+      state.continuing = false;
+      return [
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: text(event["tool_name"]),
+                input: event["parameters"],
+              },
+            ],
+          },
+        }),
+      ];
     case "tool_result":
       state.continuing = false;
   }
