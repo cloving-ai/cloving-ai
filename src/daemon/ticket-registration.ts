@@ -12,6 +12,7 @@ import type {
   WorkflowRegistration,
 } from "../service/registry.ts";
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
+import { declaredInput } from "./declared-input.ts";
 import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import { record } from "../protocol.ts";
@@ -288,11 +289,10 @@ function declaredResolver(
             };
       return {
         kind: "resolved",
-        input: {
-          cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
-          repository: source.repository,
-          input,
-        },
+        input: declaredInput(source.repository, {
+          commandId: request.commandId,
+          submission: input,
+        }),
       };
     },
   };

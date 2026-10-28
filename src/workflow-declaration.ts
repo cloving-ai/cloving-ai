@@ -4,6 +4,10 @@ import {
   type SubmissionContract,
   type SubmissionField,
 } from "./submission.ts";
+import {
+  checkWorkflowSchedule,
+  type WorkflowSchedule,
+} from "./workflow-schedule.ts";
 
 export interface WorkflowStage {
   readonly name: string;
@@ -33,6 +37,7 @@ export interface WorkflowDeclaration {
   readonly commands?: readonly string[];
   readonly commandWaits?: CommandWaits;
   readonly queue?: boolean;
+  readonly schedule?: WorkflowSchedule;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -277,6 +282,7 @@ export function isWorkflowDeclaration(
       "commands",
       "commandWaits",
       "queue",
+      "schedule",
     ])
   )
     return false;
@@ -287,11 +293,14 @@ export function isWorkflowDeclaration(
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
-    declaredOptions(declaration)
+    declaredOptions(declaration, input)
   );
 }
 
-function declaredOptions(declaration: Fields): boolean {
+function declaredOptions(
+  declaration: Fields,
+  input: SubmissionContract,
+): boolean {
   return (
     (!Object.hasOwn(declaration, "queue") ||
       typeof declaration["queue"] === "boolean") &&
@@ -299,6 +308,8 @@ function declaredOptions(declaration: Fields): boolean {
     (!Object.hasOwn(declaration, "stages") ||
       isWorkflowStages(declaration["stages"])) &&
     (!Object.hasOwn(declaration, "handoffs") ||
-      isWorkflowNames(declaration["handoffs"]))
+      isWorkflowNames(declaration["handoffs"])) &&
+    (!Object.hasOwn(declaration, "schedule") ||
+      checkWorkflowSchedule(input, declaration["schedule"]).kind === "valid")
   );
 }

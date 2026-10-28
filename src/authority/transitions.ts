@@ -59,6 +59,7 @@ export const eventTypes = [
   "lease.expired",
   "effect.reported",
   "operation.reconciled",
+  "schedule.skipped",
 ] as const;
 
 export type EventType = (typeof eventTypes)[number];
@@ -85,12 +86,14 @@ export const numberFields = [
   "leaseGeneration",
   "sourceGeneration",
   "capacity",
+  "slot",
 ] as const;
 
 export const textFields = [
   "parentRunId",
   "chainId",
   "workflow",
+  "workflowId",
   "submission",
   "input",
   "resolver",
@@ -148,6 +151,7 @@ export type Move = Exclude<
   | "lease.expired"
   | "effect.reported"
   | "operation.reconciled"
+  | "schedule.skipped"
 >;
 type Change = Pick<RunState, "status"> & Partial<RunState>;
 

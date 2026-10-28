@@ -120,6 +120,11 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
     { kind: "pause-run", expectedRevision: revision },
     { kind: "resume-run", expectedRevision: revision },
     { kind: "report-observation", condition: "working", reason: "generated" },
+    {
+      kind: "record-schedule-skip",
+      workflowId: "review",
+      slot: subject.choice + 1,
+    },
     ...gates(state, subject),
     ...effects(state, subject),
     { kind: "complete-run", expectedRevision: revision },
