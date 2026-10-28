@@ -15,6 +15,7 @@ import {
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 interface Setup {
   readonly runtimeDirectory: string;
@@ -132,11 +133,17 @@ await test("CLV-189 a refused receipt keeps the request and reports the cause", 
 });
 
 await test("CLV-189 the pairing ends with pairing-expired at the local expiry when the request waits", async () => {
-  await withRelay({ pairingMilliseconds: 600 }, async (setup) => {
-    await requested(setup);
-    const ended = await until(setup, (current) => current["pairing"] === null);
-    assert.equal(ended["refusal"], "pairing-expired");
-  });
+  await withRelay(
+    { pairingMilliseconds: testMilliseconds(600) },
+    async (setup) => {
+      await requested(setup);
+      const ended = await until(
+        setup,
+        (current) => current["pairing"] === null,
+      );
+      assert.equal(ended["refusal"], "pairing-expired");
+    },
+  );
 });
 
 await test("CLV-189 a pairing that cloving.ai no longer knows ends", async () => {
