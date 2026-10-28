@@ -63,7 +63,7 @@
         }
       ]
     },
-    "quality_linux": {
+    "quality_linux_node": {
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
       "timeout-minutes": 60,
       "strategy": {
@@ -123,6 +123,23 @@
         },
         {
           "run": "node --test test/packed-install.test.ts"
+        }
+      ]
+    },
+    "quality_linux": {
+      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
+      "timeout-minutes": 5,
+      "needs": [
+        "quality_linux_node"
+      ],
+      "if": "${{ always() }}",
+      "steps": [
+        {
+          "name": "Require every Linux Node version",
+          "env": {
+            "LINUX_RESULT": "${{ needs.quality_linux_node.result }}"
+          },
+          "run": "test \"$LINUX_RESULT\" = success"
         }
       ]
     },

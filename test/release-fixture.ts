@@ -17,6 +17,11 @@ interface WorkflowStep {
   readonly env?: StringRecord;
 }
 
+interface WorkflowStrategy {
+  readonly "fail-fast": boolean;
+  readonly matrix: Readonly<Record<string, readonly string[]>>;
+}
+
 interface WorkflowJob {
   readonly "runs-on": string;
   readonly "timeout-minutes": number;
@@ -25,7 +30,7 @@ interface WorkflowJob {
   readonly needs?: string | readonly string[];
   readonly permissions?: StringRecord;
   readonly env?: StringRecord;
-  readonly strategy?: unknown;
+  readonly strategy?: WorkflowStrategy;
 }
 
 export interface ReleaseWorkflow {
@@ -34,6 +39,7 @@ export interface ReleaseWorkflow {
   readonly jobs: {
     readonly quality: WorkflowJob;
     readonly quality_linux: WorkflowJob;
+    readonly quality_linux_node: WorkflowJob;
     readonly publish: WorkflowJob;
   };
 }
@@ -99,8 +105,20 @@ function isStep(value: unknown): value is WorkflowStep {
   );
 }
 
+function isStrategy(value: unknown): value is WorkflowStrategy {
+  return (
+    isRecord(value) &&
+    typeof value["fail-fast"] === "boolean" &&
+    isRecordOf(value["matrix"], isCommand)
+  );
+}
+
 function validNeeds(value: unknown): boolean {
   return value === undefined || isString(value) || isCommand(value);
+}
+
+function optional(value: unknown, valid: (entry: unknown) => boolean): boolean {
+  return value === undefined || valid(value);
 }
 
 function isJob(value: unknown): value is WorkflowJob {
@@ -110,10 +128,11 @@ function isJob(value: unknown): value is WorkflowJob {
     typeof value["timeout-minutes"] === "number" &&
     Array.isArray(value["steps"]) &&
     value["steps"].every(isStep) &&
-    (value["if"] === undefined || isString(value["if"])) &&
+    optional(value["if"], isString) &&
     validNeeds(value["needs"]) &&
-    ["permissions", "env"].every(
-      (name) => value[name] === undefined || isStringRecord(value[name]),
+    optional(value["strategy"], isStrategy) &&
+    ["permissions", "env"].every((name) =>
+      optional(value[name], isStringRecord),
     )
   );
 }
@@ -127,6 +146,7 @@ function isWorkflow(value: unknown): value is ReleaseWorkflow {
     isRecord(jobs) &&
     isJob(jobs["quality"]) &&
     isJob(jobs["quality_linux"]) &&
+    isJob(jobs["quality_linux_node"]) &&
     isJob(jobs["publish"])
   );
 }

@@ -38,6 +38,16 @@ await test("CLV-097 release fixtures reject malformed workflow shapes at the JSO
         quality: { ...workflow.jobs.quality, steps: [{ run: 42 }] },
       },
     },
+    ...[
+      { "fail-fast": "false", matrix: { node: ["26.9.0"] } },
+      { "fail-fast": false, matrix: { node: [26] } },
+    ].map((strategy) => ({
+      ...workflow,
+      jobs: {
+        ...workflow.jobs,
+        quality_linux_node: { ...workflow.jobs.quality_linux_node, strategy },
+      },
+    })),
   ])
     await withFiles(
       { ".github/workflows/ci.yml": JSON.stringify(value) },
