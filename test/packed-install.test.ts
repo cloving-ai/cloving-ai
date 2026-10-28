@@ -1,4 +1,5 @@
 import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
+import { packedDevelopTemplate } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import {
@@ -113,6 +114,7 @@ async function installed(root: string): Promise<string> {
     cwd: root,
   });
   await packagedFontFiles(join(root, "node_modules/cloving"));
+  await packedDevelopTemplate(join(root, "node_modules/cloving"));
   await packedStages(root);
   return join(root, "node_modules/.bin/cloving");
 }

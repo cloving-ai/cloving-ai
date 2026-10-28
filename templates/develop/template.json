@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "name": "develop",
+  "summary": "Develop a ticket or task with explicit choices for selection, acceptance, merge and partial work. The first option at each point is the hands-off default.",
+  "points": [
+    {
+      "id": "input",
+      "question": "What should the workflow develop?",
+      "options": [
+        {
+          "id": "ticket",
+          "label": "A ticket",
+          "summary": "Resolve a ticket through the configured ticket command.",
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"ticket\": { \"type\": \"ticket\" } }. Use the resolved ticket text as the task.",
+          "requires": {},
+          "needs": ["ticket-command"]
+        },
+        {
+          "id": "task-text",
+          "label": "A task text",
+          "summary": "Develop the submitted prompt without a ticket lookup.",
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"prompt\": { \"type\": \"string\" } }. Use the submitted prompt as the task.",
+          "requires": { "select": ["person"], "partial": ["person"] },
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "select",
+      "question": "Who selects the next ticket or task?",
+      "options": [
+        {
+          "id": "queue",
+          "label": "The queue",
+          "summary": "Select a ready ticket through the configured next-ticket command.",
+          "change": "In develop.declaration.json, set workflow.queue to true (\"queue\": true).",
+          "requires": { "input": ["ticket"] },
+          "needs": ["next-command", "queue-interval"]
+        },
+        {
+          "id": "person",
+          "label": "A person",
+          "summary": "A person submits the ticket or task when starting a run.",
+          "change": "In develop.declaration.json, remove the workflow.queue field.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "accept",
+      "question": "Who accepts the developed work?",
+      "options": [
+        {
+          "id": "greptile",
+          "label": "Greptile at 5/5",
+          "summary": "Open or update the pull request and wait for Greptile to accept its commit at 5/5.",
+          "change": "Call reviewByAgent({ subject, reviewer: { kind: \"greptile\" } }). Open or update the pull request before this call and use its commit and target as subject.",
+          "requires": { "merge": ["person", "green"] },
+          "needs": ["gh-login", "github-origin", "greptile-review"]
+        },
+        {
+          "id": "person",
+          "label": "A person",
+          "summary": "Wait for a person's approval of the immutable commit. Denial with feedback requests another bounded turn.",
+          "change": "Call reviewByPerson({ subject }). For a local merge, use the turn's commit and target as subject without opening a pull request.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "turn",
+          "label": "A review turn",
+          "summary": "Run the review profile and require its explicit accept verdict.",
+          "change": "Call reviewByAgent({ subject, reviewer: { kind: \"turn\", profile: \"review\" } }). Use the immutable commit and target as subject.",
+          "requires": {},
+          "needs": ["default-harness"]
+        }
+      ]
+    },
+    {
+      "id": "merge",
+      "question": "Who merges the accepted work?",
+      "options": [
+        {
+          "id": "green",
+          "label": "Cloving after the checks",
+          "summary": "Open or update a pull request and merge after acceptance, the beforeMerge check and CI. Pass result.output into a fix turn on failure.",
+          "change": "Call mergeWhenGreen({ pull, check: \"beforeMerge\" }) after acceptance. Use the pull returned by opening the pull request. Give the result.output to the next fix turn.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "check-command"]
+        },
+        {
+          "id": "person",
+          "label": "A person approves Cloving's merge",
+          "summary": "Open or update a pull request, wait for merge approval, then run the beforeMerge check and CI before merging.",
+          "change": "Call mergeByPerson({ pull, check: \"beforeMerge\" }) after acceptance. Use the pull returned by opening the pull request. Give the result.output to the next fix turn.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "check-command"]
+        },
+        {
+          "id": "local",
+          "label": "A person merges the local branch",
+          "summary": "Leave the accepted branch for a person to merge by hand. Do not push or open a pull request.",
+          "change": "After acceptance, return the local branch outcome. Remove the GitHub prepare, open-pr and merge calls; do not call mergeByPerson or mergeWhenGreen.",
+          "requires": { "accept": ["person", "turn"], "partial": ["person"] },
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "partial",
+      "question": "What happens when the work is partial?",
+      "options": [
+        {
+          "id": "queue",
+          "label": "Return the ticket to the queue",
+          "summary": "After merging partial work, record the remaining work and set cloving: ready for the first two partial runs. Set cloving: blocked from the third. Stop a run after three fix rounds.",
+          "change": "After a merged result, call protectedEffect with capability: \"github\", method: \"partial-issue\", and a payload containing owner, repository, number, pullRequest and remaining. Use an explicit scope with phase, operation and round. The GitHub worker records the partial run and applies ready or blocked.",
+          "requires": {
+            "input": ["ticket"],
+            "select": ["queue"],
+            "merge": ["person", "green"]
+          },
+          "needs": [
+            "gh-login",
+            "github-origin",
+            "ticket-command",
+            "next-command",
+            "queue-interval"
+          ]
+        },
+        {
+          "id": "person",
+          "label": "A person decides",
+          "summary": "Ask what to do with partial work. Use the answer as feedback for a bounded continuation, or stop and leave it for the person.",
+          "change": "Call waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }). Feed the answer into the next bounded turn; stop if no continuation is requested.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    }
+  ]
+}
