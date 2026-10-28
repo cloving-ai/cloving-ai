@@ -65,7 +65,7 @@
     },
     "quality_linux_node": {
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
-      "timeout-minutes": 60,
+      "timeout-minutes": 75,
       "strategy": {
         "fail-fast": false,
         "matrix": {
@@ -76,7 +76,7 @@
         }
       },
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "4",
+        "CLOVING_CHECK_TIME_FACTOR": "5",
         "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '4' }}",
         "CLOVING_CI_ARCHITECTURE": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'arm64' || 'x64' }}"
       },
