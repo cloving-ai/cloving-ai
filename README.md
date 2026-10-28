@@ -807,12 +807,25 @@ For a Greptile review of a pull request, use the same result contract:
 import { reviewByAgent } from "cloving/workflows/steps/review-by-agent";
 
 const subject = { number: pull.number, commit: pull.commit, target: runTarget };
-const review = await reviewByAgent({ subject, reviewer: { kind: "greptile" } });
+const review = await reviewByAgent({ subject: subject, reviewer: { kind: "greptile" } });
 ```
 
-Replacing that call with `reviewByPerson({ subject })` preserves the result type and subject digest. Greptile needs the pull number and immutable commit; drafts use person review. Only a score of 5/5 sets `accepted: true`. Feedback includes the summary and findings with their file locations. Responses must name the requested pull and commit; malformed or unrelated results reject with `invalid-review-result`. Failed effects reject with the effect's reason.
+Replacing that call with `reviewByPerson({ subject })` preserves the result type and subject digest. Greptile needs the pull number and immutable commit; drafts can use person or turn review. Only a score of 5/5 sets `accepted: true`. Feedback includes the summary and findings with their file locations. Responses must name the requested pull and commit; malformed or unrelated results reject with `invalid-review-result`. Failed effects reject with the effect's reason.
 
-`reviewByAgent` uses the existing GitHub `wait-review` worker method and one protected effect unit per distinct subject. Its candidate declaration must include the `github` capability and `methods: { "github": ["wait-review"] }` with a sufficient effect limit. The broker still controls authority and budgets. Both the subpath above and `cloving/workflows` export the helper. Fake scenarios provide worker results in `effects["github wait-review"]`. Turn reviewers and the merge helper pair are not implemented yet.
+`reviewByAgent` uses the existing GitHub `wait-review` worker method and one protected effect unit per distinct subject. Its candidate declaration must include the `github` capability and `methods: { "github": ["wait-review"] }` with a sufficient effect limit. The broker still controls authority and budgets. Both the subpath above and `cloving/workflows` export the helper. Fake scenarios provide worker results in `effects["github wait-review"]`. A turn reviewer uses the same subject and result:
+
+```ts
+const review = await reviewByAgent({
+  subject: subject,
+  reviewer: { kind: "turn", profile: "checker" },
+});
+```
+
+The named profile runs through the existing `claude` capability and `run-turn:checker` method, using that profile's configured harness and restrictions. The declaration must name that exact method and capability; the helper consumes one protected effect unit. The workflow call must contain a literal profile name. Commit reviews use the subject's run target and ask the reviewer to inspect that exact commit. Draft reviews use a separate work tree identified by the draft's subject digest. Repeating a subject with the same profile reuses its operation; changing the subject or profile starts a new review operation.
+
+The report must end with `Review verdict: accept` or `Review verdict: change`. The worker records this verdict separately before truncating the report. Only `accept` sets `accepted: true`; feedback is the report text before the verdict, within the worker's report limits. A missing final verdict returns `accepted: false` and `The review turn has no verdict line.` A failed turn rejects with its effect reason. Fake scenarios provide `{ summary, reviewVerdict }` worker results through `effects["claude run-turn:checker"]`, with `reviewVerdict` set to `"accept"`, `"change"` or `null`.
+
+The merge helper pair is not implemented yet.
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 

@@ -9,6 +9,7 @@ export type {
   CommitReviewSubject,
   DraftReviewSubject,
   ReviewResult,
+  Reviewer,
 } from "./review-subject.ts";
 export { handoff } from "./steps/handoff.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
