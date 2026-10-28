@@ -8,6 +8,38 @@ import {
 } from "../src/daemon/command-worker.ts";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 import { located } from "../src/daemon/operation-journal.ts";
+import type { CommandClock } from "../src/daemon/command-process.ts";
+
+export function fakeCommandClock(initial: number) {
+  let now = initial;
+  const timers = new Set<{
+    readonly at: number;
+    readonly expired: () => void;
+  }>();
+  const clock: CommandClock = {
+    now: () => now,
+    timer: (wait) => {
+      const timer = { at: now + wait.milliseconds, expired: wait.expired };
+      timers.add(timer);
+      return () => {
+        timers.delete(timer);
+      };
+    },
+  };
+  return {
+    clock,
+    setTime: (instant: number) => {
+      now = instant;
+    },
+    tick: (milliseconds: number) => {
+      now += milliseconds;
+      for (const timer of [...timers].filter((entry) => entry.at <= now)) {
+        timers.delete(timer);
+        timer.expired();
+      }
+    },
+  };
+}
 
 export const signal = new AbortController().signal;
 

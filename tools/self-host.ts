@@ -34,6 +34,7 @@ import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
 import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
+import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -108,6 +109,7 @@ async function profilesFile(): Promise<TurnProfiles> {
 interface Commands extends HarnessSettings {
   readonly commands: LocalCommands;
   readonly commandSeconds: number;
+  readonly schedules: unknown;
   readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
@@ -244,6 +246,7 @@ const fallbackModels = parseFallbackModels(
   environment["CLOVING_FALLBACK_MODELS"],
 );
 const profiles = await profilesFile();
+const schedules = parseSchedulesSetting(environment["CLOVING_SCHEDULES"]);
 const worker = selectedWorker();
 function nativeCommands(): Readonly<
   Partial<Record<NativeHarness, readonly string[]>>
@@ -281,6 +284,7 @@ await launchers(
   {
     commands,
     commandSeconds,
+    schedules,
     tokenPrices,
     fallbackModels,
     worker,

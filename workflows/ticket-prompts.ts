@@ -78,8 +78,13 @@ export function review(
   turnResult: { readonly round: number; readonly result: string | null },
 ): string {
   const turn = fields(turnResult.result);
+  const harness = turn["harness"];
+  const worker =
+    typeof harness === "string" && harness !== ""
+      ? `the ${harness} worker`
+      : "the worker";
   return [
-    `Review the work of the Claude worker for ${named(input)}.`,
+    `Review the work of ${worker} for ${named(input)}.`,
     `Round: ${String(turnResult.round)} of ${String(lastRound)}`,
     `Branch: ${part(turn, "branch")}`,
     `Work tree: ${part(turn, "worktree")}`,

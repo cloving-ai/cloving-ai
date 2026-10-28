@@ -22,7 +22,7 @@ What works now:
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
-- The watch page shows the runs, the events and the work of the Claude worker as it occurs.
+- The watch page shows the runs, the events and the work of the worker as it occurs.
 
 What does not work yet:
 
@@ -198,7 +198,7 @@ Each repository has its own default runtime directory: `<root>/cloving/<name>-<i
 
 On start, Cloving keeps the old default runtime path only when all retained workflow bundles beside it validate for this repository. It records that choice under `<state>/cloving/adopted-runtime/<name>-<id>.json`, where state is `XDG_STATE_HOME` or `~/.local/state`. Clients reuse the record. With no bundles, foreign or mixed repositories, or damaged bundles, start uses the new default and prints a note with the old path. No state moves. The directory above the runtime directory still holds the authority state, Local World data, turn records and git work trees. Set a different `CLOVING_WATCH_PORT` for a second service.
 
-`cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the Claude worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
+`cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. It opens an inline form: **Issue number** for `develop-issue`, **Ticket ID** for `develop-ticket`, **Idea** for `develop-prd` and **Task** for `develop-prompt`. Declared workflows use the string fields in their bundled declaration. Unsupported inputs have no control. Select **Add card**, press Enter in a one-line field, or Command/Control+Enter in a text area to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream. For `workflow-active`, add `cloving: ready` to the issue to queue it.
 
@@ -890,6 +890,8 @@ Optional `commands` lists distinct names from `CLOVING_COMMANDS`; executable pat
 
 Optional `commandWaits` currently supports declaration validation and execution pinning only; the polling helper and separate time allowance are not implemented yet. It maps names of 1–64 ASCII letters, digits or hyphens to entries containing exactly `command`, `maximumWaitSeconds` and `pollEverySeconds`. The command must be declared in `commands`, configured in `CLOVING_COMMANDS` and permitted by the `command` capability. Maximum wait is an integer from 60 through 2,592,000 seconds; polling interval is an integer from 60 through 86,400 seconds and cannot exceed that maximum. For example, `"commandWaits": { "team-review": { "command": "review-state", "maximumWaitSeconds": 2592000, "pollEverySeconds": 3600 } }` pins that named permission. Reordering entries preserves the execution pin; changing a name, command, duration or interval changes it and refuses incompatible resumption. Legacy runs retain their original pin without wait permission. Ordinary `runCommand` calls still spend effect units, including calls to a command named in this map. Operators must choose read-only, repeat-safe checks; command execution does not enforce read-only access.
 
+Internal command delivery supports an earlier absolute deadline in preparation for polling waits. An attempt uses the shorter of `CLOVING_COMMAND_SECONDS` and the remaining milliseconds, refuses to spawn at or after expiry, and reports `command-wait-timeout` if it settles too late. A recorded result still replays after expiry; an unfinished journaled command retains `command-interrupted` recovery. This internal cap is not exposed through workflow requests and supplies no budget exemption. Durable polling admission, scheduling and deadline enforcement at authority commit remain pending.
+
 Use `runCommand` inside a workflow to request a named command:
 
 ```typescript
@@ -975,11 +977,67 @@ Each committed opening moves the run's single card to the matching column. Compl
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
+A declared workflow can include an interval schedule:
+
+```json
+"schedule": { "everySeconds": 300, "input": {} }
+```
+
+`everySeconds` must be a whole number from 60 through 86400, and `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object such as `{"review-queue":{"everySeconds":600,"input":{}}}` to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+
+The first run starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+
+An earlier scheduled run blocks later scheduled slots while queued, running, waiting for a decision or paused. Each overlap records a `schedule.skipped` event on that earlier run, with `workflowId` and `slot`, without changing its status or observation. Manual runs remain independent. The `develop-issue` queue continues to use `CLOVING_QUEUE_SECONDS`.
+
+This first scheduling slice does not yet implement schedule pause/resume commands, stopping and notification after repeated failures, or schedule displays and scheduled-run marks in status and watch. Schedule settings load at startup. A scheduler transport or journal failure stops scheduling and writes a diagnostic; reconcile the state and restart to retry a pending slot. Full product admission remains subject to the external verification policy.
+
 Startup retains each complete compiled project under `workflow-bundles` in private daemon state, beside the generated `project` directory. Each content-addressed snapshot includes workflow sources, declarations, registration manifests, all compiler artifacts, and the installed dependency graph and Node identity. Snapshots bind to the canonical repository and survive later source edits or removal. Storage lookup validates every captured file and returns `pinned-workflow-unavailable` for missing or changed bytes; startup refuses reuse of a matching damaged snapshot without repairing it. No retained generation is deleted automatically. Before Local World starts, the daemon loads the retained generations needed by unfinished runs. Their starts, replays and continuations use the recorded bundle, including after workflow removal; new submissions use current registrations. Duplicate answers and replay preserve effect receipts and spending.
+
+### Project and user workflows
+
+At daemon startup, Cloving also checks these folders on both macOS and Linux:
+
+- Project: `.cloving/workflows` under the repository selected by `cloving start --repository REPOSITORY` (the current repository by default).
+- User: `$XDG_CONFIG_HOME/cloving/workflows` when `XDG_CONFIG_HOME` is absolute; otherwise `$HOME/.config/cloving/workflows`. macOS uses these same XDG rules.
+
+Missing folders are left absent. Discovery reads top-level `.ts` files, excluding `.d.ts`, and requires a matching `<name>.declaration.json`. Unlike the bundled declaration above, an operator declaration wraps the workflow metadata and lists the effect methods it may request:
+
+```json
+{
+  "workflow": {
+    "workflowId": "project-review",
+    "effectLimit": 1,
+    "capabilities": ["claude"],
+    "input": {
+      "maximumBytes": 1024,
+      "fields": { "task": { "type": "string" } }
+    }
+  },
+  "methods": { "claude": ["run-turn"] }
+}
+```
+
+Use one exported async workflow function with `"use workflow"` and the public `cloving/workflows` helpers. Each capability requires a nonempty list of distinct method names. Declaration, source and actual SDK compilation must pass admission before registration. Declaring a method grants no execution authority; the broker still enforces each run's capabilities and budget. Submit inputs with `cloving run project-review --input input.json`.
+
+Admitted project and user workflows appear beside the bundled registrations. A refused neighbor does not stop valid workflows from loading. `cloving status --json` exposes `workflowRefusals`; status and watch show each refusal's scope, safe file label and codes without its source text. These codes identify the failed check:
+
+| Codes | Meaning |
+| --- | --- |
+| `invalid-declaration` | Missing, malformed or invalid declaration. |
+| `forbidden-import`, `missing-export` | Import outside the public helper surface, or an unavailable named export. |
+| `unsupported-source`, `dynamic-effect`, `direct-effect` | Unsupported source form, a nonliteral effect request, or a direct effect outside helpers. |
+| `undeclared-effect`, `effect-limit` | Requested method absent from the declaration, or statically known work exceeding the limit. |
+| `workflow-conflict`, `bundled-name-reserved` | Conflicting basename, workflow ID or function name across operator files, or collision with a bundled registration. |
+| `unsafe-workflow-path`, `workflow-read-failed`, `workflow-source-changed` | Unsafe file or folder path, unreadable input, or input changed during capture. |
+| `compile-failed` | Candidate analysis or SDK compilation could not complete. |
+
+Project and user files form one conflict set; neither scope overrides the other. Sources and declarations are captured at startup. Edits take effect on the next start, when new runs use the newly admitted version. A restored question retains its original prompt and decision identity. After a source edit and a restart, unfinished runs continue on the retained generation that they started with, as the paragraph on `workflow-bundles` above describes, and new runs use the newly admitted version.
+
+Every operator run binds to the daemon's canonical repository, including workflows loaded from the user folder. Its top-level `repository` input comes from the daemon; an input field also named `repository` remains ordinary submitted data under `input.repository`. A repository alias resolves to the same canonical binding. Retained snapshots are repository-bound and cannot be reused for another repository.
 
 Candidate policy checking is available internally through `checkWorkflowCandidate` in `src/workflow-candidate.ts`. It takes serializable analysis facts, an export snapshot and a candidate declaration containing `workflow` and `methods`. Each declared capability requires a nonempty list of distinct method names. The existing workflow sidecar format is unchanged. Results are sorted, unique refusal codes; an empty list grants no admission or execution authority.
 
-The caller supplies imported symbol names, literal effect pairs (`null` represents a dynamic value), direct-effect and unsupported-form findings, and known call and unit totals. Unknown portions of a total still require runtime budget enforcement. This pure checker does not analyze source or verify these facts. Source-to-facts analysis, SDK candidate compilation and the installed candidate admission adapter remain unimplemented.
+The caller supplies imported symbol names, literal effect pairs (`null` represents a dynamic value), direct-effect and unsupported-form findings, and known call and unit totals. Unknown portions of a total still require runtime budget enforcement. This pure checker does not analyze source or verify these facts. The installed admission adapter in `tools/admit-workflow.ts` derives those facts from source and performs SDK compilation; the pure checker alone cannot admit or authorize a run.
 
 ## Development of Cloving
 

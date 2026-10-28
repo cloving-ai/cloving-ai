@@ -26,7 +26,7 @@ const completed = {
 };
 const opened = { kind: "opened", decisionId: "review-1" };
 const reviewText = [
-  "Review the work of the Claude worker for the ticket CLV-016.",
+  "Review the work of the worker for the ticket CLV-016.",
   "Round: 1 of 3",
   "Branch: cloving/clv-016-a6f7ef47",
   "Work tree: /host/worktrees/clv-016-a6f7ef47",
@@ -118,6 +118,20 @@ await test("CLV-016 the ticket workflow ends with a handoff after an approval an
   });
 });
 
+await test("the review names the harness of the turn when the turn result has one", async () => {
+  const gemini = JSON.stringify({
+    ...JSON.parse(turnResult),
+    harness: "gemini",
+  });
+  const [named] = await ran([
+    { input, turn: { ...completed, result: gemini }, gate: opened },
+  ]);
+  assert.match(
+    String(field(request(named, 1), "prompt")),
+    /^Review the work of the gemini worker for the ticket CLV-016\.\nRound: 1 of 3\n/,
+  );
+});
+
 await test("CLV-016 the ticket workflow ends as blocked when the turn gives no result or the gate does not open, and a run with no ticket ID and a result with no text has plain words", async () => {
   const stopped = { kind: "stopped", operationId: "operation-1", reason: null };
   const refused = { kind: "refused", reason: "run-not-running" };
@@ -130,7 +144,7 @@ await test("CLV-016 the ticket workflow ends as blocked when the turn gives no r
   assert.deepEqual(field(noTurn, "outcome"), {
     kind: "blocked",
     cycleId: "clv-016-a6f7ef47",
-    reason: "The Claude turn has the result stopped.",
+    reason: "The worker turn has the result stopped.",
     evidenceId: "claude-turn",
   });
   assert.equal(field(field(noTurn, "requests"), "length"), 1);
@@ -146,7 +160,7 @@ await test("CLV-016 the ticket workflow ends as blocked when the turn gives no r
   );
   assert.match(
     String(field(request(plain, 1), "prompt")),
-    /^Review the work of the Claude worker for this ticket\.\nRound: 1 of 3\nBranch: \nWork tree: \n/,
+    /^Review the work of the worker for this ticket\.\nRound: 1 of 3\nBranch: \nWork tree: \n/,
   );
 });
 
@@ -198,7 +212,7 @@ await test("CLV-062 a denial with a feedback text starts the next round on the s
   assert.equal(field(gate, "kind"), "approval");
   assert.match(
     String(field(gate, "prompt")),
-    /^Review the work of the Claude worker for the ticket CLV-016\.\nRound: 2 of 3\n/,
+    /^Review the work of the worker for the ticket CLV-016\.\nRound: 2 of 3\n/,
   );
 });
 

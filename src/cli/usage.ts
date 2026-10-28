@@ -74,13 +74,13 @@ Prints the committed events after a sequence. With --json, each line is one even
   watch: `Usage: cloving watch [--port <n>]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
-the events, the work of the Claude worker and each pending decision.
+the events, the work of the worker and each pending decision.
 The default port is 3663. The page is read only. Stop it with Control-C.
 `,
   start: `Usage: cloving start [--repository <directory>] [--reset-queue]
 
 Starts the Cloving service for one git repository, with the workflow host,
-the Claude worker and the watch page. The default repository is the current
+the worker and the watch page. The default repository is the current
 directory.
 Stop it with Control-C.
 
@@ -98,6 +98,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between develop-issue queue checks; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND. Unset means no queue. The queue stops after three runs in a row without a successful handoff; manual develop-issue submissions are refused with workflow-active when all lanes are busy.
   CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
   CLOVING_WORKFLOW_FOLDER          An absolute folder path; when set, it replaces the user workflow folder. The private setting workflows.folder sets it. The folder itself must not be a symbolic link.
+  CLOVING_SCHEDULES                A JSON object mapping declared workflow IDs to {everySeconds, input}; replaces declaration schedules. Intervals are whole seconds from 60 to 86400. Unset keeps declaration schedules. Scheduled runs skip overlapping slots and retain their progress across restart.
   CLOVING_SELF_UPDATE_SECONDS      A whole number from 30 to 3600 seconds between checks of the own checkout; unset means no update. An update stops the daemon and restarts with new code. A change of package-lock.json needs the operator to update and install by hand.
   CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.

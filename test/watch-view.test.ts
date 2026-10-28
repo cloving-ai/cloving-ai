@@ -91,15 +91,32 @@ await test("CLV-016 the banner of a run in work shows the time of the turn, the 
   ];
   assert.equal(
     banner({ ...working, turns: [sampleTurn({ activity })] }),
-    '<section class="banner working"><span class="icon">●</span><div><h2>In work <span class="name">clv-016-a6f7ef47</span></h2><p>Claude works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
+    '<section class="banner working"><span class="icon">●</span><div><h2>In work <span class="name">clv-016-a6f7ef47</span></h2><p>The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
   );
   assert.match(
     banner({ ...working, turns: [sampleTurn({ activeAt: null })] }),
-    /<p>Claude works for 8 min 39 s · 0 tool calls<span class="now">The worker starts\.<\/span><\/p>/,
+    /<p>The worker works for 8 min 39 s · 0 tool calls<span class="now">The worker starts\.<\/span><\/p>/,
   );
   assert.match(
     banner({ ...working, turns: [] }),
     /<h2>In work <span class="name">run-1<\/span><\/h2><p>run-running: The run is in work\.<\/p>/,
+  );
+});
+
+await test("the banner of a run in work names the harness of the turn when the turn has one", () => {
+  const working = {
+    state: "running",
+    code: "run-running",
+    detail: "The run is in work.",
+    decisions: [],
+    phases: phases(["done", "done", "active"]),
+  };
+  assert.match(
+    banner({
+      ...working,
+      turns: [sampleTurn({ activeAt: null, harness: "cursor-agent" })],
+    }),
+    /<p>The cursor-agent worker works for 8 min 39 s · 0 tool calls<span/,
   );
 });
 
