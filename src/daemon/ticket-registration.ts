@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
-import type {
-  DeclaredWorkflow,
-  WorkflowStage,
+import {
+  isCommandWaits,
+  type CommandWaits,
+  type DeclaredWorkflow,
+  type WorkflowStage,
 } from "../workflow-declaration.ts";
 import type {
   Resolution,
@@ -62,6 +64,7 @@ export interface TicketRegistration {
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly commandWaits?: CommandWaits;
 }
 
 async function ticket(
@@ -262,6 +265,9 @@ export function ticketRegistrationTable(
       ...(declaration.commands === undefined
         ? {}
         : { commands: declaration.commands }),
+      ...(declaration.commandWaits === undefined
+        ? {}
+        : { commandWaits: declaration.commandWaits }),
       submission: declaration.input,
       ...(declaration.stages === undefined
         ? {}
@@ -369,11 +375,26 @@ function registrationRefusal(
       return `unknown-handoff-target: ${row.workflowId} -> ${unknown}`;
   }
   for (const row of table) {
-    const unknown = row.commands?.find(
-      (name) => !Object.hasOwn(commands, name),
-    );
-    if (unknown !== undefined)
-      return `command-unknown: ${row.workflowId} -> ${unknown}`;
+    const refusal = commandRegistrationRefusal(row, commands);
+    if (refusal !== undefined) return refusal;
   }
   return undefined;
+}
+
+function commandRegistrationRefusal(
+  row: TicketRegistration,
+  commands: LocalCommands,
+): string | undefined {
+  if (
+    Object.hasOwn(row, "commandWaits") &&
+    !isCommandWaits(row.commandWaits, {
+      capabilities: row.capabilities ?? ticketCapabilities,
+      commands: row.commands ?? [],
+    })
+  )
+    return `invalid-command-waits: ${row.workflowId}`;
+  const unknown = row.commands?.find((name) => !Object.hasOwn(commands, name));
+  return unknown === undefined
+    ? undefined
+    : `command-unknown: ${row.workflowId} -> ${unknown}`;
 }
