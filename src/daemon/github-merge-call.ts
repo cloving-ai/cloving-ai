@@ -7,9 +7,12 @@ import {
 } from "./github-operation.ts";
 import { githubRead, retryGithub } from "./github-retry.ts";
 
+export type MergeCheck = "beforeMerge" | null;
+
 export interface ReviewedPull {
   readonly number: number;
   readonly commit: string;
+  readonly check?: MergeCheck | undefined;
 }
 
 function commitOf(value: unknown, name: string): string {

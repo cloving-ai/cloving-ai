@@ -9,6 +9,7 @@ import {
 } from "./github-calls.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
+import type { MergeCheck } from "./github-merge-call.ts";
 import { createIssue, discard } from "./github-issue-methods.ts";
 import {
   existingTree,
@@ -40,6 +41,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "check-failed",
   "merge-conflict",
   "check-required",
+  "check-not-configured",
   "base-moved",
   "head-not-updated",
   "uncommitted-change",
@@ -56,6 +58,13 @@ function integer(operation: Operation, name: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
     throw new Error("invalid-payload");
   return value;
+}
+
+function mergeCheck(operation: Operation): MergeCheck | undefined {
+  if (!Object.hasOwn(operation.payload, "check")) return undefined;
+  const value = operation.payload["check"];
+  if (value === null || value === "beforeMerge") return value;
+  throw new Error("invalid-payload");
 }
 
 async function prepare(operation: Operation): Promise<unknown> {
@@ -358,6 +367,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
       merge(operation, {
         number: integer(operation, "number"),
         commit: text(operation, "commit"),
+        check: mergeCheck(operation),
       }),
   ],
 ]);

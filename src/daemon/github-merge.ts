@@ -16,6 +16,7 @@ import { githubText } from "./github-calls.ts";
 import {
   knownMerge,
   mergePull,
+  type MergeCheck,
   type ReviewedPull,
 } from "./github-merge-call.ts";
 
@@ -114,16 +115,18 @@ async function checked(
     readonly tree: Place;
     readonly base: string;
     readonly commit: string;
+    readonly check?: MergeCheck | undefined;
   },
 ): Promise<string> {
   await changeChecked(operation, place);
   const head = await headOf(operation, place.tree);
-  if (operation.settings.check !== undefined)
-    await operation.calls.run(operation.settings.check, place.tree.path);
+  const command = place.check === null ? undefined : operation.settings.check;
+  if (command !== undefined)
+    await operation.calls.run(command, place.tree.path);
   await clean(operation, place.tree);
   if ((await headOf(operation, place.tree)) !== head)
     throw new Error("uncommitted-change");
-  if (head !== place.commit && operation.settings.check === undefined)
+  if (head !== place.commit && command === undefined && place.check !== null)
     throw new Error("check-required");
   return head;
 }
@@ -134,6 +137,7 @@ async function refreshed(
     readonly tree: Place;
     readonly commit: string;
     readonly recorded: string | undefined;
+    readonly check?: MergeCheck | undefined;
   },
 ): Promise<string> {
   await restored(operation, {
@@ -212,6 +216,7 @@ async function readyHead(
       tree,
       commit: pull.commit,
       recorded,
+      check: pull.check,
     });
     if (updated !== pull.commit && recorded !== updated)
       await writeRecord(operation.folder, {
@@ -257,6 +262,8 @@ export async function merge(
   operation: Operation,
   pull: ReviewedPull,
 ): Promise<MergeResult> {
+  if (pull.check === "beforeMerge" && operation.settings.check === undefined)
+    throw new Error("check-not-configured");
   try {
     return await completedMerge(operation, pull);
   } catch (error) {

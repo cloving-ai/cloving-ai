@@ -752,6 +752,7 @@
     "test/github-merge-poll.test.ts": "test",
     "test/github-merge-fixture.ts": "test",
     "test/github-merge.test.ts": "test",
+    "test/github-merge-check.test.ts": "test",
     "test/github-merge-types.test.ts": "test",
     "test/github-merge-restart.test.ts": "test",
     "test/develop-workflow-fixture.ts": "test",
