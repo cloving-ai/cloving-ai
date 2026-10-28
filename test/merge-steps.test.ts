@@ -142,6 +142,45 @@ await test("CLV-220 mergeByPerson returns not-approved with the answer and start
   );
 });
 
+for (const result of [
+  "{",
+  null,
+  "[]",
+  JSON.stringify({ reason: "unknown", output: "" }),
+  JSON.stringify({ reason: "check-failed" }),
+  JSON.stringify({ number: 43, commit, merged: "d".repeat(40) }),
+  JSON.stringify({ number: 42, commit: "e".repeat(40), merged: "d" }),
+  JSON.stringify({ number: 42, commit }),
+])
+  await test(`CLV-220 mergeWhenGreen rejects a malformed merge result ${String(result)}`, async () => {
+    using bridge = fakeStepBridge({
+      effects: {
+        "github merge": [
+          { kind: "completed", operationId: "merge", receipt: null, result },
+        ],
+      },
+    });
+    await assert.rejects(
+      mergeWhenGreen({ pull, check: null }),
+      /invalid-merge-result/,
+    );
+    assert.equal(bridge.requests.length, 1);
+  });
+
+for (const decision of [
+  { decision: "denied", answer: null },
+  { decision: "expired", answer: null },
+] as const)
+  await test(`CLV-220 mergeByPerson gives an empty output when the ${decision.decision} decision has no answer`, async () => {
+    using bridge = fakeStepBridge({ decisions: [decision] });
+    assert.deepEqual(await mergeByPerson({ pull, check: null }), {
+      merged: false,
+      reason: "not-approved",
+      output: "",
+    });
+    assert.equal(bridge.requests.length, 1);
+  });
+
 for (const request of [
   { pull },
   { pull: { ...pull, number: 0 }, check: null },
