@@ -24,6 +24,7 @@ import {
 } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
+import { nativeHarness } from "../harness-defaults.ts";
 
 export interface RetrySettings {
   readonly tokenPrices?: TokenPrices;
@@ -112,7 +113,7 @@ function attemptCommand(attempts: Attempts, attempt: number) {
       : undefined;
   const command =
     fallback === undefined ? original : replaceCommandModel(original, fallback);
-  const model = commandModel(command);
+  const model = start.output === "text" ? null : commandModel(command);
   return {
     command,
     model,
@@ -135,25 +136,32 @@ function attemptUsage(
   };
   const model = result.model ?? attemptCommand(attempts, attempt).model;
   const usage = result.usage;
+  const worker = attempts.start.worker ?? "claude";
   return {
     attempt,
     retryKind: kindOf(attempts, end),
     model,
     usage,
     costUsd: result.costUsd,
-    estimatedCostUsd: estimatedCostUsd(usage, {
-      worker: attempts.start.worker ?? "claude",
-      price: priceForModel(
-        attempts.options.tokenPrices ?? {},
-        result.pricingModel === undefined ? model : result.pricingModel,
-      ),
-    }),
+    estimatedCostUsd: nativeHarness(worker)
+      ? estimatedCostUsd(usage, {
+          worker,
+          price: priceForModel(
+            attempts.options.tokenPrices ?? {},
+            result.pricingModel === undefined ? model : result.pricingModel,
+          ),
+        })
+      : null,
   };
 }
 
+function retriesCapacity(worker: string | undefined): boolean {
+  return ["claude", "codex"].includes(worker ?? "claude");
+}
+
 function kindOf(attempts: Attempts, end: TurnEnd) {
-  const { worker } = attempts.start;
-  if (!retriesCapacity(worker)) return null;
+  const { worker, output } = attempts.start;
+  if (output === "text" || !retriesCapacity(worker)) return null;
   if (worker !== "codex") return retryKind(end.result);
   return capacityRefusal(end.result) ? "capacity" : null;
 }
@@ -280,10 +288,6 @@ async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
   await wait(milliseconds, stopping.signal).catch((error: unknown) => {
     if (!stopping.signal.aborted) throw error;
   });
-}
-
-function retriesCapacity(worker: string | undefined): boolean {
-  return !["cursor-agent", "opencode", "grok"].includes(worker ?? "");
 }
 
 async function preparedRetry(attempts: Attempts): Promise<string | TurnEnd> {

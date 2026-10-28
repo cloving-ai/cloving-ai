@@ -1,6 +1,7 @@
 import {
   turnHarness,
   harnessDefaults,
+  nativeHarness,
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
@@ -73,13 +74,18 @@ const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
 const leaseSeconds = leaseText === undefined ? undefined : Number(leaseText);
 
-function selectedWorker(): NativeHarness {
-  return nativeWorker(environment["CLOVING_WORKER"] ?? "claude");
+function selectedWorker(): string {
+  return checkedWorker(environment["CLOVING_WORKER"] ?? "claude");
 }
 
-function nativeWorker(name: string): NativeHarness {
+function checkedWorker(name: string): string {
   try {
-    return turnHarness({ worker: name }).worker;
+    return turnHarness({
+      worker: name,
+      ...(configuration.harness === undefined
+        ? {}
+        : { harness: configuration.harness }),
+    }).worker;
   } catch (error) {
     throw new Error(`The daemon did not start: harness-no-worker: ${name}`, {
       cause: error,
@@ -241,11 +247,11 @@ function nativeCommands(): Readonly<
   const names = new Set([
     worker,
     ...Object.values(profiles).map((profile) =>
-      nativeWorker(profile.harness ?? worker),
+      checkedWorker(profile.harness ?? worker),
     ),
   ]);
   return Object.fromEntries(
-    [...names].flatMap((name) => {
+    [...names].filter(nativeHarness).flatMap((name) => {
       const variable = harnessDefaults(name).variable;
       const command = variable === undefined ? undefined : listed(variable);
       return command === undefined ? [] : [[name, command]];
