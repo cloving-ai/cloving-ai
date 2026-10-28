@@ -15,6 +15,7 @@ import {
   testCommand,
   testConcurrency,
 } from "../../quality/test-execution.ts";
+import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
 
 await test("CLV-112 bounds test concurrency by available cores", () => {
@@ -143,7 +144,7 @@ await test("CLV-099 rejects an invalid time factor before the first gate check",
         cwd: directory,
         env: { ...process.env, CLOVING_CHECK_TIME_FACTOR: "0" },
         encoding: "utf8",
-        timeout: 10000,
+        timeout: testMilliseconds(10000),
       },
     );
     assert.equal(result.error, undefined);
