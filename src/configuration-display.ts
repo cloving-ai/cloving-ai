@@ -43,25 +43,6 @@ function effectiveValue(setting: {
   return value;
 }
 
-function environmentSettings(
-  environment: Readonly<NodeJS.ProcessEnv>,
-  harnessVariable: string | undefined,
-): Record<string, DisplayValue> {
-  const variables = {
-    ...settingVariables,
-    profiles: "CLOVING_PROFILES",
-    ...(harnessVariable === undefined
-      ? {}
-      : { "harness.command": harnessVariable }),
-  };
-  return Object.fromEntries(
-    Object.entries(variables).flatMap(([field, variable]) => {
-      const value = environment[variable];
-      return value === undefined ? [] : [[field, settingValue(value)]];
-    }),
-  );
-}
-
 export function configurationEntries(input: {
   readonly project: string | undefined;
   readonly private: string | undefined;
@@ -76,14 +57,23 @@ export function configurationEntries(input: {
     parseConfiguration(input.private, "private"),
   );
   const name =
-    input.environment["CLOVING_WORKER"] ??
-    privateFile["harness.name"] ??
-    "claude";
+    input.environment["CLOVING_WORKER"] ?? privateFile["harness.name"];
   const harness =
-    typeof name === "string" && nativeHarness(name)
-      ? harnessDefaults(name)
-      : undefined;
-  const environment = environmentSettings(input.environment, harness?.variable);
+    typeof name === "string" && !nativeHarness(name)
+      ? undefined
+      : harnessDefaults(name);
+  const environment: Record<string, DisplayValue> = Object.fromEntries(
+    Object.entries({
+      ...settingVariables,
+      profiles: "CLOVING_PROFILES",
+      ...(harness?.variable === undefined
+        ? {}
+        : { "harness.command": harness.variable }),
+    }).flatMap(([field, variable]) => {
+      const value = input.environment[variable];
+      return value === undefined ? [] : [[field, settingValue(value)]];
+    }),
+  );
   if (input.profiles !== undefined) environment["profiles"] = input.profiles;
   const effectiveDefaults: Readonly<Record<string, SettingValue>> = {
     ...defaults,
@@ -97,11 +87,10 @@ export function configurationEntries(input: {
   ];
   return fields.map((field) => {
     settingScope(field);
-    const configured = layers.flatMap(([source, values]) => {
+    const [effective, ...hidden] = layers.flatMap(([source, values]) => {
       const value = values[field];
       return value === undefined ? [] : [{ source, value }];
     });
-    const [effective, ...hidden] = configured;
     const selected: ValueSource = effective ?? {
       source: "default",
       value: effectiveDefaults[field] ?? null,
