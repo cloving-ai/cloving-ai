@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { test } from "node:test";
-import { job, releaseWorkflow, script, steps } from "./release-fixture.ts";
+import {
+  job,
+  metadata,
+  releaseWorkflow,
+  script,
+  steps,
+} from "./release-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const sameRepositoryPullRequest =
   "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository";
@@ -9,6 +16,12 @@ const sameRepositoryPullRequest =
 function localOr(local: string, hosted: string): string {
   return `\${{ ${sameRepositoryPullRequest} && ${local} || ${hosted} }}`;
 }
+
+const nodeVersions = {
+  quality: "26.9.0",
+  quality_linux_node: "${{ matrix.node }}",
+  publish: "26.9.0",
+} as const;
 
 await test("CLV-097 CI checks every push, pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
@@ -30,7 +43,7 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
       "arm64",
     ],
     [
-      "quality_linux",
+      "quality_linux_node",
       localOr(
         `fromJSON('["self-hosted","Linux","ARM64","cloving-ci"]')`,
         "'ubuntu-24.04'",
@@ -51,7 +64,7 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
       step.uses?.startsWith("actions/setup-node@"),
     );
     assert.deepEqual(setup?.with, {
-      "node-version": "26.9.0",
+      "node-version": nodeVersions[name],
       architecture,
       "registry-url": "https://registry.npmjs.org",
       "package-manager-cache": false,
@@ -73,10 +86,10 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
 
 await test("CLV-097 quality qualifies the exact toolchain, completes the developer gate and verifies installed startup", async () => {
   const workflow = await releaseWorkflow();
-  assert.equal(job(workflow, "quality_linux").if, undefined);
-  assert.equal(job(workflow, "quality_linux").permissions, undefined);
-  assert.equal(job(workflow, "quality_linux")["timeout-minutes"], 60);
-  assert.deepEqual(job(workflow, "quality_linux").env, {
+  assert.equal(job(workflow, "quality_linux_node").if, undefined);
+  assert.equal(job(workflow, "quality_linux_node").permissions, undefined);
+  assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 60);
+  assert.deepEqual(job(workflow, "quality_linux_node").env, {
     CLOVING_CHECK_TIME_FACTOR: "4",
     CLOVING_TEST_CONCURRENCY: localOr("'8'", "'4'"),
     CLOVING_CI_ARCHITECTURE: localOr("'arm64'", "'x64'"),
@@ -103,13 +116,16 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
     /case "\$\(sw_vers -productVersion\)" in \$CLOVING_CI_MACOS_VERSION\)/,
   );
   assert.match(qualification, /npm --version/);
-  const linuxCommands = steps(workflow, "quality_linux")
+  const linuxCommands = steps(workflow, "quality_linux_node")
     .map((step) => step.run)
     .filter((run) => run !== undefined);
   assert.equal(linuxCommands[0], commands[0]);
   const linuxQualification = linuxCommands[1];
   assert.ok(typeof linuxQualification === "string");
-  assert.match(linuxQualification, /process\.version.*v26\.9\.0/);
+  assert.match(
+    linuxQualification,
+    /assert\.equal\(process\.version, "v\$\{\{ matrix\.node \}\}"\)/,
+  );
   assert.match(linuxQualification, /process\.platform.*linux/);
   assert.match(
     linuxQualification,
@@ -125,6 +141,62 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
     "npm run build",
     "node --test test/packed-install.test.ts",
   ]);
+});
+
+await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range", async () => {
+  const workflow = await releaseWorkflow();
+  const { manifest } = await metadata();
+  const lowest = (manifest.engines["node"] ?? "")
+    .split(" || ")
+    .map((range) => /^>=(\d+\.\d+\.\d+) <\d+$/.exec(range)?.[1]);
+  assert.deepEqual(lowest, ["24.22.1", "26.9.0"]);
+  assert.deepEqual(job(workflow, "quality_linux_node").strategy, {
+    "fail-fast": false,
+    matrix: { node: lowest },
+  });
+  assert.equal(job(workflow, "quality").strategy, undefined);
+  assert.equal(job(workflow, "publish").strategy, undefined);
+});
+
+await test("CLV-097 the quality_linux check passes only when every Linux Node version passes", async () => {
+  const workflow = await releaseWorkflow();
+  const aggregate = job(workflow, "quality_linux");
+  assert.equal(
+    aggregate["runs-on"],
+    localOr(
+      `fromJSON('["self-hosted","Linux","ARM64","cloving-ci"]')`,
+      "'ubuntu-24.04'",
+    ),
+  );
+  assert.equal(aggregate["timeout-minutes"], 5);
+  assert.deepEqual(aggregate.needs, ["quality_linux_node"]);
+  assert.equal(aggregate.if, "${{ always() }}");
+  assert.equal(aggregate.permissions, undefined);
+  assert.equal(aggregate.steps.length, 1);
+  const [check] = aggregate.steps;
+  assert.deepEqual(check?.env, {
+    LINUX_RESULT: "${{ needs.quality_linux_node.result }}",
+  });
+  const run = check.run;
+  assert.ok(typeof run === "string");
+  for (const [result, status] of [
+    ["success", 0],
+    ["failure", 1],
+    ["cancelled", 1],
+    ["skipped", 1],
+    ["", 1],
+  ] as const) {
+    const outcome: SpawnSyncReturns<string> = spawnSync(
+      "/bin/bash",
+      ["-e", "-o", "pipefail", "-c", run],
+      {
+        env: { LINUX_RESULT: result },
+        encoding: "utf8",
+        timeout: testMilliseconds(10000),
+      },
+    );
+    assert.equal(outcome.status, status, result);
+  }
 });
 
 await test("CLV-097 publish uses same-revision successful quality and only version-tag pushes", async () => {
@@ -176,7 +248,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
 
 await test("CLV-208 Linux CI prepares zsh before setup and skips sudo when installed", async () => {
   const workflow = await releaseWorkflow();
-  const linuxSteps = steps(workflow, "quality_linux");
+  const linuxSteps = steps(workflow, "quality_linux_node");
   const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
   const setup = linuxSteps.findIndex(
     (step) => step.run === "npm run check:setup",

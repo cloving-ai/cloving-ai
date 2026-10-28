@@ -1,7 +1,7 @@
 import { access, constants, stat } from "node:fs/promises";
 import { delimiter, resolve } from "node:path";
 import type { DoctorObservation } from "../doctor-report.ts";
-import { qualifiedNode } from "./toolchain.ts";
+import { supportedNode, supportedNodes } from "./toolchain.ts";
 
 export function listedSetting(
   text: string | undefined,
@@ -23,8 +23,8 @@ export function listedSetting(
 
 export function nodeObservation(version: string): DoctorObservation {
   return {
-    result: version === qualifiedNode ? "ok" : "fail",
-    detail: `Node ${version}; workflow admission requires ${qualifiedNode}`,
+    result: supportedNode(version) ? "ok" : "fail",
+    detail: `Node ${version}; workflow admission requires Node ${supportedNodes}`,
   };
 }
 

@@ -8,10 +8,8 @@ import { admitWorkflow } from "../src/workflow-admission.ts";
 
 const root = join(import.meta.dirname, "..");
 
-await test("CLV-097 installation engine ranges do not broaden exact workflow Node qualification", async () => {
+await test("CLV-097 workflow admission accepts each Node version of the engine range", async () => {
   const observed = await observedToolchain(root);
-  const qualified = await qualifiedToolchain(observed, root);
-  assert.equal(qualified.node, "v26.9.0");
   const workflowId = "workflow//./workflows/probe//probe";
   const registration = {
     name: "probe",
@@ -20,27 +18,41 @@ await test("CLV-097 installation engine ranges do not broaden exact workflow Nod
     capabilities: [],
     resources: [],
   };
-  const compiled = {
-    manifest: {
-      workflows: { "probe.js": { probe: { workflowId } } },
-      steps: {},
-    },
-    artifacts: { "flow.mjs": "a".repeat(64) },
-    resources: {},
-    toolchain: { ...observed, node: "v26.9.0" },
+  const admission = async (node: string) => {
+    const toolchain = { ...observed, node };
+    return admitWorkflow(registration, {
+      compiled: {
+        manifest: {
+          workflows: { "probe.js": { probe: { workflowId } } },
+          steps: {},
+        },
+        artifacts: { "flow.mjs": "a".repeat(64) },
+        resources: {},
+        toolchain,
+      },
+      policy: {
+        toolchain: await qualifiedToolchain(toolchain, root),
+        capabilities: [],
+      },
+    });
   };
-  const policy = { toolchain: qualified, capabilities: [] };
-  assert.equal(
-    admitWorkflow(registration, { compiled, policy }).kind,
-    "admitted",
-  );
-  for (const node of ["v26.10.0", "v26.9.1", "v>=26.9.0 <27"])
+  for (const node of ["v24.22.1", "v24.23.0", "v26.9.0", "v26.12.1"])
+    assert.equal((await admission(node)).kind, "admitted", node);
+  for (const node of [
+    "v24.22.0",
+    "v24.4.0",
+    "v25.9.0",
+    "v26.8.9",
+    "v27.0.0",
+    "v26.9",
+    "26.9.0",
+    "v>=26.9.0 <27",
+    "",
+  ])
     assert.deepEqual(
-      admitWorkflow(registration, {
-        compiled: { ...compiled, toolchain: { ...observed, node } },
-        policy,
-      }),
+      await admission(node),
       { kind: "rejected", reason: "incompatible-toolchain", detail: "node" },
+      node,
     );
 });
 

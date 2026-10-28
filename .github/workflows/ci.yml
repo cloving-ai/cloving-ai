@@ -63,9 +63,18 @@
         }
       ]
     },
-    "quality_linux": {
+    "quality_linux_node": {
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
       "timeout-minutes": 60,
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "node": [
+            "24.22.1",
+            "26.9.0"
+          ]
+        }
+      },
       "env": {
         "CLOVING_CHECK_TIME_FACTOR": "4",
         "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '4' }}",
@@ -82,7 +91,7 @@
         {
           "uses": "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
           "with": {
-            "node-version": "26.9.0",
+            "node-version": "${{ matrix.node }}",
             "architecture": "${{ env.CLOVING_CI_ARCHITECTURE }}",
             "registry-url": "https://registry.npmjs.org",
             "package-manager-cache": false
@@ -93,7 +102,7 @@
         },
         {
           "name": "Verify runner toolchain",
-          "run": "node --input-type=module -e 'import assert from \"node:assert/strict\"; assert.equal(process.version, \"v26.9.0\"); assert.equal(process.platform, \"linux\"); assert.equal(process.arch, process.env.CLOVING_CI_ARCHITECTURE);'\ntest \"$(npm --version)\" = \"11.19.1\""
+          "run": "node --input-type=module -e 'import assert from \"node:assert/strict\"; assert.equal(process.version, \"v${{ matrix.node }}\"); assert.equal(process.platform, \"linux\"); assert.equal(process.arch, process.env.CLOVING_CI_ARCHITECTURE);'\ntest \"$(npm --version)\" = \"11.19.1\""
         },
         {
           "run": "npm ci --ignore-scripts"
@@ -114,6 +123,23 @@
         },
         {
           "run": "node --test test/packed-install.test.ts"
+        }
+      ]
+    },
+    "quality_linux": {
+      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
+      "timeout-minutes": 5,
+      "needs": [
+        "quality_linux_node"
+      ],
+      "if": "${{ always() }}",
+      "steps": [
+        {
+          "name": "Require every Linux Node version",
+          "env": {
+            "LINUX_RESULT": "${{ needs.quality_linux_node.result }}"
+          },
+          "run": "test \"$LINUX_RESULT\" = success"
         }
       ]
     },
