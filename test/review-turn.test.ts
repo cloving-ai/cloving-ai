@@ -97,7 +97,12 @@ export async function review(subject) {
     },
   ));
 
-function turnResult(result: unknown) {
+function turnResult(
+  result: null | {
+    readonly summary: string | null;
+    readonly reviewVerdict: string | readonly string[];
+  },
+) {
   return {
     kind: "completed" as const,
     operationId: "review",
