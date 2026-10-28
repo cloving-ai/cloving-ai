@@ -17,14 +17,14 @@ import {
 } from "./worker-hook-fixture.ts";
 
 await test("CLV-100 scales the QG-15 hook subprocess limit by the check time factor", () => {
-  assert.equal(hookTimeoutMilliseconds(undefined), 10000);
-  assert.equal(hookTimeoutMilliseconds("3"), 30000);
+  assert.equal(hookTimeoutMilliseconds(undefined), 30000);
+  assert.equal(hookTimeoutMilliseconds("3"), 90000);
 });
 
 await test("CLV-107 scales the inner hook check limit by the hook environment factor", () => {
   for (const [factor, timeout] of [
-    [undefined, 5000],
-    ["3", 15000],
+    [undefined, 15000],
+    ["3", 45000],
   ] as const) {
     const result = probeHookCheck({
       environment: { CLOVING_CHECK_TIME_FACTOR: factor },

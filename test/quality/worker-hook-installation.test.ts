@@ -47,7 +47,7 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
         await readFile(installed.settings, "utf8"),
       );
       const hooks = [
-        { type: "command", command: installed.command, timeout: 10 },
+        { type: "command", command: installed.command, timeout: 30 },
       ];
       assert.deepEqual(settings, {
         hooks: {
@@ -85,10 +85,10 @@ await test("QG-15 installed hook commands prevent a local worker write before fi
 
 await test("CLV-107 keeps installed hook limits above the scaled inner check limit", async () => {
   for (const [factor, timeout] of [
-    [undefined, 10],
-    ["1", 10],
-    ["3", 30],
-    ["5", 50],
+    [undefined, 30],
+    ["1", 30],
+    ["3", 90],
+    ["5", 150],
   ] as const) {
     await withFiles(
       { "workspace/main.ts": "export const value = 1;\n" },
