@@ -2,7 +2,11 @@ import type {
   AdmissionResult,
   ExecutionManifest,
 } from "./workflow-admission.ts";
-import { isWorkflowNames } from "./workflow-declaration.ts";
+import {
+  isCommandWaits,
+  isWorkflowNames,
+  type CommandWaits,
+} from "./workflow-declaration.ts";
 
 const canonical: Readonly<
   Record<keyof ExecutionManifest, (manifest: ExecutionManifest) => string>
@@ -14,6 +18,19 @@ const canonical: Readonly<
   capabilities: (manifest) => JSON.stringify([...manifest.capabilities].sort()),
   handoffs: (manifest) => JSON.stringify([...(manifest.handoffs ?? [])].sort()),
   commands: (manifest) => JSON.stringify([...(manifest.commands ?? [])].sort()),
+  commandWaits: (manifest) =>
+    JSON.stringify(
+      Object.entries(manifest.commandWaits ?? {})
+        .sort(([first], [second]) =>
+          first < second ? -1 : Number(first > second),
+        )
+        .map(([name, wait]) => [
+          name,
+          wait.command,
+          wait.maximumWaitSeconds,
+          wait.pollEverySeconds,
+        ]),
+    ),
   bundleDigest: (manifest) => JSON.stringify(manifest.bundleDigest),
   artifacts: (manifest) =>
     JSON.stringify(
@@ -57,6 +74,10 @@ export function pinnedIdentity(manifest: ExecutionManifest): string {
   if (manifest.handoffs?.length) identity.push(canonical.handoffs(manifest));
   if (manifest.commands?.length)
     identity.push(JSON.stringify(["commands", canonical.commands(manifest)]));
+  if (Object.keys(manifest.commandWaits ?? {}).length > 0)
+    identity.push(
+      JSON.stringify(["commandWaits", canonical.commandWaits(manifest)]),
+    );
   if (manifest.bundleDigest !== undefined)
     identity.push(canonical.bundleDigest(manifest));
   if (manifest.queue === true) identity.push(JSON.stringify(["queue", true]));
@@ -68,7 +89,14 @@ export function resumePinned(
   available: ExecutionManifest,
 ): AdmissionResult {
   const changed = (
-    [...fields, "handoffs", "commands", "bundleDigest", "queue"] as const
+    [
+      ...fields,
+      "handoffs",
+      "commands",
+      "commandWaits",
+      "bundleDigest",
+      "queue",
+    ] as const
   ).find((field) => canonical[field](pinned) !== canonical[field](available));
   if (changed !== undefined)
     return {
@@ -96,6 +124,7 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
     ...queueMetadata(fields),
     ...(isWorkflowNames(handoffs) ? { handoffs: [...handoffs] } : {}),
     ...(isWorkflowNames(commands) ? { commands: [...commands] } : {}),
+    ...readCommandWaits(fields),
     ...(Object.hasOwn(fields, "bundleDigest")
       ? { bundleDigest: text(fields["bundleDigest"]) }
       : {}),
@@ -111,11 +140,31 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
   };
 }
 
+function readCommandWaits(fields: Readonly<Record<string, unknown>>): {
+  readonly commandWaits?: CommandWaits;
+} {
+  if (!Object.hasOwn(fields, "commandWaits")) return {};
+  const commandWaits = fields["commandWaits"];
+  if (
+    !isCommandWaits(commandWaits, {
+      capabilities: texts(fields["capabilities"]),
+      commands: texts(fields["commands"]),
+    })
+  )
+    throw new Error("invalid-command-waits");
+  return {
+    commandWaits: Object.fromEntries(
+      Object.entries(commandWaits).map(([name, wait]) => [name, { ...wait }]),
+    ),
+  };
+}
+
 export function declaredManifest(
   manifest: ExecutionManifest,
   declaration: {
     readonly handoffs?: readonly string[];
     readonly commands?: readonly string[];
+    readonly commandWaits?: CommandWaits;
     readonly bundleDigest?: string | undefined;
     readonly queue?: boolean;
   },
@@ -126,6 +175,9 @@ export function declaredManifest(
     ...(declaration.commands === undefined
       ? {}
       : { commands: declaration.commands }),
+    ...(declaration.commandWaits === undefined
+      ? {}
+      : { commandWaits: declaration.commandWaits }),
     ...(declaration.handoffs === undefined
       ? {}
       : { handoffs: declaration.handoffs }),

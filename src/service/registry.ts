@@ -1,4 +1,8 @@
-import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
+import type {
+  CommandWaits,
+  WorkflowStage,
+  WorkflowStages,
+} from "../workflow-declaration.ts";
 import { workflowPin } from "../broker/workflow-pin.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import type { SubmissionContract } from "../submission.ts";
@@ -45,6 +49,7 @@ export interface WorkflowRegistration {
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly commandWaits?: CommandWaits;
   readonly admission?: "when-idle" | number;
 }
 

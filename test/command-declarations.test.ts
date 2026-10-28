@@ -22,7 +22,114 @@ const declaration = {
   input: { maximumBytes: 64, fields: {} },
 };
 
-await test("CLV-178 registers a declaration with named commands and the command capability", async () => {
+const reviewWait = {
+  command: "review-requests",
+  maximumWaitSeconds: 2_592_000,
+  pollEverySeconds: 3_600,
+};
+
+await test("CLV-235 queued workflows retain wait validation and queue input requirements", () => {
+  const queued = {
+    ...declaration,
+    queue: true,
+    input: { maximumBytes: 64, fields: { ticket: { type: "ticket" } } },
+    commandWaits: { "team-review": reviewWait },
+  };
+  assert.equal(isWorkflowDeclaration(queued), true);
+  for (const extra of [
+    { queue: "true" },
+    { input: declaration.input },
+    { commandWaits: { review: { ...reviewWait, pollEverySeconds: 59 } } },
+  ])
+    assert.equal(isWorkflowDeclaration({ ...queued, ...extra }), false);
+});
+
+await test("CLV-235 accepts bounded named command waits and absent declarations", () => {
+  assert.equal(isWorkflowDeclaration(declaration), true);
+  for (const commandWaits of [
+    {},
+    { "team-review": reviewWait },
+    {
+      A: { ...reviewWait, maximumWaitSeconds: 60, pollEverySeconds: 60 },
+      ["0-9".repeat(21) + "A"]: { ...reviewWait, pollEverySeconds: 86_400 },
+    },
+  ])
+    assert.equal(
+      isWorkflowDeclaration({ ...declaration, commandWaits }),
+      true,
+      JSON.stringify(commandWaits),
+    );
+});
+
+await test("CLV-235 rejects malformed wait maps, names and exact entry shapes", () => {
+  const entries = [
+    null,
+    undefined,
+    [],
+    "review-requests",
+    {},
+    { ...reviewWait, extra: true },
+    { ...reviewWait, command: undefined },
+    { ...reviewWait, command: null },
+    { ...reviewWait, command: "unknown" },
+    { ...reviewWait, command: "constructor" },
+  ];
+  const names = ["", "a".repeat(65), "a_b", "a/b", "é", "a\n"];
+  for (const commandWaits of [
+    null,
+    undefined,
+    [],
+    "team-review",
+    ...entries.map((entry) => ({ "team-review": entry })),
+    ...names.map((name) => ({ [name]: reviewWait })),
+  ])
+    assert.equal(
+      isWorkflowDeclaration({ ...declaration, commandWaits }),
+      false,
+      JSON.stringify(commandWaits),
+    );
+});
+
+await test("CLV-235 rejects wait bounds and missing declared command authority", () => {
+  for (const field of ["maximumWaitSeconds", "pollEverySeconds"])
+    for (const value of [undefined, null, "60", 60.5, 0, 59, Infinity, NaN])
+      assert.equal(
+        isWorkflowDeclaration({
+          ...declaration,
+          commandWaits: { review: { ...reviewWait, [field]: value } },
+        }),
+        false,
+        `${field}: ${String(value)}`,
+      );
+  for (const extra of [
+    { maximumWaitSeconds: 2_592_001 },
+    { pollEverySeconds: 86_401 },
+    { maximumWaitSeconds: 60, pollEverySeconds: 61 },
+  ])
+    assert.equal(
+      isWorkflowDeclaration({
+        ...declaration,
+        commandWaits: { review: { ...reviewWait, ...extra } },
+      }),
+      false,
+    );
+  for (const extra of [
+    { capabilities: ["claude"] },
+    { commands: ["other-command"] },
+    { commands: [] },
+    { commands: undefined },
+  ])
+    assert.equal(
+      isWorkflowDeclaration({
+        ...declaration,
+        ...extra,
+        commandWaits: { review: reviewWait },
+      }),
+      false,
+    );
+});
+
+await test("CLV-235 reads named command waits beside their workflow", async () => {
   const manifests = workflowManifests({
     workflows: {
       "review.ts": { review: { workflowId: "workflow//./review//review" } },
@@ -31,17 +138,24 @@ await test("CLV-178 registers a declaration with named commands and the command 
   await withFiles(
     {
       "review.ts": "export {};",
-      "review.declaration.json": JSON.stringify(declaration),
+      "review.declaration.json": JSON.stringify({
+        ...declaration,
+        commandWaits: { "team-review": reviewWait },
+      }),
     },
     async (directory) => {
       assert.deepEqual(await workflowDeclarations(directory, manifests), [
-        { ...declaration, functionName: "review" },
+        {
+          ...declaration,
+          commandWaits: { "team-review": reviewWait },
+          functionName: "review",
+        },
       ]);
     },
   );
 });
 
-await test("CLV-178 an operator command registration retains its names in the admitted manifest", () =>
+await test("CLV-235 operator registration retains commands and waits in the admitted manifest", () =>
   withProject({}, async (_cli, directory) => {
     const file = join(directory, "review.workflow.json");
     await writeFile(
@@ -58,7 +172,16 @@ await test("CLV-178 an operator command registration retains its names in the ad
     );
     const table = ticketRegistrationTable(
       { repository: directory, command: undefined },
-      [{ ...declaration, capabilities: ["command"], functionName: "review" }],
+      [
+        {
+          ...declaration,
+          capabilities: ["command"],
+          functionName: "review",
+          commandWaits: { "team-review": reviewWait },
+          queue: true,
+          input: { maximumBytes: 64, fields: { ticket: { type: "ticket" } } },
+        },
+      ],
     ).slice(4);
     const result = await ticketRegistrations(
       { review: file },
@@ -72,7 +195,37 @@ await test("CLV-178 an operator command registration retains its names in the ad
     assert.ok(registration);
     assert.deepEqual(registration.manifest.commands, declaration.commands);
     assert.deepEqual(registration.manifest.capabilities, ["command"]);
+    assert.equal(registration.queue, true);
+    assert.equal(registration.manifest.queue, true);
+    assert.deepEqual(registration.commandWaits, { "team-review": reviewWait });
+    assert.deepEqual(registration.manifest.commandWaits, {
+      "team-review": reviewWait,
+    });
   }));
+
+await test("CLV-235 registration refuses invalid wait permissions before reading manifests", async () => {
+  const table = ticketRegistrationTable(
+    { repository: "/repositories/example", command: undefined },
+    [{ ...declaration, capabilities: ["command"], functionName: "review" }],
+  ).slice(4);
+  for (const extra of [
+    { commandWaits: { review: { ...reviewWait, command: "other" } } },
+    { commandWaits: { review: reviewWait }, capabilities: ["claude"] },
+  ])
+    assert.deepEqual(
+      await ticketRegistrations(
+        {},
+        {
+          table: table.map((row) => ({ ...row, ...extra })),
+          commands: { "review-requests": ["/opt/bin/scan"] },
+        },
+      ),
+      {
+        kind: "rejected",
+        detail: "invalid-command-waits: review-queue",
+      },
+    );
+});
 
 await test("CLV-178 refuses command capability without names and malformed command declarations", () => {
   for (const commands of [
@@ -111,7 +264,14 @@ await test("CLV-178 refuses command capability without names and malformed comma
 await test("CLV-178 refuses unknown operator command names before manifest admission", async () => {
   const table = ticketRegistrationTable(
     { repository: "/repositories/example", command: undefined },
-    [{ ...declaration, capabilities: ["command"], functionName: "review" }],
+    [
+      {
+        ...declaration,
+        capabilities: ["command"],
+        functionName: "review",
+        commandWaits: { review: reviewWait },
+      },
+    ],
   ).slice(4);
   assert.deepEqual(await ticketRegistrations({}, { table }), {
     kind: "rejected",
