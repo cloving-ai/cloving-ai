@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { turnEnvironment } from "./claude-turn.ts";
@@ -51,7 +51,7 @@ function boundedOutput(
   options: {
     readonly bytes: number;
     readonly receive: (chunk: Buffer) => void;
-    readonly exceeded: () => void;
+    readonly fail: (reason: string) => void;
   },
 ): void {
   let received = 0;
@@ -59,19 +59,21 @@ function boundedOutput(
     const kept = chunk.subarray(0, Math.max(0, options.bytes - received));
     received += chunk.length;
     if (kept.length > 0) options.receive(kept);
-    if (received > options.bytes) options.exceeded();
+    if (received > options.bytes) options.fail("command-output-limit");
   });
 }
 
-function killGroup(child: ChildProcess): void {
-  if (child.pid === undefined) return;
+function stopChild(child: ReturnType<typeof spawnCommand>): void {
   try {
-    process.kill(-child.pid, "SIGKILL");
+    if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
   } catch (error) {
     const code: unknown = Reflect.get(Object(error), "code");
     if (code !== "ESRCH" && code !== "EPERM") throw error;
     child.kill("SIGKILL");
   }
+  child.stdin.destroy();
+  child.stdout.destroy();
+  child.stderr.destroy();
 }
 
 function spawnCommand(start: CommandStart, configuration: string) {
@@ -95,35 +97,6 @@ function writeStderr(descriptor: number, chunk: Buffer): boolean {
   } catch {
     return false;
   }
-}
-
-function captureOutput(
-  running: {
-    readonly child: ReturnType<typeof spawnCommand>;
-    readonly stderr: number;
-  },
-  output: {
-    readonly stdout: Buffer[];
-    readonly fail: (reason: string) => void;
-  },
-): void {
-  const exceeded = (): void => {
-    output.fail("command-output-limit");
-  };
-  boundedOutput(running.child.stdout, {
-    bytes: commandLimits.stdoutBytes,
-    receive: (chunk) => {
-      output.stdout.push(chunk);
-    },
-    exceeded,
-  });
-  boundedOutput(running.child.stderr, {
-    bytes: commandLimits.stderrBytes,
-    receive: (chunk) => {
-      if (!writeStderr(running.stderr, chunk)) output.fail("command-exit");
-    },
-    exceeded,
-  });
 }
 
 function releaseCommand(resources: {
@@ -161,28 +134,6 @@ function prepareCommand(
   }
 }
 
-function commandTimer(
-  start: CommandStart,
-  timing: {
-    readonly clock: CommandClock;
-    readonly fail: (reason: string) => void;
-  },
-) {
-  const remaining =
-    start.deadline === undefined
-      ? Infinity
-      : Date.parse(start.deadline) - timing.clock.now();
-  const execution = start.seconds * 1000;
-  return timing.clock.timer({
-    expired: () => {
-      timing.fail(
-        remaining <= execution ? "command-wait-timeout" : "command-timeout",
-      );
-    },
-    milliseconds: Math.min(execution, remaining),
-  });
-}
-
 function refusedCommand(reason: string): RunningCommand {
   return {
     ended: Promise.resolve({
@@ -210,45 +161,57 @@ export function startCommand(
   start: CommandStart,
   clock: CommandClock = commandClock,
 ): RunningCommand {
-  const refusal = deadlineRefusal(start, clock);
-  if (refusal !== undefined) return refusedCommand(refusal);
+  let reason = deadlineRefusal(start, clock);
+  if (reason !== undefined) return refusedCommand(reason);
   const began = performance.now();
   const prepared = prepareCommand(start, clock);
   if ("reason" in prepared) return refusedCommand(prepared.reason);
   const { child, stderr, configuration } = prepared;
   const stdout: Buffer[] = [];
   const closed = Promise.withResolvers<number | null>();
-  let reason: string | undefined;
-  const fail = (failure: string): void => {
+  const fail = (failure = "command-exit"): void => {
     reason ??= failure;
-    killGroup(child);
-    child.stdin.destroy();
-    child.stdout.destroy();
-    child.stderr.destroy();
+    stopChild(child);
     closed.resolve(child.exitCode);
   };
-  captureOutput(prepared, { stdout, fail });
-  const cancelTimer = commandTimer(start, { clock, fail });
-  child.stdin.on("error", () => undefined);
-  child.stdin.end(start.payload);
-  child.once("error", () => undefined);
-  child.once("close", closed.resolve);
-  const ended = closed.promise.then((exitCode) => {
-    cancelTimer();
-    releaseCommand({ stderr, configuration });
-    reason ??= deadlineRefusal(start, clock);
-    reason ??= exitCode === 0 ? undefined : "command-exit";
-    return {
-      stdout: Buffer.concat(stdout).toString("utf8"),
-      exitCode,
-      durationMilliseconds: Math.round(performance.now() - began),
-      ...(reason === undefined ? {} : { reason }),
-    };
+  boundedOutput(child.stdout, {
+    bytes: commandLimits.stdoutBytes,
+    receive: (chunk) => stdout.push(chunk),
+    fail,
   });
-  return {
-    ended,
-    stop: () => {
-      fail("command-exit");
+  boundedOutput(child.stderr, {
+    bytes: commandLimits.stderrBytes,
+    receive: (chunk) => {
+      if (!writeStderr(stderr, chunk)) fail("command-exit");
     },
+    fail,
+  });
+  const remaining =
+    start.deadline === undefined
+      ? Infinity
+      : Date.parse(start.deadline) - clock.now();
+  const execution = start.seconds * 1000;
+  const cancelTimer = clock.timer({
+    expired: () => {
+      fail(remaining <= execution ? "command-wait-timeout" : "command-timeout");
+    },
+    milliseconds: Math.min(execution, remaining),
+  });
+  child.stdin.on("error", () => undefined).end(start.payload);
+  child.once("error", () => undefined).once("close", closed.resolve);
+  return {
+    ended: closed.promise.then((exitCode) => {
+      cancelTimer();
+      releaseCommand({ stderr, configuration });
+      reason ??= deadlineRefusal(start, clock);
+      reason ??= exitCode === 0 ? undefined : "command-exit";
+      return {
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        exitCode,
+        durationMilliseconds: Math.round(performance.now() - began),
+        ...(reason === undefined ? {} : { reason }),
+      };
+    }),
+    stop: fail,
   };
 }
