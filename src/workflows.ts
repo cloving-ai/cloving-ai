@@ -4,6 +4,8 @@ export { decisionGate } from "./steps/decision-gate.ts";
 export { waitForDecision } from "./steps/wait-for-decision.ts";
 export { reviewByPerson } from "./steps/review-by-person.ts";
 export { reviewByAgent } from "./steps/review-by-agent.ts";
+export { mergeByPerson } from "./steps/merge-by-person.ts";
+export { mergeWhenGreen } from "./steps/merge-when-green.ts";
 export type {
   ReviewSubject,
   CommitReviewSubject,
@@ -11,6 +13,13 @@ export type {
   ReviewResult,
   Reviewer,
 } from "./review-subject.ts";
+export type {
+  MergeCheckName,
+  MergeReason,
+  MergeRequest,
+  MergeResult,
+  PullRequest,
+} from "./merge-request.ts";
 export { handoff } from "./steps/handoff.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
 export { runCommand } from "./steps/run-command.ts";

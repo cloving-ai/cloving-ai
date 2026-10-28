@@ -46,6 +46,8 @@ await test("scaffold rejects unknown commands and exposes only implemented helpe
     "decisionGate",
     "handoff",
     "loadCycle",
+    "mergeByPerson",
+    "mergeWhenGreen",
     "protectedEffect",
     "reviewByAgent",
     "reviewByPerson",

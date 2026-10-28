@@ -41,6 +41,7 @@ async function start(root: string): Promise<ChildProcess> {
     "workflow-candidate-source.ts",
     "workflow-candidate-program.ts",
     "workflow-candidate-syntax.ts",
+    "workflow-candidate-fields.ts",
     "workflow-candidate-counts.ts",
     "workflow-candidate-helper-counts.ts",
     "workflow-source-effects.ts",

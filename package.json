@@ -47,6 +47,14 @@
       "types": "./dist/src/steps/review-by-agent.d.ts",
       "import": "./dist/src/steps/review-by-agent.js"
     },
+    "./workflows/steps/merge-by-person": {
+      "types": "./dist/src/steps/merge-by-person.d.ts",
+      "import": "./dist/src/steps/merge-by-person.js"
+    },
+    "./workflows/steps/merge-when-green": {
+      "types": "./dist/src/steps/merge-when-green.d.ts",
+      "import": "./dist/src/steps/merge-when-green.js"
+    },
     "./workflows/steps/wait-for-decision": {
       "types": "./dist/src/steps/wait-for-decision.d.ts",
       "import": "./dist/src/steps/wait-for-decision.js"

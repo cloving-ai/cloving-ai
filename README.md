@@ -825,7 +825,22 @@ The named profile runs through the existing `claude` capability and `run-turn:ch
 
 The report must end with `Review verdict: accept` or `Review verdict: change`. The worker records this verdict separately before truncating the report. Only `accept` sets `accepted: true`; feedback is the report text before the verdict, within the worker's report limits. A missing final verdict returns `accepted: false` and `The review turn has no verdict line.` A failed turn rejects with its effect reason. Fake scenarios provide `{ summary, reviewVerdict }` worker results through `effects["claude run-turn:checker"]`, with `reviewVerdict` set to `"accept"`, `"change"` or `null`.
 
-The merge helper pair is not implemented yet.
+Use `mergeWhenGreen` to merge a pull request when its checks pass:
+
+```ts
+import { mergeWhenGreen } from "cloving/workflows/steps/merge-when-green";
+
+const pull = { number: opened.number, url: opened.url, commit: opened.commit, target: runTarget };
+const merge = await mergeWhenGreen({ pull: pull, check: "beforeMerge" });
+```
+
+`check: "beforeMerge"` runs the `checks.beforeMerge` command of the settings before the merge. When that setting is missing, the result is `{ merged: false, reason: "check-not-configured", output: "" }`, and the pull request stays open. `check: null` merges with no local check, also after an update from the default branch. A missing setting never turns the check off. In both cases, CI must pass on the updated head. The review of the pull commit stays valid when the step updates the branch from the default branch.
+
+The result is `{ merged, reason, output }`. After a merge, `merged` is `true` and `reason` is `null`. For `check-failed`, `merge-conflict` and `ci-failed`, `output` holds the check, conflict or CI output for a fix turn. `ci-pending` means that CI did not finish within the wait limit. To try the merge again, call the step with a higher `round`, for example `{ pull: pull, check: "beforeMerge", round: 2 }`. `round` is a positive integer and defaults to 1. A call with the same pull, commit and round uses the same operation, so a resumed workflow does not merge twice. Other failures reject with the effect reason, and a malformed result rejects with `invalid-merge-result`. An invalid `pull` or `check` rejects with `invalid-merge-request` before any request.
+
+Replace that call with `mergeByPerson({ pull: pull, check: "beforeMerge" })` to let a person decide when the merge starts. The step opens an approval for the pull number and commit. After an approval, it merges with the same check rules and `round`. After a denial, the result is `{ merged: false, reason: "not-approved", output }`, where `output` is the answer of the person, and no merge starts. The approval belongs to the pull commit, so a retry with a higher `round` does not ask again.
+
+Both steps use the existing GitHub `merge` worker method and one protected effect unit. The candidate declaration must include the `github` capability and `methods: { "github": ["merge"] }`. The step subpaths and `cloving/workflows` export the step functions. Import the types `PullRequest`, `MergeRequest` and `MergeResult` from `cloving/workflows`. Fake scenarios give worker results in `effects["github merge"]` and person decisions in `decisions`.
 
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
