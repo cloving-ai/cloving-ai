@@ -142,6 +142,11 @@ export function analyzeWorkflowCandidate(
       subpath: "cloving/workflows/steps/run-command",
       name: "runCommand",
     }),
+    reviewSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/review-by-agent",
+      name: "reviewByAgent",
+    }),
   };
   const facts = sources.map((entry) =>
     analyzedSource(

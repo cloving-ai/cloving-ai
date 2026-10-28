@@ -9,6 +9,7 @@ export interface CandidateSymbols {
   readonly protectedSymbol: ts.Symbol | undefined;
   readonly handoffSymbol: ts.Symbol | undefined;
   readonly commandSymbol: ts.Symbol | undefined;
+  readonly reviewSymbol: ts.Symbol | undefined;
 }
 
 export function propertyName(name: ts.PropertyName): string | undefined {
@@ -32,6 +33,7 @@ export function protectedCall(
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.reviewSymbol,
     ].includes(symbol)
   );
 }
@@ -62,14 +64,32 @@ export function commandCall(
   );
 }
 
-function literalField(node: ts.ObjectLiteralExpression, field: string) {
+export function reviewCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  return (
+    symbols.reviewSymbol !== undefined &&
+    resolvedSymbol(
+      symbols.checker,
+      symbols.checker.getSymbolAtLocation(node.expression),
+    ) === symbols.reviewSymbol
+  );
+}
+
+function propertyInitializer(node: ts.Node | undefined, field: string) {
+  if (!node || !ts.isObjectLiteralExpression(node)) return undefined;
   const property = node.properties.find(
     (entry) => entry.name && propertyName(entry.name) === field,
   );
-  if (!property || !ts.isPropertyAssignment(property)) return null;
-  return ts.isStringLiteral(property.initializer)
-    ? property.initializer.text
-    : null;
+  return property && ts.isPropertyAssignment(property)
+    ? property.initializer
+    : undefined;
+}
+
+function literalField(node: ts.Node | undefined, field: string) {
+  const value = propertyInitializer(node, field);
+  return value && ts.isStringLiteral(value) ? value.text : null;
 }
 
 export function protectedEffectFact(
@@ -80,6 +100,12 @@ export function protectedEffectFact(
   if (handoffCall(node, symbols)) return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
+  if (reviewCall(node, symbols)) {
+    const reviewer = propertyInitializer(argument, "reviewer");
+    return literalField(reviewer, "kind") === "greptile"
+      ? { capability: "github", method: "wait-review" }
+      : { capability: null, method: null };
+  }
   if (commandCall(node, symbols)) {
     const name = literalField(argument, "name");
     return {
@@ -105,6 +131,7 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.reviewSymbol,
     ].includes(symbol)
   )
     return false;
