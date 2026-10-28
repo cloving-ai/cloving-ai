@@ -10,7 +10,7 @@ export async function installWorkerHooks(
 ): Promise<{ settings: string; command: string }> {
   const accepted = readWorkerHookPolicy(structuredClone(policy));
   const timeout =
-    10 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
+    30 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
   const root = join(await realpath(dirname(directory)), basename(directory));
   const workspace = await realpath(accepted.workspace);
   const location = relative(workspace, root);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hookTimeout, runHook, withHook } from "./worker-hook-fixture.ts";
+import { runHook, withHook } from "./worker-hook-fixture.ts";
+import { testMilliseconds } from "../test-timing.ts";
 
 await test("CLV-104 unexpected hook exits and signals retain failure details", () => {
   for (const scenario of [
@@ -40,7 +41,7 @@ await test("CLV-104 timed out slow-starting hook retains timing, termination and
           "-e",
           "setTimeout(() => { require('node:fs').writeSync(2, 'discard-me' + 'x'.repeat(5000) + 'last-hook-phase'); }, 500); setInterval(() => {}, 1000)",
         ],
-        timeout: hookTimeout / 5,
+        timeout: testMilliseconds(2000),
       }),
     (error: unknown) => {
       assert.ok(error instanceof Error);
