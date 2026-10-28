@@ -57,25 +57,29 @@ function stopIfAlive(processId: number): void {
   if (processId > 0 && alive(processId)) process.kill(processId, "SIGKILL");
 }
 
-await test("CLV-231 the guarded daemon stops when the test process ends", async () => {
-  const root = await mkdtemp(join(tmpdir(), "cloving-guard-parent-"));
-  const marker = join(root, "daemon");
-  const parent = spawn(
-    process.execPath,
-    ["-e", intermediate(guarded(marker, 0), { exitAtOnce: false })],
-    { stdio: "ignore" },
-  );
-  let daemon = 0;
-  try {
-    daemon = Number(await written(marker));
-    parent.kill("SIGKILL");
-    assert.equal(await ended(daemon), true);
-  } finally {
-    parent.kill("SIGKILL");
-    stopIfAlive(daemon);
-    await rm(root, { recursive: true, force: true });
-  }
-});
+for (const [name, source] of [
+  ["the guarded daemon stops when the test process ends", guarded],
+  ["a daemon that ignores SIGTERM stops when the test process ends", stubborn],
+] as const)
+  await test(`CLV-231 ${name}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cloving-guard-parent-"));
+    const marker = join(root, "daemon");
+    const parent = spawn(
+      process.execPath,
+      ["-e", intermediate(source(marker, 0), { exitAtOnce: false })],
+      { stdio: "ignore" },
+    );
+    let daemon = 0;
+    try {
+      daemon = Number(await written(marker));
+      parent.kill("SIGKILL");
+      assert.equal(await ended(daemon, 12000), true);
+    } finally {
+      parent.kill("SIGKILL");
+      stopIfAlive(daemon);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
 await test("CLV-231 a test process that ends before the guard starts leaves no daemon", async () => {
   const root = await mkdtemp(join(tmpdir(), "cloving-guard-early-"));
