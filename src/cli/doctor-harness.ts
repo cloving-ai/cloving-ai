@@ -103,6 +103,53 @@ async function missingFile(path: string): Promise<boolean> {
   }
 }
 
+const envOptionsWithValue = ["-u", "--unset", "-C", "--chdir", "-P"];
+
+function envProgram(arguments_: readonly string[]): {
+  readonly index: number;
+  readonly split: boolean;
+} {
+  let index = 0;
+  while (index < arguments_.length) {
+    const part = arguments_[index] ?? "";
+    if (["-S", "--split-string"].includes(part))
+      return { index: index + 1, split: true };
+    if (/^(-S|--split-string=)./.test(part)) return { index, split: true };
+    if (!/^(-|[A-Za-z_]\w*=)/.test(part)) return { index, split: false };
+    index += envOptionsWithValue.includes(part) ? 2 : 1;
+  }
+  return { index, split: false };
+}
+
+const shells = ["sh", "bash", "dash", "zsh", "ksh"];
+
+function envVersionArguments(
+  arguments_: readonly string[],
+  worker: string,
+): readonly string[] {
+  const { index, split } = envProgram(arguments_);
+  if (index >= arguments_.length) return [];
+  const prefix = arguments_.slice(0, index + 1);
+  if (split) return [...prefix, "--version"];
+  const wrapped = wrappedVersionArguments(arguments_.slice(index), worker);
+  return wrapped.length === 0 ? [] : [...prefix, ...wrapped];
+}
+
+function wrappedVersionArguments(
+  command: readonly string[],
+  worker: string,
+): readonly string[] {
+  const [program = "", ...arguments_] = command;
+  const name = basename(program);
+  if (name === "env") return envVersionArguments(arguments_, worker);
+  if (!shells.includes(name))
+    return launcherVersionArguments(name, { arguments: arguments_, worker });
+  const script = shellScriptIndex(arguments_, name);
+  return script === undefined
+    ? []
+    : [...arguments_.slice(0, script + 1), "--version"];
+}
+
 function launcherVersionArguments(
   program: string,
   launch: { readonly arguments: readonly string[]; readonly worker: string },
@@ -131,7 +178,8 @@ async function harnessVersionArguments(
 ): Promise<readonly string[]> {
   const [program = "", ...arguments_] = command;
   const shell = basename(program);
-  if (!["sh", "bash", "dash", "zsh", "ksh"].includes(shell))
+  if (shell === "env") return envVersionArguments(arguments_, location.worker);
+  if (!shells.includes(shell))
     return launcherVersionArguments(shell, {
       arguments: arguments_,
       worker: location.worker,
