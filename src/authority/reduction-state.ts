@@ -1,3 +1,4 @@
+import { closedCommandWaits, type CommandWaitsState } from "./command-waits.ts";
 import { operationIdentity } from "../operation-identity.ts";
 import { continued, type RunDetails } from "./details.ts";
 import { gateKey, type GateState } from "./gates.ts";
@@ -28,6 +29,7 @@ export interface Recorded {
 
 export interface Change extends Recorded {
   readonly moved?: RunState;
+  readonly commandWaits?: CommandWaitsState;
   readonly gates?: readonly GateState[];
   readonly added?: readonly EffectIntent[];
   readonly questions?: number;
@@ -97,12 +99,16 @@ function nextDetails(change: Change): RunDetails {
 
 export function applied(state: AuthorityState, change: Change): Applied {
   const { event } = change;
+  const waits = change.commandWaits ?? state.commandWaits;
   return {
     kind: "applied",
     ...(change.disposition === undefined
       ? {}
       : { disposition: change.disposition }),
     state: {
+      ...(waits === undefined
+        ? {}
+        : { commandWaits: closedCommandWaits(waits, event) }),
       sequence: event.sequence,
       runs: change.moved
         ? { ...state.runs, [event.runId]: change.moved }

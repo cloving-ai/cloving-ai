@@ -12,7 +12,7 @@ import type {
 
 export type DecisionState = Pick<
   AuthorityState,
-  "gates" | "details" | "questions"
+  "gates" | "details" | "questions" | "commandWaits"
 >;
 
 const kinds = ["question", "approval", "untyped"] as const;
@@ -194,6 +194,7 @@ export function decisionRows(state: DecisionState): DecisionRows {
 
 export function referencedDigests(state: DecisionState): readonly string[] {
   return [
+    ...Object.values(state.commandWaits ?? {}).map((wait) => wait.inputDigest),
     ...Object.values(state.gates).flatMap((gate) => [
       gate.prompt,
       gate.outcome?.answer ?? null,

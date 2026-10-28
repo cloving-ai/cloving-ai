@@ -78,6 +78,32 @@ const commandEffect: Rule = (command, context) => {
   return unpinned(command, context);
 };
 
+function waitMatches(
+  command: AuthorityCommand,
+  wait: {
+    readonly command: string;
+    readonly maximumWaitSeconds: number;
+    readonly pollEverySeconds: number;
+  },
+): boolean {
+  return (
+    command.target === wait.command &&
+    command.maximumWaitSeconds === wait.maximumWaitSeconds &&
+    command.pollEverySeconds === wait.pollEverySeconds
+  );
+}
+
+const commandWait: Rule = (command, context) => {
+  const pin = context.state.runs[command.runId]?.workflow ?? "";
+  const declaration = context.definitions.get(pin);
+  const name = command.waitName ?? "";
+  const waits = declaration?.commandWaits ?? {};
+  const wait = Object.hasOwn(waits, name) ? waits[name] : undefined;
+  if (wait === undefined || !waitMatches(command, wait))
+    return { kind: "rejected", reason: "command-wait-not-declared" };
+  return unpinned(command, context);
+};
+
 const handoffEffect: Rule = (command, context) => {
   if (command.capability !== "handoff") return unpinned(command, context);
   const pin = context.state.runs[command.runId]?.workflow ?? "";
@@ -105,6 +131,7 @@ const effectRequest: Rule = (command, context) => {
 
 const rules: Readonly<Record<string, Rule>> = {
   "request-effect": effectRequest,
+  "open-command-wait": commandWait,
   "admit-run": admission,
   "decide-gate": resumption,
   "resume-run": resumption,

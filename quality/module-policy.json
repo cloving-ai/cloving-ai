@@ -1318,7 +1318,17 @@
     "test/develop-template-folder.test.ts": "test",
     "test/packed-develop-template-flow.ts": "test",
     "templates/develop/develop/flow-tests.ts": "test",
-    "templates/develop/develop/refusal-tests.ts": "test"
+    "templates/develop/develop/refusal-tests.ts": "test",
+    "src/authority/command-waits.ts": "pure",
+    "test/command-wait-storage.test.ts": "test",
+    "test/command-wait-fixture.ts": "test",
+    "test/command-wait-expiry.test.ts": "test",
+    "test/command-wait-integrity.test.ts": "test",
+    "test/command-wait-authority.test.ts": "test",
+    "src/broker/command-wait-restore.ts": "broker",
+    "src/storage/command-wait-rows.ts": "storage",
+    "test/command-wait-migration.test.ts": "test",
+    "test/authority-instants.test.ts": "test"
   },
   "allowed": {
     "quality": [

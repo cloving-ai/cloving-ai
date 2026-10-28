@@ -48,3 +48,29 @@ export function notBefore(value: string, bound: string): boolean {
 export function isAfter(value: string, bound: string): boolean {
   return notBefore(value, bound) && !notBefore(bound, value);
 }
+
+function leapDaysBefore(year: number): number {
+  const previous = year - 1;
+  return (
+    Math.floor(previous / 4) -
+    Math.floor(previous / 100) +
+    Math.floor(previous / 400)
+  );
+}
+
+export function instantMilliseconds(value: string): number {
+  if (!isInstant(value)) throw new Error("invalid-instant");
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  let days = Number(value.slice(8, 10)) - 1;
+  for (let preceding = 1; preceding < month; preceding += 1)
+    days += daysIn(year, preceding);
+  days += 365 * (year - 1970) + leapDaysBefore(year) - leapDaysBefore(1970);
+  return (
+    days * 86_400_000 +
+    Number(value.slice(11, 13)) * 3_600_000 +
+    Number(value.slice(14, 16)) * 60_000 +
+    Number(value.slice(17, 19)) * 1000 +
+    Number(value.slice(20, 23))
+  );
+}
