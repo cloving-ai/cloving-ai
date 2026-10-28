@@ -1,4 +1,11 @@
 export const commit = "a".repeat(40);
+export const selection = {
+  input: "ticket",
+  select: "queue",
+  accept: "greptile",
+  merge: "green",
+  partial: "queue",
+};
 export const input = {
   cycleId: "run-1",
   repository: "main-checkout",
