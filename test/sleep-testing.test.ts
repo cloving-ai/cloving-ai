@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import { fakeStepBridge, runScenario } from "../src/testing.ts";
 import { sleep } from "../src/workflows.ts";
@@ -85,3 +86,29 @@ await test("CLV-233 fake sleep restores timer descriptors and refuses an active 
     /only be called inside a workflow/,
   );
 });
+
+for (const locked of ["WORKFLOW_SLEEP", "cloving.step-bridge/v1"])
+  await test(`CLV-233 a locked ${locked} hook leaves fake host installation unchanged`, () => {
+    const helper = new URL("../src/testing.ts", import.meta.url).href;
+    const script = `
+import assert from "node:assert/strict";
+import { fakeStepBridge } from ${JSON.stringify(helper)};
+const names = ["cloving.step-bridge/v1", "WORKFLOW_SLEEP"];
+for (const name of names)
+  Object.defineProperty(globalThis, Symbol.for(name), {
+    configurable: name !== ${JSON.stringify(locked)},
+    writable: true, enumerable: true, value: undefined,
+  });
+const before = names.map(name => Object.getOwnPropertyDescriptor(globalThis, Symbol.for(name)));
+assert.throws(() => fakeStepBridge({}), { message: "workflow-testing-host-locked" });
+assert.deepEqual(names.map(name => Object.getOwnPropertyDescriptor(globalThis, Symbol.for(name))), before);
+`;
+    assert.equal(
+      execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+        encoding: "utf8",
+        stdio: "pipe",
+        timeout: 10000,
+      }),
+      "",
+    );
+  });
