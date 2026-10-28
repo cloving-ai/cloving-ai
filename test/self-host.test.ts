@@ -69,7 +69,7 @@ async function reviewed(
   assert.equal(field(decision, "type"), "approval");
   assert.match(
     prompt,
-    /^Review the work of the Claude worker for the ticket CLV-900\./,
+    /^Review the work of the claude worker for the ticket CLV-900\./,
   );
   assert.match(prompt, /I added the file ticket-work\.txt\./);
   assert.match(prompt, /ticket-work\.txt \| 1 \+/);
@@ -90,7 +90,7 @@ async function reviewed(
   assert.deepEqual(await watchedRun(work.directory), [
     "up",
     "waiting_gate",
-    "Review the work of the Claude worker for the ticket CLV-900.",
+    "Review the work of the claude worker for the ticket CLV-900.",
     "completed",
     [
       { kind: "say", text: "I add the file." },
