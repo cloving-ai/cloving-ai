@@ -29,13 +29,15 @@ export function reviewSubjectText(subject: ReviewSubject): string {
     subject.target.trim() === ""
   )
     throw new Error("invalid-review-subject");
-  return JSON.stringify([
+  const identity = [
     "cloving-review-subject",
     1,
     "commit",
     subject.target,
     subject.commit,
-  ]);
+  ];
+  if (subject.number !== undefined) identity.push(subject.number);
+  return JSON.stringify(identity);
 }
 
 function draftReviewText(subject: DraftReviewSubject): string {

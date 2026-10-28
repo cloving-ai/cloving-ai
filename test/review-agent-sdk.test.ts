@@ -9,7 +9,8 @@ export async function candidate(input: { cycleId: string }) {
   const first = await reviewByAgent({ subject, reviewer: { kind: "greptile" } });
   const repeated = await reviewByAgent({ subject, reviewer: { kind: "greptile" } });
   const changed = await reviewByAgent({ subject: { ...subject, commit: "${"b".repeat(40)}" }, reviewer: { kind: "greptile" } });
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: first.subjectDigest, first, repeated, changed };
+  const otherPull = await reviewByAgent({ subject: { ...subject, number: 43 }, reviewer: { kind: "greptile" } });
+  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: first.subjectDigest, first, repeated, changed, otherPull };
 }`;
 
 await test("CLV-220 compiled Greptile reviews reuse only an unchanged subject and spend protected units", () =>
@@ -18,7 +19,7 @@ await test("CLV-220 compiled Greptile reviews reuse only an unchanged subject an
 ${servicePrelude}
 const registration = fakeRegistration([]);
 registration.manifest = { ...registration.manifest, capabilities: ["github"] };
-registration.effectLimit = 2;
+registration.effectLimit = 3;
 const delivered = [];
 const github = {
   ...destination,
@@ -41,9 +42,11 @@ try {
   assert.deepEqual(output.repeated, output.first);
   assert.equal(output.changed.accepted, false);
   assert.notEqual(output.changed.subjectDigest, output.first.subjectDigest);
-  assert.deepEqual(delivered, [{ number: 42, commit: "${"a".repeat(40)}" }, { number: 42, commit: "${"b".repeat(40)}" }]);
-  assert.deepEqual(run.budget, { limit: 2, spent: 2 });
-  assert.equal(run.effects.length, 2);
+  assert.equal(output.otherPull.accepted, false);
+  assert.notEqual(output.otherPull.subjectDigest, output.first.subjectDigest);
+  assert.deepEqual(delivered, [{ number: 42, commit: "${"a".repeat(40)}" }, { number: 42, commit: "${"b".repeat(40)}" }, { number: 43, commit: "${"a".repeat(40)}" }]);
+  assert.deepEqual(run.budget, { limit: 3, spent: 3 });
+  assert.equal(run.effects.length, 3);
 } finally { await service.close(); }
 `);
     assert.equal(result.status, 0, result.stderr);

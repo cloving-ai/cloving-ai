@@ -51,14 +51,15 @@ function multiply(total: Totals, repetitions: number): Totals {
 
 function units(node: ts.CallExpression, symbols: CandidateSymbols): number {
   if (
-    [
-      handoffCall(node, symbols),
-      commandCall(node, symbols),
-      reviewCall(node, symbols),
-    ].some(Boolean)
+    handoffCall(node, symbols) ||
+    commandCall(node, symbols) ||
+    reviewCall(node, symbols)
   )
     return 1;
-  const argument = node.arguments[0];
+  return declaredUnits(node.arguments[0]);
+}
+
+function declaredUnits(argument: ts.Expression | undefined): number {
   if (!argument || !ts.isObjectLiteralExpression(argument)) return 0;
   const property = argument.properties.find(
     (entry) => entry.name && propertyName(entry.name) === "units",

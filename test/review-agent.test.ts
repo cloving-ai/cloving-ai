@@ -63,6 +63,37 @@ function reviewed(result: unknown) {
   };
 }
 
+await test("CLV-220 different pull numbers on one commit need separate reviews", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      "github wait-review": [42, 43].map((number) =>
+        reviewed({ number, commit, score: 5, summary: "Ready.", findings: [] }),
+      ),
+    },
+    decisions: [{ decision: "approved", answer: "Ready." }],
+  });
+  const first = await reviewByAgent({
+    subject,
+    reviewer: { kind: "greptile" },
+  });
+  const secondSubject = { ...subject, number: 43 };
+  const second = await reviewByAgent({
+    subject: secondSubject,
+    reviewer: { kind: "greptile" },
+  });
+  assert.notEqual(first.subjectDigest, second.subjectDigest);
+  const [firstRequest, secondRequest] = bridge.requests;
+  assert.ok(firstRequest?.[0] === "effect");
+  assert.ok(secondRequest?.[0] === "effect");
+  assert.notEqual(firstRequest[1].scope.key, secondRequest[1].scope.key);
+  assert.deepEqual(JSON.parse(secondRequest[1].payload), {
+    number: 43,
+    commit,
+  });
+  assert.deepEqual(second, await reviewByPerson({ subject: secondSubject }));
+  assert.equal(bridge.requests.length, 3);
+});
+
 await test("CLV-220 Greptile changes preserve findings and the person review subject identity", async () => {
   using bridge = fakeStepBridge({
     effects: {
