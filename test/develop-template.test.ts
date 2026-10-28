@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import { join } from "node:path";
+import ts from "typescript";
+import { withFiles } from "./quality/files-fixture.ts";
 import {
   automatic,
   configurationErrors,
@@ -8,6 +11,50 @@ import {
   manifest,
   reviewed,
 } from "./develop-template-fixture.ts";
+
+await test("CLV-221 completed fixtures accept JSON records or null and reject invalid result types", async () => {
+  const source = await readFile(
+    new URL("../templates/develop/develop/scenarios.ts", import.meta.url),
+    "utf8",
+  );
+  const invalid = [
+    "undefined",
+    "1n",
+    "Symbol()",
+    "() => {}",
+    "{ nested: undefined }",
+    "{ items: [() => {}] }",
+    "true",
+    "42",
+    '"text"',
+    "[]",
+  ];
+  await withFiles(
+    {
+      "scenarios.ts": `${source}\ncompleted({ items: [null, true, 42, "text", {}] } as const);\ncompleted(null);\n${invalid.map((value) => `completed(${value});`).join("\n")}`,
+    },
+    (directory) => {
+      const program = ts.createProgram([join(directory, "scenarios.ts")], {
+        strict: true,
+        noEmit: true,
+        types: [],
+        target: ts.ScriptTarget.ESNext,
+      });
+      const diagnostics = ts.getPreEmitDiagnostics(program);
+      assert.deepEqual(
+        diagnostics.map((diagnostic) => {
+          assert.ok(diagnostic.code === 2345 || diagnostic.code === 2322);
+          assert.ok(diagnostic.file && diagnostic.start !== undefined);
+          const { line } = diagnostic.file.getLineAndCharacterOfPosition(
+            diagnostic.start,
+          );
+          return diagnostic.file.text.split("\n")[line];
+        }),
+        invalid.map((value) => `completed(${value});`),
+      );
+    },
+  );
+});
 
 await test("CLV-221 loads the develop template manifest", async () => {
   const document: unknown = JSON.parse(

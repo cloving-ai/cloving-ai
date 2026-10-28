@@ -42,7 +42,15 @@ export async function developRound(state: {
     if (result.merged) return await finishPull({ input, round, report, pull });
     return repair({ cycleId: input.cycleId, round, report, result });
   } catch (error) {
-    await labelTicket(input, { key: "blocked", round });
+    try {
+      await labelTicket(input, { key: "blocked", round });
+    } catch (labelError) {
+      throw new AggregateError(
+        [error, labelError],
+        "development-and-label-failed",
+        { cause: labelError },
+      );
+    }
     throw error;
   }
 }

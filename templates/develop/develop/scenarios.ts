@@ -10,7 +10,17 @@ export const input = {
   },
 };
 
-export function completed(result: unknown) {
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+export function completed(
+  result: { readonly [key: string]: JsonValue } | null,
+) {
   return {
     kind: "completed" as const,
     operationId: "operation",

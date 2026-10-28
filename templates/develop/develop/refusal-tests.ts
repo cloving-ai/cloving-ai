@@ -9,6 +9,53 @@ import { effects } from "./scenarios.ts";
 
 export const refusalTests: FlowTest[] = [];
 
+for (const operation of [
+  "claude run-turn",
+  "github open-pr",
+  "github wait-review",
+  "github merge",
+]) {
+  refusalTests.push({
+    name: `CLV-221 a ${operation} failure survives a blocked label failure`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: {
+          ...effects(),
+          [operation]: [
+            {
+              kind: "failed",
+              operationId: "development-failed",
+              reason: "development-failed",
+            },
+          ],
+          "github label": [
+            completed({}),
+            {
+              kind: "failed",
+              operationId: "label-failed",
+              reason: "label-failed",
+            },
+          ],
+        },
+      });
+      await assert.rejects(develop(input), (error) => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.message, "development-and-label-failed");
+        assert.deepEqual(error.errors, [
+          new Error("development-failed"),
+          new Error("label-failed"),
+        ]);
+        assert.equal(error.cause, error.errors[1]);
+        return true;
+      });
+      const last = bridge.requests.at(-1);
+      assert.ok(last && last[0] === "effect");
+      assert.equal(last[1].method, "label");
+      assert.equal(last[1].scope.key, "blocked");
+    },
+  });
+}
+
 refusalTests.push({
   name: "CLV-221 a failed lifecycle label stops before the worker runs",
   run: async () => {
