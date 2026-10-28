@@ -1,5 +1,8 @@
 import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
-import { packedDevelopTemplate } from "./develop-template-fixture.ts";
+import {
+  packedDevelopTemplate,
+  packedTemplateSources,
+} from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import {
@@ -96,7 +99,7 @@ async function installed(root: string): Promise<string> {
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
-    ["templates/develop/develop.test.ts", "templates/develop/develop/turn.ts"],
+    packedTemplateSources,
   );
   assert.deepEqual(
     paths.filter((path) =>
