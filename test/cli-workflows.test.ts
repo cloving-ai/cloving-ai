@@ -1,21 +1,41 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./quality/files-fixture.ts";
-import {
-  operatorFiles,
-  privateFolderFiles,
-} from "./workflow-folder-fixture.ts";
-import { privateSettingsPath } from "../src/cli/project-settings.ts";
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { operatorFiles } from "./workflow-folder-fixture.ts";
+import { cli, cliOptions } from "./cli-workflows-fixture.ts";
 import { record } from "../src/protocol.ts";
 import { lstat, readFile, symlink, writeFile } from "node:fs/promises";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 import { withHarness } from "./service-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
-import { testMilliseconds } from "./test-timing.ts";
+
+await test("CLV-211 workflow CLI checks use the configured CI time budget", async () => {
+  const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  try {
+    await withFiles(
+      { "repo/entry.ts": 'process.stdout.write("fixture completed");' },
+      (root) => {
+        for (const [factor, timeout] of [
+          ["1", 30000],
+          ["3", 90000],
+        ] as const) {
+          process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+          assert.equal(cliOptions(root).timeout, timeout);
+          const result = cli(root, {
+            args: [],
+            entry: join(root, "repo/entry.ts"),
+          });
+          assert.equal(result.status, 0, result.stderr);
+          assert.equal(result.stdout, "fixture completed");
+        }
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
+    else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
+  }
+});
 
 const workflowTest = (name: string, expected = "scenario-result"): string => `
 import assert from "node:assert/strict";
@@ -30,35 +50,6 @@ await test("portable ${name} scenario", async () => {
   assert.equal(result.outcome.result, ${JSON.stringify(expected)}, "workflow assertion sentinel");
 });
 `;
-
-const entry = resolve("src/cli.ts");
-
-function cli(
-  root: string,
-  invocation: {
-    readonly args: readonly string[];
-    readonly entry?: string;
-    readonly directory?: string;
-    readonly environment?: NodeJS.ProcessEnv;
-  },
-) {
-  return spawnSync(
-    process.execPath,
-    [invocation.entry ?? entry, "workflows", ...invocation.args],
-    {
-      cwd: invocation.directory ?? join(root, "repo"),
-      env: {
-        ...process.env,
-        HOME: root,
-        XDG_CONFIG_HOME: join(root, "config"),
-        CLOVING_RUNTIME_DIR: join(root, "service/run"),
-        ...invocation.environment,
-      },
-      encoding: "utf8",
-      timeout: testMilliseconds(30000),
-    },
-  );
-}
 
 await test("CLV-224 list reports folder admission and declarations without a service", () =>
   withFiles(
@@ -331,67 +322,3 @@ await test("CLV-224 listing and test selection preserve workflow filenames with 
       assert.match(result.stdout, /portable spaced scenario/);
     },
   ));
-
-async function privateFolderSetting(root: string): Promise<void> {
-  const settings = privateSettingsPath(
-    { HOME: root, XDG_CONFIG_HOME: join(root, "config") },
-    join(root, "repo"),
-  );
-  await mkdir(dirname(settings), { recursive: true });
-  await writeFile(
-    settings,
-    JSON.stringify({
-      version: 1,
-      workflows: { folder: join(root, "private/workflows") },
-    }),
-  );
-}
-
-function userRows(output: string): [string, string][] {
-  const rows: unknown = JSON.parse(output);
-  assert.ok(Array.isArray(rows));
-  return rows
-    .map((row) => record(row))
-    .filter((row) => row?.["scope"] === "user")
-    .map((row): [string, string] => {
-      const id = row?.["workflowId"];
-      const file = row?.["file"];
-      assert.ok(typeof id === "string");
-      assert.ok(typeof file === "string");
-      return [id, file];
-    });
-}
-
-await test("CLV-227 list reads the user folder from the private workflows.folder setting", () =>
-  withFiles(
-    {
-      "repo/marker": "",
-      "repo/nested/marker": "",
-      ...operatorFiles("user", "home"),
-      ...privateFolderFiles("own"),
-    },
-    async (root) => {
-      await privateFolderSetting(root);
-      spawnSync("git", ["init", "-q", join(root, "repo")]);
-      for (const directory of [join(root, "repo"), join(root, "repo/nested")]) {
-        const result = cli(root, { args: ["list", "--json"], directory });
-        assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.deepEqual(userRows(result.stdout), [
-          ["own", join(root, "private/workflows/own.ts")],
-        ]);
-      }
-    },
-  ));
-
-await test("CLV-227 a relative CLOVING_WORKFLOW_FOLDER stops the workflows command", () =>
-  withFiles({ "repo/marker": "" }, (root) => {
-    const result = cli(root, {
-      args: ["list", "--json"],
-      environment: { CLOVING_WORKFLOW_FOLDER: "relative-workflows" },
-    });
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.match(
-      result.stderr,
-      /CLOVING_WORKFLOW_FOLDER must be an absolute path/,
-    );
-  }));

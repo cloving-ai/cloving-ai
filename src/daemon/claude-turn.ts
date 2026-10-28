@@ -8,11 +8,14 @@ import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import type { TicketStatus } from "../ticket-status.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
+import { geminiStream } from "./gemini-stream.ts";
 import {
   priceOf,
+  modelUsageOf,
   usageOf,
   type WorkerUsage,
   type WorkerAttemptUsage,
+  type WorkerModelUsage,
   type RetryKind,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
@@ -21,6 +24,7 @@ import { shellTurnScript } from "../agent-harness-shell.ts";
 export type Worker = string;
 
 export interface StreamResult {
+  readonly models?: readonly WorkerModelUsage[];
   readonly ticketStatusTooLarge?: true;
   readonly ticketStatus?: TicketStatus;
   readonly attempts?: readonly WorkerAttemptUsage[];
@@ -129,7 +133,9 @@ export function streamResult(
   const record: unknown = parsed(line);
   const field = (name: string): unknown => Reflect.get(Object(record), name);
   if (field("type") !== "result") return undefined;
+  const models = modelUsageOf(field("models"));
   return {
+    ...(models === undefined ? {} : { models }),
     ...(typeof field("subtype") === "string"
       ? { subtype: String(field("subtype")) }
       : {}),
@@ -252,6 +258,7 @@ function activityOutput(start: TurnStart) {
 function streamAdapter(worker: Worker | undefined) {
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
+  if (worker === "gemini") return geminiStream();
   return undefined;
 }
 

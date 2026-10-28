@@ -5,6 +5,10 @@ export interface CommandStart {
   readonly prompt: string;
 }
 
+function argumentPrompt(prompt: string): boolean {
+  return Buffer.byteLength(prompt, "utf8") < 64 * 1024;
+}
+
 export function turnCommand(start: CommandStart): {
   readonly parts: readonly string[];
   readonly standardInput: string | undefined;
@@ -18,15 +22,17 @@ export function turnCommand(start: CommandStart): {
         ? undefined
         : start.prompt,
     };
+  if (start.worker === "gemini" && argumentPrompt(start.prompt))
+    return {
+      parts: [...start.command, "-p", start.prompt],
+      standardInput: undefined,
+    };
   if (start.worker === "opencode")
     return {
       parts: [...start.command, start.prompt],
       standardInput: undefined,
     };
-  if (
-    start.worker === "cursor-agent" &&
-    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
-  )
+  if (start.worker === "cursor-agent" && argumentPrompt(start.prompt))
     return {
       parts: [...start.command, start.prompt],
       standardInput: undefined,

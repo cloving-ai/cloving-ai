@@ -8,8 +8,8 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
-  readonly summary?: string;
   readonly model?: string;
+  readonly summary?: string;
   readonly harness?: string;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly estimatedCostUsd: number | null;
@@ -19,12 +19,30 @@ export interface WorkerTurnUsage {
 }
 
 export interface WorkerAttemptUsage {
+  readonly models?: readonly WorkerModelUsage[];
   readonly retryKind?: RetryKind | null;
   readonly attempt: number;
   readonly model: string | null;
   readonly usage: WorkerUsage;
   readonly costUsd: number | null;
   readonly estimatedCostUsd: number | null;
+}
+
+export interface WorkerModelUsage {
+  readonly model: string;
+  readonly usage: WorkerUsage;
+}
+
+export function modelUsageOf(
+  value: unknown,
+): readonly WorkerModelUsage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const model: unknown = Reflect.get(entry, "model");
+    if (typeof model !== "string") return [];
+    return [{ model, usage: usageOf(Reflect.get(entry, "usage")) }];
+  });
 }
 
 export interface WorkerTotals {
@@ -126,6 +144,7 @@ export function attemptsOf(
     const field = (name: string): unknown => Reflect.get(fields, name);
     const attempt = tokenCount(field("attempt"));
     const model = field("model");
+    const models = modelUsageOf(field("models"));
     if (
       attempt === null ||
       attempt === 0 ||
@@ -137,6 +156,7 @@ export function attemptsOf(
         ...retryKindField(field("retryKind")),
         attempt,
         model,
+        ...(models === undefined ? {} : { models }),
         usage: usageOf(field("usage")),
         costUsd: priceOf(field("costUsd")),
         estimatedCostUsd: priceOf(field("estimatedCostUsd")),

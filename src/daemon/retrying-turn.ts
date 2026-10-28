@@ -136,32 +136,49 @@ function attemptUsage(
   };
   const model = result.model ?? attemptCommand(attempts, attempt).model;
   const usage = result.usage;
-  const worker = attempts.start.worker ?? "claude";
   return {
     attempt,
     retryKind: kindOf(attempts, end),
     model,
+    ...(end.result?.models === undefined ? {} : { models: end.result.models }),
     usage,
     costUsd: result.costUsd,
-    estimatedCostUsd: nativeHarness(worker)
-      ? estimatedCostUsd(usage, {
-          worker,
-          price: priceForModel(
-            attempts.options.tokenPrices ?? {},
-            result.pricingModel === undefined ? model : result.pricingModel,
-          ),
-        })
-      : null,
+    estimatedCostUsd: attemptEstimate(attempts, { end, model, usage }),
   };
 }
 
-function retriesCapacity(worker: string | undefined): boolean {
-  return ["claude", "codex"].includes(worker ?? "claude");
+function attemptEstimate(
+  attempts: Attempts,
+  result: {
+    readonly end: TurnEnd;
+    readonly model: string | null;
+    readonly usage: ReturnType<typeof usageOf>;
+  },
+): number | null {
+  const worker = attempts.start.worker ?? "claude";
+  if (!nativeHarness(worker)) return null;
+  const models = result.end.result?.models;
+  const prices = attempts.options.tokenPrices ?? {};
+  return estimatedCostUsd(
+    result.usage,
+    worker === "gemini" && models !== undefined
+      ? { worker, models, prices }
+      : {
+          worker,
+          price: priceForModel(
+            prices,
+            result.end.result?.pricingModel === undefined
+              ? result.model
+              : result.end.result.pricingModel,
+          ),
+        },
+  );
 }
 
 function kindOf(attempts: Attempts, end: TurnEnd) {
   const { worker, output } = attempts.start;
-  if (output === "text" || !retriesCapacity(worker)) return null;
+  if (output === "text" || !["claude", "codex"].includes(worker ?? "claude"))
+    return null;
   if (worker !== "codex") return retryKind(end.result);
   return capacityRefusal(end.result) ? "capacity" : null;
 }

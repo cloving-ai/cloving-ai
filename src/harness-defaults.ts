@@ -20,6 +20,14 @@ export const defaultCodexCommand = [
   "-",
 ];
 
+export const defaultGeminiCommand = [
+  "gemini",
+  "--output-format",
+  "stream-json",
+  "--approval-mode",
+  "yolo",
+];
+
 export const defaultCursorCommand = [
   "cursor-agent",
   "-p",
@@ -39,7 +47,16 @@ export const defaultGrokCommand = [
 ];
 
 export type NativeHarness =
-  "claude" | "codex" | "grok" | "opencode" | "cursor-agent";
+  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent";
+
+const defaultCommands = {
+  claude: defaultCommand,
+  codex: defaultCodexCommand,
+  gemini: defaultGeminiCommand,
+  grok: defaultGrokCommand,
+  opencode: defaultOpencodeCommand,
+  "cursor-agent": defaultCursorCommand,
+};
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -81,10 +98,6 @@ function nativeCommand(
   return [saved.path ?? name, ...defaults.slice(1)];
 }
 
-export function nativeHarness(name: string): name is NativeHarness {
-  return ["claude", "codex", "grok", "opencode", "cursor-agent"].includes(name);
-}
-
 export function isTurnCommand(value: unknown): value is readonly string[] {
   if (!Array.isArray(value)) return false;
   const program: unknown = value[0];
@@ -108,18 +121,13 @@ export function harnessDefaults(value: unknown): {
   const variable = {
     claude: "CLOVING_CLAUDE_COMMAND",
     codex: "CLOVING_CODEX_COMMAND",
+    gemini: "CLOVING_GEMINI_COMMAND",
     grok: "CLOVING_GROK_COMMAND",
     opencode: "CLOVING_OPENCODE_COMMAND",
     "cursor-agent": undefined,
   }[name];
   return {
-    command: {
-      claude: defaultCommand,
-      codex: defaultCodexCommand,
-      grok: defaultGrokCommand,
-      opencode: defaultOpencodeCommand,
-      "cursor-agent": defaultCursorCommand,
-    }[name],
+    command: defaultCommands[name],
     ...(variable === undefined ? {} : { variable }),
   };
 }
@@ -162,4 +170,8 @@ export function turnHarness(
     ...selectedCommand(settings, name),
     ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
   };
+}
+
+export function nativeHarness(name: string): name is NativeHarness {
+  return Object.hasOwn(defaultCommands, name);
 }

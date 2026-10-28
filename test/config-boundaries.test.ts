@@ -161,6 +161,42 @@ await test("CLV-206 default worker commands follow the selected worker and match
   assert.match(claude.stdout, /max-budget-usd/);
 });
 
+await test("CLV-211 config shows the Gemini default and its own command override", () => {
+  using fixture = configScene();
+  fixture.write(fixture.privateFile, {
+    version: 1,
+    harness: { name: "gemini" },
+  });
+  const result = fixture.run(["get", "harness.command", "--json"], {
+    CLOVING_CLAUDE_COMMAND: '["unrelated-claude"]',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    schemaVersion: 1,
+    field: "harness.command",
+    source: "default",
+    hidden: [],
+    value: [
+      "gemini",
+      "--output-format",
+      "stream-json",
+      "--approval-mode",
+      "yolo",
+    ],
+  });
+  const overridden = fixture.run(["get", "harness.command", "--json"], {
+    CLOVING_GEMINI_COMMAND: '["custom-gemini"]',
+  });
+  assert.equal(overridden.status, 0, overridden.stderr);
+  assert.deepEqual(JSON.parse(overridden.stdout), {
+    schemaVersion: 1,
+    field: "harness.command",
+    source: "environment",
+    hidden: [],
+    value: ["custom-gemini"],
+  });
+});
+
 await test("CLV-206 malformed configuration is rejected before a command changes either file", () => {
   using fixture = configScene();
   fixture.write(fixture.project, { version: 1, queue: { lanes: 2 } });
