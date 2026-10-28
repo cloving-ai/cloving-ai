@@ -22,6 +22,8 @@
     "src/steps/review-by-person.ts": "workflow",
     "src/steps/review-by-agent.ts": "workflow",
     "test/review-agent.test.ts": "test",
+    "test/review-turn.test.ts": "test",
+    "test/claude-review.test.ts": "test",
     "test/review-agent-candidate.test.ts": "test",
     "test/review-agent-sdk.test.ts": "test",
     "test/review-person.test.ts": "test",

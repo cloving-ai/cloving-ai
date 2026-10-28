@@ -6,6 +6,7 @@ import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
+import type { ReviewVerdict } from "../review-subject.ts";
 import type { TicketStatus } from "../ticket-status.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
@@ -24,6 +25,8 @@ import { shellTurnScript } from "../agent-harness-shell.ts";
 export type Worker = string;
 
 export interface StreamResult {
+  readonly reviewFeedback?: string;
+  readonly reviewVerdict?: ReviewVerdict | null;
   readonly models?: readonly WorkerModelUsage[];
   readonly ticketStatusTooLarge?: true;
   readonly ticketStatus?: TicketStatus;

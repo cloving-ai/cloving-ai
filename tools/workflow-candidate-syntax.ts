@@ -100,12 +100,8 @@ export function protectedEffectFact(
   if (handoffCall(node, symbols)) return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
-  if (reviewCall(node, symbols)) {
-    const reviewer = propertyInitializer(argument, "reviewer");
-    return literalField(reviewer, "kind") === "greptile"
-      ? { capability: "github", method: "wait-review" }
-      : { capability: null, method: null };
-  }
+  if (reviewCall(node, symbols))
+    return reviewEffectFact(propertyInitializer(argument, "reviewer"));
   if (commandCall(node, symbols)) {
     const name = literalField(argument, "name");
     return {
@@ -117,6 +113,20 @@ export function protectedEffectFact(
     capability: literalField(argument, "capability"),
     method: literalField(argument, "method"),
   };
+}
+
+function reviewEffectFact(reviewer: ts.Node | undefined): CandidateEffect {
+  const kind = literalField(reviewer, "kind");
+  if (kind === "greptile")
+    return { capability: "github", method: "wait-review" };
+  const profile = literalField(reviewer, "profile");
+  if (
+    kind === "turn" &&
+    profile !== null &&
+    /^[A-Za-z0-9_-]{1,119}$/.test(profile)
+  )
+    return { capability: "claude", method: `run-turn:${profile}` };
+  return { capability: null, method: null };
 }
 
 function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {

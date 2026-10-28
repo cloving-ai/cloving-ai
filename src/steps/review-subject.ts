@@ -1,11 +1,13 @@
 import { operationDigest } from "../broker/operation-digest.ts";
-import { reviewSubjectText, type ReviewSubject } from "../review-subject.ts";
+import {
+  reviewSubjectText,
+  type ReviewSubject,
+  type ReviewSnapshot,
+} from "../review-subject.ts";
 
-export async function snapshotReviewSubject(subject: ReviewSubject): Promise<{
-  readonly commit: string | null;
-  readonly subjectDigest: string;
-  readonly prompt: string;
-}> {
+export async function snapshotReviewSubject(
+  subject: ReviewSubject,
+): Promise<ReviewSnapshot> {
   "use step";
   const prompt = reviewSubjectText(subject);
   return Promise.resolve({

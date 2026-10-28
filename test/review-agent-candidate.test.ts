@@ -27,6 +27,67 @@ export async function review(subject: ReviewSubject): Promise<ReviewResult> {
   return await ${helper}({ subject: subject${helper === "reviewByAgent" ? ', reviewer: { kind: "greptile" }' : ""} });
 }`;
 
+const turnSource = source("cloving/workflows/steps/review-by-agent").replace(
+  'kind: "greptile"',
+  'kind: "turn", profile: "checker"',
+);
+const turnDeclaration = {
+  ...declaration,
+  workflow: { ...declaration.workflow, capabilities: ["claude"] },
+  methods: { claude: ["run-turn:checker"] },
+};
+
+await test("CLV-220 named turn review compiles with the person result and declares its protected effect", async () => {
+  for (const text of [
+    turnSource,
+    source("cloving/workflows/steps/review-by-person", "reviewByPerson"),
+  ]) {
+    const typed = candidateProgram(text);
+    assert.deepEqual(typed.program.getSemanticDiagnostics(typed.source), []);
+  }
+  const facts = analyzeWorkflowCandidate(turnSource);
+  assert.deepEqual(facts.analysis.effects, [
+    { capability: "claude", method: "run-turn:checker" },
+  ]);
+  assert.equal(facts.analysis.knownCallCount, 1);
+  assert.equal(facts.analysis.knownUnitTotal, 1);
+  assert.deepEqual(
+    checkWorkflowCandidate({ declaration: turnDeclaration, ...facts }),
+    [],
+  );
+  const admitted = await admitWorkflowCandidate({
+    source: turnSource,
+    declaration: turnDeclaration,
+  });
+  assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
+});
+
+await test("CLV-220 turn review admission retains method and budget checks", () => {
+  const facts = analyzeWorkflowCandidate(turnSource);
+  for (const candidate of [
+    { ...turnDeclaration, methods: { claude: ["run-turn:fixer"] } },
+    declaration,
+  ])
+    assert.deepEqual(
+      checkWorkflowCandidate({
+        declaration: candidate,
+        ...facts,
+      }),
+      ["undeclared-effect"],
+    );
+  const repeated = analyzeWorkflowCandidate(
+    turnSource.replace(
+      "  return await",
+      '  await reviewByAgent({ subject: subject, reviewer: { kind: "turn", profile: "checker" } });\n  return await',
+    ),
+  );
+  assert.equal(repeated.analysis.knownUnitTotal, 2);
+  assert.deepEqual(
+    checkWorkflowCandidate({ declaration: turnDeclaration, ...repeated }),
+    ["effect-limit"],
+  );
+});
+
 for (const module of [
   "cloving/workflows",
   "cloving/workflows/steps/review-by-agent",
@@ -114,3 +175,36 @@ await test("CLV-220 a folder review cannot call an undeclared GitHub method", ()
       assert.deepEqual(result.refusals[0]?.codes, ["undeclared-effect"]);
     },
   ));
+
+for (const candidate of [
+  { ...turnDeclaration, methods: { claude: ["run-turn:fixer"] } },
+  declaration,
+])
+  await test(`CLV-220 folder turn review refuses undeclared capability or profile ${JSON.stringify(candidate.methods)}`, () =>
+    withFiles(
+      {
+        "repo/.cloving/workflows/review.ts": turnSource,
+        "repo/.cloving/workflows/review.declaration.json": JSON.stringify({
+          ...candidate,
+          workflow: { ...candidate.workflow, workflowId: "review" },
+        }),
+      },
+      async (directory) => {
+        const result = await loadWorkflowFolders(folderInput(directory));
+        assert.deepEqual(result.candidates, []);
+        assert.deepEqual(result.refusals[0]?.codes, ["undeclared-effect"]);
+      },
+    ));
+
+for (const profile of ["subject.target", '""', '"bad.profile"'])
+  await test(`CLV-220 turn review admission refuses a dynamic or invalid profile ${profile}`, () => {
+    const facts = analyzeWorkflowCandidate(
+      turnSource.replace('profile: "checker"', `profile: ${profile}`),
+    );
+    assert.ok(
+      checkWorkflowCandidate({
+        declaration: turnDeclaration,
+        ...facts,
+      }).includes("dynamic-effect"),
+    );
+  });

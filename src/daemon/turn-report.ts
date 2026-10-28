@@ -1,4 +1,5 @@
 import { ticketStatus, type TicketStatus } from "../ticket-status.ts";
+import { reviewReport, type ReviewVerdict } from "../review-subject.ts";
 import { sumPrices } from "../worker-usage.ts";
 import { changes, type Changes, type WorkTree } from "./work-tree.ts";
 import type { StreamResult } from "./claude-turn.ts";
@@ -11,6 +12,7 @@ type ReportFields = Changes &
     readonly harness: string;
     readonly ticketStatus: TicketStatus;
     readonly summary: string;
+    readonly reviewVerdict: ReviewVerdict | null;
     readonly worktree: string;
     readonly estimatedCostUsd: number | null;
   };
@@ -82,14 +84,20 @@ export async function turnReport(
   if (result.ticketStatusTooLarge === true)
     return { reason: "claude-result-too-large" };
   const { harness, tree, limits } = start;
+  const review = reviewReport(result.text);
+  const feedback = result.reviewFeedback ?? review.feedback;
   return boundedReport(
     {
       harness: harness.worker,
       ticketStatus: ticketStatus(result.text, result.ticketStatus),
+      reviewVerdict:
+        result.reviewVerdict === undefined
+          ? review.reviewVerdict
+          : result.reviewVerdict,
       summary:
         harness.output === "text"
-          ? result.text.slice(-limits.summaryCharacters)
-          : result.text.slice(0, limits.summaryCharacters),
+          ? feedback.slice(-limits.summaryCharacters)
+          : feedback.slice(0, limits.summaryCharacters),
       ...(await changes(tree)),
       worktree: tree.path,
       costUsd: result.costUsd,

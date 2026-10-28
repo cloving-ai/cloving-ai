@@ -223,7 +223,7 @@ export async function review(input) { return await reviewByAgent(input); }`,
         runScenario({
           workflow: join(root, "review.mjs"),
           exportName: "review",
-          input: { subject, reviewer: { kind: "turn", profile: "review" } },
+          input: { subject, reviewer: { kind: "unknown" } },
           effects: {
             "github wait-review": [
               reviewed({
