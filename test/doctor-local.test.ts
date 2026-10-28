@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { nodeObservation } from "../src/cli/doctor-local.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { check, savedHarness, settings, withDoctor } from "./doctor-fixture.ts";
 
@@ -36,7 +37,7 @@ await test("CLV-207 doctor emits the ordered versioned report and local successe
     assert.equal(output.version, 1);
     assert.equal(
       check(output, "node-version")["result"],
-      process.version === "v26.9.0" ? "ok" : "fail",
+      nodeObservation(process.version).result,
     );
     assert.deepEqual(
       output.checks.map((item) => item["code"]),

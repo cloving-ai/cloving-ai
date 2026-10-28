@@ -5,7 +5,34 @@ import { dirname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import type { ToolchainIdentity } from "../workflow-admission.ts";
 
-export const qualifiedNode = "v26.9.0";
+export const supportedNodes = packageMetadata.engines.node;
+
+export function supportedNode(version: string): boolean {
+  const release = /^v(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (release === null) return false;
+  const observed = release.slice(1).map(Number);
+  return supportedNodes.split(" || ").some((range) => {
+    const bounds = /^>=(\d+)\.(\d+)\.(\d+) <(\d+)$/
+      .exec(range)
+      ?.slice(1)
+      .map(Number);
+    if (bounds === undefined) return false;
+    return (
+      atLeast(observed, bounds.slice(0, 3)) &&
+      (observed[0] ?? 0) < (bounds[3] ?? 0)
+    );
+  });
+}
+
+function atLeast(
+  observed: readonly number[],
+  minimum: readonly number[],
+): boolean {
+  const index = observed.findIndex(
+    (part, position) => part !== minimum[position],
+  );
+  return index === -1 || (observed[index] ?? 0) > (minimum[index] ?? 0);
+}
 
 export async function observedToolchain(
   start: string,
@@ -42,7 +69,7 @@ export async function qualifiedToolchain(
     sdk: `workflow@${packageMetadata.dependencies.workflow}`,
     world: `@workflow/world-local@${typeof declared === "string" ? declared : "undeclared"}`,
     builder: `@workflow/builders@${packageMetadata.dependencies["@workflow/builders"]}`,
-    node: qualifiedNode,
+    node: supportedNode(observed.node) ? observed.node : supportedNodes,
     dependencies: observed.dependencies,
   };
 }

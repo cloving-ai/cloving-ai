@@ -96,6 +96,12 @@ await test("CLV-201 installation describes the published package without a packa
     /cloving@\d|cloving-\d+\.\d+\.\d+|Cloving(?: package)? v?\d+\.\d+\.\d+/i,
   );
   assert.match(readme, /Node 26\.9\.0 and npm 11\.19\.1/);
+  assert.match(
+    readme,
+    /Workflow admission accepts the same Node range: Node 24\.22\.1 or a later Node 24 version, and Node 26\.9\.0 or a later Node 26 version\./,
+  );
+  assert.match(readme, /CI also runs the Ubuntu checks with Node 24\.22\.1\./);
+  assert.doesNotMatch(readme, /exactly Node/);
   assert.match(readme, /supports macOS and Linux on arm64 and x64/);
   assert.match(readme, /macOS 15 arm64 and Ubuntu 24\.04 x64/);
   assert.doesNotMatch(

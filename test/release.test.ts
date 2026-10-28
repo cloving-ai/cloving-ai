@@ -118,7 +118,7 @@ await test("CLV-101 release metadata and both lock versions describe the public 
     url: "https://github.com/cloving-ai/cloving-ai/issues",
   });
   assert.deepEqual(manifest.engines, {
-    node: ">=26.9.0 <27",
+    node: ">=24.22.1 <25 || >=26.9.0 <27",
     npm: ">=11.19.1 <12",
   });
   assert.deepEqual(manifest.os, ["darwin", "linux"]);

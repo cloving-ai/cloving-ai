@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { job, releaseWorkflow, script, steps } from "./release-fixture.ts";
+import {
+  job,
+  metadata,
+  releaseWorkflow,
+  script,
+  steps,
+} from "./release-fixture.ts";
 
 const sameRepositoryPullRequest =
   "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository";
@@ -9,6 +15,12 @@ const sameRepositoryPullRequest =
 function localOr(local: string, hosted: string): string {
   return `\${{ ${sameRepositoryPullRequest} && ${local} || ${hosted} }}`;
 }
+
+const nodeVersions = {
+  quality: "26.9.0",
+  quality_linux: "${{ matrix.node }}",
+  publish: "26.9.0",
+} as const;
 
 await test("CLV-097 CI checks every push, pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
@@ -51,7 +63,7 @@ await test("CLV-097 CI checks every push, pull request and manual run with least
       step.uses?.startsWith("actions/setup-node@"),
     );
     assert.deepEqual(setup?.with, {
-      "node-version": "26.9.0",
+      "node-version": nodeVersions[name],
       architecture,
       "registry-url": "https://registry.npmjs.org",
       "package-manager-cache": false,
@@ -109,7 +121,10 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   assert.equal(linuxCommands[0], commands[0]);
   const linuxQualification = linuxCommands[1];
   assert.ok(typeof linuxQualification === "string");
-  assert.match(linuxQualification, /process\.version.*v26\.9\.0/);
+  assert.match(
+    linuxQualification,
+    /assert\.equal\(process\.version, "v\$\{\{ matrix\.node \}\}"\)/,
+  );
   assert.match(linuxQualification, /process\.platform.*linux/);
   assert.match(
     linuxQualification,
@@ -125,6 +140,21 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
     "npm run build",
     "node --test test/packed-install.test.ts",
   ]);
+});
+
+await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range", async () => {
+  const workflow = await releaseWorkflow();
+  const { manifest } = await metadata();
+  const lowest = (manifest.engines["node"] ?? "")
+    .split(" || ")
+    .map((range) => /^>=(\d+\.\d+\.\d+) <\d+$/.exec(range)?.[1]);
+  assert.deepEqual(lowest, ["24.22.1", "26.9.0"]);
+  assert.deepEqual(job(workflow, "quality_linux").strategy, {
+    "fail-fast": false,
+    matrix: { node: lowest },
+  });
+  assert.equal(job(workflow, "quality").strategy, undefined);
+  assert.equal(job(workflow, "publish").strategy, undefined);
 });
 
 await test("CLV-097 publish uses same-revision successful quality and only version-tag pushes", async () => {

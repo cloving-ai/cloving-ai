@@ -25,6 +25,7 @@ interface WorkflowJob {
   readonly needs?: string | readonly string[];
   readonly permissions?: StringRecord;
   readonly env?: StringRecord;
+  readonly strategy?: unknown;
 }
 
 export interface ReleaseWorkflow {
