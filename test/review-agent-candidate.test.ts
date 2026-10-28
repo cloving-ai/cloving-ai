@@ -208,3 +208,22 @@ for (const profile of ["subject.target", '""', '"bad.profile"'])
       }).includes("dynamic-effect"),
     );
   });
+
+for (const reviewer of [
+  'kind: "turn", profile: "checker", profile: "fixer"',
+  'kind: "greptile", kind: "turn", profile: "checker"',
+])
+  await test(`CLV-220 turn review admission refuses duplicate reviewer fields ${reviewer}`, () => {
+    const facts = analyzeWorkflowCandidate(
+      turnSource.replace('kind: "turn", profile: "checker"', reviewer),
+    );
+    assert.ok(
+      checkWorkflowCandidate({
+        declaration: {
+          ...turnDeclaration,
+          methods: { claude: ["run-turn:checker", "run-turn:fixer"] },
+        },
+        ...facts,
+      }).includes("unsupported-source"),
+    );
+  });

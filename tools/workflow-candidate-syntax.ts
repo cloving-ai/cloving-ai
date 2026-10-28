@@ -175,13 +175,25 @@ function invalidRequest(node: ts.Node, symbols: CandidateSymbols): boolean {
     !ts.isObjectLiteralExpression(argument)
   )
     return true;
-  const names = argument.properties.map(
+  const reviewer = reviewCall(node, symbols)
+    ? propertyInitializer(argument, "reviewer")
+    : undefined;
+  return (
+    invalidFields(argument) ||
+    (reviewer !== undefined &&
+      ts.isObjectLiteralExpression(reviewer) &&
+      invalidFields(reviewer))
+  );
+}
+
+function invalidFields(object: ts.ObjectLiteralExpression): boolean {
+  const names = object.properties.map(
     (entry) => entry.name && propertyName(entry.name),
   );
   return (
     names.includes(undefined) ||
     new Set(names).size !== names.length ||
-    argument.properties.some((entry) => !ts.isPropertyAssignment(entry))
+    object.properties.some((entry) => !ts.isPropertyAssignment(entry))
   );
 }
 
