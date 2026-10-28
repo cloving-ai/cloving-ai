@@ -38,6 +38,16 @@ await test("CLV-097 release fixtures reject malformed workflow shapes at the JSO
         quality: { ...workflow.jobs.quality, steps: [{ run: 42 }] },
       },
     },
+    ...[
+      { "fail-fast": "false", matrix: { node: ["26.9.0"] } },
+      { "fail-fast": false, matrix: { node: [26] } },
+    ].map((strategy) => ({
+      ...workflow,
+      jobs: {
+        ...workflow.jobs,
+        quality_linux_node: { ...workflow.jobs.quality_linux_node, strategy },
+      },
+    })),
   ])
     await withFiles(
       { ".github/workflows/ci.yml": JSON.stringify(value) },
@@ -118,7 +128,7 @@ await test("CLV-101 release metadata and both lock versions describe the public 
     url: "https://github.com/cloving-ai/cloving-ai/issues",
   });
   assert.deepEqual(manifest.engines, {
-    node: ">=26.9.0 <27",
+    node: ">=24.22.1 <25 || >=26.9.0 <27",
     npm: ">=11.19.1 <12",
   });
   assert.deepEqual(manifest.os, ["darwin", "linux"]);

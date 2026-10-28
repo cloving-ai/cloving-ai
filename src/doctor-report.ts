@@ -32,7 +32,7 @@ export interface DoctorCheck extends DoctorObservation {
 export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "git-repository": "Change to the repository, or run: git init",
   "node-version":
-    "Install the qualified Node version: nvm install 26.9.0 && nvm use 26.9.0",
+    "Install a supported Node version: nvm install 26 && nvm use 26",
   harnesses: "Install a harness: npm install -g @anthropic-ai/claude-code",
   "default-harness":
     "Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude cloving doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured; for another harness: cloving config set harness.turn '[...]'",

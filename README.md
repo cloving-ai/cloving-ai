@@ -32,7 +32,7 @@ What does not work yet:
 
 ## Install
 
-Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission still requires exactly Node 26.9.0. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. Windows is unsupported.
+Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission accepts the same Node range: Node 24.22.1 or a later Node 24 version, and Node 26.9.0 or a later Node 26 version. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when the Ubuntu checks pass on both Node versions. Windows is unsupported.
 
 A run needs these tools:
 
@@ -61,7 +61,7 @@ The runtime dependencies include the Workflow SDK (`workflow`), its directive co
 
 ### The `cloving` command
 
-For checkout development, put a launcher for `src/cli.ts` in a directory of the search path. The launcher must use exactly Node 26.9.0. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
+For checkout development, put a launcher for `src/cli.ts` in a directory of the search path. The launcher must use a Node version in the supported range. This example is for a checkout in `~/cloving` and a launcher in `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin
