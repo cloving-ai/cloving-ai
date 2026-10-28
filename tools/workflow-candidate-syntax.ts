@@ -77,25 +77,19 @@ export function reviewCall(
   );
 }
 
-function literalField(node: ts.ObjectLiteralExpression, field: string) {
+function propertyInitializer(node: ts.Node | undefined, field: string) {
+  if (!node || !ts.isObjectLiteralExpression(node)) return undefined;
   const property = node.properties.find(
     (entry) => entry.name && propertyName(entry.name) === field,
   );
-  if (!property || !ts.isPropertyAssignment(property)) return null;
-  return ts.isStringLiteral(property.initializer)
-    ? property.initializer.text
-    : null;
+  return property && ts.isPropertyAssignment(property)
+    ? property.initializer
+    : undefined;
 }
 
-function reviewerKind(argument: ts.ObjectLiteralExpression) {
-  const reviewer = argument.properties.find(
-    (entry) => entry.name && propertyName(entry.name) === "reviewer",
-  );
-  return reviewer &&
-    ts.isPropertyAssignment(reviewer) &&
-    ts.isObjectLiteralExpression(reviewer.initializer)
-    ? literalField(reviewer.initializer, "kind")
-    : null;
+function literalField(node: ts.Node | undefined, field: string) {
+  const value = propertyInitializer(node, field);
+  return value && ts.isStringLiteral(value) ? value.text : null;
 }
 
 export function protectedEffectFact(
@@ -107,7 +101,8 @@ export function protectedEffectFact(
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
   if (reviewCall(node, symbols)) {
-    return reviewerKind(argument) === "greptile"
+    const reviewer = propertyInitializer(argument, "reviewer");
+    return literalField(reviewer, "kind") === "greptile"
       ? { capability: "github", method: "wait-review" }
       : { capability: null, method: null };
   }

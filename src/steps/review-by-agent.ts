@@ -65,7 +65,25 @@ function greptileResult(text: string | null, subject: CommitReviewSubject) {
     !Array.isArray(findings)
   )
     throw new Error("invalid-review-result");
-  return { score, summary, findings: findings.map(findingText) };
+  return {
+    score,
+    summary,
+    findings: findings.map((value: unknown) => {
+      const finding = record(value);
+      if (!finding) throw new Error("invalid-review-result");
+      const { path, line, body } = finding;
+      if (
+        typeof path !== "string" ||
+        typeof body !== "string" ||
+        !(
+          line === null ||
+          (typeof line === "number" && Number.isSafeInteger(line) && line > 0)
+        )
+      )
+        throw new Error("invalid-review-result");
+      return `${path}${line === null ? "" : `:${String(line)}`}\n${body}`;
+    }),
+  };
 }
 
 function validScore(value: unknown): value is number {
@@ -75,20 +93,4 @@ function validScore(value: unknown): value is number {
     value >= 0 &&
     value <= 5
   );
-}
-
-function findingText(value: unknown): string {
-  const finding = record(value);
-  if (!finding) throw new Error("invalid-review-result");
-  const { path, line, body } = finding;
-  if (
-    typeof path !== "string" ||
-    typeof body !== "string" ||
-    !(
-      line === null ||
-      (typeof line === "number" && Number.isSafeInteger(line) && line > 0)
-    )
-  )
-    throw new Error("invalid-review-result");
-  return `${path}${line === null ? "" : `:${String(line)}`}\n${body}`;
 }

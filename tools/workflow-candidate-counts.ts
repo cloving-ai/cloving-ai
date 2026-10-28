@@ -56,19 +56,14 @@ function units(node: ts.CallExpression, symbols: CandidateSymbols): number {
     reviewCall(node, symbols)
   )
     return 1;
-  return declaredUnits(node.arguments[0]);
-}
-
-function declaredUnits(argument: ts.Expression | undefined): number {
+  const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return 0;
   const property = argument.properties.find(
     (entry) => entry.name && propertyName(entry.name) === "units",
   );
   if (!property || !ts.isPropertyAssignment(property)) return 0;
-  const value = constantNumber(property.initializer);
-  return value !== undefined && Number.isSafeInteger(value) && value > 0
-    ? value
-    : 0;
+  const value = Number(constantNumber(property.initializer));
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
 }
 
 function loopIncrement(
