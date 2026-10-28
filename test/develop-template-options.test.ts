@@ -16,6 +16,7 @@ import {
 import { withFiles } from "./quality/files-fixture.ts";
 import { completed, commit, input } from "./develop-template-flow-fixture.ts";
 import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const template = fileURLToPath(
   new URL("../templates/develop", import.meta.url),
@@ -80,7 +81,7 @@ for (const selected of completeConfigurations)
             cwd: directory,
             env: { ...process.env, NODE_TEST_CONTEXT: undefined },
             encoding: "utf8",
-            timeout: 30000,
+            timeout: testMilliseconds(30000),
           },
         );
         assert.match(output, /selected complete configuration/);

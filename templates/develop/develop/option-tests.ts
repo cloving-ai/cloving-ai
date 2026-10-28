@@ -100,13 +100,11 @@ export const optionTests = [
       );
       assert.deepEqual(
         merges.map((request) =>
-          request[0] === "effect"
-            ? (JSON.parse(request[1].payload) as unknown)
-            : null,
+          request[0] === "effect" ? request[1].payload : null,
         ),
         selection.merge === "local"
           ? []
-          : [{ number: 7, commit, check: "beforeMerge" }],
+          : [JSON.stringify({ number: 7, commit, check: "beforeMerge" })],
       );
     },
   },
