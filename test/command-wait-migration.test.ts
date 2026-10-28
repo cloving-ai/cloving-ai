@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
+import type { StoredState } from "../src/broker/authority-restore.ts";
 import {
   alterDatabase,
   opened,
@@ -16,6 +17,35 @@ PRAGMA user_version = 4;
 `;
 
 after(removeTemporaryDirectories);
+
+await test("CLV-235 version 4 migration restores a recorded wait without renewing its deadline", async () => {
+  const { store, directory } = await waitStore();
+  let before: StoredState | undefined;
+  try {
+    assert.equal((await store.execute(opening, context)).kind, "accepted");
+    before = await store.state();
+  } finally {
+    await store.close();
+  }
+  alterDatabase(directory, versionFour);
+  const reopened = (await opened(directory)).store;
+  try {
+    assert.equal((await reopened.settings()).schemaVersion, 5);
+    assert.deepEqual(await reopened.state(), before);
+    assert.equal((await reopened.effects.budget("run-1"))?.spent, 0);
+  } finally {
+    await reopened.close();
+  }
+  assert.deepEqual(
+    queryDatabase(directory, "SELECT name, deadline FROM command_waits"),
+    [
+      {
+        name: "team-review",
+        deadline: Date.parse(context.recordedAt) + 2_592_000_000,
+      },
+    ],
+  );
+});
 
 await test("CLV-235 version 4 upgrades without changing legacy state or restoring any effect allowance", async () => {
   const { store, directory } = await waitStore();

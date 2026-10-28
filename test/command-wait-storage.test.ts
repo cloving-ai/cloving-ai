@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { documentDigest } from "../src/broker/decision-restore.ts";
 import {
+  commandWaitRows,
+  commandWaitState,
+} from "../src/broker/command-wait-restore.ts";
+import { commandWaitKey } from "../src/authority/command-waits.ts";
+import {
   opened,
   removeTemporaryDirectories,
 } from "./authority-store-fixture.ts";
@@ -14,6 +19,57 @@ import {
 } from "./command-wait-fixture.ts";
 
 after(removeTemporaryDirectories);
+
+const startedAt = Date.parse(context.recordedAt);
+const storedWait = {
+  runId: "run-1",
+  name: "team-review",
+  inputDigest: opening.payload,
+  ...permission,
+  startedAt,
+  deadline: startedAt + permission.maximumWaitSeconds * 1000,
+  nextCheckAt: startedAt,
+  state: "waiting" as const,
+  settledAt: null,
+  reason: null,
+};
+
+await test("CLV-235 wait rows sort by run then name and round trip without changing allowance identity", () => {
+  const identities = [
+    ["run-2", "zeta-review"],
+    ["run-1", "zeta-review"],
+    ["run-2", "alpha-review"],
+    ["run-1", "alpha-review"],
+  ] as const;
+  const waits = Object.fromEntries(
+    identities.map(([runId, name]) => [
+      commandWaitKey(runId, name),
+      { ...storedWait, runId, name },
+    ]),
+  );
+  const rows = commandWaitRows(waits);
+  assert.deepEqual(
+    rows.map(({ runId, name }) => [runId, name]),
+    [
+      ["run-1", "alpha-review"],
+      ["run-1", "zeta-review"],
+      ["run-2", "alpha-review"],
+      ["run-2", "zeta-review"],
+    ],
+  );
+  assert.deepEqual(commandWaitState(rows), { commandWaits: waits });
+  assert.deepEqual(
+    Object.values(waits).map(({ runId, name }) => [runId, name]),
+    identities,
+  );
+});
+
+await test("CLV-235 restoration rejects an unknown stored wait state and preserves an absent legacy allowance", () => {
+  assert.deepEqual(commandWaitState([]), {});
+  assert.throws(() => commandWaitState([{ ...storedWait, state: "ready" }]), {
+    message: "invalid-command-wait-state",
+  });
+});
 
 await test("CLV-235 authority opens a pinned wait without spending an effect or dispatching a check", async () => {
   const { store } = await waitStore();
