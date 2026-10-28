@@ -10,13 +10,19 @@ import {
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
+import { startPackedHost, ready, boundedExit } from "./packed-host-fixture.ts";
+import {
+  packedPollingFiles,
+  startPackedPolling,
+  resumePackedPolling,
+} from "./packed-sleep-polling.ts";
 import {
   packedDecisionFiles,
   packedNotifyCommand,
   runPackedDecision,
 } from "./packed-decision-wait.ts";
 import assert from "node:assert/strict";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   mkdtemp,
   readFile,
@@ -150,45 +156,6 @@ assert.deepEqual(currentStepOf([{ sequence: 1, type: "gate.opened", recordedAt: 
   command(process.execPath, { args: ["stages.mjs"], cwd: root });
 }
 
-async function ready(
-  child: ChildProcess,
-  output: { text: string },
-): Promise<string> {
-  for (let count = 0; count < testMilliseconds(30_000) / 20; count += 1) {
-    assert.equal(
-      child.exitCode,
-      null,
-      `Installed startup exited: ${output.text}`,
-    );
-    assert.equal(child.signalCode, null, output.text);
-    const address = /Watch page: (http:\/\/127\.0\.0\.1:\d+\/)/.exec(
-      output.text,
-    )?.[1];
-    if (output.text.includes("Cloving runs") && address !== undefined)
-      return address;
-    await delay(20);
-  }
-  throw new Error(`Installed startup did not become ready: ${output.text}`);
-}
-
-function boundedExit(closed: Promise<number | null>): Promise<number | null> {
-  return new Promise((settle, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("Installed startup did not stop"));
-    }, 10000);
-    closed.then(
-      (status) => {
-        clearTimeout(timer);
-        settle(status);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(new Error("Installed startup failed", { cause: error }));
-      },
-    );
-  });
-}
-
 async function artifacts(root: string): Promise<void> {
   const project = join(root, "host/project");
   const manifest: unknown = JSON.parse(
@@ -284,6 +251,10 @@ async function environment(root: string): Promise<NodeJS.ProcessEnv> {
     CLOVING_NEXT_COMMAND: "[]",
     CLOVING_TICKET_COMMAND: "[]",
     CLOVING_CHECK_COMMAND: "[]",
+    CLOVING_COMMANDS: JSON.stringify({
+      "approval-status": [process.execPath, join(root, "approval-status.cjs")],
+    }),
+    CLOVING_COMMAND_SECONDS: "10",
   };
 }
 
@@ -341,21 +312,9 @@ async function running(root: string, executable: string): Promise<void> {
   };
   const files = await operatorFiles(fixture);
   await packedDecisionFiles(root);
+  await packedPollingFiles(root);
   command(executable, { args: ["--help"], cwd: root, env });
-  const child = spawn(executable, ["start"], {
-    cwd: root,
-    env,
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const closed = new Promise<number | null>((settle) =>
-    child.once("close", settle),
-  );
-  const output = { text: "" };
-  for (const stream of [child.stdout, child.stderr])
-    stream.on("data", (bytes: Buffer) => {
-      output.text += bytes.toString();
-    });
+  const { child, closed, output } = startPackedHost({ root, executable, env });
   try {
     const address = await ready(child, output);
     registrations(root, { executable, env });
@@ -372,9 +331,11 @@ async function running(root: string, executable: string): Promise<void> {
     await artifacts(root);
     await inventory(root);
     await packedCandidateAdmission(root);
+    const polling = await startPackedPolling(root);
     child.kill("SIGTERM");
     assert.equal(await boundedExit(closed), 0);
     assert.throws(() => process.kill(-Number(child.pid), 0), { code: "ESRCH" });
+    await resumePackedPolling(root, { executable, env, checkpoint: polling });
   } finally {
     await stopChildGroup(child);
     await boundedExit(closed);
