@@ -50,6 +50,7 @@ await test("CLV-221 queued partial requests requeue twice and block the third me
       const request = scenario.requests[0];
       assert.ok(request && request[0] === "effect");
       const payload: unknown = JSON.parse(request[1].payload);
+      assert.ok(typeof payload === "object" && payload !== null);
       const report = await scene.perform(worker, {
         method: request[1].method,
         payload,

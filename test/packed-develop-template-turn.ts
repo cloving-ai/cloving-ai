@@ -38,6 +38,7 @@ process.stdout.write(JSON.stringify(results));`;
           timeout: testMilliseconds(30000),
         }),
       );
+      assert.ok(Array.isArray(loaded));
       assert.deepEqual(loaded, [
         { candidates: 1, refusals: [] },
         { candidates: 1, refusals: [] },
@@ -96,6 +97,7 @@ process.stdout.write(JSON.stringify(results));`;
       timeout: testMilliseconds(30000),
     }),
   );
+  assert.ok(Array.isArray(loaded));
   assert.deepEqual(loaded, [
     { candidates: 1, refusals: [] },
     { candidates: 1, refusals: [] },
