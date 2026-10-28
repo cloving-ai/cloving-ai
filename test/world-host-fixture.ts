@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import {
-  cp,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { record } from "../src/protocol.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -237,6 +237,27 @@ function child(
   });
 }
 
+async function copiedSources(product: string): Promise<void> {
+  const steps = await readdir(join(productRoot, "src/steps"));
+  const pending = [
+    "workflows.ts",
+    "step-bridge.ts",
+    "workflow-contracts.ts",
+    "ticket-status.ts",
+    ...steps.map((name) => `steps/${name}`),
+  ];
+  const copied = new Set<string>();
+  for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+    if (copied.has(name)) continue;
+    copied.add(name);
+    const source = await readFile(join(productRoot, "src", name), "utf8");
+    await mkdir(dirname(join(product, "src", name)), { recursive: true });
+    await writeFile(join(product, "src", name), source);
+    for (const match of source.matchAll(/from "(\.\.?\/[^"]+)"/g))
+      pending.push(normalize(join(dirname(name), String(match[1]))));
+  }
+}
+
 async function linkedPackages(directory: string): Promise<void> {
   const manifest: unknown = JSON.parse(
     await readFile(join(productRoot, "package.json"), "utf8"),
@@ -253,19 +274,7 @@ async function linkedPackages(directory: string): Promise<void> {
       join(modules, entry),
     );
   }
-  for (const name of [
-    "workflows.ts",
-    "step-bridge.ts",
-    "workflow-contracts.ts",
-    "ticket-status.ts",
-    "review-subject.ts",
-    "protocol.ts",
-    "broker/operation-digest.ts",
-    "steps",
-  ])
-    await cp(join(productRoot, "src", name), join(product, "src", name), {
-      recursive: true,
-    });
+  await copiedSources(product);
   await writeFile(
     join(product, "package.json"),
     JSON.stringify({
