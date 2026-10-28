@@ -52,6 +52,17 @@ await test("CLV-221 includes template assets in package files", async () => {
   assert.ok(Array.isArray(files) && files.includes("templates"));
 });
 
+await test("CLV-221 names the nested folder declaration fields in its edits", async () => {
+  const document = await developManifest();
+  const input = document.points.find((point) => point.id === "input");
+  const select = document.points.find((point) => point.id === "select");
+  assert.ok(input && select);
+  for (const option of input.options)
+    assert.match(option.change, /workflow\.input\.fields/);
+  for (const option of select.options)
+    assert.match(option.change, /workflow\.queue/);
+});
+
 await test("CLV-221 declares all five decision points and twelve options", async () => {
   const document = await developManifest();
   assert.deepEqual(

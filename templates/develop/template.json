@@ -11,7 +11,7 @@
           "id": "ticket",
           "label": "A ticket",
           "summary": "Resolve a ticket through the configured ticket command.",
-          "change": "In develop.declaration.json, set input.fields to { \"ticket\": { \"type\": \"ticket\" } }. Use the resolved input.ticket as the task.",
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"ticket\": { \"type\": \"ticket\" } }. Use the resolved ticket text as the task.",
           "requires": {},
           "needs": ["ticket-command"]
         },
@@ -19,7 +19,7 @@
           "id": "task-text",
           "label": "A task text",
           "summary": "Develop the submitted prompt without a ticket lookup.",
-          "change": "In develop.declaration.json, set input.fields to { \"prompt\": { \"type\": \"string\" } }. Use input.prompt as the task.",
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"prompt\": { \"type\": \"string\" } }. Use the submitted prompt as the task.",
           "requires": { "select": ["person"], "partial": ["person"] },
           "needs": []
         }
@@ -33,7 +33,7 @@
           "id": "queue",
           "label": "The queue",
           "summary": "Select a ready ticket through the configured next-ticket command.",
-          "change": "In develop.declaration.json, set \"queue\": true.",
+          "change": "In develop.declaration.json, set workflow.queue to true (\"queue\": true).",
           "requires": { "input": ["ticket"] },
           "needs": ["next-command", "queue-interval"]
         },
@@ -41,7 +41,7 @@
           "id": "person",
           "label": "A person",
           "summary": "A person submits the ticket or task when starting a run.",
-          "change": "In develop.declaration.json, remove the queue field.",
+          "change": "In develop.declaration.json, remove the workflow.queue field.",
           "requires": {},
           "needs": []
         }
