@@ -9,6 +9,7 @@ import { runRelay, startRelay } from "../src/relay/relay-service.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import fixture from "./fixtures/phone-pairing.json" with { type: "json" };
 import { fakeRelayServer } from "./phone-relay-server-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 async function mode(path: string): Promise<number> {
   return (await stat(path)).mode & 0o777;
@@ -186,7 +187,9 @@ await test("CLV-188 a 401 reply removes the registration, and the start register
 
 await test("CLV-188 the open pairing ends at its expiry", async () => {
   await withFiles({}, async (root) => {
-    const server = await fakeRelayServer({ pairingMilliseconds: 300 });
+    const server = await fakeRelayServer({
+      pairingMilliseconds: testMilliseconds(300),
+    });
     const runtimeDirectory = join(root, "run");
     const relay = await startRelay({
       runtimeDirectory,
@@ -203,7 +206,7 @@ await test("CLV-188 the open pairing ends at its expiry", async () => {
         stage: "open",
         request: null,
       });
-      await new Promise((settle) => setTimeout(settle, 500));
+      await new Promise((settle) => setTimeout(settle, testMilliseconds(500)));
       assert.equal(
         (await result(runtimeDirectory, "phone-state"))["pairing"],
         null,
