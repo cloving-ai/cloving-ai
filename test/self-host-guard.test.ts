@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import childProcess, { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -10,19 +11,35 @@ import { testMilliseconds } from "./test-timing.ts";
 
 const guard = resolve("test/self-host-guard.ts");
 
-function alive(processId: number): boolean {
+function alive(processId: number, marker: string): boolean {
   try {
     process.kill(processId, 0);
-    return true;
   } catch {
     return false;
   }
+  const inspected = spawnSync(
+    "ps",
+    ["-ww", "-p", String(processId), "-o", "command="],
+    { encoding: "utf8", timeout: testMilliseconds(5000) },
+  );
+  if (inspected.error) throw inspected.error;
+  if (
+    inspected.signal !== null ||
+    (inspected.status !== 0 && inspected.status !== 1)
+  )
+    throw new Error("guard-process-inspection-failed");
+  return inspected.status === 0 && inspected.stdout.includes(marker);
 }
 
-async function ended(processId: number, milliseconds = 5000): Promise<boolean> {
-  const deadline = Date.now() + testMilliseconds(milliseconds);
-  while (Date.now() < deadline && alive(processId)) await delay(50);
-  return !alive(processId);
+async function ended(
+  processId: number,
+  inspection: { readonly marker: string; readonly milliseconds?: number },
+): Promise<boolean> {
+  const { marker } = inspection;
+  const deadline =
+    Date.now() + testMilliseconds(inspection.milliseconds ?? 5000);
+  while (Date.now() < deadline && alive(processId, marker)) await delay(50);
+  return !alive(processId, marker);
 }
 
 async function written(file: string): Promise<string> {
@@ -53,9 +70,32 @@ function intermediate(
     : `${spawned} setInterval(() => {}, 1000);`;
 }
 
-function stopIfAlive(processId: number): void {
-  if (processId > 0 && alive(processId)) process.kill(processId, "SIGKILL");
+function stopIfAlive(processId: number, marker: string): void {
+  if (processId > 0 && alive(processId, marker))
+    process.kill(processId, "SIGKILL");
 }
+
+await test("CLV-231 a reused PID does not identify a guarded daemon", () => {
+  assert.equal(alive(process.pid, "unrelated-guard-marker"), false);
+});
+
+await test("CLV-231 rejects a failed process inspection", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(childProcess, "spawnSync");
+  assert.ok(descriptor);
+  Object.defineProperty(childProcess, "spawnSync", {
+    configurable: true,
+    value: () => ({ error: undefined, signal: null, status: 2, stdout: "" }),
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => alive(process.pid, "guard-marker"), {
+      message: "guard-process-inspection-failed",
+    });
+  } finally {
+    Object.defineProperty(childProcess, "spawnSync", descriptor);
+    syncBuiltinESMExports();
+  }
+});
 
 for (const [name, source] of [
   ["the guarded daemon stops when the test process ends", guarded],
@@ -73,10 +113,10 @@ for (const [name, source] of [
     try {
       daemon = Number(await written(marker));
       parent.kill("SIGKILL");
-      assert.equal(await ended(daemon, 12000), true);
+      assert.equal(await ended(daemon, { marker, milliseconds: 12000 }), true);
     } finally {
       parent.kill("SIGKILL");
-      stopIfAlive(daemon);
+      stopIfAlive(daemon, marker);
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -94,9 +134,9 @@ await test("CLV-231 a test process that ends before the guard starts leaves no d
     await new Promise((settle) => parent.once("close", settle));
     await delay(testMilliseconds(1500));
     daemon = existsSync(marker) ? Number(await readFile(marker, "utf8")) : 0;
-    assert.equal(daemon === 0 || (await ended(daemon)), true);
+    assert.equal(daemon === 0 || (await ended(daemon, { marker })), true);
   } finally {
-    stopIfAlive(daemon);
+    stopIfAlive(daemon, marker);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -120,10 +160,13 @@ await test("CLV-231 a descendant that ignores SIGTERM stops with the guarded gro
     await written(marker);
     child = Number(await written(descendant));
     parent.kill("SIGKILL");
-    assert.equal(await ended(child, 12000), true);
+    assert.equal(
+      await ended(child, { marker: descendant, milliseconds: 12000 }),
+      true,
+    );
   } finally {
     parent.kill("SIGKILL");
-    stopIfAlive(child);
+    stopIfAlive(child, descendant);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -142,16 +185,17 @@ await test("CLV-231 the guard passes SIGTERM to the daemon and ends with its exi
   let daemon = 0;
   try {
     daemon = Number(await written(marker));
+    assert.equal(alive(daemon, marker), true);
     child.kill("SIGTERM");
     const code = await Promise.race([
       closed,
       delay(testMilliseconds(5000), "no exit", { ref: false }),
     ]);
     assert.equal(code, 75);
-    assert.equal(await ended(daemon), true);
+    assert.equal(await ended(daemon, { marker }), true);
   } finally {
     child.kill("SIGKILL");
-    stopIfAlive(daemon);
+    stopIfAlive(daemon, marker);
     await rm(root, { recursive: true, force: true });
   }
 });

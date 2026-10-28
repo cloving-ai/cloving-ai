@@ -10,10 +10,12 @@ import {
   claimCoverageFolder,
   releaseCoverageFolder,
 } from "./coverage-folders.ts";
-import { join, relative, resolve } from "node:path";
+import { extname, join, relative, resolve } from "node:path";
 import { availableParallelism, tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
 import recordedDurations from "./test-durations.json" with { type: "json" };
+import packageMetadata from "#package" with { type: "json" };
+import { workflowTestHook } from "../tools/workflow-test-hook.ts";
 
 export function testConcurrency(cores: number): number {
   return Math.min(4, Math.max(2, cores - 1));
@@ -139,6 +141,12 @@ export function testCommand(
     check: "tests",
     executable: process.execPath,
     arguments: [
+      "--import",
+      workflowTestHook({
+        root: new URL("../", import.meta.url).href,
+        extension: extname(import.meta.filename),
+        exports: packageMetadata.exports,
+      }),
       resolve(import.meta.dirname, "test-runner.ts"),
       `--test-reporter=${run.reporter ?? "gate"}`,
       `--test-concurrency=${String(parseTestConcurrency(process.env["CLOVING_TEST_CONCURRENCY"], availableParallelism()))}`,

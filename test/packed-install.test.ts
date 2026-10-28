@@ -90,7 +90,7 @@ async function installed(root: string): Promise<string> {
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
-    [],
+    ["templates/develop/develop.test.ts", "templates/develop/develop/turn.ts"],
   );
   assert.deepEqual(
     paths.filter((path) =>
