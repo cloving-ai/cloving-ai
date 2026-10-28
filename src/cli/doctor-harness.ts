@@ -12,6 +12,7 @@ import {
 import type { DoctorObservation } from "../doctor-report.ts";
 import {
   harnessDefaults,
+  nativeHarness,
   turnHarness,
   type HarnessSettings,
   type NativeHarness,
@@ -113,7 +114,8 @@ function launcherVersionArguments(
       ? ["--", script, "--version"]
       : [];
   }
-  return arguments_.length === 0 ||
+  return !nativeHarness(launch.worker) ||
+    arguments_.length === 0 ||
     [launch.worker, "claude", "codex"].includes(program)
     ? ["--version"]
     : [];
