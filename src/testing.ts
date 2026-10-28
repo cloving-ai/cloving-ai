@@ -61,6 +61,8 @@ export function fakeStepBridge(scenario: StepScenario) {
     Reflect.get(globalThis, sleepKey) !== undefined
   )
     throw new Error("workflow-testing-host-active");
+  if (previous?.configurable === false || previousSleep?.configurable === false)
+    throw new Error("workflow-testing-host-locked");
   Object.defineProperty(globalThis, key, { configurable: true, value: bridge });
   Object.defineProperty(globalThis, sleepKey, {
     configurable: true,
