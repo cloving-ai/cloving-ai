@@ -2,6 +2,11 @@ import ts from "typescript";
 import type { CandidateEffect } from "../src/workflow-candidate.ts";
 import { resolvedSymbol } from "./workflow-candidate-program.ts";
 import { referenceSymbol } from "./workflow-source-effects.ts";
+import {
+  invalidFields,
+  literalField,
+  propertyInitializer,
+} from "./workflow-candidate-fields.ts";
 
 export interface CandidateSymbols {
   readonly checker: ts.TypeChecker;
@@ -10,11 +15,7 @@ export interface CandidateSymbols {
   readonly handoffSymbol: ts.Symbol | undefined;
   readonly commandSymbol: ts.Symbol | undefined;
   readonly reviewSymbol: ts.Symbol | undefined;
-}
-
-export function propertyName(name: ts.PropertyName): string | undefined {
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
-  return undefined;
+  readonly mergeSymbols: readonly ts.Symbol[];
 }
 
 export function protectedCall(
@@ -34,7 +35,15 @@ export function protectedCall(
       symbols.handoffSymbol,
       symbols.commandSymbol,
       symbols.reviewSymbol,
+      ...symbols.mergeSymbols,
     ].includes(symbol)
+  );
+}
+
+function calledSymbol(node: ts.CallExpression, symbols: CandidateSymbols) {
+  return resolvedSymbol(
+    symbols.checker,
+    symbols.checker.getSymbolAtLocation(node.expression),
   );
 }
 
@@ -42,54 +51,41 @@ export function handoffCall(
   node: ts.CallExpression,
   symbols: CandidateSymbols,
 ): boolean {
-  return (
-    symbols.handoffSymbol !== undefined &&
-    resolvedSymbol(
-      symbols.checker,
-      symbols.checker.getSymbolAtLocation(node.expression),
-    ) === symbols.handoffSymbol
-  );
+  const symbol = symbols.handoffSymbol;
+  return symbol !== undefined && calledSymbol(node, symbols) === symbol;
 }
 
 export function commandCall(
   node: ts.CallExpression,
   symbols: CandidateSymbols,
 ): boolean {
-  return (
-    symbols.commandSymbol !== undefined &&
-    resolvedSymbol(
-      symbols.checker,
-      symbols.checker.getSymbolAtLocation(node.expression),
-    ) === symbols.commandSymbol
-  );
+  const symbol = symbols.commandSymbol;
+  return symbol !== undefined && calledSymbol(node, symbols) === symbol;
 }
 
 export function reviewCall(
   node: ts.CallExpression,
   symbols: CandidateSymbols,
 ): boolean {
-  return (
-    symbols.reviewSymbol !== undefined &&
-    resolvedSymbol(
-      symbols.checker,
-      symbols.checker.getSymbolAtLocation(node.expression),
-    ) === symbols.reviewSymbol
+  const symbol = symbols.reviewSymbol;
+  return symbol !== undefined && calledSymbol(node, symbols) === symbol;
+}
+
+export function helperCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  return [handoffCall, commandCall, reviewCall, mergeCall].some((call) =>
+    call(node, symbols),
   );
 }
 
-function propertyInitializer(node: ts.Node | undefined, field: string) {
-  if (!node || !ts.isObjectLiteralExpression(node)) return undefined;
-  const property = node.properties.find(
-    (entry) => entry.name && propertyName(entry.name) === field,
-  );
-  return property && ts.isPropertyAssignment(property)
-    ? property.initializer
-    : undefined;
-}
-
-function literalField(node: ts.Node | undefined, field: string) {
-  const value = propertyInitializer(node, field);
-  return value && ts.isStringLiteral(value) ? value.text : null;
+export function mergeCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  const symbol = calledSymbol(node, symbols);
+  return symbol !== undefined && symbols.mergeSymbols.includes(symbol);
 }
 
 export function protectedEffectFact(
@@ -102,6 +98,8 @@ export function protectedEffectFact(
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
   if (reviewCall(node, symbols))
     return reviewEffectFact(propertyInitializer(argument, "reviewer"));
+  if (mergeCall(node, symbols))
+    return { capability: "github", method: "merge" };
   if (commandCall(node, symbols)) {
     const name = literalField(argument, "name");
     return {
@@ -142,6 +140,7 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
       symbols.handoffSymbol,
       symbols.commandSymbol,
       symbols.reviewSymbol,
+      ...symbols.mergeSymbols,
     ].includes(symbol)
   )
     return false;
@@ -183,17 +182,6 @@ function invalidRequest(node: ts.Node, symbols: CandidateSymbols): boolean {
     (reviewer !== undefined &&
       ts.isObjectLiteralExpression(reviewer) &&
       invalidFields(reviewer))
-  );
-}
-
-function invalidFields(object: ts.ObjectLiteralExpression): boolean {
-  const names = object.properties.map(
-    (entry) => entry.name && propertyName(entry.name),
-  );
-  return (
-    names.includes(undefined) ||
-    new Set(names).size !== names.length ||
-    object.properties.some((entry) => !ts.isPropertyAssignment(entry))
   );
 }
 

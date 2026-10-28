@@ -1,12 +1,10 @@
 import ts from "typescript";
 import {
   protectedCall,
-  handoffCall,
-  commandCall,
-  reviewCall,
-  propertyName,
+  helperCall,
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
+import { propertyName } from "./workflow-candidate-fields.ts";
 import { referenceSymbol } from "./workflow-source-effects.ts";
 
 export interface Totals {
@@ -50,12 +48,7 @@ function multiply(total: Totals, repetitions: number): Totals {
 }
 
 function units(node: ts.CallExpression, symbols: CandidateSymbols): number {
-  if (
-    handoffCall(node, symbols) ||
-    commandCall(node, symbols) ||
-    reviewCall(node, symbols)
-  )
-    return 1;
+  if (helperCall(node, symbols)) return 1;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return 0;
   const property = argument.properties.find(

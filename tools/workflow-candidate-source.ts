@@ -112,6 +112,23 @@ function sourceImport(node: ts.Node): CandidateImport | undefined {
   };
 }
 
+function mergeHelpers(
+  modules: ReadonlyMap<string, ts.SourceFile>,
+  checker: ts.TypeChecker,
+): readonly ts.Symbol[] {
+  return [
+    ["merge-when-green", "mergeWhenGreen"],
+    ["merge-by-person", "mergeByPerson"],
+  ].flatMap(([module, name]) => {
+    const symbol = protectedHelper(modules, {
+      checker,
+      subpath: `cloving/workflows/steps/${String(module)}`,
+      name: String(name),
+    });
+    return symbol === undefined ? [] : [symbol];
+  });
+}
+
 export function analyzeWorkflowCandidate(
   text: string,
   installed: CandidatePackageOptions = {},
@@ -147,6 +164,7 @@ export function analyzeWorkflowCandidate(
       subpath: "cloving/workflows/steps/review-by-agent",
       name: "reviewByAgent",
     }),
+    mergeSymbols: mergeHelpers(modules, checker),
   };
   const facts = sources.map((entry) =>
     analyzedSource(
