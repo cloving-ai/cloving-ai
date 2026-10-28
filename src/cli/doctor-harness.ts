@@ -121,24 +121,25 @@ function envProgram(arguments_: readonly string[]): {
   return { index, split: false };
 }
 
-async function envVersionArguments(
+const shells = ["sh", "bash", "dash", "zsh", "ksh"];
+
+function envVersionArguments(
   arguments_: readonly string[],
-  location: VersionLocation,
-): Promise<readonly string[]> {
+  worker: string,
+): readonly string[] {
   const { index, split } = envProgram(arguments_);
-  if (index >= arguments_.length) return [];
+  const [program, ...rest] = arguments_.slice(index);
+  if (program === undefined) return [];
   const prefix = arguments_.slice(0, index + 1);
   if (split) return [...prefix, "--version"];
-  const changes = arguments_.slice(0, index).flatMap((part, position) => {
-    const value = ["-C", "--chdir"].includes(part)
-      ? arguments_[position + 1]
-      : /^(?:-C|--chdir=)(.+)$/.exec(part)?.[1];
-    return value === undefined ? [] : [value];
-  });
-  const wrapped = await harnessVersionArguments(arguments_.slice(index), {
-    ...location,
-    directory: resolve(location.directory, ...changes),
-  });
+  const shell = basename(program);
+  if (shells.includes(shell)) {
+    const script = shellScriptIndex(rest, shell);
+    return script === undefined
+      ? []
+      : [...prefix, ...rest.slice(0, script + 1), "--version"];
+  }
+  const wrapped = launcherVersionArguments(shell, { arguments: rest, worker });
   return wrapped.length === 0 ? [] : [...prefix, ...wrapped];
 }
 
@@ -160,20 +161,18 @@ function launcherVersionArguments(
     : [];
 }
 
-interface VersionLocation {
-  readonly directory: string;
-  readonly environment: Readonly<NodeJS.ProcessEnv>;
-  readonly worker: string;
-}
-
 async function harnessVersionArguments(
   command: readonly string[],
-  location: VersionLocation,
+  location: {
+    readonly directory: string;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+    readonly worker: string;
+  },
 ): Promise<readonly string[]> {
   const [program = "", ...arguments_] = command;
   const shell = basename(program);
-  if (shell === "env") return envVersionArguments(arguments_, location);
-  if (!["sh", "bash", "dash", "zsh", "ksh"].includes(shell))
+  if (shell === "env") return envVersionArguments(arguments_, location.worker);
+  if (!shells.includes(shell))
     return launcherVersionArguments(shell, {
       arguments: arguments_,
       worker: location.worker,

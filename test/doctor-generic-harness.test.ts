@@ -153,4 +153,8 @@ await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
       '[ "$1" = "--version" ] || exit 99; echo "worker 1.2.3"\n',
     );
     assert.match(await wrapped("-C", tools, "/bin/sh", "worker.sh"), /^ok /);
+    assert.match(
+      await wrapped(`PATH=${tools}`, "/bin/bash", "worker.sh"),
+      /^ok /,
+    );
   }));
