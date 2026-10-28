@@ -1,4 +1,10 @@
-import { priceOf, usageOf, type WorkerUsage } from "./worker-usage.ts";
+import {
+  priceOf,
+  sumPrices,
+  usageOf,
+  type WorkerUsage,
+  type WorkerModelUsage,
+} from "./worker-usage.ts";
 import { record } from "./protocol.ts";
 import type { NativeHarness } from "./harness-defaults.ts";
 
@@ -118,12 +124,40 @@ export function replaceCommandModel(
   });
 }
 
+interface SinglePricing {
+  readonly worker: NativeHarness;
+  readonly price: TokenPrice | undefined;
+}
+
+interface ModelPricing {
+  readonly worker: "gemini";
+  readonly models: readonly WorkerModelUsage[];
+  readonly prices: TokenPrices;
+}
+
 export function estimatedCostUsd(
   usage: WorkerUsage,
-  pricing: {
-    readonly worker: NativeHarness;
-    readonly price: TokenPrice | undefined;
-  },
+  pricing: SinglePricing | ModelPricing,
+): number | null {
+  return "models" in pricing
+    ? modelCostUsd(pricing)
+    : singleCostUsd(usage, pricing);
+}
+
+function modelCostUsd(pricing: ModelPricing): number | null {
+  return sumPrices(
+    pricing.models.map(({ model, usage: counts }) =>
+      singleCostUsd(counts, {
+        worker: "gemini",
+        price: priceForModel(pricing.prices, model),
+      }),
+    ),
+  );
+}
+
+function singleCostUsd(
+  usage: WorkerUsage,
+  pricing: SinglePricing,
 ): number | null {
   const { worker, price } = pricing;
   const counts = usageOf(usage);
@@ -137,7 +171,9 @@ export function estimatedCostUsd(
     output === null
   )
     return null;
-  const input = counts.input_tokens - (worker === "codex" ? cached : 0);
+  const input =
+    counts.input_tokens -
+    (worker === "codex" || worker === "gemini" ? cached : 0);
   if (input < 0) return null;
   return priceOf(
     (input / 1_000_000) * price.input +

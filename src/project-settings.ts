@@ -114,6 +114,7 @@ function harnessCommandMapping(
     return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
   if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
   if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
+  if (name === "gemini") return { "harness.command": "CLOVING_GEMINI_COMMAND" };
   if (name === undefined || name === "claude")
     return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
   return {};

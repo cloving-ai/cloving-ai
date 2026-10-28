@@ -20,6 +20,14 @@ export const defaultCodexCommand = [
   "-",
 ];
 
+export const defaultGeminiCommand = [
+  "gemini",
+  "--output-format",
+  "stream-json",
+  "--approval-mode",
+  "yolo",
+];
+
 export const defaultCursorCommand = [
   "cursor-agent",
   "-p",
@@ -39,7 +47,16 @@ export const defaultGrokCommand = [
 ];
 
 export type NativeHarness =
-  "claude" | "codex" | "grok" | "opencode" | "cursor-agent";
+  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent";
+
+const defaultCommands = {
+  claude: defaultCommand,
+  codex: defaultCodexCommand,
+  gemini: defaultGeminiCommand,
+  grok: defaultGrokCommand,
+  opencode: defaultOpencodeCommand,
+  "cursor-agent": defaultCursorCommand,
+};
 
 export interface HarnessSettings {
   readonly worker?: string;
@@ -52,13 +69,15 @@ export interface HarnessSettings {
     readonly kind?: "file" | "shell";
     readonly path?: string;
     readonly command?: readonly string[];
+    readonly turn?: readonly string[];
+    readonly output?: "text";
   };
   readonly shell?: string;
 }
 
 function matchingHarness(
   settings: HarnessSettings,
-  name: NativeHarness,
+  name: string,
 ): NonNullable<HarnessSettings["harness"]> {
   return (settings.harness?.name ?? "claude") === name
     ? (settings.harness ?? {})
@@ -79,8 +98,18 @@ function nativeCommand(
   return [saved.path ?? name, ...defaults.slice(1)];
 }
 
-function nativeHarness(name: string): name is NativeHarness {
-  return ["claude", "codex", "grok", "opencode", "cursor-agent"].includes(name);
+export function isTurnCommand(value: unknown): value is readonly string[] {
+  if (!Array.isArray(value)) return false;
+  const program: unknown = value[0];
+  return (
+    typeof program === "string" &&
+    program !== "" &&
+    program !== "{prompt}" &&
+    value.every(
+      (part: unknown) => typeof part === "string" && !part.includes("\u0000"),
+    ) &&
+    value.filter((part: unknown) => part === "{prompt}").length <= 1
+  );
 }
 
 export function harnessDefaults(value: unknown): {
@@ -92,19 +121,35 @@ export function harnessDefaults(value: unknown): {
   const variable = {
     claude: "CLOVING_CLAUDE_COMMAND",
     codex: "CLOVING_CODEX_COMMAND",
+    gemini: "CLOVING_GEMINI_COMMAND",
     grok: "CLOVING_GROK_COMMAND",
     opencode: "CLOVING_OPENCODE_COMMAND",
     "cursor-agent": undefined,
   }[name];
   return {
-    command: {
-      claude: defaultCommand,
-      codex: defaultCodexCommand,
-      grok: defaultGrokCommand,
-      opencode: defaultOpencodeCommand,
-      "cursor-agent": defaultCursorCommand,
-    }[name],
+    command: defaultCommands[name],
     ...(variable === undefined ? {} : { variable }),
+  };
+}
+
+function selectedCommand(
+  settings: HarnessSettings,
+  name: string,
+): {
+  readonly command: readonly string[];
+  readonly output?: "text";
+} {
+  if (nativeHarness(name)) return { command: nativeCommand(settings, name) };
+  const saved = matchingHarness(settings, name);
+  if (saved.turn === undefined) throw new Error(`harness-no-worker: ${name}`);
+  if (!isTurnCommand(saved.turn))
+    throw new Error("invalid-setting: harness.turn");
+  return {
+    command: saved.command ?? [
+      saved.path ?? saved.turn[0] ?? "",
+      ...saved.turn.slice(1),
+    ],
+    output: "text",
   };
 }
 
@@ -112,17 +157,21 @@ export function turnHarness(
   settings: HarnessSettings,
   profile: { readonly harness?: string } = {},
 ): {
-  readonly worker: NativeHarness;
+  readonly worker: string;
   readonly command: readonly string[];
   readonly shell?: string;
+  readonly output?: "text";
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  if (!nativeHarness(name)) throw new Error(`harness-no-worker: ${name}`);
   const saved = matchingHarness(settings, name);
   return {
     worker: name,
-    command: nativeCommand(settings, name),
+    ...selectedCommand(settings, name),
     ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
   };
+}
+
+export function nativeHarness(name: string): name is NativeHarness {
+  return Object.hasOwn(defaultCommands, name);
 }

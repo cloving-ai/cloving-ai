@@ -1,24 +1,32 @@
+import { turnCommand } from "./turn-command.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
+import { textOutput } from "./text-output.ts";
+import type { TicketStatus } from "../ticket-status.ts";
 import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
-import type { NativeHarness } from "../harness-defaults.ts";
+import { geminiStream } from "./gemini-stream.ts";
 import {
   priceOf,
+  modelUsageOf,
   usageOf,
   type WorkerUsage,
   type WorkerAttemptUsage,
+  type WorkerModelUsage,
   type RetryKind,
 } from "../worker-usage.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 
-export type Worker = NativeHarness;
+export type Worker = string;
 
 export interface StreamResult {
+  readonly models?: readonly WorkerModelUsage[];
+  readonly ticketStatusTooLarge?: true;
+  readonly ticketStatus?: TicketStatus;
   readonly attempts?: readonly WorkerAttemptUsage[];
   readonly pricingModel?: string | null;
   readonly subtype?: string;
@@ -41,6 +49,8 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly resultBytes?: number;
+  readonly output?: "text";
   readonly shell?: string;
   readonly worker?: Worker;
   readonly turnId?: string;
@@ -123,7 +133,9 @@ export function streamResult(
   const record: unknown = parsed(line);
   const field = (name: string): unknown => Reflect.get(Object(record), name);
   if (field("type") !== "result") return undefined;
+  const models = modelUsageOf(field("models"));
   return {
+    ...(models === undefined ? {} : { models }),
     ...(typeof field("subtype") === "string"
       ? { subtype: String(field("subtype")) }
       : {}),
@@ -173,34 +185,6 @@ export function turnEnvironment(
   if (start.worker === "opencode")
     environment["OPENCODE_PERMISSION"] = '{"*":"allow"}';
   return environment;
-}
-
-function turnCommand(start: TurnStart): {
-  readonly parts: readonly string[];
-  readonly standardInput: string | undefined;
-} {
-  if (start.worker === "opencode")
-    return {
-      parts: [...start.command, start.prompt],
-      standardInput: undefined,
-    };
-  if (
-    start.worker === "cursor-agent" &&
-    Buffer.byteLength(start.prompt, "utf8") < 64 * 1024
-  )
-    return {
-      parts: [...start.command, start.prompt],
-      standardInput: undefined,
-    };
-  if (start.worker !== "grok")
-    return { parts: start.command, standardInput: start.prompt };
-  const command = [...start.command];
-  const index = command.findIndex(
-    (argument, position) =>
-      position > 0 && ["-p", "--single"].includes(argument),
-  );
-  command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
-  return { parts: command, standardInput: undefined };
 }
 
 function spawnTurn(start: TurnStart): {
@@ -274,6 +258,7 @@ function activityOutput(start: TurnStart) {
 function streamAdapter(worker: Worker | undefined) {
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
+  if (worker === "gemini") return geminiStream();
   return undefined;
 }
 
@@ -282,6 +267,8 @@ function turnOutput(
   child: ChildProcessWithoutNullStreams,
 ): (exitCode: number | null) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
+  if (start.output === "text")
+    return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
   const translated = start.worker === "opencode" ? opencodeStream() : undefined;
   const adapter = translated ?? streamAdapter(start.worker);
   const { stdout, stderr } = child;

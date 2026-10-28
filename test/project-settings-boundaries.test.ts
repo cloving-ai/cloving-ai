@@ -63,11 +63,36 @@ await test("CLV-210 unsupported saved harness commands never become Claude overr
       project: undefined,
       private: JSON.stringify({
         version: 1,
-        harness: { name: "gemini", command: ["private-gemini"] },
+        harness: { name: "unsupported", command: ["private-unsupported"] },
       }),
     },
   );
   assert.equal(result.environment["CLOVING_CLAUDE_COMMAND"], undefined);
+});
+
+await test("CLV-211 saved Gemini commands resolve with their own environment source", () => {
+  const files = {
+    project: undefined,
+    private: JSON.stringify({
+      version: 1,
+      harness: { name: "gemini", command: ["private-gemini"] },
+    }),
+  };
+  const saved = resolveSettings({}, files);
+  assert.equal(
+    saved.environment["CLOVING_GEMINI_COMMAND"],
+    '["private-gemini"]',
+  );
+  assert.equal(saved.environment["CLOVING_CLAUDE_COMMAND"], undefined);
+  const overridden = resolveSettings(
+    { CLOVING_GEMINI_COMMAND: '["environment-gemini"]' },
+    files,
+  );
+  assert.equal(
+    overridden.environment["CLOVING_GEMINI_COMMAND"],
+    '["environment-gemini"]',
+  );
+  assert.equal(overridden.sources["harness.command"], "environment");
 });
 
 await test("CLV-210 configuration permits named harnesses and profile overrides", () => {

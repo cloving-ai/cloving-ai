@@ -1,6 +1,4 @@
 import { join } from "node:path";
-import { ticketStatus } from "../ticket-status.ts";
-import { sumPrices } from "../worker-usage.ts";
 import { turnHarness, type HarnessSettings } from "../harness-defaults.ts";
 import {
   profileCommand,
@@ -14,6 +12,7 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { succeeded, type RunningTurn, type TurnEnd } from "./claude-turn.ts";
+import { turnReport } from "./turn-report.ts";
 import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
 import {
   interrupted,
@@ -27,7 +26,7 @@ import {
   type Recorded,
   type WorkerReport,
 } from "./operation-journal.ts";
-import { changes, treeFailure, workTree, type WorkTree } from "./work-tree.ts";
+import { treeFailure, workTree, type WorkTree } from "./work-tree.ts";
 
 export interface ClaudeWorkerSettings extends RetrySettings, HarnessSettings {
   readonly profiles?: TurnProfiles;
@@ -113,49 +112,6 @@ async function reconciled(
   return replied({ receipt: key, worker }, ending);
 }
 
-async function resultText(
-  start: Started,
-  result: NonNullable<TurnEnd["result"]>,
-): Promise<{ readonly text?: string; readonly reason?: string }> {
-  const fields = {
-    harness: start.harness.worker,
-    ticketStatus: ticketStatus(result.text),
-    summary: result.text.slice(0, claudeLimits.summaryCharacters),
-    ...(await changes(start.tree)),
-    worktree: start.tree.path,
-    costUsd: result.costUsd,
-    usage: result.usage,
-    model: result.model,
-    ...(result.attempts === undefined ? {} : { attempts: result.attempts }),
-    estimatedCostUsd: sumPrices(
-      (result.attempts ?? []).map((attempt) => attempt.estimatedCostUsd),
-    ),
-    sessionId: result.sessionId,
-    turns: result.turns,
-  };
-  const text = JSON.stringify(fields);
-  const excess = Buffer.byteLength(text) - claudeLimits.resultBytes;
-  if (excess <= 0) return { text };
-  const kept = Math.max(0, fields.summary.length - excess);
-  const shortened = JSON.stringify({
-    ...fields,
-    summary: fields.summary.slice(0, kept),
-  });
-  if (Buffer.byteLength(shortened) <= claudeLimits.resultBytes)
-    return { text: shortened };
-  const metadata = JSON.stringify({
-    ...fields,
-    ticketStatus: undefined,
-    summary: "",
-  });
-  return {
-    reason: "claude-result-too-large",
-    ...(Buffer.byteLength(metadata) <= claudeLimits.resultBytes
-      ? { text: metadata }
-      : {}),
-  };
-}
-
 async function outcome(
   running: Started & {
     readonly stopping: Active["stopping"];
@@ -164,7 +120,17 @@ async function outcome(
 ): Promise<Recorded> {
   const endedAt = new Date().toISOString();
   const { result } = end;
-  const report = result === undefined ? {} : await resultText(running, result);
+  const report =
+    result === undefined
+      ? {}
+      : await turnReport(
+          {
+            tree: running.tree,
+            harness: running.harness,
+            limits: claudeLimits,
+          },
+          result,
+        );
   const { text, reason } = report;
   if (succeeded(end) && reason === undefined && text !== undefined)
     return { outcome: "completed", result: text, endedAt };
@@ -203,6 +169,7 @@ async function begun(
   const turn = startRetriedTurn(
     {
       ...harness,
+      resultBytes: claudeLimits.resultBytes,
       command: profileCommand(harness.command, start.profile),
       environment: start.profile.env ?? {},
       turnId: `${intent.runId}-${key}`,
@@ -284,6 +251,22 @@ async function runWorkflow(
   }
 }
 
+function unsupportedProfile(
+  profile: TurnProfile,
+  harness: ReturnType<typeof turnHarness>,
+): string | undefined {
+  if (harness.output === "text" && profile.model !== undefined)
+    return "profile-model-not-supported";
+  if (harness.worker === "claude") return undefined;
+  return [
+    profile.allowedTools,
+    profile.permissionMode,
+    profile.maxBudgetUsd,
+  ].some((value) => value !== undefined)
+    ? "profile-needs-claude"
+    : undefined;
+}
+
 async function selectedProfile(
   settings: ClaudeWorkerSettings,
   intent: ProtectedIntent,
@@ -293,13 +276,11 @@ async function selectedProfile(
   const profiles = settings.profiles ?? {};
   const profile = Object.hasOwn(profiles, name) ? profiles[name] : undefined;
   if (profile === undefined) return "unknown-profile";
-  if (
-    turnHarness(settings, profile).worker !== "claude" &&
-    [profile.allowedTools, profile.permissionMode, profile.maxBudgetUsd].some(
-      (value) => value !== undefined,
-    )
-  )
-    return "profile-needs-claude";
+  const unsupported = unsupportedProfile(
+    profile,
+    turnHarness(settings, profile),
+  );
+  if (unsupported !== undefined) return unsupported;
   if (profile.workflows === undefined) return profile;
   const workflowId = await runWorkflow(settings, intent.runId);
   if (workflowId === undefined || !profile.workflows.includes(workflowId))

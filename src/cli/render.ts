@@ -222,37 +222,24 @@ function workerLines(value: unknown): readonly string[] {
     ...labelled("Model", part(turn, "model")),
     `  ${usageText(part(turn, "usage"))}`,
     ...attemptTexts(part(turn, "attempts")).map((text) => `  ${oneLine(text)}`),
+    ...modelLines(part(turn, "attempts")),
     ...labelled("Report", part(turn, "summary")),
   ]);
 }
 
-export function statusJson(result: Fields): Fields {
-  const run = record(result["run"]);
-  if (result["kind"] !== "run-status" || run === undefined) return result;
-  const turns = run["workerTurns"];
-  return {
-    ...result,
-    run: {
-      ...run,
-      costDisplay: priceText(run["claudeCostUsd"], run["estimatedCostUsd"]),
-      ...(Array.isArray(turns)
-        ? {
-            workerTurns: turns.map((turn: unknown) => {
-              const fields = record(turn);
-              if (fields === undefined) return turn;
-              return {
-                ...fields,
-                costDisplay: priceText(
-                  fields["costUsd"],
-                  fields["estimatedCostUsd"],
-                ),
-              };
-            }),
-          }
-        : {}),
-    },
-  };
+function modelLines(attempts: unknown): readonly string[] {
+  if (!Array.isArray(attempts)) return [];
+  return attempts.flatMap((attempt: unknown) => {
+    const models = part(attempt, "models");
+    if (!Array.isArray(models)) return [];
+    return models.map(
+      (model: unknown) =>
+        `  ${visible(part(model, "model"))}: ${usageText(part(model, "usage"))}`,
+    );
+  });
 }
+
+export { statusJson } from "./usage-render.ts";
 
 function inputText(value: unknown): string {
   const text = visible(record(value) ?? null);
