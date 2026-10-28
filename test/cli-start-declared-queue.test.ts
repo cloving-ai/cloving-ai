@@ -3,12 +3,16 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import type { SubmissionContract } from "../src/submission.ts";
 import { scene, reached } from "./self-host-fixture.ts";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 
 async function workflowFile(
   folder: string,
-  entry: { readonly name: string; readonly fields: unknown },
+  entry: {
+    readonly name: string;
+    readonly fields: SubmissionContract["fields"];
+  },
 ) {
   const { name, fields } = entry;
   await mkdir(folder, { recursive: true });
@@ -91,7 +95,7 @@ await test("CLV-218 start prints the specific queue input refusal codes", async 
 
 await test("CLV-218 start stops for conflicting project and user queue workflows", async () => {
   const fixture = await scene();
-  const fields = { ticket: { type: "ticket" } };
+  const fields: SubmissionContract["fields"] = { ticket: { type: "ticket" } };
   await workflowFile(join(fixture.repository, ".cloving/workflows"), {
     name: "projectQueue",
     fields,

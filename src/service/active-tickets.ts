@@ -10,16 +10,14 @@ export async function activeWorkflow(
   const queueRun = async (runId: string) =>
     workflows[runId] === "develop-issue" ||
     (await context.authority.queries.manifest(runId))?.queue === true;
-  const own = Object.keys(state.runs).filter(
-    (runId) => workflows[runId] === workflowId,
-  );
-  const queued =
-    workflowId === "develop-issue" ||
-    context.registry.byId(workflowId)?.queue === true ||
-    (await Promise.all(own.map(queueRun))).includes(true);
   const runs = Object.values(state.runs).filter(
     (run) => !["completed", "failed", "cancelled"].includes(run.status),
   );
+  const own = runs.filter((run) => workflows[run.runId] === workflowId);
+  const queued =
+    workflowId === "develop-issue" ||
+    context.registry.byId(workflowId)?.queue === true ||
+    (await Promise.all(own.map((run) => queueRun(run.runId)))).includes(true);
   const active = await Promise.all(
     runs.map(async (run) => {
       if (
