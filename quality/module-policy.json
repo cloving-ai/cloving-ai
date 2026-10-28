@@ -3,6 +3,8 @@
     "tools/workflow-test-hook.ts": "candidate-analysis",
     "test/quality/template-test-loader.test.ts": "test",
     "templates/develop/develop/turn.ts": "workflow",
+    "templates/develop/develop/partial.ts": "workflow",
+    "templates/develop/develop/queue-partial.ts": "workflow",
     "templates/develop/develop.test.ts": "test",
     "test/develop-template-turn-fixture.ts": "test",
     "test/develop-template-turn.test.ts": "test",
