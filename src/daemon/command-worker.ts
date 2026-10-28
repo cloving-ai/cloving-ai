@@ -153,18 +153,6 @@ function begun(parts: Parts, start: Started): void {
   parts.active.set(key, { command: running, concluded, stopping });
 }
 
-function startRecord(intent: ProtectedIntent) {
-  return {
-    runId: intent.runId,
-    operationId: intent.operationId,
-    name: intent.method.slice(4),
-    startedAt: new Date().toISOString(),
-    ...(intent.commandDeadline === undefined
-      ? {}
-      : { deadline: intent.commandDeadline }),
-  };
-}
-
 async function delivered(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
@@ -192,7 +180,13 @@ async function delivered(
     return reconciled(parts, { intent, origin: "dispatch" });
   await writeRecord(place.folder, {
     name: "started.json",
-    value: startRecord(intent),
+    value: {
+      runId: intent.runId,
+      operationId: intent.operationId,
+      name,
+      startedAt: new Date().toISOString(),
+      deadline: intent.commandDeadline,
+    },
   });
   if (aborted()) return reconciled(parts, { intent, origin: "dispatch" });
   begun(parts, { ...place, intent, payload, command });
