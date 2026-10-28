@@ -60,7 +60,8 @@ export function boundedExit(
       },
       (error: unknown) => {
         clearTimeout(timer);
-        reject(new Error("Installed startup failed", { cause: error }));
+        const cause = error instanceof Error ? error : undefined;
+        reject(new Error("Installed startup failed", { cause }));
       },
     );
   });

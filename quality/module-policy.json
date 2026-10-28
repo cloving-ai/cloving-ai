@@ -3,6 +3,7 @@
     "test/command-polling-sdk-fixture.ts": "test",
     "test/packed-sleep-polling.ts": "test",
     "test/packed-host-fixture.ts": "test",
+    "test/packed-host.test.ts": "test",
     "test/command-polling-sdk.test.ts": "test",
     "test/sleep-recovery.test.ts": "test",
     "tools/workflow-test-hook.ts": "candidate-analysis",
