@@ -28,7 +28,7 @@ import type { WorkerTotals } from "../worker-usage.ts";
 import { usageTotals } from "./worker-totals.ts";
 import { commandFields } from "./command-effects.ts";
 import { decidedOf, feedbackOf } from "./decision-handler.ts";
-import { queueOverview } from "./submission-handler.ts";
+import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 
 interface Snapshot {

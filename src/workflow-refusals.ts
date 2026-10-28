@@ -8,6 +8,9 @@ export interface WorkflowRefusal {
 
 const refusalCodes = new Set([
   "invalid-declaration",
+  "queue-needs-ticket-field",
+  "queue-input-incomplete",
+  "queue-workflow-conflict",
   "forbidden-import",
   "missing-export",
   "unsupported-source",

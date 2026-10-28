@@ -34,6 +34,7 @@ import { notifyRuns } from "./notify.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
+  issueWorkflow,
 } from "./ticket-registration.ts";
 
 export interface Daemon {
@@ -116,6 +117,18 @@ async function hosted(
 }
 
 async function daemonRegistrations(settings: DaemonSettings) {
+  const conflict = settings.workflowRefusals?.find((refusal) =>
+    refusal.codes.includes("queue-workflow-conflict"),
+  );
+  if (conflict !== undefined)
+    return {
+      table: [],
+      admitted: {
+        kind: "rejected" as const,
+        detail: `queue-workflow-conflict: ${conflict.scope} ${conflict.label}`,
+      },
+    };
+
   const table = ticketRegistrationTable(
     {
       repository: settings.repository,
@@ -142,8 +155,8 @@ async function daemonRegistrations(settings: DaemonSettings) {
             registrations: admitted.registrations.map((registration) => ({
               ...registration,
               ...(settings.queueMilliseconds !== undefined &&
-              registration.workflowId === "develop-issue"
-                ? { admission: settings.queueLanes ?? 1 }
+              registration.workflowId === queueWorkflowId(settings)
+                ? { admission: settings.queueLanes ?? 1, queue: true }
                 : {}),
             })),
           },
@@ -161,7 +174,9 @@ export async function startDaemon(
   if (admitted.kind === "rejected")
     return {
       kind: "refused",
-      reason: "workflow-rejected",
+      reason: admitted.detail.startsWith("queue-workflow-conflict")
+        ? "queue-workflow-conflict"
+        : "workflow-rejected",
       detail: admitted.detail,
     };
   const given = Promise.withResolvers<HostPorts>();
@@ -265,6 +280,7 @@ async function runningDaemon(
           intervalMilliseconds: settings.queueMilliseconds,
           lanes: settings.queueLanes ?? 1,
           resetQueue: settings.resetQueue ?? false,
+          workflowId: queueWorkflowId(settings),
         });
   return {
     socket: service.socket,
@@ -275,4 +291,11 @@ async function runningDaemon(
       await service.close();
     },
   };
+}
+
+function queueWorkflowId(settings: DaemonSettings): string {
+  return (
+    settings.declarations?.find((declaration) => declaration.queue === true)
+      ?.workflowId ?? issueWorkflow
+  );
 }

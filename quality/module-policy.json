@@ -1252,7 +1252,12 @@
     "test/worker-network.test.ts": "test",
     "test/worker-retry-display.test.ts": "test",
     "test/worker-retry-index.test.ts": "test",
-    "test/worker-network-guards.test.ts": "test"
+    "test/worker-network-guards.test.ts": "test",
+    "src/service/active-tickets.ts": "service",
+    "src/daemon/queue-status.ts": "daemon",
+    "test/daemon-declared-queue.test.ts": "test",
+    "test/workflow-queue.test.ts": "test",
+    "test/cli-start-declared-queue.test.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -5,13 +5,14 @@ export interface WorkflowReservation {
 }
 
 export interface WorkflowDiscoveryIdentity {
+  readonly queue?: boolean;
   readonly baseName: string;
   readonly workflowId: string | undefined;
   readonly functionNames: readonly string[];
 }
 
 export type WorkflowConflictCode =
-  "workflow-conflict" | "bundled-name-reserved";
+  "workflow-conflict" | "bundled-name-reserved" | "queue-workflow-conflict";
 
 function identityKeys(identity: {
   readonly baseName?: string | undefined;
@@ -44,8 +45,11 @@ export function workflowConflicts(
       }),
     ),
   );
-  return keys.map((names) => {
+  const queued = candidates.filter((candidate) => candidate.queue === true);
+  return keys.map((names, index) => {
     const codes: WorkflowConflictCode[] = [];
+    if (queued.length > 1 && candidates[index]?.queue === true)
+      codes.push("queue-workflow-conflict");
     if (names.some((name) => reserved.has(name)))
       codes.push("bundled-name-reserved");
     if (names.some((name) => (counts.get(name) ?? 0) > 1))

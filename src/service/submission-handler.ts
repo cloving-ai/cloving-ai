@@ -17,6 +17,7 @@ import {
   type CheckedResolution,
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
+import { activeWorkflow } from "./active-tickets.ts";
 import {
   committed,
   failed,
@@ -314,52 +315,6 @@ async function submitted(
     normalized: check.normalized,
     activeTickets,
   });
-}
-
-async function activeWorkflow(
-  context: ServiceContext,
-  workflowId: string,
-): Promise<Fields[]> {
-  const workflows = await context.authority.queries.workflowIds();
-  const state = await context.authority.state();
-  const runs = Object.values(state.runs).filter(
-    (run) =>
-      workflows[run.runId] === workflowId &&
-      !["completed", "failed", "cancelled"].includes(run.status),
-  );
-  return Promise.all(
-    runs.map(async (run) => {
-      const digest = state.details[run.runId]?.input;
-      const text = digest
-        ? await context.authority.queries.document(digest)
-        : undefined;
-      const input = record(JSON.parse(text ?? "null")) ?? {};
-      const ticket = record(record(input["input"])?.["ticket"]);
-      return ticket === undefined
-        ? input
-        : { ...input, ticketId: ticket["id"], ticket: ticket["text"] };
-    }),
-  );
-}
-
-export async function queueOverview(context: ServiceContext): Promise<Fields> {
-  const workflow = context.registry.byId("develop-issue");
-  if (workflow?.admission === undefined) return {};
-  const active = await activeWorkflow(context, "develop-issue");
-  return {
-    queue: {
-      lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
-      busy: active.length,
-      skipped: [
-        ...active.flatMap((input) =>
-          typeof input["ticketId"] === "string"
-            ? [{ ticketId: input["ticketId"], reason: "ticket-active" }]
-            : [],
-        ),
-        ...(workflow.resolver.skippedTickets?.() ?? []),
-      ],
-    },
-  };
 }
 
 export function submissionHandler(
