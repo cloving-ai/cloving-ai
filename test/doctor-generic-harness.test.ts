@@ -144,4 +144,28 @@ await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
       await result([join(scene.root, "missing", "env"), split, "{prompt}"]),
       /^fail /,
     );
+    const worker = join(scene.root, "worker.js");
+    await writeFile(
+      worker,
+      'if(process.argv[2] !== "--version") process.exit(99); console.log("worker 1.2.3");',
+    );
+    const script = (path: string) =>
+      result(["/usr/bin/env", process.execPath, path, "{prompt}"]);
+    assert.match(await script(worker), /^ok /);
+    assert.match(await script(join(scene.root, "missing.js")), /^fail /);
+    await writeFile(
+      join(tools, "worker.sh"),
+      '[ "$1" = "--version" ] || exit 99; echo "worker 1.2.3"\n',
+    );
+    assert.match(
+      await result([
+        "/usr/bin/env",
+        "-C",
+        tools,
+        "/bin/sh",
+        "worker.sh",
+        "{prompt}",
+      ]),
+      /^ok /,
+    );
   }));

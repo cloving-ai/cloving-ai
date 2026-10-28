@@ -105,20 +105,41 @@ async function missingFile(path: string): Promise<boolean> {
 
 const envOptionsWithValue = ["-u", "--unset", "-C", "--chdir", "-P"];
 
-function envVersionArguments(arguments_: readonly string[]): readonly string[] {
-  const through = (end: number) => [
-    ...arguments_.slice(0, end + 1),
-    "--version",
-  ];
-  for (let index = 0; index < arguments_.length; index += 1) {
+function envProgram(arguments_: readonly string[]): {
+  readonly index: number;
+  readonly split: boolean;
+} {
+  let index = 0;
+  while (index < arguments_.length) {
     const part = arguments_[index] ?? "";
-    if (["-S", "--split-string"].includes(part)) return through(index + 1);
-    if (/^(-S|--split-string=)./.test(part)) return through(index);
-    if (envOptionsWithValue.includes(part)) index += 1;
-    else if (!part.startsWith("-") && !/^[A-Za-z_]\w*=/.test(part))
-      return through(index);
+    if (["-S", "--split-string"].includes(part))
+      return { index: index + 1, split: true };
+    if (/^(-S|--split-string=)./.test(part)) return { index, split: true };
+    if (!/^(-|[A-Za-z_]\w*=)/.test(part)) return { index, split: false };
+    index += envOptionsWithValue.includes(part) ? 2 : 1;
   }
-  return [];
+  return { index, split: false };
+}
+
+async function envVersionArguments(
+  arguments_: readonly string[],
+  location: VersionLocation,
+): Promise<readonly string[]> {
+  const { index, split } = envProgram(arguments_);
+  if (index >= arguments_.length) return [];
+  const prefix = arguments_.slice(0, index + 1);
+  if (split) return [...prefix, "--version"];
+  const changes = arguments_.slice(0, index).flatMap((part, position) => {
+    const value = ["-C", "--chdir"].includes(part)
+      ? arguments_[position + 1]
+      : /^(?:-C|--chdir=)(.+)$/.exec(part)?.[1];
+    return value === undefined ? [] : [value];
+  });
+  const wrapped = await harnessVersionArguments(arguments_.slice(index), {
+    ...location,
+    directory: resolve(location.directory, ...changes),
+  });
+  return wrapped.length === 0 ? [] : [...prefix, ...wrapped];
 }
 
 function launcherVersionArguments(
@@ -126,7 +147,6 @@ function launcherVersionArguments(
   launch: { readonly arguments: readonly string[]; readonly worker: string },
 ): readonly string[] {
   const arguments_ = launch.arguments;
-  if (program === "env") return envVersionArguments(arguments_);
   if (program === "node") {
     const script = arguments_[arguments_[0] === "--" ? 1 : 0];
     return script !== undefined && !script.startsWith("-")
@@ -140,16 +160,19 @@ function launcherVersionArguments(
     : [];
 }
 
+interface VersionLocation {
+  readonly directory: string;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly worker: string;
+}
+
 async function harnessVersionArguments(
   command: readonly string[],
-  location: {
-    readonly directory: string;
-    readonly environment: Readonly<NodeJS.ProcessEnv>;
-    readonly worker: string;
-  },
+  location: VersionLocation,
 ): Promise<readonly string[]> {
   const [program = "", ...arguments_] = command;
   const shell = basename(program);
+  if (shell === "env") return envVersionArguments(arguments_, location);
   if (!["sh", "bash", "dash", "zsh", "ksh"].includes(shell))
     return launcherVersionArguments(shell, {
       arguments: arguments_,
