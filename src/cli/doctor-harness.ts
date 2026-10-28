@@ -128,19 +128,26 @@ function envVersionArguments(
   worker: string,
 ): readonly string[] {
   const { index, split } = envProgram(arguments_);
-  const [program, ...rest] = arguments_.slice(index);
-  if (program === undefined) return [];
+  if (index >= arguments_.length) return [];
   const prefix = arguments_.slice(0, index + 1);
   if (split) return [...prefix, "--version"];
-  const shell = basename(program);
-  if (shells.includes(shell)) {
-    const script = shellScriptIndex(rest, shell);
-    return script === undefined
-      ? []
-      : [...prefix, ...rest.slice(0, script + 1), "--version"];
-  }
-  const wrapped = launcherVersionArguments(shell, { arguments: rest, worker });
+  const wrapped = wrappedVersionArguments(arguments_.slice(index), worker);
   return wrapped.length === 0 ? [] : [...prefix, ...wrapped];
+}
+
+function wrappedVersionArguments(
+  command: readonly string[],
+  worker: string,
+): readonly string[] {
+  const [program = "", ...arguments_] = command;
+  const name = basename(program);
+  if (name === "env") return envVersionArguments(arguments_, worker);
+  if (!shells.includes(name))
+    return launcherVersionArguments(name, { arguments: arguments_, worker });
+  const script = shellScriptIndex(arguments_, name);
+  return script === undefined
+    ? []
+    : [...arguments_.slice(0, script + 1), "--version"];
 }
 
 function launcherVersionArguments(

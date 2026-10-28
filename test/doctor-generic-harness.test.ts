@@ -148,6 +148,12 @@ await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
     assert.match(await wrapped(process.execPath, worker), /^ok /);
     const missing = join(scene.root, "missing.js");
     assert.match(await wrapped(process.execPath, missing), /^fail /);
+    const nested = await scene.program(
+      "env",
+      'if(process.argv[2] === "--version") { console.log("env 9.4"); process.exit(0); } process.exit(require("node:child_process").spawnSync(process.argv[2], process.argv.slice(3), { stdio: "inherit" }).status ?? 1);',
+    );
+    assert.match(await wrapped(nested, process.execPath, worker), /^ok /);
+    assert.match(await wrapped(nested, process.execPath, missing), /^fail /);
     await writeFile(
       join(tools, "worker.sh"),
       '[ "$1" = "--version" ] || exit 99; echo "worker 1.2.3"\n',
