@@ -36,6 +36,7 @@ interface CiScenarioOptions {
   readonly environment?: Readonly<Record<string, string>>;
   readonly timing?: Partial<GithubTiming>;
   readonly signal?: AbortSignal;
+  readonly onCheck?: () => void;
   readonly reply?: (parts: readonly string[]) => string;
 }
 
@@ -55,6 +56,17 @@ function attemptJobsReply(options: CiScenarioOptions): string {
   ]);
 }
 
+function checkRunsReply(options: CiScenarioOptions, times: number[]): string {
+  const checks =
+    options.snapshots[Math.min(times.length, options.snapshots.length - 1)] ??
+    [];
+  times.push(Date.now());
+  options.onCheck?.();
+  return JSON.stringify(
+    Object.hasOwn(options, "pages") ? options.pages : [{ check_runs: checks }],
+  );
+}
+
 function ciReply(
   options: CiScenarioOptions,
   observed: { readonly calls: (readonly string[])[]; readonly times: number[] },
@@ -71,18 +83,7 @@ function ciReply(
       );
     if (!parts.some((part) => part.includes("/check-runs")))
       return Promise.resolve(options.reply?.(parts) ?? "{}");
-    const checks =
-      options.snapshots[
-        Math.min(observed.times.length, options.snapshots.length - 1)
-      ] ?? [];
-    observed.times.push(Date.now());
-    return Promise.resolve(
-      JSON.stringify(
-        Object.hasOwn(options, "pages")
-          ? options.pages
-          : [{ check_runs: checks }],
-      ),
-    );
+    return Promise.resolve(checkRunsReply(options, observed.times));
   };
 }
 
