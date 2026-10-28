@@ -29,6 +29,7 @@ export interface DeliveryIntent
   readonly workflow: string;
   readonly inputDigest: string;
   readonly purpose: Purpose;
+  readonly commandDeadline?: string;
 }
 
 export type ProtectedIntent = DeliveryIntent & EffectArguments;

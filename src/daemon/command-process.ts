@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { turnEnvironment } from "./claude-turn.ts";
 import { commandLimits } from "../command-settings.ts";
+import { isInstant } from "../authority/instants.ts";
 
 export interface CommandStart {
   readonly command: readonly string[];
@@ -12,6 +13,7 @@ export interface CommandStart {
   readonly runId: string;
   readonly operationId: string;
   readonly seconds: number;
+  readonly deadline?: string;
 }
 
 export interface CommandEnd {
@@ -26,12 +28,30 @@ export interface RunningCommand {
   readonly stop: () => void;
 }
 
+export interface CommandClock {
+  readonly now: () => number;
+  readonly timer: (wait: {
+    readonly milliseconds: number;
+    readonly expired: () => void;
+  }) => () => void;
+}
+
+const commandClock: CommandClock = {
+  now: () => Date.now(),
+  timer: (wait) => {
+    const timer = setTimeout(wait.expired, wait.milliseconds);
+    return () => {
+      clearTimeout(timer);
+    };
+  },
+};
+
 function boundedOutput(
   stream: NodeJS.ReadableStream,
   options: {
     readonly bytes: number;
     readonly receive: (chunk: Buffer) => void;
-    readonly exceeded: () => void;
+    readonly fail: (reason: string) => void;
   },
 ): void {
   let received = 0;
@@ -39,19 +59,21 @@ function boundedOutput(
     const kept = chunk.subarray(0, Math.max(0, options.bytes - received));
     received += chunk.length;
     if (kept.length > 0) options.receive(kept);
-    if (received > options.bytes) options.exceeded();
+    if (received > options.bytes) options.fail("command-output-limit");
   });
 }
 
-function killGroup(child: ChildProcess): void {
-  if (child.pid === undefined) return;
+function stopChild(child: ReturnType<typeof spawnCommand>): void {
   try {
-    process.kill(-child.pid, "SIGKILL");
+    if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
   } catch (error) {
     const code: unknown = Reflect.get(Object(error), "code");
     if (code !== "ESRCH" && code !== "EPERM") throw error;
     child.kill("SIGKILL");
   }
+  child.stdin.destroy();
+  child.stdout.destroy();
+  child.stderr.destroy();
 }
 
 function spawnCommand(start: CommandStart, configuration: string) {
@@ -77,76 +99,119 @@ function writeStderr(descriptor: number, chunk: Buffer): boolean {
   }
 }
 
-function prepareCommand(start: CommandStart) {
-  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  let stderr: number | undefined;
+function releaseCommand(resources: {
+  readonly stderr: number | undefined;
+  readonly configuration: string;
+}): void {
   try {
-    stderr = openSync(join(start.folder, "command.stderr.log"), "w", 0o600);
-    return { child: spawnCommand(start, configuration), stderr, configuration };
-  } catch (error) {
-    try {
-      if (stderr !== undefined) closeSync(stderr);
-    } finally {
-      rmSync(configuration, { recursive: true, force: true });
-    }
-    throw error;
+    if (resources.stderr !== undefined) closeSync(resources.stderr);
+  } finally {
+    rmSync(resources.configuration, { recursive: true, force: true });
   }
 }
 
-export function startCommand(start: CommandStart): RunningCommand {
+function prepareCommand(
+  start: CommandStart,
+  clock: CommandClock,
+):
+  | { readonly reason: string }
+  | {
+      readonly child: ReturnType<typeof spawnCommand>;
+      readonly stderr: number;
+      readonly configuration: string;
+    } {
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
+  let stderr: number | undefined;
+  let child: ReturnType<typeof spawnCommand> | undefined;
+  try {
+    stderr = openSync(join(start.folder, "command.stderr.log"), "w", 0o600);
+    const reason = deadlineRefusal(start, clock);
+    if (reason !== undefined) return { reason };
+    child = spawnCommand(start, configuration);
+    return { child, stderr, configuration };
+  } finally {
+    if (child === undefined) releaseCommand({ stderr, configuration });
+  }
+}
+
+function refusedCommand(reason: string): RunningCommand {
+  return {
+    ended: Promise.resolve({
+      stdout: "",
+      exitCode: null,
+      durationMilliseconds: 0,
+      reason,
+    }),
+    stop: () => undefined,
+  };
+}
+
+function deadlineRefusal(
+  start: CommandStart,
+  clock: CommandClock,
+): string | undefined {
+  if (start.deadline !== undefined && !isInstant(start.deadline))
+    return "invalid-command-deadline";
+  if (start.deadline !== undefined && Date.parse(start.deadline) <= clock.now())
+    return "command-wait-timeout";
+  return undefined;
+}
+
+export function startCommand(
+  start: CommandStart,
+  clock: CommandClock = commandClock,
+): RunningCommand {
+  let reason = deadlineRefusal(start, clock);
+  if (reason !== undefined) return refusedCommand(reason);
   const began = performance.now();
-  const { child, stderr, configuration } = prepareCommand(start);
+  const prepared = prepareCommand(start, clock);
+  if ("reason" in prepared) return refusedCommand(prepared.reason);
+  const { child, stderr, configuration } = prepared;
   const stdout: Buffer[] = [];
   const closed = Promise.withResolvers<number | null>();
-  let reason: string | undefined;
-  const fail = (failure: string): void => {
+  const fail = (failure = "command-exit"): void => {
     reason ??= failure;
-    killGroup(child);
-    child.stdin.destroy();
-    child.stdout.destroy();
-    child.stderr.destroy();
+    stopChild(child);
     closed.resolve(child.exitCode);
-  };
-  const exceeded = (): void => {
-    fail("command-output-limit");
   };
   boundedOutput(child.stdout, {
     bytes: commandLimits.stdoutBytes,
-    receive: (chunk) => {
-      stdout.push(chunk);
-    },
-    exceeded,
+    receive: (chunk) => stdout.push(chunk),
+    fail,
   });
   boundedOutput(child.stderr, {
     bytes: commandLimits.stderrBytes,
     receive: (chunk) => {
       if (!writeStderr(stderr, chunk)) fail("command-exit");
     },
-    exceeded,
+    fail,
   });
-  const timer = setTimeout(() => {
-    fail("command-timeout");
-  }, start.seconds * 1000);
-  child.stdin.on("error", () => undefined);
-  child.stdin.end(start.payload);
-  child.once("error", () => undefined);
-  child.once("close", closed.resolve);
-  const ended = closed.promise.then((exitCode) => {
-    clearTimeout(timer);
-    closeSync(stderr);
-    rmSync(configuration, { recursive: true, force: true });
-    reason ??= exitCode === 0 ? undefined : "command-exit";
-    return {
-      stdout: Buffer.concat(stdout).toString("utf8"),
-      exitCode,
-      durationMilliseconds: Math.round(performance.now() - began),
-      ...(reason === undefined ? {} : { reason }),
-    };
-  });
-  return {
-    ended,
-    stop: () => {
-      fail("command-exit");
+  const remaining =
+    start.deadline === undefined
+      ? Infinity
+      : Date.parse(start.deadline) - clock.now();
+  const execution = start.seconds * 1000;
+  const cancelTimer = clock.timer({
+    expired: () => {
+      fail(remaining <= execution ? "command-wait-timeout" : "command-timeout");
     },
+    milliseconds: Math.min(execution, remaining),
+  });
+  child.stdin.on("error", () => undefined).end(start.payload);
+  child.once("error", () => undefined).once("close", closed.resolve);
+  return {
+    ended: closed.promise.then((exitCode) => {
+      cancelTimer();
+      releaseCommand({ stderr, configuration });
+      reason ??= deadlineRefusal(start, clock);
+      reason ??= exitCode === 0 ? undefined : "command-exit";
+      return {
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        exitCode,
+        durationMilliseconds: Math.round(performance.now() - began),
+        ...(reason === undefined ? {} : { reason }),
+      };
+    }),
+    stop: fail,
   };
 }

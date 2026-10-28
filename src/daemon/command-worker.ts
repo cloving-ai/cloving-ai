@@ -19,6 +19,7 @@ import {
   startCommand,
   type RunningCommand,
   type CommandEnd,
+  type CommandClock,
 } from "./command-process.ts";
 import {
   claimCommand,
@@ -31,6 +32,7 @@ export interface CommandWorkerSettings {
   readonly journal: string;
   readonly commands: LocalCommands;
   readonly seconds?: number;
+  readonly commandClock?: CommandClock;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
 }
@@ -115,15 +117,21 @@ function ending(end: CommandEnd, stopping: Active["stopping"]): Recorded {
 function begun(parts: Parts, start: Started): void {
   const { settings } = parts;
   const { intent, key, folder, payload, command } = start;
-  const running = startCommand({
-    command,
-    directory: settings.repository,
-    folder,
-    payload,
-    runId: intent.runId,
-    operationId: intent.operationId,
-    seconds: settings.seconds ?? 60,
-  });
+  const running = startCommand(
+    {
+      command,
+      directory: settings.repository,
+      folder,
+      payload,
+      runId: intent.runId,
+      operationId: intent.operationId,
+      seconds: settings.seconds ?? 60,
+      ...(intent.commandDeadline === undefined
+        ? {}
+        : { deadline: intent.commandDeadline }),
+    },
+    settings.commandClock,
+  );
   const stopping = { requested: false };
   const concluded = running.ended
     .then(async (end) => {
@@ -177,6 +185,7 @@ async function delivered(
       operationId: intent.operationId,
       name,
       startedAt: new Date().toISOString(),
+      deadline: intent.commandDeadline,
     },
   });
   if (aborted()) return reconciled(parts, { intent, origin: "dispatch" });
