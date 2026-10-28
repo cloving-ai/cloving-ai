@@ -43,6 +43,10 @@
       "types": "./dist/src/steps/review-by-person.d.ts",
       "import": "./dist/src/steps/review-by-person.js"
     },
+    "./workflows/steps/review-by-agent": {
+      "types": "./dist/src/steps/review-by-agent.d.ts",
+      "import": "./dist/src/steps/review-by-agent.js"
+    },
     "./workflows/steps/wait-for-decision": {
       "types": "./dist/src/steps/wait-for-decision.d.ts",
       "import": "./dist/src/steps/wait-for-decision.js"
