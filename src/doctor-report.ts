@@ -35,7 +35,7 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Install the qualified Node version: nvm install 26.9.0 && nvm use 26.9.0",
   harnesses: "Install a harness: npm install -g @anthropic-ai/claude-code",
   "default-harness":
-    "Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude cloving doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured",
+    "Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude cloving doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured; for another harness: cloving config set harness.turn '[...]'",
   "gh-login": "Log in with the configured GitHub command: gh auth login",
   "github-origin":
     "Set a GitHub origin: git remote add origin git@github.com:OWNER/REPO.git || git remote set-url origin git@github.com:OWNER/REPO.git",
