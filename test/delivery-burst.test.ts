@@ -172,11 +172,19 @@ async function timerTurns(
 }
 
 await test("CLV-053 queued slow turns yield before the timer fairness bound", async () => {
+  const turnMilliseconds = 20;
+  const fairnessBound = testMilliseconds(500);
+  const queuedTurns = Math.ceil((fairnessBound * 1.6) / turnMilliseconds);
   class Busy extends Actor {
     static override readonly actorType = "Busy";
 
     turn(): void {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        turnMilliseconds,
+      );
     }
   }
   const database = sqlite({
@@ -190,7 +198,7 @@ await test("CLV-053 queued slow turns yield before the timer fairness bound", as
   runtime.register(Busy);
   try {
     await runtime.install();
-    for (let turn = 0; turn < 40; turn += 1)
+    for (let turn = 0; turn < queuedTurns; turn += 1)
       await runtime.enqueueInternalMessage({
         actorType: Busy.actorType,
         actorId: "busy",
@@ -200,8 +208,8 @@ await test("CLV-053 queued slow turns yield before the timer fairness bound", as
     const timer = await timerTurns(async () => {
       processed = await worker.runUntilIdle();
     });
-    assert.equal(processed, 40);
-    assert.ok(timer.largestGap < 500, JSON.stringify(timer));
+    assert.equal(processed, queuedTurns);
+    assert.ok(timer.largestGap < fairnessBound, JSON.stringify(timer));
   } finally {
     await worker.stop();
     await runtime.close();
