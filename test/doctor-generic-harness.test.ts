@@ -132,14 +132,10 @@ await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
       const observation = check(await scene.report(), "default-harness");
       return `${String(observation["result"])} ${String(observation["detail"])}`;
     };
-    assert.match(
-      await result(["/usr/bin/env", `PATH=${tools}`, "mytool", "{prompt}"]),
-      /^ok /,
-    );
-    assert.match(
-      await result(["/usr/bin/env", "-S", `${split} --mode local`, "{prompt}"]),
-      /^ok /,
-    );
+    const wrapped = (...parts: string[]) =>
+      result(["/usr/bin/env", ...parts, "{prompt}"]);
+    assert.match(await wrapped(`PATH=${tools}`, "mytool"), /^ok /);
+    assert.match(await wrapped("-S", `${split} --mode local`), /^ok /);
     assert.match(
       await result([join(scene.root, "missing", "env"), split, "{prompt}"]),
       /^fail /,
@@ -149,23 +145,12 @@ await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
       worker,
       'if(process.argv[2] !== "--version") process.exit(99); console.log("worker 1.2.3");',
     );
-    const script = (path: string) =>
-      result(["/usr/bin/env", process.execPath, path, "{prompt}"]);
-    assert.match(await script(worker), /^ok /);
-    assert.match(await script(join(scene.root, "missing.js")), /^fail /);
+    assert.match(await wrapped(process.execPath, worker), /^ok /);
+    const missing = join(scene.root, "missing.js");
+    assert.match(await wrapped(process.execPath, missing), /^fail /);
     await writeFile(
       join(tools, "worker.sh"),
       '[ "$1" = "--version" ] || exit 99; echo "worker 1.2.3"\n',
     );
-    assert.match(
-      await result([
-        "/usr/bin/env",
-        "-C",
-        tools,
-        "/bin/sh",
-        "worker.sh",
-        "{prompt}",
-      ]),
-      /^ok /,
-    );
+    assert.match(await wrapped("-C", tools, "/bin/sh", "worker.sh"), /^ok /);
   }));
