@@ -12,7 +12,7 @@ try {
   const policy = process.argv[2];
   if (!policy) throw new Error("missing-worker-hook-policy");
   const timeout =
-    5000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
+    15000 * parseCheckTimeFactor(process.env["CLOVING_CHECK_TIME_FACTOR"]);
   const input = await readWorkerHookInput(process.stdin);
   traceWorkerHook("input:read");
   traceWorkerHook("check:start");

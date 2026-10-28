@@ -8,7 +8,7 @@ import { parseCheckTimeFactor } from "../../quality/test-execution.ts";
 import { withFiles } from "./files-fixture.ts";
 
 export function hookTimeoutMilliseconds(factor: string | undefined): number {
-  return 10000 * parseCheckTimeFactor(factor);
+  return 30000 * parseCheckTimeFactor(factor);
 }
 
 export const hookTimeout = hookTimeoutMilliseconds(
