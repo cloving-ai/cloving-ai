@@ -1,5 +1,10 @@
 {
   "roles": {
+    "test/command-polling-sdk-fixture.ts": "test",
+    "test/packed-sleep-polling.ts": "test",
+    "test/packed-host-fixture.ts": "test",
+    "test/command-polling-sdk.test.ts": "test",
+    "test/sleep-recovery.test.ts": "test",
     "tools/workflow-test-hook.ts": "candidate-analysis",
     "test/quality/template-test-loader.test.ts": "test",
     "templates/develop/develop/turn.ts": "workflow",
