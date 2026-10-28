@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/develop-template-fixture.ts": "test",
+    "test/develop-template.test.ts": "test",
     "src/steps/sleep.ts": "workflow",
     "test/command-polling-fixture.ts": "test",
     "test/command-polling.test.ts": "test",
