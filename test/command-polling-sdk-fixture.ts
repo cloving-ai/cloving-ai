@@ -74,17 +74,16 @@ const waitBarrier = async (expectedChecks = 1) => {
   const create = world.events.create.bind(world.events);
   world.events.create = async (...given) => {
     const created = await create(...given);
-    if (given[1]?.eventType === "wait_created") {
-      const runId = (await taggedRun(given[0])).runId;
-      await verifiedChecks(runId, expectedChecks);
-      if (existsSync("command-checkpoint")) {
-        assert.equal(runId, commandCheckpoint().runId);
-        assert.equal(given[0], commandCheckpoint().sdkId);
-      }
-      const checkpoint = { runId, sdkId: given[0], wait: created.event, now: initialTime };
-      writeFileSync("sleep-checkpoint", JSON.stringify(checkpoint));
-      await halt("sleep-persisted", checkpoint);
+    if (given[1]?.eventType !== "wait_created") return created;
+    const runId = (await taggedRun(given[0])).runId;
+    await verifiedChecks(runId, expectedChecks);
+    if (existsSync("command-checkpoint")) {
+      assert.equal(runId, commandCheckpoint().runId);
+      assert.equal(given[0], commandCheckpoint().sdkId);
     }
+    const checkpoint = { runId, sdkId: given[0], wait: created.event, now: initialTime };
+    writeFileSync("sleep-checkpoint", JSON.stringify(checkpoint));
+    await halt("sleep-persisted", checkpoint);
     return created;
   };
 };

@@ -51,9 +51,9 @@ process.stdout.write(JSON.stringify({ ready: calls.length > 0 }));
 }
 
 interface Checkpoint {
-  readonly runId: unknown;
+  readonly runId: string;
   readonly sdkId: string;
-  readonly waitId: unknown;
+  readonly waitId: string;
   readonly resumeAt: string;
 }
 
@@ -71,13 +71,16 @@ async function records(directory: string): Promise<readonly unknown[]> {
   );
 }
 
-async function sdkRun(root: string, runId: unknown): Promise<string> {
+async function sdkRun(root: string, runId: string): Promise<string> {
   return await reached(async () => {
     const runs = (await records(join(root, "host/world/runs"))).filter(
       (run) => field(field(run, "attributes"), "cloving.run") === runId,
     );
     assert.ok(runs.length <= 1);
-    return runs.length === 1 ? String(field(runs[0], "runId")) : undefined;
+    if (runs.length === 0) return undefined;
+    const sdkId = field(runs[0], "runId");
+    if (typeof sdkId !== "string") throw new Error("Invalid SDK run ID");
+    return sdkId;
   });
 }
 
@@ -105,6 +108,7 @@ export async function startPackedPolling(root: string): Promise<Checkpoint> {
   );
   assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
   const runId = admitted["runId"];
+  if (typeof runId !== "string") throw new Error("Invalid admitted run ID");
   const sdkId = await sdkRun(root, runId);
   const wait = await reached(async () => (await waits(root, sdkId))[0]);
   const status = field(
@@ -125,10 +129,12 @@ export async function startPackedPolling(root: string): Promise<Checkpoint> {
       .split("\n").length,
     1,
   );
+  const waitId = field(wait, "eventId");
+  if (typeof waitId !== "string") throw new Error("Invalid wait event ID");
   return {
     runId,
     sdkId,
-    waitId: field(wait, "eventId"),
+    waitId,
     resumeAt: String(field(field(wait, "eventData"), "resumeAt")),
   };
 }
