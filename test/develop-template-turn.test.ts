@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { runScenario } from "../src/testing.ts";
+import {
+  workflow,
+  input,
+  partialEffects,
+} from "./develop-template-flow-fixture.ts";
 import { withGithub, statusBody } from "./github-worker-fixture.ts";
 import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
 import {
@@ -16,7 +21,7 @@ const template = fileURLToPath(
   new URL("../templates/develop", import.meta.url),
 );
 
-await test("CLV-221 queued partial requests requeue twice and block the third merged run", () =>
+await test("CLV-221 the default workflow requeues twice and blocks the third partial run", () =>
   withGithub(async (scene) => {
     const body = "Preserve the ticket requirements.\n";
     scene.plan({
@@ -36,18 +41,13 @@ await test("CLV-221 queued partial requests requeue twice and block the third me
     for (const pullRequest of [7, 8, 9]) {
       const remaining = [`Finish after pull request ${String(pullRequest)}.`];
       const scenario = await runScenario({
-        workflow: `${template}/develop/queue-partial.ts`,
-        exportName: "queuePartial",
-        input: {
-          cycleId: "run-1",
-          round: 1,
-          issue: { owner: "acme", repository: "demo", number: 42 },
-          pullRequest,
-          remaining,
-        },
+        workflow,
+        exportName: "develop",
+        input,
+        effects: partialEffects(pullRequest, remaining),
       });
-      assert.equal(scenario.requests.length, 1);
-      const request = scenario.requests[0];
+      assert.equal(scenario.requests.length, 7);
+      const request = scenario.requests.at(-1);
       assert.ok(request && request[0] === "effect");
       const payload: unknown = JSON.parse(request[1].payload);
       assert.ok(typeof payload === "object" && payload !== null);

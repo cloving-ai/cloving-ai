@@ -4,11 +4,19 @@ import { join } from "node:path";
 import { doctorCodes } from "../src/doctor-report.ts";
 import { record } from "../src/protocol.ts";
 import { packedDevelopTurn } from "./packed-develop-template-turn.ts";
+import { packedDevelopFlow } from "./packed-develop-template-flow.ts";
 
 export const packedTemplateSources = [
   "templates/develop/develop.test.ts",
+  "templates/develop/develop.ts",
+  "templates/develop/develop/flow-tests.ts",
   "templates/develop/develop/partial.ts",
+  "templates/develop/develop/pull.ts",
   "templates/develop/develop/queue-partial.ts",
+  "templates/develop/develop/refusal-tests.ts",
+  "templates/develop/develop/report.ts",
+  "templates/develop/develop/round.ts",
+  "templates/develop/develop/scenarios.ts",
   "templates/develop/develop/turn.ts",
 ];
 
@@ -161,9 +169,10 @@ export async function packedDevelopTemplate(
   assert.deepEqual(manifest(document), await developManifest());
   assert.match(
     await readFile(join(packageRoot, "templates/develop/README.md"), "utf8"),
-    /executable workflow is pending/,
+    /default workflow/,
   );
   await packedDevelopTurn(packageRoot);
+  await packedDevelopFlow(packageRoot);
 }
 
 export function configurationErrors(

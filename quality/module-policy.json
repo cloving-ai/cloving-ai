@@ -1307,7 +1307,18 @@
     "src/daemon/queue-status.ts": "daemon",
     "test/daemon-declared-queue.test.ts": "test",
     "test/workflow-queue.test.ts": "test",
-    "test/cli-start-declared-queue.test.ts": "test"
+    "test/cli-start-declared-queue.test.ts": "test",
+    "templates/develop/develop.ts": "workflow",
+    "templates/develop/develop/pull.ts": "workflow",
+    "templates/develop/develop/report.ts": "workflow",
+    "templates/develop/develop/round.ts": "workflow",
+    "templates/develop/develop/scenarios.ts": "test",
+    "test/develop-template-flow-fixture.ts": "test",
+    "test/develop-template-flow.test.ts": "test",
+    "test/develop-template-folder.test.ts": "test",
+    "test/packed-develop-template-flow.ts": "test",
+    "templates/develop/develop/flow-tests.ts": "test",
+    "templates/develop/develop/refusal-tests.ts": "test"
   },
   "allowed": {
     "quality": [

@@ -1,4 +1,5 @@
 {
+  "templates/develop/develop.test.ts": 0.0071250029999999995,
   "test/activation-commands.test.ts": 4.998070334,
   "test/activation-lease.test.ts": 5.4049256670000005,
   "test/adapter-calls.test.ts": 0.119011418,
@@ -193,6 +194,9 @@
   "test/develop-issue-status.test.ts": 6.1740042509999995,
   "test/develop-issue-workflow.test.ts": 4.708937626,
   "test/develop-prd-workflow.test.ts": 5.6249505840000005,
+  "test/develop-template-flow.test.ts": 0.380678541,
+  "test/develop-template-folder.test.ts": 0.8857569590000001,
+  "test/develop-template-turn.test.ts": 4.354287168000001,
   "test/develop-ticket-workflow.test.ts": 2.413638793,
   "test/dispatch-decision.test.ts": 0.004379166,
   "test/effect-authorization.test.ts": 0.001080999,
