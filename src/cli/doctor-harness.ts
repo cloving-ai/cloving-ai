@@ -103,11 +103,30 @@ async function missingFile(path: string): Promise<boolean> {
   }
 }
 
+const envOptionsWithValue = ["-u", "--unset", "-C", "--chdir", "-P"];
+
+function envVersionArguments(arguments_: readonly string[]): readonly string[] {
+  const through = (end: number) => [
+    ...arguments_.slice(0, end + 1),
+    "--version",
+  ];
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const part = arguments_[index] ?? "";
+    if (["-S", "--split-string"].includes(part)) return through(index + 1);
+    if (/^(-S|--split-string=)./.test(part)) return through(index);
+    if (envOptionsWithValue.includes(part)) index += 1;
+    else if (!part.startsWith("-") && !/^[A-Za-z_]\w*=/.test(part))
+      return through(index);
+  }
+  return [];
+}
+
 function launcherVersionArguments(
   program: string,
   launch: { readonly arguments: readonly string[]; readonly worker: string },
 ): readonly string[] {
   const arguments_ = launch.arguments;
+  if (program === "env") return envVersionArguments(arguments_);
   if (program === "node") {
     const script = arguments_[arguments_[0] === "--" ? 1 : 0];
     return script !== undefined && !script.startsWith("-")
@@ -247,21 +266,6 @@ async function usableShellHarness(
   );
 }
 
-const envOptionsWithValue = ["-u", "--unset", "-C", "--chdir"];
-
-function unwrappedCommand(command: readonly string[]): readonly string[] {
-  if (basename(command[0] ?? "") !== "env") return command;
-  let index = 1;
-  while (index < command.length) {
-    const part = command[index] ?? "";
-    if (envOptionsWithValue.includes(part)) index += 2;
-    else if (part.startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(part))
-      index += 1;
-    else return command.slice(index);
-  }
-  return command;
-}
-
 async function selectedProbe(
   selected: ReturnType<typeof turnHarness>,
   location: HarnessCommandLocation,
@@ -278,7 +282,7 @@ async function selectedProbe(
         detail: `${JSON.stringify(selected.command)} through the login shell ${shell}`,
       },
     };
-  const command = JSON.stringify(unwrappedCommand(selected.command));
+  const command = JSON.stringify(selected.command);
   return {
     usable: await usableHarnessCommand(command, {
       ...location,

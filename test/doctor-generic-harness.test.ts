@@ -107,3 +107,41 @@ await test("CLV-215 doctor checks the program that env wraps in a generic turn",
     const working = check(await scene.report(), "default-harness");
     assert.equal(working["result"], "ok", String(working["detail"]));
   }));
+
+await test("CLV-215 doctor probes a generic turn through its env wrapper", () =>
+  withDoctor(async (scene) => {
+    const tools = join(scene.root, "tools");
+    await mkdir(tools);
+    await writeFile(
+      join(tools, "mytool"),
+      `#!${process.execPath}\nif(process.argv[2] !== "--version") process.exit(99); console.log("mytool 1.2.3");\n`,
+      { mode: 0o755 },
+    );
+    await scene.program("mytool", "process.exit(3)");
+    const split = await scene.program(
+      "splittool",
+      'if(process.argv.slice(2).join(" ") !== "--mode local --version") process.exit(99); console.log("splittool 1.2.3");',
+    );
+    const file = privateSettingsPath(scene.environment, scene.repository);
+    await mkdir(dirname(file), { recursive: true });
+    const result = async (turn: readonly string[]) => {
+      await writeFile(
+        file,
+        JSON.stringify({ version: 1, harness: { name: "mytool", turn } }),
+      );
+      const observation = check(await scene.report(), "default-harness");
+      return `${String(observation["result"])} ${String(observation["detail"])}`;
+    };
+    assert.match(
+      await result(["/usr/bin/env", `PATH=${tools}`, "mytool", "{prompt}"]),
+      /^ok /,
+    );
+    assert.match(
+      await result(["/usr/bin/env", "-S", `${split} --mode local`, "{prompt}"]),
+      /^ok /,
+    );
+    assert.match(
+      await result([join(scene.root, "missing", "env"), split, "{prompt}"]),
+      /^fail /,
+    );
+  }));
