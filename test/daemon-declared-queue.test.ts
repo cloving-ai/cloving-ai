@@ -152,6 +152,8 @@ try {
   assert.equal(readFileSync("skips", "utf8").trim(), "900");
   assert.equal((await submitted("old-ticket", { workflowId: "other", submission: { ticket: "900" } })).code, "ticket-active");
   assert.equal((await submitted("old-lane", { workflowId: "other", submission: { ticket: "902" } })).code, "workflow-active");
+  assert.equal((await submitted("bundled-ticket", { workflowId: "develop-issue", submission: { ticket: "901" } })).code, "ticket-active");
+${retained ? 'assert.equal((await submitted("former-ticket", { workflowId: "develop", submission: { ticket: "901" } })).code, "ticket-active");' : ""}
   assert.equal((await asked("status")).queue.busy, 2);
   const prior = (await runs()).find(run => run.workflowId === "develop");
   writeFileSync("next.mjs", 'process.stdout.write("902");');

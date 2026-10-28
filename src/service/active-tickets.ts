@@ -7,7 +7,16 @@ export async function activeWorkflow(
 ): Promise<Fields[]> {
   const workflows = await context.authority.queries.workflowIds();
   const state = await context.authority.state();
-  const queued = context.registry.byId(workflowId)?.queue === true;
+  const queueRun = async (runId: string) =>
+    workflows[runId] === "develop-issue" ||
+    (await context.authority.queries.manifest(runId))?.queue === true;
+  const own = Object.keys(state.runs).filter(
+    (runId) => workflows[runId] === workflowId,
+  );
+  const queued =
+    workflowId === "develop-issue" ||
+    context.registry.byId(workflowId)?.queue === true ||
+    (await Promise.all(own.map(queueRun))).includes(true);
   const runs = Object.values(state.runs).filter(
     (run) => !["completed", "failed", "cancelled"].includes(run.status),
   );
@@ -15,12 +24,7 @@ export async function activeWorkflow(
     runs.map(async (run) => {
       if (
         workflows[run.runId] !== workflowId &&
-        !(
-          queued &&
-          (workflows[run.runId] === "develop-issue" ||
-            (await context.authority.queries.manifest(run.runId))?.queue ===
-              true)
-        )
+        !(queued && (await queueRun(run.runId)))
       )
         return undefined;
       return storedTicket(context, state.details[run.runId]?.input);
