@@ -8,7 +8,31 @@ import {
   activeBoardModel,
   completionScenario,
   stagedModel,
+  reviewStages,
+  stageEvent,
 } from "./watch-board-fixture.ts";
+
+await test("CLV-234 successive gate IDs render the single card beneath the selected heading", () => {
+  const history = reviewStages.map((stage, index) =>
+    stageEvent(index + 1, { gateId: stage.gateIds[0], gateKind: "approval" }),
+  );
+  for (const [index, stage] of reviewStages.entries()) {
+    const model = stagedModel(history.slice(0, index + 1), {
+      workflowStages: { sample: reviewStages },
+    });
+    const html = page(model, "workflow=sample");
+    const columns = html.split('<section class="column">').slice(1);
+    assert.equal(
+      columns.filter((column) => column.includes("Title of sample-run")).length,
+      1,
+    );
+    assert.ok(
+      columns
+        .find((column) => column.includes(`>${stage.label}</span>`))
+        ?.includes("Title of sample-run"),
+    );
+  }
+});
 import { found, rendered } from "./watch-dom.ts";
 import { noCopy } from "./watch-sample.ts";
 

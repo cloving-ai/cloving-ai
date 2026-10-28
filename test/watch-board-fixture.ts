@@ -1,3 +1,62 @@
+export const reviewStages = [
+  { name: "your-review", label: "Your review", gateIds: ["your-review"] },
+  { name: "team-review", label: "Team review", gateIds: ["team-review"] },
+  {
+    name: "ready-to-merge",
+    label: "Ready to merge",
+    gateIds: ["merge-review"],
+  },
+] as const;
+
+export const invalidGateIds = [
+  undefined,
+  null,
+  "review",
+  {},
+  [undefined],
+  [null],
+  [1],
+  [""],
+  ["x".repeat(129)],
+  ["a b"],
+  ["a\tb"],
+  ["a\nb"],
+  ["é"],
+  ["a+b"],
+  ["*"],
+  ["review", "review"],
+  new Array<unknown>(1),
+];
+
+export const stageSelectors = [
+  { operations: [], gateIds: ["x", "A".repeat(128), "._:/-AZaz09"] },
+  { operations: ["approval"], gateKinds: ["approval"] },
+  { operations: ["approval"], gateKinds: ["approval"], gateIds: [] },
+  { operations: ["approval"], gateIds: ["approval"] },
+  { operations: [], gateKinds: ["approval"], gateIds: ["approval"] },
+  { operations: ["approval"], gateKinds: ["approval"], gateIds: ["approval"] },
+  { gateIds: [] },
+  { operations: [], gateKinds: ["question"], gateIds: [] },
+];
+
+export const invalidStageSelectors = [
+  ...invalidGateIds.map((gateIds) => ({ gateIds })),
+  ...[
+    null,
+    "write-draft",
+    [1],
+    [""],
+    ["x".repeat(129)],
+    ["a b"],
+    ["é"],
+    ["a+b"],
+    ["write-draft", "write-draft"],
+  ].map((operations) => ({ operations })),
+  ...[null, "approval", [1], ["other"], ["approval", "approval"]].map(
+    (gateKinds) => ({ gateKinds }),
+  ),
+];
+
 import { mergeRepository, mergedJournal } from "./watch-merge-fixture.ts";
 import { watchModel, type WatchInputs } from "../src/cli/watch-model.ts";
 
@@ -195,7 +254,11 @@ export function stagedModel(
 
 export function stageEvent(
   sequence: number,
-  selector: { readonly operation?: string; readonly gateKind?: string } = {},
+  selector: {
+    readonly operation?: string;
+    readonly gateKind?: string;
+    readonly gateId?: unknown;
+  } = {},
 ) {
   return {
     sequence,
@@ -203,7 +266,14 @@ export function stageEvent(
     type: selector.operation === undefined ? "gate.opened" : "effect.requested",
     payload:
       selector.operation === undefined
-        ? { gateKind: selector.gateKind }
+        ? {
+            ...(selector.gateKind === undefined
+              ? {}
+              : { gateKind: selector.gateKind }),
+            ...(selector.gateId === undefined
+              ? {}
+              : { gateId: selector.gateId }),
+          }
         : {
             operationId: JSON.stringify([
               "cloving-operation",
@@ -214,4 +284,65 @@ export function stageEvent(
             ]),
           },
   };
+}
+
+const opens = reviewStages.map((stage, index) =>
+  stageEvent(index + 1, { gateId: stage.gateIds[0], gateKind: "approval" }),
+);
+export const reviewStageHistory = [
+  ...opens,
+  ...["gate.decided", "effect.reported", "worker.output"].map(
+    (type, index) => ({
+      ...stageEvent(4 + index, {
+        gateId: "your-review",
+        gateKind: "approval",
+      }),
+      type,
+    }),
+  ),
+  stageEvent(7, { operation: "write-draft" }),
+  stageEvent(8, { gateId: "your-review", gateKind: "approval" }),
+  stageEvent(9, { gateId: "unmatched", gateKind: "approval" }),
+  stageEvent(10, { operation: "unmatched" }),
+];
+
+export const reviewStagePositions = [
+  ["Your review", 0],
+  ["Team review", 1],
+  ["Ready to merge", 2],
+  ["Ready to merge", 2],
+  ["Ready to merge", 2],
+  ["Ready to merge", 2],
+  ["Draft", 6],
+  ["Your review", 7],
+  ["Other", 8],
+  ["Other", 9],
+] as const;
+
+export function paginatedReviewHistory() {
+  return Array.from({ length: 1003 }, (_, index) => {
+    const sequence = index * 2 + 1;
+    if (sequence === 2001)
+      return {
+        ...stageEvent(sequence, {
+          gateId: "your-review",
+          gateKind: "approval",
+        }),
+        recordedAt: boardTime,
+      };
+    if (sequence === 2003)
+      return {
+        ...stageEvent(sequence, {
+          gateId: "team-review",
+          gateKind: "approval",
+        }),
+        recordedAt: "2026-10-14T01:00:00Z",
+      };
+    return {
+      sequence,
+      recordedAt: boardTime,
+      type: "effect.reported",
+      payload: {},
+    };
+  });
 }

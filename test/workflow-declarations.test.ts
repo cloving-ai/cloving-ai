@@ -7,7 +7,15 @@ import {
   workflowDeclarations,
   workflowManifests,
 } from "../tools/self-host-workflows.ts";
-import { isWorkflowDeclaration } from "../src/workflow-declaration.ts";
+import {
+  isWorkflowDeclaration,
+  isWorkflowStages,
+} from "../src/workflow-declaration.ts";
+import {
+  reviewStages,
+  invalidStageSelectors,
+  stageSelectors,
+} from "./watch-board-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const declaration = {
@@ -233,6 +241,35 @@ await test("CLV-096 the package build copies JSON declaration sidecars only", as
 
 const stage = { name: "draft", label: "Draft", operations: ["write-draft"] };
 
+await test("CLV-234 accepts ID-only stages and preserves selectors from a sidecar", async () => {
+  for (const stages of [
+    reviewStages,
+    ...stageSelectors.map((selectors) => [{ ...stage, ...selectors }]),
+  ]) {
+    assert.ok(isWorkflowStages(stages));
+    const value = { ...declaration, stages };
+    assert.ok(isWorkflowDeclaration(value));
+    await withFiles(
+      {
+        "review-run.ts": "export {};",
+        "review-run.declaration.json": JSON.stringify(value),
+      },
+      async (directory) => {
+        assert.deepEqual(await workflowDeclarations(directory, manifests), [
+          { ...value, functionName: "review" },
+        ]);
+      },
+    );
+  }
+  assert.ok(
+    isWorkflowDeclaration({
+      ...declaration,
+      workflowId: "another",
+      stages: reviewStages,
+    }),
+  );
+});
+
 await test("CLV-128 accepts omitted stages and checked lists at both bounds", () => {
   assert.ok(isWorkflowDeclaration(declaration));
   for (const stages of [
@@ -292,27 +329,23 @@ await test("CLV-128 rejects malformed stage fields and selectors", () => {
     ].map((label) => ({ ...stage, label })),
     { name: "empty", label: "Empty" },
     { ...stage, operations: [] },
-    ...[
-      null,
-      "write-draft",
-      [1],
-      [""],
-      ["x".repeat(129)],
-      ["a b"],
-      ["é"],
-      ["a+b"],
-      ["write-draft", "write-draft"],
-    ].map((operations) => ({ ...stage, operations })),
-    ...[null, "approval", [1], ["other"], ["approval", "approval"]].map(
-      (gateKinds) => ({ ...stage, gateKinds }),
-    ),
+    {
+      name: "empty",
+      label: "Empty",
+      gateIds: [],
+      operations: [],
+      gateKinds: [],
+    },
+    ...invalidStageSelectors.map((selectors) => ({ ...stage, ...selectors })),
   ];
-  for (const item of invalid)
+  for (const item of invalid) {
+    assert.equal(isWorkflowStages([item]), false);
     assert.equal(
       isWorkflowDeclaration({ ...declaration, stages: [item] }),
       false,
       JSON.stringify(item),
     );
+  }
 });
 
 await test("CLV-128 rejects list bounds and shared names, labels and selector assignments", () => {
@@ -332,6 +365,10 @@ await test("CLV-128 rejects list bounds and shared names, labels and selector as
     [stage, { ...second, label: stage.label }],
     [stage, { ...second, operations: ["write-draft"] }],
     [second, { ...stage, gateKinds: ["approval"] }],
+    [
+      { ...stage, gateIds: ["review"] },
+      { ...second, gateIds: ["review"] },
+    ],
   ])
     assert.equal(
       isWorkflowDeclaration({ ...declaration, stages }),
@@ -341,7 +378,10 @@ await test("CLV-128 rejects list bounds and shared names, labels and selector as
   assert.ok(
     isWorkflowDeclaration({
       ...declaration,
-      stages: [{ ...stage, operations: ["approval"] }, second],
+      stages: [
+        { ...stage, operations: ["approval"], gateIds: ["approval"] },
+        second,
+      ],
     }),
   );
 });

@@ -851,9 +851,35 @@ if (
 
 The compiled SDK step uses durable retries and its original start time, so restarting the daemon preserves the deadline, includes downtime in the wait and replays the same terminal outcome. `cloving status` shows condition `waiting-run` and the awaited run ID (`awaitedRunId` in JSON); watch cards show a link labeled “Waiting for run”.
 
-Optional `stages` contains 1–12 entries in board order. Each entry has a unique `name` (1–64 ASCII letters, digits or hyphens), a unique `label` (1–40 printable characters on one line, without outer spaces), and `operations`, `gateKinds`, or both. At least one selector array must be nonempty. Operations match the `scope.operation` passed to `protectedEffect`, using 1–128 ASCII letters, digits or `._:/-`; gate kinds are `approval` and `question`. Selectors cannot repeat within an array or belong to two stages of the same selector type. Unknown fields and labels `Other`, `Done` and `Stopped` are rejected.
+Optional `stages` contains 1–12 entries in board order. Each entry has a unique `name` (1–64 ASCII letters, digits or hyphens), a unique `label` (1–40 printable characters on one line, without outer spaces), and any combination of `operations`, `gateKinds` and `gateIds`. At least one selector array must be nonempty; the others may be omitted or empty. Operations match the `scope.operation` passed to `protectedEffect`; gate IDs match the `gateId` recorded when a gate opens. Both use 1–128 ASCII letters, digits or `._:/-`. Gate kinds are `approval` and `question`. Selectors cannot repeat within an array or belong to two stages of the same selector type within one workflow. Different selector types may share text, and different workflows may reuse IDs. Unknown fields and labels `Other`, `Done` and `Stopped` are rejected.
 
-For declared stages, the board uses the latest committed `effect.requested` or `gate.opened` sequence, preserving that event's start time. Unmatched events and runs without a relevant event use Other. Decisions and worker output do not advance a card; later requests can move it back. Declared labels are followed by Other, Done and Stopped. Existing terminal retention rules take precedence. Unstaged workflows and `develop-issue` keep their existing columns and placement. Declarations load at service startup; stages provide display metadata and grant no capabilities.
+For declared stages, the board and its `data.json` response use the latest committed `effect.requested` or `gate.opened` sequence, preserving that event's start time. Effect requests select by operation. Gate openings first search every stage for an exact, case-sensitive gate ID match, regardless of declaration order; without one, they fall back to the gate kind. Unmatched events and runs without a relevant event use Other. Unused valid IDs are allowed. Decisions and worker output do not advance a card; later requests or gate openings can move it back. Declared labels are followed by Other, Done and Stopped. Existing terminal retention rules take precedence. Unstaged workflows and `develop-issue` keep their existing columns and placement. Declarations load at service startup; stages provide display metadata and grant no capabilities.
+
+For example, a `review-flow` declaration can distinguish successive approval gates without another workflow or handoff step:
+
+```json
+{
+  "stages": [
+    {
+      "name": "your-review",
+      "label": "Your review",
+      "gateIds": ["your-review"]
+    },
+    {
+      "name": "team-review",
+      "label": "Team review",
+      "gateIds": ["team-review"]
+    },
+    {
+      "name": "ready-to-merge",
+      "label": "Ready to merge",
+      "gateIds": ["merge-review"]
+    }
+  ]
+}
+```
+
+Each committed opening moves the run's single card to the matching column. Completion with outcome kind `handoff_requested` places it in Done; failure, cancellation or completed outcome `blocked` places it in Stopped. Those terminal columns retain the twenty newest cards within the inclusive past seven days. Other completed outcomes have no terminal card. Done is reserved and cannot be declared as a stage.
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 

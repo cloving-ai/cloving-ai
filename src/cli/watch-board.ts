@@ -126,6 +126,27 @@ function chronological(events: readonly unknown[]): readonly unknown[] {
   );
 }
 
+function declaredStage(
+  event: unknown,
+  stages: readonly WorkflowStage[],
+): WorkflowStage | undefined {
+  if (record(event)?.["type"] === "effect.requested") {
+    const operation = operationOf(event)[4];
+    return stages.find((stage) =>
+      stage.operations?.some((name) => name === operation),
+    );
+  }
+  const payload = record(record(event)?.["payload"]);
+  return (
+    stages.find((stage) =>
+      stage.gateIds?.some((name) => name === payload?.["gateId"]),
+    ) ??
+    stages.find((stage) =>
+      stage.gateKinds?.some((name) => name === payload?.["gateKind"]),
+    )
+  );
+}
+
 function declaredStep(
   events: readonly unknown[],
   stages: readonly WorkflowStage[],
@@ -141,14 +162,7 @@ function declaredStep(
         Number(record(second)?.["sequence"]) -
         Number(record(first)?.["sequence"]),
     )[0];
-  const payload = record(record(event)?.["payload"]);
-  const selector =
-    record(event)?.["type"] === "effect.requested" ? "operations" : "gateKinds";
-  const value =
-    selector === "operations" ? operationOf(event)[4] : payload?.["gateKind"];
-  const stage = stages.find((item) =>
-    item[selector]?.some((name) => name === value),
-  );
+  const stage = declaredStage(event, stages);
   return { name: stage?.label ?? "Other", startedAt: startedAt(event) };
 }
 
