@@ -142,6 +142,29 @@ await test("CLV-220 mergeByPerson returns not-approved with the answer and start
   );
 });
 
+await test("CLV-220 a merge retry with a new round starts a new merge operation", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      "github merge": [merged({ reason: "ci-pending", output: "" }), done],
+    },
+    decisions: [{ decision: "approved", answer: null }],
+  });
+  const first = await mergeWhenGreen({ pull, check: null });
+  const second = await mergeByPerson({ pull, check: null, round: 2 });
+  assert.equal(first.reason, "ci-pending");
+  assert.equal(second.merged, true);
+  const scopes = bridge.requests.flatMap((request) =>
+    request[0] === "effect" ? [request[1].scope] : [],
+  );
+  assert.deepEqual(
+    scopes.map((scope) => [scope.round, scope.key]),
+    [
+      [1, `42:${commit}`],
+      [2, `42:${commit}`],
+    ],
+  );
+});
+
 for (const result of [
   "{",
   null,
@@ -187,6 +210,9 @@ for (const request of [
   { pull: { ...pull, commit: "main" }, check: null },
   { pull: { ...pull, target: "" }, check: null },
   { pull, check: "afterMerge" },
+  { pull, check: null, round: 0 },
+  { pull, check: null, round: 1.5 },
+  { pull, check: null, round: "2" },
 ])
   await test(`CLV-220 merge steps refuse an invalid request ${JSON.stringify(request)}`, async () => {
     using bridge = fakeStepBridge({});

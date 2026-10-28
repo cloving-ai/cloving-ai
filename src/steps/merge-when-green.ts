@@ -19,7 +19,7 @@ const repairReasons: readonly MergeReason[] = [
 export async function mergeWhenGreen(
   request: MergeRequest,
 ): Promise<MergeResult> {
-  const { pull, check } = mergeRequest(request);
+  const { pull, check, round } = mergeRequest(request);
   const effect = await protectedEffect({
     capability: "github",
     method: "merge",
@@ -32,7 +32,7 @@ export async function mergeWhenGreen(
     scope: {
       phase: "merge",
       operation: "merge",
-      round: 1,
+      round,
       key: `${String(pull.number)}:${pull.commit}`,
     },
     units: 1,

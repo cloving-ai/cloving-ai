@@ -9,7 +9,7 @@ import { waitForDecision } from "./wait-for-decision.ts";
 export async function mergeByPerson(
   request: MergeRequest,
 ): Promise<MergeResult> {
-  const { pull, check } = mergeRequest(request);
+  const { pull, check, round } = mergeRequest(request);
   const decision = await waitForDecision({
     gateId: `merge:${String(pull.number)}:${pull.commit}`,
     kind: "approval",
@@ -21,5 +21,5 @@ export async function mergeByPerson(
       reason: "not-approved",
       output: decision.answer ?? "",
     };
-  return await mergeWhenGreen({ pull, check });
+  return await mergeWhenGreen({ pull, check, round });
 }

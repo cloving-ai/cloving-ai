@@ -13,6 +13,7 @@ export type MergeCheckName = "beforeMerge";
 export interface MergeRequest {
   readonly pull: PullRequest;
   readonly check: MergeCheckName | null;
+  readonly round?: number;
 }
 
 export type MergeReason =
@@ -29,7 +30,7 @@ export interface MergeResult {
   readonly output: string;
 }
 
-export function mergeRequest(value: unknown): MergeRequest {
+export function mergeRequest(value: unknown): Required<MergeRequest> {
   const request = record(value);
   const pull = pullRequest(request?.["pull"]);
   const check = request?.["check"];
@@ -40,7 +41,12 @@ export function mergeRequest(value: unknown): MergeRequest {
     (check !== null && check !== "beforeMerge")
   )
     throw new Error("invalid-merge-request");
-  return { pull, check };
+  return { pull, check, round: mergeRound(request["round"] ?? 1) };
+}
+
+function mergeRound(value: unknown): number {
+  if (!positiveInteger(value)) throw new Error("invalid-merge-request");
+  return value;
 }
 
 function pullRequest(value: unknown): PullRequest | undefined {
