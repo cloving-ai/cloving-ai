@@ -15,6 +15,14 @@ export interface WorkflowStage {
 
 export type WorkflowStages = Readonly<Record<string, readonly WorkflowStage[]>>;
 
+export interface CommandWaitDeclaration {
+  readonly command: string;
+  readonly maximumWaitSeconds: number;
+  readonly pollEverySeconds: number;
+}
+
+export type CommandWaits = Readonly<Record<string, CommandWaitDeclaration>>;
+
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
@@ -23,6 +31,7 @@ export interface WorkflowDeclaration {
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly commandWaits?: CommandWaits;
   readonly queue?: boolean;
 }
 
@@ -204,9 +213,53 @@ function declaredCommands(
   if (Object.hasOwn(declaration, "commands") && !isWorkflowNames(commands))
     return false;
   return (
-    !capabilities.includes("command") ||
-    (Array.isArray(commands) && commands.length > 0)
+    (!capabilities.includes("command") ||
+      (Array.isArray(commands) && commands.length > 0)) &&
+    declaredCommandWaits(declaration, capabilities)
   );
+}
+
+function isCommandWait(value: unknown): value is CommandWaitDeclaration {
+  const wait = record(value);
+  if (!keys(wait, ["command", "maximumWaitSeconds", "pollEverySeconds"]))
+    return false;
+  return (
+    typeof wait["command"] === "string" &&
+    integer(wait["maximumWaitSeconds"], { minimum: 60, maximum: 2_592_000 }) &&
+    integer(wait["pollEverySeconds"], { minimum: 60, maximum: 86_400 }) &&
+    Number(wait["pollEverySeconds"]) <= Number(wait["maximumWaitSeconds"])
+  );
+}
+
+export function isCommandWaits(
+  value: unknown,
+  permissions: {
+    readonly capabilities: readonly string[];
+    readonly commands: readonly string[];
+  },
+): value is CommandWaits {
+  const waits = record(value);
+  if (waits === undefined) return false;
+  return Object.entries(waits).every(
+    ([name, wait]) =>
+      matches(name, /^[A-Za-z0-9-]{1,64}$/) &&
+      name.trim() === name &&
+      isCommandWait(wait) &&
+      permissions.capabilities.includes("command") &&
+      permissions.commands.includes(wait.command),
+  );
+}
+
+function declaredCommandWaits(
+  declaration: Fields,
+  capabilities: readonly string[],
+): boolean {
+  if (!Object.hasOwn(declaration, "commandWaits")) return true;
+  const commands = declaration["commands"];
+  return isCommandWaits(declaration["commandWaits"], {
+    capabilities,
+    commands: isWorkflowNames(commands) ? commands : [],
+  });
 }
 
 export function isWorkflowDeclaration(
@@ -222,6 +275,7 @@ export function isWorkflowDeclaration(
       "stages",
       "handoffs",
       "commands",
+      "commandWaits",
       "queue",
     ])
   )

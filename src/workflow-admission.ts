@@ -1,4 +1,5 @@
 import { resolveResources } from "./workflow-resources.ts";
+import type { CommandWaits } from "./workflow-declaration.ts";
 
 const versionedStep = /^step\/\/(?!\.)(?:@[^/@]+\/)?[^@]+@[^/@]+\/\/.+$/;
 
@@ -38,6 +39,7 @@ export interface ExecutionManifest {
   readonly capabilities: readonly string[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
+  readonly commandWaits?: CommandWaits;
   readonly bundleDigest?: string;
   readonly artifacts: Readonly<Record<string, string>>;
   readonly resources: Readonly<Record<string, string>>;
