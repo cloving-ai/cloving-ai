@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
+The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds` and `queue.lanes`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -373,7 +373,25 @@ The built-in table uses standard short-context prices read on **2026-10-18** fro
 
 `CLOVING_TOKEN_PRICES` accepts a JSON object mapping model names to non-negative finite `input`, `cachedInput` and `output` prices per million tokens. Its entries override matching built-in entries and retain the others. Estimates use the reported model or the worker command's model argument, with `estimatedCostUsd` totals only when every ended turn has an estimate. There is no live price lookup; estimates do not change budgets or limits.
 
-Each turn selects its harness in this order: profile `harness`, `CLOVING_WORKER`, private `harness.name`, then `claude`. `CLOVING_WORKER` changes the default for one start; a profile can still override it. Supported workers are `claude`, `codex`, `cursor-agent`, `gemini`, `grok` and `opencode`; a configured harness without a worker stops startup with `harness-no-worker` and its name. Private command, path and kind settings apply only to the matching harness. Status, its JSON and watch show each turn's harness.
+Each turn selects its harness in this order: profile `harness`, `CLOVING_WORKER`, private `harness.name`, then `claude`. `CLOVING_WORKER` changes the default for one start; a profile can still override it. Native workers are `claude`, `codex`, `cursor-agent`, `gemini`, `grok` and `opencode`. Other harnesses need a private `harness.turn` command form; without one, startup stops with `harness-no-worker` and its name. Private command, path and kind settings apply only to the matching harness. Status, its JSON and watch show each turn's harness.
+
+For another harness, set its name and one-shot command in the private file:
+
+```json
+{
+  "version": 1,
+  "harness": {
+    "name": "mytool",
+    "kind": "file",
+    "turn": ["mytool", "--print", "{prompt}"],
+    "output": "text"
+  }
+}
+```
+
+`turn` must be a nonempty list of strings. Its program must be nonempty and cannot be `{prompt}`. One later argument can be exactly `{prompt}`; it receives the turn text as a literal argument. Without that argument, the text goes to standard input. `harness.command` takes precedence over `turn`; otherwise `harness.path`, when set, replaces the program in `turn`. These private values apply only to the selected private harness. The command runs in the worktree, using the login shell only for kind `shell`.
+
+`output` accepts only `text` and defaults to it. The generic worker retains the end of standard output as the report within the normal turn result limits, preserving the ticket status parsed from the full output separately. A nonzero exit fails the turn and reports the end of standard error. Cost and token counts remain null; status shows “Price not known” and “Token usage not known”. `cloving doctor` probes the program without running a turn and recommends `cloving config set harness.turn '[...]'` when its command form is missing.
 
 Cursor Agent runs `cursor-agent -p --output-format stream-json --force` in the run's work tree. Turn text below 64 KiB in UTF-8 is its final argument; larger text goes through standard input to stay below operating-system argument limits. It uses the last assistant text as the report and requires exit status 0 and a terminal result with `subtype: "success"` and `is_error: false`. File and command tools appear in watch activity. Error events and incomplete streams fail the turn. Capacity errors do not retry. GitHub token variables are removed and each turn gets an empty temporary GitHub configuration directory.
 
@@ -404,7 +422,7 @@ Set `CLOVING_PROFILES` to a file such as:
 }
 ```
 
-A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional. `harness`, `env`, `workflows` and `model` work with each harness. `model` replaces existing `-m`, `--model` or `--model=` options, or adds one model option. Only `allowedTools`, `permissionMode` and `maxBudgetUsd` require Claude; using them with another harness gives `profile-needs-claude`. Unspecified fields keep the selected worker's defaults. Flags after `--` remain unchanged.
+A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional. `harness`, `env` and `workflows` work with each harness. Native workers also accept `model`; a generic worker refuses it with `profile-model-not-supported`. `model` replaces existing `-m`, `--model` or `--model=` options, or adds one model option. Only `allowedTools`, `permissionMode` and `maxBudgetUsd` require Claude; using them with another harness gives `profile-needs-claude`. Unspecified fields keep the selected worker's defaults. Flags after `--` remain unchanged.
 
 `workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile` and disallowed workflows with `profile-not-allowed`.
 
