@@ -14,6 +14,18 @@ The package tests load a small composition of the helper through folder
 admission for both input forms. That composition is a test fixture, not the
 complete develop workflow.
 
+`develop/partial.ts` implements the person's partial-work choice. `reviewPartial`
+opens a question with an identity scoped to the run and round. It returns
+nonempty feedback from an explicit answer, or stops. It opens no question
+after the initial turn and three fix turns. The separate `develop/queue-partial.ts`
+helper, `queuePartial`, forwards the issue,
+merged pull request and remaining items to the protected `partial-issue`
+operation, preserving its result. The GitHub worker owns partial-run history
+and requeues the first two runs, then blocks the ticket from the third.
+Folder-admission tests cover both helpers in the checkout and packed install;
+the complete workflow must still compose them with review and merge.
+The person-only composition needs no GitHub capability.
+
 The first option of each point is the default: ticket input, queue selection,
 Greptile at 5/5, merge after checks, and return partial work to the queue.
 Selecting `person` at selection, acceptance and partial work, with `local` at

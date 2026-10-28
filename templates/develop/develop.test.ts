@@ -2,6 +2,174 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { developTurn } from "./develop/turn.ts";
+import { reviewPartial } from "./develop/partial.ts";
+import { queuePartial } from "./develop/queue-partial.ts";
+
+await test("CLV-221 invalid partial rounds never dispatch an effect or open a question", async () => {
+  using bridge = fakeStepBridge({});
+  for (const round of [0, -1, 1.5, 5, NaN, Infinity]) {
+    const input = {
+      cycleId: "run-1",
+      round,
+      issue: { owner: "acme", repository: "demo", number: 42 },
+      pullRequest: 7,
+      remaining: ["Test."],
+    };
+    await assert.rejects(queuePartial(input), {
+      message: "invalid-development-round",
+    });
+    await assert.rejects(reviewPartial(input), {
+      message: "invalid-development-round",
+    });
+  }
+  assert.deepEqual(bridge.requests, []);
+});
+
+await test("CLV-221 partial questions use distinct rounds and stop after three fixes", async () => {
+  using bridge = fakeStepBridge({
+    decisions: [
+      { decision: "answered", answer: "First fix." },
+      { decision: "answered", answer: "Second fix." },
+      { decision: "answered", answer: "Third fix." },
+    ],
+  });
+  for (const round of [1, 2, 3]) {
+    assert.equal(
+      typeof (await reviewPartial({
+        cycleId: "run-1",
+        round,
+        remaining: ["Test."],
+      })),
+      "string",
+    );
+  }
+  assert.equal(
+    await reviewPartial({
+      cycleId: "run-1",
+      round: 4,
+      remaining: ["Test."],
+    }),
+    null,
+  );
+  assert.deepEqual(
+    bridge.requests.map((request) => {
+      assert.equal(request[0], "waitForDecision");
+      return request[1].gateId;
+    }),
+    ["partial:run-1:1", "partial:run-1:2", "partial:run-1:3"],
+  );
+});
+
+await test("CLV-221 partial work stops without an explicit nonempty answer", async () => {
+  for (const decision of [
+    { decision: "answered" as const, answer: " \n" },
+    { decision: "answered" as const, answer: null },
+    { decision: "denied" as const, answer: "Do not continue." },
+    { decision: "expired" as const, answer: "Stale feedback." },
+    { decision: "approved" as const, answer: "Unexpected approval." },
+  ]) {
+    using bridge = fakeStepBridge({ decisions: [decision] });
+    assert.equal(
+      await reviewPartial({ cycleId: "run-1", round: 2, remaining: ["Test."] }),
+      null,
+    );
+    assert.equal(bridge.requests.length, 1);
+    assert.equal(bridge.requests[0]?.[0], "waitForDecision");
+  }
+});
+
+await test("CLV-221 a person chooses the next fix for partial work", async () => {
+  using bridge = fakeStepBridge({
+    decisions: [{ decision: "answered", answer: "  Add recovery first.\n" }],
+  });
+  const feedback = await reviewPartial({
+    cycleId: "run-1",
+    round: 1,
+    remaining: ["Add recovery.", "Verify restart."],
+  });
+  assert.equal(feedback, "  Add recovery first.\n");
+  assert.equal(bridge.requests.length, 1);
+  const request = bridge.requests[0];
+  assert.ok(request && request[0] === "waitForDecision");
+  assert.equal(request[1].gateId, "partial:run-1:1");
+  assert.equal(request[1].kind, "question");
+  assert.match(request[1].prompt, /- Add recovery\.\n- Verify restart\./);
+  assert.match(request[1].prompt, /empty answer to stop/);
+});
+
+await test("CLV-221 queued partial work records the merged pull request and remaining items", async () => {
+  const completed = {
+    kind: "completed" as const,
+    operationId: "partial-update",
+    receipt: null,
+    result: JSON.stringify({ number: 42, ticketStatus: "partial" }),
+  };
+  using bridge = fakeStepBridge({
+    effects: { "github partial-issue": [completed] },
+  });
+  const result = await queuePartial({
+    cycleId: "run-1",
+    round: 2,
+    issue: { owner: "acme", repository: "demo", number: 42 },
+    pullRequest: 7,
+    remaining: ["Add recovery.", "Verify restart."],
+  });
+  assert.deepEqual(result, completed);
+  assert.deepEqual(bridge.requests, [
+    [
+      "effect",
+      {
+        scope: {
+          phase: "pull-request",
+          operation: "github-partial-issue",
+          round: 2,
+        },
+        capability: "github",
+        method: "partial-issue",
+        target: "run-1",
+        units: 1,
+        payload: JSON.stringify({
+          owner: "acme",
+          repository: "demo",
+          number: 42,
+          pullRequest: 7,
+          remaining: ["Add recovery.", "Verify restart."],
+        }),
+      },
+    ],
+  ]);
+});
+
+await test("CLV-221 queued partial work preserves broker failures and budget refusals", async () => {
+  const input = {
+    cycleId: "run-1",
+    round: 4,
+    issue: { owner: "acme", repository: "demo", number: 42 },
+    pullRequest: 7,
+    remaining: ["Add recovery."],
+  };
+  for (const kind of [
+    "failed",
+    "stopped",
+    "blocked",
+    "cancelled",
+    "refused",
+    "unavailable",
+  ] as const) {
+    const failure = { kind, operationId: "update", reason: "update-failed" };
+    using bridge = fakeStepBridge({
+      effects: { "github partial-issue": [failure] },
+    });
+    assert.deepEqual(await queuePartial(input), failure);
+    assert.equal(bridge.requests.length, 1);
+  }
+  using bridge = fakeStepBridge({ effectLimit: 0 });
+  assert.deepEqual(await queuePartial(input), {
+    kind: "refused",
+    reason: "budget-exhausted",
+  });
+  assert.equal(bridge.spent, 0);
+});
 
 await test("CLV-221 the template develops a ticket through the public step bridge", async () => {
   const completed = {

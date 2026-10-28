@@ -5,6 +5,13 @@ import { doctorCodes } from "../src/doctor-report.ts";
 import { record } from "../src/protocol.ts";
 import { packedDevelopTurn } from "./packed-develop-template-turn.ts";
 
+export const packedTemplateSources = [
+  "templates/develop/develop.test.ts",
+  "templates/develop/develop/partial.ts",
+  "templates/develop/develop/queue-partial.ts",
+  "templates/develop/develop/turn.ts",
+];
+
 export interface TemplateOption {
   readonly id: string;
   readonly label: string;
