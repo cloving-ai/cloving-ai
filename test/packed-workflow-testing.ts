@@ -27,6 +27,8 @@ import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { reviewByPerson } from "cloving/workflows/steps/review-by-person";
+import { sleep } from "cloving/workflows";
+import { sleep as pause } from "cloving/workflows/steps/sleep";
 import { personal } from "./personal.ts";
 await test("global user scenario", async () => {
   using bridge = fakeStepBridge({ decisions: [{ decision: "approved", answer: null }, { decision: "denied", answer: "Revise the draft." }], turn: { kind: "completed", operationId: "user", receipt: null, result: "user-result" } });
@@ -38,6 +40,9 @@ await test("global user scenario", async () => {
   assert.deepEqual({ ...review, subjectDigest: "digest" }, { accepted: false, feedback: "Revise the draft.", commit: null, subjectDigest: "digest" });
   assert.match(review.subjectDigest, /^sha256:[0-9a-f]{64}$/);
   assert.equal(bridge.requests[2][0], "waitForDecision");
+  await sleep({ seconds: 86400 });
+  await pause({ seconds: 1 });
+  assert.deepEqual(bridge.requests.slice(3), [["sleep", { seconds: 86400 }], ["sleep", { seconds: 1 }]]);
 });`,
 };
 

@@ -710,6 +710,81 @@ export async function review(input: { cycleId: string }) {
 
 `waitForDecision` accepts the same request as `decisionGate` and returns `{ decision, answer }`. The decision is `approved`, `denied`, `answered` or `expired`. An optional `expiresAt` resumes the wait with `expired` and `answer: null`. The SDK hook survives daemon restarts and replay. Gate IDs belong to a run, so different runs can use the same gate ID. The existing questions, decision commands and binding values apply; dropping the run cancels the wait. `waitForDecision` is also exported by `cloving/workflows`.
 
+Use `sleep({ seconds })` inside a workflow to pause between short outside-state checks. Whole seconds from 1 through 86400 are accepted; other requests reject with `invalid-sleep-seconds` before any wait. Import it from `cloving/workflows` or `cloving/workflows/steps/sleep`. It uses the SDK workflow timer and consumes no protected effect units or slots.
+
+For example, configure an operator-supplied `approval-status` command to make one read, print `{"ready":false}` or `{"ready":true}`, and exit. Cloving does not ship this command. Set `CLOVING_COMMAND_SECONDS=10` to bound each command; this setting applies to all configured commands. The following candidate declaration permits at most 30 command units:
+
+```json
+{
+  "workflow": {
+    "workflowId": "approval",
+    "effectLimit": 30,
+    "capabilities": [
+      "command"
+    ],
+    "commands": [
+      "approval-status"
+    ],
+    "input": {
+      "maximumBytes": 1024,
+      "fields": {
+        "request": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "methods": {
+    "command": [
+      "run:approval-status"
+    ]
+  }
+}
+```
+
+The workflow checks immediately, then sleeps 60 seconds only between pending checks, with at most 30 checks and 29 sleeps:
+
+```ts
+import { runCommand, sleep } from "cloving/workflows";
+
+export async function approval(input: {
+  cycleId: string;
+  input: { request: string };
+}) {
+  "use workflow";
+  for (let round = 1; round <= 30; round += 1) {
+    const result = await runCommand({
+      scope: { phase: "approval", operation: "check", round },
+      name: "approval-status",
+      input: { request: input.input.request },
+    });
+    if (result.kind !== "completed")
+      return blocked(input.cycleId, result.reason ?? result.kind);
+    let response: unknown = null;
+    try {
+      if (result.result !== null) response = JSON.parse(result.result);
+    } catch {
+      response = null;
+    }
+    if (response === null || typeof response !== "object" || Array.isArray(response)
+      || !("ready" in response) || typeof response.ready !== "boolean")
+      return blocked(input.cycleId, "external-condition-invalid-result");
+    if (response.ready)
+      return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "external-condition-ready" };
+    if (round < 30) await sleep({ seconds: 60 });
+  }
+  return blocked(input.cycleId, "external-condition-timeout");
+}
+
+function blocked(cycleId: string, reason: string) {
+  return { kind: "blocked", cycleId, reason, evidenceId: "approval-status" };
+}
+```
+
+Each completed command releases its effect slot before sleeping. Only boolean `false` means pending; every non-completed command stops with its reason or kind, and missing, malformed or wrongly shaped output stops with `external-condition-invalid-result`. Thirty pending checks return `external-condition-timeout`. The bound limits attempts; command durations and capacity waits add elapsed time. An overdue SDK timer resumes the next check without scheduling catch-up checks.
+
+A recorded SDK timer retains its wake time through replay. Combined command recovery, four-waiter capacity release, cancellation and installed polling restart qualification remain acceptance prerequisites. The source analyzer estimates one command call for this early-exit loop; the runtime enforces the full budget. Observed approval is data: subsequent effects still need their own authorization and enough budget. Adding a sleep cannot shorten a command that already polls internally.
+
 Use `reviewByPerson` to request approval of an immutable commit or draft:
 
 ```ts
@@ -755,7 +830,7 @@ await test("develop uses the fake worker result", async () => {
 });
 ```
 
-Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `gate` supplies a decision-gate result, `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order, and `decision` supplies the workflow's second argument. A missing `waitForDecision` result throws `no-scenario-result`. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect or gate results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
+Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `gate` supplies a decision-gate result, `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order, and `decision` supplies the workflow's second argument. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect or gate results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
 
 The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
 

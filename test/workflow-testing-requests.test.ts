@@ -59,6 +59,8 @@ function requestDetails([kind, request]: ScenarioRequest) {
       return request.input;
     case "waitForRun":
       return request.maximumWaitSeconds;
+    case "sleep":
+      return request.seconds;
   }
 }
 

@@ -9,6 +9,10 @@ import {
   combinedCandidateSource,
   validCandidateSource,
 } from "./workflow-candidate-fixtures.ts";
+import {
+  pollingDeclaration,
+  pollingWorkflow,
+} from "./command-polling-fixture.ts";
 
 export async function packedCandidateAdmission(root: string): Promise<void> {
   await writeFile(
@@ -16,6 +20,14 @@ export async function packedCandidateAdmission(root: string): Promise<void> {
     `
 import assert from "node:assert/strict";
 import { admitWorkflowCandidate } from "./node_modules/cloving/dist/tools/admit-workflow.js";
+import { sleep } from "cloving/workflows";
+import { sleep as pause } from "cloving/workflows/steps/sleep";
+assert.equal(sleep, pause);
+const pollingSource = ${JSON.stringify(pollingWorkflow)};
+for (const source of [pollingSource, pollingSource.replace('import { runCommand, sleep } from "cloving/workflows";', 'import { runCommand } from "cloving/workflows/steps/run-command";\\nimport { sleep } from "cloving/workflows/steps/sleep";')]) {
+  const polling = await admitWorkflowCandidate({ source, declaration: ${JSON.stringify(pollingDeclaration)} });
+  assert.equal(polling.kind, "admitted", JSON.stringify(polling));
+}
 const declaration = ${JSON.stringify(candidateDeclaration)};
 const admitted = await admitWorkflowCandidate({ source: ${JSON.stringify(validCandidateSource)}, declaration });
 assert.equal(admitted.kind, "admitted");

@@ -195,18 +195,23 @@ await test("CLV-163 required passing checks of any app allow merging and optiona
 });
 
 await test("CLV-163 a newer queued run overrides an older success and cancellation stops the wait", async () => {
+  const controller = new AbortController();
+  let checks = 0;
   await assert.rejects(
     ciScenario({
       snapshots: [
-        [
-          checkRun(),
-          checkRun({ id: 102, status: "in_progress", conclusion: null }),
-        ],
+        [checkRun(), checkRun({ id: 102, status: "queued", conclusion: null })],
       ],
-      signal: AbortSignal.timeout(20),
+      timing: { ciLimitMilliseconds: 1000 },
+      signal: controller.signal,
+      onCheck: () => {
+        checks += 1;
+        controller.abort();
+      },
     }),
     { name: "AbortError" },
   );
+  assert.equal(checks, 1);
 });
 
 await test("CLV-163 every completed conclusion outside the passing set fails", async () => {

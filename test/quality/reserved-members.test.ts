@@ -337,6 +337,7 @@ await test("CLV-054 the protected check of the product tree has the reserved mem
       "/candidate/src/host/step-bridge-host.ts",
       "/candidate/src/host/run-wait.ts",
       "/candidate/src/steps/wait-for-decision.ts",
+      "/candidate/src/steps/sleep.ts",
     ],
     [`${actorDirectory}authority-delivery.ts`]: [
       `${actorDirectory}authority-runtime.ts`,
