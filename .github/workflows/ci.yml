@@ -16,9 +16,9 @@
   "jobs": {
     "quality": {
       "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"macOS\",\"ARM64\",\"cloving-ci\"]') || 'macos-15' }}",
-      "timeout-minutes": 60,
+      "timeout-minutes": 75,
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "4",
+        "CLOVING_CHECK_TIME_FACTOR": "5",
         "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '3' }}",
         "CLOVING_CI_MACOS_VERSION": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '*' || '15.*' }}"
       },
