@@ -39,6 +39,7 @@ export interface Resolver {
 }
 
 export interface WorkflowRegistration {
+  readonly queue?: boolean;
   readonly workflowId: string;
   readonly manifest: ExecutionManifest;
   readonly availability: "available" | "unavailable";

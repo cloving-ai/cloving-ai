@@ -201,7 +201,7 @@ if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
 }
-process.stdout.write(${JSON.stringify(guide())});
+process.stdout.write(${JSON.stringify(guide(workflows))});
 const stop = async () => { await opening.daemon.close(); process.exit(0); };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);
@@ -209,7 +209,7 @@ process.once("SIGTERM", stop);
   );
 }
 
-function guide(): string {
+function guide(workflows: RegisteredWorkflows): string {
   return [
     "Cloving runs. Stop it with Control-C.",
     `Repository: ${repository}`,
@@ -218,6 +218,10 @@ function guide(): string {
     ...(selectedRuntime.note === "" ? [] : [selectedRuntime.note]),
     ...Object.entries(configuration.sources).map(
       ([field, source]) => `${field}: ${source}`,
+    ),
+    ...workflows.workflowRefusals.map(
+      (refusal) =>
+        `Refused workflow ${refusal.scope} ${refusal.label}: ${refusal.codes.join(", ")}`,
     ),
     "Commands for a second terminal:",
     `  ${client} run develop-ticket --ticket <ticket-id>`,

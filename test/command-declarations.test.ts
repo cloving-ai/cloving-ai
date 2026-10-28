@@ -28,6 +28,22 @@ const reviewWait = {
   pollEverySeconds: 3_600,
 };
 
+await test("CLV-235 queued workflows retain wait validation and queue input requirements", () => {
+  const queued = {
+    ...declaration,
+    queue: true,
+    input: { maximumBytes: 64, fields: { ticket: { type: "ticket" } } },
+    commandWaits: { "team-review": reviewWait },
+  };
+  assert.equal(isWorkflowDeclaration(queued), true);
+  for (const extra of [
+    { queue: "true" },
+    { input: declaration.input },
+    { commandWaits: { review: { ...reviewWait, pollEverySeconds: 59 } } },
+  ])
+    assert.equal(isWorkflowDeclaration({ ...queued, ...extra }), false);
+});
+
 await test("CLV-235 accepts bounded named command waits and absent declarations", () => {
   assert.equal(isWorkflowDeclaration(declaration), true);
   for (const commandWaits of [
@@ -162,6 +178,8 @@ await test("CLV-235 operator registration retains commands and waits in the admi
           capabilities: ["command"],
           functionName: "review",
           commandWaits: { "team-review": reviewWait },
+          queue: true,
+          input: { maximumBytes: 64, fields: { ticket: { type: "ticket" } } },
         },
       ],
     ).slice(4);
@@ -177,6 +195,8 @@ await test("CLV-235 operator registration retains commands and waits in the admi
     assert.ok(registration);
     assert.deepEqual(registration.manifest.commands, declaration.commands);
     assert.deepEqual(registration.manifest.capabilities, ["command"]);
+    assert.equal(registration.queue, true);
+    assert.equal(registration.manifest.queue, true);
     assert.deepEqual(registration.commandWaits, { "team-review": reviewWait });
     assert.deepEqual(registration.manifest.commandWaits, {
       "team-review": reviewWait,

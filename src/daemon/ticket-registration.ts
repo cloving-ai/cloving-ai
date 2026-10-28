@@ -2,9 +2,8 @@ import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
 import {
   isCommandWaits,
-  type CommandWaits,
+  workflowQueueRefusals,
   type DeclaredWorkflow,
-  type WorkflowStage,
 } from "../workflow-declaration.ts";
 import type {
   Resolution,
@@ -54,17 +53,13 @@ export interface TicketSource {
   readonly skipTickets?: readonly string[];
 }
 
-export interface TicketRegistration {
-  readonly workflowId: string;
+export interface TicketRegistration extends Omit<
+  WorkflowRegistration,
+  "manifest" | "availability" | "admission"
+> {
   readonly functionName: string;
-  readonly resolver: Resolver;
-  readonly submission: WorkflowRegistration["submission"];
   readonly effectLimit: number;
   readonly capabilities?: readonly string[];
-  readonly stages?: readonly WorkflowStage[];
-  readonly handoffs?: readonly string[];
-  readonly commands?: readonly string[];
-  readonly commandWaits?: CommandWaits;
 }
 
 async function ticket(
@@ -257,25 +252,10 @@ export function ticketRegistrationTable(
       submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
       resolver: promptResolver(source.repository),
     },
-    ...declarations.map((declaration) => ({
-      workflowId: declaration.workflowId,
-      functionName: declaration.functionName,
-      effectLimit: declaration.effectLimit,
-      capabilities: declaration.capabilities,
-      ...(declaration.commands === undefined
-        ? {}
-        : { commands: declaration.commands }),
-      ...(declaration.commandWaits === undefined
-        ? {}
-        : { commandWaits: declaration.commandWaits }),
-      submission: declaration.input,
-      ...(declaration.stages === undefined
-        ? {}
-        : { stages: declaration.stages }),
-      ...(declaration.handoffs === undefined
-        ? {}
-        : { handoffs: declaration.handoffs }),
-      resolver: declaredResolver(source, declaration.input),
+    ...declarations.map(({ input, ...declaration }) => ({
+      ...declaration,
+      submission: input,
+      resolver: declaredResolver(source, input),
     })),
   ];
 }
@@ -288,6 +268,9 @@ function declaredResolver(
   return {
     id: "declared-input",
     version: "1",
+    ...(tickets?.skippedTickets === undefined
+      ? {}
+      : { skippedTickets: tickets.skippedTickets }),
     resolve: async (request) => {
       const resolution =
         tickets !== undefined && Object.hasOwn(request.submission, "ticket")
@@ -363,6 +346,8 @@ function registrationRefusal(
   table: readonly TicketRegistration[],
   commands: LocalCommands,
 ): string | undefined {
+  const queueRefusal = queueRegistrationRefusal(table);
+  if (queueRefusal !== undefined) return queueRefusal;
   const ids = new Set<string>();
   for (const row of table) {
     if (ids.has(row.workflowId))
@@ -397,4 +382,17 @@ function commandRegistrationRefusal(
   return unknown === undefined
     ? undefined
     : `command-unknown: ${row.workflowId} -> ${unknown}`;
+}
+
+function queueRegistrationRefusal(
+  table: readonly TicketRegistration[],
+): string | undefined {
+  const queued = table.filter((row) => row.queue === true);
+  if (queued.length > 1)
+    return `queue-workflow-conflict: ${queued.map((row) => row.workflowId).join(", ")}`;
+  for (const row of queued) {
+    const codes = workflowQueueRefusals({ queue: true, input: row.submission });
+    if (codes.length > 0) return `${codes.join(", ")}: ${row.workflowId}`;
+  }
+  return undefined;
 }

@@ -29,6 +29,18 @@ const waitManifest = {
   commandWaits: { "team-review": wait },
 };
 
+await test("CLV-235 queued wait manifests retain both permissions and pin queue changes", () => {
+  const queued = { ...waitManifest, queue: true };
+  assert.deepEqual(readExecutionManifest(queued), queued);
+  assert.deepEqual(declaredManifest(waitManifest, queued), queued);
+  assert.notEqual(workflowPin(queued), workflowPin(waitManifest));
+  assert.deepEqual(resumePinned(queued, waitManifest), {
+    kind: "rejected",
+    reason: "pinned-manifest-mismatch",
+    detail: "queue",
+  });
+});
+
 await test("CLV-235 command wait permissions survive manifest storage and declaration overlay", () => {
   assert.deepEqual(
     readExecutionManifest(JSON.parse(JSON.stringify(waitManifest))),

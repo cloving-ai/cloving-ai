@@ -32,11 +32,11 @@ async function written(file: string): Promise<string> {
 }
 
 function guarded(marker: string, exitCode: number): string {
-  return `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); process.on("SIGTERM", () => process.exit(${String(exitCode)})); setInterval(() => {}, 1000);`;
+  return `process.on("SIGTERM", () => process.exit(${String(exitCode)})); require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000);`;
 }
 
 function stubborn(marker: string): string {
-  return `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);`;
+  return `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000);`;
 }
 
 function withChild(daemon: string, child: string): string {

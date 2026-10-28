@@ -64,6 +64,7 @@ export function doctorExitCode(checks: readonly DoctorCheck[]): number {
 }
 
 export interface DoctorWorkflow {
+  readonly queue?: boolean;
   readonly scope: "bundled" | "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
@@ -90,7 +91,10 @@ export function requiredDoctorCodes(
     .map((workflow) => workflow.workflowId);
   const issue = bundled.includes("develop-issue");
   if (issue) codes.add("check-command");
-  if (issue && options.queueSeconds !== undefined) {
+  if (
+    workflows.some((workflow) => workflow.queue === true) ||
+    (issue && options.queueSeconds !== undefined)
+  ) {
     codes.add("next-command");
     codes.add("queue-interval");
   }

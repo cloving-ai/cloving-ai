@@ -7,8 +7,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 export async function finish(input) {
   "use step";
-  writeFileSync(input.repository + "/input-" + input.ticketId, JSON.stringify(input));
-  const file = input.repository + "/outcome-" + input.ticketId;
+  const ticketId = input.input?.ticket?.id ?? input.ticketId;
+  writeFileSync(input.repository + "/input-" + ticketId, JSON.stringify(input));
+  const file = input.repository + "/outcome-" + ticketId;
   while (!existsSync(file)) await delay(20);
   const outcome = readFileSync(file, "utf8");
   return outcome.startsWith("{") ? JSON.parse(outcome) : { kind: outcome, reason: "fixture result" };

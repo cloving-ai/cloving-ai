@@ -11,6 +11,7 @@ import {
 const canonical: Readonly<
   Record<keyof ExecutionManifest, (manifest: ExecutionManifest) => string>
 > = {
+  queue: (manifest) => JSON.stringify(manifest.queue === true),
   name: (manifest) => JSON.stringify(manifest.name),
   workflowId: (manifest) => JSON.stringify(manifest.workflowId),
   steps: (manifest) => JSON.stringify([...manifest.steps].sort()),
@@ -79,6 +80,7 @@ export function pinnedIdentity(manifest: ExecutionManifest): string {
     );
   if (manifest.bundleDigest !== undefined)
     identity.push(canonical.bundleDigest(manifest));
+  if (manifest.queue === true) identity.push(JSON.stringify(["queue", true]));
   return JSON.stringify(identity);
 }
 
@@ -87,7 +89,14 @@ export function resumePinned(
   available: ExecutionManifest,
 ): AdmissionResult {
   const changed = (
-    [...fields, "handoffs", "commands", "commandWaits", "bundleDigest"] as const
+    [
+      ...fields,
+      "handoffs",
+      "commands",
+      "commandWaits",
+      "bundleDigest",
+      "queue",
+    ] as const
   ).find((field) => canonical[field](pinned) !== canonical[field](available));
   if (changed !== undefined)
     return {
@@ -112,6 +121,7 @@ export function readExecutionManifest(value: unknown): ExecutionManifest {
     workflowId: text(fields["workflowId"]),
     steps: texts(fields["steps"]),
     capabilities: texts(fields["capabilities"]),
+    ...queueMetadata(fields),
     ...(isWorkflowNames(handoffs) ? { handoffs: [...handoffs] } : {}),
     ...(isWorkflowNames(commands) ? { commands: [...commands] } : {}),
     ...readCommandWaits(fields),
@@ -156,10 +166,12 @@ export function declaredManifest(
     readonly commands?: readonly string[];
     readonly commandWaits?: CommandWaits;
     readonly bundleDigest?: string | undefined;
+    readonly queue?: boolean;
   },
 ): ExecutionManifest {
   return readExecutionManifest({
     ...manifest,
+    ...(declaration.queue === undefined ? {} : { queue: declaration.queue }),
     ...(declaration.commands === undefined
       ? {}
       : { commands: declaration.commands }),
@@ -192,4 +204,12 @@ function textRecord(value: unknown): Readonly<Record<string, string>> {
   return Object.fromEntries(
     Object.entries(record(value)).map(([key, item]) => [key, text(item)]),
   );
+}
+
+function queueMetadata(
+  fields: Readonly<Record<string, unknown>>,
+): Pick<ExecutionManifest, "queue"> {
+  if (Object.hasOwn(fields, "queue") && typeof fields["queue"] !== "boolean")
+    throw new Error("invalid-queue");
+  return fields["queue"] === true ? { queue: true } : {};
 }
