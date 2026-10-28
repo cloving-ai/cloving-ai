@@ -19,6 +19,7 @@ import {
   startCommand,
   type RunningCommand,
   type CommandEnd,
+  type CommandClock,
 } from "./command-process.ts";
 import {
   claimCommand,
@@ -31,6 +32,7 @@ export interface CommandWorkerSettings {
   readonly journal: string;
   readonly commands: LocalCommands;
   readonly seconds?: number;
+  readonly commandClock?: CommandClock;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
 }
@@ -115,15 +117,21 @@ function ending(end: CommandEnd, stopping: Active["stopping"]): Recorded {
 function begun(parts: Parts, start: Started): void {
   const { settings } = parts;
   const { intent, key, folder, payload, command } = start;
-  const running = startCommand({
-    command,
-    directory: settings.repository,
-    folder,
-    payload,
-    runId: intent.runId,
-    operationId: intent.operationId,
-    seconds: settings.seconds ?? 60,
-  });
+  const running = startCommand(
+    {
+      command,
+      directory: settings.repository,
+      folder,
+      payload,
+      runId: intent.runId,
+      operationId: intent.operationId,
+      seconds: settings.seconds ?? 60,
+      ...(intent.commandDeadline === undefined
+        ? {}
+        : { deadline: intent.commandDeadline }),
+    },
+    settings.commandClock,
+  );
   const stopping = { requested: false };
   const concluded = running.ended
     .then(async (end) => {
@@ -143,6 +151,18 @@ function begun(parts: Parts, start: Started): void {
     .catch(() => undefined)
     .finally(() => parts.active.delete(key));
   parts.active.set(key, { command: running, concluded, stopping });
+}
+
+function startRecord(intent: ProtectedIntent) {
+  return {
+    runId: intent.runId,
+    operationId: intent.operationId,
+    name: intent.method.slice(4),
+    startedAt: new Date().toISOString(),
+    ...(intent.commandDeadline === undefined
+      ? {}
+      : { deadline: intent.commandDeadline }),
+  };
 }
 
 async function delivered(
@@ -172,12 +192,7 @@ async function delivered(
     return reconciled(parts, { intent, origin: "dispatch" });
   await writeRecord(place.folder, {
     name: "started.json",
-    value: {
-      runId: intent.runId,
-      operationId: intent.operationId,
-      name,
-      startedAt: new Date().toISOString(),
-    },
+    value: startRecord(intent),
   });
   if (aborted()) return reconciled(parts, { intent, origin: "dispatch" });
   begun(parts, { ...place, intent, payload, command });

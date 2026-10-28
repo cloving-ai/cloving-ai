@@ -15,6 +15,7 @@
     "test/develop-template-turn-fixture.ts": "test",
     "test/develop-template-turn.test.ts": "test",
     "test/packed-develop-template-turn.ts": "test",
+    "test/command-deadline.test.ts": "test",
     "test/develop-template-fixture.ts": "test",
     "test/develop-template.test.ts": "test",
     "src/steps/sleep.ts": "workflow",
