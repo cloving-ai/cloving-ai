@@ -4,6 +4,16 @@
 The executable workflow is pending the review and merge step implementations.
 This directory cannot yet be admitted as a workflow folder.
 
+`develop/turn.ts` implements the development turn for either a resolved
+`ticket` or a task `prompt`. It calls the public protected effect helper and
+returns the broker result unchanged. Its `feedback` takes the previous
+result's `reason`, full `output`, and `remaining` items. Rounds 1 through 4
+allow the initial turn and three fix turns; the workflow must stop after that.
+`develop.test.ts` exercises this helper with `cloving/workflows/testing`.
+The package tests load a small composition of the helper through folder
+admission for both input forms. That composition is a test fixture, not the
+complete develop workflow.
+
 The first option of each point is the default: ticket input, queue selection,
 Greptile at 5/5, merge after checks, and return partial work to the queue.
 Selecting `person` at selection, acceptance and partial work, with `local` at

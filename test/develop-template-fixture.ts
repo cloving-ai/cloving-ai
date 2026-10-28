@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { doctorCodes } from "../src/doctor-report.ts";
 import { record } from "../src/protocol.ts";
+import { packedDevelopTurn } from "./packed-develop-template-turn.ts";
 
 export interface TemplateOption {
   readonly id: string;
@@ -155,6 +156,7 @@ export async function packedDevelopTemplate(
     await readFile(join(packageRoot, "templates/develop/README.md"), "utf8"),
     /executable workflow is pending/,
   );
+  await packedDevelopTurn(packageRoot);
 }
 
 export function configurationErrors(

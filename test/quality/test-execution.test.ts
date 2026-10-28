@@ -319,9 +319,13 @@ await test("CLV-099 scales the test command bound by the check time factor", () 
         timeFactor,
       });
       assert.equal(command.timeoutMilliseconds, timeout);
-      assert.equal(
-        command.arguments[2],
-        `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
+      assert.deepEqual(
+        command.arguments.filter((argument) =>
+          argument.startsWith("--test-concurrency="),
+        ),
+        [
+          `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
+        ],
       );
     }
   } finally {
