@@ -1,8 +1,22 @@
 # Develop template decisions
 
 `template.json` describes the five decisions used by the develop template.
-The executable workflow is pending the review and merge step implementations.
-This directory cannot yet be admitted as a workflow folder.
+The default workflow in `develop.ts` accepts the declared ticket input, selects
+from the queue, opens a pull request, waits for Greptile at 5/5, and calls
+`mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
+pass folder admission, including compilation with the Workflow SDK in a packed
+installation. Copy this directory's contents into a workflow folder.
+
+The host supplies `{ cycleId, repository, input: { ticket: { id, text } } }`.
+`develop/report.ts` extracts the resolved text and preserves the worker's ticket
+status. `develop/round.ts` composes development, review and merge. A failed
+review or repairable merge result gives its full output and remaining work to
+the next worker turn. Review, local-check, conflict and CI fixes share a limit
+of three fix rounds. Pending CI and an unconfigured check stop the run.
+
+`develop.test.ts` and `develop/flow-tests.ts` test the default composition through the public fake
+step bridge. The other complete option configurations still need executable
+composition and admission tests before the template is fully qualified.
 
 `develop/turn.ts` implements the development turn for either a resolved
 `ticket` or a task `prompt`. It calls the public protected effect helper and
@@ -10,9 +24,8 @@ returns the broker result unchanged. Its `feedback` takes the previous
 result's `reason`, full `output`, and `remaining` items. Rounds 1 through 4
 allow the initial turn and three fix turns; the workflow must stop after that.
 `develop.test.ts` exercises this helper with `cloving/workflows/testing`.
-The package tests load a small composition of the helper through folder
-admission for both input forms. That composition is a test fixture, not the
-complete develop workflow.
+The package tests also load small compositions of this helper through folder
+admission for both input forms.
 
 `develop/partial.ts` implements the person's partial-work choice. `reviewPartial`
 opens a question with an identity scoped to the run and round. It returns
@@ -22,8 +35,9 @@ helper, `queuePartial`, forwards the issue,
 merged pull request and remaining items to the protected `partial-issue`
 operation, preserving its result. The GitHub worker owns partial-run history
 and requeues the first two runs, then blocks the ticket from the third.
-Folder-admission tests cover both helpers in the checkout and packed install;
-the complete workflow must still compose them with review and merge.
+Folder-admission tests cover both helpers in the checkout and packed install.
+The default workflow calls `queuePartial` after merging partial work, closes
+complete issues, and reports a failed issue update in its outcome.
 The person-only composition needs no GitHub capability.
 
 The first option of each point is the default: ticket input, queue selection,

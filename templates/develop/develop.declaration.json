@@ -1,0 +1,24 @@
+{
+  "workflow": {
+    "workflowId": "develop",
+    "effectLimit": 27,
+    "capabilities": ["claude", "github"],
+    "queue": true,
+    "input": {
+      "maximumBytes": 65536,
+      "fields": { "ticket": { "type": "ticket" } }
+    }
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "github": [
+      "prepare",
+      "label",
+      "open-pr",
+      "wait-review",
+      "merge",
+      "close-issue",
+      "partial-issue"
+    ]
+  }
+}

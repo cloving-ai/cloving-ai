@@ -1,9 +1,14 @@
+import { flowTests } from "./develop/flow-tests.ts";
+import { refusalTests } from "./develop/refusal-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { developTurn } from "./develop/turn.ts";
 import { reviewPartial } from "./develop/partial.ts";
 import { queuePartial } from "./develop/queue-partial.ts";
+
+for (const scenario of flowTests.concat(refusalTests))
+  await test(scenario.name, scenario.run);
 
 await test("CLV-221 invalid partial rounds never dispatch an effect or open a question", async () => {
   using bridge = fakeStepBridge({});

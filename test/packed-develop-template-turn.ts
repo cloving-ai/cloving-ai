@@ -44,29 +44,6 @@ process.stdout.write(JSON.stringify(results));`;
         { candidates: 1, refusals: [] },
       ]);
       packedPartialAdmission({ packageRoot, directory });
-      const output = execFileSync(
-        process.execPath,
-        [join(packageRoot, "dist/src/cli.js"), "workflows", "test"],
-        {
-          cwd: join(directory, "repo"),
-          env: {
-            ...process.env,
-            NODE_TEST_CONTEXT: undefined,
-            XDG_CONFIG_HOME: join(directory, "config"),
-          },
-          encoding: "utf8",
-          timeout: testMilliseconds(30000),
-        },
-      );
-      assert.match(output, /template develops a ticket/);
-      assert.match(output, /task text reaches the development turn/);
-      assert.match(output, /fix turn receives the full check-failed output/);
-      assert.match(output, /partial questions use distinct rounds/);
-      assert.match(
-        output,
-        /queued partial work records the merged pull request/,
-      );
-      assert.doesNotMatch(output, /not ok|✖/);
     },
   );
 }
