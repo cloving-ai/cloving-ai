@@ -36,7 +36,13 @@ export async function reviewByAgent(request: {
   });
   if (effect.kind !== "completed")
     throw new Error(effect.reason ?? effect.kind);
-  const result = greptileResult(effect.result, subject);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(effect.result ?? "null");
+  } catch {
+    throw new Error("invalid-review-result");
+  }
+  const result = greptileResult(parsed, subject);
   return {
     accepted: result.score === 5,
     feedback: [result.summary, ...result.findings].filter(Boolean).join("\n\n"),
@@ -45,13 +51,7 @@ export async function reviewByAgent(request: {
   };
 }
 
-function greptileResult(text: string | null, subject: CommitReviewSubject) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text ?? "null");
-  } catch {
-    throw new Error("invalid-review-result");
-  }
+function greptileResult(parsed: unknown, subject: CommitReviewSubject) {
   const result = record(parsed);
   if (!result) throw new Error("invalid-review-result");
   const score = result["score"];
@@ -60,7 +60,10 @@ function greptileResult(text: string | null, subject: CommitReviewSubject) {
   if (
     result["number"] !== subject.number ||
     result["commit"] !== subject.commit ||
-    !validScore(score) ||
+    typeof score !== "number" ||
+    !Number.isInteger(score) ||
+    score < 0 ||
+    score > 5 ||
     typeof summary !== "string" ||
     !Array.isArray(findings)
   )
@@ -84,13 +87,4 @@ function greptileResult(text: string | null, subject: CommitReviewSubject) {
       return `${path}${line === null ? "" : `:${String(line)}`}\n${body}`;
     }),
   };
-}
-
-function validScore(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= 5
-  );
 }
