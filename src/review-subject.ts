@@ -3,6 +3,7 @@ import { record } from "./protocol.ts";
 export interface CommitReviewSubject {
   readonly commit: string;
   readonly target: string;
+  readonly number?: number;
 }
 
 export interface DraftReviewSubject {

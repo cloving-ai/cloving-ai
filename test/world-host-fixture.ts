@@ -290,6 +290,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/wait-for-decision":
           "./src/steps/wait-for-decision.ts",
         "./workflows/steps/review-by-person": "./src/steps/review-by-person.ts",
+        "./workflows/steps/review-by-agent": "./src/steps/review-by-agent.ts",
         "./workflows/steps/review-subject": "./src/steps/review-subject.ts",
         "./workflows/steps/handoff": "./src/steps/handoff.ts",
         "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",

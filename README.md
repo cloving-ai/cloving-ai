@@ -801,6 +801,19 @@ Call it inside a workflow. The result is `{ accepted, feedback, commit, subjectD
 
 The SHA-256 `subjectDigest` identifies the exact subject, including a draft's text and optional base commit. A changed subject opens a different approval. Repeating the same subject within a run reuses its recorded decision. The helper returns that decision in the original call through `waitForDecision`, and is also exported by `cloving/workflows`. Workflow tests supply its decisions through the fake bridge's `decisions` queue; person reviews consume no protected effect budget.
 
+For a Greptile review of a pull request, use the same result contract:
+
+```ts
+import { reviewByAgent } from "cloving/workflows/steps/review-by-agent";
+
+const subject = { number: pull.number, commit: pull.commit, target: runTarget };
+const review = await reviewByAgent({ subject, reviewer: { kind: "greptile" } });
+```
+
+Replacing that call with `reviewByPerson({ subject })` preserves the result type and subject digest. Greptile needs the pull number and immutable commit; drafts use person review. Only a score of 5/5 sets `accepted: true`. Feedback includes the summary and findings with their file locations. Responses must name the requested pull and commit; malformed or unrelated results reject with `invalid-review-result`. Failed effects reject with the effect's reason.
+
+`reviewByAgent` uses the existing GitHub `wait-review` worker method and one protected effect unit per distinct subject. Its candidate declaration must include the `github` capability and `methods: { "github": ["wait-review"] }` with a sufficient effect limit. The broker still controls authority and budgets. Both the subpath above and `cloving/workflows` export the helper. Fake scenarios provide worker results in `effects["github wait-review"]`. Turn reviewers and the merge helper pair are not implemented yet.
+
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
 Use `cloving workflows list` to inspect bundled, project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.

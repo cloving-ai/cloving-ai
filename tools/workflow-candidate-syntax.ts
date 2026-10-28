@@ -9,6 +9,7 @@ export interface CandidateSymbols {
   readonly protectedSymbol: ts.Symbol | undefined;
   readonly handoffSymbol: ts.Symbol | undefined;
   readonly commandSymbol: ts.Symbol | undefined;
+  readonly reviewSymbol: ts.Symbol | undefined;
 }
 
 export function propertyName(name: ts.PropertyName): string | undefined {
@@ -32,6 +33,7 @@ export function protectedCall(
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.reviewSymbol,
     ].includes(symbol)
   );
 }
@@ -62,6 +64,19 @@ export function commandCall(
   );
 }
 
+export function reviewCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  return (
+    symbols.reviewSymbol !== undefined &&
+    resolvedSymbol(
+      symbols.checker,
+      symbols.checker.getSymbolAtLocation(node.expression),
+    ) === symbols.reviewSymbol
+  );
+}
+
 function literalField(node: ts.ObjectLiteralExpression, field: string) {
   const property = node.properties.find(
     (entry) => entry.name && propertyName(entry.name) === field,
@@ -69,6 +84,17 @@ function literalField(node: ts.ObjectLiteralExpression, field: string) {
   if (!property || !ts.isPropertyAssignment(property)) return null;
   return ts.isStringLiteral(property.initializer)
     ? property.initializer.text
+    : null;
+}
+
+function reviewerKind(argument: ts.ObjectLiteralExpression) {
+  const reviewer = argument.properties.find(
+    (entry) => entry.name && propertyName(entry.name) === "reviewer",
+  );
+  return reviewer &&
+    ts.isPropertyAssignment(reviewer) &&
+    ts.isObjectLiteralExpression(reviewer.initializer)
+    ? literalField(reviewer.initializer, "kind")
     : null;
 }
 
@@ -80,6 +106,11 @@ export function protectedEffectFact(
   if (handoffCall(node, symbols)) return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
+  if (reviewCall(node, symbols)) {
+    return reviewerKind(argument) === "greptile"
+      ? { capability: "github", method: "wait-review" }
+      : { capability: null, method: null };
+  }
   if (commandCall(node, symbols)) {
     const name = literalField(argument, "name");
     return {
@@ -105,6 +136,7 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.reviewSymbol,
     ].includes(symbol)
   )
     return false;
