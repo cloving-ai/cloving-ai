@@ -17,6 +17,19 @@ function probe(
   };
 }
 
+function originProbe(origin: string, commands: string[][]): ProbeRunner {
+  const fallback = probe();
+  return (program, options) => {
+    if (program === "git")
+      return Promise.resolve({ stdout: origin, reason: null });
+    if (program === "gh") {
+      commands.push([...options.arguments]);
+      return Promise.resolve({ stdout: "repository-user\n", reason: null });
+    }
+    return fallback(program, options);
+  };
+}
+
 await test("CLV-225 failed fact probes remain unavailable and omit private settings", () =>
   withFiles({}, async (repository) => {
     const facts = await initPromptFacts({
@@ -58,3 +71,28 @@ await test("CLV-225 a missing repository gives a clear prerequisite", async () =
     /repository-unknown/,
   );
 });
+
+await test("CLV-225 login uses the origin host despite a different GH_HOST", () =>
+  withFiles({}, async (repository) => {
+    for (const [origin, host] of [
+      ["git@github.example.com:example/project.git", "github.example.com"],
+      ["https://github.example.com/example/project.git", "github.example.com"],
+      ["git@github.com:example/project.git", "github.com"],
+    ] as const) {
+      const commands: string[][] = [];
+      const facts = await initPromptFacts({
+        repository,
+        environment: {
+          HOME: repository,
+          PATH: "",
+          GH_HOST: "other.example.com",
+        },
+        probe: originProbe(origin, commands),
+      });
+      assert.deepEqual(commands, [
+        ["api", "user", "--hostname", host, "--jq", ".login"],
+      ]);
+      assert.equal(facts.origin, origin);
+      assert.equal(facts.login, "repository-user");
+    }
+  }));

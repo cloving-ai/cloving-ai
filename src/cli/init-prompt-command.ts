@@ -9,6 +9,7 @@ import { initPrompt, type InitPromptFacts } from "./init-prompt.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { projectSettings } from "./project-settings.ts";
 import { runtimeDirectory } from "./runtime-directory.ts";
+import { prRepository } from "./watch-pr-identity.ts";
 
 interface PromptContext {
   readonly repository: string | undefined;
@@ -103,6 +104,36 @@ function selectedWorker(
   return "no worker; ask for harness.turn";
 }
 
+async function githubFacts(
+  context: PromptContext & { readonly repository: string },
+) {
+  const { environment, repository } = context;
+  const given = { env: environment, directory: repository };
+  const github = listedSetting(environment["CLOVING_GH_COMMAND"]) ?? ["gh"];
+  const remote = await context.probe("git", {
+    ...given,
+    arguments: ["remote", "get-url", "origin"],
+  });
+  const origin = remote.reason === null ? remote.stdout.trim() : "unavailable";
+  const host = prRepository(origin)?.host ?? "github.com";
+  const login = await context.probe(github[0] ?? "", {
+    ...given,
+    arguments: [
+      ...github.slice(1),
+      "api",
+      "user",
+      "--hostname",
+      host,
+      "--jq",
+      ".login",
+    ],
+  });
+  return {
+    origin,
+    login: login.reason === null ? login.stdout.trim() : "unavailable",
+  };
+}
+
 export async function initPromptFacts(
   context: PromptContext,
 ): Promise<InitPromptFacts> {
@@ -111,19 +142,12 @@ export async function initPromptFacts(
     throw new Error(
       "repository-unknown: Change to a git repository or use --repository <directory>.",
     );
-  const configured = projectSettings(context.environment, repository);
-  const { environment, harness } = configured;
-  const given = { env: environment, directory: repository };
-  const github = listedSetting(environment["CLOVING_GH_COMMAND"]) ?? ["gh"];
-  const [origin, login, discovery, current] = await Promise.all([
-    context.probe("git", {
-      ...given,
-      arguments: ["remote", "get-url", "origin"],
-    }),
-    context.probe(github[0] ?? "", {
-      ...given,
-      arguments: [...github.slice(1), "api", "user", "--jq", ".login"],
-    }),
+  const { environment, harness } = projectSettings(
+    context.environment,
+    repository,
+  );
+  const [github, discovery, current] = await Promise.all([
+    githubFacts({ ...context, repository, environment }),
     discoverHarnesses({ env: environment, probe: context.probe }),
     inventory({ ...context, repository, environment }),
   ]);
@@ -131,8 +155,7 @@ export async function initPromptFacts(
   return {
     version: packageMetadata.version,
     repository,
-    origin: origin.reason === null ? origin.stdout.trim() : "unavailable",
-    login: login.reason === null ? login.stdout.trim() : "unavailable",
+    ...github,
     node: process.version,
     harnesses: discovery.entries.map(({ name, version, working }) => ({
       name,

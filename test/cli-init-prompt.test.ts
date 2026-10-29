@@ -10,12 +10,16 @@ await test("CLV-225 init-prompt prints facts and setup instructions without runn
   withDoctor(async (scene) => {
     await scene.program(
       "gh",
-      'if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["api", "user", "--jq", ".login"])) process.exit(91); console.log("setup-user")',
+      'if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["api", "user", "--hostname", "github.com", "--jq", ".login"])) process.exit(91); console.log("setup-user")',
     );
     const result = spawnSync(
       process.execPath,
       [resolve("src/cli.ts"), "init-prompt"],
-      { cwd: scene.repository, env: scene.environment, encoding: "utf8" },
+      {
+        cwd: scene.repository,
+        env: { ...scene.environment, GH_HOST: "other.example.com" },
+        encoding: "utf8",
+      },
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^# Facts\n/);
