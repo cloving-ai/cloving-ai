@@ -15,6 +15,8 @@ export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "config-help" }
   | { readonly kind: "help" }
   | { readonly kind: "version" }
+  | { readonly kind: "init-prompt" }
+  | { readonly kind: "init-prompt-help" }
   | { readonly kind: "doctor-help" }
   | { readonly kind: "doctor"; readonly json: boolean }
   | { readonly kind: "validate-help" }
@@ -122,7 +124,8 @@ function selectedInvocation(given: readonly string[]): Invocation {
   const { values, positionals, tokens } = parsed;
   const [command, ...remaining] = positionals;
   if (command === undefined) return topLevel(values);
-  if (command === "doctor") return doctorInvocation(values, remaining);
+  const inspection = inspectionInvocation(command, { values, remaining });
+  if (inspection !== undefined) return inspection;
   if (command === "workflows" && remaining[0] === "validate")
     return validation(values, remaining.slice(1));
   const outcome = runtimeInvocation({
@@ -133,6 +136,34 @@ function selectedInvocation(given: readonly string[]): Invocation {
   if (typeof outcome === "string")
     return { kind: "usage-error", code: outcome, json };
   return outcome;
+}
+
+function inspectionInvocation(
+  command: string,
+  input: {
+    readonly values: Parsed["values"];
+    readonly remaining: readonly string[];
+  },
+): Invocation | undefined {
+  const { values, remaining } = input;
+  if (command === "doctor") return doctorInvocation(values, remaining);
+  if (command === "init-prompt") return promptInvocation(values, remaining);
+  return undefined;
+}
+
+function promptInvocation(
+  values: Parsed["values"],
+  remaining: readonly string[],
+): Invocation {
+  if (unexpected(values, ["help"]))
+    return {
+      kind: "usage-error",
+      code: "unexpected-option",
+      json: values.json === true,
+    };
+  if (remaining.length > 0)
+    return { kind: "usage-error", code: "unexpected-argument", json: false };
+  return { kind: values.help ? "init-prompt-help" : "init-prompt" };
 }
 
 function doctorInvocation(
@@ -179,7 +210,7 @@ function knownCommand(positionals: readonly string[]): boolean {
   const [command, subcommand] = positionals;
   if (command === undefined) return true;
   if (command === "workflows") return subcommand === "validate";
-  if (command === "doctor") return true;
+  if (command === "doctor" || command === "init-prompt") return true;
   return isRuntimeCommand(command);
 }
 

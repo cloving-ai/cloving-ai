@@ -17,9 +17,13 @@ await test("CLV-008 help lists only the implemented commands", async () => {
         result.stdout,
         /^ {2}doctor {2,}Check repository requirements/m,
       );
+      assert.match(
+        result.stdout,
+        /^ {2}init-prompt\s+Print setup instructions/m,
+      );
       assert.doesNotMatch(
         result.stdout,
-        /\battach\b|\binit\b|\bmcp\b|develop-ticket/,
+        /\battach\b|\binit\b(?!-prompt\b)|\bmcp\b|develop-ticket/,
       );
       assert.equal(result.stderr, "");
     }
@@ -32,6 +36,7 @@ await test("CLV-008 help lists only the implemented commands", async () => {
 
 for (const [name, argumentsList, code] of [
   ["an unknown command", ["frobnicate"], "unknown-command"],
+  ["the standalone init command", ["init"], "unknown-command"],
   ["a removed chats command", ["chats"], "unknown-command"],
   ["a removed chats import", ["chats", "import"], "unknown-command"],
   [
