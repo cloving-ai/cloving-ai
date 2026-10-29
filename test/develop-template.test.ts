@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import ts from "typescript";
+import { completeConfigurations } from "./develop-template-options-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import {
   automatic,
@@ -164,15 +165,8 @@ await test("CLV-221 defaults to queue selection, Greptile and checked automatic 
 
 await test("CLV-221 has a compatible complete selection for every option", async () => {
   const document = await developManifest();
-  const configurations = [
-    automatic,
-    reviewed,
-    { ...reviewed, input: "task-text" },
-    { ...reviewed, accept: "turn" },
-    { ...automatic, merge: "person" },
-  ];
   const covered = new Set<string>();
-  for (const selected of configurations) {
+  for (const selected of completeConfigurations) {
     assert.deepEqual(configurationErrors(document, selected), []);
     for (const [point, option] of Object.entries(selected))
       covered.add(`${point}.${option}`);

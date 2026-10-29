@@ -15,8 +15,13 @@ the next worker turn. Review, local-check, conflict and CI fixes share a limit
 of three fix rounds. Pending CI and an unconfigured check stop the run.
 
 `develop.test.ts` and `develop/flow-tests.ts` test the default composition through the public fake
-step bridge. The other complete option configurations still need executable
-composition and admission tests before the template is fully qualified.
+step bridge. The alternative configurations use `develop/option-tests.ts`, with the selected
+point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
+`flowTests` and `refusalTests` imports in `develop.test.ts` with
+`optionTests as flowTests`, then run every `flowTests` scenario. Keep the shared
+turn and partial-helper tests. Package tests apply each source edit, validate
+its requirements, and test seven complete configurations through the folder
+loader and the installed package, covering every option.
 
 `develop/turn.ts` implements the development turn for either a resolved
 `ticket` or a task `prompt`. It calls the public protected effect helper and
@@ -25,9 +30,11 @@ result's `reason`, full `output`, and `remaining` items. Rounds 1 through 4
 allow the initial turn and three fix turns; the workflow must stop after that.
 `develop.test.ts` exercises this helper with `cloving/workflows/testing`.
 The package tests also load small compositions of this helper through folder
-admission for both input forms.
+admission for both input forms and test both forms in complete workflows.
 
-`develop/partial.ts` implements the person's partial-work choice. `reviewPartial`
+`develop/partial.ts` implements the person's partial-work question.
+`develop/partial-choice.ts` connects its answer to a development report and the
+next round, or returns a blocked outcome without opening a review or merging. `reviewPartial`
 opens a question with an identity scoped to the run and round. It returns
 nonempty feedback from an explicit answer, or stops. It opens no question
 after the initial turn and three fix turns. The separate `develop/queue-partial.ts`
@@ -38,7 +45,15 @@ and requeues the first two runs, then blocks the ticket from the third.
 Folder-admission tests cover both helpers in the checkout and packed install.
 The default workflow calls `queuePartial` after merging partial work, closes
 complete issues, and reports a failed issue update in its outcome.
-The person-only composition needs no GitHub capability.
+The person-only composition needs no GitHub capability. `develop/local.ts`
+implements its round: develop, ask about partial work, review the immutable
+commit, and leave the branch for the person to merge. It refuses missing or
+malformed commit IDs and reports of uncommitted work. `develop/accept.ts`
+contains the editable pull-request acceptance call. `promptInput` in
+`develop/report.ts` adapts task text without looking up a ticket.
+Only resolved ticket input supplies an issue identity for lifecycle updates.
+Task text keeps its full contents, including any issue-looking lines, without
+selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
 Greptile at 5/5, merge after checks, and return partial work to the queue.
