@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { cli, cliOptions } from "./cli-workflows-fixture.ts";
@@ -47,15 +48,22 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const template = record(developTemplate);
     const points = template?.["points"];
     assert.ok(Array.isArray(points));
+    const idea = record(
+      JSON.parse(readFileSync("templates/idea-to-issue/template.json", "utf8")),
+    );
     assert.deepEqual(JSON.parse(result.stdout), [
       {
         name: "develop",
         summary: template?.["summary"],
         points: points.length,
       },
+      { name: "idea-to-issue", summary: idea?.["summary"], points: 3 },
     ]);
     const human = templates(root, ["list"]);
-    assert.match(human.stdout, /^develop: .+ \(\d+ decision points\)\n$/);
+    assert.match(
+      human.stdout,
+      /^develop: .+ \(5 decision points\)\nidea-to-issue: .+ \(3 decision points\)\n$/,
+    );
   }));
 
 await test("CLV-223 templates show gives the template description and its workflow files", () =>

@@ -11,6 +11,43 @@ const subject = { target: "ticket-1", commit };
 const digest = (text: string) =>
   "sha256:" + createHash("sha256").update(text).digest("hex");
 
+await test("CLV-222 a person gate displays the captured draft as readable text", async () => {
+  using bridge = fakeStepBridge({
+    decisions: [{ decision: "approved", answer: null }],
+  });
+  const draft = "# Costs\n\nShow the cost.\n";
+  await reviewByPerson({ subject: { draft } });
+  const gate = bridge.requests[0];
+  assert.ok(gate && gate[0] === "waitForDecision");
+  assert.equal(gate[1].prompt, `Review this subject:\n${draft}`);
+});
+
+await test("CLV-222 person gates distinguish the same draft at different commits", async () => {
+  using bridge = fakeStepBridge({
+    decisions: [
+      { decision: "approved", answer: null },
+      { decision: "approved", answer: null },
+    ],
+  });
+  const draft = "# Costs\n\nShow the cost.\n";
+  const commits = [commit, "b".repeat(40)];
+  for (const commit of commits)
+    await reviewByPerson({ subject: { draft, commit } });
+  assert.deepEqual(
+    bridge.requests.map((gate) => {
+      assert.equal(gate[0], "waitForDecision");
+      return gate[1];
+    }),
+    commits.map((commit) => ({
+      gateId: `review:${digest(
+        JSON.stringify(["cloving-review-subject", 1, "draft", commit, draft]),
+      )}`,
+      kind: "approval",
+      prompt: `Review this subject:\n${commit}\n${draft}`,
+    })),
+  );
+});
+
 await test("CLV-220 person reviews return approval in the original workflow call", () =>
   withFiles(
     {
@@ -84,19 +121,29 @@ await test("CLV-220 a draft snapshot survives mutation of the caller's object", 
   using bridge = fakeStepBridge({
     decisions: [{ decision: "approved", answer: null }],
   });
-  const draft = { draft: "Original" };
+  const draft = { draft: "Original", commit };
   const waiting = reviewByPerson({ subject: draft });
   draft.draft = "Edited while waiting";
+  draft.commit = "b".repeat(40);
   const result = await waiting;
   assert.equal(
     result.subjectDigest,
     digest(
-      JSON.stringify(["cloving-review-subject", 1, "draft", null, "Original"]),
+      JSON.stringify([
+        "cloving-review-subject",
+        1,
+        "draft",
+        commit,
+        "Original",
+      ]),
     ),
   );
   assert.equal(result.accepted, true);
   assert.match(JSON.stringify(bridge.requests), /Original/);
   assert.doesNotMatch(JSON.stringify(bridge.requests), /Edited while waiting/);
+  const gate = bridge.requests[0];
+  assert.ok(gate && gate[0] === "waitForDecision");
+  assert.equal(gate[1].prompt, `Review this subject:\n${commit}\nOriginal`);
 });
 
 await test("CLV-220 invalid subjects never open a person review", async () => {

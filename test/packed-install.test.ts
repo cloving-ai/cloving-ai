@@ -8,6 +8,10 @@ import {
 } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
 import {
+  packedIdeaSources,
+  packedIdeaTemplate,
+} from "./packed-idea-template.ts";
+import {
   operatorFiles,
   operatorRefusals,
   runOperator,
@@ -82,7 +86,7 @@ async function installed(root: string): Promise<string> {
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
-    packedTemplateSources,
+    packedTemplateSources.concat(packedIdeaSources),
   );
   assert.deepEqual(
     paths.filter((path) =>
@@ -96,6 +100,7 @@ async function installed(root: string): Promise<string> {
   });
   await packagedFontFiles(join(root, "node_modules/cloving"));
   await packedDevelopTemplate(join(root, "node_modules/cloving"));
+  await packedIdeaTemplate(join(root, "node_modules/cloving"));
   await packedStages(root);
   return join(root, "node_modules/.bin/cloving");
 }
