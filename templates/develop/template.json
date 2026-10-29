@@ -11,7 +11,7 @@
           "id": "ticket",
           "label": "A ticket",
           "summary": "Resolve a ticket through the configured ticket command.",
-          "change": "In develop.declaration.json, set workflow.input.fields to { \"ticket\": { \"type\": \"ticket\" } }. Use the resolved ticket text as the task.",
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"ticket\": { \"type\": \"ticket\" } }. In develop.ts use ticketInput(request) from develop/report.ts to pass the resolved ticket text to the turn.",
           "requires": {},
           "needs": ["ticket-command"]
         },
@@ -19,8 +19,11 @@
           "id": "task-text",
           "label": "A task text",
           "summary": "Develop the submitted prompt without a ticket lookup.",
-          "change": "In develop.declaration.json, set workflow.input.fields to { \"prompt\": { \"type\": \"string\" } }. Use the submitted prompt as the task.",
-          "requires": { "select": ["person"], "partial": ["person"] },
+          "change": "In develop.declaration.json, set workflow.input.fields to { \"prompt\": { \"type\": \"string\" } }. In develop.ts replace ticketInput with promptInput in the import and call. promptInput(request) passes the submitted text without a ticket lookup.",
+          "requires": {
+            "select": ["person"],
+            "partial": ["person"]
+          },
           "needs": []
         }
       ]
@@ -34,7 +37,9 @@
           "label": "The queue",
           "summary": "Select a ready ticket through the configured next-ticket command.",
           "change": "In develop.declaration.json, set workflow.queue to true (\"queue\": true).",
-          "requires": { "input": ["ticket"] },
+          "requires": {
+            "input": ["ticket"]
+          },
           "needs": ["next-command", "queue-interval"]
         },
         {
@@ -55,15 +60,17 @@
           "id": "greptile",
           "label": "Greptile at 5/5",
           "summary": "Open or update the pull request and wait for Greptile to accept its commit at 5/5.",
-          "change": "Call reviewByAgent({ subject, reviewer: { kind: \"greptile\" } }). Open or update the pull request before this call and use its commit and target as subject.",
-          "requires": { "merge": ["person", "green"] },
+          "change": "In develop/accept.ts call reviewByAgent({ subject, reviewer: { kind: \"greptile\" } }). develop/round.ts opens or updates the pull request first and passes its immutable commit and target as subject. Declare github wait-review.",
+          "requires": {
+            "merge": ["person", "green"]
+          },
           "needs": ["gh-login", "github-origin", "greptile-review"]
         },
         {
           "id": "person",
           "label": "A person",
           "summary": "Wait for a person's approval of the immutable commit. Denial with feedback requests another bounded turn.",
-          "change": "Call reviewByPerson({ subject }). For a local merge, use the turn's commit and target as subject without opening a pull request.",
+          "change": "In develop/accept.ts replace the import and call with reviewByPerson({ subject }). Remove reviewer and github wait-review from the declaration. develop/local.ts already uses reviewByPerson with the clean full commit from the worker report and the run target.",
           "requires": {},
           "needs": []
         },
@@ -71,7 +78,7 @@
           "id": "turn",
           "label": "A review turn",
           "summary": "Run the review profile and require its explicit accept verdict.",
-          "change": "Call reviewByAgent({ subject, reviewer: { kind: \"turn\", profile: \"review\" } }). Use the immutable commit and target as subject.",
+          "change": "In develop/accept.ts call reviewByAgent({ subject, reviewer: { kind: \"turn\", profile: \"review\" } }). For local merge replace reviewByPerson in develop/local.ts with that same call and its import. Declare claude run-turn:review and configure the review profile. Remove github wait-review from the declaration.",
           "requires": {},
           "needs": ["default-harness"]
         }
@@ -93,7 +100,7 @@
           "id": "person",
           "label": "A person approves Cloving's merge",
           "summary": "Open or update a pull request, wait for merge approval, then run the beforeMerge check and CI before merging.",
-          "change": "Call mergeByPerson({ pull, check: \"beforeMerge\" }) after acceptance. Use the pull returned by opening the pull request. Give the result.output to the next fix turn.",
+          "change": "In develop/round.ts replace the mergeWhenGreen import and call with mergeByPerson({ pull, check: \"beforeMerge\", round }). Use the pull returned by openPull. repair passes the result.output unchanged to the next fix turn.",
           "requires": {},
           "needs": ["gh-login", "github-origin", "check-command"]
         },
@@ -101,8 +108,11 @@
           "id": "local",
           "label": "A person merges the local branch",
           "summary": "Leave the accepted branch for a person to merge by hand. Do not push or open a pull request.",
-          "change": "After acceptance, return the local branch outcome. Remove the GitHub prepare, open-pr and merge calls; do not call mergeByPerson or mergeWhenGreen.",
-          "requires": { "accept": ["person", "turn"], "partial": ["person"] },
+          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, preparePull, both labelTicket calls and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
+          "requires": {
+            "accept": ["person", "turn"],
+            "partial": ["person"]
+          },
           "needs": []
         }
       ]
@@ -133,7 +143,7 @@
           "id": "person",
           "label": "A person decides",
           "summary": "Ask what to do with partial work. Use the answer as feedback for a bounded continuation, or stop and leave it for the person.",
-          "change": "Call waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }). Feed the answer into the next bounded turn; stop if no continuation is requested.",
+          "change": "For a pull-request workflow, in develop/round.ts import partialChoice from develop/partial-choice.ts. Immediately after developReport, call partialChoice({ input, round, report }) and return any non-null result. develop/local.ts already does this. The helper calls waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }); an explicit answer feeds the next bounded turn and an empty answer stops.",
           "requires": {},
           "needs": []
         }

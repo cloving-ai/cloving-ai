@@ -9,7 +9,11 @@ import { packedDevelopFlow } from "./packed-develop-template-flow.ts";
 export const packedTemplateSources = [
   "templates/develop/develop.test.ts",
   "templates/develop/develop.ts",
+  "templates/develop/develop/accept.ts",
   "templates/develop/develop/flow-tests.ts",
+  "templates/develop/develop/local.ts",
+  "templates/develop/develop/option-tests.ts",
+  "templates/develop/develop/partial-choice.ts",
   "templates/develop/develop/partial.ts",
   "templates/develop/develop/pull.ts",
   "templates/develop/develop/queue-partial.ts",
@@ -195,18 +199,4 @@ export function configurationErrors(
   return errors;
 }
 
-export const automatic = {
-  input: "ticket",
-  select: "queue",
-  accept: "greptile",
-  merge: "green",
-  partial: "queue",
-};
-
-export const reviewed = {
-  input: "ticket",
-  select: "person",
-  accept: "person",
-  merge: "local",
-  partial: "person",
-};
+export { automatic, reviewed } from "./develop-template-options-fixture.ts";

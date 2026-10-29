@@ -123,7 +123,12 @@ export function isCandidateDeclaration(
   const fields = record(value);
   if (
     !fields ||
-    Object.keys(fields).some((key) => key !== "workflow" && key !== "methods")
+    Object.keys(fields).some(
+      (key) => !["workflow", "methods", "template"].includes(key),
+    ) ||
+    (Object.hasOwn(fields, "template") &&
+      (typeof fields["template"] !== "string" ||
+        !/^[a-z][a-z0-9-]{0,63}$/.test(fields["template"])))
   )
     return false;
   const workflow = fields["workflow"];

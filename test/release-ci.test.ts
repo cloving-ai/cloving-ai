@@ -97,15 +97,15 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
   const workflow = await releaseWorkflow();
   assert.equal(job(workflow, "quality_linux_node").if, undefined);
   assert.equal(job(workflow, "quality_linux_node").permissions, undefined);
-  assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 60);
+  assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 75);
   assert.deepEqual(job(workflow, "quality_linux_node").env, {
-    CLOVING_CHECK_TIME_FACTOR: "4",
+    CLOVING_CHECK_TIME_FACTOR: "5",
     CLOVING_TEST_CONCURRENCY: localOr("'8'", "'4'"),
     CLOVING_CI_ARCHITECTURE: localOr("'arm64'", "'x64'"),
   });
-  assert.equal(job(workflow, "quality")["timeout-minutes"], 60);
+  assert.equal(job(workflow, "quality")["timeout-minutes"], 75);
   assert.deepEqual(job(workflow, "quality").env, {
-    CLOVING_CHECK_TIME_FACTOR: "4",
+    CLOVING_CHECK_TIME_FACTOR: "5",
     CLOVING_TEST_CONCURRENCY: localOr("'8'", "'3'"),
     CLOVING_CI_MACOS_VERSION: localOr("'*'", "'15.*'"),
   });

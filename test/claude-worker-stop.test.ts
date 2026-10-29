@@ -147,7 +147,7 @@ await test("CLV-013 the worker refuses an empty command and an effect intent wit
     assert.deepEqual(scene.turns(), []);
   }));
 
-await test("CLV-013 a result line with no line end is read, a line that is no JSON text is ignored, and a work tree that git cannot read gives empty change lists", () =>
+await test("CLV-013 a result line with no line end is read, a line that is no JSON text is ignored, and a work tree that git cannot read gives unknown status", () =>
   withScene(async (scene) => {
     const results: Readonly<Record<string, unknown>>[] = [];
     for (const [index, mode] of ["unterminated", "wreck"].entries()) {
@@ -168,7 +168,7 @@ await test("CLV-013 a result line with no line end is read, a line that is no JS
       ["branch", "commits", "files", "uncommitted"].map(
         (name) => wrecked?.[name],
       ),
-      ["cloving/ticket-one", [], [], []],
+      ["cloving/ticket-one", [], [], null],
     );
     const next = intent({ operationId: "operation-after" });
     assert.deepEqual(await scene.worker("complete").deliver(next, signal), {

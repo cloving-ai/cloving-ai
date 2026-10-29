@@ -24,9 +24,10 @@ export interface TreeRequest {
 
 export interface Changes {
   readonly branch: string;
+  readonly commit: string | null;
   readonly commits: readonly string[];
   readonly files: readonly string[];
-  readonly uncommitted: readonly string[];
+  readonly uncommitted: readonly string[] | null;
 }
 
 interface GitCall {
@@ -251,22 +252,26 @@ export function treeFailure(error: unknown): string {
 }
 
 export async function changes(tree: WorkTree): Promise<Changes> {
-  const lines = async (parts: readonly string[]): Promise<string[]> =>
-    (await git({ directory: tree.path, parts }).catch(() => ""))
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .slice(0, lineLimit)
-      .map((line) => line.slice(0, lineLength));
+  const lines = (parts: readonly string[]) =>
+    changeLines({ directory: tree.path, parts });
   const range = `${tree.startCommit}..HEAD`;
-  const [branch = tree.branch] = await lines([
-    "rev-parse",
-    "--abbrev-ref",
-    "HEAD",
-  ]);
+  const branch =
+    (await lines(["rev-parse", "--abbrev-ref", "HEAD"]))?.[0] ?? tree.branch;
   return {
     branch,
-    commits: await lines(["log", "--oneline", range]),
-    files: await lines(["diff", "--stat", range]),
+    commit: (await lines(["rev-parse", "HEAD"]))?.[0] ?? null,
+    commits: (await lines(["log", "--oneline", range])) ?? [],
+    files: (await lines(["diff", "--stat", range])) ?? [],
     uncommitted: await lines(["status", "--short"]),
   };
+}
+
+async function changeLines(call: GitCall): Promise<string[] | null> {
+  const output = await git(call).catch(() => null);
+  if (output === null) return null;
+  return output
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .slice(0, lineLimit)
+    .map((line) => line.slice(0, lineLength));
 }

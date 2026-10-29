@@ -1231,9 +1231,15 @@
     "src/project-settings.ts": "pure",
     "src/repository-identity.ts": "pure",
     "tools/workflow-command.ts": "candidate-adapter",
+    "tools/template-command.ts": "candidate-adapter",
+    "tools/template-copy.ts": "candidate-adapter",
+    "tools/template-files.ts": "candidate-adapter",
     "tools/project-configuration.ts": "candidate-adapter",
     "test/project-configuration.test.ts": "test",
     "test/cli-workflows.test.ts": "test",
+    "test/cli-templates.test.ts": "test",
+    "test/cli-templates-copy.test.ts": "test",
+    "test/cli-templates-fixture.ts": "test",
     "test/cli-workflows-fixture.ts": "test",
     "test/cli-workflow-folder.test.ts": "test",
     "src/testing.ts": "candidate-adapter",
@@ -1318,7 +1324,15 @@
     "test/develop-template-folder.test.ts": "test",
     "test/packed-develop-template-flow.ts": "test",
     "templates/develop/develop/flow-tests.ts": "test",
-    "templates/develop/develop/refusal-tests.ts": "test"
+    "templates/develop/develop/refusal-tests.ts": "test",
+    "templates/develop/develop/accept.ts": "workflow",
+    "templates/develop/develop/local.ts": "workflow",
+    "templates/develop/develop/option-tests.ts": "test",
+    "test/develop-local-subject.test.ts": "test",
+    "test/develop-template-options-fixture.ts": "test",
+    "test/develop-template-options.test.ts": "test",
+    "test/develop-template-local.test.ts": "test",
+    "templates/develop/develop/partial-choice.ts": "workflow"
   },
   "allowed": {
     "quality": [
