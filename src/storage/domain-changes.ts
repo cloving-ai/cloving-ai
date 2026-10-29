@@ -1,4 +1,9 @@
 import {
+  commandWaitRow,
+  commandWaitStatements,
+  type CommandWaitRow,
+} from "./command-wait-rows.ts";
+import {
   detailColumns,
   detailRow,
   documentRow,
@@ -74,6 +79,7 @@ export interface DomainChange extends EffectRows {
   readonly staged: readonly StagedDelivery[];
   readonly closed: readonly ClosedDelivery[];
   readonly gates: readonly GateRow[];
+  readonly waits: readonly CommandWaitRow[];
   readonly details: readonly DetailRow[];
   readonly documents: readonly DocumentRow[];
   readonly completesAdoption: boolean;
@@ -128,6 +134,7 @@ function statements(change: DomainChange): readonly Statement[] {
     ...deliveryStatements(change),
     ...decisionStatements(change),
     ...effectStatements(change),
+    ...commandWaitStatements(change.waits),
     ...(change.completesAdoption
       ? [
           {
@@ -289,6 +296,7 @@ function parseChange(value: unknown): DomainChange {
       receipt: optionalText(row, "receipt"),
     })),
     gates: list(value, "gates").map(gateRow),
+    waits: list(value, "waits").map(commandWaitRow),
     details: list(value, "details").map(detailRow),
     documents: list(value, "documents").map(documentRow),
     budgets: list(value, "budgets").map(budgetRow),

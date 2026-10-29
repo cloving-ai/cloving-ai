@@ -1,3 +1,4 @@
+import { historyManifest, historyPin } from "./authority-history-generated.ts";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -28,7 +29,14 @@ export function historySnapshot(input: {
       ...event,
       payload: JSON.stringify(event.payload),
     })),
-    definitions: [{ pin, manifest: JSON.stringify(manifest) }],
+    definitions: [
+      ...new Set(Object.values(history.state.runs).map((run) => run.workflow)),
+    ].map((workflow) => ({
+      pin: workflow,
+      manifest: JSON.stringify(
+        workflow === historyPin ? historyManifest : manifest,
+      ),
+    })),
     runs: Object.values(history.state.runs).map((run) => ({
       ...run,
       gates: JSON.stringify(run.gates),

@@ -7,12 +7,14 @@ import {
   text,
   type SqlConnection,
 } from "./domain-rows.ts";
+import { commandWaitSchema } from "./command-wait-rows.ts";
 import { effectSchema } from "./effect-schema.ts";
 
 export const baselineVersion = 1;
 export const adoptedVersion = 2;
 export const decidedVersion = 3;
-export const currentVersion = 4;
+export const effectedVersion = 4;
+export const currentVersion = 5;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -113,7 +115,13 @@ CREATE TABLE documents (
 ) STRICT;
 `;
 
-const schemas = [baselineSchema, adoption, decisions, effectSchema];
+const schemas = [
+  baselineSchema,
+  adoption,
+  decisions,
+  effectSchema,
+  commandWaitSchema,
+];
 
 const checksums = schemas.map((schema) =>
   createHash("sha256").update(schema).digest("hex"),
@@ -131,10 +139,17 @@ export type SchemaState =
   | { readonly kind: "baseline" }
   | { readonly kind: "adopted" }
   | { readonly kind: "decided" }
+  | { readonly kind: "effected" }
   | { readonly kind: "current" }
   | SchemaRefusal;
 
-const versionKinds = ["baseline", "adopted", "decided", "current"] as const;
+const versionKinds = [
+  "baseline",
+  "adopted",
+  "decided",
+  "effected",
+  "current",
+] as const;
 
 export async function inspectSchema(
   connection: SqlConnection,
@@ -175,6 +190,7 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await recordVersion(connection, baselineVersion);
   await adoptSchema(connection, null);
   await upgradeSchema(connection, decidedVersion);
+  await upgradeSchema(connection, effectedVersion);
   await upgradeSchema(connection, currentVersion);
 }
 

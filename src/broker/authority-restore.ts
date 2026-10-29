@@ -1,3 +1,5 @@
+import type { CommandWaitRow } from "../storage/command-wait-rows.ts";
+import { commandWaitState, commandWaitRows } from "./command-wait-restore.ts";
 import { isDeepStrictEqual } from "node:util";
 import { parseEvent } from "../authority/events.ts";
 import { rebuildHistory, type History } from "../authority/history.ts";
@@ -27,6 +29,7 @@ export type RestoredSnapshot = AuthoritySnapshot &
   Partial<DecisionRows> & {
     readonly documents?: readonly DocumentRow[];
     readonly effects?: EffectRows;
+    readonly waits?: readonly CommandWaitRow[];
   };
 
 const statuses: readonly RunStatus[] = [
@@ -94,6 +97,7 @@ export function restore(snapshot: RestoredSnapshot): Restoration {
       ),
     ],
     ["definitions", definitionsIntact(definitions, state)],
+    ...waitChecks(snapshot, { state, definitions }),
     ...decisionChecks(snapshot, state),
     ...(snapshot.effects === undefined
       ? []
@@ -110,6 +114,30 @@ export function restore(snapshot: RestoredSnapshot): Restoration {
       detail: failed[0],
     };
   return { kind: "restored", state, events, definitions };
+}
+
+function waitChecks(
+  snapshot: RestoredSnapshot,
+  context: {
+    readonly state: AuthorityState;
+    readonly definitions: ReadonlyMap<string, ExecutionManifest>;
+  },
+): readonly (readonly [string, boolean])[] {
+  const { state, definitions } = context;
+  return [
+    ["command-waits", commandWaitsIntact(definitions, state)],
+    ...(snapshot.waits === undefined
+      ? []
+      : [
+          [
+            "waits",
+            isDeepStrictEqual(
+              snapshot.waits,
+              commandWaitRows(state.commandWaits ?? {}),
+            ),
+          ] as const,
+        ]),
+  ];
 }
 
 function decisionChecks(
@@ -156,6 +184,25 @@ function definitionsIntact(
   );
 }
 
+function commandWaitsIntact(
+  definitions: ReadonlyMap<string, ExecutionManifest>,
+  state: AuthorityState,
+): boolean {
+  return Object.values(state.commandWaits ?? {}).every((wait) => {
+    const pin = state.runs[wait.runId]?.workflow ?? "";
+    const waits = definitions.get(pin)?.commandWaits ?? {};
+    const permission = Object.hasOwn(waits, wait.name)
+      ? waits[wait.name]
+      : undefined;
+    return (
+      permission !== undefined &&
+      permission.command === wait.command &&
+      permission.maximumWaitSeconds === wait.maximumWaitSeconds &&
+      permission.pollEverySeconds === wait.pollEverySeconds
+    );
+  });
+}
+
 const projectionParts = ["sequence", "runs", "commands", "intents"] as const;
 
 function text(error: unknown): string {
@@ -170,7 +217,11 @@ type BaseState = Pick<
 export type StoredState = Omit<AuthorityState, "effects">;
 
 export function currentState(snapshot: ProjectionSnapshot): StoredState {
-  return { ...projectedState(snapshot), ...decisionState(snapshot) };
+  return {
+    ...projectedState(snapshot),
+    ...decisionState(snapshot),
+    ...commandWaitState(snapshot.waits ?? []),
+  };
 }
 
 export function projectedState(

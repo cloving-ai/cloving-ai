@@ -1,3 +1,4 @@
+import { commandWaitRows } from "../command-wait-restore.ts";
 import { evidenceOf } from "../../authority/operations.ts";
 import type { AuthorityState, CommandResult } from "../../authority/reducer.ts";
 import { detailRecord, gateRecord } from "../decision-restore.ts";
@@ -16,6 +17,7 @@ export interface ChangeDraft {
   readonly released: readonly Row[];
   readonly closed: readonly Row[];
   readonly gates: readonly Row[];
+  readonly waits: readonly Row[];
   readonly details: readonly Row[];
   readonly documents: readonly Row[];
   readonly budgets: readonly Row[];
@@ -58,6 +60,7 @@ export function unchangedAt(
     released: [],
     closed,
     gates: [],
+    waits: [],
     details: [],
     documents: [],
     ...unchangedEffects,
@@ -143,6 +146,9 @@ export function draft(
     closed,
     documents,
     ...effectDraft(result, before),
+    waits: commandWaitRows(
+      changedEntries(state.commandWaits ?? {}, before.commandWaits ?? {}),
+    ).map(columns),
     gates: changed(state.gates, before.gates).map((gate) =>
       columns(gateRecord(gate)),
     ),
@@ -206,6 +212,7 @@ export function merged(
     released: joined("released"),
     closed: joined("closed"),
     gates: joined("gates"),
+    waits: joined("waits"),
     details: joined("details"),
     documents: joined("documents"),
     budgets: joined("budgets"),

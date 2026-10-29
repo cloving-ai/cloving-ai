@@ -17,6 +17,8 @@ const operation = /^[\x20-\x7e]{1,512}$/;
 
 export const commandEvents: Readonly<Record<string, EventType>> = {
   "admit-run": "run.created",
+  "open-command-wait": "command-wait.opened",
+  "expire-command-wait": "command-wait.expired",
   "mark-started": "run.started",
   "open-gate": "gate.opened",
   "register-wait": "gate.wait-registered",
@@ -50,6 +52,19 @@ interface Shape {
 const revised: Shape = { required: ["expectedRevision"] };
 
 const shapes: Readonly<Record<string, Shape>> = {
+  "expire-command-wait": { required: ["waitName"] },
+  "open-command-wait": {
+    required: [
+      "waitName",
+      "target",
+      "payload",
+      "maximumWaitSeconds",
+      "pollEverySeconds",
+    ],
+    consistent: (fields) =>
+      Number(fields["pollEverySeconds"]) <=
+      Number(fields["maximumWaitSeconds"]),
+  },
   "record-schedule-skip": {
     required: ["workflowId", "slot"],
     validators: { slot: positive },
@@ -310,6 +325,11 @@ export function isCapabilityList(value: unknown): value is string {
 }
 
 const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
+  waitName: (value) =>
+    typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value),
+  maximumWaitSeconds: (value) =>
+    whole(value) && value >= 60 && value <= 2_592_000,
+  pollEverySeconds: (value) => whole(value) && value >= 60 && value <= 86_400,
   expectedRevision: positive,
   expectedObservation: whole,
   generation: positive,

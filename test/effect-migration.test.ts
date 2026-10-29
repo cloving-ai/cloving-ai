@@ -74,20 +74,26 @@ async function refusedMigration(directory: string): Promise<void> {
   assert.match(refused.detail, /injected-migration-failure/);
 }
 
-await test("CLV-049 a version 3 state directory opens as version 4 with its version 3 rows unchanged and six empty effect tables", async () => {
+await test("CLV-049 a version 3 state directory opens as the current schema with its version 3 rows unchanged and six empty effect tables", async () => {
   const directory = await versionThreeDirectory();
   assert.deepEqual(version(directory), [{ user_version: 3 }]);
   const before = tableRows(directory, versionThreeTables);
   const migrated = await openedAuthority(directory);
   await migrated.close();
-  assert.deepEqual(version(directory), [{ user_version: 4 }]);
+  assert.deepEqual(version(directory), [{ user_version: 5 }]);
   assert.deepEqual(tableRows(directory, versionThreeTables), before);
   assert.deepEqual(
     queryDatabase(
       directory,
       "SELECT version FROM schema_migrations ORDER BY version",
     ),
-    [{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }],
+    [
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+    ],
   );
   assert.deepEqual(
     tableRows(directory, effectTables),
@@ -158,7 +164,7 @@ await test("CLV-049 an interrupted migration to version 4 leaves version 3 with 
   alterDatabase(directory, "DROP TRIGGER fail_migration;");
   const completed = await openedAuthority(directory);
   await completed.close();
-  assert.deepEqual(version(directory), [{ user_version: 4 }]);
+  assert.deepEqual(version(directory), [{ user_version: 5 }]);
   assert.deepEqual(tableRows(directory, versionThreeTables), before);
 });
 
@@ -186,15 +192,15 @@ await test("CLV-049 the conversion of a version 3 state directory with a changed
   assert.deepEqual(presentTables(directory), []);
 });
 
-await test("CLV-049 the conversion upgrades a version 3 state directory to version 4", async () => {
+await test("CLV-049 the conversion upgrades a version 3 state directory to the current schema", async () => {
   const directory = await versionThreeDirectory();
   const conversion = await convertAuthority(directory);
   assert.equal(conversion.kind, "converted", JSON.stringify(conversion));
-  assert.deepEqual(version(directory), [{ user_version: 4 }]);
+  assert.deepEqual(version(directory), [{ user_version: 5 }]);
   await (await openedAuthority(directory)).close();
 });
 
-await test("CLV-049 a version 2 state directory goes to version 4 in two transactions, and an interruption of the second one leaves version 3", async () => {
+await test("CLV-049 a version 2 state directory goes to the current schema in three transactions, and an interruption of the second one leaves version 3", async () => {
   const directory = await temporaryDirectory();
   const first = await openedAuthority(directory);
   for (const command of storedGate) await executePinned(first, command);
@@ -210,6 +216,6 @@ await test("CLV-049 a version 2 state directory goes to version 4 in two transac
   const completed = await openedAuthority(directory);
   const state = await completed.state();
   await completed.close();
-  assert.deepEqual(version(directory), [{ user_version: 4 }]);
+  assert.deepEqual(version(directory), [{ user_version: 5 }]);
   assert.equal(state.gates["run-1 gate-1"]?.kind, "untyped");
 });
