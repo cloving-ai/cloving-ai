@@ -25,6 +25,7 @@ export const packedIdeaSources = [
 ];
 
 export async function packedIdeaTemplate(packageRoot: string): Promise<void> {
+  await verifyPackagedIdeaCommands(packageRoot);
   const root = join(packageRoot, "templates/idea-to-issue");
   assert.equal(
     manifest(JSON.parse(await readFile(join(root, "template.json"), "utf8")))
@@ -55,4 +56,40 @@ export async function packedIdeaTemplate(packageRoot: string): Promise<void> {
       assert.doesNotMatch(output, /not ok|✖/);
     });
   }
+}
+
+export async function verifyPackagedIdeaCommands(
+  packageRoot: string,
+): Promise<void> {
+  await withFiles(operatorFiles("project", "develop"), async (directory) => {
+    const repository = join(directory, "repo");
+    const invoke = (args: readonly string[]): string =>
+      packedCommand(process.execPath, {
+        args: [join(packageRoot, "dist/src/cli.js"), ...args],
+        cwd: repository,
+        env: {
+          ...process.env,
+          NODE_TEST_CONTEXT: undefined,
+          XDG_CONFIG_HOME: join(directory, "config"),
+        },
+      });
+    assert.match(
+      invoke(["templates", "list", "--json"]),
+      /"name"\s*:\s*"idea-to-issue"/,
+    );
+    assert.match(
+      invoke(["templates", "copy", "idea-to-issue", "--id", "custom-idea"]),
+      /cloving workflows test custom-idea/,
+    );
+    assert.match(
+      await readFile(
+        join(repository, ".cloving/workflows/custom-idea.declaration.json"),
+        "utf8",
+      ),
+      /"workflowId": "custom-idea"/,
+    );
+    const tested = invoke(["workflows", "test", "custom-idea"]);
+    assert.match(tested, /selected complete configuration/);
+    assert.doesNotMatch(tested, /not ok|✖/);
+  });
 }
