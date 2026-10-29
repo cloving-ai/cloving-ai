@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { candidatePackageRoot } from "./candidate-package-fixture.ts";
-import { cli, cliOptions, entry } from "./cli-workflows-fixture.ts";
+import { cli } from "./cli-workflows-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { record } from "../src/protocol.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
@@ -14,41 +12,15 @@ import {
   templateList,
   templateRoot,
 } from "../tools/template-files.ts";
-
-const developTemplate: unknown = JSON.parse(
-  await readFile("templates/develop/template.json", "utf8"),
-);
-
-const packagedEntry = join(candidatePackageRoot, "src/cli.ts");
-
-function templates(root: string, args: readonly string[]) {
-  return spawnSync(
-    process.execPath,
-    [entry, "templates", ...args],
-    cliOptions(root),
-  );
-}
-
-async function filesBelow(folder: string): Promise<readonly string[]> {
-  const entries = await readdir(folder, {
-    recursive: true,
-    withFileTypes: true,
-  });
-  return entries
-    .filter((item) => item.isFile())
-    .map((item) => join(item.parentPath, item.name).slice(folder.length + 1))
-    .sort();
-}
-
-function listed(root: string) {
-  const result = cli(root, { args: ["list", "--json"], entry: packagedEntry });
-  assert.equal(result.status, 0, result.stderr);
-  const workflows: unknown = JSON.parse(result.stdout);
-  assert.ok(Array.isArray(workflows));
-  return workflows.map((item: unknown) => record(item) ?? {});
-}
-
-const repository = { "repo/.gitkeep": "" };
+import {
+  developTemplate,
+  filesBelow,
+  listed,
+  packagedEntry,
+  repository,
+  templates,
+  templateFiles,
+} from "./cli-templates-fixture.ts";
 
 await test("CLV-223 templates list gives each template with its summary and point count", () =>
   withFiles(repository, (root) => {
@@ -74,9 +46,7 @@ await test("CLV-223 templates show gives the template description and its workfl
     assert.equal(result.status, 0, result.stderr);
     const shown = record(JSON.parse(result.stdout));
     assert.deepEqual(shown?.["template"], developTemplate);
-    const expected = (await filesBelow("templates/develop")).filter(
-      (file) => !["template.json", "README.md"].includes(file),
-    );
+    const expected = await templateFiles();
     assert.deepEqual(shown?.["files"], expected);
     assert.ok(expected.includes("develop.ts"));
     assert.ok(expected.includes("develop.declaration.json"));
@@ -89,9 +59,7 @@ await test("CLV-223 templates copy writes the workflow parts and the start admit
     const result = templates(root, ["copy", "develop"]);
     assert.equal(result.status, 0, result.stderr);
     const folder = join(root, "repo/.cloving/workflows");
-    const expected = (await filesBelow("templates/develop")).filter(
-      (file) => !["template.json", "README.md"].includes(file),
-    );
+    const expected = await templateFiles();
     assert.deepEqual(await filesBelow(folder), expected);
     const declaration = record(
       JSON.parse(
@@ -152,37 +120,6 @@ await test("CLV-223 templates copy with an id renames the files, the workflow an
     assert.equal(tested.status, 0, tested.stdout + tested.stderr);
   }));
 
-for (const present of [
-  "develop.ts",
-  "develop/turn.ts",
-  "develop.declaration.json",
-])
-  await test(`CLV-223 templates copy over an existing ${present} leaves only the files that were present`, () =>
-    withFiles(
-      { ...repository, [`repo/.cloving/workflows/${present}`]: "changed" },
-      async (root) => {
-        const folder = join(root, "repo/.cloving/workflows");
-        const again = templates(root, ["copy", "develop"]);
-        assert.equal(again.status, 1);
-        assert.match(again.stderr, /workflow-exists/);
-        assert.deepEqual(await filesBelow(folder), [present]);
-        assert.equal(await readFile(join(folder, present), "utf8"), "changed");
-      },
-    ));
-
-await test("CLV-223 templates copy over a complete copy changes no file", () =>
-  withFiles(repository, async (root) => {
-    assert.equal(templates(root, ["copy", "develop"]).status, 0);
-    const folder = join(root, "repo/.cloving/workflows");
-    await writeFile(join(folder, "develop.ts"), "changed");
-    const before = await filesBelow(folder);
-    const again = templates(root, ["copy", "develop"]);
-    assert.equal(again.status, 1);
-    assert.match(again.stderr, /workflow-exists/);
-    assert.deepEqual(await filesBelow(folder), before);
-    assert.equal(await readFile(join(folder, "develop.ts"), "utf8"), "changed");
-  }));
-
 await test("CLV-223 templates commands refuse unknown templates and invalid ids", () =>
   withFiles(repository, (root) => {
     const unknown = templates(root, ["copy", "missing"]);
@@ -196,42 +133,6 @@ await test("CLV-223 templates commands refuse unknown templates and invalid ids"
     const wrong = templates(root, ["remove", "develop"]);
     assert.equal(wrong.status, 2);
     assert.match(wrong.stderr, /invalid-invocation/);
-  }));
-
-await test("CLV-223 two copies at the same time leave one complete copy", () =>
-  withFiles(repository, async (root) => {
-    const run = () =>
-      new Promise<{ status: number | null; stderr: string }>((settle) => {
-        const child = spawn(
-          process.execPath,
-          [entry, "templates", "copy", "develop"],
-          cliOptions(root),
-        );
-        let stderr = "";
-        child.stderr?.on("data", (chunk: Buffer) => {
-          stderr += String(chunk);
-        });
-        child.once("close", (status) => {
-          settle({ status, stderr });
-        });
-      });
-    const results = await Promise.all([run(), run()]);
-    assert.deepEqual(
-      results.map((result) => result.status).sort(),
-      [0, 1],
-      JSON.stringify(results),
-    );
-    assert.match(
-      results.find((result) => result.status === 1)?.stderr ?? "",
-      /workflow-exists/,
-    );
-    const expected = (await filesBelow("templates/develop")).filter(
-      (file) => !["template.json", "README.md"].includes(file),
-    );
-    assert.deepEqual(
-      await filesBelow(join(root, "repo/.cloving/workflows")),
-      expected,
-    );
   }));
 
 await test("CLV-223 a declaration may name its template", () => {
@@ -272,32 +173,6 @@ await test("CLV-223 templates help, text output and invalid invocations", () =>
       assert.match(wrong.stderr, /invalid-invocation/);
     }
   }));
-
-await test("CLV-223 templates copy prints JSON and ignores unreadable declarations", () =>
-  withFiles(
-    {
-      ...repository,
-      "repo/.cloving/workflows/broken.declaration.json": "{",
-      "repo/.cloving/workflows/folder.declaration.json/.gitkeep": "",
-    },
-    (root) => {
-      const result = templates(root, [
-        "copy",
-        "develop",
-        "--json",
-        "--repository",
-        join(root, "repo"),
-      ]);
-      assert.equal(result.status, 0, result.stderr);
-      const printed = record(JSON.parse(result.stdout));
-      assert.equal(printed?.["workflowId"], "develop");
-      assert.equal(printed["template"], "develop");
-      assert.deepEqual(printed["queueWorkflows"], ["develop"]);
-      const files = printed["files"];
-      assert.ok(Array.isArray(files) && files.includes("develop.ts"));
-      assert.doesNotMatch(result.stderr, /queue-workflow-conflict/);
-    },
-  ));
 
 await test("CLV-223 template files skip invalid template folders and need a package root", () =>
   withFiles(

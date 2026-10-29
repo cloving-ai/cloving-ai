@@ -76,6 +76,25 @@ export async function readTemplate(
   return { name, description, points, files: await workflowFiles(folder) };
 }
 
+export async function exportedFunctions(
+  folders: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const names = new Set<string>();
+  for (const folder of folders) {
+    const files = await readdir(folder).catch(() => []);
+    for (const file of files.filter((name) =>
+      /^[^.].*(?<!\.test|\.d)\.[jt]s$/.test(name),
+    )) {
+      const text = await readFile(join(folder, file), "utf8").catch(() => "");
+      for (const match of text.matchAll(
+        /export\s+(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g,
+      ))
+        names.add(String(match[1]));
+    }
+  }
+  return names;
+}
+
 async function workflowFiles(folder: string): Promise<readonly string[]> {
   const entries = await readdir(folder, {
     recursive: true,

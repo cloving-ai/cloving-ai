@@ -28,6 +28,7 @@ export async function copyTemplate(input: {
   readonly name: string;
   readonly id: string;
   readonly folder: string;
+  readonly takenNames: ReadonlySet<string>;
 }): Promise<{
   readonly template: Template;
   readonly files: readonly string[];
@@ -58,7 +59,11 @@ function camelName(id: string): string {
 
 function functionRenaming(
   sources: readonly { readonly file: string; readonly text: string }[],
-  input: { readonly name: string; readonly id: string },
+  input: {
+    readonly name: string;
+    readonly id: string;
+    readonly takenNames: ReadonlySet<string>;
+  },
 ): Renaming {
   const from = camelName(input.name);
   const names = new Set(
@@ -66,9 +71,21 @@ function functionRenaming(
       .filter(({ file }) => file.endsWith(".ts"))
       .flatMap(({ text }) => text.match(/[A-Za-z_$][\w$]*/g) ?? []),
   );
+  for (const name of input.takenNames) names.add(name);
   let to = camelName(input.id);
-  while (to !== from && names.has(to)) to += "Workflow";
+  while (to !== from && (names.has(to) || reservedWord(to))) to += "Workflow";
   return { template: input.name, id: input.id, from, to };
+}
+
+function reservedWord(name: string): boolean {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true);
+  scanner.setText(name);
+  const kind = scanner.scan();
+  return (
+    (kind >= ts.SyntaxKind.FirstReservedWord &&
+      kind <= ts.SyntaxKind.LastFutureReservedWord) ||
+    ["await", "eval", "arguments"].includes(name)
+  );
 }
 
 function copiedContent(
@@ -168,14 +185,22 @@ async function placed(
   for (let depth = 1; depth < parts.length; depth += 1) {
     const directory = join(input.folder, ...parts.slice(0, depth));
     if (created.includes(directory)) continue;
-    await mkdir(directory).catch(() => {
-      throw new Error(`workflow-exists: ${parts.slice(0, depth).join("/")}`);
+    await mkdir(directory).catch((error: unknown) => {
+      throw present(error, parts.slice(0, depth).join("/"));
     });
     created.push(directory);
   }
   const target = join(input.folder, input.item.target);
-  await link(join(input.staging, input.item.target), target).catch(() => {
-    throw new Error(`workflow-exists: ${input.item.target}`);
-  });
+  await link(join(input.staging, input.item.target), target).catch(
+    (error: unknown) => {
+      throw present(error, input.item.target);
+    },
+  );
   created.push(target);
+}
+
+function present(error: unknown, target: string): unknown {
+  return error instanceof Error && "code" in error && error.code === "EEXIST"
+    ? new Error(`workflow-exists: ${target}`)
+    : error;
 }

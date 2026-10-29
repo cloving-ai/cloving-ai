@@ -1,12 +1,18 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import { record } from "../src/protocol.ts";
+import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
 import { projectConfiguration, projectRoot } from "./project-configuration.ts";
 import { copyTemplate } from "./template-copy.ts";
-import { readTemplate, templateList, templateRoot } from "./template-files.ts";
+import {
+  exportedFunctions,
+  readTemplate,
+  templateList,
+  templateRoot,
+} from "./template-files.ts";
 import { userLocation } from "./workflow-folders.ts";
 
 const usage =
@@ -114,13 +120,15 @@ async function copied(
 ): Promise<number> {
   const repository = await projectRoot(input.repository);
   const folder = join(repository, ".cloving", "workflows");
-  const result = await copyTemplate({
-    root,
-    name: input.name,
-    id: input.id,
-    folder,
-  });
-  const queued = await queueWorkflows(repository, folder);
+  const folders = [folder, await userFolder(repository)];
+  const packageRoot = dirname(root);
+  const takenNames = await exportedFunctions([
+    join(packageRoot, "workflows"),
+    join(packageRoot, "dist", "workflows"),
+    ...folders,
+  ]);
+  const result = await copyTemplate({ ...input, root, folder, takenNames });
+  const queued = (await Promise.all(folders.map(queuedIn))).flat().sort();
   if (input.json)
     process.stdout.write(
       JSON.stringify({
@@ -157,10 +165,7 @@ function pointText(points: readonly unknown[]): string {
     .join("");
 }
 
-async function queueWorkflows(
-  repository: string,
-  folder: string,
-): Promise<readonly string[]> {
+async function userFolder(repository: string): Promise<string> {
   const settings = await projectConfiguration(repository, process.env);
   const user = userLocation({
     home: homedir(),
@@ -169,27 +174,38 @@ async function queueWorkflows(
       settings.environment["CLOVING_WORKFLOW_FOLDER"],
     ),
   });
-  const folders = [folder, join(user.root, ...user.parts)];
-  const ids = await Promise.all(folders.map(queuedIn));
-  return ids.flat().sort();
+  return join(user.root, ...user.parts);
 }
 
 async function queuedIn(folder: string): Promise<readonly string[]> {
   const names = await readdir(folder).catch(() => []);
-  const declarations = await Promise.all(
+  const ids = await Promise.all(
     names
       .filter((name) => name.endsWith(".declaration.json"))
-      .map((name) => readFile(join(folder, name), "utf8").catch(() => "")),
+      .map((name) => queuedId(folder, name)),
   );
-  return declarations.flatMap((text) => {
-    let workflow;
-    try {
-      workflow = record(record(JSON.parse(text))?.["workflow"]);
-    } catch {
-      return [];
-    }
-    return workflow?.["queue"] === true ? [String(workflow["workflowId"])] : [];
-  });
+  return ids.flatMap((id) => (id === undefined ? [] : [id]));
+}
+
+async function queuedId(
+  folder: string,
+  name: string,
+): Promise<string | undefined> {
+  const text = await readFile(join(folder, name), "utf8").catch(() => "");
+  let declaration: unknown;
+  try {
+    declaration = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isCandidateDeclaration(declaration) ||
+    declaration.workflow.queue !== true
+  )
+    return undefined;
+  const source = join(folder, name.replace(/\.declaration\.json$/, ".ts"));
+  const entry = await stat(source).catch(() => undefined);
+  return entry?.isFile() === true ? declaration.workflow.workflowId : undefined;
 }
 
 if (process.argv[1] === import.meta.filename)
