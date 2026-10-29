@@ -23,6 +23,15 @@ const nodeVersions = {
   publish: "26.9.0",
 } as const;
 
+await test("CI cancels the older runs of a branch or a pull request, and keeps every run of main and of a tag", async () => {
+  const workflow = await releaseWorkflow();
+  assert.deepEqual(workflow.concurrency, {
+    group:
+      "ci-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && github.run_id || github.ref }}",
+    "cancel-in-progress": true,
+  });
+});
+
 await test("CLV-097 CI checks main and version tag pushes, every pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
   assert.deepEqual(workflow.on, {
