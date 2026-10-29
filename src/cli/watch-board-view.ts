@@ -59,7 +59,6 @@ export function CardReview(props: {
   readonly card: WatchCard;
   readonly workflowId: string;
 }): Shown {
-  if (props.workflowId !== "develop-issue") return null;
   const review = cardReview(props.card);
   if (review === "") return null;
   return element("span", {
