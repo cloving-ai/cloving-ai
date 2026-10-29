@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { cli } from "./cli-workflows-fixture.ts";
+import { cli, cliOptions } from "./cli-workflows-fixture.ts";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { record } from "../src/protocol.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
@@ -22,6 +24,22 @@ import {
   templates,
   templateFiles,
 } from "./cli-templates-fixture.ts";
+
+await test("CLV-227 the built CLI exposes the template copy command", () =>
+  withFiles(repository, (root) => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(candidatePackageRoot, "dist/src/cli.js"),
+        "templates",
+        "copy",
+        "--help",
+      ],
+      cliOptions(root),
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /cloving templates copy <name>/);
+  }));
 
 await test("CLV-223 templates list gives each template with its summary and point count", () =>
   withFiles(repository, (root) => {

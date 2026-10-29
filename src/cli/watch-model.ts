@@ -326,8 +326,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ...pullOf(
       {
         records: inputs.githubRecords,
-        repository:
-          workflowId === "develop-issue" ? (inputs.repository ?? null) : null,
+        repository: inputs.repository ?? null,
       },
       runId,
     ),
