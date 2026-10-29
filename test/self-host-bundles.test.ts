@@ -36,7 +36,9 @@ await test("CLV-219 a source bootstrap client resolves the SDK hook runtime", ()
   }));
 
 async function bundleIds(store: string): Promise<string[]> {
-  return (await readdir(store)).filter((name) => !name.startsWith("."));
+  return (await readdir(store)).filter(
+    (name) => !name.startsWith(".") && name !== "node_modules",
+  );
 }
 
 async function retainedSnapshot(input: {

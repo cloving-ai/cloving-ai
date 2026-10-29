@@ -345,15 +345,16 @@ export async function preparedProject(
     repository: folders.repository,
     directory: join(dirname(project), "workflow-bundles"),
   });
-  const workflows = bundledListings({
-    product,
-    files,
-    manifests: bundled,
-    declarations,
-  });
-  workflows.push(...folders.workflows);
+  const modules = join(dirname(project), "workflow-bundles/node_modules");
+  await rm(modules, { force: true });
+  await symlink(join(project, "node_modules"), modules);
   return {
-    workflows,
+    workflows: bundledListings({
+      product,
+      files,
+      manifests: bundled,
+      declarations,
+    }).concat(folders.workflows),
     repository: folders.repository,
     bundleDigest,
     manifests,

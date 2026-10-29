@@ -30,7 +30,7 @@ await test("CLV-154 restart fixture rejects non-object run JSON", () =>
     );
   }));
 
-await test("CLV-154 operator admission, refusal reporting and unchanged-source continuations survive daemon restart", () =>
+await test("CLV-154 operator admission, refusal reporting and retained continuations survive source changes and daemon restart", () =>
   withoutChildren(async () => {
     const fixture = await scene(
       'throw new Error("unexpected-effect");',
