@@ -212,7 +212,9 @@ async function captureEntry(
   }
 }
 
-function userLocation(input: WorkflowFolderInput): {
+export function userLocation(
+  input: Pick<WorkflowFolderInput, "home" | "xdgConfigHome" | "userFolder">,
+): {
   readonly root: string;
   readonly parts: readonly string[];
 } {

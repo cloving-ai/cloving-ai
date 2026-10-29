@@ -213,6 +213,11 @@ if (command === "workflows" && ["list", "test"].includes(options[0] ?? ""))
     tool: "workflow-command",
     argumentsList: options,
   });
+else if (command === "templates")
+  process.exitCode = await toolProcess({
+    tool: "template-command",
+    argumentsList: options,
+  });
 else if (command === "start") process.exitCode = await start();
 else {
   const invocation = parseInvocation(process.argv.slice(2));
