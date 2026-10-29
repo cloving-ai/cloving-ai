@@ -35,9 +35,12 @@ export function resultFields(result: string | null): Record<string, unknown> {
   } catch {
     throw new Error("invalid-issue-result");
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error("invalid-issue-result");
-  return Object.fromEntries(Object.entries(value));
+  if (!resultObject(value)) throw new Error("invalid-issue-result");
+  return value;
+}
+
+function resultObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function issueOutcome(input: IdeaInput, number: number): CycleOutcome {

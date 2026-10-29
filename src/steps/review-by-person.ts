@@ -5,7 +5,9 @@ import { waitForDecision } from "./wait-for-decision.ts";
 export async function reviewByPerson(request: {
   readonly subject: ReviewSubject;
 }): Promise<ReviewResult> {
-  const draft = "draft" in request.subject ? request.subject.draft : null;
+  let draft = "draft" in request.subject ? request.subject.draft : null;
+  if (draft !== null && request.subject.commit !== undefined)
+    draft = `${request.subject.commit}\n${draft}`;
   const snapshot = await snapshotReviewSubject(request.subject);
   const decision = await waitForDecision({
     gateId: `review:${snapshot.subjectDigest}`,
