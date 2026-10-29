@@ -37,6 +37,7 @@ interface WorkflowJob {
 export interface ReleaseWorkflow {
   readonly on: Readonly<Record<string, TriggerFilter>>;
   readonly permissions: StringRecord;
+  readonly concurrency?: Readonly<Record<string, string | boolean>>;
   readonly jobs: {
     readonly quality: WorkflowJob;
     readonly quality_linux: WorkflowJob;
