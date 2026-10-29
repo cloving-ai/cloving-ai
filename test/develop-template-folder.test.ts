@@ -7,6 +7,10 @@ import { withFiles } from "./quality/files-fixture.ts";
 
 import { developFiles } from "./develop-template-flow-fixture.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
+import {
+  configuredDevelopFiles,
+  completeConfigurations,
+} from "./develop-template-options-fixture.ts";
 
 await test("CLV-221 the executable default passes folder admission", async () => {
   const template = fileURLToPath(
@@ -23,3 +27,30 @@ await test("CLV-221 the executable default passes folder admission", async () =>
     assert.equal(declaration.workflow.queue, true);
   });
 });
+
+for (const selected of completeConfigurations)
+  await test(`CLV-221 complete configuration ${Object.values(selected).join("/")} passes folder admission`, async () => {
+    const template = fileURLToPath(
+      new URL("../templates/develop", import.meta.url),
+    );
+    await withFiles(
+      await configuredDevelopFiles(template, selected),
+      async (directory) => {
+        const loaded = await loadWorkflowFolders(folderInput(directory));
+        assert.deepEqual(loaded.refusals, []);
+        assert.equal(loaded.candidates.length, 1);
+        const declaration: unknown = JSON.parse(
+          loaded.candidates[0]?.declaration ?? "null",
+        );
+        assert.ok(isCandidateDeclaration(declaration));
+        assert.equal(
+          declaration.workflow.queue === true,
+          selected.select === "queue",
+        );
+        assert.deepEqual(
+          declaration.workflow.capabilities,
+          selected.merge === "local" ? ["claude"] : ["claude", "github"],
+        );
+      },
+    );
+  });

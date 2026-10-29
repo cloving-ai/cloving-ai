@@ -86,7 +86,7 @@ refusalTests.push({
       reportOf(
         completed({ summary: "Report was truncated.", ticketStatus: status }),
       ),
-      { summary: "Report was truncated.", status },
+      { summary: "Report was truncated.", status, commit: null, clean: false },
     );
     assert.throws(() => reportOf({ ...completed({}), result: null }), {
       message: "invalid-development-report",
@@ -142,6 +142,7 @@ refusalTests.push({
             cycleId: input.cycleId,
             repository: input.repository,
             ticket: "Fix the counter.",
+            issue: null,
           },
           round: 1,
         }),
@@ -162,6 +163,7 @@ refusalTests.push({
           cycleId: input.cycleId,
           repository: input.repository,
           ticket: "Fix the counter.",
+          issue: null,
         },
         round: 1,
       }),

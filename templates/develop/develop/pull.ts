@@ -80,7 +80,7 @@ export async function finishPull(request: {
     promotionId: `pull-request-${String(pull.number)}`,
     ticketStatus: report.status.kind,
   };
-  const target = issueOf(input.ticket);
+  const target = input.issue;
   if (target === null) return outcome;
   const result =
     report.status.kind === "partial"
@@ -118,21 +118,11 @@ export async function finishPull(request: {
   };
 }
 
-function issueOf(ticket: string) {
-  const match = /^GitHub issue: ([\w.-]+)\/([\w.-]+)#(\d+)/m.exec(ticket);
-  if (match === null) return null;
-  return {
-    owner: match[1] ?? "",
-    repository: match[2] ?? "",
-    number: Number(match[3]),
-  };
-}
-
 export async function labelTicket(
   input: DevelopTask,
   state: { readonly key: "start" | "blocked"; readonly round: number },
 ): Promise<void> {
-  const issue = issueOf(input.ticket);
+  const issue = input.issue;
   if (issue === null) return;
   const result = await protectedEffect({
     scope: {

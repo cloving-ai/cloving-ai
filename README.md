@@ -848,6 +848,10 @@ Use `cloving workflows list` to inspect bundled, project and user workflows with
 
 Put tests beside each folder workflow as `<name>.test.ts`, then run `cloving workflows test <workflow-id>`. Omit the ID to run all available project and user workflow tests. Both commands accept `--repository <directory>`. The Node test runner prints its results and supplies the exit status. Unknown IDs report `unknown-workflow`; known workflows without tests report `workflow-test-missing`. Neither needs a running service.
 
+The package contains workflow templates. `cloving templates list` shows each template with its summary and its number of decision points, and `cloving templates show <name>` shows its decision points and its workflow files. With `--json`, `list` prints an array of `{ name, summary, points }`, and `show` prints `{ template, files }`, where `template` is the content of `template.json`.
+
+`cloving templates copy <name>` writes the workflow file, its helper folder, its declaration and its test into `.cloving/workflows/` of the current repository (or of `--repository <directory>`), and prints the decision points and the next command `cloving workflows test <workflow-id>`. The declaration of the copy names its template in the field `template`. `--id <workflow-id>` gives the copy another workflow ID: the command renames the files, the helper folder, the workflow ID and the exported function, and changes the imports and the test references. The ID uses lowercase letters, digits and single hyphens and starts with a letter; another ID fails with `invalid-workflow-id`. A copy writes no file when a workflow file or folder of that ID is already present, and fails with `workflow-exists`. The command writes the files into a temporary folder first, and then puts each file in place; after a failure, it removes the files that it put in place. When two workflows of the project and user folders have `"queue": true` after a copy, the command prints `queue-workflow-conflict`; select "a person" for the select point of one copy.
+
 Tests can import `runScenario` from `cloving/workflows/testing`:
 
 ```typescript
