@@ -31,10 +31,10 @@ async function ended(processId: number): Promise<boolean> {
 async function readyProcess(file: string): Promise<number> {
   const deadline = Date.now() + testMilliseconds(10000);
   while (Date.now() < deadline) {
-    if (existsSync(file)) {
-      const processId = Number(await readFile(file, "utf8"));
-      if (Number.isSafeInteger(processId) && processId > 0) return processId;
-    }
+    const processId = existsSync(file)
+      ? Number(await readFile(file, "utf8"))
+      : 0;
+    if (Number.isSafeInteger(processId) && processId > 0) return processId;
     await delay(50);
   }
   throw new Error("fixture-program-readiness-timed-out");
