@@ -355,3 +355,36 @@ flowTests.push({
     });
   },
 });
+
+flowTests.push({
+  name: "the develop turns keep fail-closed checks and operator steps out of the remaining list",
+  run: async () => {
+    const scenario = effects();
+    for (const key of [
+      "claude run-turn",
+      "github open-pr",
+      "github wait-review",
+    ] as const)
+      scenario[key] = [...scenario[key], ...scenario[key]];
+    scenario["github merge"] = [
+      completed({ reason: "check-failed", output: "Check output.\n" }),
+      ...scenario["github merge"],
+    ];
+    using bridge = fakeStepBridge({ effects: scenario });
+    await develop(input);
+    const payloads = bridge.requests.flatMap((request) =>
+      request[0] === "effect" && request[1].method === "run-turn"
+        ? [request[1].payload]
+        : [],
+    );
+    for (const sentence of [
+      "List as remaining only work that the task asks for.",
+      "A check that the repository keeps fail-closed on purpose is not remaining work.",
+      "A step that the task gives to the operator is not remaining work.",
+    ])
+      assert.ok(payloads[0]?.includes(sentence), sentence);
+    assert.ok(
+      payloads[1]?.includes("Drop an item that the task does not ask for"),
+    );
+  },
+});

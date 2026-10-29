@@ -198,7 +198,7 @@ await test("CLV-123 review and merge fix turns retain remaining work and require
     );
     assert.match(
       prompts[1] ?? "",
-      /Reassess each remaining item before reporting Ticket status: complete/,
+      /Reassess each remaining item before reporting Ticket status: complete\. Keep every unfinished item in the next Remaining: list\. Drop an item that is not work of the acceptance criteria of this ticket\./,
     );
     assert.ok(
       prompts[2]?.includes(
@@ -208,4 +208,15 @@ await test("CLV-123 review and merge fix turns retain remaining work and require
     assert.ok(!prompts[2]?.includes("- Add recovery."));
     assert.equal(field(field(line, "outcome"), "ticketStatus"), "complete");
   }
+});
+
+await test("the worker prompt keeps fail-closed checks and operator steps out of the remaining list", async () => {
+  const [line] = await ran([statusScenario("Ticket status: complete")]);
+  const prompt = String(field(request(line, 2), "payload"));
+  for (const sentence of [
+    "List as remaining only work that the acceptance criteria of this ticket ask for.",
+    "A check that the repository keeps fail-closed on purpose is not remaining work.",
+    "A step that the ticket gives to the operator is not remaining work.",
+  ])
+    assert.ok(prompt.includes(sentence), sentence);
 });

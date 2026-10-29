@@ -8,6 +8,6 @@ Use TypeScript on Node. The selected durable engine is Workflow SDK with bundled
 
 Write and observe the intended failing test before each behavior, then implement the minimum, verify green and refactor. Record exact revisions and evidence externally. Independent read-only review precedes acceptance. No source comments, implicit authority, hidden model calls or skipped checks.
 
-Setup commands: `npm ci --ignore-scripts`, `npm run check:setup`, `npm run build`, `npm pack --ignore-scripts`. The full `npm run check` and `npm run test:concurrency` currently fail closed until Slice 0 is implemented. Do not admit product behavior before CLV-002–004 pass. Repository policy copies are proposals; accepted verification policy lives outside candidate write access.
+Setup commands: `npm ci --ignore-scripts`, `npm run check:setup`, `npm run build`, `npm pack --ignore-scripts`. The full `npm run check` and `npm run test:concurrency` fail closed on purpose. They are the admission gate of the operator, not work of a ticket. A ticket passes with `npm run check:quality`. Never list the fail-closed gate as remaining work. Repository policy copies are proposals; accepted verification policy lives outside candidate write access.
 
 Pin and justify every dependency. Inspect the installed packed artifact with scripts disabled. Stage explicit owned paths only. Never add AI attribution, bypass hooks, overwrite unrelated work, push, publish or deploy without scope in the grant.

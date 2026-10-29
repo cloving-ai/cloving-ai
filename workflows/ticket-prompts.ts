@@ -43,6 +43,7 @@ function instructions(repository: string): string {
     "Treat a check time warning as work to do in the same ticket when your change made the check slower.",
     "Commit your work on the current branch. Do not push. Do not change a different branch.",
     "End with a short report: what you changed, the checks that you ran with their results, and what is not done. End the report with exactly one of the lines Ticket status: complete or Ticket status: partial. Before a partial status line, include Remaining: followed by a list with one item on each line, using a dash and a space before each item. Blank lines are allowed around and between list items.",
+    "List as remaining only work that the acceptance criteria of this ticket ask for. A check that the repository keeps fail-closed on purpose is not remaining work. A step that the ticket gives to the operator is not remaining work.",
   ].join("\n");
 }
 
@@ -143,7 +144,7 @@ export function turnPrompt(input: Ticket, fix: Fix | null): string {
           "",
           "Remaining work from the previous worker report:",
           ...status.remaining.map((item) => `- ${item}`),
-          "Reassess each remaining item before reporting Ticket status: complete. Keep every unfinished item in the next Remaining: list.",
+          "Reassess each remaining item before reporting Ticket status: complete. Keep every unfinished item in the next Remaining: list. Drop an item that is not work of the acceptance criteria of this ticket.",
         ].join("\n");
   const ticket = pullPrompt(input) + continuation;
   if (review["reason"] === "ci-failed")
