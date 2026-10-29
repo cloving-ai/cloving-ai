@@ -1,3 +1,4 @@
+import { operationPhase } from "../operation-identity.ts";
 import { current, ownedLease } from "./leases.ts";
 import {
   cancelledOperation,
@@ -177,8 +178,9 @@ function statedReason(event: EffectEvent): string {
 function notStarted(effects: EffectState, subject: Subject): EffectResult {
   const { operation, event, runStatus } = subject;
   const exhausted =
-    (effects.budgets[operation.runId]?.exhaustedSequence ?? null) !== null ||
-    field(event, "reason") === "budget-exhausted";
+    field(event, "reason") === "budget-exhausted" ||
+    (operationPhase(operation.operationId) !== "command-wait" &&
+      (effects.budgets[operation.runId]?.exhaustedSequence ?? null) !== null);
   const ended = terminalStatuses.includes(runStatus);
   const waiting: Operation = {
     ...operation,

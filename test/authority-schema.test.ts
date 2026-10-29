@@ -14,7 +14,7 @@ await test("CLV-007 every authority connection uses WAL, full synchronization, f
   const directory = await temporaryDirectory();
   const authority = await openedAuthority(directory);
   assert.deepEqual(await authority.settings(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     journalMode: "wal",
     synchronous: 2,
     foreignKeys: 1,
@@ -123,7 +123,7 @@ await test("CLV-007 a schema mismatch is refused before the file changes its jou
 
 await test("CLV-007 a connection that does not report every required setting is a storage failure", () => {
   const required = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     journalMode: "wal",
     synchronous: 2,
     foreignKeys: 1,

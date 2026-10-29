@@ -95,3 +95,12 @@ export async function loadCurrent(
     waits: await loadCommandWaits(connection),
   };
 }
+
+export async function loadWaiting(
+  connection: SqlConnection,
+): Promise<CurrentSnapshot> {
+  return {
+    ...(await loadEffected(connection)),
+    waits: await loadCommandWaits(connection, { version: "opened" }),
+  };
+}

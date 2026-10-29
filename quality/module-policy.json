@@ -1,5 +1,15 @@
 {
   "roles": {
+    "test/command-wait-check-store.ts": "test",
+    "test/command-wait-dispatch.test.ts": "test",
+    "test/command-wait-check-restart.test.ts": "test",
+    "src/authority/command-wait-checks.ts": "pure",
+    "src/authority/command-wait-results.ts": "pure",
+    "test/command-wait-checks.test.ts": "test",
+    "test/command-wait-check-results.test.ts": "test",
+    "test/command-wait-check-admission.test.ts": "test",
+    "test/command-wait-check-migration.test.ts": "test",
+    "test/command-wait-check-fixture.ts": "test",
     "test/self-development-config.test.ts": "test",
     "test/self-development-fixture.ts": "test",
     "test/self-development-queue.test.ts": "test",

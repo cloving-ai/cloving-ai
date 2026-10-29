@@ -1,3 +1,5 @@
+import { commandWaitKey } from "../authority/command-waits.ts";
+import { documentDigest } from "./decision-restore.ts";
 import { parseCommand } from "../authority/commands.ts";
 import type { AuthorityState } from "../authority/reducer.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
@@ -96,11 +98,62 @@ function waitMatches(
 const commandWait: Rule = (command, context) => {
   const pin = context.state.runs[command.runId]?.workflow ?? "";
   const declaration = context.definitions.get(pin);
-  const name = command.waitName ?? "";
+  const name = String(command.waitName);
   const waits = declaration?.commandWaits ?? {};
   const wait = Object.hasOwn(waits, name) ? waits[name] : undefined;
   if (wait === undefined || !waitMatches(command, wait))
     return { kind: "rejected", reason: "command-wait-not-declared" };
+  return unpinned(command, context);
+};
+
+function declaredWaitCheck(
+  command: AuthorityCommand,
+  context: Parameters<Rule>[1],
+) {
+  const pin = context.state.runs[command.runId]?.workflow ?? "";
+  const declarations = context.definitions.get(pin)?.commandWaits ?? {};
+  const name = String(command.waitName);
+  const declaration = Object.hasOwn(declarations, name)
+    ? declarations[name]
+    : undefined;
+  const wait =
+    context.state.commandWaits?.[commandWaitKey(command.runId, name)];
+  if (declaration === undefined || wait === undefined) return undefined;
+  return waitMatches(
+    {
+      ...command,
+      target: wait.command,
+      maximumWaitSeconds: wait.maximumWaitSeconds,
+      pollEverySeconds: wait.pollEverySeconds,
+    },
+    declaration,
+  )
+    ? wait
+    : undefined;
+}
+
+const commandWaitCheck: Rule = (command, context) => {
+  const wait = declaredWaitCheck(command, context);
+  if (wait === undefined)
+    return { kind: "rejected", reason: "command-wait-not-declared" };
+  const computed = effectInputDigest({
+    capability: "command",
+    method: `run:${wait.command}`,
+    target: wait.command,
+    payload: wait.inputDigest,
+  });
+  return command.inputDigest === computed
+    ? unpinned(command, context)
+    : { kind: "rejected", reason: "input-digest-mismatch" };
+};
+
+const commandReport: Rule = (command, context) => {
+  const output = command.commandOutput;
+  if (
+    output !== undefined &&
+    (command.worker !== "command" || documentDigest(output) !== command.result)
+  )
+    return { kind: "rejected", reason: "command-output-mismatch" };
   return unpinned(command, context);
 };
 
@@ -131,6 +184,8 @@ const effectRequest: Rule = (command, context) => {
 
 const rules: Readonly<Record<string, Rule>> = {
   "request-effect": effectRequest,
+  "check-command-wait": commandWaitCheck,
+  "report-effect": commandReport,
   "open-command-wait": commandWait,
   "admit-run": admission,
   "decide-gate": resumption,

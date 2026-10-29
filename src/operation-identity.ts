@@ -59,6 +59,11 @@ export function operationScope(operationId: string): OperationScope | null {
   return { run, operation };
 }
 
+export function operationPhase(operationId: string): string | null {
+  const [marker, , , phase] = parsedList(operationId);
+  return marker === "cloving-operation" && isComponent(phase) ? phase : null;
+}
+
 function parsedList(text: string): readonly unknown[] {
   try {
     const value: unknown = JSON.parse(text);

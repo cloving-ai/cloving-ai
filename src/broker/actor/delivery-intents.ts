@@ -1,3 +1,4 @@
+import { commandWaitDeadline } from "../command-wait-restore.ts";
 import { createHash } from "node:crypto";
 import { delivers, isSettled, type GateState } from "../../authority/gates.ts";
 import {
@@ -114,6 +115,10 @@ export function protectedIntent(
         .filter((lease) => lease.resourceKey === operation.leaseKey)
         .map((lease) => ({
           ...intent,
+          ...commandWaitDeadline(
+            state.commandWaits ?? {},
+            operation.operationId,
+          ),
           workflow,
           purpose,
           inputDigest: operation.inputDigest,

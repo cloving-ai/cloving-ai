@@ -18,6 +18,7 @@ const operation = /^[\x20-\x7e]{1,512}$/;
 export const commandEvents: Readonly<Record<string, EventType>> = {
   "admit-run": "run.created",
   "open-command-wait": "command-wait.opened",
+  "check-command-wait": "command-wait.checked",
   "expire-command-wait": "command-wait.expired",
   "mark-started": "run.started",
   "open-gate": "gate.opened",
@@ -53,6 +54,7 @@ const revised: Shape = { required: ["expectedRevision"] };
 
 const shapes: Readonly<Record<string, Shape>> = {
   "expire-command-wait": { required: ["waitName"] },
+  "check-command-wait": { required: ["waitName", "inputDigest"] },
   "open-command-wait": {
     required: [
       "waitName",
@@ -180,7 +182,7 @@ const shapes: Readonly<Record<string, Shape>> = {
       "worker",
       "outcome",
     ],
-    optional: ["result", "reason", "evidence"],
+    optional: ["result", "reason", "evidence", "commandOutput"],
     consistent: (fields) =>
       reportedOutcomes.includes(String(fields["outcome"])) &&
       (fields["outcome"] === "failed" ||
@@ -197,6 +199,7 @@ const shapes: Readonly<Record<string, Shape>> = {
       "result",
       "reason",
       "evidence",
+      "commandOutput",
     ],
   },
 };
@@ -325,6 +328,7 @@ export function isCapabilityList(value: unknown): value is string {
 }
 
 const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
+  commandOutput: (value) => typeof value === "string",
   waitName: (value) =>
     typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value),
   maximumWaitSeconds: (value) =>
