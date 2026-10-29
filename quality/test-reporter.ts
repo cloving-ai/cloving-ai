@@ -1,10 +1,18 @@
 import { resolve } from "node:path";
-import { inspect } from "node:util";
 import type { TestEvent } from "node:test/reporters";
 import type { CoverageRow } from "./coverage.ts";
 
 const stderrLines = 20;
 const stderrLineCharacters = 500;
+
+export interface TestFailure {
+  readonly name: string;
+  readonly file?: string | undefined;
+  readonly line?: number | undefined;
+  readonly column?: number | undefined;
+  readonly message: string;
+  readonly stderr: readonly string[];
+}
 
 function withStderr(
   stderr: Map<string, readonly string[]>,
@@ -22,19 +30,17 @@ function withStderr(
 function fileStderr(
   stderr: ReadonlyMap<string, readonly string[]>,
   failure: { readonly name: string; readonly file?: string | undefined },
-): string {
-  if (failure.file === undefined) return "";
-  if (resolve(failure.name) !== resolve(failure.file)) return "";
-  const lines = stderr.get(resolve(failure.file)) ?? [];
-  if (lines.length === 0) return "";
-  return `\nstderr:\n${lines.join("\n")}`;
+): readonly string[] {
+  if (failure.file === undefined) return [];
+  if (resolve(failure.name) !== resolve(failure.file)) return [];
+  return stderr.get(resolve(failure.file)) ?? [];
 }
 
 function failureOutput(
   event: TestEvent,
   output: {
     readonly stderr: Map<string, readonly string[]>;
-    readonly failures: string[];
+    readonly failures: TestFailure[];
   },
 ): boolean {
   if (event.type === "test:stderr") {
@@ -42,9 +48,15 @@ function failureOutput(
     return true;
   }
   if (event.type !== "test:fail") return false;
-  output.failures.push(
-    `${event.data.name}: ${inspect(event.data.details.error)}${fileStderr(output.stderr, event.data)}`,
-  );
+  const { name, file, line, column, details } = event.data;
+  output.failures.push({
+    name,
+    file,
+    line,
+    column,
+    message: details.error.message.split(/\r?\n/, 1)[0] ?? "",
+    stderr: fileStderr(output.stderr, event.data),
+  });
   return true;
 }
 
@@ -53,7 +65,7 @@ export default async function* reportTests(
 ): AsyncGenerator<string> {
   let completed = 0;
   const files = new Set<string>();
-  const failures: string[] = [];
+  const failures: TestFailure[] = [];
   const skipped: string[] = [];
   const coverage: Array<Omit<CoverageRow, "statements">> = [];
   const identities: string[] = [];

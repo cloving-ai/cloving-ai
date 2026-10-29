@@ -39,7 +39,10 @@ await test("QG-09 trusted static checks inspect candidate tests without executin
         result.completed,
         requiredChecks.filter((name) => name !== "tests"),
       );
-      await assert.rejects(checkProject(directory, policy), /Check exit 1/);
+      await assert.rejects(
+        checkProject(directory, policy),
+        /test-report-failure/,
+      );
     },
   );
 });

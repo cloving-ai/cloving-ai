@@ -216,7 +216,7 @@ await test("QG-01 rejects unformatted source and a failing behavior test", async
   });
   const failing = await fixtureFiles(valid.replace("value * 2", "value * 3"));
   await withFiles(failing, async (directory) => {
-    await assert.rejects(checkFixture(directory), /Check exit 1/);
+    await assert.rejects(checkFixture(directory), /test-report-failure/);
   });
 });
 
