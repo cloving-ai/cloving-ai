@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  readlink,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -91,6 +92,40 @@ await test("CLV-124 missing operator folders preserve bundled startup and remain
     for (const folder of [join(root, "repo/.cloving"), join(root, "config")])
       await assert.rejects(lstat(folder), { code: "ENOENT" });
   }));
+
+await test("CLV-154 startup shares retained modules inside its bundle store and preserves installed dependencies", () =>
+  withFiles(
+    { "repo/marker": "", "node_modules/installed/package.json": "{}" },
+    async (root) => {
+      const settings = await project(
+        root,
+        manifestCompiler({
+          workflows: {
+            "workflows/bundled.ts": {
+              bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
+            },
+          },
+        }),
+      );
+      for (const attempt of ["first", "second"]) {
+        const result = await preparedProject(settings);
+        assert.deepEqual(Object.keys(result.manifests), ["bundled"]);
+        assert.ok((await lstat(join(root, "node_modules"))).isDirectory());
+        assert.equal(
+          await readFile(
+            join(root, "node_modules/installed/package.json"),
+            "utf8",
+          ),
+          "{}",
+        );
+        assert.equal(
+          await readlink(join(root, "workflow-bundles/node_modules")),
+          join(settings.project, "node_modules"),
+          `${attempt} startup`,
+        );
+      }
+    },
+  ));
 
 await test("CLV-202 bundled declarations survive project staging and registration", () =>
   withFiles({ "repo/marker": "" }, async (root) => {

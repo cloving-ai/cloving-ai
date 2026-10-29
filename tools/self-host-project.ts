@@ -106,12 +106,6 @@ async function initializeProject(
   return files;
 }
 
-async function shareProjectModules(project: string): Promise<void> {
-  const modules = join(dirname(project), "node_modules");
-  await rm(modules, { force: true });
-  await symlink(join(project, "node_modules"), modules);
-}
-
 async function compile(settings: ProjectSettings) {
   const { product, project } = settings;
   await rm(join(project, "artifacts"), { recursive: true, force: true });
@@ -351,16 +345,16 @@ export async function preparedProject(
     repository: folders.repository,
     directory: join(dirname(project), "workflow-bundles"),
   });
-  const workflows = bundledListings({
-    product,
-    files,
-    manifests: bundled,
-    declarations,
-  });
-  workflows.push(...folders.workflows);
-  await shareProjectModules(project);
+  const modules = join(dirname(project), "workflow-bundles/node_modules");
+  await rm(modules, { force: true });
+  await symlink(join(project, "node_modules"), modules);
   return {
-    workflows,
+    workflows: bundledListings({
+      product,
+      files,
+      manifests: bundled,
+      declarations,
+    }).concat(folders.workflows),
     repository: folders.repository,
     bundleDigest,
     manifests,
