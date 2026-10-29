@@ -10,7 +10,7 @@ import {
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
-import { createIssue, discard } from "./github-issue-methods.ts";
+import { captureDraft, createIssue, discard } from "./github-issue-methods.ts";
 import {
   existingTree,
   defaultBranch,
@@ -31,6 +31,8 @@ const maximumReviewRequests = 3;
 
 export const methodReasons: ReadonlySet<string> = new Set([
   "draft-not-available",
+  "draft-changed",
+  "draft-too-large",
   "invalid-draft",
   "post-uncertain",
   "private-texts-not-set",
@@ -358,6 +360,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["partial-issue", partialIssue],
   ["label", label],
   ["create-issue", createIssue],
+  ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],
   ["wait-review", waitReview],

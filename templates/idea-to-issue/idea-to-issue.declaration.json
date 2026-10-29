@@ -1,0 +1,16 @@
+{
+  "workflow": {
+    "workflowId": "idea-to-issue",
+    "effectLimit": 9,
+    "capabilities": ["claude", "github"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": { "idea": { "type": "string" } }
+    },
+    "handoffs": ["develop"]
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "github": ["prepare", "create-issue", "label", "discard"]
+  }
+}
