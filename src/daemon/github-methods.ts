@@ -32,6 +32,7 @@ const maximumReviewRequests = 3;
 export const methodReasons: ReadonlySet<string> = new Set([
   "draft-not-available",
   "draft-changed",
+  "draft-too-large",
   "invalid-draft",
   "post-uncertain",
   "private-texts-not-set",

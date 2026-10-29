@@ -35,6 +35,68 @@ await test("CLV-222 a protected capture records the exact draft and its digest",
     assert.deepEqual(scene.state().calls, []);
   }));
 
+await test("CLV-222 a capture fits the exact encoded worker result boundary", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker();
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    const base = "# Draft\n" + '語😀"\\\n'.repeat(3000);
+    const padding =
+      65_536 - Buffer.byteLength(JSON.stringify({ text: base, digest }));
+    const draft = base + "x".repeat(padding);
+    writeFileSync(join(treeOf(scene), "draft.md"), draft);
+    const captured = await scene.perform(worker, {
+      method: "capture-draft",
+      payload: { draft: "draft.md" },
+    });
+    assert.equal(captured.outcome, "completed");
+    assert.equal(Buffer.byteLength(String(captured.result)), 65_536);
+    assert.deepEqual(JSON.parse(String(captured.result)), {
+      text: draft,
+      digest: "sha256:" + createHash("sha256").update(draft).digest("hex"),
+    });
+    writeFileSync(join(treeOf(scene), "draft.md"), draft + "x");
+    const oversized = await scene.perform(worker, {
+      method: "capture-draft",
+      payload: { draft: "draft.md" },
+    });
+    assert.equal(oversized.outcome, "failed");
+    assert.equal(oversized.reason, "draft-too-large");
+    assert.equal(oversized.result, undefined);
+    assert.deepEqual(scene.state().calls, []);
+  }));
+
+await test("CLV-222 oversized Unicode and escaped captures persist a reportable failure", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker();
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    for (const draft of ["語".repeat(22_000), '"\\\n'.repeat(12_000)]) {
+      assert.ok(draft.length < 65_536);
+      assert.ok(
+        Buffer.byteLength(JSON.stringify({ text: draft, digest })) > 65_536,
+      );
+      writeFileSync(join(treeOf(scene), "draft.md"), draft);
+      const captured = await scene.perform(worker, {
+        method: "capture-draft",
+        payload: { draft: "draft.md" },
+      });
+      assert.equal(captured.outcome, "failed");
+      assert.equal(captured.reason, "draft-too-large");
+      assert.equal(captured.result, undefined);
+      writeFileSync(join(treeOf(scene), "draft.md"), text);
+      const replay = await worker.reconcile(
+        githubIntent({
+          operationId: captured.operationId,
+          method: "capture-draft",
+        }),
+        new AbortController().signal,
+      );
+      assert.equal(replay.kind, "failed");
+      assert.equal(Reflect.get(replay, "reason"), "draft-too-large");
+      assert.equal(Reflect.get(replay, "result"), undefined);
+    }
+    assert.deepEqual(scene.state().calls, []);
+  }));
+
 await test("CLV-222 the checked post accepts every matching reviewed digest", () =>
   withGithub(async (scene) => {
     const worker = scene.worker({ privateTexts: ["private organization"] });

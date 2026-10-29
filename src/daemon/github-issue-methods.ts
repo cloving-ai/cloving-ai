@@ -75,7 +75,10 @@ function draftDigest(text: string): string {
 
 export async function captureDraft(operation: Operation): Promise<unknown> {
   const text = await draftOf(operation);
-  return { text, digest: draftDigest(text) };
+  const capture = { text, digest: draftDigest(text) };
+  if (Buffer.byteLength(JSON.stringify(capture)) > 65_536)
+    throw new Error("draft-too-large");
+  return capture;
 }
 
 function checkDraftDigest(operation: Operation, draft: string): void {
