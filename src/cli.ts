@@ -148,9 +148,13 @@ function toolProcess(input: {
   process.on("SIGTERM", terminate);
   return new Promise((settle) => {
     child.once("close", (status) => {
-      process.off("SIGINT", interrupt);
-      process.off("SIGTERM", terminate);
-      settle(stopping && status === 75 ? 0 : (status ?? 1));
+      setImmediate(() => {
+        setImmediate(() => {
+          process.off("SIGINT", interrupt);
+          process.off("SIGTERM", terminate);
+          settle(stopping && status === 75 ? 0 : (status ?? 1));
+        });
+      });
     });
   });
 }

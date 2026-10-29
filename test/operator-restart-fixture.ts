@@ -227,6 +227,7 @@ export async function operatorRestart(
   } finally {
     await first.stop();
   }
+  await restartFiles(fixture, "v2");
   const second = await start();
   try {
     await operatorInventory(fixture, second.address);
@@ -236,6 +237,10 @@ export async function operatorRestart(
         original.question,
       );
       await answeredOperator(fixture, { runId: original.runId, version: "v1" });
+    }
+    for (const scope of ["project", "user"]) {
+      const current = await waitingOperator(fixture, { scope, version: "v2" });
+      await answeredOperator(fixture, { runId: current.runId, version: "v2" });
     }
   } finally {
     await second.stop();

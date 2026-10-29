@@ -65,7 +65,9 @@ async function belongsToRepository(
   repository: string,
 ): Promise<boolean> {
   try {
-    const ids = (await readdir(directory)).filter((id) => id !== ".history");
+    const ids = (await readdir(directory)).filter(
+      (id) => id !== ".history" && id !== "node_modules",
+    );
     if (ids.length === 0) return false;
     for (const id of ids)
       if (

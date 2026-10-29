@@ -1,4 +1,5 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { initPromptCommand } from "./init-prompt-command.ts";
 import { configCommand } from "./config-command.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { doctorCommand } from "./doctor.ts";
@@ -22,6 +23,7 @@ const helpTexts = {
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
+  "init-prompt-help": String(commandUsage["init-prompt"]),
   "doctor-help": String(commandUsage["doctor"]),
   "config-help": configUsage,
 };
@@ -55,14 +57,13 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
-  } else if (invocation.kind === "doctor") {
-    if (context.doctorProbe === undefined)
-      throw new Error("doctor-probe-unavailable");
-    process.exitCode = await doctorCommand({
-      probe: context.doctorProbe,
-      repository,
+  } else if (
+    invocation.kind === "doctor" ||
+    invocation.kind === "init-prompt"
+  ) {
+    process.exitCode = await inspectionCommand(invocation, {
+      ...context,
       environment,
-      json: invocation.json,
     });
   } else if (invocation.kind === "config") {
     process.exitCode = await configCommand(invocation, repository);
@@ -88,6 +89,27 @@ export async function main(
         }),
     });
   }
+}
+
+async function inspectionCommand(
+  invocation: Extract<Invocation, { readonly kind: "doctor" | "init-prompt" }>,
+  context: {
+    readonly doctorProbe?: ProbeRunner;
+    readonly repository: string | undefined;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+  },
+): Promise<number> {
+  const probe = context.doctorProbe;
+  if (probe === undefined)
+    throw new Error(`${invocation.kind}-probe-unavailable`);
+  const options = {
+    probe,
+    repository: context.repository,
+    environment: context.environment,
+  };
+  if (invocation.kind === "doctor")
+    return await doctorCommand({ ...options, json: invocation.json });
+  return await initPromptCommand(options);
 }
 
 const terminal = {
