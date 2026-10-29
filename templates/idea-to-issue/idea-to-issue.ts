@@ -1,6 +1,10 @@
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 import type { CycleOutcome } from "cloving/workflows";
-import { effectResult, type IdeaInput } from "./idea-to-issue/effects.ts";
+import {
+  effectResult,
+  failureReason,
+  type IdeaInput,
+} from "./idea-to-issue/effects.ts";
 import { researchIdea } from "./idea-to-issue/turn.ts";
 import { reviewByTurn as checkDraft } from "./idea-to-issue/turn.ts";
 import { postAfterPrivacy as postDraft } from "./idea-to-issue/post.ts";
@@ -39,7 +43,7 @@ export async function ideaToIssue(input: IdeaInput): Promise<CycleOutcome> {
       kind: "blocked",
       cycleId: input.cycleId,
       evidenceId: "idea-to-issue",
-      reason: error instanceof Error ? error.message : "idea-to-issue-failed",
+      reason: failureReason(error, "idea-to-issue-failed"),
     };
   }
 }

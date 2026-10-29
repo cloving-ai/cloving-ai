@@ -7,13 +7,24 @@ export interface IdeaInput {
 
 export const draft = "cloving-prd-draft.md";
 
+export function failureReason(failure: unknown, fallback: string): string {
+  if (typeof failure !== "object" || failure === null) return fallback;
+  const cause = "cause" in failure ? failure.cause : failure;
+  if (
+    typeof cause !== "object" ||
+    cause === null ||
+    !("message" in cause) ||
+    typeof cause.message !== "string"
+  )
+    return fallback;
+  return /^[a-z][a-z0-9-]{0,127}$/.test(cause.message)
+    ? cause.message
+    : fallback;
+}
+
 export function effectResult(result: ProtectedResult): string | null {
   if (result.kind !== "completed")
-    throw new Error(
-      "reason" in result && result.reason !== null
-        ? result.reason
-        : result.kind,
-    );
+    throw new Error(result.reason ?? result.kind);
   return result.result;
 }
 

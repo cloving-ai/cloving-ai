@@ -15,6 +15,51 @@ const helper = (name: string) =>
     import.meta.url,
   ).href;
 
+await test("CLV-222 serialized failures preserve safe broker reasons and refuse unstructured text", async () => {
+  for (const [failure, expected] of [
+    [null, "fallback"],
+    ["private detail", "fallback"],
+    [{}, "fallback"],
+    [{ message: 12 }, "fallback"],
+    [{ message: "private detail" }, "fallback"],
+    [{ message: "budget-exhausted" }, "budget-exhausted"],
+    [{ cause: null }, "fallback"],
+    [{ cause: { message: "handoff-start-timeout" } }, "handoff-start-timeout"],
+  ] as const) {
+    const result = await runScenario({
+      workflow: helper("effects"),
+      exportName: "failureReason",
+      input: failure,
+      decision: "fallback",
+    });
+    assert.equal(result.outcome, expected);
+  }
+});
+
+await test("CLV-222 a broker failure without a reason stops before research", async () => {
+  const result = await runScenario({
+    workflow: new URL(
+      "../templates/idea-to-issue/idea-to-issue.ts",
+      import.meta.url,
+    ).href,
+    exportName: "ideaToIssue",
+    input,
+    effects: {
+      ...effects(),
+      "github prepare": [
+        { kind: "failed", operationId: "prepare", reason: null },
+      ],
+    },
+  });
+  assert.deepEqual(result.outcome, {
+    kind: "blocked",
+    cycleId: input.cycleId,
+    reason: "failed",
+    evidenceId: "idea-to-issue",
+  });
+  assert.equal(result.requests.length, 1);
+});
+
 await test("CLV-222 a person review returns the protected digest and shows its exact text", async () => {
   const result = await runScenario({
     workflow: helper("review"),
