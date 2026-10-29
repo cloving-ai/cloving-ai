@@ -30,8 +30,14 @@ async function ended(processId: number): Promise<boolean> {
 
 async function readyProcess(file: string): Promise<number> {
   const deadline = Date.now() + testMilliseconds(10000);
-  while (Date.now() < deadline && !existsSync(file)) await delay(50);
-  return Number(await readFile(file, "utf8"));
+  while (Date.now() < deadline) {
+    if (existsSync(file)) {
+      const processId = Number(await readFile(file, "utf8"));
+      if (Number.isSafeInteger(processId) && processId > 0) return processId;
+    }
+    await delay(50);
+  }
+  throw new Error("fixture-program-readiness-timed-out");
 }
 
 async function signalledProcesses(
@@ -52,6 +58,20 @@ async function signalledProcesses(
   }
   return signalled;
 }
+
+await test("CLV-231 readiness waits for a complete PID marker", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-fixture-marker-"));
+  const file = join(root, "watch-started");
+  try {
+    await writeFile(file, "");
+    const ready = readyProcess(file);
+    const written = delay(100).then(() => writeFile(file, String(process.pid)));
+    const [processId] = await Promise.all([ready, written]);
+    assert.equal(processId, process.pid);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 await test("CLV-231 a later scene does not signal the process group of a child from an earlier scene", async () => {
   let earlier = 0;

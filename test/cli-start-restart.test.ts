@@ -22,6 +22,15 @@ async function startTree(
     join(root, "hook.mjs"),
     `
 import { registerHooks } from "node:module";
+import { ChildProcess } from "node:child_process";
+const emit = ChildProcess.prototype.emit;
+ChildProcess.prototype.emit = function(event, ...argumentsList) {
+  if (event === "close" && process.argv[2] === "start" && process.env.CLOVING_TEST_SIGNAL_ON_CLOSE) {
+    process.kill(process.pid, process.env.CLOVING_TEST_SIGNAL_ON_CLOSE);
+    delete process.env.CLOVING_TEST_SIGNAL_ON_CLOSE;
+  }
+  return emit.call(this, event, ...argumentsList);
+};
 const program = ${JSON.stringify(pathToFileURL(resolve("tools/self-host.ts")).href)};
 const fake = ${JSON.stringify(pathToFileURL(join(root, "tools/self-host.ts")).href)};
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -51,6 +60,7 @@ if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
 
 interface StartOptions {
   readonly signal?: string;
+  readonly signalOnClose?: string;
   readonly arguments?: readonly string[];
 }
 
@@ -86,6 +96,7 @@ async function started(
           CLOVING_RUNTIME_DIR: join(root, "run"),
           CLOVING_TEST_MARKER: "preserved",
           CLOVING_TEST_SIGNAL: options.signal,
+          CLOVING_TEST_SIGNAL_ON_CLOSE: options.signalOnClose,
           NODE_OPTIONS: `--import=${pathToFileURL(join(root, "hook.mjs")).href}`,
         },
         encoding: "utf8",
@@ -144,6 +155,11 @@ await test("CLV-131 start forwards an explicit queue reset only to the first lau
 for (const signal of ["SIGINT", "SIGTERM"]) {
   await test(`CLV-085 ${signal} during an update prevents restart on exit 75`, async () => {
     const result = await started([75, 0], { signal });
+    assert.equal(result.status, 0);
+    assert.equal(result.launches.length, 1);
+  });
+  await test(`CLV-085 ${signal} pending at child close prevents restart on exit 75`, async () => {
+    const result = await started([75, 0], { signalOnClose: signal });
     assert.equal(result.status, 0);
     assert.equal(result.launches.length, 1);
   });
