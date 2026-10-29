@@ -1,3 +1,4 @@
+import type { CommandWaitsState } from "./command-waits.ts";
 import { parseEvent } from "./events.ts";
 import { emptyAuthority } from "./reducer.ts";
 import type { AuthorityState, EffectIntent } from "./transitions.ts";
@@ -12,6 +13,7 @@ function entry<Value>(
 
 export class HistoryState {
   private state = emptyAuthority;
+  private readonly commandWaits: Record<string, CommandWaitsState[string]> = {};
   private readonly runs: Record<string, AuthorityState["runs"][string]> = {};
   private readonly commands: Record<
     string,
@@ -24,6 +26,7 @@ export class HistoryState {
     string,
     AuthorityState["effects"]["budgets"][string]
   > = {};
+  private readonly runWaits = new Map<string, CommandWaitsState>();
   private readonly runGates = new Map<string, AuthorityState["gates"]>();
   private readonly intents = new Map<string, readonly EffectIntent[]>();
   private readonly pending = new Set<EffectIntent>();
@@ -33,6 +36,9 @@ export class HistoryState {
     if (event === null) return this.state;
     return {
       ...this.state,
+      ...(this.runWaits.has(event.runId)
+        ? { commandWaits: this.runWaits.get(event.runId) ?? {} }
+        : {}),
       runs: entry(this.runs, event.runId),
       commands: entry(this.commands, event.commandId),
       details: entry(this.details, event.runId),
@@ -46,6 +52,9 @@ export class HistoryState {
   }
 
   record(state: AuthorityState, runId: string): void {
+    const { commandWaits, ...baseState } = state;
+    Object.assign(this.commandWaits, commandWaits);
+    if (commandWaits !== undefined) this.runWaits.set(runId, commandWaits);
     Object.assign(this.runs, state.runs);
     Object.assign(this.commands, state.commands);
     Object.assign(this.details, state.details);
@@ -57,12 +66,15 @@ export class HistoryState {
       if (!remaining.has(intent)) this.pending.delete(intent);
     for (const intent of remaining) this.pending.add(intent);
     this.intents.set(runId, state.intents);
-    this.state = state;
+    this.state = baseState;
   }
 
   finish(): AuthorityState {
     return {
       ...this.state,
+      ...(Object.keys(this.commandWaits).length === 0
+        ? {}
+        : { commandWaits: this.commandWaits }),
       runs: this.runs,
       commands: this.commands,
       details: this.details,

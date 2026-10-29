@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { test } from "node:test";
-import { reached, withScheduler } from "./workflow-scheduler-fixture.ts";
+import { workflowSchedules } from "../src/daemon/workflow-schedules.ts";
+import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+import {
+  reached,
+  scheduledWorkflow,
+  withScheduler,
+} from "./workflow-scheduler-fixture.ts";
 
 const progress = {
   everySeconds: 300,
@@ -10,12 +16,67 @@ const progress = {
   activeCommandId: "schedule:review:1",
 };
 
+const unscheduledWorkflow: DeclaredWorkflow = {
+  workflowId: "manual",
+  functionName: "manual",
+  effectLimit: 1,
+  capabilities: ["claude"],
+  input: { maximumBytes: 1000, fields: { prompt: { type: "string" } } },
+};
+
 await test("CLV-179 an unscheduled daemon creates no schedule state", () =>
   withScheduler({ declarations: [] }, async (scene) => {
     await scene.stop();
+    const { directory, runtimeDirectory, submit } = scene.settings;
+    await (
+      await workflowSchedules({ directory, runtimeDirectory, submit })
+    ).stop();
     assert.equal(existsSync(scene.file), false);
     assert.equal(scene.requests.length, 0);
   }));
+
+await test("CLV-179 an unscheduled workflow beside a scheduled one gets no state and no run", () =>
+  withScheduler(
+    { declarations: [unscheduledWorkflow, scheduledWorkflow] },
+    async (scene) => {
+      scene.now(300000);
+      await reached(
+        async () =>
+          scene.requests.length === 1 &&
+          !(await scene.saved()).includes('"pending"'),
+      );
+      const saved: unknown = JSON.parse(await scene.saved());
+      assert.ok(saved !== null && typeof saved === "object");
+      assert.deepEqual(Object.keys(saved), ["review"]);
+      assert.equal(scene.requests[0]?.parameters["workflowId"], "review");
+    },
+  ));
+
+await test("CLV-179 a scheduler without an injected clock follows the system clock", () =>
+  withScheduler(
+    { initial: { review: { everySeconds: 300, nextAt: 1, lastSlot: 0 } } },
+    async (scene) => {
+      await scene.stop();
+      const { directory, runtimeDirectory, submit } = scene.settings;
+      const slot = (): number => Math.floor((Date.now() - 1) / 300000) + 1;
+      const earliest = slot();
+      const scheduler = await workflowSchedules({
+        directory,
+        runtimeDirectory,
+        declarations: [scheduledWorkflow],
+        submit,
+      });
+      try {
+        await reached(() => scene.requests.length === 1);
+      } finally {
+        await scheduler.stop();
+      }
+      const commandId = scene.requests[0]?.parameters["commandId"];
+      assert.ok(typeof commandId === "string");
+      const submitted = Number(commandId.replace("schedule:review:", ""));
+      assert.ok(submitted >= earliest && submitted <= slot(), commandId);
+    },
+  ));
 
 await test("CLV-179 an unacknowledged slot replays the saved input and identity", () =>
   withScheduler(
@@ -56,8 +117,12 @@ await test("CLV-179 a lost submission reply retains the pending slot for restart
     },
     async (scene) => {
       scene.now(300000);
-      await reached(() => attempts === 1);
+      await reached(() => scene.errors.length > 0);
       await scene.stop();
+      assert.deepEqual(scene.errors, [
+        "Schedules stopped: Error: lost-reply\n",
+      ]);
+      assert.equal(attempts, 1);
       assert.match(await scene.saved(), /"pending"/);
       await scene.restart();
       await reached(

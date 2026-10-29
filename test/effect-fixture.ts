@@ -39,13 +39,14 @@ export function tableRows(
 }
 
 export const versionThree = `
+DROP TABLE command_waits;
 DROP TABLE dispatch_attempts;
 DROP TABLE stopped_operations;
 DROP TABLE effect_evidence;
 DROP TABLE leases;
 DROP TABLE operations;
 DROP TABLE run_budgets;
-DELETE FROM schema_migrations WHERE version = 4;
+DELETE FROM schema_migrations WHERE version >= 4;
 PRAGMA user_version = 3;
 `;
 

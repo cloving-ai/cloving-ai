@@ -1,3 +1,4 @@
+import type { CommandWaitsState } from "./command-waits.ts";
 import type { RunDetails } from "./details.ts";
 import type { GateState } from "./gates.ts";
 import type { EffectState } from "./operations.ts";
@@ -37,6 +38,7 @@ export interface AuthorityState {
   readonly gates: Readonly<Record<string, GateState>>;
   readonly details: Readonly<Record<string, RunDetails>>;
   readonly questions: number;
+  readonly commandWaits?: CommandWaitsState;
   readonly effects: EffectState;
 }
 
@@ -60,6 +62,8 @@ export const eventTypes = [
   "effect.reported",
   "operation.reconciled",
   "schedule.skipped",
+  "command-wait.opened",
+  "command-wait.expired",
 ] as const;
 
 export type EventType = (typeof eventTypes)[number];
@@ -87,6 +91,8 @@ export const numberFields = [
   "sourceGeneration",
   "capacity",
   "slot",
+  "maximumWaitSeconds",
+  "pollEverySeconds",
 ] as const;
 
 export const textFields = [
@@ -128,6 +134,7 @@ export const textFields = [
   "issueUpdate",
   "result",
   "actor",
+  "waitName",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];
@@ -152,6 +159,8 @@ export type Move = Exclude<
   | "effect.reported"
   | "operation.reconciled"
   | "schedule.skipped"
+  | "command-wait.opened"
+  | "command-wait.expired"
 >;
 type Change = Pick<RunState, "status"> & Partial<RunState>;
 

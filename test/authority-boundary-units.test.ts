@@ -30,6 +30,7 @@ const change = {
   staged: [],
   closed: [],
   gates: [],
+  waits: [],
   details: [],
   documents: [],
   budgets: [],

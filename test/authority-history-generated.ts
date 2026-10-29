@@ -7,7 +7,22 @@ import {
 } from "../src/authority/reducer.ts";
 import { documentDigest } from "../src/broker/decision-restore.ts";
 import { effectInputDigest } from "../src/broker/effect-restore.ts";
-import { pin } from "./authority-store-fixture.ts";
+import { manifest } from "./authority-store-fixture.ts";
+import { workflowPin } from "../src/broker/workflow-pin.ts";
+
+export const historyManifest = {
+  ...manifest,
+  capabilities: ["command", "fake-harness"],
+  commands: ["review-state"],
+  commandWaits: {
+    review: {
+      command: "review-state",
+      maximumWaitSeconds: 60,
+      pollEverySeconds: 60,
+    },
+  },
+};
+export const historyPin = workflowPin(historyManifest);
 import { operationOf, type Fields } from "./effect-pure-fixture.ts";
 
 const body = documentDigest("generated");
@@ -112,9 +127,9 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
   return [
     {
       kind: "admit-run",
-      workflow: pin,
+      workflow: historyPin,
       effectLimit: 5,
-      capabilities: '["fake-harness"]',
+      capabilities: '["command","fake-harness"]',
     },
     { kind: "mark-started", expectedRevision: revision },
     { kind: "pause-run", expectedRevision: revision },
@@ -125,6 +140,15 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
       workflowId: "review",
       slot: subject.choice + 1,
     },
+    {
+      kind: "open-command-wait",
+      waitName: "review",
+      target: "review-state",
+      payload: body,
+      maximumWaitSeconds: 60,
+      pollEverySeconds: 60,
+    },
+    { kind: "expire-command-wait", waitName: "review" },
     ...gates(state, subject),
     ...effects(state, subject),
     { kind: "complete-run", expectedRevision: revision },

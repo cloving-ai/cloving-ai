@@ -1,3 +1,4 @@
+import { readCommandWaits } from "../command-wait-restore.ts";
 import { parseCommand } from "../../authority/commands.ts";
 import type { EffectIntent } from "../../authority/reducer.ts";
 import { readExecutionManifest } from "../../execution-pin.ts";
@@ -292,6 +293,7 @@ async function turnState(
   });
   return {
     state: {
+      ...(await readCommandWaits(connection, runId)),
       sequence,
       runs: { ...near.runs, ...(stored ? { [runId]: stored } : {}) },
       commands: recorded ? { [commandId]: recorded } : {},

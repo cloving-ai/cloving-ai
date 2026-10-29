@@ -1,3 +1,8 @@
+import {
+  commandWaitKey,
+  commandWaitsAfter,
+  validCommandWaitTime,
+} from "./command-waits.ts";
 import { admittedDetails, observed } from "./details.ts";
 import { settled } from "./gates.ts";
 import { admittedBudgets } from "./budgets.ts";
@@ -108,8 +113,26 @@ function effect(rule: EffectRule): Handler {
   };
 }
 
+const changeCommandWait: Handler = (state, recorded) => {
+  const { event, run } = recorded;
+  const waits = state.commandWaits ?? {};
+  const key = commandWaitKey(event.runId, event.payload["waitName"] ?? "");
+  if (
+    event.type === "command-wait.opened" &&
+    waits[key] === undefined &&
+    run.status !== "running"
+  )
+    return invalid("command-wait-run-not-running");
+  const result = commandWaitsAfter(waits, event);
+  return result.kind === "invalid"
+    ? result
+    : applied(state, { ...recorded, commandWaits: result.waits });
+};
+
 const handlers: Readonly<Record<string, Handler>> = {
   "schedule.skipped": applied,
+  "command-wait.opened": changeCommandWait,
+  "command-wait.expired": changeCommandWait,
   "effect.requested": effect(requested),
   "lease.granted": effect(granted),
   "lease.expired": effect(leaseExpired),
@@ -184,6 +207,8 @@ export function reduce(
   state: AuthorityState,
   event: AuthorityEvent,
 ): Reduction {
+  if (!validCommandWaitTime(state.commandWaits ?? {}, event))
+    return invalid("invalid-command-wait-time");
   if (event.sequence !== state.sequence + 1) return invalid("sequence-gap");
   if (state.commands[event.commandId]) return invalid("duplicate-command");
   const commands = {
