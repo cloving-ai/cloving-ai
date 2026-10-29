@@ -115,21 +115,33 @@ await test("CLV-179 queued, waiting and paused scheduled runs continue to block 
 });
 
 await test("CLV-179 unknown or malformed run status stops submissions without consuming the slot", async () => {
-  for (const reply of [
+  for (const { reply, reason } of [
     {
-      kind: "error" as const,
-      error: { code: "unknown-run", detail: "missing" },
+      reply: {
+        kind: "error" as const,
+        error: { code: "unknown-run", detail: "missing" },
+      },
+      reason: "unknown-run",
     },
-    { kind: "result" as const, result: { run: {} } },
+    {
+      reply: { kind: "result" as const, result: { run: {} } },
+      reason: "invalid-schedule-run",
+    },
   ])
     await withScheduler(
       { initial: { review: progress }, handle: () => Promise.resolve(reply) },
       async (scene) => {
         scene.now(600000);
-        await reached(() => scene.requests.length === 1);
+        await reached(() => scene.errors.length > 0);
         await scene.stop();
+        assert.deepEqual(scene.errors, [
+          `Schedules stopped: Error: ${reason}\n`,
+        ]);
         assert.deepEqual(JSON.parse(await scene.saved()), { review: progress });
-        assert.equal(scene.requests[0]?.operation, "status");
+        assert.deepEqual(
+          scene.requests.map((request) => request.operation),
+          ["status"],
+        );
       },
     );
 });

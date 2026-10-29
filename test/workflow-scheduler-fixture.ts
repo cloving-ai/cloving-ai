@@ -41,12 +41,31 @@ export async function reached(
 
 interface ScheduleScene {
   readonly requests: ServiceRequest[];
+  readonly errors: readonly string[];
   readonly file: string;
   readonly settings: Settings;
   readonly now: (milliseconds: number) => void;
   readonly stop: () => Promise<void>;
   readonly restart: () => Promise<void>;
   readonly saved: () => Promise<string>;
+}
+
+function capturedErrors(): {
+  readonly errors: string[];
+  readonly restore: () => void;
+} {
+  const errors: string[] = [];
+  const output = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk: string | Uint8Array) => {
+    errors.push(String(chunk));
+    return true;
+  };
+  return {
+    errors,
+    restore: () => {
+      process.stderr.write = output;
+    },
+  };
 }
 
 export async function withScheduler(
@@ -81,10 +100,12 @@ export async function withScheduler(
         submit: options.submit ?? acceptedSkip,
       };
       let scheduler = await workflowSchedules(settings);
+      const captured = capturedErrors();
       const file = join(directory, "state/schedules.json");
       try {
         await body({
           requests,
+          errors: captured.errors,
           file,
           settings,
           now: (value) => {
@@ -99,6 +120,7 @@ export async function withScheduler(
         });
       } finally {
         await scheduler.stop();
+        captured.restore();
         await listener.close();
       }
     },
