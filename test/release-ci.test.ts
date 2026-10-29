@@ -23,10 +23,10 @@ const nodeVersions = {
   publish: "26.9.0",
 } as const;
 
-await test("CLV-097 CI checks every push, pull request and manual run with least privilege", async () => {
+await test("CLV-097 CI checks main and version tag pushes, every pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
   assert.deepEqual(workflow.on, {
-    push: {},
+    push: { branches: ["main"], tags: ["v*"] },
     pull_request: {},
     workflow_dispatch: {},
   });
