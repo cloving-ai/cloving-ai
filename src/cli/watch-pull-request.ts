@@ -44,10 +44,19 @@ export interface GithubRecords {
 interface GithubResult {
   readonly runId: string;
   readonly round: number;
+  readonly startedAt: number;
   readonly method: string;
   readonly completed: boolean;
   readonly attributed: boolean;
   readonly report: Fields;
+}
+
+function methodScope(method: string, operation: readonly unknown[]): boolean {
+  if (operation[3] === "pull-request")
+    return operation[4] === `github-${method}`;
+  return (
+    method === "merge" && operation[3] === "merge" && operation[4] === "merge"
+  );
 }
 
 function attributed(started: Fields, operation: readonly unknown[]): boolean {
@@ -65,8 +74,7 @@ function attributed(started: Fields, operation: readonly unknown[]): boolean {
   return (
     checked.kind === "valid" &&
     checked.value === JSON.stringify(operation) &&
-    operation[3] === "pull-request" &&
-    operation[4] === `github-${text(started["method"])}` &&
+    methodScope(text(started["method"]), operation) &&
     (started["runId"] === undefined || started["runId"] === operation[2])
   );
 }
@@ -77,8 +85,12 @@ function githubOf(records: GithubRecords): GithubResult {
   const result = record(records.result);
   const completed = result["outcome"] === "completed";
   return {
-    runId: text(operation[2]),
+    runId:
+      started["runId"] === undefined || started["runId"] === operation[2]
+        ? text(operation[2])
+        : "",
     round: Number(operation[1]),
+    startedAt: Date.parse(text(started["startedAt"])) || 0,
     method: text(started["method"]),
     completed,
     attributed:
@@ -89,13 +101,17 @@ function githubOf(records: GithubRecords): GithubResult {
 
 function pullRequestOf(
   results: readonly GithubResult[],
+  repository: PrRepository | null,
 ): WatchPullRequest | null {
   const opened = results
-    .filter((item) => item.method === "open-pr")
+    .filter((item) => item.method === "open-pr" && item.completed)
     .map((item) => item.report)
     .findLast((report) => text(report["url"]).startsWith("https://"));
   if (opened === undefined) return null;
-  return { number: Number(opened["number"]), url: text(opened["url"]) };
+  const pull = { number: Number(opened["number"]), url: text(opened["url"]) };
+  return repository === null || prIdentity(repository, pull) !== null
+    ? pull
+    : null;
 }
 
 function reviewsOf(results: readonly GithubResult[]): WatchReview[] {
@@ -179,8 +195,11 @@ export function pullOf(
   const results = inputs.records
     .map(githubOf)
     .filter((item) => item.runId === runId)
-    .toSorted((first, second) => first.round - second.round);
-  const pullRequest = pullRequestOf(results);
+    .toSorted(
+      (first, second) =>
+        first.round - second.round || first.startedAt - second.startedAt,
+    );
+  const pullRequest = pullRequestOf(results, inputs.repository);
   const mergeProof = mergeProofOf(results, {
     repository: inputs.repository,
     pullRequest,

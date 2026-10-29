@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "checks": {
+    "beforeMerge": ["npm", "run", "check:quality"],
+    "required": ["quality", "quality_linux"]
+  }
+}

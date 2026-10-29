@@ -6,7 +6,7 @@ Build a software factory with simple TypeScript for your project, and your proje
 
 The end of vibe coding. This is agentic engineering.
 
-A workflow file in TypeScript is the factory. It sets the steps: a worker turn in a work tree, a pull request, a review and a merge. Cloving keeps the state of each run and a record of each step. A GitHub step continues after a restart of the service. A worker turn in work stops at a restart. Cloving builds itself through `develop-issue` in this repository.
+A workflow file in TypeScript is the factory. It sets the steps: a worker turn in a work tree, a pull request, a review and a merge. Cloving keeps the state of each run and a record of each step. A GitHub step continues after a restart of the service. A worker turn in work stops at a restart. Cloving builds itself through a private copy of the `develop` template for this repository.
 
 ## Cloving
 
@@ -21,7 +21,7 @@ What works now:
 - `cloving start` loads the bundled `workflows/`, repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
 - In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
 - In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
-- Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge.
+- Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the worker as it occurs.
 
 What does not work yet:
@@ -279,7 +279,7 @@ The `coverage` object explicitly marks the remaining facts unavailable: immutabl
 
 - `develop-prompt` takes the text of a task. Use it for a small task with no ticket, or for a first try in a new repository.
 - `develop-ticket` takes a ticket ID and reads the ticket itself. Use it for the normal work on a ticket, when you want to read each diff and merge the branch yourself.
-- `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request. Use it for a small ticket with clear criteria, in a GitHub repository that Greptile reviews and that has a check command. It is the workflow of the continuous process.
+- `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request. Use it for a small ticket with clear criteria, in a GitHub repository that Greptile reviews and that has a check command. For continuous self-development, use the private `develop` copy described below.
 - `develop-prd` takes an idea, researches the code and web, reviews a draft PRD, and posts it as a GitHub issue. It then hands the issue number to `develop-issue` to build automatically. Set `CLOVING_PRIVATE_TEXTS` to a nonempty JSON list before starting the daemon. A refused post preserves the worktree and draft. If the handoff is refused, it adds `cloving: ready` so the issue queue can build it later. The PRD run retains `issue-N` as its promotion, shows the refusal code in its outcome reason, and removes its worktree after posting. If the fallback label fails, status also shows `issueUpdate: failed`; inspect the GitHub operation and queue the issue after resolving the failure.
 
 ```sh
@@ -486,10 +486,14 @@ The GitHub worker does not push a change that has the path of the home folder in
 
 ## Continuous process
 
-In a continuous process, Cloving develops one ticket after the next with `develop-issue`. Use one terminal session for the service that stays open, for example a `tmux` session. Do these steps for each issue:
+In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
+
+The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts `develop`; `develop-issue` receives no queued runs while this copy is admitted.
+
+Use one terminal session for the service that stays open, for example a `tmux` session. Do these steps for each issue:
 
 1. Write a small issue: one behavior, clear criteria that a test can check, and the first tests. The prompt "Write a ticket for Cloving" helps.
-2. Run it: `cloving run develop-issue --ticket ISSUE_NUMBER`.
+2. Run it: `cloving run develop --ticket ISSUE_NUMBER`.
 3. Follow the run on the watch page, or with `cloving status RUN_ID` and `cloving events RUN_ID --follow`.
 4. Check the merge. The run completes when the GitHub worker merges the pull request. The watch page shows the number of the pull request of the run (`PR_NUMBER`). It is also `pullRequest.number` of the run in `http://127.0.0.1:3663/data.json`. The pull request number and the issue number are different.
    - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
@@ -502,10 +506,10 @@ When a run stops and the pull request stays open, read the review. Fix the work 
 
 Know these limits before you start:
 
-- The cost limit of each Claude turn is 5 USD. A run of `develop-issue` can have up to four Claude turns. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
+- The cost limit of each Claude turn is 5 USD. A run of `develop` can have up to four Claude turns. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
 - The text of a pull request is public in a public repository. The worker gets an instruction to write no local file path in a file or in a commit message.
 - `CLOVING_PRIVATE_TEXTS` adds texts that the GitHub worker refuses to push, for example the names of private projects. The path of the home folder is always refused.
-- `CLOVING_CHECK_COMMAND` names the checks of the repository. Set it, because a merge at 5/5 has no human approval. With no setting, the merge occurs with no check.
+- The default develop workflow runs `checks.beforeMerge` before merging. With no configured command, it stops with `check-not-configured` and leaves the pull request open. This repository commits `["npm", "run", "check:quality"]` as that command and requires the CI checks `quality` and `quality_linux` in `.cloving/config.json`. An environment or private-file override takes precedence.
 
 ## Prompts for a coding agent
 
@@ -530,11 +534,11 @@ Set up Cloving for my repository REPOSITORY_PATH. Ask me for each value that you
 ### Run a continuous process
 
 ```text
-Run a continuous process with Cloving and develop-issue in my repository REPOSITORY_PATH. The Cloving service runs in the terminal session SESSION_NAME. Do the issues ISSUE_LIST one at a time, in this order.
+Run a continuous process with Cloving and develop in my repository REPOSITORY_PATH. The Cloving service runs in the terminal session SESSION_NAME. Do the issues ISSUE_LIST one at a time, in this order.
 
 For each issue:
 1. Read the issue. Do not change it.
-2. Run: cloving run develop-issue --ticket ISSUE_NUMBER
+2. Run: cloving run develop --ticket ISSUE_NUMBER
    ISSUE_NUMBER is the number of the issue. Record the run ID.
 3. Follow the run with "cloving status RUN_ID" and "cloving events RUN_ID --follow".
 4. When the run completes, get the number of its pull request (PR_NUMBER). It is pullRequest.number of the run in http://127.0.0.1:3663/data.json, and the watch page shows it too. Then:

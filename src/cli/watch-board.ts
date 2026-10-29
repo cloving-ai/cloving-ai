@@ -26,17 +26,14 @@ export function completionMarkOf(
   run: WatchRun,
   candidates: readonly WatchRun[],
 ): WatchCompletionMark | null {
-  if (
-    run.workflowId !== "develop-issue" ||
-    run.state !== "completed" ||
-    run.outcome !== "blocked"
-  )
-    return null;
+  if (run.state !== "completed") return null;
   if (run.mergeProof != null)
     return {
       text: `PR merged · #${String(run.mergeProof.number)}`,
       laterRunId: null,
     };
+  if (run.workflowId !== "develop-issue" || run.outcome !== "blocked")
+    return null;
   const completedAt = eventTime(run, "run.completed");
   const later = candidates
     .filter(
@@ -203,14 +200,16 @@ function columnOf(run: WatchRun, now: string): string | null {
   return run.outcome === "handoff_requested" ? "Done" : null;
 }
 
-function issueCardDetails(
+function pullRequestCardDetails(
   run: WatchRun,
 ): Pick<WatchCard, "round" | "greptileScore" | "pullRequestNumber"> {
-  const issue = run.workflowId === "develop-issue";
   return {
-    round: issue ? run.round : null,
-    greptileScore: issue ? (run.reviews.at(-1)?.score ?? null) : null,
-    pullRequestNumber: issue ? (run.pullRequest?.number ?? null) : null,
+    round:
+      run.workflowId === "develop-issue" || run.pullRequest !== null
+        ? run.round
+        : null,
+    greptileScore: run.reviews.at(-1)?.score ?? null,
+    pullRequestNumber: run.pullRequest?.number ?? null,
   };
 }
 
@@ -228,7 +227,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
     decisionWaiting: run.decisions.length > 0,
-    ...issueCardDetails(run),
+    ...pullRequestCardDetails(run),
   };
 }
 

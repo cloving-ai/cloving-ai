@@ -266,13 +266,15 @@ await test("CLV-077 start workflow prefers pending decisions and breaks ties by 
 });
 
 await test("CLV-077 issue cards retain the last Claude round, Greptile score and pull request number", () => {
-  const githubRecords = [
+  const githubRecords = (
     [
-      "open-pr",
-      { number: 79, url: "https://github.com/example/project/pull/79" },
-    ],
-    ["wait-review", { score: 4, commit: "aaa" }],
-  ].map(([method, report]) => ({
+      [
+        "open-pr",
+        { number: 79, url: "https://github.com/example/project/pull/79" },
+      ],
+      ["wait-review", { score: 4, commit: "aaa" }],
+    ] as const
+  ).map(([method, report]) => ({
     started: {
       method,
       operationId: JSON.stringify([
@@ -280,6 +282,9 @@ await test("CLV-077 issue cards retain the last Claude round, Greptile score and
         1,
         "issue",
         "pull-request",
+        `github-${method}`,
+        null,
+        null,
       ]),
     },
     result: { outcome: "completed", result: JSON.stringify(report) },
