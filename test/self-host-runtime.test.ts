@@ -6,6 +6,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
@@ -102,6 +103,18 @@ await test("CLV-204 start adopts only its retained bundles and clients reuse the
       runtimeDirectory(input.environment, input.repository),
       input.legacyRuntime,
     );
+  }));
+
+await test("CLV-154 legacy adoption accepts a bundle store with shared modules", () =>
+  withFiles(files, async (root) => {
+    const input = selection(root);
+    await retain(root, input.repository);
+    const modules = join(root, "state/cloving/workflow-bundles/node_modules");
+    await symlink(join(root, "project with spaces/node_modules"), modules);
+    assert.deepEqual(await adoptRuntimeDirectory(input), {
+      runtime: input.legacyRuntime,
+      note: "",
+    });
   }));
 
 await test("CLV-204 clients only see complete adoption records", () =>
