@@ -46,3 +46,11 @@ export function retainedReport(error: unknown): string {
     rmSync(path);
   }
 }
+
+export async function assertTestFailure(
+  operation: () => void | Promise<void>,
+): Promise<void> {
+  const result = await failedOutput(operation);
+  assert.match(result.error.message, /test-report-failure/);
+  retainedReport(result.error);
+}

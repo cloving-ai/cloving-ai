@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { inspect } from "node:util";
 import type { TestEvent } from "node:test/reporters";
 import type { CoverageRow } from "./coverage.ts";
 
@@ -11,6 +12,7 @@ export interface TestFailure {
   readonly line?: number | undefined;
   readonly column?: number | undefined;
   readonly message: string;
+  readonly error?: string;
   readonly stderr: readonly string[];
 }
 
@@ -54,7 +56,14 @@ function failureOutput(
     file,
     line,
     column,
-    message: details.error.message.split(/\r?\n/, 1)[0] ?? "",
+    message: details.error.message,
+    error: inspect(details.error, {
+      depth: null,
+      maxArrayLength: null,
+      maxStringLength: null,
+      colors: false,
+      customInspect: false,
+    }),
     stderr: fileStderr(output.stderr, event.data),
   });
   return true;

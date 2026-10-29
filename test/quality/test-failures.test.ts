@@ -1,9 +1,59 @@
 import assert from "node:assert/strict";
 import filesystem from "node:fs";
+import { randomUUID } from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
+import operatingSystem from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { reportTestFailures } from "../../quality/test-failures.ts";
 import { failedOutput, retainedReport } from "./test-failure-fixture.ts";
+import { withFiles } from "./files-fixture.ts";
+
+await test("CLV-164 retains at most 20 reports and removes reports older than a day", async () => {
+  const names = Array.from(
+    { length: 22 },
+    () => `cloving-test-report-${randomUUID()}.json`,
+  );
+  const stale = `cloving-test-report-${randomUUID()}.json`;
+  const unrelated = "cloving-test-report-unrelated.json";
+  await withFiles(
+    Object.fromEntries(
+      [...names, stale, unrelated].map((name) => [name, "{}"]),
+    ),
+    async (directory) => {
+      const now = Date.now();
+      for (const [index, name] of names.entries()) {
+        const date = new Date(now - (22 - index) * 1000);
+        filesystem.utimesSync(join(directory, name), date, date);
+      }
+      const old = new Date(now - 25 * 60 * 60 * 1000);
+      filesystem.utimesSync(join(directory, stale), old, old);
+      const temporaryDirectory = operatingSystem.tmpdir;
+      operatingSystem.tmpdir = () => directory;
+      syncBuiltinESMExports();
+      try {
+        const result = await failedOutput(() => {
+          reportTestFailures(
+            { failures: [{ name: "failed", message: "cause", stderr: [] }] },
+            '{"full":"report"}',
+          );
+        });
+        const kept = filesystem.readdirSync(directory);
+        assert.equal(kept.length, 21);
+        assert.equal(filesystem.existsSync(join(directory, stale)), false);
+        assert.deepEqual(
+          names.map((name) => kept.includes(name)),
+          [false, false, false, ...Array<boolean>(19).fill(true)],
+        );
+        assert.equal(kept.includes(unrelated), true);
+        assert.equal(retainedReport(result.error), '{"full":"report"}');
+      } finally {
+        operatingSystem.tmpdir = temporaryDirectory;
+        syncBuiltinESMExports();
+      }
+    },
+  );
+});
 
 await test("CLV-164 retains the full report in a private temporary file", async () => {
   const report = {
@@ -24,6 +74,37 @@ await test("CLV-164 retains the full report in a private temporary file", async 
   assert.notEqual(first.error.message, second.error.message);
   assert.equal(retainedReport(first.error), JSON.stringify(report));
   assert.equal(retainedReport(second.error), JSON.stringify(report));
+});
+
+await test("CLV-164 cleanup refusals do not prevent saving the current failure", async () => {
+  const name = `cloving-test-report-${randomUUID()}.json`;
+  await withFiles({ [name]: "{}" }, async (directory) => {
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    filesystem.utimesSync(join(directory, name), old, old);
+    const remove = filesystem.unlinkSync;
+    const temporaryDirectory = operatingSystem.tmpdir;
+    filesystem.unlinkSync = () => {
+      throw Object.assign(new Error("operation not permitted"), {
+        code: "EPERM",
+      });
+    };
+    operatingSystem.tmpdir = () => directory;
+    syncBuiltinESMExports();
+    try {
+      const result = await failedOutput(() => {
+        reportTestFailures(
+          { failures: [{ name: "failed", message: "cause", stderr: [] }] },
+          '{"full":"current report"}',
+        );
+      });
+      assert.equal(retainedReport(result.error), '{"full":"current report"}');
+      assert.equal(filesystem.existsSync(join(directory, name)), true);
+    } finally {
+      filesystem.unlinkSync = remove;
+      operatingSystem.tmpdir = temporaryDirectory;
+      syncBuiltinESMExports();
+    }
+  });
 });
 
 await test("CLV-164 bounds the list to 200 lines and each line to 500 characters", async () => {

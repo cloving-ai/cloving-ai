@@ -11,6 +11,7 @@ import {
   writeProjectReport,
 } from "../../quality/project.ts";
 import { withFiles } from "./files-fixture.ts";
+import { assertTestFailure } from "./test-failure-fixture.ts";
 
 const valid =
   "export function double(value: number): number { return value * 2; }";
@@ -216,7 +217,9 @@ await test("QG-01 rejects unformatted source and a failing behavior test", async
   });
   const failing = await fixtureFiles(valid.replace("value * 2", "value * 3"));
   await withFiles(failing, async (directory) => {
-    await assert.rejects(checkFixture(directory), /test-report-failure/);
+    await assertTestFailure(async () => {
+      await checkFixture(directory);
+    });
   });
 });
 

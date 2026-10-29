@@ -1,8 +1,41 @@
 import type { TestFailure } from "./test-reporter.ts";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+const maximumReports = 20;
+const maximumReportAgeMilliseconds = 24 * 60 * 60 * 1000;
+const reportName =
+  /^cloving-test-report-[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\.json$/i;
+
+function removeReport(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch {
+    return;
+  }
+}
+
+function pruneReports(directory: string): void {
+  try {
+    const reports = readdirSync(directory)
+      .filter((name) => reportName.test(name))
+      .flatMap((name) => {
+        const path = join(directory, name);
+        const entry = lstatSync(path, { throwIfNoEntry: false });
+        return entry?.isFile() ? [{ path, modified: entry.mtimeMs }] : [];
+      })
+      .sort((left, right) => right.modified - left.modified);
+    const oldest = Date.now() - maximumReportAgeMilliseconds;
+    for (const [index, report] of reports.entries()) {
+      if (index >= maximumReports - 1 || report.modified < oldest)
+        removeReport(report.path);
+    }
+  } catch {
+    return;
+  }
+}
 
 function isFailure(value: unknown): value is TestFailure {
   if (!value || typeof value !== "object") return false;
@@ -57,7 +90,9 @@ export function reportTestFailures(report: object, output: string): void {
   if (!failures.every(isFailure))
     throw new Error("Invalid test failure report");
   process.stderr.write(failureList(failures));
-  const path = join(tmpdir(), `cloving-test-report-${randomUUID()}.json`);
+  const directory = tmpdir();
+  pruneReports(directory);
+  const path = join(directory, `cloving-test-report-${randomUUID()}.json`);
   writeFileSync(path, output, { mode: 0o600, flag: "wx" });
   throw new Error(`test-report-failure. Full test report: ${path}`);
 }

@@ -8,7 +8,34 @@ import { test } from "node:test";
 import { checkTests, testCommand } from "../../quality/test-execution.ts";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
-import { failedOutput, retainedReport } from "./test-failure-fixture.ts";
+import {
+  assertTestFailure,
+  failedOutput,
+  retainedReport,
+} from "./test-failure-fixture.ts";
+
+await test("CLV-164 saves assertion diffs and stacks without expanding the failure list", async () => {
+  await withFiles(
+    {
+      "assertion.test.ts":
+        'import { test } from "node:test"; import assert from "node:assert/strict"; await test("deep assertion", () => { assert.deepStrictEqual({ value: "actual" }, { value: "expected" }); });',
+    },
+    async (directory) => {
+      const result = await failedOutput(async () => {
+        await checkTests(directory, {
+          files: [join(directory, "assertion.test.ts")],
+        });
+      });
+      const report = retainedReport(result.error);
+      assert.match(report, /actual/);
+      assert.match(report, /expected/);
+      assert.match(report, /AssertionError/);
+      assert.match(report, /TestContext/);
+      assert.match(result.output, /^Failed tests:\ndeep assertion\n/);
+      assert.equal(result.output.trimEnd().split("\n").length, 4);
+    },
+  );
+});
 
 await test("CLV-164 prints failed assertions and crashed files before rejecting", async () => {
   await withFiles(
@@ -267,8 +294,8 @@ await test("QG-18 rejects an unhandled rejection from an otherwise passing test"
   const source =
     'import { test } from "node:test"; await test("unhandled", () => { void Promise.reject(new Error("unhandled fixture")); });';
   await withFiles({ "main.test.ts": source }, async (directory) => {
-    await assert.rejects(async () => {
+    await assertTestFailure(async () => {
       await checkTests(directory, { files: [join(directory, "main.test.ts")] });
-    }, /test-report-failure/);
+    });
   });
 });
