@@ -106,6 +106,12 @@ async function initializeProject(
   return files;
 }
 
+async function shareProjectModules(project: string): Promise<void> {
+  const modules = join(dirname(project), "node_modules");
+  await rm(modules, { force: true });
+  await symlink(join(project, "node_modules"), modules);
+}
+
 async function compile(settings: ProjectSettings) {
   const { product, project } = settings;
   await rm(join(project, "artifacts"), { recursive: true, force: true });
@@ -352,6 +358,7 @@ export async function preparedProject(
     declarations,
   });
   workflows.push(...folders.workflows);
+  await shareProjectModules(project);
   return {
     workflows,
     repository: folders.repository,
