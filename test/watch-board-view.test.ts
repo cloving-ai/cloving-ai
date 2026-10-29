@@ -294,7 +294,7 @@ await test("CLV-098 active steps and stopped categories retain their words with 
   assert.doesNotMatch(cardPage({}, { column: "Done" }), /column stopped/);
 });
 
-await test("CLV-098 develop-issue cards render only present review values as separate ordered pills", () => {
+await test("CLV-098 cards render only present review values as separate ordered pills", () => {
   assert.match(
     cardPage({}),
     /<span class="card-review"><span class="review-pill">round 2<\/span> · <span class="review-pill">4\/5<\/span> · <span class="review-pill">#67<\/span><\/span>/,
@@ -308,9 +308,9 @@ await test("CLV-098 develop-issue cards render only present review values as sep
     /review-pill|card-review/,
   );
   for (const workflow of ["develop-ticket", "develop-prompt"])
-    assert.doesNotMatch(
+    assert.match(
       cardPage({}, { column: "Agent turn", workflowId: workflow }),
-      /review-pill|card-review/,
+      /<span class="review-pill">#67<\/span>/,
     );
 });
 

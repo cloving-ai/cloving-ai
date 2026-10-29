@@ -146,7 +146,7 @@ await test("CLV-076 the README starts with the three exact lines of the product 
   ]);
 });
 
-await test("CLV-076 What works now says Cloving develops itself through develop-issue with a Greptile review and an automatic merge", () => {
+await test("CLV-227 self-development uses a private develop copy with a Greptile review and an automatic merge", () => {
   const working = readme
     .split("## Cloving\n")[1]
     ?.split("What works now:\n")[1]
@@ -154,8 +154,21 @@ await test("CLV-076 What works now says Cloving develops itself through develop-
   assert.ok(working);
   assert.match(
     working,
-    /^- Cloving develops itself through `develop-issue`, with a Greptile review and an automatic merge\.$/m,
+    /^- Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge\.$/m,
   );
+  const continuous = readme
+    .split("## Continuous process\n")[1]
+    ?.split("## Prompts for a coding agent")[0];
+  assert.ok(continuous);
+  assert.match(continuous, /cloving templates copy develop/);
+  assert.match(continuous, /workflows\.folder/);
+  assert.match(continuous, /check-not-configured.*pull request open/);
+  const prompt = readme
+    .split("### Run a continuous process\n")[1]
+    ?.split("### ")[0];
+  assert.ok(prompt);
+  assert.match(prompt, /cloving run develop --ticket ISSUE_NUMBER/);
+  assert.doesNotMatch(prompt, /cloving run develop-issue/);
 });
 
 const sections = [
