@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { withFiles } from "./quality/files-fixture.ts";
 
 type StringRecord = Readonly<Record<string, string>>;
+type TriggerFilter = Readonly<Record<string, readonly string[]>>;
 export type Command = readonly string[];
 
 interface WorkflowStep {
@@ -34,7 +35,7 @@ interface WorkflowJob {
 }
 
 export interface ReleaseWorkflow {
-  readonly on: Readonly<Record<string, StringRecord>>;
+  readonly on: Readonly<Record<string, TriggerFilter>>;
   readonly permissions: StringRecord;
   readonly jobs: {
     readonly quality: WorkflowJob;
@@ -92,6 +93,10 @@ function isCommand(value: unknown): value is Command {
   return Array.isArray(value) && value.every(isString);
 }
 
+function isTriggerFilter(value: unknown): value is TriggerFilter {
+  return isRecordOf(value, isCommand);
+}
+
 function isStep(value: unknown): value is WorkflowStep {
   if (!isRecord(value)) return false;
   return (
@@ -141,7 +146,7 @@ function isWorkflow(value: unknown): value is ReleaseWorkflow {
   if (!isRecord(value)) return false;
   const jobs = value["jobs"];
   return (
-    isRecordOf(value["on"], isStringRecord) &&
+    isRecordOf(value["on"], isTriggerFilter) &&
     isStringRecord(value["permissions"]) &&
     isRecord(jobs) &&
     isJob(jobs["quality"]) &&
