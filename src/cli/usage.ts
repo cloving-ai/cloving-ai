@@ -129,12 +129,18 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving workflows list [--json] [--repository <directory>]
        cloving workflows test [<id>] [--repository <directory>]
        cloving workflows validate <manifest-path> [--input <json-file>] [--json]
+       cloving templates list [--json]
+       cloving templates show <name> [--json]
+       cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
        cloving <command> [--help]
 
 Commands:
   workflows list      List bundled, project and user workflows and refusal codes.
   workflows test      Run project and user workflow tests without a service.
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
+  templates list      List the workflow templates of the package.
+  templates show      Show the decision points and the files of one template.
+  templates copy      Copy one template into .cloving/workflows of the repository.
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
