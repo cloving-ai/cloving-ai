@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "name": "idea-to-issue",
+  "summary": "Research an idea, check its draft, post a private-text-checked issue and choose what happens next. The first option at every point is the default.",
+  "points": [
+    {
+      "id": "review",
+      "question": "Who checks the draft?",
+      "options": [
+        {
+          "id": "turn",
+          "label": "A review turn corrects the draft",
+          "summary": "Compare the research with the code and correct the draft file.",
+          "change": "Keep reviewByTurn as checkDraft in idea-to-issue.ts.",
+          "requires": {},
+          "needs": ["default-harness"]
+        },
+        {
+          "id": "person",
+          "label": "I read the draft",
+          "summary": "Capture the draft through a protected effect and show its text to reviewByPerson. Post only if the captured digest still matches.",
+          "change": "Import reviewDraftByPerson as checkDraft from idea-to-issue/review.ts in idea-to-issue.ts. Add capture-draft to methods.github. Set selection.review to person in idea-to-issue/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "post",
+      "question": "Who approves posting the issue?",
+      "options": [
+        {
+          "id": "privacy",
+          "label": "Post after the privacy check",
+          "summary": "Post after the existing privacy check; retain any digest from a person review.",
+          "change": "Keep postAfterPrivacy as postDraft in idea-to-issue.ts. Configure privateTexts with at least one nonblank item.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        },
+        {
+          "id": "person",
+          "label": "I approve the post",
+          "summary": "Capture and show the draft in an approval gate before the checked post. Preserve both reviewed digests when both gates are selected.",
+          "change": "Import postByPerson as postDraft from idea-to-issue/post-person.ts in idea-to-issue.ts. Add capture-draft to methods.github. Set selection.post to person in idea-to-issue/scenarios.ts. Configure privateTexts with at least one nonblank item.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "question": "What happens to the posted issue?",
+      "options": [
+        {
+          "id": "develop",
+          "label": "Hand the issue to develop",
+          "summary": "Start the repository-declared develop workflow. If starting it fails, put the issue in the queue.",
+          "change": "Keep handoffIssue as nextIssue in idea-to-issue.ts. Set targetWorkflow in idea-to-issue/next.ts and workflow.handoffs in idea-to-issue.declaration.json to the same repository-declared workflow ID. The default is develop.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin"]
+        },
+        {
+          "id": "queue",
+          "label": "Put the issue in the queue",
+          "summary": "Add cloving: ready without starting a develop workflow.",
+          "change": "Import queueIssue as nextIssue from idea-to-issue/queue.ts in idea-to-issue.ts. Set workflow.handoffs to [] and selection.next to queue in idea-to-issue/scenarios.ts. No develop workflow is required.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin"]
+        },
+        {
+          "id": "nothing",
+          "label": "Do nothing",
+          "summary": "Leave the posted issue for a person.",
+          "change": "Import leaveIssue as nextIssue from idea-to-issue/leave.ts in idea-to-issue.ts. Set workflow.handoffs to [], remove label from methods.github and set selection.next to nothing in idea-to-issue/scenarios.ts. No develop workflow is required.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
@@ -68,6 +69,32 @@ async function draftOf(operation: Operation): Promise<string> {
   return readFile(path, "utf8");
 }
 
+function draftDigest(text: string): string {
+  return "sha256:" + createHash("sha256").update(text).digest("hex");
+}
+
+export async function captureDraft(operation: Operation): Promise<unknown> {
+  const text = await draftOf(operation);
+  return { text, digest: draftDigest(text) };
+}
+
+function checkDraftDigest(operation: Operation, draft: string): void {
+  if (!Object.hasOwn(operation.payload, "expectedDigests")) return;
+  const digests = operation.payload["expectedDigests"];
+  if (
+    !Array.isArray(digests) ||
+    digests.length === 0 ||
+    !digests.every(
+      (digest: unknown) =>
+        typeof digest === "string" && /^sha256:[0-9a-f]{64}$/.test(digest),
+    )
+  )
+    throw new Error("invalid-payload");
+  const current = draftDigest(draft);
+  if (!digests.every((digest: unknown) => digest === current))
+    throw new Error("draft-changed");
+}
+
 async function knownIssue(
   operation: Operation,
   marker: string,
@@ -85,6 +112,7 @@ async function knownIssue(
 export async function createIssue(operation: Operation): Promise<unknown> {
   operatorPrivateTexts(operation.settings);
   const draft = await draftOf(operation);
+  checkDraftDigest(operation, draft);
   const [heading = "", ...lines] = draft.split("\n");
   if (!heading.startsWith("# ") || heading.slice(2).trim() === "")
     throw new Error("invalid-draft");

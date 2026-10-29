@@ -11,6 +11,17 @@ const subject = { target: "ticket-1", commit };
 const digest = (text: string) =>
   "sha256:" + createHash("sha256").update(text).digest("hex");
 
+await test("CLV-222 a person gate displays the captured draft as readable text", async () => {
+  using bridge = fakeStepBridge({
+    decisions: [{ decision: "approved", answer: null }],
+  });
+  const draft = "# Costs\n\nShow the cost.\n";
+  await reviewByPerson({ subject: { draft } });
+  const gate = bridge.requests[0];
+  assert.ok(gate && gate[0] === "waitForDecision");
+  assert.equal(gate[1].prompt, `Review this subject:\n${draft}`);
+});
+
 await test("CLV-220 person reviews return approval in the original workflow call", () =>
   withFiles(
     {
