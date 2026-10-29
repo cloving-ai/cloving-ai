@@ -24,6 +24,13 @@ async function failuresOf(events: readonly TestEvent[]): Promise<unknown[]> {
   return Array.from<unknown>(failures);
 }
 
+function failureWithoutError(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === "object");
+  const { error, ...fields } = Object.fromEntries(Object.entries(value));
+  assert.equal(typeof error, "string");
+  return fields;
+}
+
 function stderrEvent(file: string, message: string): TestEvent {
   return { type: "test:stderr", data: { file, message } };
 }
@@ -64,7 +71,7 @@ await test("CLV-164 a whole failed test file keeps the last lines of its stderr"
     failedEvent(file, file),
   ]);
   assert.equal(failures.length, 1);
-  assert.partialDeepStrictEqual(failures[0], {
+  assert.deepEqual(failureWithoutError(failures[0]), {
     name: file,
     file,
     message: "test failed",
@@ -79,7 +86,7 @@ await test("CLV-164 a failed test keeps its message and adds no stderr of its fi
     failedEvent("a single test", file),
   ]);
   assert.equal(failures.length, 1);
-  assert.partialDeepStrictEqual(failures[0], {
+  assert.deepEqual(failureWithoutError(failures[0]), {
     name: "a single test",
     file,
     message: "test failed",
@@ -92,7 +99,7 @@ await test("CLV-164 failures retain event locations and the complete message", a
   event.data.line = 12;
   event.data.column = 34;
   event.data.details.error.message = "first cause\nsecond line";
-  assert.partialDeepStrictEqual(await failuresOf([event]), [
+  assert.deepEqual((await failuresOf([event])).map(failureWithoutError), [
     {
       name: "assertion",
       file: "assertion.test.ts",
@@ -106,11 +113,13 @@ await test("CLV-164 failures retain event locations and the complete message", a
 
 await test("CLV-164 retained stderr lines remain bounded to 500 characters", async () => {
   const file = resolve("test/crash.test.ts");
-  assert.partialDeepStrictEqual(
-    await failuresOf([
-      stderrEvent(file, `${"x".repeat(501)}\n\nlast\n`),
-      failedEvent(file, file),
-    ]),
+  assert.deepEqual(
+    (
+      await failuresOf([
+        stderrEvent(file, `${"x".repeat(501)}\n\nlast\n`),
+        failedEvent(file, file),
+      ])
+    ).map(failureWithoutError),
     [
       {
         name: file,
