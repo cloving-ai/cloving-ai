@@ -1,4 +1,8 @@
-import { shellRunScript } from "./agent-harness-shell.ts";
+import {
+  shellArguments,
+  shellRunScript,
+  type ShellMode,
+} from "./agent-harness-shell.ts";
 import type { HarnessSelection } from "./configuration-change.ts";
 
 export interface HarnessStartRequest {
@@ -7,15 +11,6 @@ export interface HarnessStartRequest {
   readonly directory: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
 }
-
-const startForms: Readonly<Record<string, readonly string[]>> = {
-  claude: [],
-  codex: [],
-  gemini: [],
-  grok: [],
-  "cursor-agent": [],
-  opencode: ["--prompt"],
-};
 
 const shellStartScript = `
 set +m
@@ -34,27 +29,23 @@ ${shellRunScript}
 `;
 
 export function harnessStartRequest(
-  entry: HarnessSelection,
+  entry: HarnessSelection & { readonly shellMode?: ShellMode },
   context: {
     readonly repository: string;
     readonly environment: Readonly<NodeJS.ProcessEnv>;
     readonly message: string;
   },
 ): HarnessStartRequest {
-  const argumentsList = [
-    ...(Object.hasOwn(startForms, entry.name)
-      ? (startForms[entry.name] ?? [])
-      : []),
-    context.message,
-  ];
+  const argumentsList =
+    entry.name === "opencode"
+      ? ["--prompt", context.message]
+      : [context.message];
   const executable =
     entry.kind === "shell" ? (context.environment["SHELL"] ?? "") : entry.path;
   const args =
     entry.kind === "shell"
       ? [
-          "-l",
-          "-i",
-          "-c",
+          ...shellArguments(entry.shellMode ?? "login"),
           shellStartScript,
           "cloving-init",
           entry.path,

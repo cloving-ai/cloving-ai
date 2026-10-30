@@ -13,5 +13,5 @@ await test("CLV-209 a shell start without SHELL cannot execute the entry directl
   );
   assert.equal(request.executable, "");
   assert.deepEqual(request.arguments.slice(-2), ["custom", "setup"]);
-  assert.deepEqual(request.arguments.slice(0, 3), ["-l", "-i", "-c"]);
+  assert.deepEqual(request.arguments.slice(0, 4), ["-l", "-i", "+m", "-c"]);
 });

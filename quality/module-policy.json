@@ -1286,6 +1286,8 @@
     "src/cli/doctor-workflows.ts": "cli",
     "src/cli/doctor.ts": "cli",
     "src/cli/harness-probes.ts": "cli",
+    "src/cli/harness-processes.ts": "cli",
+    "test/harness-processes.test.ts": "test",
     "src/cli/probe-command.ts": "cli",
     "src/doctor-report.ts": "pure",
     "test/cli-doctor.test.ts": "test",

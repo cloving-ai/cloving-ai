@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createProbeRunner } from "./cli/probe-command.ts";
+import { terminateHarness } from "./cli/harness-processes.ts";
 import { settingsEnvironment } from "./cli/project-settings.ts";
 import { constants as systemConstants } from "node:os";
 import type { HarnessStartRequest } from "./harness-start.ts";
@@ -94,7 +95,14 @@ function startHarness(request: HarnessStartRequest): Promise<number | null> {
       });
       const interrupt = (): void => undefined;
       const terminate = (): void => {
-        child.kill("SIGTERM");
+        terminateHarness(child.pid, {
+          snapshot: () =>
+            execFileSync("/bin/ps", ["-axo", "pid=,ppid="], {
+              encoding: "utf8",
+              timeout: 1000,
+            }),
+          kill: (identifier, signal) => process.kill(identifier, signal),
+        });
       };
       const cleanup = (): void => {
         process.off("SIGINT", interrupt);

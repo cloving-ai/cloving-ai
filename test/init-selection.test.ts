@@ -116,11 +116,11 @@ await test("CLV-209 init starts executable paths whose basenames contain spaces 
     assert.deepEqual(JSON.parse(result.stdout), ["run `cloving init-prompt`"]);
   }));
 
-await test("CLV-209 a shell function absent from the login shell prints the start fallback", () =>
+await test("CLV-209 a shell function removed after probing prints the start fallback", () =>
   withDoctor(async (scene) => {
     await writeFile(
-      join(scene.root, ".bashrc"),
-      'custom() { printf "1.0.0\\n"; }\n',
+      join(scene.root, ".bash_profile"),
+      'custom() { /bin/rm "$HOME/.bash_profile"; printf "1.0.0\\n"; }\n',
     );
     const result = initCli(scene, {
       arguments: ["--harness", "shell:custom"],
@@ -133,6 +133,34 @@ await test("CLV-209 a shell function absent from the login shell prints the star
       ),
     );
   }));
+
+for (const kind of ["function", "alias"]) {
+  await test(`CLV-209 init starts a Bash ${kind} from the interactive mode that passed probing`, () =>
+    withDoctor(async (scene) => {
+      const file = await scene.program(
+        "receiver",
+        'if (process.argv[2] === "--version") console.log("1.0.0"); else { console.log(JSON.stringify(process.argv.slice(2))); process.exit(7); }',
+      );
+      await writeFile(
+        join(scene.root, ".bash_profile"),
+        'custom() { printf "Error: unavailable\\n"; }\n',
+      );
+      await writeFile(
+        join(scene.root, ".bashrc"),
+        kind === "function"
+          ? `custom() { "${file}" "$@"; }\n`
+          : `alias custom='"${file}"'\n`,
+      );
+      const result = initCli(scene, {
+        arguments: ["--harness", "shell:custom"],
+        environment: { SHELL: "/bin/bash" },
+      });
+      assert.equal(result.status, 7, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), [
+        "run `cloving init-prompt`",
+      ]);
+    }));
+}
 
 await test("CLV-209 a custom OpenCode executable keeps the generic start form", () =>
   withDoctor(async (scene) => {
