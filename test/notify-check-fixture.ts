@@ -74,6 +74,7 @@ export async function notificationJournal(directory: string): Promise<{
 
 interface NotifierOptions {
   readonly handle: Handle;
+  readonly schedules?: Handle;
   readonly record?: string | null;
   readonly script?: string;
   readonly command?: readonly string[];
@@ -108,7 +109,11 @@ export async function withNotifier(
     await writeFile(output, "");
     const listener = await listen({
       path: join(harness.runtimeDirectory, "control.sock"),
-      handle: options.handle,
+      handle: (request, connection) =>
+        request.operation === "schedule"
+          ? (options.schedules?.(request, connection) ??
+            notifyReply({ schedules: [], stops: [] }))
+          : options.handle(request, connection),
       limits: { idleMilliseconds: 5000 },
     });
     const settings = {

@@ -1,3 +1,4 @@
+import type { SchedulePort } from "../schedule-progress.ts";
 import type {
   Authority,
   CommandRecord,
@@ -15,6 +16,7 @@ import {
 import type { CommandEffects } from "../command-settings.ts";
 
 export interface ServiceContext {
+  readonly schedule?: SchedulePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly commandEffects?: CommandEffects;
@@ -33,18 +35,21 @@ export interface ServiceContext {
 }
 
 export function queryMetadata(options: {
+  readonly schedule?: SchedulePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
 }): Pick<
   ServiceContext,
+  | "schedule"
   | "workerHarness"
   | "commandEffects"
   | "workflowRefusals"
   | "queueDailySpendLimitUsd"
 > {
   return {
+    ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: options.queueDailySpendLimitUsd }),
@@ -121,4 +126,18 @@ export function publicReceipt(record: CommandRecord): Fields {
     recordedAt: record.recordedAt,
     commandDigest: record.commandDigest,
   };
+}
+
+export function scheduleRequest(
+  context: ServiceContext,
+  parameters: Fields,
+): Promise<Reply> {
+  return (
+    context.schedule?.(parameters) ??
+    Promise.resolve(failed("schedules-unavailable", {}))
+  );
+}
+
+export function errorMessage(error: unknown): string {
+  return String(Reflect.get(Object(error), "message"));
 }

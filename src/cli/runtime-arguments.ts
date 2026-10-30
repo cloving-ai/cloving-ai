@@ -1,4 +1,8 @@
 import { isRecordKey } from "../authority/commands.ts";
+import {
+  scheduleInvocation,
+  type ScheduleInvocation,
+} from "./schedule-arguments.ts";
 
 export type RunSource =
   | { readonly kind: "prompt"; readonly text: string }
@@ -10,6 +14,7 @@ type DecisionCommand = "answer" | "approve" | "deny";
 type RunCommand = "pause" | "resume" | "drop";
 
 export type RuntimeInvocation =
+  | ScheduleInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }
   | {
@@ -163,16 +168,18 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
 ]);
 
 export function isRuntimeCommand(command: string): boolean {
-  return shapes.has(command);
+  return command === "schedule" || shapes.has(command);
 }
 
 export function runtimeInvocation(request: RuntimeRequest): Outcome {
   const shape = shapes.get(request.command);
-  if (shape === undefined) return "unknown-command";
+  if (!isRuntimeCommand(request.command)) return "unknown-command";
   const names = request.options.map((option) => option.name);
   if (new Set(names).size !== names.length) return "repeated-option";
   if (names.includes("help"))
     return { kind: "command-help", command: request.command };
+  if (request.command === "schedule") return scheduleInvocation(request);
+  if (shape === undefined) return "unknown-command";
   return shapeFailure(shape, request) ?? shape.build(request);
 }
 

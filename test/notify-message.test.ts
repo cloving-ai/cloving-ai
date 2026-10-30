@@ -4,6 +4,7 @@ import { decisionLines } from "../src/cli/render.ts";
 import {
   decisionNotification,
   outcomeNotification,
+  stoppedScheduleNotification,
 } from "../src/daemon/notify-message.ts";
 
 const run = { runId: "run-one", workflowId: "develop-ticket" };
@@ -18,6 +19,31 @@ const question = {
   subjectDigest: "subject",
   feedback: [{ decisionId: "prior", text: "Please simplify." }],
 };
+
+await test("CLV-242 a stopped schedule message names its three failures and resume command", () => {
+  const schedule = {
+    workflowId: "review-queue",
+    state: "stopped",
+    stoppedAt: 900000,
+    stoppedSlot: 3,
+    failuresInRow: 3,
+    failedRunIds: ["run-one", "run-two", "run-three"],
+  };
+  const event = stoppedScheduleNotification(schedule);
+  assert.ok(event);
+  assert.equal(event.key, "schedule-stopped:review-queue:3");
+  assert.equal(event.message.event, "schedule-stopped");
+  assert.equal(event.message.runId, "run-three");
+  for (const runId of schedule.failedRunIds)
+    assert.ok(event.message.body.includes(runId));
+  assert.ok(
+    event.message.body.endsWith("cloving schedule resume review-queue"),
+  );
+  assert.equal(
+    stoppedScheduleNotification({ ...schedule, state: "active" }),
+    undefined,
+  );
+});
 
 await test("CLV-090 notification text matches questions, including question commands and feedback", () => {
   const notification = decisionNotification(run, question);

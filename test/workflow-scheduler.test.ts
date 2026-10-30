@@ -9,12 +9,15 @@ import {
   withScheduler,
 } from "./workflow-scheduler-fixture.ts";
 
-const progress = {
+const idleProgress = {
+  state: "active" as const,
+  failuresInRow: 0,
+  failedRunIds: [],
   everySeconds: 300,
   nextAt: 600000,
   lastSlot: 1,
-  activeCommandId: "schedule:review:1",
 };
+const progress = { ...idleProgress, activeCommandId: "schedule:review:1" };
 
 const unscheduledWorkflow: DeclaredWorkflow = {
   workflowId: "manual",
@@ -183,9 +186,7 @@ async function interruptedRequest(operation: "run" | "status"): Promise<void> {
   const expected =
     operation === "run"
       ? {
-          everySeconds: 300,
-          nextAt: 600000,
-          lastSlot: 1,
+          ...idleProgress,
           pending: { kind: "run", input: { prompt: "current" } },
         }
       : progress;

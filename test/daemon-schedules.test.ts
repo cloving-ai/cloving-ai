@@ -22,6 +22,62 @@ const scheduledDaemon = (overrides = {}) => launched({ queueMilliseconds: undefi
 });
 `;
 
+await test("CLV-242 a stopped daemon schedule survives restart and resumes with a new slot", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result = await consumer.run(`${schedulePrelude}
+let daemon = await scheduledDaemon();
+const schedule = async () => (await asked("schedule", { action: "list" })).schedules[0];
+try {
+  for (let slot = 1; slot <= 3; slot++) {
+    now = slot * 300000;
+    await until(async () => (await schedule()).failuresInRow === slot);
+  }
+  const stopped = await schedule();
+  assert.equal(stopped.state, "stopped");
+  assert.equal(stopped.nextAt, null);
+  assert.equal(stopped.activeRunId, null);
+  assert.equal(stopped.failedRunIds.length, 3);
+  await daemon.close();
+  now = 1500000;
+  daemon = await scheduledDaemon();
+  assert.deepEqual(await schedule(), stopped);
+  assert.equal((await runs()).length, 3);
+  await asked("schedule", { action: "resume", workflowId: "review-queue" });
+  assert.equal((await schedule()).nextAt, 1800000);
+  now = 1799999;
+  await delay(300);
+  assert.equal((await runs()).length, 3);
+  now = 1800000;
+  await until(async () => (await runs()).length === 4);
+  assert.ok((await shown(runIdentity("schedule:review-queue:4"))));
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-242 a paused daemon schedule remains paused after restart and interval change", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result = await consumer.run(`${schedulePrelude}
+let daemon = await scheduledDaemon();
+await asked("schedule", { action: "pause", workflowId: "review-queue" });
+await daemon.close();
+now = 900000;
+daemon = await scheduledDaemon({ schedules: { "review-queue": { everySeconds: 60, input: { reason: "changed" } } } });
+try {
+  await delay(300);
+  const paused = (await asked("schedule", { action: "list" })).schedules[0];
+  assert.equal(paused.state, "paused");
+  assert.equal(paused.everySeconds, 60);
+  assert.equal(paused.lastSlot, 0);
+  assert.equal(paused.nextAt, null);
+  assert.equal((await runs()).length, 0);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
 await test("CLV-179 the daemon starts a declared workflow at the interval boundary", () =>
   withConsumer(workflow, async (consumer) => {
     const result = await consumer.run(`${schedulePrelude}

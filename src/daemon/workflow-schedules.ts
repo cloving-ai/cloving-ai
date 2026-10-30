@@ -1,12 +1,20 @@
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { mutate } from "../cli/client.ts";
-import { record, type Reply, type ServiceRequest } from "../protocol.ts";
+import {
+  record,
+  type Fields,
+  type Reply,
+  type ServiceRequest,
+} from "../protocol.ts";
 import type { WorkerPort } from "../service/worker-port.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import { configuredSchedules } from "../workflow-schedule.ts";
 import { declaredInput } from "./declared-input.ts";
+import { finishedScheduleRun } from "../schedule-progress.ts";
+import { scheduleControl } from "./schedule-control.ts";
+import type { SchedulePort } from "../schedule-progress.ts";
 import {
   scheduleJournal,
   type ScheduleProgress,
@@ -18,11 +26,14 @@ interface ScheduleSettings {
   readonly runtimeDirectory: string;
   readonly declarations?: readonly DeclaredWorkflow[];
   readonly scheduleClock?: () => number;
+  readonly scheduleObservationClock?: () => number;
   readonly submit: WorkerPort["submit"];
 }
 
 interface ScheduleContext extends ScheduleSettings {
   readonly signal: AbortSignal;
+  readonly nextObservations: Map<string, number>;
+  readonly observationClock: () => number;
 }
 
 type Journal = Awaited<ReturnType<typeof scheduleJournal>>;
@@ -114,6 +125,7 @@ async function pending(
   const { workflowId, progress } = entry;
   const { pending: planned, ...rest } = progress;
   if (planned === undefined) return progress;
+  if (progress.state !== "active") throw new Error("invalid-schedule-state");
   const identity = commandId(workflowId, progress.lastSlot);
   if (planned.kind === "skip") {
     const receipt = await settings.submit({
@@ -140,12 +152,10 @@ async function pending(
   return { ...rest, activeCommandId: identity };
 }
 
-async function active(
+async function scheduledRunStatus(
   settings: ScheduleContext,
-  progress: ScheduleProgress,
-): Promise<string | undefined> {
-  if (progress.activeCommandId === undefined) return undefined;
-  const runId = runIdentity(progress.activeCommandId);
+  runId: string,
+): Promise<Fields> {
   const reply = await request(settings, {
     operation: "status",
     parameters: { runId },
@@ -154,10 +164,83 @@ async function active(
   const run = record(reply.result["run"]);
   if (typeof run?.["state"] !== "string")
     throw new Error("invalid-schedule-run");
-  if (run["condition"] === "cancelling") return runId;
-  return ["completed", "failed", "cancelled"].includes(run["state"])
-    ? undefined
-    : runId;
+  return run;
+}
+
+async function active(
+  settings: ScheduleContext,
+  progress: ScheduleProgress,
+): Promise<ScheduleProgress> {
+  if (progress.activeCommandId === undefined) return progress;
+  const now = (settings.scheduleClock ?? Date.now)();
+  const observedAt = settings.observationClock();
+  const next = settings.nextObservations.get(progress.activeCommandId) ?? 0;
+  const due = progress.state === "active" && now >= progress.nextAt;
+  if (!due && observedAt < next) return progress;
+  const runId = runIdentity(progress.activeCommandId);
+  const run = await scheduledRunStatus(settings, runId);
+  settings.nextObservations.set(progress.activeCommandId, observedAt + 5000);
+  if (run["condition"] === "cancelling") return progress;
+  if (!["completed", "failed", "cancelled"].includes(String(run["state"])))
+    return progress;
+  settings.nextObservations.delete(progress.activeCommandId);
+  return finishedScheduleRun(progress, {
+    runId,
+    status: run,
+    now: (settings.scheduleClock ?? Date.now)(),
+  });
+}
+
+async function advance(
+  settings: ScheduleContext & {
+    readonly journal: Journal;
+    readonly now: number;
+  },
+  declaration: DeclaredWorkflow,
+): Promise<void> {
+  settings.signal.throwIfAborted();
+  const { workflowId, schedule } = declaration;
+  if (schedule === undefined) return;
+  let progress = settings.journal.entries.get(workflowId);
+  if (progress === undefined) throw new Error("missing-schedule-state");
+  if (progress.pending !== undefined) {
+    progress = await pending(settings, { workflowId, progress });
+    settings.journal.entries.set(workflowId, progress);
+    await settings.journal.save();
+    if (settings.now < progress.nextAt) return;
+  }
+  const observed = await active(settings, progress);
+  if (observed !== progress) {
+    progress = observed;
+    settings.journal.entries.set(workflowId, progress);
+    await settings.journal.save();
+  }
+  if (progress.state !== "active" || settings.now < progress.nextAt) return;
+  const runId =
+    progress.activeCommandId === undefined
+      ? undefined
+      : runIdentity(progress.activeCommandId);
+  const planned: PendingSlot =
+    runId === undefined
+      ? { kind: "run", input: schedule.input }
+      : { kind: "skip", runId };
+  const elapsed =
+    Math.floor(
+      (settings.now - progress.nextAt) / (schedule.everySeconds * 1000),
+    ) + 1;
+  progress = {
+    ...progress,
+    lastSlot: progress.lastSlot + elapsed,
+    nextAt: progress.nextAt + elapsed * schedule.everySeconds * 1000,
+    pending: planned,
+  };
+  settings.journal.entries.set(workflowId, progress);
+  await settings.journal.save();
+  settings.journal.entries.set(
+    workflowId,
+    await pending(settings, { workflowId, progress }),
+  );
+  await settings.journal.save();
 }
 
 async function tick(
@@ -165,39 +248,8 @@ async function tick(
   journal: Journal,
 ): Promise<void> {
   const now = (settings.scheduleClock ?? Date.now)();
-  for (const declaration of settings.declarations ?? []) {
-    settings.signal.throwIfAborted();
-    const { workflowId, schedule } = declaration;
-    if (schedule === undefined) continue;
-    let progress = journal.entries.get(workflowId);
-    if (progress === undefined) throw new Error("missing-schedule-state");
-    if (progress.pending !== undefined) {
-      progress = await pending(settings, { workflowId, progress });
-      journal.entries.set(workflowId, progress);
-      await journal.save();
-    }
-    if (now < progress.nextAt) continue;
-    const runId = await active(settings, progress);
-    const planned: PendingSlot =
-      runId === undefined
-        ? { kind: "run", input: schedule.input }
-        : { kind: "skip", runId };
-    const elapsed =
-      Math.floor((now - progress.nextAt) / (schedule.everySeconds * 1000)) + 1;
-    progress = {
-      ...progress,
-      lastSlot: progress.lastSlot + elapsed,
-      nextAt: progress.nextAt + elapsed * schedule.everySeconds * 1000,
-      pending: planned,
-    };
-    journal.entries.set(workflowId, progress);
-    await journal.save();
-    journal.entries.set(
-      workflowId,
-      await pending(settings, { workflowId, progress }),
-    );
-    await journal.save();
-  }
+  for (const declaration of settings.declarations ?? [])
+    await advance({ ...settings, journal, now }, declaration);
 }
 
 async function initialized(settings: ScheduleSettings): Promise<Journal> {
@@ -209,42 +261,63 @@ async function initialized(settings: ScheduleSettings): Promise<Journal> {
     const prior = journal.entries.get(workflowId);
     if (prior?.everySeconds === schedule.everySeconds) continue;
     journal.entries.set(workflowId, {
-      ...prior,
+      ...(prior ?? {
+        lastSlot: 0,
+        state: "active",
+        failuresInRow: 0,
+        failedRunIds: [],
+      }),
       everySeconds: schedule.everySeconds,
-      lastSlot: prior?.lastSlot ?? 0,
       nextAt: now + schedule.everySeconds * 1000,
     });
   }
-  await journal.save();
+  if (settings.declarations?.some((entry) => entry.schedule !== undefined))
+    await journal.save();
   return journal;
 }
 
 export async function workflowSchedules(settings: ScheduleSettings): Promise<{
   readonly stop: () => Promise<void>;
+  readonly request: SchedulePort;
 }> {
-  if (
-    !(settings.declarations ?? []).some((entry) => entry.schedule !== undefined)
-  )
-    return { stop: () => Promise.resolve() };
+  const declarations = settings.declarations ?? [];
   const journal = await initialized(settings);
   const stopping = new AbortController();
   const stopped = (): boolean => stopping.signal.aborted;
+  const context = {
+    ...settings,
+    signal: stopping.signal,
+    nextObservations: new Map<string, number>(),
+    observationClock:
+      settings.scheduleObservationClock ?? (() => performance.now()),
+  };
+  const control = scheduleControl({
+    journal,
+    declarations,
+    clock: settings.scheduleClock ?? Date.now,
+    signal: stopping.signal,
+    recoverPending: (entry) => pending(context, entry),
+    tick: () => tick(context, journal),
+  });
   const running = (async () => {
     while (!stopped()) {
       await delay(250, undefined, { signal: stopping.signal }).catch(
         () => undefined,
       );
       if (stopped()) return;
-      await tick({ ...settings, signal: stopping.signal }, journal);
+      await control.tick();
     }
   })().catch((error: unknown) => {
     if (!stopped())
       process.stderr.write(`Schedules stopped: ${String(error)}\n`);
+    stopping.abort();
   });
   return {
+    request: control.request,
     stop: async () => {
       stopping.abort();
       await running;
+      await control.drain();
     },
   };
 }
