@@ -172,15 +172,13 @@ async function launchers(
   commands: Commands,
   workflows: RegisteredWorkflows,
 ): Promise<void> {
-  if (
+  const queueEnabled =
     commands.queueMilliseconds !== undefined &&
-    workflows.declarations.some((declaration) => declaration.queue === true)
-  ) {
-    if (!commands.nextCommand?.length)
-      throw new Error("The daemon did not start: queue-needs-next-command");
-    if (!commands.ticketCommand?.length)
-      throw new Error("The daemon did not start: queue-needs-ticket-command");
-  }
+    workflows.declarations.some((declaration) => declaration.queue === true);
+  if (queueEnabled && !commands.nextCommand?.length)
+    throw new Error("The daemon did not start: queue-needs-next-command");
+  if (queueEnabled && !commands.ticketCommand?.length)
+    throw new Error("The daemon did not start: queue-needs-ticket-command");
   const settings = {
     ...commands,
     directory,
