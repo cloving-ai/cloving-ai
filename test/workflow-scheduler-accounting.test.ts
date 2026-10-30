@@ -171,3 +171,29 @@ await test("CLV-242 a slot boundary observes completion even within the polling 
     },
   );
 });
+
+await test("CLV-242 run observation advances while the scheduling clock stays fixed", () => {
+  let observedAt = 0;
+  let state = "running";
+  return withScheduler(
+    {
+      initial: { review: prior },
+      observationClock: () => observedAt,
+      handle: () =>
+        Promise.resolve({ kind: "result", result: { run: { state } } }),
+    },
+    async (scene) => {
+      scene.now(700000);
+      await reached(() => scene.requests.length >= 1);
+      state = "failed";
+      observedAt = 5000;
+      await reached(
+        async () => saved(await scene.saved())["activeCommandId"] === undefined,
+      );
+      await scene.stop();
+      assert.equal(scene.requests.length, 2);
+      assert.equal(saved(await scene.saved())["failuresInRow"], 2);
+      assert.equal(saved(await scene.saved())["nextAt"], 900000);
+    },
+  );
+});

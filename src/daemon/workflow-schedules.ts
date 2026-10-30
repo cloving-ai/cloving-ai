@@ -26,12 +26,14 @@ interface ScheduleSettings {
   readonly runtimeDirectory: string;
   readonly declarations?: readonly DeclaredWorkflow[];
   readonly scheduleClock?: () => number;
+  readonly scheduleObservationClock?: () => number;
   readonly submit: WorkerPort["submit"];
 }
 
 interface ScheduleContext extends ScheduleSettings {
   readonly signal: AbortSignal;
   readonly nextObservations: Map<string, number>;
+  readonly observationClock: () => number;
 }
 
 type Journal = Awaited<ReturnType<typeof scheduleJournal>>;
@@ -171,12 +173,13 @@ async function active(
 ): Promise<ScheduleProgress> {
   if (progress.activeCommandId === undefined) return progress;
   const now = (settings.scheduleClock ?? Date.now)();
+  const observedAt = settings.observationClock();
   const next = settings.nextObservations.get(progress.activeCommandId) ?? 0;
   const due = progress.state === "active" && now >= progress.nextAt;
-  if (!due && now < next) return progress;
+  if (!due && observedAt < next) return progress;
   const runId = runIdentity(progress.activeCommandId);
   const run = await scheduledRunStatus(settings, runId);
-  settings.nextObservations.set(progress.activeCommandId, now + 5000);
+  settings.nextObservations.set(progress.activeCommandId, observedAt + 5000);
   if (run["condition"] === "cancelling") return progress;
   if (!["completed", "failed", "cancelled"].includes(String(run["state"])))
     return progress;
@@ -285,6 +288,8 @@ export async function workflowSchedules(settings: ScheduleSettings): Promise<{
     ...settings,
     signal: stopping.signal,
     nextObservations: new Map<string, number>(),
+    observationClock:
+      settings.scheduleObservationClock ?? (() => performance.now()),
   };
   const control = scheduleControl({
     journal,

@@ -21,6 +21,7 @@ type Settings = Parameters<typeof workflowSchedules>[0];
 
 interface SchedulerOptions {
   readonly initial?: unknown;
+  readonly observationClock?: () => number;
   readonly handle?: Handle;
   readonly submit?: Settings["submit"];
   readonly declarations?: readonly DeclaredWorkflow[];
@@ -116,6 +117,7 @@ export async function withScheduler(
         runtimeDirectory,
         declarations: options.declarations ?? [scheduledWorkflow],
         scheduleClock: clock.read,
+        scheduleObservationClock: options.observationClock ?? clock.read,
         submit: options.submit ?? acceptedSkip,
       };
       let scheduler = await workflowSchedules(settings);
