@@ -39,6 +39,7 @@ export function tableRows(
 }
 
 export const versionThree = `
+DROP INDEX events_spend_window;
 DROP TABLE command_waits;
 DROP TABLE dispatch_attempts;
 DROP TABLE stopped_operations;

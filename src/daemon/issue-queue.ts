@@ -246,6 +246,7 @@ async function submit(
       "workflow-active",
       "ticket-active",
       "ticket-dependency-open",
+      "queue-spend-limit",
     ].includes(reply.error.code)
   )
     throw new Error(reply.error.code);

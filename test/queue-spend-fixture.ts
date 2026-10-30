@@ -42,7 +42,13 @@ export async function withQueueSpend(
 async function spendScene(harness: Harness, limitUsd: number) {
   const clock = { now: "2026-10-10T12:00:00.000Z" };
   const counts = { admissions: 0, clockReads: 0 };
-  const options = spendOptions(harness, { clock, counts, limitUsd });
+  const resolution = { wait: Promise.resolve() };
+  const options = spendOptions(harness, {
+    clock,
+    counts,
+    limitUsd,
+    resolution,
+  });
   let service = await harness.start(options);
   let queue: ReturnType<typeof issueQueue> | undefined;
   const status = () =>
@@ -59,6 +65,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
     harness,
     clock,
     counts,
+    resolution,
     status,
     startQueue,
     worker: () => service.worker,
@@ -88,6 +95,7 @@ function spendOptions(
     readonly clock: { now: string };
     readonly counts: { admissions: number; clockReads: number };
     readonly limitUsd: number;
+    readonly resolution: { wait: Promise<void> };
   },
 ) {
   const { clock, counts } = state;
@@ -107,18 +115,24 @@ function spendOptions(
     },
     resolver: {
       ...harness.registration.resolver,
-      resolve: () => {
+      resolve: async () => {
         counts.admissions += 1;
-        return Promise.resolve({
+        await state.resolution.wait;
+        return {
           kind: "resolved" as const,
           input: { ticketId: String(counts.admissions) },
-        });
+        };
       },
     },
   };
   return {
     workflows: [
       registration,
+      {
+        ...registration,
+        workflowId: "queued",
+        manifest: { ...registration.manifest, queue: true },
+      },
       {
         ...harness.registration,
         workflowId: "manual",

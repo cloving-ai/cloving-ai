@@ -191,6 +191,27 @@ await test("CLV-241 spend notices print once per transition into a hold", () => 
   }
 });
 
+await test("CLV-241 polling survives spend crossing the threshold during resolution", () =>
+  withQueueSpend(async (scene) => {
+    const running = await scene.begin("running");
+    const barrier = Promise.withResolvers<undefined>();
+    scene.resolution.wait = barrier.promise;
+    scene.startQueue();
+    try {
+      await eventually(() =>
+        scene.counts.admissions === 2 ? true : undefined,
+      );
+      await scene.turn(running, { costUsd: 17 });
+    } finally {
+      barrier.resolve(undefined);
+    }
+    await eventually(() => (scene.messages.length === 1 ? true : undefined));
+    assert.equal(scene.counts.admissions, 2);
+    assert.equal(record((await scene.status())["queue"])?.["busy"], 1);
+    scene.clock.now = "2026-10-11T12:00:00.000Z";
+    await eventually(() => (scene.counts.admissions === 3 ? true : undefined));
+  }));
+
 async function cycles(scene: {
   readonly counts: { readonly clockReads: number };
 }): Promise<void> {

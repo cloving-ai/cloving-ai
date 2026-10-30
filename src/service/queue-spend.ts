@@ -20,44 +20,30 @@ export async function queueRun(
   );
 }
 
-async function inWindow(
-  context: SpendContext,
-  turn: { readonly operation: OperationView; readonly now: number },
-): Promise<boolean> {
-  const { operation, now } = turn;
-  if (operation.settledSequence === null) return false;
-  const page = await context.authority.queries.eventsAfter({
-    after: operation.settledSequence - 1,
-    limit: 1,
-    runId: operation.runId,
-  });
-  const event = page.events[0];
-  if (event?.sequence !== operation.settledSequence)
-    throw new Error("queue-spend-settlement-missing");
-  const timestamp = Date.parse(event.recordedAt);
-  return timestamp > now - 24 * 3_600_000 && timestamp <= now;
-}
-
 export async function queueSpend(context: SpendContext): Promise<Fields> {
   const limitUsd = context.queueDailySpendLimitUsd;
   if (limitUsd === undefined) return {};
-  const workflows = await context.authority.queries.workflowIds();
-  const state = await context.authority.state();
   const now = Date.parse(context.clock());
+  const operations = await context.authority.effects.workerTurns({
+    after: new Date(now - 24 * 3_600_000).toISOString(),
+    through: new Date(now).toISOString(),
+  });
+  const runIds = [...new Set(operations.map((operation) => operation.runId))];
+  const workflows = await context.authority.queries.workflowIds(runIds);
   const costs: number[] = [];
   const totals = {
     costs,
     unknownTurns: 0,
     turnsInWork: 0,
   };
-  for (const runId of Object.keys(state.runs)) {
-    if (!(await queueRun(context, { runId, workflowId: workflows[runId] })))
-      continue;
-    const operations = await context.authority.effects.operations(runId);
-    for (const operation of operations.filter(
-      (turn) => turn.capability === "claude",
-    ))
-      await countTurn(context, { operation, now, totals });
+  const queued = new Set<string>();
+  for (const runId of runIds) {
+    if (await queueRun(context, { runId, workflowId: workflows[runId] }))
+      queued.add(runId);
+  }
+  for (const operation of operations) {
+    if (queued.has(operation.runId))
+      await countTurn(context, { operation, totals });
   }
   const spending = queueSpending(totals.costs, limitUsd);
   const spentUsd =
@@ -80,7 +66,6 @@ async function countTurn(
   context: SpendContext,
   turn: {
     readonly operation: OperationView;
-    readonly now: number;
     readonly totals: {
       costs: number[];
       unknownTurns: number;
@@ -93,7 +78,6 @@ async function countTurn(
     totals.turnsInWork += 1;
     return;
   }
-  if (!(await inWindow(context, turn))) return;
   const report = reportFields(
     operation.result === null
       ? undefined

@@ -22,6 +22,9 @@ async function versionFive() {
   alterDatabase(
     directory,
     `
+    DROP INDEX events_spend_window;
+    DROP INDEX operations_worker_settled;
+    DROP INDEX operations_worker_open;
     ALTER TABLE command_waits RENAME TO previous_waits;
     ${commandWaitSchema}
     INSERT INTO command_waits SELECT run_id, name, command, input_digest, maximum_wait_seconds, poll_every_seconds, started_at, deadline, next_check_at, state, settled_at, reason FROM previous_waits;
@@ -41,8 +44,8 @@ await test("CLV-236 version 5 gains durable check state without renewing its exi
   );
   const { store } = await opened(directory);
   try {
-    assert.equal((await store.settings()).schemaVersion, 6);
-    assert.equal(currentVersion, 6);
+    assert.equal((await store.settings()).schemaVersion, 7);
+    assert.equal(currentVersion, 7);
     assert.deepEqual(await store.state(), before);
     const receipt = await store.execute(checkRequest, {
       ...context,

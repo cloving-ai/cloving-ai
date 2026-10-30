@@ -11,14 +11,15 @@ import {
   commandWaitSchema,
   commandWaitCheckSchema,
 } from "./command-wait-rows.ts";
-import { effectSchema } from "./effect-schema.ts";
+import { effectSchema, spendingIndexes } from "./effect-schema.ts";
 
 export const baselineVersion = 1;
 export const adoptedVersion = 2;
 export const decidedVersion = 3;
 export const effectedVersion = 4;
 export const waitingVersion = 5;
-export const currentVersion = 6;
+export const checkedVersion = 6;
+export const currentVersion = 7;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -126,6 +127,7 @@ const schemas = [
   effectSchema,
   commandWaitSchema,
   commandWaitCheckSchema,
+  spendingIndexes,
 ];
 
 const checksums = schemas.map((schema) =>
@@ -146,6 +148,7 @@ export type SchemaState =
   | { readonly kind: "decided" }
   | { readonly kind: "effected" }
   | { readonly kind: "waiting" }
+  | { readonly kind: "checked" }
   | { readonly kind: "current" }
   | SchemaRefusal;
 
@@ -155,6 +158,7 @@ const versionKinds = [
   "decided",
   "effected",
   "waiting",
+  "checked",
   "current",
 ] as const;
 
@@ -199,6 +203,7 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await upgradeSchema(connection, decidedVersion);
   await upgradeSchema(connection, effectedVersion);
   await upgradeSchema(connection, waitingVersion);
+  await upgradeSchema(connection, checkedVersion);
   await upgradeSchema(connection, currentVersion);
 }
 
