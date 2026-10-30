@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import childProcess, { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import filesystem, { mkdtemp, readFile, rm } from "node:fs/promises";
+import fileSystem, { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
@@ -45,11 +45,11 @@ async function ended(
 async function written(file: string): Promise<string> {
   const deadline = Date.now() + testMilliseconds(10000);
   while (Date.now() < deadline) {
-    const value = existsSync(file) ? await readFile(file, "utf8") : "";
-    if (value.length > 0) return value;
+    const text = existsSync(file) ? await readFile(file, "utf8") : "";
+    if (text !== "") return text;
     await delay(50);
   }
-  return await readFile(file, "utf8");
+  throw new Error("guard-marker-not-ready");
 }
 
 function guarded(marker: string, exitCode: number): string {
@@ -82,16 +82,16 @@ function stopIfAlive(processId: number, marker: string): void {
 await test("CLV-231 waits for an existing marker to contain its daemon PID", async () => {
   const root = await mkdtemp(join(tmpdir(), "cloving-guard-marker-"));
   const marker = join(root, "daemon");
-  await filesystem.writeFile(marker, "");
-  const original = filesystem.readFile;
+  await fileSystem.writeFile(marker, "");
+  const original = fileSystem.readFile;
   let reads = 0;
   mock.method(
-    filesystem,
+    fileSystem,
     "readFile",
     async (...arguments_: Parameters<typeof original>) => {
       const value = await original(...arguments_);
       reads += 1;
-      if (reads === 1) await filesystem.writeFile(marker, "12345");
+      if (reads === 1) await fileSystem.writeFile(marker, "12345");
       return value;
     },
   );
@@ -125,6 +125,41 @@ await test("CLV-231 rejects a failed process inspection", () => {
   } finally {
     Object.defineProperty(childProcess, "spawnSync", descriptor);
     syncBuiltinESMExports();
+  }
+});
+
+await test("CLV-231 an empty PID marker is not a ready daemon", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-guard-marker-"));
+  const marker = join(root, "daemon");
+  const descriptor = Object.getOwnPropertyDescriptor(fileSystem, "readFile");
+  assert.ok(descriptor);
+  const original = fileSystem.readFile;
+  const observed = Promise.withResolvers<undefined>();
+  await writeFile(marker, "");
+  Object.defineProperty(fileSystem, "readFile", {
+    configurable: true,
+    value: async (file: string, encoding: "utf8") => {
+      const text = await original(file, encoding);
+      if (file === marker && text === "") observed.resolve(undefined);
+      return text;
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    const reading = written(marker);
+    assert.equal(
+      await Promise.race([
+        observed.promise,
+        delay(testMilliseconds(5000), "unobserved", { ref: false }),
+      ]),
+      undefined,
+    );
+    await writeFile(marker, "12345");
+    assert.equal(await reading, "12345");
+  } finally {
+    Object.defineProperty(fileSystem, "readFile", descriptor);
+    syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

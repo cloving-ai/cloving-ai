@@ -19,6 +19,7 @@ export interface WorkerReport {
 }
 
 export interface Recorded {
+  readonly stoppedBy?: "daemon-shutdown";
   readonly outcome: WorkerReport["outcome"];
   readonly result?: string;
   readonly reason?: string;

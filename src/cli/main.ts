@@ -1,5 +1,7 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { initPromptCommand } from "./init-prompt-command.ts";
+import type { HarnessStartRequest } from "../harness-start.ts";
+import { initCommand } from "./init-command.ts";
 import { configCommand } from "./config-command.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { doctorCommand } from "./doctor.ts";
@@ -23,6 +25,7 @@ const helpTexts = {
   version: `${packageMetadata.version}\n`,
   "validate-help": validateUsage,
   "phone-help": phoneUsage,
+  "init-help": String(commandUsage["init"]),
   "init-prompt-help": String(commandUsage["init-prompt"]),
   "doctor-help": String(commandUsage["doctor"]),
   "config-help": configUsage,
@@ -42,6 +45,9 @@ export async function main(
   context: {
     readonly watchPr?: WatchPrSettings;
     readonly doctorProbe?: ProbeRunner;
+    readonly startHarness?: (
+      request: HarnessStartRequest,
+    ) => Promise<number | null>;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
   } = { repository: undefined },
@@ -57,10 +63,7 @@ export async function main(
     presentUsageError(invocation);
   } else if (invocation.kind === "validate") {
     await validationCommand(invocation);
-  } else if (
-    invocation.kind === "doctor" ||
-    invocation.kind === "init-prompt"
-  ) {
+  } else if (isInspection(invocation)) {
     process.exitCode = await inspectionCommand(invocation, {
       ...context,
       environment,
@@ -91,10 +94,25 @@ export async function main(
   }
 }
 
+function isInspection(
+  invocation: Invocation,
+): invocation is Extract<
+  Invocation,
+  { readonly kind: "doctor" | "init-prompt" | "init" }
+> {
+  return ["doctor", "init-prompt", "init"].includes(invocation.kind);
+}
+
 async function inspectionCommand(
-  invocation: Extract<Invocation, { readonly kind: "doctor" | "init-prompt" }>,
+  invocation: Extract<
+    Invocation,
+    { readonly kind: "doctor" | "init-prompt" | "init" }
+  >,
   context: {
     readonly doctorProbe?: ProbeRunner;
+    readonly startHarness?: (
+      request: HarnessStartRequest,
+    ) => Promise<number | null>;
     readonly repository: string | undefined;
     readonly environment: Readonly<NodeJS.ProcessEnv>;
   },
@@ -107,6 +125,16 @@ async function inspectionCommand(
     repository: context.repository,
     environment: context.environment,
   };
+  if (invocation.kind === "init")
+    return await initCommand({
+      ...options,
+      harness: invocation.harness,
+      start:
+        context.startHarness ??
+        (() => {
+          throw new Error("init-start-unavailable");
+        }),
+    });
   if (invocation.kind === "doctor")
     return await doctorCommand({ ...options, json: invocation.json });
   return await initPromptCommand(options);

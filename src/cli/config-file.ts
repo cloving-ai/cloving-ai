@@ -12,7 +12,9 @@ import { dirname } from "node:path";
 import { acquireSettingsLock, releaseSettingsLock } from "./config-lock.ts";
 import {
   changedConfiguration,
+  selectedHarnessConfiguration,
   type SettingChange,
+  type HarnessChange,
 } from "../configuration-change.ts";
 
 export async function readConfigFile(
@@ -44,7 +46,7 @@ async function atomicWrite(
 
 export async function changeConfigFile(
   path: string,
-  change: SettingChange,
+  change: SettingChange | HarnessChange,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const lock = await acquireSettingsLock(`${path}.lock`);
@@ -55,9 +57,15 @@ export async function changeConfigFile(
   }
 }
 
-async function writeChange(path: string, change: SettingChange): Promise<void> {
+async function writeChange(
+  path: string,
+  change: SettingChange | HarnessChange,
+): Promise<void> {
   const previous = await readConfigFile(path);
-  const next = changedConfiguration(previous, change);
+  const next =
+    "harness" in change
+      ? selectedHarnessConfiguration(previous, change.harness)
+      : changedConfiguration(previous, change);
   const mode =
     previous !== undefined && change.scope === "project"
       ? (await stat(path)).mode & 0o777

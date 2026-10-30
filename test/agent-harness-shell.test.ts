@@ -55,6 +55,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
         {
           name: "claude",
           kind: "shell",
+          shellMode: "login",
           path: "claude",
           version: "2.1.0 (Claude Code)",
           working: true,
@@ -63,6 +64,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
         {
           name: "codex",
           kind: "shell",
+          shellMode: "login",
           path: "codex",
           version: "codex-cli 0.101.0",
           working: true,
@@ -150,6 +152,7 @@ await test("CLV-208 Other discovers a custom function and bypasses shell inspect
       {
         name: "other",
         kind: "shell",
+        shellMode: "login",
         path: "other",
         version: "Other 1.2",
         working: true,
@@ -181,6 +184,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
         {
           name: "claude",
           kind: "shell",
+          shellMode: "login",
           path: "claude",
           version: "2.1.0 (Claude Code)",
           working: true,
