@@ -153,8 +153,10 @@ await test("CLV-164 retains complete nested errors in the saved failure data", a
 await test("a failure with a large error value keeps a bounded report entry", async () => {
   const event = failedEvent("large value", "assertion.test.ts");
   event.data.details.error = Object.assign(new Error("x".repeat(5_000_000)), {
-    actual: "y".repeat(5_000_000),
-    expected: Array.from({ length: 1_000_000 }, (_, index) => index),
+    cause: {
+      actual: "y".repeat(5_000_000),
+      expected: Array.from({ length: 1_000_000 }, (_, index) => index),
+    },
   });
   const failures = await failuresOf([event]);
   assert.ok(failures[0] && typeof failures[0] === "object");
