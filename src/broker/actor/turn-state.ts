@@ -152,7 +152,7 @@ async function uncertainEffects(
   connection: SqlConnection,
 ): Promise<readonly DeliveryIntent[]> {
   const rows = await connection.all(
-    "SELECT p.operation_id, p.run_id, r.workflow FROM operations p JOIN runs r ON r.run_id = p.run_id WHERE p.status IN ('recovering', 'blocked') AND r.status != 'cancelled' AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = p.operation_id AND d.outcome IS NULL) ORDER BY p.requested_sequence LIMIT ?",
+    "SELECT p.operation_id, p.run_id, r.workflow FROM operations p JOIN runs r ON r.run_id = p.run_id WHERE p.status IN ('recovering', 'blocked') AND r.status != 'cancelled' AND NOT EXISTS (SELECT 1 FROM command_waits w WHERE w.check_operation = p.operation_id AND w.state != 'waiting') AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.operation_id = p.operation_id AND d.outcome IS NULL) ORDER BY p.requested_sequence LIMIT ?",
     [recoveryBatch],
   );
   const intents: DeliveryIntent[] = [];
@@ -291,9 +291,10 @@ async function turnState(
     sql: "SELECT operation_id, kind, run_id, created_sequence, released_sequence FROM outbox WHERE run_id = ? AND released_sequence IS NULL ORDER BY created_sequence, rowid",
     parameters: [runId],
   });
+  const waits = await readCommandWaits(connection, runId);
   return {
     state: {
-      ...(await readCommandWaits(connection, runId)),
+      ...waits,
       sequence,
       runs: { ...near.runs, ...(stored ? { [runId]: stored } : {}) },
       commands: recorded ? { [commandId]: recorded } : {},
@@ -309,6 +310,7 @@ async function turnState(
       runId,
       status: stored?.status,
       kind: scope.kind,
+      ...waits,
     }),
     runId,
     created: recorded

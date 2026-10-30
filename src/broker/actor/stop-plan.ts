@@ -1,4 +1,5 @@
 import type { AuthorityState } from "../../authority/reducer.ts";
+import { endedCommandWaitCheck } from "../../authority/command-waits.ts";
 import {
   stopAttempts,
   type StopAttempt,
@@ -80,8 +81,14 @@ export function stopIntents(
   planning: StopPlanning,
 ): readonly DeliveryIntent[] {
   const { runId, stopping } = planning;
-  if (state.runs[runId]?.status !== "cancelled") return [];
-  const subjects = presentSubjects(state, planning);
+  const cancelled = state.runs[runId]?.status === "cancelled";
+  const subjects = presentSubjects(state, planning).flatMap((subject) => {
+    if (endedCommandWaitCheck(state.commandWaits ?? {}, subject.operationId))
+      return [
+        { ...subject, stopSequence: subject.stopSequence ?? state.sequence },
+      ];
+    return cancelled ? [subject] : [];
+  });
   return stopAttempts(subjects, {
     cancelledSequence:
       planning.cancelledNow[0] ?? stopping.cancelledSequence ?? 0,

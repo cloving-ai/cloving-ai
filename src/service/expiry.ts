@@ -4,6 +4,7 @@ import { notBefore } from "../authority/instants.ts";
 import type { Authority } from "../broker/actor/authority.ts";
 import { operationDigest } from "../broker/operation-digest.ts";
 import type { Gateway } from "./gateway.ts";
+import { expireCommandWaits } from "./command-waits.ts";
 
 export interface ExpiryScan {
   readonly stop: () => Promise<void>;
@@ -21,6 +22,7 @@ async function scanned(parts: {
   const { authority, gateway, clock } = parts;
   const state = await authority.state();
   const now = clock();
+  await expireCommandWaits({ waits: state.commandWaits ?? {}, gateway, now });
   const due = Object.values(state.gates).filter(
     (gate) =>
       gate.outcome === null &&
