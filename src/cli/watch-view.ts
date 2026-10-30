@@ -1,3 +1,4 @@
+import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import { Header, Queue, type StartControls } from "./watch-header-view.ts";
@@ -126,10 +127,7 @@ export function Review(props: {
 export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
-  const budget =
-    run.spent === null || run.limit === null
-      ? ""
-      : ` · ${String(run.spent)} of ${String(run.limit)} effect units`;
+  const budget = effectBudgetText(run.spent, run.limit);
   const none = "No agent turn for this run.";
   const turns =
     run.turns.length === 0
@@ -143,13 +141,14 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
           }),
         ]);
   const foot = [
-    `${run.workflowId} · ${run.runId}${budget}`,
+    `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}`,
     element("br", {}),
     `${run.code}: ${run.detail}`,
   ];
   return [
     component(Banner, { run, now }),
     component(HandoffLinks, { run }),
+    component(CommandWaits, { waits: run.commandWaits ?? [] }),
     element("section", {
       class: "run-usage",
       children: [

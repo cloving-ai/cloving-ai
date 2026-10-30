@@ -1,3 +1,4 @@
+import type { CommandWaitView } from "./command-wait-view.ts";
 import type { Observation } from "./details.ts";
 import { cancelled } from "./status-closure.ts";
 import {
@@ -30,6 +31,7 @@ export type {
 } from "./status-input.ts";
 
 export interface RunView {
+  readonly commandWaits: readonly CommandWaitView[];
   readonly runId: string;
   readonly workflow: string;
   readonly state: RunStatus;
@@ -346,6 +348,7 @@ export function runView(input: StatusInput): RunView {
       attempts: observation?.attempt ?? 0,
       limit: observation?.limit ?? null,
     },
+    commandWaits: input.commandWaits,
     budget: input.budget,
     effects: effectViews(input.effects),
     nextAction: assessment.nextAction,

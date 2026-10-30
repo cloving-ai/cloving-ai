@@ -1,3 +1,4 @@
+import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
 import { Commands, commandText } from "./command-effects.ts";
@@ -100,6 +101,9 @@ const functions = [
   record,
   commandText,
   Commands,
+  waitDisplay.CommandWaits,
+  waitDisplay.commandWaitText,
+  waitDisplay.effectBudgetText,
   queueLanes,
   skippedText,
   Queue,

@@ -2,22 +2,33 @@ import { browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
+import type { WatchModel } from "../src/cli/watch-render.ts";
+import { shownWait, waitModel } from "./command-wait-display-fixture.ts";
 import { test } from "node:test";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import { builtinCardForms, type CardForm } from "../src/cli/watch-run-input.ts";
 import { boardModel } from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 
-async function cardBoard(workflowId = "develop-prd", form?: CardForm) {
+interface BoardOptions {
+  readonly form?: CardForm | undefined;
+  readonly model?: WatchModel;
+}
+
+async function cardBoard(
+  workflowId = "develop-prd",
+  options: BoardOptions = {},
+) {
   const library = await readFile(new URL(import.meta.resolve("preact")));
   const page = pageDocument("a".repeat(64)).replace(
     /<link rel="stylesheet"[^>]*>/,
     "",
   );
-  const model = {
+  const streams = new Set<ServerResponse>();
+  let model = options.model ?? {
     ...boardModel([], { workflows: [workflowId] }),
-    cardForms: form === undefined ? builtinCardForms() : [form],
+    cardForms: options.form === undefined ? builtinCardForms() : [options.form],
   };
   const server = createServer((request, response) => {
     if (request.url === "/preact.mjs") {
@@ -33,6 +44,8 @@ async function cardBoard(workflowId = "develop-prd", form?: CardForm) {
       return;
     }
     if (request.url === "/events") {
+      streams.add(response);
+      response.on("close", () => streams.delete(response));
       response
         .writeHead(200, { "content-type": "text/event-stream" })
         .write("data: ready\n\n");
@@ -51,6 +64,10 @@ async function cardBoard(workflowId = "develop-prd", form?: CardForm) {
   assert.ok(address !== null && typeof address === "object");
   return {
     url: `http://127.0.0.1:${String(address.port)}/#workflow=${workflowId}`,
+    update(next: WatchModel) {
+      model = next;
+      for (const stream of streams) stream.write("data: refreshed\n\n");
+    },
     async [Symbol.asyncDispose]() {
       server.closeAllConnections();
       await server[Symbol.asyncDispose]();
@@ -101,7 +118,7 @@ for (const [workflowId, modifiers, form] of [
   ],
 ] as const) {
   await test(`CLV-135 ${workflowId} keyboard submit ${JSON.stringify(modifiers)} validates required fields before a request`, async () => {
-    await using board = await cardBoard(workflowId, form);
+    await using board = await cardBoard(workflowId, { form });
     await using browser = await realBrowser();
     const page = await browser.page({ width: 800, height: 700 });
     await page.navigate(board.url);
@@ -152,4 +169,57 @@ await test("CLV-136 browser checks select the native Chrome executable and prese
     browserExecutable("linux", "/synthetic/browser"),
     "/synthetic/browser",
   );
+});
+
+await test("CLV-238 the browser run card and detail refresh wait times and freeze at settlement", async () => {
+  await using board = await cardBoard("review-queue", { model: waitModel() });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1000, height: 800 });
+  await page.navigate(board.url);
+  const snapshots = [
+    shownWait,
+    { ...shownWait, remainingSeconds: 2_159_999 },
+    {
+      ...shownWait,
+      remainingSeconds: 2_159_999,
+      state: "failed",
+      nextCheckAt: null,
+      reason: "command-wait-invalid-output",
+    },
+  ];
+  for (const wait of snapshots) {
+    board.update(waitModel(wait));
+    const expected = `${String(wait.remainingSeconds)} s left`;
+    for (const view of ["board", "detail"]) {
+      const hash =
+        view === "board"
+          ? "workflow=review-queue"
+          : "workflow=review-queue&run=run-1";
+      const result = await page.evaluate(`new Promise((resolve, reject) => {
+        location.hash = ${JSON.stringify(hash)};
+        const timeout = setTimeout(() => { clearInterval(timer); reject(new Error("wait display not refreshed")); }, 5000);
+        const timer = setInterval(() => {
+          const root = document.querySelector(${JSON.stringify(view === "board" ? ".card" : ".run-usage")});
+          const html = document.body.textContent;
+          if (!root || !html.includes(${JSON.stringify(expected)}) || !html.includes(${JSON.stringify(wait.reason ?? "waiting")})) return;
+          clearInterval(timer); clearTimeout(timeout); resolve({ html });
+        }, 20);
+      })`);
+      const html = String(result["html"]);
+      assert.ok(html.includes(expected));
+      assert.ok(html.includes(String(wait.deadline)));
+      assert.ok(html.includes(wait.nextCheckAt ?? "next check none"));
+      assert.match(html, /1 of 2 effect units/);
+      assert.doesNotMatch(html, /browser-(input|stdout|stderr|output)-fixture/);
+    }
+  }
+  board.update({
+    ...waitModel(snapshots[2]),
+    updatedAt: "2026-10-25T00:00:00.000Z",
+  });
+  const frozen = await page.evaluate(
+    `new Promise(resolve => setTimeout(() => resolve({ html: document.body.textContent }), 100))`,
+  );
+  assert.match(String(frozen["html"]), /2159999 s left/);
+  assert.match(String(frozen["html"]), /command-wait-invalid-output/);
 });
