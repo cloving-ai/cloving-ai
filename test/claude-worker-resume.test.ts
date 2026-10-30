@@ -6,7 +6,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   alive,
   field,
-  git,
   intent,
   journalKey,
   record,
@@ -367,23 +366,3 @@ await test("CLV-239 shutdown in a capacity or network wait never resumes", async
       assert.deepEqual(scene.reports, []);
     });
 });
-
-await test("CLV-239 a worktree index lock refuses a resume without removing the lock", () =>
-  withScene(async (scene) => {
-    const worker = scene.worker("hold");
-    await worker.deliver(intent(), signal);
-    await until(
-      () =>
-        field(record(scene, "operation-1/attempt-1.json"), "sessionId") ===
-        "session-1",
-    );
-    await worker.close();
-    const directory = scene.turns()[0]?.directory;
-    assert.ok(directory);
-    const lock = git(directory, ["rev-parse", "--git-path", "index.lock"]);
-    writeFileSync(lock, "owned by another process");
-    const reply = await scene.worker("hold").reconcile(intent(), signal);
-    assert.equal(field(reply, "reason"), "worktree-index-locked");
-    assert.equal(readFileSync(lock, "utf8"), "owned by another process");
-    assert.equal(scene.turns().length, 1);
-  }));

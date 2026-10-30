@@ -3,7 +3,6 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
-import { phoneRequest } from "../src/cli/phone-client.ts";
 import {
   parseRequest,
   replyLine,
@@ -13,14 +12,17 @@ import { relayControl } from "../src/relay/relay-control.ts";
 import { heartbeat, runHeartbeats } from "../src/relay/relay-heartbeat.ts";
 import { startRelay } from "../src/relay/relay-service.ts";
 import { openRelayStore } from "../src/relay/relay-store.ts";
-import { heartbeatContext, knownDevice } from "./phone-heartbeat-fixture.ts";
+import {
+  heartbeatContext,
+  knownDevice,
+  lostPhoneState,
+} from "./phone-heartbeat-fixture.ts";
 import {
   fakeRelayServer,
   registeredLink,
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
-import { testMilliseconds } from "./test-timing.ts";
 
 function beats(server: FakeRelayServer): number {
   return server.requests.filter(
@@ -129,20 +131,7 @@ await test("CLV-190 a 401 heartbeat removes the registration, writes tombstones 
     });
     try {
       server.revoke("token-1");
-      let state: Readonly<Record<string, unknown>> = {};
-      for (
-        let attempt = 0;
-        attempt < testMilliseconds(4000) / 20;
-        attempt += 1
-      ) {
-        const reply = await phoneRequest(runtimeDirectory, {
-          operation: "phone-state",
-          parameters: {},
-        });
-        state = reply?.kind === "result" ? reply.result : {};
-        if (state["reason"] === "registration-lost") break;
-        await new Promise((settle) => setTimeout(settle, 20));
-      }
+      const state = await lostPhoneState(runtimeDirectory);
       assert.equal(state["registered"], false);
       assert.equal(state["reason"], "registration-lost");
       await assert.rejects(stat(join(phoneDirectory, "link.json")), {

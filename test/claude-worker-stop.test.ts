@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   alive,
+  interruptedScene,
+  priorProcess,
   field,
   intent,
   journalKey,
@@ -270,4 +272,109 @@ await test("CLV-013 a result line with no line end is read, a line that is no JS
       kind: "failed",
       reason: "work-tree-not-available",
     });
+  }));
+
+await test("CLV-240 a live turn of a prior daemon is terminated before its session resumes", () =>
+  withScene(async (scene) => {
+    const directory = await interruptedScene(scene);
+    const prior = await priorProcess(scene, { directory });
+    const started = record(scene, "operation-1/started.json");
+    assert.ok(typeof started === "object" && started !== null);
+    writeFileSync(
+      join(scene.journal, key, "started.json"),
+      JSON.stringify({ ...started, processId: prior.processId }),
+    );
+    try {
+      assert.deepEqual(
+        await scene.worker("crash-once").reconcile(intent(), signal),
+        { kind: "accepted", ...accepted },
+      );
+      assert.equal(prior.terminated(), true);
+      assert.equal(alive(prior.processId ?? 0), false);
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.turns().length, 2);
+      assert.equal(scene.reports[0]?.outcome, "completed");
+    } finally {
+      await prior.close();
+    }
+  }));
+
+await test("CLV-240 a prior turn that ignores SIGTERM is killed after the configured grace", () =>
+  withScene(async (scene) => {
+    const directory = await interruptedScene(scene);
+    const prior = await priorProcess(scene, { directory, ignoreTerm: true });
+    const started = record(scene, "operation-1/started.json");
+    assert.ok(typeof started === "object" && started !== null);
+    writeFileSync(
+      join(scene.journal, key, "started.json"),
+      JSON.stringify({ ...started, processId: prior.processId }),
+    );
+    try {
+      const beginning = performance.now();
+      assert.equal(
+        (
+          await scene
+            .worker("crash-once", { stopMilliseconds: 50 })
+            .reconcile(intent(), signal)
+        ).kind,
+        "accepted",
+      );
+      assert.ok(performance.now() - beginning >= 50);
+      assert.equal(prior.terminated(), true);
+      assert.equal(alive(prior.processId ?? 0), false);
+      assert.deepEqual(
+        field(record(scene, "operation-1/resume-processes.json"), "processIds"),
+        [prior.processId],
+      );
+      await until(() => scene.reports.length === 1);
+    } finally {
+      await prior.close();
+    }
+  }));
+
+await test("CLV-240 a reused PID outside the work tree resumes without a signal", () =>
+  withScene(async (scene) => {
+    const directory = await interruptedScene(scene);
+    mkdirSync(directory + "-other");
+    const outside = await priorProcess(scene, {
+      directory: directory + "-other",
+    });
+    const started = record(scene, "operation-1/started.json");
+    assert.ok(typeof started === "object" && started !== null);
+    writeFileSync(
+      join(scene.journal, key, "started.json"),
+      JSON.stringify({ ...started, processId: outside.processId }),
+    );
+    try {
+      assert.equal(
+        (await scene.worker("crash-once").reconcile(intent(), signal)).kind,
+        "accepted",
+      );
+      await until(() => scene.reports.length === 1);
+      assert.equal(alive(outside.processId ?? 0), true);
+      assert.equal(outside.terminated(), false);
+      assert.deepEqual(
+        field(record(scene, "operation-1/resume-processes.json"), "processIds"),
+        [],
+      );
+    } finally {
+      await outside.close();
+    }
+  }));
+
+await test("CLV-240 an unreadable live PID remains unknown without a signal", () =>
+  withScene(async (scene) => {
+    await interruptedScene(scene);
+    const started = record(scene, "operation-1/started.json");
+    assert.ok(typeof started === "object" && started !== null);
+    writeFileSync(
+      join(scene.journal, key, "started.json"),
+      JSON.stringify({ ...started, processId: 1 }),
+    );
+    assert.deepEqual(
+      await scene.worker("crash-once").reconcile(intent(), signal),
+      { kind: "unknown", evidence: `claude-turn:${key}` },
+    );
+    assert.equal(scene.turns().length, 1);
+    assert.equal(record(scene, "operation-1/resume-processes.json"), undefined);
   }));
