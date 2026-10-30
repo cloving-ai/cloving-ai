@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { workflowSchedules } from "../src/daemon/workflow-schedules.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
-import type { ServiceRequest } from "../src/protocol.ts";
+import type { Reply, ServiceRequest } from "../src/protocol.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -48,6 +48,9 @@ interface ScheduleScene {
   readonly stop: () => Promise<void>;
   readonly restart: () => Promise<void>;
   readonly saved: () => Promise<string>;
+  readonly control: (
+    parameters: ServiceRequest["parameters"],
+  ) => Promise<Reply>;
 }
 
 function capturedErrors(): {
@@ -111,7 +114,8 @@ export async function withScheduler(
           now: (value) => {
             now = value;
           },
-          stop: scheduler.stop,
+          stop: () => scheduler.stop(),
+          control: (parameters) => scheduler.request(parameters),
           restart: async () => {
             await scheduler.stop();
             scheduler = await workflowSchedules(settings);
