@@ -1,4 +1,8 @@
 import {
+  commandWaitViews,
+  type CommandWaitView,
+} from "../authority/command-wait-view.ts";
+import {
   commandWaitKey,
   type CommandWaitState,
   type CommandWaitsState,
@@ -101,4 +105,28 @@ export function commandWaitPort(parts: {
       });
     },
   };
+}
+
+function displayTime(time: number | null): string | null {
+  return time === null ? null : new Date(time).toISOString();
+}
+
+export async function commandWaitDisplay(input: {
+  readonly authority: Authority;
+  readonly runId: string;
+  readonly waits: CommandWaitsState | undefined;
+  readonly now: string;
+}): Promise<readonly CommandWaitView[]> {
+  const manifest = await input.authority.queries.manifest(input.runId);
+  return commandWaitViews({
+    ...input,
+    declarations: manifest?.commandWaits ?? {},
+    waits: input.waits ?? {},
+    now: Date.parse(input.now),
+  }).map((wait) => ({
+    ...wait,
+    startedAt: displayTime(wait.startedAt),
+    deadline: displayTime(wait.deadline),
+    nextCheckAt: displayTime(wait.nextCheckAt),
+  }));
 }

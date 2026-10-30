@@ -1,3 +1,4 @@
+import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
 import type { CardForm } from "./watch-run-input.ts";
 import { priceText } from "./usage-render.ts";
@@ -158,6 +159,11 @@ export function Card(props: {
         ],
       }),
       completionMark(card, { workflowId, now: props.observationNow ?? now }),
+      element("span", {
+        class: "meta",
+        children: effectBudgetText(card.spent, card.limit),
+      }),
+      component(CommandWaits, { waits: card.commandWaits ?? [] }),
       component(HandoffLinks, { run: card }),
     ],
   });
