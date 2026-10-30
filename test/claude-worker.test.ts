@@ -355,7 +355,7 @@ await test("CLV-013 a target with path characters gives a work tree inside the w
     );
     assert.deepEqual(
       ["summary", "costUsd", "sessionId", "turns"].map((name) => bare?.[name]),
-      ["", null, null, null],
+      ["", null, "session-3", null],
     );
   }));
 

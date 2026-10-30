@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import filesystem from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
@@ -39,6 +39,13 @@ await test("CLV-127 an attempt end refuses an invalid saved start time", () =>
       );
       try {
         await until(() => scene.turns().length === index + 1);
+        await until(
+          () =>
+            typeof field(
+              JSON.parse(readFileSync(join(folder, "attempt-1.json"), "utf8")),
+              "sessionId",
+            ) === "string",
+        );
         writeFileSync(
           join(folder, "attempt-1.json"),
           JSON.stringify({ startedAt }),
@@ -169,8 +176,11 @@ await test("CLV-127 close waits for a pending launch journal and stops its child
       ),
       false,
     );
-    assert.equal(scene.reports[0]?.outcome, "stopped");
-    assert.equal(scene.reports.length, 1);
+    assert.equal(
+      field(record(scene, "operation-1/result.json"), "stoppedBy"),
+      "daemon-shutdown",
+    );
+    assert.equal(scene.reports.length, 0);
     assert.deepEqual(
       await worker.deliver(intent({ operationId: "after-close" }), signal),
       { kind: "failed", reason: "claude-start-aborted" },

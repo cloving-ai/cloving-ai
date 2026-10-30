@@ -1,6 +1,7 @@
 import {
   adapters,
   recoverCommands,
+  recoverClaude,
   type Adapters,
   type DaemonSettings,
 } from "./daemon-adapters.ts";
@@ -241,7 +242,9 @@ async function recoverWorkers(
   ports: Promise<HostPorts>,
 ): Promise<void> {
   try {
-    await recoverCommands(resources.commands, await ports);
+    const host = await ports;
+    await recoverCommands(resources.commands, host);
+    await recoverClaude(resources.worker, host);
   } catch (error) {
     await Promise.allSettled([
       closeWorkers(resources),

@@ -20,6 +20,7 @@ import {
   type FakeRelayServer,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 function beats(server: FakeRelayServer): number {
   return server.requests.filter(
@@ -129,7 +130,11 @@ await test("CLV-190 a 401 heartbeat removes the registration, writes tombstones 
     try {
       server.revoke("token-1");
       let state: Readonly<Record<string, unknown>> = {};
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for (
+        let attempt = 0;
+        attempt < testMilliseconds(4000) / 20;
+        attempt += 1
+      ) {
         const reply = await phoneRequest(runtimeDirectory, {
           operation: "phone-state",
           parameters: {},
