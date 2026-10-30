@@ -23,6 +23,7 @@ import {
   withProcessTable,
   withProcFiles,
   withLockOwner,
+  withLockScan,
 } from "./worktree-process-fixture.ts";
 import {
   recordedProcessDirectory,
@@ -31,6 +32,26 @@ import {
 import { resumeWorktree } from "../src/daemon/resume-worktree.ts";
 
 const signal = new AbortController().signal;
+
+await test("CLV-240 macOS discovery associates lsof cwd records with their process IDs", () =>
+  withScene((scene) =>
+    withProcessTable(scene, {
+      rows: ["101 101 501\n202 202 501\n303 303 501"],
+      run: () =>
+        withLockScan(scene, {
+          stdout: `p101\nfcwd\nn${scene.directory}/nested folder\np202\nfcwd\nn${scene.repository}\np404\nn${scene.worktrees}\n`,
+          run: async () => {
+            assert.equal(
+              await recordedProcessDirectory(101),
+              join(scene.directory, "nested folder"),
+            );
+            assert.equal(await recordedProcessDirectory(202), scene.repository);
+            assert.equal(await recordedProcessDirectory(303), undefined);
+            assert.equal(await recordedProcessDirectory(404), undefined);
+          },
+        }),
+    }),
+  ));
 
 await test("CLV-240 cleanup spaces full scans during the grace period and stops waiting on abort", () =>
   withScene(async (scene) => {
