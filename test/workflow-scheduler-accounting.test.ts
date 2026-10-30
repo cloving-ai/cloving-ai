@@ -115,3 +115,59 @@ await test("CLV-242 a paused active run finishes and counts without a skip or su
     },
   );
 });
+
+await test("CLV-242 unfinished runs are polled at most once in five seconds, also while paused", async () => {
+  for (const state of ["active", "paused"])
+    await withScheduler(
+      { initial: { review: { ...prior, state } } },
+      async (scene) => {
+        await reached(() => scene.requests.length >= 1);
+        const first = scene.ticks();
+        await reached(() => scene.ticks() >= first + 4);
+        assert.equal(scene.requests.length, 1);
+        scene.now(5000);
+        await reached(() => scene.requests.length >= 2);
+        const second = scene.ticks();
+        scene.now(9999);
+        await reached(() => scene.ticks() >= second + 4);
+        assert.equal(scene.requests.length, 2);
+        scene.now(10000);
+        await reached(() => scene.requests.length >= 3);
+        await scene.stop();
+        assert.equal(scene.requests.length, 3);
+        assert.ok(
+          scene.requests.every((request) => request.operation === "status"),
+        );
+        assert.deepEqual(saved(await scene.saved()), { ...prior, state });
+      },
+    );
+});
+
+await test("CLV-242 a slot boundary observes completion even within the polling interval", () => {
+  let state = "running";
+  return withScheduler(
+    {
+      initial: { review: prior },
+      handle: () =>
+        Promise.resolve({ kind: "result", result: { run: { state } } }),
+    },
+    async (scene) => {
+      scene.now(899999);
+      await reached(() => scene.requests.length >= 1);
+      state = "completed";
+      scene.now(900000);
+      await reached(() =>
+        scene.requests.some((request) => request.operation === "run"),
+      );
+      await scene.stop();
+      assert.deepEqual(
+        scene.requests.map((request) => request.operation),
+        ["status", "status", "run"],
+      );
+      assert.equal(
+        scene.requests.at(-1)?.parameters["commandId"],
+        "schedule:review:3",
+      );
+    },
+  );
+});

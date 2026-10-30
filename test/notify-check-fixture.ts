@@ -112,7 +112,7 @@ export async function withNotifier(
       handle: (request, connection) =>
         request.operation === "schedule"
           ? (options.schedules?.(request, connection) ??
-            notifyReply({ schedules: [] }))
+            notifyReply({ schedules: [], stops: [] }))
           : options.handle(request, connection),
       limits: { idleMilliseconds: 5000 },
     });

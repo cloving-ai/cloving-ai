@@ -72,7 +72,7 @@ await test("CLV-242 notification discovery recovers from unavailable and invalid
                 },
               })
             : notifyReply({
-                schedules: [
+                stops: [
                   checks === 3 ? { ...stopped, failedRunIds: [] } : stopped,
                 ],
               });

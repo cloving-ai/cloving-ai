@@ -41,6 +41,7 @@ export async function reached(
 
 interface ScheduleScene {
   readonly requests: ServiceRequest[];
+  readonly ticks: () => number;
   readonly errors: readonly string[];
   readonly file: string;
   readonly settings: Settings;
@@ -71,6 +72,21 @@ function capturedErrors(): {
   };
 }
 
+function controlledClock() {
+  let now = 0;
+  let ticks = 0;
+  return {
+    read: () => {
+      ticks += 1;
+      return now;
+    },
+    ticks: () => ticks,
+    set: (value: number) => {
+      now = value;
+    },
+  };
+}
+
 export async function withScheduler(
   options: SchedulerOptions,
   body: (scene: ScheduleScene) => Promise<void>,
@@ -94,12 +110,12 @@ export async function withScheduler(
             : options.handle(request, connection);
         },
       });
-      let now = 0;
+      const clock = controlledClock();
       const settings = {
         directory,
         runtimeDirectory,
         declarations: options.declarations ?? [scheduledWorkflow],
-        scheduleClock: () => now,
+        scheduleClock: clock.read,
         submit: options.submit ?? acceptedSkip,
       };
       let scheduler = await workflowSchedules(settings);
@@ -108,12 +124,11 @@ export async function withScheduler(
       try {
         await body({
           requests,
+          ticks: clock.ticks,
           errors: captured.errors,
           file,
           settings,
-          now: (value) => {
-            now = value;
-          },
+          now: clock.set,
           stop: () => scheduler.stop(),
           control: (parameters) => scheduler.request(parameters),
           restart: async () => {

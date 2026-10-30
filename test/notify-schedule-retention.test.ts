@@ -86,3 +86,64 @@ await test("CLV-242 resumed stops stay deliverable with distinct keys after noti
       },
     );
   }));
+
+await test("CLV-242 removed schedules retain undelivered stops across scheduler and notifier restarts", () =>
+  withScheduler({ ...stoppedSchedule, declarations: [] }, async (scheduler) => {
+    const listed = await scheduler.control({ action: "list" });
+    assert.equal(listed.kind, "result");
+    assert.deepEqual(listed.result["schedules"], []);
+    assert.deepEqual(listed.result["stops"], [
+      {
+        workflowId: "review",
+        stops: [
+          {
+            stoppedAt: 900000,
+            stoppedSlot: 3,
+            failedRunIds: ["one", "two", "three"],
+          },
+        ],
+      },
+    ]);
+    for (const action of ["pause", "resume"]) {
+      const reply = await scheduler.control({ action, workflowId: "review" });
+      assert.equal(reply.kind, "error");
+      assert.equal(reply.error.code, "unknown-schedule");
+    }
+    await withNotifier(
+      {
+        record: null,
+        handle: (request) =>
+          notifyReply(
+            request.operation === "questions"
+              ? { decisions: [] }
+              : { runs: [], next: null },
+          ),
+        schedules: (request) => scheduler.control(request.parameters),
+      },
+      async (notifier) => {
+        await eventually(async () =>
+          (await notifier.notices()).length === 1 ? true : undefined,
+        );
+        await notifier.stop();
+        const notices = await notifier.notices();
+        assert.equal(notices[0]?.["event"], "schedule-stopped");
+        assert.equal(notices[0]["runId"], "three");
+        const checks = scheduler.ticks();
+        scheduler.now(1800000);
+        await scheduler.restart();
+        await notifier.restart();
+        await reached(() => scheduler.ticks() >= checks + 3);
+        await notifier.stop();
+        assert.deepEqual(await notifier.notices(), notices);
+        assert.equal(
+          (await notificationJournal(notifier.directory)).entries[0]?.["key"],
+          "schedule-stopped:review:3",
+        );
+      },
+    );
+    assert.deepEqual(scheduler.requests, []);
+    assert.deepEqual(
+      JSON.parse(await scheduler.saved()),
+      stoppedSchedule.initial,
+    );
+  }));

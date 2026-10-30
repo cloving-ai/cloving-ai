@@ -104,6 +104,13 @@ function request(settings: ScheduleState, parameters: Fields): Promise<Reply> {
   if (action === "list")
     return Promise.resolve(
       result("schedules", {
+        stops: Array.from(
+          settings.journal.entries,
+          ([workflowId, progress]) => ({
+            workflowId,
+            stops: scheduleStops(progress),
+          }),
+        ),
         schedules: scheduled.flatMap((entry) => {
           const progress = settings.journal.entries.get(entry.workflowId);
           return progress === undefined

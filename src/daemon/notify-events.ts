@@ -40,11 +40,10 @@ async function scheduleNotifications(
     operation: "schedule",
     parameters: { action: "list" },
   });
-  if (reply.kind === "error") {
-    if (reply.error.code === "schedules-unavailable") return [];
-    throw new Error(reply.error.code);
-  }
-  return rows(reply.result["schedules"]).flatMap(scheduleStopNotifications);
+  if (reply.kind !== "error")
+    return rows(reply.result["stops"]).flatMap(scheduleStopNotifications);
+  if (reply.error.code === "schedules-unavailable") return [];
+  throw new Error(reply.error.code);
 }
 
 async function observedOutcome(

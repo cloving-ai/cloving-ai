@@ -22,7 +22,7 @@ await test("CLV-242 one schedule stop is delivered once, including notify startu
         checks += 1;
         assert.deepEqual(request.parameters, { action: "list" });
         return notifyReply({
-          schedules: [
+          stops: [
             {
               workflowId: "review-queue",
               state: "stopped",
