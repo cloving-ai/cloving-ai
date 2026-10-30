@@ -63,7 +63,8 @@ const modes = {
       catch { return result({ result: "Ticket status: complete" }); }
     }
     mkdirSync("nested");
-    const child = spawn(process.execPath, ["-e", "const fs=require('node:fs');fs.writeFileSync(process.argv[1],String(process.pid));setInterval(()=>fs.appendFileSync(process.argv[1]+'.lines','writing'),10);", record + ".child"], { cwd: "nested", detached: true, stdio: "ignore" });
+    const lockPath = execFileSync("git", ["rev-parse", "--git-path", "index.lock"], { encoding: "utf8" }).trim();
+    const child = spawn(process.execPath, ["-e", "const fs=require('node:fs');fs.openSync(process.argv[2],'wx');fs.writeFileSync(process.argv[1],String(process.pid));setInterval(()=>fs.appendFileSync(process.argv[1]+'.lines','writing'),10);", record + ".child", lockPath], { cwd: "nested", detached: true, stdio: "ignore" });
     child.unref();
     return held();
   },
@@ -306,6 +307,8 @@ export async function priorProcess(
     readonly directory: string;
     readonly ignoreTerm?: boolean;
     readonly group?: "shared";
+    readonly lockPath?: string;
+    readonly lockState?: "closed" | "read";
   },
 ) {
   const marker = join(scene.directory, "prior-" + String(Math.random()));
@@ -316,7 +319,11 @@ export async function priorProcess(
       "--input-type=module",
       "-e",
       `
-import { renameSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, renameSync, writeFileSync } from "node:fs";
+if (process.argv[3]) {
+  const descriptor = openSync(process.argv[3], process.argv[4] === "read" ? "r" : "wx");
+  if (process.argv[4] === "closed") closeSync(descriptor);
+}
 process.on("SIGTERM", () => {
   writeFileSync(process.argv[1] + ".term", "SIGTERM");
   if (process.argv[2] !== "ignore") process.exit(0);
@@ -327,6 +334,8 @@ setInterval(() => undefined, 1000);
 `,
       marker,
       options.ignoreTerm === true ? "ignore" : "exit",
+      options.lockPath ?? "",
+      options.lockState ?? "open",
     ],
     {
       cwd: options.directory,

@@ -1,4 +1,5 @@
 import filesystem from "node:fs/promises";
+import timers from "node:timers/promises";
 import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
@@ -21,6 +22,7 @@ import {
   withCrashCoverage,
   withProcessTable,
   withProcFiles,
+  withLockOwner,
 } from "./worktree-process-fixture.ts";
 import {
   recordedProcessDirectory,
@@ -29,6 +31,38 @@ import {
 import { resumeWorktree } from "../src/daemon/resume-worktree.ts";
 
 const signal = new AbortController().signal;
+
+await test("CLV-240 cleanup spaces full scans during the grace period and stops waiting on abort", () =>
+  withScene(async (scene) => {
+    const directory = await interruptedScene(scene);
+    const prior = await priorProcess(scene, { directory, ignoreTerm: true });
+    const stopping = new AbortController();
+    const intervals: number[] = [];
+    mock.method(timers, "setTimeout", (milliseconds: number) => {
+      intervals.push(milliseconds);
+      stopping.abort();
+      return Promise.resolve();
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.equal(
+        await stopTreeProcesses({
+          directory,
+          folder: scene.journal,
+          signal: stopping.signal,
+        }),
+        false,
+      );
+      assert.equal(intervals.length, 1);
+      assert.ok((intervals[0] ?? 0) >= 200);
+      assert.equal(prior.terminated(), true);
+      assert.equal(alive(prior.processId ?? 0), true);
+    } finally {
+      mock.restoreAll();
+      syncBuiltinESMExports();
+      await prior.close();
+    }
+  }));
 
 await test("CLV-240 cleanup resolves a work tree alias before stopping a prior process", () =>
   withScene(async (scene) => {
@@ -92,32 +126,39 @@ await test("CLV-240 a readable foreign-user process is unsignaled and keeps the 
     }
   }));
 
-await test("CLV-240 an empty process scan is confirmed before removing a lock", () =>
+await test("CLV-240 an empty process scan is confirmed before stopping a lock owner and removing its lock", () =>
   withScene(async (scene) => {
     const directory = await interruptedScene(scene);
-    const prior = await priorProcess(scene, { directory });
     const lockPath = git(directory, ["rev-parse", "--git-path", "index.lock"]);
-    writeFileSync(lockPath, "held");
+    const prior = await priorProcess(scene, { directory, lockPath });
     try {
-      await withProcessTable(scene, {
-        rows: [
-          "",
-          `${String(prior.processId)} ${String(prior.processId)} ${String(process.getuid?.())}`,
-        ],
-        run: async () => {
-          assert.equal(
-            await resumeWorktree({
-              directory,
-              folder: scene.journal,
-              signal,
-              stopMilliseconds: 10,
-            }),
-            null,
-          );
-          assert.equal(prior.terminated(), true);
-          assert.equal(alive(prior.processId ?? 0), false);
-          assert.equal(existsSync(lockPath), false);
-        },
+      assert.ok(typeof prior.processId === "number");
+      await withLockOwner(scene, {
+        processId: prior.processId,
+        directory,
+        lockPath,
+        run: () =>
+          withProcessTable(scene, {
+            rows: [
+              "",
+              `${String(prior.processId)} ${String(prior.processId)} ${String(process.getuid?.())}`,
+              "",
+            ],
+            run: async () => {
+              assert.equal(
+                await resumeWorktree({
+                  directory,
+                  folder: scene.journal,
+                  signal,
+                  stopMilliseconds: 10,
+                }),
+                null,
+              );
+              assert.equal(prior.terminated(), true);
+              assert.equal(alive(prior.processId ?? 0), false);
+              assert.equal(existsSync(lockPath), false);
+            },
+          }),
       });
     } finally {
       await prior.close();
@@ -184,6 +225,7 @@ await test("CLV-240 Linux discovery reads proc cwd links and tolerates vanished 
     symlinkSync(directory, join(proc, String(prior.processId), "cwd"));
     try {
       await withProcFiles(proc, async () => {
+        assert.ok(typeof prior.processId === "number");
         assert.equal(
           await recordedProcessDirectory(prior.processId),
           directory,
@@ -199,7 +241,7 @@ await test("CLV-240 Linux discovery reads proc cwd links and tolerates vanished 
           true,
         );
         assert.equal(prior.terminated(), true);
-        assert.equal(alive(prior.processId ?? 0), false);
+        assert.equal(alive(prior.processId), false);
       });
     } finally {
       await prior.close();

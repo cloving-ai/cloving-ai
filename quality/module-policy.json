@@ -1,5 +1,7 @@
 {
   "roles": {
+    "test/resume-index-lock.test.ts": "test",
+    "src/daemon/resume-index-lock.ts": "daemon",
     "test/worktree-process-fixture.ts": "test",
     "test/worktree-processes.test.ts": "test",
     "src/daemon/worktree-processes.ts": "daemon",

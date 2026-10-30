@@ -88,7 +88,7 @@ function inTree(entry: TreeProcess, directory: string): boolean {
 }
 
 export async function recordedProcessDirectory(
-  processId: unknown,
+  processId: number,
 ): Promise<string | undefined> {
   return (await processes())?.find((entry) => entry.processId === processId)
     ?.directory;
@@ -142,7 +142,7 @@ async function waitForTree(request: StopRequest, deadline: number) {
       performance.now() >= deadline
     )
       return entries;
-    await delay(20);
+    await delay(Math.min(250, Math.max(0, deadline - performance.now())));
   }
   return undefined;
 }
@@ -171,15 +171,15 @@ async function stopCanonicalTree(request: StopRequest): Promise<boolean> {
           request,
           performance.now() + (request.stopMilliseconds ?? 15_000),
         );
-  if (remaining !== undefined && !aborted()) {
-    const killed = terminate(remaining, {
-      directory: request.directory,
-      signal: "SIGKILL",
-    });
-    processIds.push(...killed);
-    if (killed.length > 0)
-      remaining = await waitForTree(request, performance.now() + 1000);
-  }
+  if (remaining === undefined || aborted())
+    return recordCleanup(request, { processIds, remaining });
+  const killed = terminate(remaining, {
+    directory: request.directory,
+    signal: "SIGKILL",
+  });
+  processIds.push(...killed);
+  if (killed.length > 0)
+    remaining = await waitForTree(request, performance.now() + 1000);
   return recordCleanup(request, { processIds, remaining });
 }
 

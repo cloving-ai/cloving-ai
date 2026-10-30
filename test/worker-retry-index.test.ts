@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { test, mock } from "node:test";
 import {
   field,
+  alive,
   interruptedScene,
   priorProcess,
   git,
@@ -13,8 +14,69 @@ import {
   withScene,
 } from "./claude-worker-fixture.ts";
 import { networkCommand } from "./network-worker-fixture.ts";
+import { withLockOwner } from "./worktree-process-fixture.ts";
 
 const signal = new AbortController().signal;
+
+await test("CLV-240 stopping an in-tree lock reader does not prove an outside writer has stopped", () =>
+  withScene(async (scene) => {
+    const tree = await interruptedScene(scene);
+    const lockPath = resolve(
+      tree,
+      git(tree, ["rev-parse", "--git-path", "index.lock"]),
+    );
+    const writer = await priorProcess(scene, {
+      directory: scene.directory,
+      lockPath,
+      lockState: "closed",
+    });
+    const reader = await priorProcess(scene, {
+      directory: tree,
+      lockPath,
+      lockState: "read",
+    });
+    try {
+      const reply = await scene
+        .worker("crash-once")
+        .reconcile(intent(), signal);
+      assert.equal(field(reply, "reason"), "worktree-index-locked");
+      assert.equal(existsSync(lockPath), true);
+      assert.equal(reader.terminated(), true);
+      assert.equal(writer.terminated(), false);
+      assert.equal(alive(writer.processId ?? 0), true);
+      assert.equal(scene.turns().length, 1);
+    } finally {
+      await reader.close();
+      await writer.close();
+    }
+  }));
+
+for (const lockState of ["open", "closed"] as const)
+  await test(`CLV-240 an outside writer with a ${lockState} index lock descriptor prevents resume without receiving a signal`, () =>
+    withScene(async (scene) => {
+      const tree = await interruptedScene(scene);
+      const lockPath = resolve(
+        tree,
+        git(tree, ["rev-parse", "--git-path", "index.lock"]),
+      );
+      const writer = await priorProcess(scene, {
+        directory: scene.directory,
+        lockPath,
+        ...(lockState === "closed" ? { lockState } : {}),
+      });
+      try {
+        const reply = await scene
+          .worker("crash-once")
+          .reconcile(intent(), signal);
+        assert.equal(field(reply, "reason"), "worktree-index-locked");
+        assert.equal(existsSync(lockPath), true);
+        assert.equal(writer.terminated(), false);
+        assert.equal(alive(writer.processId ?? 0), true);
+        assert.equal(scene.turns().length, 1);
+      } finally {
+        await writer.close();
+      }
+    }));
 
 for (const kind of ["network", "capacity"])
   await test(`CLV-229 a linked worktree index lock survives a ${kind} retry and reports its reason`, () =>
@@ -70,22 +132,49 @@ await test("CLV-229 a failed lock lookup reports worktree-index-unknown and star
     );
   }));
 
-await test("CLV-240 a daemon resume removes a stale linked-worktree index lock", () =>
+await test("CLV-240 a daemon resume removes a linked-worktree index lock after its identified owner stops", () =>
   withScene(async (scene) => {
     const tree = await interruptedScene(scene);
     const lockPath = resolve(
       tree,
       git(tree, ["rev-parse", "--git-path", "index.lock"]),
     );
-    writeFileSync(lockPath, "stale");
-    assert.equal(
-      (await scene.worker("crash-once").reconcile(intent(), signal)).kind,
-      "accepted",
+    const owner = await priorProcess(scene, { directory: tree, lockPath });
+    try {
+      assert.ok(typeof owner.processId === "number");
+      await withLockOwner(scene, {
+        processId: owner.processId,
+        directory: tree,
+        lockPath,
+        run: async () => {
+          assert.equal(
+            (await scene.worker("crash-once").reconcile(intent(), signal)).kind,
+            "accepted",
+          );
+          await until(() => scene.reports.length === 1);
+          assert.equal(owner.terminated(), true);
+          assert.equal(existsSync(lockPath), false);
+          assert.equal(scene.reports[0]?.outcome, "completed");
+          assert.equal(scene.turns().length, 2);
+        },
+      });
+    } finally {
+      await owner.close();
+    }
+  }));
+
+await test("CLV-240 a lock with no identifiable owner is retained on daemon resume", () =>
+  withScene(async (scene) => {
+    const tree = await interruptedScene(scene);
+    const lockPath = resolve(
+      tree,
+      git(tree, ["rev-parse", "--git-path", "index.lock"]),
     );
-    await until(() => scene.reports.length === 1);
-    assert.equal(existsSync(lockPath), false);
-    assert.equal(scene.reports[0]?.outcome, "completed");
-    assert.equal(scene.turns().length, 2);
+    writeFileSync(lockPath, "unattributed");
+    const reply = await scene.worker("crash-once").reconcile(intent(), signal);
+    assert.equal(field(reply, "reason"), "worktree-index-locked");
+    assert.equal(existsSync(lockPath), true);
+    assert.equal(scene.turns().length, 1);
   }));
 
 await test("CLV-240 a process that remains keeps the lock and prevents a resume", () =>

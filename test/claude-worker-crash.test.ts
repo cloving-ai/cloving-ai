@@ -13,6 +13,7 @@ import {
   until,
   withScene,
 } from "./claude-worker-fixture.ts";
+import { withLockOwner } from "./worktree-process-fixture.ts";
 
 const signal = new AbortController().signal;
 
@@ -180,14 +181,21 @@ await test("CLV-240 a leftover child in a nested folder stops before a killed tu
       "--git-path",
       "index.lock",
     ]);
-    writeFileSync(lockPath, "held by child");
-    process.kill(first.processId, "SIGKILL");
-    await until(() => scene.reports.length === 1);
-    assert.equal(scene.reports[0]?.outcome, "completed");
-    assert.equal(existsSync(lockPath), false);
-    assert.equal(alive(childId), false);
-    const lines = readFileSync(childFile + ".lines", "utf8");
-    await delay(30);
-    assert.equal(readFileSync(childFile + ".lines", "utf8"), lines);
-    assert.equal(scene.turns().length, 2);
+    assert.equal(existsSync(lockPath), true);
+    await withLockOwner(scene, {
+      processId: childId,
+      directory: join(first.directory, "nested"),
+      lockPath,
+      run: async () => {
+        process.kill(first.processId, "SIGKILL");
+        await until(() => scene.reports.length === 1);
+        assert.equal(scene.reports[0]?.outcome, "completed");
+        assert.equal(existsSync(lockPath), false);
+        assert.equal(alive(childId), false);
+        const lines = readFileSync(childFile + ".lines", "utf8");
+        await delay(30);
+        assert.equal(readFileSync(childFile + ".lines", "utf8"), lines);
+        assert.equal(scene.turns().length, 2);
+      },
+    });
   }));

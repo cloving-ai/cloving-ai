@@ -60,7 +60,7 @@ export function processAlive(processId: unknown): boolean {
 
 export async function uncertainProcess(started: unknown): Promise<boolean> {
   const processId = recordedField(started, "processId");
-  if (!processAlive(processId)) return false;
+  if (typeof processId !== "number" || !processAlive(processId)) return false;
   return (
     recordedField(started, "harness") !== "claude" ||
     (await recordedProcessDirectory(processId)) === undefined
