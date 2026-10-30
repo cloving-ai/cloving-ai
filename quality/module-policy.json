@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/claude-worker-crash.test.ts": "test",
     "test/self-development-config.test.ts": "test",
     "test/self-development-fixture.ts": "test",
     "test/self-development-queue.test.ts": "test",

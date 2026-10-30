@@ -6,7 +6,8 @@ import {
   type TurnStart,
 } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
-import { writeRecord } from "./operation-journal.ts";
+import { readRecord, writeRecord } from "./operation-journal.ts";
+import { readResume, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
   combined,
@@ -167,6 +168,8 @@ async function finished(
     const end = await turn.ended;
     ends.push(end);
     await recordedEnd(attempts, { processId: turn.processId, end });
+    if (interruptedChild(attempts, { processId: turn.processId, end }))
+      return resumedChild(attempts);
     const milliseconds = retryWait(attempts, end);
     if (cancelled(attempts) || milliseconds === undefined) break;
     await waited(attempts, milliseconds);
@@ -176,6 +179,40 @@ async function finished(
     turn = await launched(attempts, prepared);
   }
   return attemptOutcome(attempts);
+}
+
+function interruptedChild(
+  attempts: Attempts,
+  completion: { readonly processId: number | null; readonly end: TurnEnd },
+): boolean {
+  const { start } = attempts;
+  const { processId, end } = completion;
+  return (
+    !cancelled(attempts) &&
+    (start.worker ?? "claude") === "claude" &&
+    start.output !== "text" &&
+    processId !== null &&
+    end.exitCode !== 0 &&
+    end.result === undefined
+  );
+}
+
+async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
+  const started = await readRecord(attempts.start.folder, "started.json");
+  const resume = await readResume(attempts.start.folder, started);
+  if (resume === undefined)
+    return { ...combined(attempts), reason: "claude-turn-interrupted" };
+  const prepared = await preparedRetry(attempts);
+  if (typeof prepared !== "string") return prepared;
+  const recovered: Attempts = {
+    ...attempts,
+    options: { ...attempts.options, resume },
+    ends: [...resume.ends],
+  };
+  const turn = await launched(recovered, resumePrompt);
+  return turn === undefined
+    ? attemptOutcome(recovered)
+    : finished(recovered, turn);
 }
 
 function retryWait(attempts: Attempts, end: TurnEnd): number | undefined {

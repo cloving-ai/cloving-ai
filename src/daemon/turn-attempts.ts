@@ -76,10 +76,20 @@ export function combined(attempts: Attempts): TurnEnd {
   };
 }
 
-export function attemptCommand(attempts: Attempts, attempt: number) {
+function selectedCommand(attempts: Attempts, attempt: number) {
   const { start, options } = attempts;
   const original = start.command;
   const previous = attempts.ends[attempt - 2];
+  if (
+    options.resume !== undefined &&
+    attempt === options.resume.ends.length + 1
+  ) {
+    const model = previous?.result?.model;
+    return {
+      command: model == null ? original : replaceCommandModel(original, model),
+      fallback: undefined,
+    };
+  }
   const ordinal =
     attempt -
     attempts.ends
@@ -89,8 +99,18 @@ export function attemptCommand(attempts: Attempts, attempt: number) {
     previous !== undefined && kindOf(attempts, previous) === "capacity"
       ? options.fallbackModels?.[ordinal - 3]
       : undefined;
-  const selected =
-    fallback === undefined ? original : replaceCommandModel(original, fallback);
+  return {
+    command:
+      fallback === undefined
+        ? original
+        : replaceCommandModel(original, fallback),
+    fallback,
+  };
+}
+
+export function attemptCommand(attempts: Attempts, attempt: number) {
+  const { start } = attempts;
+  const { command: selected, fallback } = selectedCommand(attempts, attempt);
   const budgetUsd = remainingBudget(attempts);
   const command =
     budgetUsd === undefined

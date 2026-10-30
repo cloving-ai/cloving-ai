@@ -145,7 +145,8 @@ function spawnTurn(start: TurnStart): {
 }
 
 function streamMetadata(stream: Stream, event: unknown): boolean {
-  const field = (name: string): unknown => Reflect.get(Object(event), name);
+  if (typeof event !== "object" || event === null) return false;
+  const field = (name: string): unknown => Reflect.get(event, name);
   const type = field("type");
   const sessionId = textOf(field("session_id"));
   const discovered = stream.sessionId === null && sessionId !== null;

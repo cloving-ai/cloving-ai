@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { recordedField } from "../src/daemon/claude-recovery.ts";
 import {
   field,
   intent,
@@ -13,6 +14,15 @@ import {
 } from "./claude-worker-fixture.ts";
 
 const signal = new AbortController().signal;
+
+await test("CLV-239 recovery field reads reject non-object records", () => {
+  for (const value of [undefined, null, "session", 1, true, () => undefined])
+    assert.equal(recordedField(value, "constructor"), undefined);
+  assert.equal(
+    recordedField({ sessionId: "saved-session" }, "sessionId"),
+    "saved-session",
+  );
+});
 
 await test("CLV-239 startup recovery on a closed worker cannot report its daemon shutdown", () =>
   withScene(async (scene) => {

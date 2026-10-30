@@ -27,6 +27,9 @@ export interface TurnResume {
   readonly ends: readonly TurnEnd[];
 }
 
+export const resumePrompt =
+  "This turn stopped because the Cloving daemon restarted. Continue the task from the point where it stopped. Run again each command or subagent that did not end. End with the result line that the task asks for.";
+
 export function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
   return (
     intent.capability === "claude" &&
@@ -40,7 +43,8 @@ export function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
 }
 
 export function recordedField(value: unknown, name: string): unknown {
-  return Reflect.get(Object(value), name);
+  if (typeof value !== "object" || value === null) return undefined;
+  return Reflect.get(value, name);
 }
 
 export function processAlive(processId: unknown): boolean {
@@ -179,7 +183,7 @@ export async function recordedHarness(
   const started = await readRecord(folder, "started.json").catch(
     () => undefined,
   );
-  const harness: unknown = Reflect.get(Object(started), "harness");
+  const harness = recordedField(started, "harness");
   return typeof harness === "string" ? harness : undefined;
 }
 

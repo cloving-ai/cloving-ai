@@ -34,6 +34,7 @@ import {
   interruptedReply,
   processAlive,
   resumePlan,
+  resumePrompt,
   recordedField,
   type TurnResume,
   recoverTurn,
@@ -124,7 +125,7 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (processAlive(Reflect.get(Object(started), "processId")))
+  if (processAlive(recordedField(started, "processId")))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
   return resumed(parts, { intent, key, folder, started, signal });
 }
@@ -139,8 +140,8 @@ async function resumed(
 ): Promise<AdapterOutcome> {
   const { intent, started, key, folder, signal } = request;
   const aborted = () => signal.aborted;
-  const refused = () => interruptedReply(request, "claude-turn-interrupted");
-  if (!turnIntent(intent)) return refused();
+  if (!turnIntent(intent))
+    return interruptedReply(request, "claude-turn-interrupted");
   if (aborted()) return failure("claude-start-aborted");
   const plan = await resumePlan(parts.settings, {
     folder,
@@ -156,8 +157,7 @@ async function resumed(
     intent,
     ...plan,
     signal,
-    prompt:
-      "This turn stopped because the Cloving daemon restarted. Continue the task from the point where it stopped. Run again each command or subagent that did not end. End with the result line that the task asks for.",
+    prompt: resumePrompt,
   });
   return { kind: "accepted", receipt: key, worker };
 }

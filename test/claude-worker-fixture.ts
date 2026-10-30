@@ -52,6 +52,11 @@ const modes = {
   "hold-second": () => turn === 2 ? held() : modes["fixed-reply"](),
   "resume-once": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } result({ total_cost_usd: 2, result: "Ticket status: complete" }); },
   "resume-graceful": () => modes["resume-once"](),
+  "crash-once": () => turn === 1 ? held() : result({ result: "Ticket status: complete" }),
+  "fallback-resume": () => {
+    if (turn <= 2) return result({ is_error: true, result: "Selected model is at capacity. Please try a different model." });
+    return turn === 3 ? held() : result({ result: "Ticket status: complete" });
+  },
   "resume-cost": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } if (turn === 2) { result({ total_cost_usd: 1.2, result: "" }); return result({ total_cost_usd: 2, is_error: true, result: "Selected model is at capacity. Please try a different model." }); } result({ total_cost_usd: 0.5 }); },
   "conflict-second": () => { const candidate = JSON.parse(readFileSync(record + ".reply", "utf8")); if (turn === 2) candidate.process.scope = "Conflicting scope."; result({ result: JSON.stringify(candidate) }); },
   "invalid-second": () => result({ result: turn === 2 ? "{}" : readFileSync(record + ".reply", "utf8") }),
