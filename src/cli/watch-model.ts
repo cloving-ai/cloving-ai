@@ -1,3 +1,4 @@
+import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
 import {
@@ -289,6 +290,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     runId,
     workflowId,
     ...runLinksOf(status),
+    commandWaits: shownCommandWaits(status["commandWaits"]),
     ticketId: ticketId === "" ? null : ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),

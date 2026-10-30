@@ -1,3 +1,4 @@
+import { commandWaitDisplay } from "./command-waits.ts";
 import { metadataOf, outcomeOf } from "./run-metadata.ts";
 import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
 import {
@@ -32,6 +33,7 @@ import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 
 interface Snapshot {
+  readonly now: string;
   readonly links: Readonly<Record<string, RunLinks>>;
   readonly state: StoredState;
   readonly operations: readonly OperationRecord[];
@@ -45,6 +47,7 @@ async function snapshot(context: ServiceContext): Promise<Snapshot> {
   const state = await authority.state();
   const sequences = await authority.queries.sequences();
   return {
+    now: context.clock(),
     links: await authority.queries.runLinks(),
     state,
     operations: await authority.operations(),
@@ -129,6 +132,12 @@ async function viewOf(
   const effects = await effectInput(context, run.runId);
   const input = {
     ...effects,
+    commandWaits: await commandWaitDisplay({
+      authority: context.authority,
+      runId: run.runId,
+      waits: state.commandWaits,
+      now: scope.snapshot.now,
+    }),
     closure:
       run.status === "cancelled"
         ? await context.authority.effects.closure(run.runId)
@@ -170,6 +179,7 @@ function summary(view: ShownRun): Fields {
     latestSequence: view.latestSequence,
     latestAt: view.latestAt,
     pendingDecisions: view.pendingDecisions,
+    commandWaits: view.commandWaits,
   };
 }
 

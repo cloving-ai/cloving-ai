@@ -78,6 +78,7 @@ export function input(fields: {
     silent: fields.silent ?? false,
     closure: fields.status === "cancelled" ? closureOf(fields) : null,
     effects: fields.effects ?? [],
+    commandWaits: [],
     budget: fields.budget ?? null,
     effectEvidence: fields.effectEvidence ?? [],
   };

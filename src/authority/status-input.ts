@@ -1,3 +1,4 @@
+import type { CommandWaitView } from "./command-wait-view.ts";
 import type { RunDetails } from "./details.ts";
 import type { GateState } from "./gates.ts";
 import type { RunClosure } from "./stop-sequence.ts";
@@ -26,6 +27,7 @@ export interface BudgetSummary {
 }
 
 export interface StatusInput {
+  readonly commandWaits: readonly CommandWaitView[];
   readonly run: RunState;
   readonly details: RunDetails | undefined;
   readonly gates: readonly GateState[];

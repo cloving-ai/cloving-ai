@@ -1,3 +1,4 @@
+import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
 import { record } from "../protocol.ts";
@@ -216,6 +217,9 @@ function pullRequestCardDetails(
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
+    commandWaits: run.commandWaits ?? [],
+    spent: run.spent,
+    limit: run.limit,
     title: run.title,
     ...linksOf(run),
     ...(run.awaitedRunId == null ? {} : { awaitedRunId: run.awaitedRunId }),
@@ -270,7 +274,8 @@ function summaryOf(value: unknown): {
     state: String(fields?.["state"]),
     waiting:
       (Array.isArray(pending) && pending.length > 0) ||
-      typeof fields?.["awaitedRunId"] === "string",
+      typeof fields?.["awaitedRunId"] === "string" ||
+      activeCommandWait(shownCommandWaits(fields?.["commandWaits"])),
     latestAt: typeof latest === "string" ? latest : null,
   };
 }
@@ -285,7 +290,10 @@ export function boardsOf(
       inputs.summaries === undefined
         ? own.map((run) => ({
             state: run.state,
-            waiting: run.decisions.length > 0 || run.awaitedRunId != null,
+            waiting:
+              run.decisions.length > 0 ||
+              run.awaitedRunId != null ||
+              activeCommandWait(run.commandWaits ?? []),
             latestAt: run.latestAt,
           }))
         : inputs.summaries
