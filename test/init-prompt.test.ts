@@ -1,24 +1,35 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { initPrompt } from "../src/cli/init-prompt.ts";
+import { initPrompt, type InitPromptFacts } from "../src/cli/init-prompt.ts";
+
+const facts: InitPromptFacts = {
+  version: "1.3.0",
+  repository: "<repository>",
+  origin: "git@github.com:example/project.git",
+  login: "setup-user",
+  node: "v26.9.0",
+  harnesses: [{ name: "codex", version: "0.100.0", working: true }],
+  defaultHarness: "codex",
+  worker: "native codex",
+  runtime: "<runtime>",
+  chatStores: [],
+  files: [".cloving/config.json"],
+  templates: ["develop: 5 decision points"],
+  workflows: [],
+};
+
+await test("CLV-228 setup queue guidance requires an explicit queue declaration", () => {
+  const queue = initPrompt(facts)
+    .split("\n")
+    .find((line) => line.startsWith("- Queue facts"));
+  assert.ok(queue);
+  assert.match(queue, /no workflow has `queue: true`, no queue starts/);
+  assert.doesNotMatch(queue, /bundled|develop-issue/);
+});
 
 await test("CLV-225 fixed facts snapshot includes the rules, reachable targets and final summary contract", async () => {
-  const output = initPrompt({
-    version: "1.3.0",
-    repository: "<repository>",
-    origin: "git@github.com:example/project.git",
-    login: "setup-user",
-    node: "v26.9.0",
-    harnesses: [{ name: "codex", version: "0.100.0", working: true }],
-    defaultHarness: "codex",
-    worker: "native codex",
-    runtime: "<runtime>",
-    chatStores: [],
-    files: [".cloving/config.json"],
-    templates: ["develop: 5 decision points"],
-    workflows: [],
-  });
+  const output = initPrompt(facts);
   assert.match(
     output,
     /3\. Ask for the ticket source[\s\S]*4\. \*\*Find the loops that the user already does\.\*\*[\s\S]*5\. /,

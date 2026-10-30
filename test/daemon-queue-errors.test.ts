@@ -47,7 +47,7 @@ await withHarness(async (harness) => {
     handle: async () => replies[Math.min(calls++, replies.length - 1)],
     limits: { idleMilliseconds: 5000 },
   });
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 5 });
   try {
     await eventually(() => calls >= replies.length ? true : undefined);
@@ -137,7 +137,7 @@ await withHarness(async (harness) => {
   const file = join(harness.stateDirectory, "queue-commands.json");
   const original = ${JSON.stringify(JSON.stringify(value))};
   await writeFile(file, original);
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 5 });
   await queue.stop();
   assert.equal(await readFile(file, "utf8"), original);
@@ -151,7 +151,7 @@ await test("CLV-084 unreadable command journals stop polling with one diagnostic
   const stderr = observed(`
 await withHarness(async (harness) => {
   await mkdir(join(harness.stateDirectory, "queue-commands.json"));
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 5 });
   await queue.stop();
 });
@@ -175,7 +175,7 @@ await withHarness(async (harness) => {
     },
     limits: { idleMilliseconds: 5000 },
   });
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 200 });
   try {
     await eventually(() => commandId ? true : undefined);
@@ -247,7 +247,7 @@ await withHarness(async (harness) => {
     },
     limits: { idleMilliseconds: 5000 },
   });
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds });
   try {
     await eventually(() => runReads >= 2 ? true : undefined);
@@ -287,7 +287,7 @@ await withHarness(async (harness) => {
     },
     limits: { idleMilliseconds: 5000 },
   });
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 10 });
   try {
     await eventually(() => requests.length === codes.length ? true : undefined);
@@ -350,7 +350,7 @@ await withHarness(async (harness) => {
     },
     limits: { idleMilliseconds: 5000 },
   });
-  const queue = issueQueue({ directory: harness.stateDirectory,
+  const queue = issueQueue({ workflowId: "develop-issue", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 20 });
   try {
     await eventually(() => requests.length === 3 ? true : undefined);

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { check, githubReads, withDoctor } from "./doctor-fixture.ts";
+import { writeQueueWorkflow } from "./workflow-folder-fixture.ts";
 
 await test("CLV-207 fake GitHub and harness probes make no other network call", () =>
   withDoctor(async (scene) => {
@@ -39,8 +40,18 @@ syncBuiltinESMExports();
     assert.doesNotMatch(calls, /POST|PATCH|create|edit|merge/);
   }));
 
-await test("CLV-207 bundled queue requires and fails an absent next command", () =>
+await test("CLV-228 a dormant queue makes the absent next command optional", () =>
   withDoctor(async (scene) => {
+    const output = await scene.report({ CLOVING_NEXT_COMMAND: undefined });
+    assert.equal(check(output, "next-command")["required"], false);
+    assert.equal(check(output, "next-command")["result"], "fail");
+    assert.equal(check(output, "queue-interval")["required"], false);
+    assert.equal(output.status, 0);
+  }));
+
+await test("CLV-207 a declared queue requires and fails an absent next command", () =>
+  withDoctor(async (scene) => {
+    await writeQueueWorkflow(join(scene.repository, ".cloving/workflows"));
     const output = await scene.report({ CLOVING_NEXT_COMMAND: undefined });
     assert.equal(check(output, "next-command")["required"], true);
     assert.equal(check(output, "next-command")["result"], "fail");

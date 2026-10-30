@@ -71,7 +71,7 @@ export async function doctorReport(
     repository === undefined
       ? {
           observations: {},
-          required: requiredDoctorCodes([], { queueSeconds: undefined }),
+          required: requiredDoctorCodes([]),
         }
       : await repositoryObservations({ ...options, repository });
   const git =
@@ -129,11 +129,7 @@ async function repositoryObservations(
     settingsValid,
     environment,
   });
-  const required = requiredDoctorCodes(workflowContext.workflows, {
-    queueSeconds: settingsValid
-      ? environment["CLOVING_QUEUE_SECONDS"]
-      : undefined,
-  });
+  const required = requiredDoctorCodes(workflowContext.workflows);
   const dependent = await configuredObservations(
     { ...options, environment },
     { prerequisite: workflowContext.prerequisite, project, serviceEnvironment },

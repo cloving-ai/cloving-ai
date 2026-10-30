@@ -46,6 +46,7 @@ export async function withPendingUpdate(
       },
     });
     const queue = issueQueue({
+      workflowId: "develop-issue",
       directory,
       runtimeDirectory,
       intervalMilliseconds: 5,

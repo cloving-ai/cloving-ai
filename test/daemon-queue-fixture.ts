@@ -73,6 +73,18 @@ const launched = async (overrides = {}) => {
   return opening.daemon;
 };
 const submitted = async (commandId, overrides = {}) => asked("run", {
-  workflowId: "develop-issue", source: "ticket", submission: { ticket: "CLV-900" }, commandId, ...overrides
+  workflowId: settings.declarations?.find(row => row.queue === true)?.workflowId ?? "develop-issue", source: "ticket", submission: { ticket: "CLV-900" }, commandId, ...overrides
 });
 `;
+
+export const declaredQueueSettings = `
+settings.manifests.queueTask = settings.manifests.developTicket;
+settings.workflows.queueTask = workflows.develop;
+settings.declarations = [{
+  workflowId: "queue-task", queue: true, functionName: "queueTask", effectLimit: 1,
+  capabilities: ["claude", "github"],
+  input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+}];
+`;
+
+export const declaredQueuePrelude = queuePrelude + declaredQueueSettings;
