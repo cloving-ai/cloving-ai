@@ -149,3 +149,134 @@ await test("CLV-164 retains complete nested errors in the saved failure data", a
   assert.match(String(details), /root cause\n\s*root detail/);
   assert.match(String(details), /test-reporter\.test\.ts:\d+:\d+/);
 });
+
+function savedFailure(failure: unknown): { error: string; message: string } {
+  assert.ok(failure !== null && typeof failure === "object");
+  const error: unknown = Reflect.get(failure, "error");
+  const message: unknown = Reflect.get(failure, "message");
+  assert.ok(typeof error === "string");
+  assert.ok(typeof message === "string");
+  return { error, message };
+}
+
+await test("a failure with a large error value keeps a bounded report entry", async () => {
+  const event = failedEvent("large value", "assertion.test.ts");
+  event.data.details.error = Object.assign(new Error("x".repeat(5_000_000)), {
+    cause: {
+      actual: "y".repeat(5_000_000),
+      expected: Array.from({ length: 1_000_000 }, (_, index) => index),
+    },
+  });
+  const { error, message } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.ok(message.length <= 100_000, String(message.length));
+  assert.match(message, /^x{100}/);
+  assert.match(error, /test-reporter\.test\.ts:\d+:\d+/);
+  assert.match(error, /actual: 'y{100}/);
+});
+
+await test("a failure reads only a bounded number of properties of a large error value", async () => {
+  const event = failedEvent("many properties", "assertion.test.ts");
+  let reads = 0;
+  const value = {};
+  for (let index = 0; index < 2_000; index += 1)
+    Object.defineProperty(value, `field${String(index)}`, {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return "z".repeat(10_000);
+      },
+    });
+  event.data.details.error = Object.assign(new Error("many properties"), {
+    cause: value,
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(reads <= 100, String(reads));
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /field0: 'z{100}/);
+});
+
+await test("a failure keeps built-in values and bounds large collections", async () => {
+  const event = failedEvent("built-in values", "assertion.test.ts");
+  event.data.details.error = Object.assign(new Error("built-in values"), {
+    cause: {
+      map: new Map([["a", 1]]),
+      set: new Set([2]),
+      date: new Date(0),
+      pattern: /x+/g,
+      bytes: new Uint8Array(3),
+      large: new Map(
+        Array.from({ length: 1_000 }, (_, index) => [index, index]),
+      ),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.match(error, /Map\(1\) \{ 'a' => 1 \}/);
+  assert.match(error, /Set\(1\) \{ 2 \}/);
+  assert.match(error, /1970-01-01T00:00:00\.000Z/);
+  assert.match(error, /\/x\+\/g/);
+  assert.match(error, /Uint8Array\(3\)/);
+  assert.match(error, /omitted: 900/);
+});
+
+await test("a failure bounds large built-in values and keeps distinct entries and empty slots", async () => {
+  const event = failedEvent("edge values", "assertion.test.ts");
+  const date = Object.assign(
+    new Date(0),
+    Object.fromEntries(
+      Array.from({ length: 2_000 }, (_, index) => [
+        `f${String(index)}`,
+        "d".repeat(10_000),
+      ]),
+    ),
+  );
+  const prefix = "k".repeat(20_000);
+  event.data.details.error = Object.assign(new Error("edge values"), {
+    cause: {
+      date,
+      pattern: new RegExp("p".repeat(5_000_000)),
+      bytes: new Uint8Array(1_000),
+      keys: new Map([
+        [`${prefix}a`, "first"],
+        [`${prefix}b`, "second"],
+        ["...", "real entry"],
+      ]),
+      holes: Object.assign(new Array<unknown>(2), { 1: 1 }),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /1970-01-01T00:00:00\.000Z/);
+  assert.match(error, /first/);
+  assert.match(error, /second/);
+  assert.match(error, /real entry/);
+  assert.match(error, /<1 empty item>/);
+  assert.match(error, /Uint8Array\(1000\)/);
+});
+
+await test("a failure copies a shared value one time and keeps the bytes of data views", async () => {
+  const event = failedEvent("shared values", "assertion.test.ts");
+  let reads = 0;
+  const leaf = {};
+  Object.defineProperty(leaf, "value", {
+    enumerable: true,
+    get: () => {
+      reads += 1;
+      return "leaf";
+    },
+  });
+  const middle = Array.from({ length: 100 }, () => leaf);
+  const top = Array.from({ length: 100 }, () => middle);
+  event.data.details.error = Object.assign(new Error("shared values"), {
+    cause: {
+      top,
+      first: new DataView(new Uint8Array([1, 2, 3]).buffer),
+      second: new DataView(new Uint8Array([1, 2, 4]).buffer),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(reads <= 1_000, String(reads));
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /DataView\(3\) \[ 1, 2, 3 \]/);
+  assert.match(error, /DataView\(3\) \[ 1, 2, 4 \]/);
+});
