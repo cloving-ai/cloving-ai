@@ -107,13 +107,9 @@ await test("CLV-218 queue declarations conflict across workflow identities", asy
 });
 
 await test("CLV-218 declared queue workflows require next command and interval without settings", () => {
-  for (const queueSeconds of [undefined, "120"]) {
-    const codes = requiredDoctorCodes([{ ...workflow, scope: "project" }], {
-      queueSeconds,
-    });
-    assert.ok(codes.includes("next-command"));
-    assert.ok(codes.includes("queue-interval"));
-  }
+  const codes = requiredDoctorCodes([{ ...workflow, scope: "project" }]);
+  assert.ok(codes.includes("next-command"));
+  assert.ok(codes.includes("queue-interval"));
 });
 
 await test("CLV-218 queue membership survives serialization and changes the execution pin", () => {

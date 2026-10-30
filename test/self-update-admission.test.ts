@@ -83,6 +83,7 @@ await test("CLV-138 an in-flight queue submission prevents updating before its r
         handle,
       });
       const queue = issueQueue({
+        workflowId: "develop-issue",
         directory,
         runtimeDirectory,
         intervalMilliseconds: 5,
@@ -123,6 +124,7 @@ await test("CLV-138 a failed queue submission releases its marker so updating ca
         handle,
       });
       const queue = issueQueue({
+        workflowId: "develop-issue",
         directory,
         runtimeDirectory,
         intervalMilliseconds: 5,

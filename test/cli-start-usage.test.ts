@@ -12,6 +12,23 @@ await test("CLV-201 start help supports an installed package without a checkout"
   assert.doesNotMatch(String(commandUsage["start"]), /development checkout/);
 });
 
+await test("CLV-228 queue guidance requires a declared queue workflow", () => {
+  const help = String(commandUsage["start"])
+    .split("\n")
+    .find((line) => line.trim().startsWith("CLOVING_QUEUE_SECONDS"));
+  assert.ok(help);
+  assert.match(help, /declared workflow.*queue: true/);
+  assert.match(help, /no queue workflow.*no queue/);
+  assert.doesNotMatch(help, /develop-issue/);
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const queue = readme
+    .split("\n")
+    .find((line) => line.startsWith("Set `CLOVING_QUEUE_SECONDS`"));
+  assert.ok(queue);
+  assert.match(queue, /no workflow declares it, no queue starts/);
+  assert.doesNotMatch(queue, /bundled|develop-issue/);
+});
+
 const program = [
   "../src/harness-defaults.ts",
   "self-host.ts",

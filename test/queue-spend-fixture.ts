@@ -55,6 +55,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
     call(harness, { operation: "status", parameters: { limit: 1 } });
   const startQueue = () => {
     queue = issueQueue({
+      workflowId: "develop-issue",
       directory: harness.stateDirectory,
       runtimeDirectory: harness.runtimeDirectory,
       lanes: 2,

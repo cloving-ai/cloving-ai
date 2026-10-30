@@ -34,7 +34,10 @@ async function workflowFile(
   );
 }
 
-async function startOutput(fixture: Awaited<ReturnType<typeof scene>>) {
+async function startOutput(
+  fixture: Awaited<ReturnType<typeof scene>>,
+  environment: Readonly<NodeJS.ProcessEnv> = {},
+) {
   const child = spawn(process.execPath, [resolve("src/cli.ts"), "start"], {
     cwd: fixture.repository,
     env: {
@@ -50,6 +53,7 @@ async function startOutput(fixture: Awaited<ReturnType<typeof scene>>) {
         process.execPath,
         join(fixture.root, "fake-claude.mjs"),
       ]),
+      ...environment,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -76,6 +80,19 @@ async function startOutput(fixture: Awaited<ReturnType<typeof scene>>) {
   }
   return output.text;
 }
+
+await test("CLV-228 start needs no ticket commands when a queue interval has no declared target", async () => {
+  const fixture = await scene();
+  for (const command of [undefined, "[]"]) {
+    const output = await startOutput(fixture, {
+      CLOVING_QUEUE_SECONDS: "10",
+      CLOVING_TICKET_COMMAND: command,
+      CLOVING_NEXT_COMMAND: command,
+    });
+    assert.match(output, /Cloving runs/);
+    assert.doesNotMatch(output, /The daemon did not start/);
+  }
+});
 
 await test("CLV-218 start prints the specific queue input refusal codes", async () => {
   const fixture = await scene();
