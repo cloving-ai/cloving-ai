@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
+import {
+  declaredQueuePrelude as queuePrelude,
+  queueWorkflow,
+} from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
 await test("CLV-084 the daemon queue admits the next ready issue with the ticket command input", () =>
@@ -10,12 +13,11 @@ writeFileSync("ready", "CLV-900");
 const daemon = await launched();
 try {
   const run = await until(async () => (await runs())[0]);
-  assert.equal(run.workflowId, "develop-issue");
+  assert.equal(run.workflowId, "queue-task");
   await until(() => existsSync("input-CLV-900"));
   const input = JSON.parse(readFileSync("input-CLV-900", "utf8"));
-  assert.equal(input.ticketId, "CLV-900");
-  assert.equal(input.ticket, "# CLV-900: Queue task");
-  assert.equal(input.delivery, "pull-request");
+  assert.deepEqual(input.input, { ticket: { id: "CLV-900", text: "# CLV-900: Queue task" } });
+  assert.equal(input.delivery, undefined);
 } finally { await daemon.close(); }
 process.exit(0);
 `);

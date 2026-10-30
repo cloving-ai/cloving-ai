@@ -11,7 +11,7 @@ function queueBusy(value: unknown): number | undefined {
 
 export async function activeQueueRuns(settings: {
   readonly runtimeDirectory: string;
-  readonly workflowId?: string;
+  readonly workflowId: string;
 }): Promise<number> {
   let count = 0;
   let after: string | null = "";
@@ -28,7 +28,7 @@ export async function activeQueueRuns(settings: {
     count += runs.filter((value: unknown) => {
       const run = record(value);
       return (
-        run?.["workflowId"] === (settings.workflowId ?? "develop-issue") &&
+        run?.["workflowId"] === settings.workflowId &&
         !["completed", "failed", "cancelled"].includes(String(run["state"]))
       );
     }).length;

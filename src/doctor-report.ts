@@ -73,7 +73,6 @@ export interface DoctorWorkflow {
 
 export function requiredDoctorCodes(
   workflows: readonly DoctorWorkflow[],
-  options: { readonly queueSeconds: string | undefined },
 ): readonly DoctorCode[] {
   const codes = new Set<DoctorCode>([
     "git-repository",
@@ -91,10 +90,7 @@ export function requiredDoctorCodes(
     .map((workflow) => workflow.workflowId);
   const issue = bundled.includes("develop-issue");
   if (issue) codes.add("check-command");
-  if (
-    workflows.some((workflow) => workflow.queue === true) ||
-    (issue && options.queueSeconds !== undefined)
-  ) {
+  if (workflows.some((workflow) => workflow.queue === true)) {
     codes.add("next-command");
     codes.add("queue-interval");
   }

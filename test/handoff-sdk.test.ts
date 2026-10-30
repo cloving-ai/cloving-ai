@@ -33,6 +33,14 @@ export async function b(input) {
 }
 `;
 
+const queuedHandoffWorkflow = workflow
+  .replaceAll('workflowId: "B"', 'workflowId: "queued-target"')
+  .replace("input: input.input", 'input: { ticket: "CLV-901" }')
+  .replace(
+    "JSON.stringify(input.input)",
+    "JSON.stringify({ ticket: input.input.ticket.id })",
+  );
+
 const prelude = `${queuePrelude}
 settings.queueMilliseconds = undefined;
 for (const name of ["a", "b"]) {
@@ -102,17 +110,9 @@ try {
   }));
 
 await test("CLV-182 a lost busy reply recovers in the live daemon when the target becomes idle", () =>
-  withConsumer(
-    workflow
-      .replaceAll('workflowId: "B"', 'workflowId: "develop-issue"')
-      .replace("input: input.input", 'input: { ticket: "CLV-901" }')
-      .replace(
-        "JSON.stringify(input.input)",
-        "JSON.stringify({ ticket: input.ticketId })",
-      ),
-    async (consumer) => {
-      const result = await consumer.run(
-        `${prelude}
+  withConsumer(queuedHandoffWorkflow, async (consumer) => {
+    const result = await consumer.run(
+      `${prelude}
 const { default: net } = await import("node:net");
 const connect = net.connect.bind(net);
 let lost = false;
@@ -133,9 +133,12 @@ net.connect = (...argumentsList) => {
   };
   return socket;
 };
-settings.declarations[0].handoffs = ["develop-issue"];
-settings.manifests.developTicket = settings.manifests.b;
-settings.workflows.developTicket = workflows.b;
+settings.declarations[0].handoffs = ["queued-target"];
+settings.declarations[1] = {
+  workflowId: "queued-target", functionName: "b", queue: true,
+  effectLimit: 1, capabilities: [],
+  input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+};
 settings.queueMilliseconds = 1000;
 settings.concurrency = 2;
 writeFileSync("hold-target", "");
@@ -148,18 +151,17 @@ try {
   const completed = await ended(source.runId);
   assert.equal(lost, true);
   assert.equal(completed.outcome?.kind, "handoff_requested", JSON.stringify(completed));
-  const targets = (await runs()).filter((run) => run.workflowId === "develop-issue" && run.runId !== active.runId);
+  const targets = (await runs()).filter((run) => run.workflowId === "queued-target" && run.runId !== active.runId);
   assert.equal(targets.length, 1);
   assert.equal(completed.outcome.promotionId, targets[0].runId);
   await ended(targets[0].runId);
   assert.deepEqual(targetInputs(), [{ ticket: "CLV-900" }, { ticket: "CLV-901" }]);
 } finally { await daemon.close(); }
 `,
-        { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "2" },
-      );
-      assert.equal(result.status, 0, result.stderr);
-    },
-  ));
+      { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "2" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+  }));
 
 await test("CLV-182 a daemon crash after B admission but before its submission reply reuses B", () =>
   withConsumer(workflow, async (consumer) => {

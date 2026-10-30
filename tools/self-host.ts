@@ -137,9 +137,7 @@ function queueLanes(): number {
   return Number(value);
 }
 
-function queueInterval(
-  commands: Pick<Commands, "nextCommand" | "ticketCommand">,
-): number | undefined {
+function queueInterval(): number | undefined {
   const value = environment["CLOVING_QUEUE_SECONDS"];
   if (value === undefined) return undefined;
   const seconds = Number(value);
@@ -150,10 +148,6 @@ function queueInterval(
     seconds > 3600
   )
     throw new Error("The daemon did not start: invalid-queue-seconds");
-  if (!commands.nextCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-next-command");
-  if (!commands.ticketCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-ticket-command");
   return seconds * 1000;
 }
 
@@ -178,6 +172,15 @@ async function launchers(
   commands: Commands,
   workflows: RegisteredWorkflows,
 ): Promise<void> {
+  if (
+    commands.queueMilliseconds !== undefined &&
+    workflows.declarations.some((declaration) => declaration.queue === true)
+  ) {
+    if (!commands.nextCommand?.length)
+      throw new Error("The daemon did not start: queue-needs-next-command");
+    if (!commands.ticketCommand?.length)
+      throw new Error("The daemon did not start: queue-needs-ticket-command");
+  }
   const settings = {
     ...commands,
     directory,
@@ -271,7 +274,7 @@ const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const lanes = queueLanes();
-const queueMilliseconds = queueInterval({ nextCommand, ticketCommand });
+const queueMilliseconds = queueInterval();
 const manifests = await preparedProject({
   product,
   project,

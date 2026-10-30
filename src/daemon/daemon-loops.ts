@@ -8,7 +8,7 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly queueMilliseconds?: number;
   readonly queueLanes?: number;
   readonly resetQueue?: boolean;
-  readonly queueWorkflowId: string;
+  readonly queueWorkflowId: string | undefined;
 }
 
 type ParametersOfSchedules = Parameters<typeof workflowSchedules>[0];
@@ -30,7 +30,8 @@ export async function daemonLoops(
               : { intervalMilliseconds: settings.notifyMilliseconds }),
           });
     const queue =
-      settings.queueMilliseconds === undefined
+      settings.queueMilliseconds === undefined ||
+      settings.queueWorkflowId === undefined
         ? undefined
         : issueQueue({
             directory: settings.directory,

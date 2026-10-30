@@ -36,7 +36,6 @@ import { daemonLoops } from "./daemon-loops.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
-  issueWorkflow,
 } from "./ticket-registration.ts";
 
 export interface Daemon {
@@ -289,9 +288,8 @@ async function runningDaemon(
   };
 }
 
-function queueWorkflowId(settings: DaemonSettings): string {
-  return (
-    settings.declarations?.find((declaration) => declaration.queue === true)
-      ?.workflowId ?? issueWorkflow
-  );
+function queueWorkflowId(settings: DaemonSettings): string | undefined {
+  return settings.declarations?.find(
+    (declaration) => declaration.queue === true,
+  )?.workflowId;
 }

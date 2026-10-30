@@ -4,6 +4,42 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { refusedStart as refused } from "./cli-start-fixture.ts";
 import { ended, reached, scene, withoutChildren } from "./self-host-fixture.ts";
+import { call } from "./service-fixture.ts";
+import { writeQueueWorkflow } from "./workflow-folder-fixture.ts";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+
+const entry = join(candidatePackageRoot, "src/cli.ts");
+
+await test("CLV-228 a queue interval without a declared queue workflow starts no queue", () =>
+  withoutChildren(async () => {
+    const fixture = await scene();
+    const daemon = await fixture.start({
+      CLOVING_QUEUE_SECONDS: "10",
+      CLOVING_QUEUE_LANES: undefined,
+      CLOVING_NEXT_COMMAND: JSON.stringify([
+        process.execPath,
+        "-e",
+        'console.log("CLV-900")',
+      ]),
+      CLOVING_SELF_UPDATE_SECONDS: undefined,
+    });
+    try {
+      const status = await call(fixture, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.equal(status["queue"], undefined, JSON.stringify(status));
+      assert.deepEqual(status["runs"], []);
+    } finally {
+      assert.equal(await ended(daemon), 0);
+    }
+    await assert.rejects(
+      readFile(join(fixture.directory, "queue-commands.json")),
+      {
+        code: "ENOENT",
+      },
+    );
+  }));
 
 await test("CLV-184 queue lanes require a queue and a whole number from one to four", async () => {
   for (const value of ["0", "5", "2.5", "", "NaN", "1e0", "-1"])
@@ -28,32 +64,39 @@ await test("CLV-084 start refuses a queue interval outside its whole second boun
     );
 });
 
-await test("CLV-084 start refuses the queue without a next-ticket command", async () => {
+await test("CLV-084 start refuses a declared queue without a next-ticket command", async () => {
   for (const command of [undefined, "[]"])
     assert.match(
-      await refused({
-        CLOVING_QUEUE_SECONDS: "10",
-        CLOVING_NEXT_COMMAND: command,
-      }),
+      await refused(
+        {
+          CLOVING_QUEUE_SECONDS: "10",
+          CLOVING_NEXT_COMMAND: command,
+        },
+        { queue: true, entry },
+      ),
       /The daemon did not start: queue-needs-next-command/,
     );
 });
 
-await test("CLV-084 start refuses the queue without a ticket command", async () => {
+await test("CLV-084 start refuses a declared queue without a ticket command", async () => {
   for (const command of [undefined, "[]"])
     assert.match(
-      await refused({
-        CLOVING_QUEUE_SECONDS: "10",
-        CLOVING_NEXT_COMMAND: '["false"]',
-        CLOVING_TICKET_COMMAND: command,
-      }),
+      await refused(
+        {
+          CLOVING_QUEUE_SECONDS: "10",
+          CLOVING_NEXT_COMMAND: '["false"]',
+          CLOVING_TICKET_COMMAND: command,
+        },
+        { queue: true, entry },
+      ),
       /The daemon did not start: queue-needs-ticket-command/,
     );
 });
 
 await test("CLV-131 start resets the queue journal only with the explicit reset flag", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(undefined, entry);
+    await writeQueueWorkflow(join(fixture.repository, ".cloving/workflows"));
     await mkdir(fixture.directory, { recursive: true });
     const file = join(fixture.directory, "queue-commands.json");
     const prior = JSON.stringify({

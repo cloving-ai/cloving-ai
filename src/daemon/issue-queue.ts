@@ -13,7 +13,7 @@ interface QueueSettings {
   readonly intervalMilliseconds: number;
   readonly lanes?: number;
   readonly resetQueue?: boolean;
-  readonly workflowId?: string;
+  readonly workflowId: string;
 }
 
 interface QueueJournal {
@@ -219,7 +219,7 @@ async function submit(
   const reply = await send(settings.runtimeDirectory, {
     operation: "run",
     parameters: {
-      workflowId: settings.workflowId ?? "develop-issue",
+      workflowId: settings.workflowId,
       source: "ticket",
       submission: { ticket: "next" },
       commandId,
