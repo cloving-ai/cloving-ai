@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -19,11 +19,19 @@ import {
   type ClaudeWorkerSettings,
 } from "../src/daemon/claude-worker.ts";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
+import { stopChild, stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
+const disposableNode = [
+  "env",
+  "-u",
+  "NODE_V8_COVERAGE",
+  process.execPath,
+] as const;
+
 const fakeClaude = `
-import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
@@ -32,7 +40,7 @@ let prompt = "";
 process.stdin.setEncoding("utf8");
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
-appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
+appendFileSync(record, JSON.stringify({ coverage: process.env.NODE_V8_COVERAGE ?? null, prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 const session = process.argv.includes("--resume") ? process.argv[process.argv.indexOf("--resume") + 1] : "session-" + turn;
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: session, num_turns: 3, ...fields });
@@ -48,6 +56,16 @@ const modes = {
     git("commit", "-m", "Add the change " + turn);
     writeFileSync("loose.txt", "not committed");
     result({});
+  },
+  "tool-child": async () => {
+    if (turn !== 1) {
+      try { process.kill(Number(readFileSync(record + ".child", "utf8")), 0); return result({ is_error: true, result: "tool still alive" }); }
+      catch { return result({ result: "Ticket status: complete" }); }
+    }
+    mkdirSync("nested");
+    const child = spawn(process.execPath, ["-e", "const fs=require('node:fs');fs.writeFileSync(process.argv[1],String(process.pid));setInterval(()=>fs.appendFileSync(process.argv[1]+'.lines','writing'),10);", record + ".child"], { cwd: "nested", detached: true, stdio: "ignore" });
+    child.unref();
+    return held();
   },
   "hold-second": () => turn === 2 ? held() : modes["fixed-reply"](),
   "resume-once": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } result({ total_cost_usd: 2, result: "Ticket status: complete" }); },
@@ -105,6 +123,7 @@ await (capacityModes.includes(mode) ? capacityTurn() : modes[mode]());
 `;
 
 export interface TurnRecord {
+  readonly coverage: unknown;
   readonly prompt: string;
   readonly directory: string;
   readonly processId: number;
@@ -229,7 +248,7 @@ export async function withScene<Result>(
         repository: scene.repository,
         worktrees: scene.worktrees,
         journal: scene.journal,
-        command: [process.execPath, script, mode, turnLog],
+        command: [...disposableNode, script, mode, turnLog],
         document: (digest) => Promise.resolve(`prompt of ${digest}`),
         report: (report) => {
           reports.push(report);
@@ -246,6 +265,16 @@ export async function withScene<Result>(
     return await use(scene);
   } finally {
     for (const made of workers) await made.close();
+    if (existsSync(turnLog + ".child")) {
+      try {
+        process.kill(
+          Number(readFileSync(turnLog + ".child", "utf8")),
+          "SIGKILL",
+        );
+      } catch {
+        await delay(0);
+      }
+    }
     rmSync(directory, { recursive: true, force: true });
   }
 }
@@ -256,6 +285,7 @@ function turnRecord(line: string): TurnRecord {
     Array.isArray(value) ? value.map(String) : [];
   const environment: unknown = field(parsed, "environment");
   return {
+    coverage: field(parsed, "coverage"),
     prompt: String(field(parsed, "prompt")),
     directory: String(field(parsed, "directory")),
     processId: Number(field(parsed, "processId")),
@@ -268,4 +298,63 @@ function turnRecord(line: string): TurnRecord {
       ]),
     ),
   };
+}
+
+export async function priorProcess(
+  scene: Scene,
+  options: {
+    readonly directory: string;
+    readonly ignoreTerm?: boolean;
+    readonly group?: "shared";
+  },
+) {
+  const marker = join(scene.directory, "prior-" + String(Math.random()));
+  const child = spawn(
+    disposableNode[0],
+    [
+      ...disposableNode.slice(1),
+      "--input-type=module",
+      "-e",
+      `
+import { renameSync, writeFileSync } from "node:fs";
+process.on("SIGTERM", () => {
+  writeFileSync(process.argv[1] + ".term", "SIGTERM");
+  if (process.argv[2] !== "ignore") process.exit(0);
+});
+writeFileSync(process.argv[1] + ".staged", JSON.stringify({ coverage: process.env.NODE_V8_COVERAGE ?? null }));
+renameSync(process.argv[1] + ".staged", process.argv[1]);
+setInterval(() => undefined, 1000);
+`,
+      marker,
+      options.ignoreTerm === true ? "ignore" : "exit",
+    ],
+    {
+      cwd: options.directory,
+      detached: options.group !== "shared",
+      stdio: "ignore",
+    },
+  );
+  await until(() => existsSync(marker));
+  return {
+    processId: child.pid,
+    terminated: () => existsSync(marker + ".term"),
+    coverage: () => field(JSON.parse(readFileSync(marker, "utf8")), "coverage"),
+    close: () =>
+      options.group === "shared"
+        ? stopChild(child, { graceMilliseconds: 50 })
+        : stopChildGroup(child, { graceMilliseconds: 50 }),
+  };
+}
+
+export async function interruptedScene(scene: Scene): Promise<string> {
+  const first = scene.worker("crash-once");
+  await first.deliver(intent(), new AbortController().signal);
+  await until(
+    () =>
+      field(record(scene, "operation-1/attempt-1.json"), "sessionId") ===
+      "session-1",
+  );
+  await first.close();
+  rmSync(join(scene.journal, journalKey("operation-1"), "result.json"));
+  return scene.turns()[0]?.directory ?? "";
 }

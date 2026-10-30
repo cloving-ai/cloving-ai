@@ -13,7 +13,8 @@ import {
 import type { WorkTree } from "./work-tree.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
-import { indexFailure } from "./retry-worktree.ts";
+import { recordedProcessDirectory } from "./worktree-processes.ts";
+import { resumeWorktree } from "./resume-worktree.ts";
 import type {
   AdapterOutcome,
   DeliveryIntent,
@@ -57,6 +58,15 @@ export function processAlive(processId: unknown): boolean {
   }
 }
 
+export async function uncertainProcess(started: unknown): Promise<boolean> {
+  const processId = recordedField(started, "processId");
+  if (!processAlive(processId)) return false;
+  return (
+    recordedField(started, "harness") !== "claude" ||
+    (await recordedProcessDirectory(processId)) === undefined
+  );
+}
+
 export function recordedTree(started: unknown): WorkTree | undefined {
   const path = recordedField(started, "worktree");
   const branch = recordedField(started, "branch");
@@ -69,7 +79,7 @@ export function recordedTree(started: unknown): WorkTree | undefined {
 }
 
 export async function resumePlan(
-  settings: WorkerProfiles,
+  settings: WorkerProfiles & { readonly stopMilliseconds?: number },
   request: {
     readonly folder: string;
     readonly started: unknown;
@@ -90,7 +100,12 @@ export async function resumePlan(
     recordedField(started, "harness") !== "claude"
   )
     return "claude-turn-interrupted";
-  const locked = await indexFailure({ directory: tree.path, signal });
+  const locked = await resumeWorktree({
+    ...settings,
+    directory: tree.path,
+    folder,
+    signal,
+  });
   return locked === null ? { resume, tree, profile, harness } : locked.reason;
 }
 

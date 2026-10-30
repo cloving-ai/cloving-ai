@@ -66,6 +66,8 @@ await test("CLV-229 status text and watch list each attempt kind including null,
   for (const shown of [text, html]) {
     assert.match(shown, /Attempt 1.*retryKind: capacity/);
     assert.match(shown, /Attempt 2.*retryKind: network/);
+    assert.match(shown, /Attempt 2[^\n<]*resumedAfter: daemon-restart/);
+    assert.doesNotMatch(shown, /Attempt [134][^\n<]*resumedAfter/);
     assert.match(shown, /Attempt 3.*retryKind: null/);
     assert.doesNotMatch(shown, /Attempt 4[^\n<]*retryKind/);
     assert.match(shown, /Attempt 4/);
@@ -111,4 +113,8 @@ console.log(JSON.stringify({ html: app.inner }));
 `,
   );
   assert.match(String(result["html"]), /Attempt 2.*retryKind: network/);
+  assert.match(
+    String(result["html"]),
+    /Attempt 2[^<]*resumedAfter: daemon-restart/,
+  );
 });

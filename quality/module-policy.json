@@ -1,5 +1,9 @@
 {
   "roles": {
+    "test/worktree-process-fixture.ts": "test",
+    "test/worktree-processes.test.ts": "test",
+    "src/daemon/worktree-processes.ts": "daemon",
+    "src/daemon/resume-worktree.ts": "daemon",
     "test/claude-worker-crash.test.ts": "test",
     "test/command-wait-check-store.ts": "test",
     "test/command-wait-dispatch.test.ts": "test",
