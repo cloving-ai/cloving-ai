@@ -63,6 +63,7 @@ export const eventTypes = [
   "operation.reconciled",
   "schedule.skipped",
   "command-wait.opened",
+  "command-wait.checked",
   "command-wait.expired",
 ] as const;
 
@@ -135,6 +136,7 @@ export const textFields = [
   "result",
   "actor",
   "waitName",
+  "commandOutput",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];
@@ -160,6 +162,7 @@ export type Move = Exclude<
   | "operation.reconciled"
   | "schedule.skipped"
   | "command-wait.opened"
+  | "command-wait.checked"
   | "command-wait.expired"
 >;
 type Change = Pick<RunState, "status"> & Partial<RunState>;

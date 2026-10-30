@@ -30,6 +30,10 @@ const storedWait = {
   deadline: startedAt + permission.maximumWaitSeconds * 1000,
   nextCheckAt: startedAt,
   state: "waiting" as const,
+  checkCount: 0,
+  checkOperation: null,
+  lastCheckSettledAt: null,
+  result: null,
   settledAt: null,
   reason: null,
 };
@@ -106,6 +110,10 @@ await test("CLV-235 identical concurrent openings retain one input and deadline 
       deadline: startedAt + 2_592_000_000,
       nextCheckAt: startedAt,
       state: "waiting",
+      checkCount: 0,
+      checkOperation: null,
+      lastCheckSettledAt: null,
+      result: null,
       settledAt: null,
       reason: null,
     };

@@ -16,7 +16,12 @@ export interface CommandWaitState {
   readonly startedAt: number;
   readonly deadline: number;
   readonly nextCheckAt: number | null;
-  readonly state: "waiting" | "timed-out" | "cancelled";
+  readonly state:
+    "waiting" | "timed-out" | "cancelled" | "completed" | "failed";
+  readonly checkCount: number;
+  readonly checkOperation: string | null;
+  readonly lastCheckSettledAt: number | null;
+  readonly result: string | null;
   readonly settledAt: number | null;
   readonly reason: string | null;
 }
@@ -41,6 +46,10 @@ function openedCommandWait(event: WaitEvent): CommandWaitState {
     deadline: startedAt + maximumWaitSeconds * 1000,
     nextCheckAt: startedAt,
     state: "waiting",
+    checkCount: 0,
+    checkOperation: null,
+    lastCheckSettledAt: null,
+    result: null,
     settledAt: null,
     reason: null,
   };
@@ -50,7 +59,7 @@ type WaitChange =
   | { readonly kind: "updated"; readonly waits: CommandWaitsState }
   | { readonly kind: "invalid"; readonly reason: string };
 
-function timedOut(wait: CommandWaitState): CommandWaitState {
+export function timedOut(wait: CommandWaitState): CommandWaitState {
   return {
     ...wait,
     state: "timed-out",

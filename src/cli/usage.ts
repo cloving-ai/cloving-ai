@@ -16,6 +16,10 @@ Private files, backups and temporary files have mode 0600. Changes require a ser
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
+  "init-prompt": `Usage: cloving init-prompt [--repository <directory>]
+
+Prints facts, rules and setup steps for an agent. Does not change settings, call a model or control the service.
+`,
   doctor: `Usage: cloving doctor [--json] [--repository <directory>]
 
 Checks repository requirements without repairs, model turns or GitHub writes.
@@ -129,6 +133,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving workflows list [--json] [--repository <directory>]
        cloving workflows test [<id>] [--repository <directory>]
        cloving workflows validate <manifest-path> [--input <json-file>] [--json]
+       cloving init-prompt [--repository <directory>]
        cloving templates list [--json]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
@@ -141,6 +146,7 @@ Commands:
   templates list      List the workflow templates of the package.
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
+  init-prompt Print setup instructions for an agent.
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.

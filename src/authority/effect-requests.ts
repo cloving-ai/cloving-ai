@@ -1,4 +1,4 @@
-import { operationScope } from "../operation-identity.ts";
+import { operationScope, operationPhase } from "../operation-identity.ts";
 import { authorization } from "./budgets.ts";
 import { current, ownedLease } from "./leases.ts";
 import {
@@ -30,7 +30,11 @@ function refusal(context: EffectContext): string | undefined {
   if (terminalStatuses.includes(runStatus)) return "terminal-run";
   if (!admittingStatuses.includes(runStatus)) return "run-not-running";
   const scope = operationScope(field(event, "operationId"));
-  if (scope?.run !== event.runId) return "operation-scope-mismatch";
+  if (
+    scope?.run !== event.runId ||
+    operationPhase(field(event, "operationId")) === "command-wait"
+  )
+    return "operation-scope-mismatch";
   if (runOperations.includes(scope.operation))
     return "operation-scope-mismatch";
   return undefined;
@@ -89,7 +93,9 @@ function withoutWaits(
   return Object.fromEntries(
     Object.entries(operations).map(([operationId, operation]) => [
       operationId,
-      operation.runId === event.runId && operation.status === "waiting"
+      operation.runId === event.runId &&
+      operation.status === "waiting" &&
+      operationPhase(operation.operationId) !== "command-wait"
         ? cancelledOperation(operation, {
             reason: "budget-exhausted",
             sequence: event.sequence,

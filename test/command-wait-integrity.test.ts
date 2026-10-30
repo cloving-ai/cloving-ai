@@ -1,3 +1,5 @@
+import { commandWaitScene, storedCheck } from "./command-wait-check-store.ts";
+import { start } from "./command-wait-check-fixture.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
@@ -116,3 +118,27 @@ for (const recordedAt of [
       await store.close();
     }
   });
+
+await test("CLV-236 reopening refuses check output changed independently of its result document", async () => {
+  const scene = await commandWaitScene();
+  await storedCheck(scene.store, { commandId: "check-integrity", now: start });
+  await scene.store.close();
+  alterDatabase(
+    scene.directory,
+    `
+    UPDATE events SET payload = json_set(payload, '$.commandOutput', '{"ready":true}'),
+      request = json_set(request, '$.commandOutput', '{"ready":true}')
+      WHERE json_extract(payload, '$.commandOutput') IS NOT NULL;
+    UPDATE commands SET request = json_set(request, '$.commandOutput', '{"ready":true}')
+      WHERE json_extract(request, '$.commandOutput') IS NOT NULL;
+    UPDATE command_waits SET state = 'completed', result = 'null', next_check_at = NULL, settled_at = last_check_settled_at;
+  `,
+  );
+  const result = await openAuthority(scene.directory);
+  if (result.kind === "opened") await result.authority.close();
+  assert.deepEqual(result, {
+    kind: "refused",
+    reason: "projection-mismatch",
+    detail: "command-outputs",
+  });
+});
