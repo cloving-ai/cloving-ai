@@ -149,3 +149,20 @@ await test("CLV-164 retains complete nested errors in the saved failure data", a
   assert.match(String(details), /root cause\n\s*root detail/);
   assert.match(String(details), /test-reporter\.test\.ts:\d+:\d+/);
 });
+
+await test("a failure with a large error value keeps a bounded report entry", async () => {
+  const event = failedEvent("large value", "assertion.test.ts");
+  event.data.details.error = Object.assign(new Error("x".repeat(5_000_000)), {
+    actual: "y".repeat(5_000_000),
+    expected: Array.from({ length: 1_000_000 }, (_, index) => index),
+  });
+  const failures = await failuresOf([event]);
+  assert.ok(failures[0] && typeof failures[0] === "object");
+  const error: unknown = Reflect.get(failures[0], "error");
+  const message: unknown = Reflect.get(failures[0], "message");
+  assert.equal(typeof error, "string");
+  assert.equal(typeof message, "string");
+  assert.ok(String(error).length <= 100_000, String(String(error).length));
+  assert.ok(String(message).length <= 100_000, String(String(message).length));
+  assert.match(String(message), /^x{100}/);
+});

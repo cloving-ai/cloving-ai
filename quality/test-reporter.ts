@@ -5,6 +5,7 @@ import type { CoverageRow } from "./coverage.ts";
 
 const stderrLines = 20;
 const stderrLineCharacters = 500;
+const failureCharacters = 100_000;
 
 export interface TestFailure {
   readonly name: string;
@@ -56,14 +57,14 @@ function failureOutput(
     file,
     line,
     column,
-    message: details.error.message,
+    message: details.error.message.slice(0, failureCharacters),
     error: inspect(details.error, {
-      depth: null,
-      maxArrayLength: null,
-      maxStringLength: null,
+      depth: 8,
+      maxArrayLength: 100,
+      maxStringLength: 10_000,
       colors: false,
       customInspect: false,
-    }),
+    }).slice(0, failureCharacters),
     stderr: fileStderr(output.stderr, event.data),
   });
   return true;
