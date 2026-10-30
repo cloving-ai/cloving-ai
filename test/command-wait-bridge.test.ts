@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { commandWaitBridge } from "../src/host/command-wait.ts";
 import type { CommandWaitState } from "../src/authority/command-waits.ts";
 
@@ -43,12 +44,14 @@ function scene(states: readonly (CommandWaitState | undefined)[]) {
   const controller = new AbortController();
   const host = {
     commandWait: port,
+    runStatus: () => Promise.resolve<string | undefined>("running"),
     subject: () =>
       Promise.resolve<
         { readonly runId: string; readonly commandId: string } | undefined
       >({ runId: "run-1", commandId: "sdk:step-1" }),
     stopped: controller.signal,
     pollMilliseconds: 1,
+    retryMilliseconds: 2,
   };
   return { requests, port, host, controller, bridge: commandWaitBridge(host) };
 }
@@ -165,8 +168,10 @@ await test("CLV-237 host waits refuse missing ports, missing world runs and inva
   const { host, port } = scene([pending]);
   const missingPort = commandWaitBridge({
     subject: host.subject,
+    runStatus: host.runStatus,
     stopped: host.stopped,
     pollMilliseconds: 1,
+    retryMilliseconds: 2,
   });
   const missingRun = commandWaitBridge({
     ...host,
@@ -301,3 +306,81 @@ await test("CLV-237 deadline checks reach authority even when the next check is 
   });
   assert.equal(requests.length, 1);
 });
+
+for (const method of ["open", "check"] as const)
+  await test(`CLV-237 ${method} retries busy replies with the same command after a bounded delay`, async () => {
+    const { bridge, port, host } = scene([pending]);
+    const requests: unknown[] = [];
+    const times: number[] = [];
+    host.retryMilliseconds = 20;
+    port[method] = (request) => {
+      requests.push(request);
+      times.push(performance.now());
+      return Promise.resolve(
+        requests.length < 3
+          ? { kind: "rejected", reason: "service-busy" }
+          : { kind: "accepted" },
+      );
+    };
+    const result = await (method === "open"
+      ? bridge.openCommandWait({ name: "team-review", input: { change: 42 } })
+      : bridge.checkCommandWait({ name: "team-review" }));
+    assert.deepEqual(result, {
+      kind: "pending",
+      deadline: pending.deadline,
+      nextCheckAt: pending.nextCheckAt,
+    });
+    assert.deepEqual(
+      requests,
+      Array.from({ length: 3 }, () => requests[0]),
+    );
+    assert.equal(times.length, 3);
+    assert.ok(
+      Number(times[1]) - Number(times[0]) >= host.retryMilliseconds - 1,
+    );
+    assert.ok(
+      Number(times[2]) - Number(times[1]) >= host.retryMilliseconds - 1,
+    );
+  });
+
+for (const method of ["open", "check"] as const)
+  await test(`CLV-237 ${method} keeps failed command receipts terminal`, async () => {
+    const { bridge, port } = scene([pending]);
+    let calls = 0;
+    port[method] = () => {
+      calls += 1;
+      return Promise.resolve({ kind: "failed", reason: "command-failed" });
+    };
+    const result =
+      method === "open"
+        ? await bridge.openCommandWait({ name: "team-review", input: null })
+        : await bridge.checkCommandWait({ name: "team-review" });
+    assert.deepEqual(result, { kind: "failed", reason: "command-failed" });
+    assert.equal(calls, 1);
+  });
+
+for (const method of ["open", "check"] as const)
+  await test(`CLV-237 stopping during a busy ${method} keeps its step unfinished without another dispatch`, async () => {
+    const { bridge, port, controller, host } = scene([pending]);
+    const entered = Promise.withResolvers<undefined>();
+    let calls = 0;
+    let settled = false;
+    port[method] = () => {
+      calls += 1;
+      entered.resolve(undefined);
+      return Promise.resolve({ kind: "rejected", reason: "service-busy" });
+    };
+    const result = (
+      method === "open"
+        ? bridge.openCommandWait({ name: "team-review", input: null })
+        : bridge.checkCommandWait({ name: "team-review" })
+    ).then(() => {
+      settled = true;
+    });
+    await entered.promise;
+    controller.abort();
+    await delay(host.retryMilliseconds * 2);
+    assert.equal(settled, false);
+    assert.equal(calls, 1);
+    assert.ok(result instanceof Promise);
+  });

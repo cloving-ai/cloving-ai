@@ -6,6 +6,54 @@ import {
   commandWaitPrelude,
 } from "./command-wait-sdk-fixture.ts";
 
+await test("CLV-237 a pause before the first opening leaves the step unfinished until resume", () =>
+  withConsumer(commandWaitWorkflow, async (consumer) => {
+    const result = await consumer.run(`${commandWaitPrelude}
+writeFileSync("responses", JSON.stringify([{ ready: true, value: { approved: true } }]));
+const service = await waitHost();
+const open = ports.commandWait.open;
+const attempts = [];
+const changeRun = async (request, command) => {
+  const run = (await ports.state()).runs[request.runId];
+  assert.equal((await asked("run-command", { runId: request.runId, command, expectedRevision: run.revision, commandId: command })).kind, "run-command");
+};
+ports.commandWait.open = async request => {
+  attempts.push(request);
+  if (attempts.length === 1) await changeRun(request, "pause");
+  if (attempts.length === 2) {
+    assert.equal((await ports.state()).runs[request.runId].status, "paused");
+    assert.equal(await currentWait(request.runId), undefined);
+    assert.equal(lines("command-calls").length, 0);
+    assert.equal((await eventsOf(request.runId)).filter(event => event.eventType === "step_completed").length, 0);
+    mock.timers.setTime(initialTime + 60000);
+    await changeRun(request, "resume");
+  }
+  const receipt = await open(request);
+  if (attempts.length === 1) assert.deepEqual(receipt, { kind: "rejected", reason: "command-wait-run-not-running" });
+  return receipt;
+};
+try {
+  const runId = await submitted("pause-opening");
+  await until(async () => (await tagged()).some(run => run.run === runId));
+  const sdkId = await worldId(runId);
+  await until(async () => (await getRun(sdkId).status) === "completed");
+  const output = await getRun(sdkId).returnValue;
+  assert.deepEqual(JSON.parse(output.promotionId), { kind: "ready", value: { approved: true } });
+  assert.deepEqual(attempts, [attempts[0], attempts[0]]);
+  const wait = await currentWait(runId);
+  assert.equal(wait.startedAt, initialTime + 60000);
+  assert.equal(wait.deadline, wait.startedAt + 2592000000);
+  assert.equal(wait.checkCount, 1);
+  assert.equal(lines("command-calls").length, 1);
+  assert.deepEqual((await asked("status", { runId })).run.budget, { limit: 1, spent: 0 });
+  assert.equal((await eventsOf(runId)).filter(event => event.eventType === "step_retrying").length, 0);
+  print({ resumed: true });
+} finally { await commands.close(); await service.close(); }
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines, [{ resumed: true }]);
+  }));
+
 await test("CLV-237 compiled declared wait suspends, survives two restarts and returns ready with the original deadline", () =>
   withConsumer(commandWaitWorkflow, async (consumer) => {
     const first = await consumer.runUntil(

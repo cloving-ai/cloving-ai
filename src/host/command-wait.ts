@@ -30,11 +30,13 @@ export interface CommandWaitPorts {
 
 interface WaitHost {
   readonly commandWait?: CommandWaitPorts;
+  readonly runStatus: (runId: string) => Promise<string | undefined>;
   readonly subject: () => Promise<
     { readonly runId: string; readonly commandId: string } | undefined
   >;
   readonly stopped: AbortSignal;
   readonly pollMilliseconds: number;
+  readonly retryMilliseconds: number;
 }
 
 function progress(wait: CommandWaitState | undefined): CommandWaitProgress {
@@ -57,6 +59,36 @@ function refused(receipt: WaitReceipt): CommandWaitProgress | undefined {
     kind: receipt.kind === "failed" ? "failed" : "refused",
     reason: receipt.reason ?? receipt.kind,
   };
+}
+
+async function requested(
+  context: {
+    readonly host: WaitHost;
+    readonly call: WaitName;
+    readonly retryReasons?: readonly string[];
+  },
+  send: () => Promise<WaitReceipt>,
+): Promise<WaitReceipt> {
+  const { host, call, retryReasons = ["service-busy"] } = context;
+  for (;;) {
+    if (host.stopped.aborted) await new Promise<never>(() => undefined);
+    const receipt = await send();
+    if (
+      receipt.kind !== "rejected" ||
+      !retryReasons.includes(receipt.reason ?? "")
+    )
+      return receipt;
+    if (
+      receipt.reason === "command-wait-run-not-running" &&
+      !["queued", "running", "waiting_gate", "paused"].includes(
+        (await host.runStatus(call.runId)) ?? "",
+      )
+    )
+      return receipt;
+    await delay(host.retryMilliseconds, undefined, {
+      signal: host.stopped,
+    }).catch(() => undefined);
+  }
 }
 
 async function settled(
@@ -86,11 +118,19 @@ export function commandWaitBridge(host: WaitHost) {
       const port = host.commandWait;
       if (subject === undefined || port === undefined)
         return { kind: "unavailable", reason: "cloving-host-unavailable" };
-      const receipt = await port.open({
+      const call = {
         ...subject,
         name: request.name,
         input: JSON.stringify(request.input),
-      });
+      };
+      const receipt = await requested(
+        {
+          host,
+          call,
+          retryReasons: ["service-busy", "command-wait-run-not-running"],
+        },
+        () => port.open(call),
+      );
       return (
         refused(receipt) ??
         progress(await port.read({ ...subject, name: request.name }))
@@ -113,7 +153,7 @@ export function commandWaitBridge(host: WaitHost) {
         Date.now() < Math.min(wait.nextCheckAt, wait.deadline)
       )
         return progress(wait);
-      const receipt = await port.check(call);
+      const receipt = await requested({ host, call }, () => port.check(call));
       return checkReply(receipt, wait) ?? (await settled({ host, port }, call));
     },
   };

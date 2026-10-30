@@ -292,6 +292,8 @@ function hostCommandWait(hold: Hold) {
       : { commandWait: hold.ports.commandWait }),
     stopped: hold.ports.stopped,
     pollMilliseconds: hold.timing.pollMilliseconds,
+    retryMilliseconds: hold.timing.retryMilliseconds,
+    runStatus: async (runId) => (await hold.ports.state()).runs[runId]?.status,
     subject: async () => {
       const call = hold.ports.call();
       const world = await located(hold, call.worldRunId);
