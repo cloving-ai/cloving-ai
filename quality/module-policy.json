@@ -1439,7 +1439,20 @@
     "src/daemon/worker-profile.ts": "daemon",
     "test/claude-worker-resume.test.ts": "test",
     "test/claude-turn-budget.test.ts": "test",
-    "test/claude-worker-recovery-inputs.test.ts": "test"
+    "test/claude-worker-recovery-inputs.test.ts": "test",
+    "src/steps/wait-for-command.ts": "workflow",
+    "src/steps/command-wait.ts": "step",
+    "src/command-wait.ts": "pure",
+    "test/command-wait-step.test.ts": "test",
+    "src/host/command-wait.ts": "host-bridge",
+    "tools/workflow-candidate-shape.ts": "candidate-analysis",
+    "test/command-wait-bridge.test.ts": "test",
+    "test/command-wait-candidate.test.ts": "test",
+    "test/command-wait-testing.test.ts": "test",
+    "test/command-wait-sdk.test.ts": "test",
+    "test/command-wait-sdk-fixture.ts": "test",
+    "test/packed-command-wait.ts": "test",
+    "src/testing-requests.ts": "pure"
   },
   "allowed": {
     "quality": [
@@ -1746,7 +1759,8 @@
         "src/host/step-bridge-host.ts",
         "src/host/run-wait.ts",
         "src/steps/wait-for-decision.ts",
-        "src/steps/sleep.ts"
+        "src/steps/sleep.ts",
+        "src/steps/wait-for-command.ts"
       ],
       "src/broker/actor/authority-delivery.ts": [
         "src/broker/actor/authority-runtime.ts"

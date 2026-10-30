@@ -23,6 +23,7 @@ export interface CandidateEffect {
 }
 
 export interface CandidateAnalysis {
+  readonly commandWaits?: readonly (string | null)[];
   readonly localSources?: readonly string[];
   readonly imports: readonly CandidateImport[];
   readonly effects: readonly CandidateEffect[];
@@ -68,6 +69,7 @@ const workflowModules = [
   "cloving/workflows/steps/wait-for-run",
   "cloving/workflows/steps/run-command",
   "cloving/workflows/steps/sleep",
+  "cloving/workflows/steps/wait-for-command",
 ];
 
 export function workflowHelperPath(
@@ -147,7 +149,10 @@ export function checkWorkflowCandidate(
   if (!isCandidateDeclaration(input.declaration))
     return candidateDeclarationRefusals(input.declaration);
   const { analysis, declaration, installedExports } = input;
-  const codes: WorkflowCandidateCode[] = [];
+  const codes: WorkflowCandidateCode[] = commandWaitRefusals(
+    analysis,
+    declaration,
+  );
   if (analysis.imports.some((entry) => !allowedImport(entry, analysis)))
     codes.push("forbidden-import");
   if (
@@ -192,4 +197,22 @@ export function candidateDeclarationRefusals(
   if (isCandidateDeclaration(value)) return [];
   const codes = workflowQueueRefusals(record(value)?.["workflow"]);
   return codes.length > 0 ? codes : ["invalid-declaration"];
+}
+
+function commandWaitRefusals(
+  analysis: CandidateAnalysis,
+  declaration: CandidateDeclaration,
+): WorkflowCandidateCode[] {
+  const waits = analysis.commandWaits ?? [];
+  const codes: WorkflowCandidateCode[] = [];
+  if (waits.includes(null)) codes.push("dynamic-effect");
+  if (
+    waits.some(
+      (name) =>
+        name !== null &&
+        !Object.hasOwn(declaration.workflow.commandWaits ?? {}, name),
+    )
+  )
+    codes.push("undeclared-effect");
+  return codes;
 }

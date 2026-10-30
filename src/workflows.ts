@@ -23,6 +23,11 @@ export type {
 export { handoff } from "./steps/handoff.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
 export { runCommand } from "./steps/run-command.ts";
+export {
+  waitForCommand,
+  type CommandWaitRequest,
+  type CommandWaitOutcome,
+} from "./steps/wait-for-command.ts";
 export { sleep } from "./steps/sleep.ts";
 export type {
   CommandRequest,

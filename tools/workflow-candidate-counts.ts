@@ -1,6 +1,7 @@
 import ts from "typescript";
 import {
   protectedCall,
+  commandWaitCall,
   helperCall,
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
@@ -322,7 +323,7 @@ function nodeTotals(
   if (local && ts.isFunctionLike(node)) return local;
   let total =
     local ??
-    (protectedCall(node, input.symbols)
+    (protectedCall(node, input.symbols) && !commandWaitCall(node, input.symbols)
       ? { knownCallCount: 1, knownUnitTotal: units(node, input.symbols) }
       : zero);
   ts.forEachChild(node, (child) => {
