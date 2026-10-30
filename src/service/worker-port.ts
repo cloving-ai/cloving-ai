@@ -201,7 +201,7 @@ function effectPort(parts: Parts): Effects {
         command: {
           kind: "report-effect",
           ...rest,
-          ...(result === undefined ? {} : { result: documentDigest(result) }),
+          ...reportedResult({ result, worker: report.worker }),
         },
         documents: result === undefined ? [] : [result],
         epoch: epoch ?? authority.epoch,
@@ -245,5 +245,16 @@ export function workerPort(parts: Parts): WorkerPort {
     completed: (run) => submit({ kind: "complete-run", ...run }),
     failed: (run) => submit({ kind: "fail-run", ...run }),
     ...effectPort(parts),
+  };
+}
+
+function reportedResult(report: {
+  readonly result: string | undefined;
+  readonly worker: string;
+}) {
+  if (report.result === undefined) return {};
+  return {
+    result: documentDigest(report.result),
+    ...(report.worker === "command" ? { commandOutput: report.result } : {}),
   };
 }

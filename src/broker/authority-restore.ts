@@ -1,5 +1,9 @@
 import type { CommandWaitRow } from "../storage/command-wait-rows.ts";
-import { commandWaitState, commandWaitRows } from "./command-wait-restore.ts";
+import {
+  commandWaitState,
+  commandWaitRows,
+  commandOutputsIntact,
+} from "./command-wait-restore.ts";
 import { isDeepStrictEqual } from "node:util";
 import { parseEvent } from "../authority/events.ts";
 import { rebuildHistory, type History } from "../authority/history.ts";
@@ -97,7 +101,7 @@ export function restore(snapshot: RestoredSnapshot): Restoration {
       ),
     ],
     ["definitions", definitionsIntact(definitions, state)],
-    ...waitChecks(snapshot, { state, definitions }),
+    ...waitChecks(snapshot, { state, definitions, events }),
     ...decisionChecks(snapshot, state),
     ...(snapshot.effects === undefined
       ? []
@@ -120,11 +124,13 @@ function waitChecks(
   snapshot: RestoredSnapshot,
   context: {
     readonly state: AuthorityState;
+    readonly events: readonly AuthorityEvent[];
     readonly definitions: ReadonlyMap<string, ExecutionManifest>;
   },
 ): readonly (readonly [string, boolean])[] {
   const { state, definitions } = context;
   return [
+    ["command-outputs", commandOutputsIntact(context.events)],
     ["command-waits", commandWaitsIntact(definitions, state)],
     ...(snapshot.waits === undefined
       ? []

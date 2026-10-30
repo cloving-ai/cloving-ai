@@ -1,7 +1,14 @@
+import type { CommandWaitState } from "./command-waits.ts";
+import { operationPhase } from "../operation-identity.ts";
+import { instantMilliseconds } from "./instants.ts";
 import { authorizeEffect } from "../effect-authorization.ts";
 import { isAfter } from "./instants.ts";
 
 export interface DispatchRead {
+  readonly commandWait?: {
+    readonly wait: CommandWaitState;
+    readonly declared: boolean;
+  };
   readonly attempt:
     | {
         readonly outcome: string | null;
@@ -18,6 +25,9 @@ export interface DispatchRead {
         readonly status: string;
         readonly capability: string;
         readonly units: number;
+        readonly method?: string;
+        readonly target?: string;
+        readonly payload?: string;
       }
     | undefined;
   readonly budget:
@@ -97,12 +107,36 @@ function authorized(read: DispatchRead): boolean {
   return result.kind === "authorized";
 }
 
+function authorizedWait(read: DispatchRead, check: DispatchCheck): boolean {
+  const { commandWait, operation } = read;
+  if (commandWait === undefined || operation === undefined) return false;
+  const { wait, declared } = commandWait;
+  const now = instantMilliseconds(check.now);
+  return [
+    declared,
+    wait.state === "waiting",
+    wait.checkOperation === check.intent.operationId,
+    wait.nextCheckAt !== null && now >= wait.nextCheckAt,
+    now < wait.deadline,
+    read.budget?.capabilities.includes("command"),
+    operation.capability === "command",
+    operation.units === 1,
+    operation.method === `run:${wait.command}`,
+    operation.target === wait.command,
+    operation.payload === wait.inputDigest,
+  ].every(Boolean);
+}
+
 export function dispatchDecision(
   read: DispatchRead,
   check: DispatchCheck,
 ): DispatchDecision {
   if (!bound(read, check.intent)) return "stale";
   if (!sendable(read, check)) return "withheld";
-  if (!authorized(read)) return "refused";
+  const allowed =
+    operationPhase(check.intent.operationId) === "command-wait"
+      ? authorizedWait(read, check)
+      : authorized(read);
+  if (!allowed) return "refused";
   return read.pinned ? "send" : "blocked";
 }

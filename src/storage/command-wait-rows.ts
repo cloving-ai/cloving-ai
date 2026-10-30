@@ -25,6 +25,13 @@ CREATE TABLE command_waits (
 ) STRICT;
 `;
 
+export const commandWaitCheckSchema = `
+ALTER TABLE command_waits ADD COLUMN check_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE command_waits ADD COLUMN check_operation TEXT;
+ALTER TABLE command_waits ADD COLUMN last_check_settled_at INTEGER;
+ALTER TABLE command_waits ADD COLUMN result TEXT;
+`;
+
 export interface CommandWaitRow {
   readonly runId: string;
   readonly name: string;
@@ -36,12 +43,19 @@ export interface CommandWaitRow {
   readonly deadline: number;
   readonly nextCheckAt: number | null;
   readonly state: string;
+  readonly checkCount: number;
+  readonly checkOperation: string | null;
+  readonly lastCheckSettledAt: number | null;
+  readonly result: string | null;
   readonly settledAt: number | null;
   readonly reason: string | null;
 }
 
-const columns =
+const openingColumns =
   "run_id, name, command, input_digest, maximum_wait_seconds, poll_every_seconds, started_at, deadline, next_check_at, state, settled_at, reason";
+const checkColumns =
+  "check_count, check_operation, last_check_settled_at, result";
+const columns = `${openingColumns}, ${checkColumns}`;
 const save = upsert({
   table: "command_waits",
   names: columns.split(", "),
@@ -60,6 +74,10 @@ export function commandWaitRow(value: unknown): CommandWaitRow {
     deadline: integer(value, "deadline"),
     nextCheckAt: optionalInteger(value, "next_check_at"),
     state: text(value, "state"),
+    checkCount: integer(value, "check_count"),
+    checkOperation: optionalText(value, "check_operation"),
+    lastCheckSettledAt: optionalInteger(value, "last_check_settled_at"),
+    result: optionalText(value, "result"),
     settledAt: optionalInteger(value, "settled_at"),
     reason: optionalText(value, "reason"),
   };
@@ -67,10 +85,15 @@ export function commandWaitRow(value: unknown): CommandWaitRow {
 
 export async function loadCommandWaits(
   connection: SqlConnection,
-  runId?: string,
+  scope: { readonly runId?: string; readonly version?: "opened" } = {},
 ): Promise<readonly CommandWaitRow[]> {
+  const { runId } = scope;
+  const selected =
+    scope.version === "opened"
+      ? `${openingColumns}, 0 AS check_count, NULL AS check_operation, NULL AS last_check_settled_at, NULL AS result`
+      : columns;
   const rows = await connection.all(
-    `SELECT ${columns} FROM command_waits` +
+    `SELECT ${selected} FROM command_waits` +
       (runId === undefined ? "" : " WHERE run_id = ?") +
       " ORDER BY run_id, name",
     runId === undefined ? [] : [runId],
@@ -80,9 +103,17 @@ export async function loadCommandWaits(
 
 export function commandWaitStatements(
   rows: readonly CommandWaitRow[],
+  scope: { readonly version?: "opened" } = {},
 ): readonly Statement[] {
   return rows.map((row) => ({
-    sql: save,
+    sql:
+      scope.version === "opened"
+        ? upsert({
+            table: "command_waits",
+            names: openingColumns.split(", "),
+            key: 2,
+          })
+        : save,
     parameters: [
       row.runId,
       row.name,
@@ -96,6 +127,14 @@ export function commandWaitStatements(
       row.state,
       row.settledAt,
       row.reason,
+      ...(scope.version === "opened"
+        ? []
+        : [
+            row.checkCount,
+            row.checkOperation,
+            row.lastCheckSettledAt,
+            row.result,
+          ]),
     ],
   }));
 }

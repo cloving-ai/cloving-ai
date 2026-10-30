@@ -16,6 +16,7 @@ import { checkCoverage } from "./coverage.ts";
 import recordedDurations from "./test-durations.json" with { type: "json" };
 import packageMetadata from "#package" with { type: "json" };
 import { workflowTestHook } from "../tools/workflow-test-hook.ts";
+import { reportTestFailures } from "./test-failures.ts";
 
 export function testConcurrency(cores: number): number {
   return Math.min(4, Math.max(2, cores - 1));
@@ -156,6 +157,7 @@ export function testCommand(
       }),
     ],
     directory,
+    acceptedExitCodes: run.reporter === "durations" ? [0] : [0, 1],
     timeoutMilliseconds: 600000 * (run.timeFactor ?? 1),
     ...(run.coverageDirectory === undefined
       ? {}
@@ -220,6 +222,7 @@ async function executeTests(
   const report: unknown = JSON.parse(output);
   if (!report || typeof report !== "object")
     throw new Error("Invalid test report");
+  reportTestFailures(report, output);
   validateReport(report, tests);
   validateOutcomes(report);
   if (options.requiredTests)

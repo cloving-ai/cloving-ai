@@ -26,12 +26,12 @@
   },
   "jobs": {
     "quality": {
-      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"macOS\",\"ARM64\",\"cloving-ci\"]') || 'macos-15' }}",
+      "runs-on": "macos-15",
       "timeout-minutes": 75,
       "env": {
         "CLOVING_CHECK_TIME_FACTOR": "5",
-        "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '3' }}",
-        "CLOVING_CI_MACOS_VERSION": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '*' || '15.*' }}"
+        "CLOVING_TEST_CONCURRENCY": "3",
+        "CLOVING_CI_MACOS_VERSION": "15.*"
       },
       "steps": [
         {
@@ -75,7 +75,7 @@
       ]
     },
     "quality_linux_node": {
-      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
+      "runs-on": "ubuntu-24.04",
       "timeout-minutes": 75,
       "strategy": {
         "fail-fast": false,
@@ -88,8 +88,8 @@
       },
       "env": {
         "CLOVING_CHECK_TIME_FACTOR": "5",
-        "CLOVING_TEST_CONCURRENCY": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '8' || '4' }}",
-        "CLOVING_CI_ARCHITECTURE": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'arm64' || 'x64' }}"
+        "CLOVING_TEST_CONCURRENCY": "4",
+        "CLOVING_CI_ARCHITECTURE": "x64"
       },
       "steps": [
         {
@@ -138,7 +138,7 @@
       ]
     },
     "quality_linux": {
-      "runs-on": "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON('[\"self-hosted\",\"Linux\",\"ARM64\",\"cloving-ci\"]') || 'ubuntu-24.04' }}",
+      "runs-on": "ubuntu-24.04",
       "timeout-minutes": 5,
       "needs": [
         "quality_linux_node"
