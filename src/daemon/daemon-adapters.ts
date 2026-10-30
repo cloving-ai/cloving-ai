@@ -22,7 +22,7 @@ import type { LocalCommands } from "../command-settings.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { HarnessSettings } from "../harness-defaults.ts";
-import type { DeliveryIntent } from "../broker/actor/delivery-intents.ts";
+import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 
 export interface DaemonSettings extends HarnessSettings {
   readonly commands?: LocalCommands;
@@ -166,12 +166,47 @@ export async function recoverCommands(
   commands: CommandWorker,
   ports: HostPorts,
 ): Promise<void> {
+  await commands.recover(await recoveryCalls(ports, "command"));
+}
+
+export async function recoverClaude(
+  worker: Pick<ClaudeWorker, "harness" | "recover">,
+  ports: Pick<HostPorts, "state" | "operations">,
+): Promise<void> {
+  for (const intent of await recoveryCalls(ports, "claude")) {
+    if ((await worker.harness(intent.operationId)) !== "claude") continue;
+    if (!(await stillRecoverable(ports, intent))) continue;
+    await worker.recover(intent);
+  }
+}
+
+async function stillRecoverable(
+  ports: Pick<HostPorts, "state" | "operations">,
+  intent: ProtectedIntent,
+): Promise<boolean> {
+  const operation = (await ports.operations(intent.runId)).find(
+    (current) => current.operationId === intent.operationId,
+  );
+  const run = (await ports.state()).runs[intent.runId];
+  return (
+    run?.status === "running" &&
+    operation !== undefined &&
+    operation.leaseGeneration === intent.leaseGeneration &&
+    ["running", "recovering", "dispatch-pending"].includes(operation.status)
+  );
+}
+
+async function recoveryCalls(
+  ports: Pick<HostPorts, "state" | "operations">,
+  capability: "command" | "claude",
+): Promise<readonly ProtectedIntent[]> {
   const state = await ports.state();
-  const calls: DeliveryIntent[] = [];
+  const calls: ProtectedIntent[] = [];
   for (const run of Object.values(state.runs)) {
+    if (capability === "claude" && run.status !== "running") continue;
     for (const operation of await ports.operations(run.runId)) {
       if (
-        operation.capability !== "command" ||
+        operation.capability !== capability ||
         operation.leaseGeneration === null ||
         !["running", "recovering", "dispatch-pending"].includes(
           operation.status,
@@ -187,5 +222,5 @@ export async function recoverCommands(
       });
     }
   }
-  await commands.recover(calls);
+  return calls;
 }

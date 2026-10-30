@@ -1,8 +1,9 @@
+import type { Recorded } from "./operation-journal.ts";
 import { ticketStatus, type TicketStatus } from "../ticket-status.ts";
 import { reviewReport, type ReviewVerdict } from "../review-subject.ts";
 import { sumPrices } from "../worker-usage.ts";
 import { changes, type Changes, type WorkTree } from "./work-tree.ts";
-import type { StreamResult } from "./claude-turn.ts";
+import { succeeded, type StreamResult, type TurnEnd } from "./claude-turn.ts";
 
 type ReportFields = Changes &
   Pick<
@@ -112,4 +113,67 @@ export async function turnReport(
     },
     { ...harness, limit: limits.resultBytes },
   );
+}
+
+export async function turnOutcome(
+  running: Parameters<typeof turnReport>[0] & {
+    readonly stopping: {
+      readonly requested: boolean;
+      readonly stoppedBy?: "daemon-shutdown";
+    };
+  },
+  end: TurnEnd,
+): Promise<Recorded> {
+  const endedAt = new Date().toISOString();
+  if (end.stopped === true && running.stopping.stoppedBy === "daemon-shutdown")
+    return stoppedOutcome(running.stopping, endedAt);
+  const { result } = end;
+  const report =
+    result === undefined
+      ? {}
+      : await turnReport(
+          {
+            tree: running.tree,
+            harness: running.harness,
+            limits: running.limits,
+          },
+          result,
+        );
+  const { text, reason } = report;
+  if (succeeded(end) && reason === undefined && text !== undefined)
+    return { outcome: "completed", result: text, endedAt };
+  if (running.stopping.requested)
+    return stoppedOutcome(running.stopping, endedAt);
+  return failedOutcome(end, { ...report, endedAt });
+}
+
+function failedOutcome(
+  end: TurnEnd,
+  report: {
+    readonly text?: string;
+    readonly reason?: string;
+    readonly endedAt: string;
+  },
+): Recorded {
+  const { text, reason, endedAt } = report;
+  return {
+    outcome: "failed",
+    reason: end.reason ?? reason ?? "claude-turn-failed",
+    ...(end.detail === undefined ? {} : { detail: end.detail }),
+    ...(text === undefined ? {} : { result: text }),
+    endedAt,
+  };
+}
+
+function stoppedOutcome(
+  stopping: { readonly stoppedBy?: "daemon-shutdown" },
+  endedAt: string,
+): Recorded {
+  return {
+    outcome: "stopped",
+    endedAt,
+    ...(stopping.stoppedBy === undefined
+      ? {}
+      : { stoppedBy: stopping.stoppedBy }),
+  };
 }
