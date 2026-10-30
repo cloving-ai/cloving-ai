@@ -68,38 +68,58 @@ function rest(size: number): string {
   return `${String(size - boundedItems)} more`;
 }
 
-function keptValue(value: object): boolean {
-  return (
-    value instanceof Date ||
-    value instanceof RegExp ||
-    ArrayBuffer.isView(value)
-  );
+function typedArray(
+  value: ArrayBufferView,
+): value is ArrayBufferView & ArrayLike<unknown> & Iterable<unknown> {
+  return "length" in value && Symbol.iterator in value;
+}
+
+function boundedView(value: ArrayBufferView): string {
+  if (!typedArray(value)) return `DataView(${String(value.byteLength)})`;
+  const items = firstItems(value).map(String);
+  const { length } = value;
+  const more = length > boundedItems ? [`... ${rest(length)} items`] : [];
+  return `${value.constructor.name}(${String(length)}) [ ${[...items, ...more].join(", ")} ]`;
+}
+
+function builtInCopy(value: object): unknown {
+  if (value instanceof Date) return new Date(value.getTime());
+  if (ArrayBuffer.isView(value)) return boundedView(value);
+  if (!(value instanceof RegExp)) return undefined;
+  if (value.source.length > boundedCharacters)
+    return boundedText(String(value));
+  return new RegExp(value.source, value.flags);
 }
 
 function boundedMap(value: Map<unknown, unknown>, bounds: Bounds): unknown {
   const entries = firstItems(value).map(
     ([key, item]) => [bounded(key, bounds), bounded(item, bounds)] as const,
   );
-  if (value.size <= boundedItems) return new Map(entries);
-  return new Map([...entries, ["...", rest(value.size)] as const]);
+  const map = new Map(entries);
+  if (value.size <= boundedItems && map.size === entries.length) return map;
+  return { Map: value.size, entries, omitted: value.size - entries.length };
 }
 
-function boundedList(items: Iterable<unknown>, bounds: Bounds): unknown[] {
-  return firstItems(items).map((item) => bounded(item, bounds));
+function boundedSet(value: Set<unknown>, bounds: Bounds): unknown {
+  const values = firstItems(value).map((item) => bounded(item, bounds));
+  const set = new Set(values);
+  if (value.size <= boundedItems && set.size === values.length) return set;
+  return { Set: value.size, values, omitted: value.size - values.length };
+}
+
+function boundedArray(value: readonly unknown[], bounds: Bounds): unknown[] {
+  const items = value
+    .slice(0, boundedItems)
+    .map((item: unknown) => bounded(item, bounds));
+  if (value.length <= boundedItems) return items;
+  return items.concat([`... ${rest(value.length)} items`]);
 }
 
 function boundedObject(value: object, bounds: Bounds): unknown {
   if (value instanceof Map) return boundedMap(value, bounds);
-  if (value instanceof Set) {
-    const items = boundedList(value, bounds);
-    if (value.size <= boundedItems) return new Set(items);
-    return new Set([...items, `... ${rest(value.size)} items`]);
-  }
-  if (!Array.isArray(value))
-    return Object.fromEntries(boundedEntries(value, bounds));
-  const items = boundedList(value, bounds);
-  if (value.length <= boundedItems) return items;
-  return [...items, `... ${rest(value.length)} items`];
+  if (value instanceof Set) return boundedSet(value, bounds);
+  if (Array.isArray(value)) return boundedArray(value, bounds);
+  return Object.fromEntries(boundedEntries(value, bounds));
 }
 
 function bounded(value: unknown, bounds: Bounds): unknown {
@@ -107,7 +127,8 @@ function bounded(value: unknown, bounds: Bounds): unknown {
   if (typeof value !== "object" || value === null) return value;
   if (bounds.ancestors.includes(value)) return "[Circular]";
   if (bounds.ancestors.length >= boundedDepth) return "[Object]";
-  if (keptValue(value)) return value;
+  const copy = builtInCopy(value);
+  if (copy !== undefined) return copy;
   const next = { ancestors: [...bounds.ancestors, value] };
   if (value instanceof Error) return boundedError(value, next);
   return boundedObject(value, next);

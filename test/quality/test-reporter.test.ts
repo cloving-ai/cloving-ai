@@ -216,5 +216,40 @@ await test("a failure keeps built-in values and bounds large collections", async
   assert.match(error, /1970-01-01T00:00:00\.000Z/);
   assert.match(error, /\/x\+\/g/);
   assert.match(error, /Uint8Array\(3\)/);
-  assert.match(error, /'\.\.\.' => '900 more'/);
+  assert.match(error, /omitted: 900/);
+});
+
+await test("a failure bounds large built-in values and keeps distinct entries and empty slots", async () => {
+  const event = failedEvent("edge values", "assertion.test.ts");
+  const date = Object.assign(
+    new Date(0),
+    Object.fromEntries(
+      Array.from({ length: 2_000 }, (_, index) => [
+        `f${String(index)}`,
+        "d".repeat(10_000),
+      ]),
+    ),
+  );
+  const prefix = "k".repeat(20_000);
+  event.data.details.error = Object.assign(new Error("edge values"), {
+    cause: {
+      date,
+      pattern: new RegExp("p".repeat(5_000_000)),
+      bytes: new Uint8Array(1_000),
+      keys: new Map([
+        [`${prefix}a`, "first"],
+        [`${prefix}b`, "second"],
+        ["...", "real entry"],
+      ]),
+      holes: Object.assign(new Array<unknown>(2), { 1: 1 }),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /1970-01-01T00:00:00\.000Z/);
+  assert.match(error, /first/);
+  assert.match(error, /second/);
+  assert.match(error, /real entry/);
+  assert.match(error, /<1 empty item>/);
+  assert.match(error, /Uint8Array\(1000\)/);
 });
