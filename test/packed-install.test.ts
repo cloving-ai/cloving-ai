@@ -1,3 +1,4 @@
+import { packedCommandWait } from "./packed-command-wait.ts";
 import { packedDaemon, packedEnvironment } from "./packed-daemon-fixture.ts";
 import { operatorRestart } from "./operator-restart-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -97,6 +98,14 @@ async function installed(root: string): Promise<string> {
   await installPacked(root, {
     archive: join(root, String(field(archive, "filename"))),
     checkout,
+  });
+  command(process.execPath, {
+    args: [
+      "--input-type=module",
+      "-e",
+      'import assert from "node:assert/strict"; import { waitForCommand } from "cloving/workflows/steps/wait-for-command"; import { waitForCommand as wait } from "cloving/workflows"; assert.equal(typeof wait, "function"); assert.equal(wait, waitForCommand);',
+    ],
+    cwd: root,
   });
   await packagedFontFiles(join(root, "node_modules/cloving"));
   await packedDevelopTemplate(join(root, "node_modules/cloving"));
@@ -291,6 +300,7 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
   try {
     command("git", { args: ["init", "-q"], cwd: root });
     const executable = await installed(root);
+    await packedCommandWait(root);
     await packedDoctor(root);
     await running(root, executable);
     await withFiles({}, async (directory) => {

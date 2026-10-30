@@ -296,6 +296,8 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",
         "./workflows/steps/run-command": "./src/steps/run-command.ts",
         "./workflows/steps/sleep": "./src/steps/sleep.ts",
+        "./workflows/steps/wait-for-command": "./src/steps/wait-for-command.ts",
+        "./workflows/steps/command-wait": "./src/steps/command-wait.ts",
       },
     }),
   );
