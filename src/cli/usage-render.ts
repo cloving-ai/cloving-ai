@@ -75,7 +75,11 @@ export function attemptText(attempt: WorkerAttemptUsage): string {
     attempt.retryKind === undefined
       ? ""
       : ` · retryKind: ${String(attempt.retryKind)}`;
-  return `Attempt ${String(attempt.attempt)} · ${attempt.model ?? "Model not known"}${kind} · ${priceText(attempt.costUsd, attempt.estimatedCostUsd)}`;
+  const resumed =
+    attempt.resumedAfter === undefined
+      ? ""
+      : ` · resumedAfter: ${attempt.resumedAfter}`;
+  return `Attempt ${String(attempt.attempt)} · ${attempt.model ?? "Model not known"}${kind}${resumed} · ${priceText(attempt.costUsd, attempt.estimatedCostUsd)}`;
 }
 
 export function attemptTexts(value: unknown): readonly string[] {
