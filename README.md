@@ -24,11 +24,12 @@ What works now:
 - Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the worker as it occurs.
 
+- `cloving init-prompt` lists local chat-store metadata without reading chat contents. Its setup instructions ask for consent before the agent counts repeated work and samples chats to suggest linked workflows.
+
 What does not work yet:
 
 - The Claude worker is not confined. It runs as the current user.
 - An approval does not merge the branch. You merge the branch yourself.
-- Cloving cannot make a workflow from your earlier chats yet. The issues [#42](https://github.com/cloving-ai/cloving-ai/issues/42), [#43](https://github.com/cloving-ai/cloving-ai/issues/43) and [#44](https://github.com/cloving-ai/cloving-ai/issues/44) are open for this work. Until then, the prompt "Find workflows in your chats" is a guide for a coding agent.
 
 ## Install
 
@@ -588,26 +589,6 @@ Rules:
 - One ticket has one behavior. If the work needs more than one pull request, split the ticket.
 - Write no secret, no private data and no local file path. For develop-issue, the ticket text and the branch become public.
 - Use one term for one thing.
-```
-
-### Find workflows in your chats
-
-```text
-Find workflows in my chats with coding agents, and write a draft Cloving workflow for one of them.
-
-Rules:
-- Read only the chats that I select. Ask me for the list first. Do not read other chats.
-- Keep the chat text and private data out of the repository. Do not copy chat text, names of persons, secrets or local paths into a file of the repository. Keep your notes outside the repository.
-
-Steps:
-1. In the selected chats, find sequences of steps that repeat. For each sequence, list the steps, the tool of each step (for example git, a test command, gh or a model), and each decision of a person (for example "approve the diff").
-2. Show me the list, and ask me which sequence to use.
-3. Map each step that changes something outside the workflow to protectedEffect, with a capability and a method. Map each decision of a person to decisionGate.
-4. Use only the capabilities that have a worker: claude (method run-turn) and github. Put each step that needs a different capability in a list of open points, not in the draft.
-5. Write the draft in the form of workflows/develop-ticket.ts of the Cloving checkout: an exported async function with the directive "use workflow", and the step helpers from the subpaths of cloving/workflows.
-6. Write a list of the human decisions in the draft: for each decisionGate, the question, the person who decides, and the result of each answer.
-7. Write workflow tests with a fake step bridge, in the form of test/develop-workflow-fixture.ts.
-8. Tell me which changes of the Cloving code the draft needs before the service can run it. The section "Develop a workflow" of the Cloving README lists them.
 ```
 
 ## Develop a workflow
