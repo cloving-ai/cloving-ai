@@ -201,6 +201,9 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const opening = await startService({
+    ...(settings.queueDailySpendLimitUsd === undefined
+      ? {}
+      : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
     workerHarness: worker.harness,
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),

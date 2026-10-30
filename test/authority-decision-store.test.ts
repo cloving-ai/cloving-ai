@@ -126,7 +126,7 @@ await test("CLV-008 a version 2 state directory opens as the current version wit
   const migrated = await openedAuthority(directory);
   const state = await migrated.state();
   await migrated.close();
-  assert.deepEqual(version(directory), [{ user_version: 6 }]);
+  assert.deepEqual(version(directory), [{ user_version: 7 }]);
   assert.deepEqual(rows(directory, versionTwoTables), before);
   assert.equal(state.gates["run-1 gate-1"]?.kind, "untyped");
   assert.deepEqual(state.gates["run-1 gate-1"].outcome, {
@@ -140,7 +140,7 @@ await test("CLV-008 a version 2 state directory opens as the current version wit
       directory,
       "SELECT version FROM schema_migrations ORDER BY version",
     ),
-    [1, 2, 3, 4, 5, 6].map((version) => ({ version })),
+    [1, 2, 3, 4, 5, 6, 7].map((version) => ({ version })),
   );
 });
 
@@ -166,7 +166,7 @@ await test("CLV-008 a version 2 state directory with the decision text cancelled
   const state = await migrated.state();
   assert.deepEqual(await migrated.eligibleIntents(), eligible);
   await migrated.close();
-  assert.deepEqual(version(directory), [{ user_version: 6 }]);
+  assert.deepEqual(version(directory), [{ user_version: 7 }]);
   assert.deepEqual(rows(directory, versionTwoTables), before);
   assert.deepEqual(state.gates["run-1 gate-1"]?.outcome, {
     decision: "cancelled",
@@ -202,7 +202,7 @@ await test("CLV-008 an interrupted migration leaves version 2, and the next open
   alterDatabase(directory, "DROP TRIGGER fail_migration;");
   const completed = await openedAuthority(directory);
   await completed.close();
-  assert.deepEqual(version(directory), [{ user_version: 6 }]);
+  assert.deepEqual(version(directory), [{ user_version: 7 }]);
   assert.deepEqual(rows(directory, versionTwoTables), before);
 });
 

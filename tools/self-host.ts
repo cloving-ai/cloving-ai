@@ -124,6 +124,7 @@ interface Commands extends HarnessSettings {
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
   readonly queueLanes: number;
+  readonly queueDailySpendLimitUsd: number | undefined;
   readonly resetQueue: boolean;
 }
 
@@ -135,6 +136,17 @@ function queueLanes(): number {
   if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
     throw new Error("The daemon did not start: queue-lanes-needs-queue");
   return Number(value);
+}
+
+function queueSpendLimit(): number | undefined {
+  const value = environment["CLOVING_QUEUE_DAILY_SPEND_USD"];
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0)
+    throw new Error("The daemon did not start: invalid-queue-spend-limit");
+  if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
+    throw new Error("The daemon did not start: queue-spend-limit-needs-queue");
+  return limit;
 }
 
 function queueInterval(): number | undefined {
@@ -271,6 +283,7 @@ const harness = configuration.harness ?? {};
 const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
+const queueDailySpendLimitUsd = queueSpendLimit();
 const lanes = queueLanes();
 const queueMilliseconds = queueInterval();
 const manifests = await preparedProject({
@@ -298,6 +311,7 @@ await launchers(
     nextCommand,
     queueMilliseconds,
     queueLanes: lanes,
+    queueDailySpendLimitUsd,
     resetQueue: flags.includes("--reset-queue"),
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),

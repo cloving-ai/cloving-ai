@@ -126,3 +126,18 @@ await test("CLV-131 start resets the queue journal only with the explicit reset 
       assert.equal(await ended(reset), 0);
     }
   }));
+
+await test("CLV-241 daily spend limit must be positive and finite and needs a queue", async () => {
+  for (const value of ["0", "-1", "text", "Infinity", "1e999", "", "NaN"])
+    assert.match(
+      await refused({ CLOVING_QUEUE_DAILY_SPEND_USD: value }),
+      /invalid-queue-spend-limit/,
+    );
+  assert.match(
+    await refused({
+      CLOVING_QUEUE_DAILY_SPEND_USD: "20",
+      CLOVING_QUEUE_SECONDS: undefined,
+    }),
+    /queue-spend-limit-needs-queue/,
+  );
+});

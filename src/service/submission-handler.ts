@@ -18,6 +18,7 @@ import {
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
 import { activeWorkflow } from "./active-tickets.ts";
+import { queueSpend } from "./queue-spend.ts";
 import {
   committed,
   failed,
@@ -183,6 +184,8 @@ async function admit(
   const { input } = resolution;
   if (Buffer.byteLength(input) > context.documentBytes)
     return unresolved(context, { kind: "failure", commandId });
+  const held = await spendRefusal(context, admission);
+  if (held !== undefined) return held;
   const receipt = await context.gateway.execute({
     principal: "operator",
     command: {
@@ -210,6 +213,24 @@ async function admit(
     workflowId,
     replayed: receipt.kind === "duplicate",
   });
+}
+
+async function spendRefusal(
+  context: ServiceContext,
+  admission: Admission,
+): Promise<Reply | undefined> {
+  if (
+    admission.workflowId !== "develop-issue" &&
+    admission.workflow.manifest.queue !== true
+  )
+    return undefined;
+  const spend = record((await queueSpend(context))["spend"]);
+  return spend?.["holding"] === true
+    ? failed("queue-spend-limit", {
+        commandId: admission.commandId,
+        detail: "Queue holding for spend limit.",
+      })
+    : undefined;
 }
 
 function admissionRefusal(

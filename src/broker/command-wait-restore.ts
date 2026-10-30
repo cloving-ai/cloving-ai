@@ -18,7 +18,7 @@ import {
 } from "../storage/command-wait-rows.ts";
 import type { SqlConnection } from "../storage/domain-rows.ts";
 import {
-  currentVersion,
+  checkedVersion,
   waitingVersion,
   upgradeSchema,
 } from "../storage/domain-schema.ts";
@@ -76,7 +76,7 @@ export async function upgradeCommandWaitChecks(
   database: Database,
 ): Promise<void> {
   await database.transaction(async (connection) => {
-    await upgradeSchema(connection, currentVersion);
+    await upgradeSchema(connection, checkedVersion);
   });
 }
 
