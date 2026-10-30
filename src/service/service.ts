@@ -23,7 +23,13 @@ import {
   type WorkflowRegistration,
   type WorkflowBundleStore,
 } from "./registry.ts";
-import { failed, queryMetadata, type ServiceContext } from "./replies.ts";
+import {
+  errorMessage,
+  failed,
+  queryMetadata,
+  scheduleRequest,
+  type ServiceContext,
+} from "./replies.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
@@ -103,6 +109,7 @@ export interface HostPorts {
 }
 
 export interface ServiceOptions {
+  readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
@@ -179,6 +186,7 @@ function dispatcher(
     ) => Promise<Reply | undefined>
   >([
     ["run", (request) => run(request.parameters)],
+    ["schedule", (request) => scheduleRequest(context, request.parameters)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],
@@ -312,9 +320,9 @@ export async function startService(
   } catch (error) {
     const unclosed = await released(authority, host.host).then(
       () => "",
-      (failure: unknown) => `; the close failed: ${message(failure)}`,
+      (failure: unknown) => `; the close failed: ${errorMessage(failure)}`,
     );
-    return refused("transport-failure", `${message(error)}${unclosed}`);
+    return refused("transport-failure", `${errorMessage(error)}${unclosed}`);
   }
 }
 
@@ -377,10 +385,6 @@ function hostPorts(
   };
 }
 
-function message(error: unknown): string {
-  return String(Reflect.get(Object(error), "message"));
-}
-
 async function hosted(
   options: ServiceOptions,
   ports: HostPorts,
@@ -390,6 +394,6 @@ async function hosted(
   try {
     return { kind: "started", host: await options.host?.(ports) };
   } catch (error) {
-    return refused("host-unavailable", message(error));
+    return refused("host-unavailable", errorMessage(error));
   }
 }

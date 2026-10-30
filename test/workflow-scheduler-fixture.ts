@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { workflowSchedules } from "../src/daemon/workflow-schedules.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
-import type { ServiceRequest } from "../src/protocol.ts";
+import type { Reply, ServiceRequest } from "../src/protocol.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -21,6 +21,7 @@ type Settings = Parameters<typeof workflowSchedules>[0];
 
 interface SchedulerOptions {
   readonly initial?: unknown;
+  readonly observationClock?: () => number;
   readonly handle?: Handle;
   readonly submit?: Settings["submit"];
   readonly declarations?: readonly DeclaredWorkflow[];
@@ -41,6 +42,7 @@ export async function reached(
 
 interface ScheduleScene {
   readonly requests: ServiceRequest[];
+  readonly ticks: () => number;
   readonly errors: readonly string[];
   readonly file: string;
   readonly settings: Settings;
@@ -48,6 +50,9 @@ interface ScheduleScene {
   readonly stop: () => Promise<void>;
   readonly restart: () => Promise<void>;
   readonly saved: () => Promise<string>;
+  readonly control: (
+    parameters: ServiceRequest["parameters"],
+  ) => Promise<Reply>;
 }
 
 function capturedErrors(): {
@@ -64,6 +69,21 @@ function capturedErrors(): {
     errors,
     restore: () => {
       process.stderr.write = output;
+    },
+  };
+}
+
+function controlledClock() {
+  let now = 0;
+  let ticks = 0;
+  return {
+    read: () => {
+      ticks += 1;
+      return now;
+    },
+    ticks: () => ticks,
+    set: (value: number) => {
+      now = value;
     },
   };
 }
@@ -91,12 +111,13 @@ export async function withScheduler(
             : options.handle(request, connection);
         },
       });
-      let now = 0;
+      const clock = controlledClock();
       const settings = {
         directory,
         runtimeDirectory,
         declarations: options.declarations ?? [scheduledWorkflow],
-        scheduleClock: () => now,
+        scheduleClock: clock.read,
+        scheduleObservationClock: options.observationClock ?? clock.read,
         submit: options.submit ?? acceptedSkip,
       };
       let scheduler = await workflowSchedules(settings);
@@ -105,13 +126,13 @@ export async function withScheduler(
       try {
         await body({
           requests,
+          ticks: clock.ticks,
           errors: captured.errors,
           file,
           settings,
-          now: (value) => {
-            now = value;
-          },
-          stop: scheduler.stop,
+          now: clock.set,
+          stop: () => scheduler.stop(),
+          control: (parameters) => scheduler.request(parameters),
           restart: async () => {
             await scheduler.stop();
             scheduler = await workflowSchedules(settings);

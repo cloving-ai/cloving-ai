@@ -3,11 +3,12 @@ import { decisionLines, runStatus } from "../cli/render.ts";
 import { record, type Fields } from "../protocol.ts";
 
 export interface Notification {
-  readonly event: "decision" | "blocked" | "failed";
+  readonly event: "decision" | "blocked" | "failed" | "schedule-stopped";
   readonly runId: string;
   readonly workflowId: string;
   readonly subject: string;
   readonly body: string;
+  readonly failedRunIds?: readonly string[];
 }
 
 export interface NotifyEvent {
@@ -73,4 +74,50 @@ export function outcomeNotification(run: Fields): NotifyEvent | undefined {
       ]),
     }),
   };
+}
+
+export function stoppedScheduleNotification(
+  schedule: Fields,
+): NotifyEvent | undefined {
+  if (schedule["state"] !== "stopped") return undefined;
+  const failedRunIds = schedule["failedRunIds"];
+  if (!Array.isArray(failedRunIds) || failedRunIds.length !== 3)
+    throw new Error("invalid-stopped-schedule");
+  const ids = failedRunIds.map((runId: unknown) => String(runId));
+  const workflowId = String(schedule["workflowId"]);
+  return {
+    key: `schedule-stopped:${workflowId}:${String(schedule["stoppedSlot"])}`,
+    message: {
+      ...message(
+        { workflowId, runId: ids[2] },
+        {
+          event: "schedule-stopped",
+          body: body(
+            `Schedule stopped after three failed runs:\n${ids.join("\n")}`,
+            [`cloving schedule resume ${workflowId}`],
+          ),
+        },
+      ),
+      failedRunIds: ids,
+    },
+  };
+}
+
+export function scheduleStopNotifications(
+  schedule: Fields,
+): readonly NotifyEvent[] {
+  const stops = schedule["stops"];
+  if (stops === undefined) {
+    const event = stoppedScheduleNotification(schedule);
+    return event === undefined ? [] : [event];
+  }
+  if (!Array.isArray(stops)) throw new Error("invalid-stopped-schedule");
+  return stops.flatMap((stop: unknown) => {
+    const event = stoppedScheduleNotification({
+      ...record(stop),
+      workflowId: schedule["workflowId"],
+      state: "stopped",
+    });
+    return event === undefined ? [] : [event];
+  });
 }

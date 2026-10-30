@@ -32,6 +32,7 @@ import { commandEffects } from "./command-journal.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
+import { scheduleConnection } from "./schedule-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import {
   ticketRegistrations,
@@ -200,7 +201,9 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { worker, github, runs, handoff, commands } = resources;
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
+  const schedules = scheduleConnection();
   const opening = await startService({
+    schedule: schedules.request,
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
@@ -229,7 +232,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     await closeWorkers(resources);
     return opening;
   }
-  const running = { ...resources, service: opening.service };
+  const running = { ...resources, service: opening.service, schedules };
   await recoverWorkers(running, given.promise);
   return {
     kind: "started",
@@ -268,12 +271,14 @@ async function runningDaemon(
   settings: DaemonSettings,
   resources: {
     readonly service: Service;
+    readonly schedules: ReturnType<typeof scheduleConnection>;
   } & Workers,
 ): Promise<Daemon> {
   const { service, github } = resources;
   await github.scan();
   const loops = await daemonLoops({
     ...settings,
+    scheduleConnection: resources.schedules,
     submit: service.worker.submit,
     queueWorkflowId: queueWorkflowId(settings),
   }).catch(async (error: unknown) => {

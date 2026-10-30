@@ -1457,7 +1457,20 @@
     "test/command-wait-sdk.test.ts": "test",
     "test/command-wait-sdk-fixture.ts": "test",
     "test/packed-command-wait.ts": "test",
-    "src/testing-requests.ts": "pure"
+    "src/testing-requests.ts": "pure",
+    "src/cli/schedule-arguments.ts": "cli",
+    "src/cli/schedule-render.ts": "cli",
+    "src/daemon/notify-events.ts": "daemon",
+    "src/daemon/schedule-control.ts": "daemon",
+    "src/schedule-progress.ts": "pure",
+    "test/cli-schedule.test.ts": "test",
+    "test/notify-schedules.test.ts": "test",
+    "test/service-schedule.test.ts": "test",
+    "test/workflow-scheduler-accounting.test.ts": "test",
+    "test/workflow-scheduler-control.test.ts": "test",
+    "test/workflow-scheduler-pending.test.ts": "test",
+    "test/notify-schedule-retention.test.ts": "test",
+    "test/schedule-output.test.ts": "test"
   },
   "allowed": {
     "quality": [

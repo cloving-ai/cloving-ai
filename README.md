@@ -167,7 +167,7 @@ The form sends the same run request as the CLI and retains its random command ID
 
 - `CLOVING_RUNTIME_DIR`: the runtime directory.
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
-- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs and failed runs. It has no default.
+- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs, failed runs and stopped schedules. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
 - `CLOVING_PROFILES`: a JSON file of named turn profiles, read once when the service starts.
@@ -972,7 +972,11 @@ The first run starts after one interval. Slots retain increasing numbers in priv
 
 An earlier scheduled run blocks later scheduled slots while queued, running, waiting for a decision or paused. Each overlap records a `schedule.skipped` event on that earlier run, with `workflowId` and `slot`, without changing its status or observation. Manual runs remain independent. The ticket queue continues to use `CLOVING_QUEUE_SECONDS`.
 
-This first scheduling slice does not yet implement schedule pause/resume commands, stopping and notification after repeated failures, or schedule displays and scheduled-run marks in status and watch. Schedule settings load at startup. A scheduler transport or journal failure stops scheduling and writes a diagnostic; reconcile the state and restart to retry a pending slot. Full product admission remains subject to the external verification policy.
+Use `cloving schedule [--json]` to list workflow IDs, intervals, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
+
+Three consecutive failed scheduled runs stop a schedule. A completed run with outcome `blocked` counts as a failure; cancellation leaves the count unchanged, and any other completion clears it. With `CLOVING_NOTIFY_COMMAND` configured, each stop sends a `schedule-stopped` notification with the three failed run IDs and the resume command; its `runId` names the third failed run.
+
+Schedule displays and scheduled-run marks in status and watch are not implemented yet. Schedule settings load at startup. A scheduler transport or journal failure stops scheduling and writes a diagnostic; reconcile the state and restart to retry a pending slot. Full product admission remains subject to the external verification policy.
 
 Startup retains each complete compiled project under `workflow-bundles` in private daemon state, beside the generated `project` directory. Each content-addressed snapshot includes workflow sources, declarations, registration manifests, all compiler artifacts, and the installed dependency graph and Node identity. Snapshots bind to the canonical repository and survive later source edits or removal. Storage lookup validates every captured file and returns `pinned-workflow-unavailable` for missing or changed bytes; startup refuses reuse of a matching damaged snapshot without repairing it. No retained generation is deleted automatically. Before Local World starts, the daemon loads the retained generations needed by unfinished runs. Their starts, replays and continuations use the recorded bundle, including after workflow removal; new submissions use current registrations. Duplicate answers and replay preserve effect receipts and spending.
 

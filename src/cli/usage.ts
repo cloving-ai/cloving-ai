@@ -49,6 +49,15 @@ Success means a committed receipt. It does not mean completed work.
 
 Lists the runs, or shows one run with its reason, evidence and next action.
 `,
+  schedule: `Usage: cloving schedule [--json]
+       cloving schedule pause <workflowId> [--json]
+       cloving schedule resume <workflowId> [--json]
+
+Lists interval schedules and their state. Pause stops new runs; an active run continues.
+Three consecutive failed or blocked scheduled runs stop a schedule.
+Resume clears failures and starts the next run one interval later.
+Paused and stopped schedules survive a service restart.
+`,
   questions: `Usage: cloving questions [<run-id>] [--json]
 
 Lists the pending decisions with the values that a decision command needs.
@@ -104,7 +113,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
 
   CLOVING_RUNTIME_DIR              The path of the runtime directory. The default is ~/.local/state/cloving/<name>-<id>/run, if XDG_RUNTIME_DIR and XDG_STATE_HOME are not set. A recorded legacy adoption takes priority.
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
-  CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs and failed runs send JSON on standard input with no added argument. The setting has no default.
+  CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs, failed runs and stopped schedules send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND when that workflow exists. Unset or no queue workflow means no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
   CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
@@ -160,6 +169,7 @@ Commands:
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
+  schedule   List, pause and resume workflow schedules.
   report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.
   answer     Answer one design question.

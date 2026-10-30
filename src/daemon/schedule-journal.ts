@@ -2,18 +2,12 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { record, type Fields } from "../protocol.ts";
 import { isCommandId, isRecordKey } from "../authority/commands.ts";
+import type { PendingSlot, ScheduleProgress } from "../schedule-progress.ts";
+export type { PendingSlot, ScheduleProgress } from "../schedule-progress.ts";
 
-export type PendingSlot =
-  | { readonly kind: "run"; readonly input: Fields }
-  | { readonly kind: "skip"; readonly runId: string };
-
-export interface ScheduleProgress {
-  readonly everySeconds: number;
-  readonly nextAt: number;
-  readonly lastSlot: number;
-  readonly activeCommandId?: string;
-  readonly pending?: PendingSlot;
-}
+type ControlFields = "state" | "failuresInRow" | "failedRunIds";
+type StoredProgress = Omit<ScheduleProgress, ControlFields> &
+  Partial<Pick<ScheduleProgress, ControlFields>>;
 
 function pendingSlot(value: unknown): value is PendingSlot {
   const fields = record(value);
@@ -36,14 +30,80 @@ function timing(fields: Fields): boolean {
   );
 }
 
-function isProgress(value: unknown): value is ScheduleProgress {
+function isProgress(value: unknown): value is StoredProgress {
   const fields = record(value);
   if (fields === undefined) return false;
-  const { activeCommandId, pending } = fields;
+  const { activeCommandId } = fields;
   return (
     timing(fields) &&
-    (activeCommandId === undefined || isCommandId(activeCommandId)) &&
-    (pending === undefined || pendingSlot(pending))
+    control(fields) &&
+    history(fields) &&
+    pendingProgress(fields) &&
+    (activeCommandId === undefined || isCommandId(activeCommandId))
+  );
+}
+
+function pendingProgress(fields: Fields): boolean {
+  const { pending, state } = fields;
+  if (pending === undefined) return true;
+  return (state === undefined || state === "active") && pendingSlot(pending);
+}
+
+function stopped(fields: Fields): boolean {
+  const { state, stoppedAt, stoppedSlot } = fields;
+  if (stoppedAt === undefined && stoppedSlot === undefined)
+    return state !== "stopped";
+  return (
+    whole(stoppedAt) &&
+    whole(stoppedSlot) &&
+    stoppedSlot <= Number(fields["lastSlot"])
+  );
+}
+
+function failures(fields: Fields): boolean {
+  const { failuresInRow, failedRunIds } = fields;
+  return (
+    whole(failuresInRow) &&
+    failuresInRow <= 3 &&
+    Array.isArray(failedRunIds) &&
+    failedRunIds.length === failuresInRow &&
+    failedRunIds.every(isRecordKey) &&
+    new Set(failedRunIds).size === failuresInRow
+  );
+}
+
+function history(fields: Fields): boolean {
+  const stops = fields["stops"];
+  if (stops === undefined) return true;
+  if (!Array.isArray(stops)) return false;
+  let previousSlot = -1;
+  for (const item of stops) {
+    const stop = record(item);
+    if (stop === undefined) return false;
+    const slot = stop["stoppedSlot"];
+    if (!whole(slot) || !whole(stop["stoppedAt"])) return false;
+    if (slot <= previousSlot || slot > Number(fields["lastSlot"])) return false;
+    if (!failures({ ...stop, failuresInRow: 3 })) return false;
+    previousSlot = slot;
+  }
+  return true;
+}
+
+function control(fields: Fields): boolean {
+  const { state, failuresInRow, failedRunIds } = fields;
+  if (
+    state === undefined &&
+    failuresInRow === undefined &&
+    failedRunIds === undefined
+  )
+    return (
+      fields["stoppedAt"] === undefined && fields["stoppedSlot"] === undefined
+    );
+  return (
+    ["active", "paused", "stopped"].includes(String(state)) &&
+    failures(fields) &&
+    stopped(fields) &&
+    (state !== "stopped" || failuresInRow === 3)
   );
 }
 
@@ -62,7 +122,12 @@ export async function scheduleJournal(directory: string): Promise<{
   const entries = new Map<string, ScheduleProgress>();
   for (const [workflowId, value] of Object.entries(parsed)) {
     if (!isProgress(value)) throw new Error("invalid-schedule-state");
-    entries.set(workflowId, value);
+    entries.set(workflowId, {
+      ...value,
+      state: value.state ?? "active",
+      failuresInRow: value.failuresInRow ?? 0,
+      failedRunIds: value.failedRunIds ?? [],
+    });
   }
   return {
     entries,

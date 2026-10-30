@@ -1,8 +1,10 @@
+import type { scheduleConnection } from "./schedule-control.ts";
 import { workflowSchedules } from "./workflow-schedules.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
 
 interface LoopSettings extends ParametersOfSchedules {
+  readonly scheduleConnection?: ReturnType<typeof scheduleConnection>;
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
@@ -17,6 +19,7 @@ export async function daemonLoops(
   settings: LoopSettings,
 ): Promise<{ readonly stop: () => Promise<void> }> {
   const schedules = await workflowSchedules(settings);
+  settings.scheduleConnection?.connect(schedules.request);
   try {
     const notifier =
       settings.notifyCommand === undefined

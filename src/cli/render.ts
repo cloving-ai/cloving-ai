@@ -9,6 +9,7 @@ import {
 import { record, type Fields } from "../protocol.ts";
 import { workflowRefusals } from "../workflow-refusals.ts";
 import { commandText, shownCommands } from "./command-effects.ts";
+import { scheduleLines } from "./schedule-render.ts";
 
 function show(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -371,6 +372,8 @@ function eventPage(result: Fields): readonly string[] {
 }
 
 const renderers = new Map<string, (result: Fields) => readonly string[]>([
+  ["schedules", scheduleLines],
+  ["schedule", scheduleLines],
   ["run-admitted", admitted],
   ["run-list", runList],
   ["run-status", runStatus],

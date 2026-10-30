@@ -1,13 +1,58 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { record } from "../src/protocol.ts";
 import { reached, withScheduler } from "./workflow-scheduler-fixture.ts";
 
 const progress = {
+  state: "active" as const,
+  failuresInRow: 0,
+  failedRunIds: [],
   everySeconds: 300,
   nextAt: 600000,
   lastSlot: 1,
   activeCommandId: "schedule:review:1",
 };
+
+await test("CLV-242 three failed scheduled runs stop before a fourth submission", () =>
+  withScheduler(
+    {
+      handle: () =>
+        Promise.resolve({
+          kind: "result",
+          result: { run: { state: "failed" } },
+        }),
+    },
+    async (scene) => {
+      for (let slot = 1; slot <= 3; slot += 1) {
+        scene.now(slot * 300000);
+        await reached(
+          async () =>
+            scene.requests.filter((request) => request.operation === "run")
+              .length === slot && !(await scene.saved()).includes('"pending"'),
+        );
+      }
+      scene.now(1200000);
+      await reached(async () => {
+        const saved = record(
+          record(JSON.parse(await scene.saved()))?.["review"],
+        );
+        return (
+          saved?.["state"] === "stopped" ||
+          scene.requests.filter((request) => request.operation === "run")
+            .length === 4
+        );
+      });
+      await scene.stop();
+      assert.equal(
+        scene.requests.filter((request) => request.operation === "run").length,
+        3,
+      );
+      const saved = record(record(JSON.parse(await scene.saved()))?.["review"]);
+      assert.ok(saved);
+      assert.equal(saved["state"], "stopped");
+      assert.equal(saved["failuresInRow"], 3);
+    },
+  ));
 
 await test("CLV-179 all terminal states release the next scheduled slot", async () => {
   for (const state of ["completed", "failed", "cancelled"])
