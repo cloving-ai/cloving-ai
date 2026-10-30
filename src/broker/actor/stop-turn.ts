@@ -2,6 +2,7 @@ import type {
   AttemptSummary,
   StopSubject,
 } from "../../authority/stop-sequence.ts";
+import type { CommandWaitsState } from "../../authority/command-waits.ts";
 import {
   integer,
   optionalInteger,
@@ -32,25 +33,31 @@ const reported =
   "EXISTS (SELECT 1 FROM stopped_operations s WHERE s.operation_id = o.operation_id)";
 const finalStatuses =
   "'refused', 'completed', 'failed', 'stopped', 'cancelled'";
+const waitStopSequence =
+  "(SELECT min(e.sequence) FROM command_waits w JOIN events e ON e.run_id = w.run_id WHERE w.check_operation = o.operation_id AND w.state != 'waiting' AND (e.type IN ('run.completed', 'run.failed', 'run.cancelled') OR (json_extract(e.payload, '$.waitName') = w.name AND (e.type = 'command-wait.expired' OR (e.type = 'command-wait.opened' AND round(unixepoch(e.recorded_at, 'subsec') * 1000) >= w.deadline)))))";
 
 export async function stopping(
   connection: SqlConnection,
   runId: string,
 ): Promise<Stopping> {
   const rows = await connection.all(
-    `SELECT o.operation_id, o.kind, d.effect_id, coalesce(a.purpose, 'dispatch') AS purpose, d.outcome, d.staged_sequence, p.status, p.receipt, ${reported} AS stopped FROM outbox o JOIN deliveries d ON d.operation_id = o.operation_id LEFT JOIN dispatch_attempts a ON a.effect_id = d.effect_id LEFT JOIN operations p ON p.operation_id = o.operation_id WHERE o.run_id = ? AND ((coalesce(p.status, '') NOT IN (${finalStatuses}) AND NOT ${reported}) OR NOT ${closed}) ORDER BY d.staged_sequence, d.rowid`,
+    `SELECT o.operation_id, o.kind, d.effect_id, coalesce(a.purpose, 'dispatch') AS purpose, d.outcome, d.staged_sequence, p.status, p.receipt, ${reported} AS stopped, ${waitStopSequence} AS stop_sequence FROM outbox o JOIN deliveries d ON d.operation_id = o.operation_id LEFT JOIN dispatch_attempts a ON a.effect_id = d.effect_id LEFT JOIN operations p ON p.operation_id = o.operation_id WHERE o.run_id = ? AND ((coalesce(p.status, '') NOT IN (${finalStatuses}) AND NOT ${reported}) OR NOT ${closed}) ORDER BY d.staged_sequence, d.rowid`,
     [runId],
   );
   const grouped = Map.groupBy(rows, (row) => text(row, "operation_id"));
   return {
-    subjects: [...grouped].map(([operationId, attempts]) => ({
-      operationId,
-      kind: text(attempts[0], "kind"),
-      attempts: attempts.map(attemptOf),
-      status: optionalText(attempts[0], "status"),
-      receipt: optionalText(attempts[0], "receipt"),
-      stopped: integer(attempts[0], "stopped") === 1,
-    })),
+    subjects: [...grouped].map(([operationId, attempts]) => {
+      const stopSequence = optionalInteger(attempts[0], "stop_sequence");
+      return {
+        operationId,
+        kind: text(attempts[0], "kind"),
+        attempts: attempts.map(attemptOf),
+        status: optionalText(attempts[0], "status"),
+        receipt: optionalText(attempts[0], "receipt"),
+        stopped: integer(attempts[0], "stopped") === 1,
+        ...(stopSequence === null ? {} : { stopSequence }),
+      };
+    }),
     cancelledSequence: optionalInteger(
       await connection.get(
         "SELECT max(sequence) AS sequence FROM events WHERE run_id = ? AND type = 'run.cancelled'",
@@ -67,9 +74,22 @@ export function turnStopping(
     readonly runId: string;
     readonly status: string | undefined;
     readonly kind: string;
+    readonly commandWaits?: CommandWaitsState;
   },
 ): Promise<Stopping> {
-  const dropping = scope.status === "cancelled" || scope.kind === "cancel-run";
+  const endingWait = Object.values(scope.commandWaits ?? {}).some(
+    (wait) =>
+      wait.checkOperation !== null &&
+      (wait.state !== "waiting" ||
+        [
+          "expire-command-wait",
+          "open-command-wait",
+          "complete-run",
+          "fail-run",
+        ].includes(scope.kind)),
+  );
+  const dropping =
+    scope.status === "cancelled" || scope.kind === "cancel-run" || endingWait;
   return dropping
     ? stopping(connection, scope.runId)
     : Promise.resolve(noStopping);
@@ -87,7 +107,7 @@ export async function droppedRuns(
   rule: { readonly limit: number; readonly stopSupported: boolean },
 ): Promise<readonly string[]> {
   const rows = await connection.all(
-    `SELECT r.run_id FROM runs r WHERE r.status = 'cancelled' AND EXISTS (SELECT 1 FROM outbox o LEFT JOIN operations p ON p.operation_id = o.operation_id WHERE o.run_id = r.run_id AND ${closed} AND ((${effectDue}) OR (${runDue}))) ORDER BY r.run_id LIMIT ?2`,
+    `SELECT r.run_id FROM runs r WHERE EXISTS (SELECT 1 FROM outbox o LEFT JOIN operations p ON p.operation_id = o.operation_id WHERE o.run_id = r.run_id AND (r.status = 'cancelled' OR EXISTS (SELECT 1 FROM command_waits w WHERE w.run_id = r.run_id AND w.check_operation = o.operation_id AND w.state != 'waiting')) AND ${closed} AND ((${effectDue}) OR (${runDue}))) ORDER BY r.run_id LIMIT ?2`,
     [rule.stopSupported ? 1 : 0, rule.limit],
   );
   return rows.map((row) => text(row, "run_id"));

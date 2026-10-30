@@ -1,4 +1,5 @@
 import { operationPhase } from "../../operation-identity.ts";
+import { endedCommandWaitCheck } from "../../authority/command-waits.ts";
 import { isInstant } from "../../authority/instants.ts";
 import { promotions } from "../../authority/leases.ts";
 import type { Operation } from "../../authority/operations.ts";
@@ -275,7 +276,9 @@ export function reconciliations(
   const accepted = acceptedNow(reconciling);
   const rejected = rejectedReports(reconciling.results);
   const due = (operation: Operation): boolean =>
-    state.runs[operation.runId]?.status !== "cancelled" && live(operation);
+    state.runs[operation.runId]?.status !== "cancelled" &&
+    !endedCommandWaitCheck(state.commandWaits ?? {}, operation.operationId) &&
+    live(operation);
   const live = (operation: Operation): boolean =>
     (operation.status === "recovering" &&
       !accepted.has(operation.operationId)) ||

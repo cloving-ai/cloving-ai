@@ -1,5 +1,11 @@
 {
   "roles": {
+    "test/command-wait-worker-fixture.ts": "test",
+    "test/command-wait-worker.test.ts": "test",
+    "src/service/command-waits.ts": "service",
+    "test/command-wait-host-fixture.ts": "test",
+    "test/command-wait-host.test.ts": "test",
+    "test/command-wait-stop.test.ts": "test",
     "test/command-wait-check-store.ts": "test",
     "test/command-wait-dispatch.test.ts": "test",
     "test/command-wait-check-restart.test.ts": "test",

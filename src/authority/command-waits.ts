@@ -28,6 +28,15 @@ export interface CommandWaitState {
 
 export type CommandWaitsState = Readonly<Record<string, CommandWaitState>>;
 
+export function endedCommandWaitCheck(
+  waits: CommandWaitsState,
+  operationId: string,
+): boolean {
+  return Object.values(waits).some(
+    (wait) => wait.state !== "waiting" && wait.checkOperation === operationId,
+  );
+}
+
 export function commandWaitKey(runId: string, name: string): string {
   return JSON.stringify([runId, name]);
 }

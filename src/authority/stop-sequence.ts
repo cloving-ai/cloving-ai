@@ -6,6 +6,7 @@ export interface AttemptSummary {
 }
 
 export interface StopSubject {
+  readonly stopSequence?: number;
   readonly operationId: string;
   readonly kind: string;
   readonly attempts: readonly AttemptSummary[];
@@ -71,7 +72,8 @@ export function stopCount(
     (attempt) =>
       attempt.outcome !== null &&
       stopPurposes.includes(attempt.purpose) &&
-      attempt.stagedSequence >= cancelledSequence,
+      attempt.stagedSequence >=
+        Math.max(cancelledSequence, subject.stopSequence ?? 0),
   ).length;
 }
 
