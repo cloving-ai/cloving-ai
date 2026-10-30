@@ -55,18 +55,62 @@ function boundedError(error: Error, bounds: Bounds): Error {
   return copy;
 }
 
+function firstItems<T>(items: Iterable<T>): T[] {
+  const result: T[] = [];
+  for (const item of items) {
+    if (result.length >= boundedItems) break;
+    result.push(item);
+  }
+  return result;
+}
+
+function rest(size: number): string {
+  return `${String(size - boundedItems)} more`;
+}
+
+function keptValue(value: object): boolean {
+  return (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    ArrayBuffer.isView(value)
+  );
+}
+
+function boundedMap(value: Map<unknown, unknown>, bounds: Bounds): unknown {
+  const entries = firstItems(value).map(
+    ([key, item]) => [bounded(key, bounds), bounded(item, bounds)] as const,
+  );
+  if (value.size <= boundedItems) return new Map(entries);
+  return new Map([...entries, ["...", rest(value.size)] as const]);
+}
+
+function boundedList(items: Iterable<unknown>, bounds: Bounds): unknown[] {
+  return firstItems(items).map((item) => bounded(item, bounds));
+}
+
+function boundedObject(value: object, bounds: Bounds): unknown {
+  if (value instanceof Map) return boundedMap(value, bounds);
+  if (value instanceof Set) {
+    const items = boundedList(value, bounds);
+    if (value.size <= boundedItems) return new Set(items);
+    return new Set([...items, `... ${rest(value.size)} items`]);
+  }
+  if (!Array.isArray(value))
+    return Object.fromEntries(boundedEntries(value, bounds));
+  const items = boundedList(value, bounds);
+  if (value.length <= boundedItems) return items;
+  return [...items, `... ${rest(value.length)} items`];
+}
+
 function bounded(value: unknown, bounds: Bounds): unknown {
   if (typeof value === "string") return boundedText(value);
   if (typeof value !== "object" || value === null) return value;
   if (bounds.ancestors.includes(value)) return "[Circular]";
   if (bounds.ancestors.length >= boundedDepth) return "[Object]";
+  if (keptValue(value)) return value;
   const next = { ancestors: [...bounds.ancestors, value] };
   if (value instanceof Error) return boundedError(value, next);
-  if (!Array.isArray(value))
-    return Object.fromEntries(boundedEntries(value, next));
-  const items = value.slice(0, boundedItems).map((item) => bounded(item, next));
-  if (value.length <= boundedItems) return items;
-  return [...items, `... ${String(value.length - boundedItems)} more items`];
+  return boundedObject(value, next);
 }
 
 export interface TestFailure {
@@ -122,6 +166,7 @@ function failureOutput(
     message: details.error.message.slice(0, failureCharacters),
     error: inspect(bounded(details.error, { ancestors: [] }), {
       depth: null,
+      maxArrayLength: boundedItems + 1,
       colors: false,
       customInspect: false,
     }).slice(0, failureCharacters),

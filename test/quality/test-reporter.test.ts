@@ -195,3 +195,26 @@ await test("a failure reads only a bounded number of properties of a large error
   assert.ok(error.length <= 100_000, String(error.length));
   assert.match(error, /field0: 'z{100}/);
 });
+
+await test("a failure keeps built-in values and bounds large collections", async () => {
+  const event = failedEvent("built-in values", "assertion.test.ts");
+  event.data.details.error = Object.assign(new Error("built-in values"), {
+    cause: {
+      map: new Map([["a", 1]]),
+      set: new Set([2]),
+      date: new Date(0),
+      pattern: /x+/g,
+      bytes: new Uint8Array(3),
+      large: new Map(
+        Array.from({ length: 1_000 }, (_, index) => [index, index]),
+      ),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.match(error, /Map\(1\) \{ 'a' => 1 \}/);
+  assert.match(error, /Set\(1\) \{ 2 \}/);
+  assert.match(error, /1970-01-01T00:00:00\.000Z/);
+  assert.match(error, /\/x\+\/g/);
+  assert.match(error, /Uint8Array\(3\)/);
+  assert.match(error, /'\.\.\.' => '900 more'/);
+});
