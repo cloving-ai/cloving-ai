@@ -60,22 +60,22 @@ await test("CLV-242 notification discovery recovers from unavailable and invalid
           ),
         schedules: () => {
           checks += 1;
-          if (checks <= 2)
-            return Promise.resolve({
-              kind: "error",
-              error: {
-                code:
-                  checks === 1
-                    ? "schedules-unavailable"
-                    : "storage-unavailable",
-                detail: "retry",
-              },
-            });
-          return notifyReply({
-            schedules: [
-              checks === 3 ? { ...stopped, failedRunIds: [] } : stopped,
-            ],
-          });
+          return checks <= 2
+            ? Promise.resolve({
+                kind: "error",
+                error: {
+                  code:
+                    checks === 1
+                      ? "schedules-unavailable"
+                      : "storage-unavailable",
+                  detail: "retry",
+                },
+              })
+            : notifyReply({
+                schedules: [
+                  checks === 3 ? { ...stopped, failedRunIds: [] } : stopped,
+                ],
+              });
         },
       },
       async (scene) => {
