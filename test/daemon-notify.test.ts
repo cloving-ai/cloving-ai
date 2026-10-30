@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { notifyPrelude, notifyWorkflow } from "./daemon-notify-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
+import { declaredQueueSettings } from "./daemon-queue-fixture.ts";
 
 await test("CLV-132 a failed shutdown delivery save still releases the daemon resources", () =>
   withConsumer(notifyWorkflow, async (consumer) => {
-    const result = await consumer.run(`${notifyPrelude}
+    const result = await consumer.run(`${notifyPrelude}${declaredQueueSettings}
 import { mkdirSync } from "node:fs";
 appendFileSync("notify.mjs", \`
 import { existsSync } from "node:fs";

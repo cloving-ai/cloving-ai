@@ -136,6 +136,7 @@ await test("CLV-141 a queue restart preserves the hold start and its original de
       await scene.stop();
       clock.now += 20 * 60 * 1000;
       const queue = issueQueue({
+        workflowId: "develop-issue",
         directory: scene.directory,
         runtimeDirectory: scene.runtimeDirectory,
         intervalMilliseconds: 5,

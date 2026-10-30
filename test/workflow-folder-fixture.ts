@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 import type { WorkflowFolderInput } from "../tools/workflow-folders.ts";
 import {
   candidateDeclaration,
@@ -38,4 +39,24 @@ export function folderInput(directory: string): WorkflowFolderInput {
     xdgConfigHome: join(directory, "config"),
     bundled: [],
   };
+}
+
+export async function writeQueueWorkflow(folder: string): Promise<void> {
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    join(folder, "queued.ts"),
+    'export async function queued() {\n  "use workflow";\n  return { kind: "blocked" };\n}\n',
+  );
+  await writeFile(
+    join(folder, "queued.declaration.json"),
+    JSON.stringify({
+      ...candidateDeclaration,
+      workflow: {
+        ...candidateDeclaration.workflow,
+        workflowId: "queued",
+        queue: true,
+        input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+      },
+    }),
+  );
 }

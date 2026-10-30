@@ -75,6 +75,26 @@ export interface RunWaitOutcome {
   readonly promotionId: string | null;
 }
 
+export interface CommandWaitRequest {
+  readonly name: string;
+  readonly input: HandoffValue;
+}
+
+export type CommandWaitOutcome =
+  | { readonly kind: "ready"; readonly value: HandoffValue }
+  | {
+      readonly kind: "timed-out" | "failed" | "refused" | "unavailable";
+      readonly reason: string;
+    };
+
+export type CommandWaitProgress =
+  | CommandWaitOutcome
+  | {
+      readonly kind: "pending";
+      readonly deadline: number;
+      readonly nextCheckAt: number;
+    };
+
 export interface CommandRequest {
   readonly scope: ProtectedScope;
   readonly name: string;
@@ -87,6 +107,12 @@ export type GateResult =
   | { readonly kind: "unavailable"; readonly reason: string };
 
 export interface StepBridge {
+  readonly openCommandWait?: (
+    request: CommandWaitRequest,
+  ) => Promise<CommandWaitProgress>;
+  readonly checkCommandWait?: (request: {
+    readonly name: string;
+  }) => Promise<CommandWaitProgress>;
   readonly effect: (request: ProtectedRequest) => Promise<ProtectedResult>;
   readonly gate: (request: GateRequest) => Promise<GateResult>;
   readonly waitForDecision?: (request: GateRequest) => Promise<DecisionWait>;

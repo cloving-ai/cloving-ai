@@ -55,12 +55,13 @@ function requestDetails([kind, request]: ScenarioRequest) {
     case "gate":
     case "waitForDecision":
       return request.expiresAt;
+    case "waitForCommand":
     case "handoff":
       return request.input;
     case "waitForRun":
       return request.maximumWaitSeconds;
     case "sleep":
-      return request.seconds;
+      return "seconds" in request ? request.seconds : request.until;
   }
 }
 

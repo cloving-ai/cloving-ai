@@ -1,7 +1,69 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { commandWaitBridge } from "../src/host/command-wait.ts";
 import { commandWaitHost } from "./command-wait-host-fixture.ts";
 import { call, eventually, withHarness } from "./service-fixture.ts";
+
+await test("CLV-237 cancelling before a paused opening resumes ends retries without a wait or command", () =>
+  withHarness(async (harness) => {
+    const { ports, opening, calls, runId } = await commandWaitHost(harness);
+    const changeRun = async (command: string) => {
+      const run = (await ports.state()).runs[runId];
+      assert.ok(run);
+      const reply = await call(harness, {
+        operation: "run-command",
+        parameters: {
+          command,
+          runId,
+          commandId: command,
+          expectedRevision: run.revision,
+        },
+      });
+      assert.equal(reply["kind"], "run-command");
+    };
+    await changeRun("pause");
+    const entered = Promise.withResolvers<undefined>();
+    let attempts = 0;
+    const controller = new AbortController();
+    const bridge = commandWaitBridge({
+      commandWait: {
+        ...ports.commandWait,
+        open: async (request) => {
+          attempts += 1;
+          const receipt = await ports.commandWait.open(request);
+          entered.resolve(undefined);
+          return receipt;
+        },
+      },
+      subject: () => Promise.resolve({ runId, commandId: "sdk:opening" }),
+      runStatus: async (id) => (await ports.state()).runs[id]?.status,
+      stopped: controller.signal,
+      pollMilliseconds: 1,
+      retryMilliseconds: 2,
+    });
+    try {
+      const wait = { name: opening.name, input: null };
+      const result = bridge.openCommandWait(wait);
+      await entered.promise;
+      await changeRun("drop");
+      assert.equal((await ports.state()).runs[runId]?.status, "cancelled");
+      assert.deepEqual(
+        await Promise.race([result, delay(100).then(() => null)]),
+        {
+          kind: "refused",
+          reason: "command-wait-run-not-running",
+        },
+      );
+      const ended = attempts;
+      await delay(10);
+      assert.equal(attempts, ended);
+      assert.equal(await ports.commandWait.read(opening), undefined);
+      assert.equal(calls.length, 0);
+    } finally {
+      controller.abort();
+    }
+  }));
 
 await test("CLV-236 host opens a declared wait and runs 120 checks outside the ordinary budget", () =>
   withHarness(async (harness) => {

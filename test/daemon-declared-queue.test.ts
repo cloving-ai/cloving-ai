@@ -14,19 +14,24 @@ settings.workflows.custom = workflows.develop;
 settings.declarations = [declaration("develop", true), declaration("other", false)];
 `;
 
-await test("CLV-218 bundled issue intake remains when declarations do not take the queue", () =>
+await test("CLV-228 the daemon leaves the queue dormant when no declaration takes it", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${declared}
 settings.declarations = [declaration("develop", false)];
 writeFileSync("ready", "900");
+writeFileSync("queue-commands.json", "unread queue journal");
 const daemon = await launched();
 try {
-  await until(() => existsSync("input-900"));
-  assert.deepEqual((await runs()).map(run => run.workflowId), ["develop-issue"]);
+  const status = await asked("status");
+  assert.equal(status.queue, undefined);
+  assert.deepEqual(status.runs, []);
 } finally { await daemon.close(); }
+assert.equal(existsSync("checks"), false);
+assert.equal(readFileSync("queue-commands.json", "utf8"), "unread queue journal");
 process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /Queue stopped:/);
   }));
 
 await test("CLV-218 only the declared queue workflow receives queued tickets", () =>

@@ -44,7 +44,7 @@ for (const queue of [false, true]) {
         await doctorWorkflows(scene.repository, scene.environment)
       ).filter((workflow) => workflow.scope === "project");
       assert.equal(workflows.length, 1);
-      const codes = requiredDoctorCodes(workflows, { queueSeconds: undefined });
+      const codes = requiredDoctorCodes(workflows);
       assert.ok(codes.includes("ticket-command"));
       assert.equal(codes.includes("next-command"), queue);
       assert.equal(codes.includes("queue-interval"), queue);
@@ -53,48 +53,41 @@ for (const queue of [false, true]) {
 }
 
 await test("CLV-207 a user workflow with github makes both GitHub checks required", () => {
-  const codes = requiredDoctorCodes(
-    [{ scope: "user", workflowId: "custom", capabilities: ["github"] }],
-    { queueSeconds: undefined },
-  );
+  const codes = requiredDoctorCodes([
+    { scope: "user", workflowId: "custom", capabilities: ["github"] },
+  ]);
   assert.ok(codes.includes("gh-login"));
   assert.ok(codes.includes("github-origin"));
   assert.ok(!codes.includes("check-command"));
 });
 
 await test("CLV-207 bundled issue needs ticket and check commands and PRD needs private texts", () => {
-  const codes = requiredDoctorCodes(
-    [
-      issue,
-      { scope: "bundled", workflowId: "develop-prd", capabilities: ["github"] },
-    ],
-    { queueSeconds: undefined },
-  );
+  const codes = requiredDoctorCodes([
+    issue,
+    { scope: "bundled", workflowId: "develop-prd", capabilities: ["github"] },
+  ]);
   assert.ok(codes.includes("check-command"));
   assert.ok(codes.includes("ticket-command"));
   assert.ok(codes.includes("private-texts"));
 });
 
 await test("CLV-207 bundled ticket needs the ticket command without requiring a merge check", () => {
-  const codes = requiredDoctorCodes(
-    [
-      {
-        scope: "bundled",
-        workflowId: "develop-ticket",
-        capabilities: ["claude"],
-      },
-    ],
-    { queueSeconds: undefined },
-  );
+  const codes = requiredDoctorCodes([
+    {
+      scope: "bundled",
+      workflowId: "develop-ticket",
+      capabilities: ["claude"],
+    },
+  ]);
   assert.ok(codes.includes("ticket-command"));
   assert.ok(!codes.includes("check-command"));
 });
 
-await test("CLV-207 queue settings require next command only with a bundled queue workflow", () => {
-  const active = requiredDoctorCodes([issue], { queueSeconds: "30" });
-  assert.ok(active.includes("next-command"));
-  assert.ok(active.includes("queue-interval"));
-  const inactive = requiredDoctorCodes([], { queueSeconds: "30" });
+await test("CLV-228 bundled workflow IDs do not opt into the queue", () => {
+  const active = requiredDoctorCodes([issue]);
+  assert.ok(!active.includes("next-command"));
+  assert.ok(!active.includes("queue-interval"));
+  const inactive = requiredDoctorCodes([]);
   assert.ok(!inactive.includes("next-command"));
   assert.ok(!inactive.includes("queue-interval"));
 });
@@ -123,7 +116,7 @@ await test("CLV-207 user folder declarations contribute requirements without exe
       await doctorWorkflows(scene.repository, scene.environment)
     ).filter((workflow) => workflow.scope === "user");
     assert.equal(workflows.length, 1);
-    const codes = requiredDoctorCodes(workflows, { queueSeconds: undefined });
+    const codes = requiredDoctorCodes(workflows);
     assert.ok(codes.includes("gh-login"));
     assert.ok(codes.includes("github-origin"));
   });

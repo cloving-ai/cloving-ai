@@ -8,7 +8,7 @@ import {
   estimatedCostUsd,
 } from "../src/token-prices.ts";
 import { withQueueSpend } from "./queue-spend-fixture.ts";
-import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
+import { declaredQueuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 import { eventually } from "./service-fixture.ts";
 
@@ -61,7 +61,7 @@ await test("CLV-241 two lanes hold a third run after 9 USD reported and 8.10 USD
 
 await test("CLV-241 daemon passes the configured spend limit to status", () =>
   withConsumer(queueWorkflow, async (consumer) => {
-    const result = await consumer.run(`${queuePrelude}
+    const result = await consumer.run(`${declaredQueuePrelude}
 const daemon = await launched({ queueDailySpendLimitUsd: 20 });
 try {
   assert.deepEqual((await asked("status")).queue.spend, { limitUsd: 20, spentUsd: 0, unknownTurns: 0, turnsInWork: 0, windowHours: 24, holding: false });
