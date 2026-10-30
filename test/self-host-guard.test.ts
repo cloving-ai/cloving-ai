@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import childProcess, { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import fileSystem, { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
@@ -44,8 +44,14 @@ async function ended(
 
 async function written(file: string): Promise<string> {
   const deadline = Date.now() + testMilliseconds(10000);
-  while (Date.now() < deadline && !existsSync(file)) await delay(50);
-  return await readFile(file, "utf8");
+  while (Date.now() < deadline) {
+    if (existsSync(file)) {
+      const text = await readFile(file, "utf8");
+      if (text !== "") return text;
+    }
+    await delay(50);
+  }
+  throw new Error("guard-marker-not-ready");
 }
 
 function guarded(marker: string, exitCode: number): string {
@@ -94,6 +100,41 @@ await test("CLV-231 rejects a failed process inspection", () => {
   } finally {
     Object.defineProperty(childProcess, "spawnSync", descriptor);
     syncBuiltinESMExports();
+  }
+});
+
+await test("CLV-231 an empty PID marker is not a ready daemon", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-guard-marker-"));
+  const marker = join(root, "daemon");
+  const descriptor = Object.getOwnPropertyDescriptor(fileSystem, "readFile");
+  assert.ok(descriptor);
+  const original = fileSystem.readFile;
+  const observed = Promise.withResolvers<undefined>();
+  await writeFile(marker, "");
+  Object.defineProperty(fileSystem, "readFile", {
+    configurable: true,
+    value: async (file: string, encoding: "utf8") => {
+      const text = await original(file, encoding);
+      if (file === marker && text === "") observed.resolve(undefined);
+      return text;
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    const reading = written(marker);
+    assert.equal(
+      await Promise.race([
+        observed.promise,
+        delay(testMilliseconds(5000), "unobserved", { ref: false }),
+      ]),
+      undefined,
+    );
+    await writeFile(marker, "12345");
+    assert.equal(await reading, "12345");
+  } finally {
+    Object.defineProperty(fileSystem, "readFile", descriptor);
+    syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

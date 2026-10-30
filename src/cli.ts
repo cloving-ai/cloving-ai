@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { createProbeRunner } from "./cli/probe-command.ts";
 import { settingsEnvironment } from "./cli/project-settings.ts";
+import { constants as systemConstants } from "node:os";
+import type { HarnessStartRequest } from "./harness-start.ts";
 import { addAbortListener } from "node:events";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
@@ -81,6 +83,41 @@ const watchCommand: WatchCommandRunner = async (request) => {
     listener[Symbol.dispose]();
   }
 };
+
+function startHarness(request: HarnessStartRequest): Promise<number | null> {
+  return new Promise((settle) => {
+    try {
+      const child = spawn(request.executable, request.arguments, {
+        cwd: request.directory,
+        env: request.environment,
+        stdio: "inherit",
+      });
+      const interrupt = (): void => undefined;
+      const terminate = (): void => {
+        child.kill("SIGTERM");
+      };
+      const cleanup = (): void => {
+        process.off("SIGINT", interrupt);
+        process.off("SIGTERM", terminate);
+      };
+      process.on("SIGINT", interrupt);
+      process.on("SIGTERM", terminate);
+      child.once("error", () => {
+        cleanup();
+        settle(null);
+      });
+      child.once("close", (status, signal) => {
+        cleanup();
+        settle(
+          status ??
+            (signal === null ? 1 : 128 + systemConstants.signals[signal]),
+        );
+      });
+    } catch {
+      settle(null);
+    }
+  });
+}
 
 interface StartRequest {
   readonly runtime: string;
@@ -239,6 +276,7 @@ else {
   await main(process.argv.slice(2), {
     repository,
     environment,
+    startHarness,
     doctorProbe: createProbeRunner({
       spawn: (input) => spawn(input.executable, input.arguments, input.options),
       kill: (identifier, signal) => process.kill(identifier, signal),
