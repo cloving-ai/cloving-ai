@@ -14,6 +14,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "tickets.nextCommand": "CLOVING_NEXT_COMMAND",
   "queue.everySeconds": "CLOVING_QUEUE_SECONDS",
   "queue.lanes": "CLOVING_QUEUE_LANES",
+  "queue.dailySpendLimitUsd": "CLOVING_QUEUE_DAILY_SPEND_USD",
   "harness.name": "CLOVING_WORKER",
   fallbackModels: "CLOVING_FALLBACK_MODELS",
   tokenPrices: "CLOVING_TOKEN_PRICES",

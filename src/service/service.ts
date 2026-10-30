@@ -101,6 +101,7 @@ export interface HostPorts {
 }
 
 export interface ServiceOptions {
+  readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
