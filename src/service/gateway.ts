@@ -36,6 +36,8 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "cancel-run",
   ],
   worker: [
+    "open-command-wait",
+    "check-command-wait",
     "record-schedule-skip",
     "mark-started",
     "open-gate",
@@ -46,7 +48,7 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "request-effect",
     "report-effect",
   ],
-  controller: ["expire-gate", "expire-lease"],
+  controller: ["expire-gate", "expire-lease", "expire-command-wait"],
 };
 
 const pinned = ["decide-gate", "resume-run"];

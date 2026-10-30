@@ -5,7 +5,7 @@ import fileSystem, { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -78,6 +78,33 @@ function stopIfAlive(processId: number, marker: string): void {
   if (processId > 0 && alive(processId, marker))
     process.kill(processId, "SIGKILL");
 }
+
+await test("CLV-231 waits for an existing marker to contain its daemon PID", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-guard-marker-"));
+  const marker = join(root, "daemon");
+  await fileSystem.writeFile(marker, "");
+  const original = fileSystem.readFile;
+  let reads = 0;
+  mock.method(
+    fileSystem,
+    "readFile",
+    async (...arguments_: Parameters<typeof original>) => {
+      const value = await original(...arguments_);
+      reads += 1;
+      if (reads === 1) await fileSystem.writeFile(marker, "12345");
+      return value;
+    },
+  );
+  syncBuiltinESMExports();
+  try {
+    assert.equal(await written(marker), "12345");
+    assert.equal(reads, 2);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 await test("CLV-231 a reused PID does not identify a guarded daemon", () => {
   assert.equal(alive(process.pid, "unrelated-guard-marker"), false);
