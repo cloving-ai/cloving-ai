@@ -44,7 +44,7 @@ await test("CLV-209 termination ignores a vanished descendant and still reaches 
 });
 
 await test("CLV-209 termination surfaces signal failures other than a vanished process", () => {
-  const failures: readonly unknown[] = [
+  const failures: readonly (Error | string)[] = [
     Object.assign(new Error("denied"), { code: "EPERM" }),
     new Error("unknown"),
     "unknown",
@@ -55,7 +55,8 @@ await test("CLV-209 termination surfaces signal failures other than a vanished p
         terminateHarness(10, {
           snapshot: () => "10 1\n",
           kill: () => {
-            throw failure;
+            AbortSignal.abort(failure).throwIfAborted();
+            return true;
           },
         });
       },
