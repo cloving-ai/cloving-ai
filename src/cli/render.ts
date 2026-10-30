@@ -1,3 +1,4 @@
+import { shownCommandWaits, commandWaitText } from "./command-waits.ts";
 import {
   priceText,
   queueSpendLines,
@@ -275,6 +276,14 @@ export function runStatus(result: Fields): readonly string[] {
     `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
+    ...shownCommandWaits(part(run, "commandWaits")).map((wait) =>
+      visible(commandWaitText(wait)),
+    ),
+    ...(record(part(run, "budget")) === undefined
+      ? []
+      : [
+          `Effects: ${show(part(part(run, "budget"), "spent"))} of ${show(part(part(run, "budget"), "limit"))}`,
+        ]),
     ...shownCommands(part(run, "commandEffects")).map((effect) =>
       visible(commandText(effect)),
     ),

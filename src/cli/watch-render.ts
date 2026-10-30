@@ -1,3 +1,4 @@
+import type { CommandWaitView } from "../authority/command-wait-view.ts";
 import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
 import type { CiRerunNotice } from "./github-ci-progress.ts";
@@ -79,6 +80,9 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly commandWaits?: readonly CommandWaitView[];
+  readonly spent?: number | null;
+  readonly limit?: number | null;
   readonly awaitedRunId?: string | null;
   readonly parentRunId?: string | null;
   readonly chainId?: string;
@@ -117,6 +121,7 @@ export interface WatchWorkflow {
 }
 
 export interface WatchRun {
+  readonly commandWaits?: readonly CommandWaitView[];
   readonly awaitedRunId?: string | null;
   readonly commandEffects?: readonly CommandEffect[];
   readonly ciReruns?: readonly CiRerunNotice[];
