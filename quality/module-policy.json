@@ -11,6 +11,7 @@
     "test/command-wait-check-migration.test.ts": "test",
     "test/command-wait-check-fixture.ts": "test",
     "src/cli/init-prompt.ts": "pure",
+    "src/cli/chat-stores.ts": "cli",
     "src/cli/init-prompt-command.ts": "cli",
     "test/cli-init-prompt.test.ts": "test",
     "test/init-prompt.test.ts": "test",

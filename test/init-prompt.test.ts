@@ -14,10 +14,22 @@ await test("CLV-225 fixed facts snapshot includes the rules, reachable targets a
     defaultHarness: "codex",
     worker: "native codex",
     runtime: "<runtime>",
+    chatStores: [],
     files: [".cloving/config.json"],
     templates: ["develop: 5 decision points"],
     workflows: [],
   });
+  assert.match(
+    output,
+    /3\. Ask for the ticket source[\s\S]*4\. \*\*Find the loops that the user already does\.\*\*[\s\S]*5\. /,
+  );
+  assert.match(output, /at most 50 rows/);
+  assert.match(output, /cut to 80 characters/);
+  assert.match(output, /at most 10 sessions/);
+  assert.match(output, /at most 20,000 bytes/);
+  assert.match(output, /at most 5 candidates/);
+  assert.match(output, /closed loop only when their outputs make a cycle/);
+  assert.match(output, /If the user says no, go to the next step/);
   assert.equal(
     output,
     await readFile(

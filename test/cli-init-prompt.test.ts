@@ -8,6 +8,9 @@ import { settings, withDoctor } from "./doctor-fixture.ts";
 
 await test("CLV-225 init-prompt prints facts and setup instructions without running a worker", () =>
   withDoctor(async (scene) => {
+    const store = join(scene.root, ".claude/projects/example");
+    await mkdir(store, { recursive: true });
+    await writeFile(join(store, "session.jsonl"), "private chat text");
     await scene.program(
       "gh",
       'if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["api", "user", "--hostname", "github.com", "--jq", ".login"])) process.exit(91); console.log("setup-user")',
@@ -23,6 +26,10 @@ await test("CLV-225 init-prompt prints facts and setup instructions without runn
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^# Facts\n/);
+    assert.match(result.stdout, /"chatStores": \[/);
+    assert.match(result.stdout, /"fileCount": 1/);
+    assert.match(result.stdout, /"totalBytes": 17/);
+    assert.doesNotMatch(result.stdout, /private chat text/);
     assert.ok(result.stdout.includes(scene.repository));
     assert.match(result.stdout, /git@github.com:example\/project.git/);
     assert.match(result.stdout, /setup-user/);
