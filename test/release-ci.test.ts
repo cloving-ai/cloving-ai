@@ -96,12 +96,14 @@ await test("CLV-097 quality qualifies the exact toolchain, completes the develop
     CLOVING_CHECK_TIME_FACTOR: "5",
     CLOVING_TEST_CONCURRENCY: "4",
     CLOVING_CI_ARCHITECTURE: "x64",
+    NODE_OPTIONS: "--max-old-space-size=4096",
   });
   assert.equal(job(workflow, "quality")["timeout-minutes"], 75);
   assert.deepEqual(job(workflow, "quality").env, {
     CLOVING_CHECK_TIME_FACTOR: "5",
     CLOVING_TEST_CONCURRENCY: "3",
     CLOVING_CI_MACOS_VERSION: "15.*",
+    NODE_OPTIONS: "--max-old-space-size=4096",
   });
   const commands = steps(workflow, "quality")
     .map((step) => step.run)
