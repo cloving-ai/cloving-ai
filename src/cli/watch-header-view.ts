@@ -1,3 +1,4 @@
+import { queueSpendLines } from "./usage-render.ts";
 import { record } from "../protocol.ts";
 import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
@@ -96,6 +97,9 @@ export function HeaderStatus(props: HeaderProps): Shown {
     class: "header-status",
     children: [
       stamp,
+      ...queueSpendLines(model?.queue?.["spend"]).map((line) =>
+        element("span", { class: "queue-spend", children: line }),
+      ),
       lanes === null
         ? null
         : element("span", { class: "queue-lanes", children: lanes }),

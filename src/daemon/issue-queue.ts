@@ -1,4 +1,4 @@
-import { activeQueueRuns } from "./queue-status.ts";
+import { queueStatus, spendNotice } from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -246,6 +246,7 @@ async function submit(
       "workflow-active",
       "ticket-active",
       "ticket-dependency-open",
+      "queue-spend-limit",
     ].includes(reply.error.code)
   )
     throw new Error(reply.error.code);
@@ -332,7 +333,13 @@ async function cycle(
     pending.failures.length = 0;
     await pending.save();
   }
-  const holding = updateHold(settings.directory, pending);
+  const update = updateHold(settings.directory, pending);
+  const notice = spendNotice();
+  const holding = async (activeRuns = 0) => {
+    const updating = await update(activeRuns);
+    const spend = notice(await queueStatus(settings));
+    return updating || spend;
+  };
   await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
@@ -343,14 +350,15 @@ async function cycle(
     if (stopped()) return;
     const pendingRuns = await completed(settings, pending);
     const lanes = settings.lanes ?? 1;
-    if (pendingRuns >= lanes) {
-      await holding(pendingRuns);
+    const status = await queueStatus(settings);
+    const spend = notice(status);
+    const updating = await update(status.busy);
+    if (
+      Math.max(pendingRuns, status.busy) >= lanes ||
+      status.busy < pendingRuns
+    )
       continue;
-    }
-    const activeRuns = await activeQueueRuns(settings);
-    const held = await holding(activeRuns);
-    if (activeRuns >= lanes || activeRuns < pendingRuns) continue;
-    if (held) continue;
+    if (updating || spend) continue;
     if (stopped()) return;
     await admission(settings, { pending, holding, signal });
   }

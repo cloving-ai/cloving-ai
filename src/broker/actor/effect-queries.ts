@@ -28,6 +28,10 @@ export interface OperationView extends OperationRow {
 export type StoredDisposition = Omit<Evidence, "sequence">;
 
 export interface EffectQueries {
+  readonly workerTurns: (window: {
+    readonly after: string;
+    readonly through: string;
+  }) => Promise<readonly OperationView[]>;
   readonly operation: (
     operationId: string,
   ) => Promise<OperationView | undefined>;
@@ -114,7 +118,10 @@ const viewColumns = operationColumns
 const waitCause =
   "CASE WHEN o.status != 'waiting' THEN NULL WHEN r.status != 'running' THEN 'run-not-running' WHEN EXISTS (SELECT 1 FROM leases h WHERE h.resource_key = o.lease_key AND h.state != 'released') THEN 'resource' ELSE 'ready' END";
 
-const viewed = `SELECT ${viewColumns}, l.generation AS lease_generation, ${waitCause} AS wait_cause FROM operations o JOIN runs r ON r.run_id = o.run_id LEFT JOIN leases l ON l.resource_key = o.lease_key AND l.operation_id = o.operation_id AND l.state != 'released'`;
+const viewSelection = `SELECT ${viewColumns}, l.generation AS lease_generation, ${waitCause} AS wait_cause`;
+const viewJoins =
+  "JOIN runs r ON r.run_id = o.run_id LEFT JOIN leases l ON l.resource_key = o.lease_key AND l.operation_id = o.operation_id AND l.state != 'released'";
+const viewed = `${viewSelection} FROM operations o ${viewJoins}`;
 
 function operationView(row: unknown): OperationView {
   return {
@@ -143,6 +150,20 @@ async function operations(
     [runId],
   );
   return rows.map(operationView);
+}
+
+async function workerTurns(
+  connection: SqlConnection,
+  window: { readonly after: string; readonly through: string },
+): Promise<readonly OperationView[]> {
+  const settled = await connection.all(
+    `${viewSelection} FROM events e CROSS JOIN operations o ${viewJoins} WHERE o.settled_sequence = e.sequence AND o.capability = 'claude' AND julianday(e.recorded_at) > julianday(?) AND julianday(e.recorded_at) <= julianday(?)`,
+    [window.after, window.through],
+  );
+  const open = await connection.all(
+    `${viewSelection} FROM operations o INDEXED BY operations_worker_open ${viewJoins} WHERE o.capability = 'claude' AND o.settled_sequence IS NULL AND o.status NOT IN ('refused', 'completed', 'failed', 'stopped', 'cancelled')`,
+  );
+  return [...settled, ...open].map(operationView);
 }
 
 async function evidence(
@@ -190,6 +211,8 @@ export function effectQueries(
   settings: { readonly stopLimit: number },
 ): EffectQueries {
   return {
+    workerTurns: (window) =>
+      read((connection) => workerTurns(connection, window)),
     stops: (runId) => read((connection) => stops(connection, runId)),
     closure: (runId) =>
       read((connection) =>

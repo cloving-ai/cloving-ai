@@ -73,7 +73,9 @@ export interface AuthorityQueries {
     cursor: CompletionCursor,
   ) => Promise<PublishedEvent | undefined>;
   readonly sequences: () => Promise<Sequences>;
-  readonly workflowIds: () => Promise<Readonly<Record<string, string>>>;
+  readonly workflowIds: (
+    runIds?: readonly string[],
+  ) => Promise<Readonly<Record<string, string>>>;
   readonly runOrigins: () => Promise<RunOrigins>;
   readonly runLinks: () => Promise<Readonly<Record<string, RunLinks>>>;
 }
@@ -210,9 +212,16 @@ async function sequences(connection: SqlConnection): Promise<Sequences> {
 
 async function workflowIds(
   connection: SqlConnection,
+  runIds?: readonly string[],
 ): Promise<Readonly<Record<string, string>>> {
+  if (runIds?.length === 0) return {};
+  const scoped =
+    runIds === undefined
+      ? ""
+      : ` AND d.run_id IN (${runIds.map(() => "?").join(", ")})`;
   const rows = await connection.all(
-    "SELECT d.run_id, json_extract(s.body, '$.workflowId') AS workflow_id FROM run_details d JOIN documents s ON s.digest = d.submission WHERE json_valid(s.body) AND json_type(s.body, '$.workflowId') = 'text'",
+    `SELECT d.run_id, json_extract(s.body, '$.workflowId') AS workflow_id FROM run_details d JOIN documents s ON s.digest = d.submission WHERE json_valid(s.body) AND json_type(s.body, '$.workflowId') = 'text'${scoped}`,
+    runIds,
   );
   return Object.fromEntries(
     rows.map((row) => [text(row, "run_id"), text(row, "workflow_id")]),
@@ -293,7 +302,8 @@ export function authorityQueries(read: Read): AuthorityQueries {
     latestCompletion: (cursor) =>
       read((connection) => latestCompletion(connection, cursor)),
     sequences: () => read(sequences),
-    workflowIds: () => read(workflowIds),
+    workflowIds: (runIds) =>
+      read((connection) => workflowIds(connection, runIds)),
     runOrigins: origins,
     runLinks: currentLinks,
   };
