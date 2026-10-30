@@ -27,16 +27,18 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFil
 
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
+if (mode === "resume-graceful") process.on("SIGTERM", () => process.exit(0));
 let prompt = "";
 process.stdin.setEncoding("utf8");
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
 appendFileSync(record, JSON.stringify({ prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
-const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: "session-1", num_turns: 3, ...fields });
+const session = process.argv.includes("--resume") ? process.argv[process.argv.indexOf("--resume") + 1] : "session-" + turn;
+const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: session, num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
 const held = () => new Promise(() => { setInterval(() => undefined, 1000); });
-print({ type: "system", subtype: "init", session_id: "session-1" });
+print({ type: "system", subtype: "init", session_id: session });
 print({ type: "assistant", text: "the word \\"result\\" is in this line" });
 process.stdout.write("this line is no JSON text and has the word \\"result\\"\\n");
 const modes = {
@@ -48,6 +50,14 @@ const modes = {
     result({});
   },
   "hold-second": () => turn === 2 ? held() : modes["fixed-reply"](),
+  "resume-once": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } result({ total_cost_usd: 2, result: "Ticket status: complete" }); },
+  "resume-graceful": () => modes["resume-once"](),
+  "crash-once": () => turn === 1 ? held() : result({ result: "Ticket status: complete" }),
+  "fallback-resume": () => {
+    if (turn <= 2) return result({ is_error: true, result: "Selected model is at capacity. Please try a different model." });
+    return turn === 3 ? held() : result({ result: "Ticket status: complete" });
+  },
+  "resume-cost": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } if (turn === 2) { result({ total_cost_usd: 1.2, result: "" }); return result({ total_cost_usd: 2, is_error: true, result: "Selected model is at capacity. Please try a different model." }); } result({ total_cost_usd: 0.5 }); },
   "conflict-second": () => { const candidate = JSON.parse(readFileSync(record + ".reply", "utf8")); if (turn === 2) candidate.process.scope = "Conflicting scope."; result({ result: JSON.stringify(candidate) }); },
   "invalid-second": () => result({ result: turn === 2 ? "{}" : readFileSync(record + ".reply", "utf8") }),
   "planned-replies": () => { const replies = JSON.parse(readFileSync(record + ".reply", "utf8")); result({ result: JSON.stringify(replies[Math.min(turn - 1, replies.length - 1)]) }); },
@@ -82,7 +92,7 @@ function capacityTurn() {
     print({ type: "assistant", error: "overloaded", parent_tool_use_id: null });
     return result({ subtype: "error_during_execution", is_error: true, result: "API failed" });
   }
-  return result({ subtype: "error_during_execution", is_error: true, result: "Selected model is at capacity. Please try a different model." });
+  return result({ subtype: "error_during_execution", is_error: true, result: "Selected model is at capacity. Please try a different model.", ...(mode === "capacity-unknown-first" ? { total_cost_usd: null } : {}) });
 }
 function laterAttempt() {
   if (mode === "capacity-hold") return held();
@@ -90,7 +100,7 @@ function laterAttempt() {
   if (mode === "capacity-unknown") return result({ total_cost_usd: null, usage: { input_tokens: 2 }, num_turns: null });
   return existsSync(record + ".reply") ? modes["fixed-reply"]() : modes.complete();
 }
-const capacityModes = ["capacity-once", "capacity-always", "overload-once", "capacity-no-result", "capacity-unknown", "capacity-hold"];
+const capacityModes = ["capacity-once", "capacity-always", "overload-once", "capacity-no-result", "capacity-unknown", "capacity-hold", "capacity-unknown-first"];
 await (capacityModes.includes(mode) ? capacityTurn() : modes[mode]());
 `;
 

@@ -22,6 +22,72 @@ function identity(operationId: string): typeof accepted {
   return { receipt: journalKey(operationId), worker: "claude" };
 }
 
+await test("CLV-239 shutdown resumes the same session with one completed report", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("resume-once");
+    await worker.deliver(intent(), signal);
+    await until(
+      () =>
+        field(record(scene, "operation-1/attempt-1.json"), "sessionCostUsd") ===
+        1.2,
+    );
+    await worker.close();
+    assert.equal(
+      field(record(scene, "operation-1/result.json"), "stoppedBy"),
+      "daemon-shutdown",
+    );
+    assert.equal(scene.reports.length, 0);
+    const next = scene.worker("resume-once");
+    assert.deepEqual(await next.reconcile(intent(), signal), {
+      kind: "accepted",
+      ...accepted,
+    });
+    await until(() => scene.reports.length === 1);
+    const [first, resumed] = scene.turns();
+    assert.ok(first && resumed);
+    assert.equal(resumed.directory, first.directory);
+    assert.deepEqual(resumed.arguments.slice(-2), ["--resume", "session-1"]);
+    assert.equal(
+      resumed.prompt,
+      "This turn stopped because the Cloving daemon restarted. Continue the task from the point where it stopped. Run again each command or subagent that did not end. End with the result line that the task asks for.",
+    );
+    assert.deepEqual(
+      scene.reports.map((report) => report.outcome),
+      ["completed"],
+    );
+    assert.equal(
+      field(record(scene, "operation-1/attempt-2.json"), "resumedAfter"),
+      "daemon-restart",
+    );
+  }));
+
+await test("CLV-239 a graceful shutdown exit cannot settle an intermediate success result", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("resume-graceful");
+    await worker.deliver(intent(), signal);
+    await until(
+      () =>
+        field(record(scene, "operation-1/attempt-1.json"), "sessionCostUsd") ===
+        1.2,
+    );
+    await worker.close();
+    assert.equal(
+      field(record(scene, "operation-1/result.json"), "stoppedBy"),
+      "daemon-shutdown",
+    );
+    assert.equal(scene.reports.length, 0);
+    assert.deepEqual(
+      await scene.worker("resume-graceful").reconcile(intent(), signal),
+      { kind: "accepted", ...accepted },
+    );
+    await until(() => scene.reports.length === 1);
+    assert.deepEqual(scene.turns()[1]?.arguments.slice(-2), [
+      "--resume",
+      "session-1",
+    ]);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+  }));
+
 await test("CLV-013 stop ends a turn in work, records and reports the outcome stopped, and a stop with no turn in work gives the reconcile result", () =>
   withScene(async (scene) => {
     const worker = scene.worker("hold");
@@ -43,6 +109,14 @@ await test("CLV-013 stop ends a turn in work, records and reports the outcome st
     assert.deepEqual(await worker.stop(intent(), signal), stopped);
     assert.deepEqual(await worker.reconcile(intent(), signal), stopped);
     assert.deepEqual(await worker.deliver(intent(), signal), stopped);
+    assert.equal(
+      field(record(scene, "operation-1/result.json"), "stoppedBy"),
+      undefined,
+    );
+    assert.deepEqual(
+      await scene.worker("hold").reconcile(intent(), signal),
+      stopped,
+    );
     assert.equal(scene.turns().length, 1);
   }));
 
@@ -60,7 +134,28 @@ await test("CLV-013 stop ends a process that does not end at the first signal", 
     assert.equal(alive(turn.processId), false);
   }));
 
-await test("CLV-013 close stops each turn in work, waits for them and reports each one as stopped", () =>
+await test("CLV-239 shutdown preserves the stop and report behavior of other harnesses", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("hold", { worker: "codex" });
+    await worker.deliver(intent(), signal);
+    await until(() => scene.turns().length === 1);
+    await worker.close();
+    assert.equal(scene.reports[0]?.outcome, "stopped");
+    assert.equal(
+      field(record(scene, "operation-1/result.json"), "stoppedBy"),
+      undefined,
+    );
+    assert.equal(
+      (
+        await scene
+          .worker("hold", { worker: "codex" })
+          .reconcile(intent(), signal)
+      ).kind,
+      "stopped",
+    );
+  }));
+
+await test("CLV-239 close stops each turn in work and records shutdown without reporting", () =>
   withScene(async (scene) => {
     const worker = scene.worker("hold");
     const second = intent({ operationId: "operation-2", target: "ticket/two" });
@@ -74,7 +169,7 @@ await test("CLV-013 close stops each turn in work, waits for them and reports ea
     );
     assert.deepEqual(
       scene.reports.map((report) => report.outcome),
-      ["stopped", "stopped"],
+      [],
     );
     assert.deepEqual(await worker.reconcile(second, signal), {
       kind: "stopped",

@@ -66,7 +66,9 @@ await test("CLV-127 capacity then success completes one operation with retained 
     assert.equal(second.directory, first.directory);
     assert.equal(second.prompt, continuation + first.prompt);
     assert.ok(second.files.includes("partial.txt"));
-    assert.deepEqual(second.arguments, first.arguments);
+    const expected = [...first.arguments];
+    expected[expected.indexOf("--max-budget-usd") + 1] = "6.75";
+    assert.deepEqual(second.arguments, expected);
     assert.deepEqual(second.environment, first.environment);
     const result = resultOf(scene.reports[0].result);
     assert.deepEqual(result["usage"], {
