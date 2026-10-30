@@ -147,6 +147,7 @@ await test("CLV-236 host joins one wait and checks it with an exhausted ordinary
     const { opening, request, clock } = scene;
     await scene.ordinary(1);
     await scene.ordinary(2);
+    await eventually(() => (scene.calls.length === 2 ? true : undefined));
     assert.equal(
       (await scene.ordinary(3)).disposition?.reason,
       "budget-exhausted",
