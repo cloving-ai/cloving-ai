@@ -20,9 +20,10 @@ const attempts = ["capacity", "network", null, undefined].map(
     attempt: index + 1,
     model: "main",
     usage: scenarioTotal,
-    costUsd: 0.25,
+    costUsd: [1.2, 0.8, 0.5, 0][index] ?? 0,
     estimatedCostUsd: null,
     ...(retryKind === undefined ? {} : { retryKind }),
+    ...(index === 1 ? { resumedAfter: "daemon-restart" as const } : {}),
   }),
 );
 
@@ -31,9 +32,10 @@ await test("CLV-229 status JSON retains kinds and leaves older attempts without 
     const scene = await workerScene(harness);
     await reportTurn(scene, {
       round: 1,
-      result: JSON.stringify({ attempts, usage: scenarioTotal, costUsd: 1 }),
+      result: JSON.stringify({ attempts, usage: scenarioTotal, costUsd: 2.5 }),
     });
     const status = await view(harness, scene.runId);
+    assert.equal(field(status, "claudeCostUsd"), 2.5);
     const turns = items(field(status, "workerTurns"));
     const saved = items(field(turns[0], "attempts"));
     assert.deepEqual(saved, attempts);

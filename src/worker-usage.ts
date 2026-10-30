@@ -19,6 +19,7 @@ export interface WorkerTurnUsage {
 }
 
 export interface WorkerAttemptUsage {
+  readonly resumedAfter?: "daemon-restart";
   readonly models?: readonly WorkerModelUsage[];
   readonly retryKind?: RetryKind | null;
   readonly attempt: number;
@@ -154,6 +155,9 @@ export function attemptsOf(
     return [
       {
         ...retryKindField(field("retryKind")),
+        ...(field("resumedAfter") === "daemon-restart"
+          ? { resumedAfter: "daemon-restart" as const }
+          : {}),
         attempt,
         model,
         ...(models === undefined ? {} : { models }),

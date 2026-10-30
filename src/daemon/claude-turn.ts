@@ -6,44 +6,24 @@ import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
-import type { ReviewVerdict } from "../review-subject.ts";
-import type { TicketStatus } from "../ticket-status.ts";
-import { grokResultFields, grokUsageWarnings } from "../grok-result.ts";
+import { grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import {
-  priceOf,
-  modelUsageOf,
-  usageOf,
-  type WorkerUsage,
-  type WorkerAttemptUsage,
-  type WorkerModelUsage,
-  type RetryKind,
-} from "../worker-usage.ts";
+  parsed,
+  textOf,
+  streamResult,
+  type Worker,
+  type StreamResult,
+} from "./claude-stream.ts";
+import { usageOf, type RetryKind } from "../worker-usage.ts";
+export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
+export type { Worker, StreamResult } from "./claude-stream.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 
-export type Worker = string;
-
-export interface StreamResult {
-  readonly reviewFeedback?: string;
-  readonly reviewVerdict?: ReviewVerdict | null;
-  readonly models?: readonly WorkerModelUsage[];
-  readonly ticketStatusTooLarge?: true;
-  readonly ticketStatus?: TicketStatus;
-  readonly attempts?: readonly WorkerAttemptUsage[];
-  readonly pricingModel?: string | null;
-  readonly subtype?: string;
-  readonly errorType?: string;
-  readonly model: string | null;
-  readonly text: string;
-  readonly failed: boolean;
-  readonly costUsd: number | null;
-  readonly usage: WorkerUsage;
-  readonly sessionId: string | null;
-  readonly turns: number | null;
-}
-
 export interface TurnEnd {
+  readonly retryKind?: RetryKind | null;
+  readonly resumedAfter?: "daemon-restart";
   readonly reason?: string;
   readonly detail?: string;
   readonly stopped?: boolean;
@@ -52,6 +32,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly progress?: (progress: TurnProgress) => Promise<void>;
   readonly resultBytes?: number;
   readonly output?: "text";
   readonly shell?: string;
@@ -65,6 +46,11 @@ export interface TurnStart {
   readonly prompt: string;
 }
 
+export interface TurnProgress {
+  readonly sessionId: string | null;
+  readonly result: StreamResult | undefined;
+}
+
 export interface RunningTurn {
   readonly processId: number | null;
   readonly ended: Promise<TurnEnd>;
@@ -72,52 +58,13 @@ export interface RunningTurn {
 }
 
 interface Stream {
+  failure: { readonly error: unknown } | undefined;
+  sessionId: string | null;
+  saved: Promise<void>;
   errorType: string | null;
   model: string | null;
   pending: string;
   result: StreamResult | undefined;
-}
-
-function parsed(line: string): unknown {
-  try {
-    const value: unknown = JSON.parse(line);
-    return value;
-  } catch {
-    return undefined;
-  }
-}
-
-function numberOf(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
-}
-
-function textOf(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function networkFailure(result: StreamResult | undefined): boolean {
-  return (
-    result?.failed === true &&
-    result.text.startsWith("API Error: Can't reach the API server")
-  );
-}
-
-export function capacityRefusal(result: StreamResult | undefined): boolean {
-  if (networkFailure(result)) return false;
-  return (
-    result?.failed === true &&
-    ["success", "error_during_execution"].includes(
-      result.subtype ?? "error_during_execution",
-    ) &&
-    (result.text ===
-      "Selected model is at capacity. Please try a different model." ||
-      result.errorType === "overloaded")
-  );
-}
-
-export function retryKind(result: StreamResult | undefined): RetryKind | null {
-  if (networkFailure(result)) return "network";
-  return capacityRefusal(result) ? "capacity" : null;
 }
 
 export function succeeded(end: TurnEnd): boolean {
@@ -126,34 +73,6 @@ export function succeeded(end: TurnEnd): boolean {
     end.exitCode === 0 &&
     end.result?.failed === false
   );
-}
-
-export function streamResult(
-  line: string,
-  worker?: Worker,
-): StreamResult | undefined {
-  if (!line.includes('"result"')) return undefined;
-  const record: unknown = parsed(line);
-  const field = (name: string): unknown => Reflect.get(Object(record), name);
-  if (field("type") !== "result") return undefined;
-  const models = modelUsageOf(field("models"));
-  return {
-    ...(models === undefined ? {} : { models }),
-    ...(typeof field("subtype") === "string"
-      ? { subtype: String(field("subtype")) }
-      : {}),
-    ...(typeof field("error") === "string"
-      ? { errorType: String(field("error")) }
-      : {}),
-    text: textOf(field("result")) ?? "",
-    failed: field("is_error") === true,
-    costUsd: priceOf(field("total_cost_usd")),
-    usage: usageOf(field("usage")),
-    model: textOf(field("model")),
-    sessionId: textOf(field("session_id")),
-    turns: numberOf(field("num_turns")),
-    ...(worker === "grok" ? grokResultFields(record) : {}),
-  };
 }
 
 function ended(stream: NodeJS.WritableStream): Promise<void> {
@@ -225,28 +144,63 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
+function streamMetadata(stream: Stream, event: unknown): boolean {
+  const field = (name: string): unknown => Reflect.get(Object(event), name);
+  const type = field("type");
+  const sessionId = textOf(field("session_id"));
+  const discovered = stream.sessionId === null && sessionId !== null;
+  if (discovered) stream.sessionId = sessionId;
+  if (type === "assistant" && field("parent_tool_use_id") == null)
+    stream.errorType = textOf(field("error"));
+  if (type === "system" || type === "result")
+    stream.model = textOf(field("model")) ?? stream.model;
+  return discovered;
+}
+
 function receivedLines(
   stream: Stream,
-  input: { readonly lines: readonly string[]; readonly worker?: Worker },
+  input: {
+    readonly lines: readonly string[];
+    readonly worker?: Worker;
+    readonly progress?: TurnStart["progress"];
+    readonly failed: () => void;
+  },
 ): void {
   const { lines, worker } = input;
   for (const line of lines) {
-    const event = parsed(line);
-    const field = (name: string): unknown => Reflect.get(Object(event), name);
-    const type = field("type");
-    if (type === "assistant" && field("parent_tool_use_id") == null)
-      stream.errorType = textOf(field("error"));
-    if (type === "system" || type === "result")
-      stream.model = textOf(field("model")) ?? stream.model;
+    const discovered = streamMetadata(stream, parsed(line));
     const result = streamResult(line, worker);
     if (result !== undefined) {
       const errorType = result.errorType ?? stream.errorType;
       stream.result = {
         ...result,
+        sessionId: result.sessionId ?? stream.sessionId,
         ...(errorType === null ? {} : { errorType }),
       };
     }
+    if (discovered || result !== undefined) {
+      saveProgress(stream, input);
+    }
   }
+}
+
+function saveProgress(
+  stream: Stream,
+  input: {
+    readonly progress?: TurnStart["progress"];
+    readonly failed: () => void;
+  },
+): void {
+  const progress = { sessionId: stream.sessionId, result: stream.result };
+  stream.saved = stream.saved
+    .then(() => {
+      if (stream.failure === undefined) return input.progress?.(progress);
+      return undefined;
+    })
+    .catch((error: unknown) => {
+      stream.failure = { error };
+      input.failed();
+    });
 }
 
 function activityOutput(start: TurnStart) {
@@ -258,11 +212,32 @@ function activityOutput(start: TurnStart) {
   return output;
 }
 
-function streamAdapter(worker: Worker | undefined) {
+function streamAdapter(
+  worker: Worker | undefined,
+  stderr: ChildProcessWithoutNullStreams["stderr"],
+) {
+  if (worker === "opencode") {
+    const translated = opencodeStream();
+    stderr.setEncoding("utf8");
+    stderr.on("data", translated.stderr);
+    return translated;
+  }
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
   if (worker === "gemini") return geminiStream();
   return undefined;
+}
+
+function streamState(): Stream {
+  return {
+    failure: undefined,
+    sessionId: null,
+    saved: Promise.resolve(),
+    pending: "",
+    result: undefined,
+    model: null,
+    errorType: null,
+  };
 }
 
 function turnOutput(
@@ -272,22 +247,16 @@ function turnOutput(
   const output = activityOutput(start);
   if (start.output === "text")
     return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
-  const translated = start.worker === "opencode" ? opencodeStream() : undefined;
-  const adapter = translated ?? streamAdapter(start.worker);
   const { stdout, stderr } = child;
-  if (translated !== undefined) {
-    stderr.setEncoding("utf8");
-    stderr.on("data", translated.stderr);
-  }
-  const stream: Stream = {
-    pending: "",
-    result: undefined,
-    model: null,
-    errorType: null,
-  };
+  const adapter = streamAdapter(start.worker, stderr);
+  const stream = streamState();
   const received = (lines: readonly string[]): void => {
     receivedLines(stream, {
       lines,
+      progress: start.progress,
+      failed: () => {
+        signalTurn({ child, start }, "SIGKILL");
+      },
       ...(start.worker === undefined ? {} : { worker: start.worker }),
     });
   };
@@ -313,6 +282,8 @@ function turnOutput(
     }
     await ended(output);
     if (adapter === undefined) received([stream.pending]);
+    await stream.saved;
+    if (stream.failure !== undefined) throw stream.failure.error;
     const result = stream.result;
     return result === undefined
       ? undefined

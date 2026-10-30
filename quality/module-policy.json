@@ -680,6 +680,7 @@
     "test/world-host.test.ts": "test",
     "test/delivery-router.test.ts": "test",
     "test/self-host.test.ts": "test",
+    "test/daemon-worker-recovery.test.ts": "test",
     "test/ticket-source.test.ts": "test",
     "test/develop-ticket-workflow.test.ts": "test",
     "test/watch-model.test.ts": "test",
@@ -1369,7 +1370,15 @@
     "templates/idea-to-issue/idea-to-issue/post-person.ts": "workflow",
     "templates/idea-to-issue/idea-to-issue/queue.ts": "workflow",
     "test/packed-idea-template.ts": "test",
-    "test/idea-template-helpers.test.ts": "test"
+    "test/idea-template-helpers.test.ts": "test",
+    "src/daemon/claude-recovery.ts": "daemon",
+    "src/daemon/claude-stream.ts": "daemon",
+    "src/daemon/turn-attempts.ts": "daemon",
+    "src/daemon/turn-attempt-journal.ts": "daemon",
+    "src/daemon/worker-profile.ts": "daemon",
+    "test/claude-worker-resume.test.ts": "test",
+    "test/claude-turn-budget.test.ts": "test",
+    "test/claude-worker-recovery-inputs.test.ts": "test"
   },
   "allowed": {
     "quality": [

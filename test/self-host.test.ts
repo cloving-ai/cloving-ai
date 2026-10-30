@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -30,8 +31,14 @@ async function watchedRun(directory: string): Promise<readonly unknown[]> {
 
 const slowClaude = `
 import { setTimeout as delay } from "node:timers/promises";
-for await (const chunk of process.stdin) chunk.toString();
-await delay(60000);
+let prompt = "";
+for await (const chunk of process.stdin) prompt += chunk;
+const line = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+line({ type: "system", session_id: "session-1" });
+if (process.argv.includes("--resume")) {
+  if (process.argv.at(-1) !== "session-1" || !prompt.startsWith("This turn stopped because the Cloving daemon restarted.")) process.exit(2);
+  line({ type: "result", subtype: "success", is_error: false, result: "The resumed task is done.\\nTicket status: complete", session_id: "session-1", total_cost_usd: 0.02 });
+} else await delay(60000);
 `;
 
 function ticket(id: string, commandId: string): Record<string, unknown> {
@@ -160,8 +167,8 @@ async function ticketRun(): Promise<void> {
   assert.equal(await ended(second), 0);
 }
 
-async function stoppedTurn(): Promise<void> {
-  const { runtimeDirectory, start } = await scene(slowClaude);
+async function resumedTurn(): Promise<void> {
+  const { directory, runtimeDirectory, start } = await scene(slowClaude);
   const asked: Asked = (operation, parameters) =>
     call({ runtimeDirectory }, { operation, parameters });
   const effects = async (runId: string): Promise<readonly unknown[]> => {
@@ -177,13 +184,27 @@ async function stoppedTurn(): Promise<void> {
   await reached(async () =>
     (await effects(runId)).slice(1).includes("running") ? runId : undefined,
   );
+  await reached(async () => {
+    const journal = join(directory, "journal");
+    const [folder] = await readdir(journal);
+    if (folder === undefined) return undefined;
+    const attempt = await readFile(
+      join(journal, folder, "attempt-1.json"),
+      "utf8",
+    ).catch(() => undefined);
+    return attempt !== undefined &&
+      field(JSON.parse(attempt), "sessionId") === "session-1"
+      ? true
+      : undefined;
+  });
   assert.equal(await ended(first), 0);
   const second = await start();
-  const shown = await reached(async () => {
-    const [state, effect] = await effects(runId);
-    return state === "completed" ? [state, effect] : undefined;
-  });
-  assert.deepEqual(shown, ["completed", "stopped"]);
+  const decision = await reached(
+    async () => items((await asked("questions", { runId }))["decisions"])[0],
+  );
+  assert.match(String(field(decision, "prompt")), /The resumed task is done/);
+  await approved(asked, { runId, decision });
+  assert.deepEqual(await effects(runId), ["completed", "completed"]);
   assert.equal(await ended(second), 0);
 }
 
@@ -237,8 +258,8 @@ async function roundsRun(): Promise<void> {
   assert.equal(await ended(daemon), 0);
 }
 
-await test("CLV-010 a stop of the daemon stops a Claude turn in work and reports it, and after the next start the run has an end with the stopped effect", () =>
-  withoutChildren(stoppedTurn));
+await test("CLV-239 a daemon restart resumes its Claude turn and the workflow completes after approval", () =>
+  withoutChildren(resumedTurn));
 
 await test("CLV-016 the start command starts a daemon that refuses a host bound that is too large, a second daemon, an empty ticket ID and a ticket that the board does not have, reads one ticket by its ID from the ticket command, runs it with the Claude worker in a work tree, waits for the approval of the operator across a restart, and completes the run after the approval", () =>
   withoutChildren(ticketRun));

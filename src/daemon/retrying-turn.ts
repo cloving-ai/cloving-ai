@@ -1,45 +1,25 @@
-import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  priceOf,
-  sumUsage,
-  usageOf,
-  type WorkerAttemptUsage,
-} from "../worker-usage.ts";
-import {
-  commandModel,
-  replaceCommandModel,
-  estimatedCostUsd,
-  priceForModel,
-  type TokenPrices,
-} from "../token-prices.ts";
-import {
-  capacityRefusal,
-  retryKind,
   startTurn,
   type RunningTurn,
   type TurnEnd,
   type TurnStart,
 } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
-import { readRecord, writeRecord } from "./operation-journal.ts";
-import { nativeHarness } from "../harness-defaults.ts";
-
-export interface RetrySettings {
-  readonly tokenPrices?: TokenPrices;
-  readonly fallbackModels?: readonly string[];
-  readonly retryDelay?: (
-    milliseconds: number,
-    signal: AbortSignal,
-  ) => Promise<void>;
-}
-
-interface RetryOptions extends RetrySettings {
-  readonly stopping?: AbortController;
-  readonly stopMilliseconds?: number;
-  readonly metadata: Readonly<Record<string, unknown>>;
-}
+import { writeRecord } from "./operation-journal.ts";
+import {
+  attemptCommand,
+  combined,
+  kindOf,
+  type Attempts,
+  type RetryOptions,
+} from "./turn-attempts.ts";
+import {
+  prepareAttempt,
+  attemptJournal,
+  recordedEnd,
+} from "./turn-attempt-journal.ts";
+export type { RetrySettings } from "./turn-attempts.ts";
 
 const waits = { capacity: [60_000, 180_000], network: [600_000, 2_400_000] };
 const networkContinuation =
@@ -47,46 +27,11 @@ const networkContinuation =
 const continuation =
   "An earlier attempt stopped because the model was at capacity; continue from the current state of the work tree.\n\n";
 
-interface Attempts {
-  readonly start: TurnStart;
-  readonly turnStartCommit: string | null;
-  readonly startedAt: string;
-  readonly options: RetryOptions;
-  readonly stopping: AbortController;
-  readonly grace: { milliseconds: number };
-  readonly ends: TurnEnd[];
-}
-
 function written(
   folder: string,
   entry: { readonly name: string; readonly value: unknown },
 ): Promise<void> {
   return writeRecord(folder, { ...entry, permissions: "private" });
-}
-
-function total(values: readonly (number | null)[]): number | null {
-  if (values.includes(null)) return null;
-  return priceOf(values.reduce<number>((sum, value) => sum + (value ?? 0), 0));
-}
-
-function combined(attempts: Attempts): TurnEnd {
-  const { ends } = attempts;
-  const last = ends.at(-1) ?? { exitCode: null, result: undefined };
-  const result = last.result ?? ends.find((end) => end.result)?.result;
-  if (result === undefined) return last;
-  return {
-    ...last,
-    result: {
-      ...result,
-      attempts: ends.map((end, index) =>
-        attemptUsage(attempts, { end, attempt: index + 1 }),
-      ),
-      ...(last.result === undefined ? { failed: true, text: "" } : {}),
-      usage: sumUsage(ends.map((end) => end.result?.usage ?? usageOf(null))),
-      costUsd: total(ends.map((end) => end.result?.costUsd ?? null)),
-      turns: total(ends.map((end) => end.result?.turns ?? null)),
-    },
-  };
 }
 
 function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
@@ -101,86 +46,6 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
       attempts.stopping.signal.removeEventListener("abort", stop);
     }),
   };
-}
-
-function attemptCommand(attempts: Attempts, attempt: number) {
-  const { start, options } = attempts;
-  const original = start.command;
-  const previous = attempts.ends[attempt - 2];
-  const fallback =
-    previous !== undefined && kindOf(attempts, previous) === "capacity"
-      ? options.fallbackModels?.[attempt - 3]
-      : undefined;
-  const command =
-    fallback === undefined ? original : replaceCommandModel(original, fallback);
-  const model = start.output === "text" ? null : commandModel(command);
-  return {
-    command,
-    model,
-    ...(fallback !== undefined && model === null
-      ? { fallbackReason: "fallback-model-unavailable" }
-      : {}),
-  };
-}
-
-function attemptUsage(
-  attempts: Attempts,
-  completion: { readonly end: TurnEnd; readonly attempt: number },
-): WorkerAttemptUsage {
-  const { end, attempt } = completion;
-  const result = end.result ?? {
-    model: null,
-    usage: usageOf(null),
-    costUsd: null,
-    pricingModel: undefined,
-  };
-  const model = result.model ?? attemptCommand(attempts, attempt).model;
-  const usage = result.usage;
-  return {
-    attempt,
-    retryKind: kindOf(attempts, end),
-    model,
-    ...(end.result?.models === undefined ? {} : { models: end.result.models }),
-    usage,
-    costUsd: result.costUsd,
-    estimatedCostUsd: attemptEstimate(attempts, { end, model, usage }),
-  };
-}
-
-function attemptEstimate(
-  attempts: Attempts,
-  result: {
-    readonly end: TurnEnd;
-    readonly model: string | null;
-    readonly usage: ReturnType<typeof usageOf>;
-  },
-): number | null {
-  const worker = attempts.start.worker ?? "claude";
-  if (!nativeHarness(worker)) return null;
-  const models = result.end.result?.models;
-  const prices = attempts.options.tokenPrices ?? {};
-  return estimatedCostUsd(
-    result.usage,
-    worker === "gemini" && models !== undefined
-      ? { worker, models, prices }
-      : {
-          worker,
-          price: priceForModel(
-            prices,
-            result.end.result?.pricingModel === undefined
-              ? result.model
-              : result.end.result.pricingModel,
-          ),
-        },
-  );
-}
-
-function kindOf(attempts: Attempts, end: TurnEnd) {
-  const { worker, output } = attempts.start;
-  if (output === "text" || !["claude", "codex"].includes(worker ?? "claude"))
-    return null;
-  if (worker !== "codex") return retryKind(end.result);
-  return capacityRefusal(end.result) ? "capacity" : null;
 }
 
 async function promptOf(attempts: Attempts): Promise<string> {
@@ -199,52 +64,34 @@ async function launched(
   attempts: Attempts,
   prompt = attempts.start.prompt,
 ): Promise<RunningTurn | undefined> {
-  const { start, options, ends } = attempts;
-  const attempt = ends.length + 1;
-  const selected = attemptCommand(attempts, attempt);
-  const folder =
-    attempt === 1
-      ? start.folder
-      : join(start.folder, `attempt-${String(attempt)}`);
-  const entry = {
-    ...options.metadata,
-    turnStartCommit: attempts.turnStartCommit,
-    model: selected.model,
-    ...(selected.fallbackReason === undefined
-      ? {}
-      : { fallbackReason: selected.fallbackReason }),
-    attempt,
-    startedAt: attempt === 1 ? attempts.startedAt : new Date().toISOString(),
-  };
-  await written(start.folder, {
-    name: "started.json",
-    value: {
-      ...entry,
-      startedAt: attempts.startedAt,
-      phase: "starting",
-      processId: null,
-    },
-  });
-  await mkdir(folder, { recursive: true, mode: 0o700 });
-  if (attempts.stopping.signal.aborted) return undefined;
+  const prepared = await prepareAttempt(attempts);
+  if (prepared === undefined || attempts.stopping.signal.aborted)
+    return undefined;
+  const { start, options } = attempts;
+  const { entry, selected, folder } = prepared;
+  const journal = attemptJournal(attempts, entry);
   const turn = controlled(attempts, {
     ...start,
-    command: selected.command,
+    command:
+      entry.resumedAfter === undefined
+        ? selected.command
+        : resumeCommand(selected.command, options.resume?.sessionId ?? ""),
+    progress: journal.progress,
     folder,
-    ...(attempt === 1 ? {} : { activityFolder: start.folder }),
+    ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
     prompt,
   });
   try {
-    const value = { ...entry, phase: "running", processId: turn.processId };
-    await written(start.folder, {
-      name: "started.json",
-      value: { ...value, startedAt: attempts.startedAt },
-    });
-    await written(start.folder, {
-      name: `attempt-${String(attempt)}.json`,
-      value,
-    });
-    return turn;
+    await journal.running(turn.processId);
+    return {
+      ...turn,
+      ended: turn.ended.then((end) => ({
+        ...end,
+        ...(entry.resumedAfter === undefined
+          ? {}
+          : { resumedAfter: entry.resumedAfter }),
+      })),
+    };
   } catch (error) {
     turn.stop(0);
     await turn.ended;
@@ -252,36 +99,18 @@ async function launched(
   }
 }
 
-async function recordedEnd(
-  attempts: Attempts,
-  completion: { readonly processId: number | null; readonly end: TurnEnd },
-): Promise<void> {
-  const { start, ends, options } = attempts;
-  const { processId, end } = completion;
-  const attempt = ends.length;
-  const selected = attemptCommand(attempts, attempt);
-  const name = `attempt-${String(attempt)}.json`;
-  const started = await readRecord(start.folder, name);
-  const startedAt: unknown = Reflect.get(Object(started), "startedAt");
-  if (typeof startedAt !== "string")
-    throw new Error("attempt-start-time-missing");
-  await written(start.folder, {
-    name,
-    value: {
-      ...options.metadata,
-      turnStartCommit: attempts.turnStartCommit,
-      ...attemptUsage(attempts, { end, attempt }),
-      ...(selected.fallbackReason === undefined
-        ? {}
-        : { fallbackReason: selected.fallbackReason }),
-      attempt,
-      processId,
-      startedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: end.exitCode,
-      capacity: capacityRefusal(end.result),
-    },
-  });
+function resumeCommand(
+  command: readonly string[],
+  sessionId: string,
+): readonly string[] {
+  const separator = command.indexOf("--");
+  const boundary = separator < 0 ? command.length : separator;
+  return [
+    ...command.slice(0, boundary),
+    "--resume",
+    sessionId,
+    ...command.slice(boundary),
+  ];
 }
 
 async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
@@ -338,9 +167,7 @@ async function finished(
     const end = await turn.ended;
     ends.push(end);
     await recordedEnd(attempts, { processId: turn.processId, end });
-    const kind = kindOf(attempts, end);
-    const milliseconds =
-      kind === null ? undefined : waits[kind][ends.length - 1];
+    const milliseconds = retryWait(attempts, end);
     if (cancelled(attempts) || milliseconds === undefined) break;
     await waited(attempts, milliseconds);
     if (cancelled(attempts)) return { ...combined(attempts), stopped: true };
@@ -348,9 +175,26 @@ async function finished(
     if (typeof prepared !== "string") return prepared;
     turn = await launched(attempts, prepared);
   }
+  return attemptOutcome(attempts);
+}
+
+function retryWait(attempts: Attempts, end: TurnEnd): number | undefined {
+  const kind = kindOf(attempts, end);
+  if (kind === null) return undefined;
+  if (attemptCommand(attempts, attempts.ends.length + 1).budgetUsd === 0) {
+    attempts.failure = "claude-turn-budget-exhausted";
+    return undefined;
+  }
+  return waits[kind][
+    attempts.ends.filter((end) => end.resumedAfter === undefined).length - 1
+  ];
+}
+
+function attemptOutcome(attempts: Attempts): TurnEnd {
   return {
     ...combined(attempts),
-    ...(cancelled(attempts) || turn === undefined ? { stopped: true } : {}),
+    ...(attempts.failure === undefined ? {} : { reason: attempts.failure }),
+    ...(cancelled(attempts) ? { stopped: true } : {}),
   };
 }
 
@@ -363,28 +207,27 @@ export async function startRetriedTurn(
   options: RetryOptions,
 ): Promise<RunningTurn> {
   const stopping = options.stopping ?? new AbortController();
-  const turnStartCommit = await turnHead({
-    directory: start.directory,
-    signal: stopping.signal,
-  });
+  const turnStartCommit =
+    options.resume === undefined
+      ? await turnHead({
+          directory: start.directory,
+          signal: stopping.signal,
+        })
+      : options.resume.turnStartCommit;
   const attempts: Attempts = {
     turnStartCommit,
     start,
-    startedAt: new Date().toISOString(),
+    startedAt: options.resume?.startedAt ?? new Date().toISOString(),
     options,
     stopping,
-    ends: [],
-    grace: { milliseconds: options.stopMilliseconds ?? 2_000 },
+    ends: [...(options.resume?.ends ?? [])],
+    grace: { milliseconds: options.stopMilliseconds ?? 15_000 },
   };
   const turn = await launched(attempts);
   if (turn === undefined)
     return {
       processId: null,
-      ended: Promise.resolve({
-        exitCode: null,
-        result: undefined,
-        stopped: true,
-      }),
+      ended: Promise.resolve(attemptOutcome(attempts)),
       stop: () => {
         stopping.abort();
       },

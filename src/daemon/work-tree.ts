@@ -1,3 +1,4 @@
+import { readRecord, writeRecord, operationKey } from "./operation-journal.ts";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
@@ -274,4 +275,29 @@ async function changeLines(call: GitCall): Promise<string[] | null> {
     .filter((line) => line.trim() !== "")
     .slice(0, lineLimit)
     .map((line) => line.slice(0, lineLength));
+}
+
+export async function firstTurn(
+  settings: { readonly journal: string },
+  opening: {
+    readonly tree: WorkTree;
+    readonly intent: { readonly target: string; readonly runId: string };
+  },
+): Promise<WorkTree> {
+  const { tree, intent } = opening;
+  const { target, runId } = intent;
+  const folder = target.startsWith("branch:")
+    ? join(settings.journal, "runs", operationKey(runId), "targets")
+    : join(settings.journal, "targets");
+  const name = `${operationKey(target)}.json`;
+  const startCommit: unknown = Reflect.get(
+    Object(await readRecord(folder, name)),
+    "startCommit",
+  );
+  if (typeof startCommit === "string") return { ...tree, startCommit };
+  await writeRecord(folder, {
+    name,
+    value: { target, startCommit: tree.startCommit },
+  });
+  return tree;
 }
