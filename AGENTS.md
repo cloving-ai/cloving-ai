@@ -11,3 +11,5 @@ Write and observe the intended failing test before each behavior, then implement
 Setup commands: `npm ci --ignore-scripts`, `npm run check:setup`, `npm run build`, `npm pack --ignore-scripts`. The full `npm run check` and `npm run test:concurrency` fail closed on purpose. They are the admission gate of the operator, not work of a ticket. A ticket passes with `npm run check:quality`. Never list the fail-closed gate as remaining work. Repository policy copies are proposals; accepted verification policy lives outside candidate write access.
 
 Pin and justify every dependency. Inspect the installed packed artifact with scripts disabled. Stage explicit owned paths only. Never add AI attribution, bypass hooks, overwrite unrelated work, push, publish or deploy without scope in the grant.
+
+Keep keys in `quality/module-policy.json`'s `roles`, `allowed`, `forbiddenReachability` and `automaticPaths` maps in ascending code-unit order. Insert each new entry at its sorted place.
