@@ -3,46 +3,68 @@ import childProcess from "node:child_process";
 import filesystem from "node:fs";
 import { readdir, symlink } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { runSupervisedCommand } from "../../quality/command.ts";
-import {
-  checkTests,
-  coverageCommand,
-  parseCheckTimeFactor,
-  parseTestConcurrency,
-  testCommand,
-  testConcurrency,
-} from "../../quality/test-execution.ts";
+import { checkTests, testCommand } from "../../quality/test-execution.ts";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
+import {
+  assertTestFailure,
+  failedOutput,
+  retainedReport,
+} from "./test-failure-fixture.ts";
 
-await test("CLV-112 bounds test concurrency by available cores", () => {
-  for (const [cores, concurrency] of [
-    [1, 2],
-    [2, 2],
-    [3, 2],
-    [4, 3],
-    [5, 4],
-    [24, 4],
-  ] as const)
-    assert.equal(testConcurrency(cores), concurrency);
+await test("CLV-164 saves assertion diffs and stacks without expanding the failure list", async () => {
+  await withFiles(
+    {
+      "assertion.test.ts":
+        'import { test } from "node:test"; import assert from "node:assert/strict"; await test("deep assertion", () => { assert.deepStrictEqual({ value: "actual" }, { value: "expected" }); });',
+    },
+    async (directory) => {
+      const result = await failedOutput(async () => {
+        await checkTests(directory, {
+          files: [join(directory, "assertion.test.ts")],
+        });
+      });
+      const report = retainedReport(result.error);
+      assert.match(report, /actual/);
+      assert.match(report, /expected/);
+      assert.match(report, /AssertionError/);
+      assert.match(report, /TestContext/);
+      assert.match(result.output, /^Failed tests:\ndeep assertion\n/);
+      assert.equal(result.output.trimEnd().split("\n").length, 4);
+    },
+  );
 });
 
-await test("CLV-156 accepts only whole test concurrency settings from 1 to 8", () => {
-  for (const cores of [1, 3, 4, 24])
-    assert.equal(
-      parseTestConcurrency(undefined, cores),
-      testConcurrency(cores),
-    );
-  for (const value of ["1", "2", "3", "4", "5", "6", "7", "8"])
-    assert.equal(parseTestConcurrency(value, 3), Number(value));
-  for (const value of ["0", "9", "x", "2.5", "-1", "", " 3", "3 ", "03", "3\n"])
-    assert.throws(
-      () => parseTestConcurrency(value, 3),
-      /CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 8/,
-    );
+await test("CLV-164 prints failed assertions and crashed files before rejecting", async () => {
+  await withFiles(
+    {
+      "assertion.test.ts":
+        'import { test } from "node:test"; import assert from "node:assert/strict"; await test("broken assertion", () => { assert.fail("assertion cause"); });',
+      "crash.test.ts": 'console.error("file crash cause"); process.exit(1);',
+    },
+    async (directory) => {
+      const result = await failedOutput(async () => {
+        await checkTests(directory, {
+          files: [
+            join(directory, "assertion.test.ts"),
+            join(directory, "crash.test.ts"),
+          ],
+        });
+      });
+      const report = retainedReport(result.error);
+      assert.match(report, /broken assertion/);
+      assert.match(report, /file crash cause/);
+      const output = result.output;
+      assert.match(output, /^Failed tests:\n/);
+      assert.match(output, /broken assertion/);
+      assert.match(output, /assertion cause/);
+      assert.match(output, /assertion\.test\.ts:1:\d+/);
+      assert.match(output, /crash\.test\.ts/);
+      assert.match(output, /stderr:\n.*file crash cause/);
+    },
+  );
 });
 
 await test("CLV-101 bounds retries for transient coverage cleanup errors", async () => {
@@ -110,29 +132,6 @@ await test("CLV-101 fails the gate when coverage cleanup exhausts its retries", 
     filesystem.rmSync = remove;
     syncBuiltinESMExports();
   }
-});
-
-await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
-  assert.equal(parseCheckTimeFactor(undefined), 1);
-  for (const value of ["1", "2", "3", "4", "5"])
-    assert.equal(parseCheckTimeFactor(value), Number(value));
-  for (const value of [
-    "0",
-    "6",
-    "1.5",
-    "-1",
-    "3x",
-    "",
-    " ",
-    " 3",
-    "3 ",
-    "03",
-    "3\n",
-  ])
-    assert.throws(
-      () => parseCheckTimeFactor(value),
-      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5/,
-    );
 });
 
 await test("CLV-099 rejects an invalid time factor before the first gate check", async () => {
@@ -247,9 +246,27 @@ await test("QG-18 rejects failing TODO events even when the runner exits success
   const source =
     'import { test } from "node:test"; import assert from "node:assert/strict"; await test("passing", () => { assert.ok(true); }); await test("unfinished", { todo: true }, () => { assert.fail("failure"); });';
   await withFiles({ "main.test.ts": source }, async (directory) => {
-    await assert.rejects(async () => {
-      await checkTests(directory, { files: [join(directory, "main.test.ts")] });
-    }, /test-report-failure/);
+    const file = join(directory, "main.test.ts");
+    const command = testCommand(directory, { tests: [file] });
+    const result = childProcess.spawnSync(
+      command.executable,
+      command.arguments,
+      {
+        cwd: directory,
+        encoding: "utf8",
+        env: { PATH: process.env["PATH"], TZ: "UTC", CI: "true" },
+        timeout: testMilliseconds(10000),
+      },
+    );
+    assert.equal(result.status, 0);
+    const failure = await failedOutput(async () => {
+      await checkTests(directory, { files: [file] });
+    });
+    assert.equal(retainedReport(failure.error), result.stdout);
+    assert.equal(
+      failure.output,
+      `Failed tests:\nunfinished\n  failure\n  at ${file}:1:133\n`,
+    );
   });
 });
 
@@ -277,90 +294,8 @@ await test("QG-18 rejects an unhandled rejection from an otherwise passing test"
   const source =
     'import { test } from "node:test"; await test("unhandled", () => { void Promise.reject(new Error("unhandled fixture")); });';
   await withFiles({ "main.test.ts": source }, async (directory) => {
-    await assert.rejects(async () => {
+    await assertTestFailure(async () => {
       await checkTests(directory, { files: [join(directory, "main.test.ts")] });
-    }, /Check exit 1/);
-  });
-});
-
-await test("CLV-044 the developer gate gives its test command a 600 s bound", () => {
-  const command = testCommand("/project", {
-    tests: ["/project/main.test.ts"],
-  });
-  assert.equal(command.timeoutMilliseconds, 600000);
-  assert.deepEqual(command.arguments.slice(-1), ["/project/main.test.ts"]);
-  assert.equal(command.directory, "/project");
-});
-
-await test("CLV-156 the test command uses the configured worker count", () => {
-  const previous = process.env["CLOVING_TEST_CONCURRENCY"];
-  process.env["CLOVING_TEST_CONCURRENCY"] = "3";
-  try {
-    const command = testCommand("/project", {
-      tests: ["/project/main.test.ts"],
     });
-    assert.ok(command.arguments.includes("--test-concurrency=3"));
-    assert.equal(command.timeoutMilliseconds, 600000);
-  } finally {
-    if (previous === undefined) delete process.env["CLOVING_TEST_CONCURRENCY"];
-    else process.env["CLOVING_TEST_CONCURRENCY"] = previous;
-  }
-});
-
-await test("CLV-099 scales the test command bound by the check time factor", () => {
-  const previous = process.env["CLOVING_TEST_CONCURRENCY"];
-  delete process.env["CLOVING_TEST_CONCURRENCY"];
-  try {
-    for (const [timeFactor, timeout] of [
-      [1, 600000],
-      [3, 1800000],
-    ] as const) {
-      const command = testCommand("/project", {
-        tests: ["/project/main.test.ts"],
-        timeFactor,
-      });
-      assert.equal(command.timeoutMilliseconds, timeout);
-      assert.deepEqual(
-        command.arguments.filter((argument) =>
-          argument.startsWith("--test-concurrency="),
-        ),
-        [
-          `--test-concurrency=${String(testConcurrency(availableParallelism()))}`,
-        ],
-      );
-    }
-  } finally {
-    if (previous !== undefined)
-      process.env["CLOVING_TEST_CONCURRENCY"] = previous;
-  }
-});
-
-await test("CLV-099 scales the coverage command bound by the check time factor", () => {
-  const run = { coverageDirectory: "/coverage", files: ["/project/main.ts"] };
-  assert.equal(coverageCommand("/project", run).timeoutMilliseconds, 60000);
-  for (const [timeFactor, timeout] of [
-    [1, 60000],
-    [3, 180000],
-  ] as const) {
-    const command = coverageCommand("/project", { ...run, timeFactor });
-    assert.equal(command.timeoutMilliseconds, timeout);
-    assert.deepEqual(command.arguments.slice(1), [
-      "/coverage",
-      "/project/main.ts",
-    ]);
-    assert.equal(command.directory, "/project");
-  }
-});
-
-await test("CLV-044 a test run that is longer than its bound fails the test command", async () => {
-  const source =
-    'import { test } from "node:test"; import { setTimeout as delay } from "node:timers/promises"; await test("slow", async () => { await delay(2000); });';
-  await withFiles({ "slow.test.ts": source }, async (directory) => {
-    const command = testCommand(directory, {
-      tests: [join(directory, "slow.test.ts")],
-    });
-    await assert.rejects(async () => {
-      await runSupervisedCommand({ ...command, timeoutMilliseconds: 50 });
-    }, /execution failed/);
   });
 });

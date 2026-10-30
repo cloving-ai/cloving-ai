@@ -4,6 +4,7 @@ import packageMetadata from "#package" with { type: "json" };
 import { nativeHarness, type HarnessSettings } from "../harness-defaults.ts";
 import { record } from "../protocol.ts";
 import { listedSetting } from "./doctor-local.ts";
+import { chatStores } from "./chat-stores.ts";
 import { discoverHarnesses } from "./harness-probes.ts";
 import { initPrompt, type InitPromptFacts } from "./init-prompt.ts";
 import type { ProbeRunner } from "./probe-command.ts";
@@ -146,10 +147,11 @@ export async function initPromptFacts(
     context.environment,
     repository,
   );
-  const [github, discovery, current] = await Promise.all([
+  const [github, discovery, current, stores] = await Promise.all([
     githubFacts({ ...context, repository, environment }),
     discoverHarnesses({ env: environment, probe: context.probe }),
     inventory({ ...context, repository, environment }),
+    chatStores(environment["HOME"]),
   ]);
   const name = environment["CLOVING_WORKER"] ?? harness?.name ?? "claude";
   return {
@@ -165,6 +167,7 @@ export async function initPromptFacts(
     defaultHarness: name,
     worker: selectedWorker(name, harness),
     runtime: runtimeDirectory(environment, repository) ?? "unavailable",
+    chatStores: stores,
     ...current,
   };
 }
