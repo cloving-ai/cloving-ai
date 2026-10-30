@@ -86,15 +86,17 @@ function pairingView(open: OpenPairing | undefined): Fields | null {
   };
 }
 
-async function phoneState(relay: OperationState): Promise<Reply> {
-  const link = await readLink(relay.context.phoneDirectory);
+export async function phoneState(relay: OperationState): Promise<Reply> {
+  const stored = await readLink(relay.context.phoneDirectory);
+  const lost = relay.registration.lost;
+  const link = lost ? undefined : stored;
   return result({
     registered: link !== undefined,
     daemonId: link?.daemonId ?? null,
     origin: link?.origin ?? null,
     pairing: pairingView(relay.sessions.current()),
     refusal: relay.sessions.refusal(),
-    reason: relay.registration.lost ? "registration-lost" : null,
+    reason: lost ? "registration-lost" : null,
     devices: (await relay.store.devices()).map((device) => ({
       deviceId: device.deviceId,
       name: device.name,

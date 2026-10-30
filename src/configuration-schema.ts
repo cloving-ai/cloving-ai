@@ -18,6 +18,7 @@ export interface Configuration {
   readonly queue?: {
     readonly everySeconds?: number;
     readonly lanes?: number;
+    readonly dailySpendLimitUsd?: number;
   };
   readonly harness?: {
     readonly name?: string;

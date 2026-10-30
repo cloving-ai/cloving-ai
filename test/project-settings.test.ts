@@ -1,3 +1,4 @@
+import { configuration } from "../src/configuration-schema.ts";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { settingsScene } from "./project-settings-fixture.ts";
@@ -11,6 +12,13 @@ const mappedSettings = [
   ["project", "tickets.nextCommand", "CLOVING_NEXT_COMMAND", ["next"]],
   ["project", "queue.everySeconds", "CLOVING_QUEUE_SECONDS", 20],
   ["project", "queue.lanes", "CLOVING_QUEUE_LANES", 2],
+  ["project", "queue.dailySpendLimitUsd", "CLOVING_QUEUE_DAILY_SPEND_USD", 20],
+  [
+    "private",
+    "queue.dailySpendLimitUsd",
+    "CLOVING_QUEUE_DAILY_SPEND_USD",
+    25.5,
+  ],
   ["private", "harness.name", "CLOVING_WORKER", "codex"],
   ["private", "harness.command", "CLOVING_CLAUDE_COMMAND", ["custom-claude"]],
   ["private", "harness.command", "CLOVING_CODEX_COMMAND", ["custom-codex"]],
@@ -120,5 +128,24 @@ await test("CLV-205 invalid configuration has fixed codes and field names", () =
     }
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-241 spend configuration accepts only positive finite numbers", () => {
+  for (const scope of ["project", "private"] as const) {
+    for (const value of [0, -1, "20", Infinity, NaN])
+      assert.throws(
+        () =>
+          configuration(
+            { version: 1, queue: { dailySpendLimitUsd: value } },
+            scope,
+          ),
+        /invalid-setting: queue.dailySpendLimitUsd/,
+      );
+    assert.equal(
+      configuration({ version: 1, queue: { dailySpendLimitUsd: 0.01 } }, scope)
+        .queue?.dailySpendLimitUsd,
+      0.01,
+    );
   }
 });

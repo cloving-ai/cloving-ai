@@ -49,6 +49,10 @@
           "minimum": 10,
           "maximum": 3600
         },
+        "dailySpendLimitUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "lanes": {
           "type": "integer",
           "minimum": 1,

@@ -31,6 +31,7 @@ import { workerPort, type WorkerPort } from "./worker-port.ts";
 import { runWaitTarget } from "./run-waits.ts";
 import type { RunWaitTarget } from "../run-wait.ts";
 import type { CommandEffects } from "../command-settings.ts";
+import { commandWaitPort, type CommandWaitPort } from "./command-waits.ts";
 
 export type { WorkflowRegistration } from "./registry.ts";
 export type {
@@ -76,6 +77,7 @@ export interface ServiceHost {
 }
 
 export interface HostPorts {
+  readonly commandWait: CommandWaitPort;
   readonly runWait?: {
     readonly target: (runId: string) => Promise<RunWaitTarget | undefined>;
     readonly observe: WorkerPort["observe"];
@@ -101,6 +103,7 @@ export interface HostPorts {
 }
 
 export interface ServiceOptions {
+  readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
@@ -287,7 +290,7 @@ export async function startService(
   const worker = workerPort({ gateway, authority });
   const host = await hosted(
     options,
-    hostPorts(authority, { worker, registry }),
+    hostPorts(authority, { worker, registry, gateway }),
   );
   if (host.kind === "refused") {
     await authority.close();
@@ -331,10 +334,15 @@ function serviceGateway(
 
 function hostPorts(
   authority: Authority,
-  parts: { readonly worker: WorkerPort; readonly registry: Registry },
+  parts: {
+    readonly worker: WorkerPort;
+    readonly registry: Registry;
+    readonly gateway: Gateway;
+  },
 ): HostPorts {
   const { worker, registry } = parts;
   return {
+    commandWait: commandWaitPort({ authority, gateway: parts.gateway }),
     runWait: {
       target: (runId) => runWaitTarget(authority, runId),
       observe: worker.observe,
