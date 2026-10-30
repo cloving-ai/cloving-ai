@@ -6,6 +6,7 @@ import {
   invalidFields,
   literalField,
   propertyInitializer,
+  propertyName,
 } from "./workflow-candidate-fields.ts";
 
 export interface CandidateSymbols {
@@ -13,6 +14,7 @@ export interface CandidateSymbols {
   readonly source: ts.SourceFile;
   readonly protectedSymbol: ts.Symbol | undefined;
   readonly handoffSymbol: ts.Symbol | undefined;
+  readonly commandWaitSymbol?: ts.Symbol | undefined;
   readonly commandSymbol: ts.Symbol | undefined;
   readonly reviewSymbol: ts.Symbol | undefined;
   readonly mergeSymbols: readonly ts.Symbol[];
@@ -34,6 +36,7 @@ export function protectedCall(
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.commandWaitSymbol,
       symbols.reviewSymbol,
       ...symbols.mergeSymbols,
     ].includes(symbol)
@@ -60,6 +63,14 @@ export function commandCall(
   symbols: CandidateSymbols,
 ): boolean {
   const symbol = symbols.commandSymbol;
+  return symbol !== undefined && calledSymbol(node, symbols) === symbol;
+}
+
+export function commandWaitCall(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  const symbol = symbols.commandWaitSymbol;
   return symbol !== undefined && calledSymbol(node, symbols) === symbol;
 }
 
@@ -93,7 +104,8 @@ export function protectedEffectFact(
   symbols: CandidateSymbols,
 ): CandidateEffect | undefined {
   if (!protectedCall(node, symbols)) return undefined;
-  if (handoffCall(node, symbols)) return undefined;
+  if (handoffCall(node, symbols) || commandWaitCall(node, symbols))
+    return undefined;
   const argument = node.arguments[0];
   if (!argument || !ts.isObjectLiteralExpression(argument)) return undefined;
   if (reviewCall(node, symbols))
@@ -139,6 +151,7 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
       symbols.protectedSymbol,
       symbols.handoffSymbol,
       symbols.commandSymbol,
+      symbols.commandWaitSymbol,
       symbols.reviewSymbol,
       ...symbols.mergeSymbols,
     ].includes(symbol)
@@ -179,9 +192,33 @@ function invalidRequest(node: ts.Node, symbols: CandidateSymbols): boolean {
     : undefined;
   return (
     invalidFields(argument) ||
-    (reviewer !== undefined &&
-      ts.isObjectLiteralExpression(reviewer) &&
-      invalidFields(reviewer))
+    invalidCommandWaitFields(node, symbols) ||
+    invalidReviewer(reviewer)
+  );
+}
+
+function invalidReviewer(reviewer: ts.Node | undefined): boolean {
+  return (
+    reviewer !== undefined &&
+    ts.isObjectLiteralExpression(reviewer) &&
+    invalidFields(reviewer)
+  );
+}
+
+function invalidCommandWaitFields(
+  node: ts.CallExpression,
+  symbols: CandidateSymbols,
+): boolean {
+  if (!commandWaitCall(node, symbols)) return false;
+  const argument = node.arguments[0];
+  return (
+    !!argument &&
+    ts.isObjectLiteralExpression(argument) &&
+    argument.properties.some(
+      (entry) =>
+        entry.name &&
+        !["name", "input"].includes(propertyName(entry.name) ?? ""),
+    )
   );
 }
 
@@ -252,137 +289,4 @@ export function unsupportedCandidateNode(
     ts.isStringLiteral(node) && node.text === "use step",
   ];
   return checks.some(Boolean);
-}
-
-export function workflowShape(source: ts.SourceFile): boolean {
-  const exported = source.statements.filter(
-    (node) =>
-      ts.isFunctionDeclaration(node) &&
-      (ts.getModifiers(node) ?? []).some(
-        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-      ),
-  );
-  const candidate = exported[0];
-  if (
-    exported.length !== 1 ||
-    !candidate ||
-    !ts.isFunctionDeclaration(candidate)
-  )
-    return false;
-  if (!workflowFunction(candidate)) return false;
-  const directives: ts.Node[] = [];
-  function visit(node: ts.Node): void {
-    if (ts.isStringLiteral(node) && node.text === "use workflow")
-      directives.push(node);
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  return directives.length === 1;
-}
-
-function workflowFunction(candidate: ts.FunctionDeclaration): boolean {
-  if (!candidate.name || !candidate.body || candidate.asteriskToken)
-    return false;
-  const modifiers = ts.getModifiers(candidate) ?? [];
-  if (
-    !modifiers.some(
-      (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
-    ) ||
-    modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
-  )
-    return false;
-  const first = candidate.body.statements[0];
-  return first !== undefined && workflowDirective(first);
-}
-
-function workflowDirective(node: ts.Statement): boolean {
-  return (
-    ts.isExpressionStatement(node) &&
-    ts.isStringLiteral(node.expression) &&
-    node.expression.text === "use workflow"
-  );
-}
-
-function unwrappedInitializer(node: ts.Expression): ts.Expression | undefined {
-  if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node) ||
-    ts.isTypeAssertionExpression(node)
-  )
-    return node.expression;
-  return undefined;
-}
-
-function passiveCompound(node: ts.Expression): boolean {
-  if (ts.isArrayLiteralExpression(node))
-    return node.elements.every(
-      (element) =>
-        ts.isOmittedExpression(element) || passiveInitializer(element),
-    );
-  if (ts.isObjectLiteralExpression(node))
-    return node.properties.every(
-      (property) =>
-        ts.isPropertyAssignment(property) &&
-        !ts.isComputedPropertyName(property.name) &&
-        passiveInitializer(property.initializer),
-    );
-  return false;
-}
-
-function passiveInitializer(node: ts.Expression | undefined): boolean {
-  if (!node) return false;
-  if (ts.isLiteralExpression(node)) return true;
-  if (
-    [
-      ts.SyntaxKind.TrueKeyword,
-      ts.SyntaxKind.FalseKeyword,
-      ts.SyntaxKind.NullKeyword,
-    ].includes(node.kind)
-  )
-    return true;
-  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return true;
-  if (ts.isPrefixUnaryExpression(node))
-    return (
-      [ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken].includes(
-        node.operator,
-      ) && ts.isNumericLiteral(node.operand)
-    );
-  const inner = unwrappedInitializer(node);
-  return inner ? passiveInitializer(inner) : passiveCompound(node);
-}
-
-function passiveStatement(
-  node: ts.Statement,
-  kind: "workflow" | "helper",
-): boolean {
-  if (ts.isVariableStatement(node))
-    return (
-      (node.declarationList.flags & ts.NodeFlags.Const) !== 0 &&
-      node.declarationList.declarations.every(
-        (declaration) =>
-          (kind === "helper" ||
-            (ts.getCombinedModifierFlags(declaration) &
-              ts.ModifierFlags.Export) ===
-              0) &&
-          ts.isIdentifier(declaration.name) &&
-          passiveInitializer(declaration.initializer),
-      )
-    );
-  if (ts.isExpressionStatement(node))
-    return ts.isStringLiteral(node.expression);
-  return (
-    ts.isImportDeclaration(node) ||
-    ts.isTypeAliasDeclaration(node) ||
-    ts.isInterfaceDeclaration(node) ||
-    ts.isFunctionDeclaration(node) ||
-    ts.isEmptyStatement(node)
-  );
-}
-
-export function passiveCandidateModule(
-  source: ts.SourceFile,
-  kind: "workflow" | "helper" = "workflow",
-): boolean {
-  return source.statements.every((node) => passiveStatement(node, kind));
 }

@@ -1,3 +1,7 @@
+import {
+  passiveCandidateModule,
+  workflowShape,
+} from "./workflow-candidate-shape.ts";
 import ts from "typescript";
 import { dirname, relative, sep } from "node:path";
 import {
@@ -7,11 +11,11 @@ import {
 } from "./workflow-candidate-program.ts";
 import {
   protectedEffectFact,
-  passiveCandidateModule,
+  commandWaitCall,
   unsupportedCandidateNode,
-  workflowShape,
   type CandidateSymbols,
 } from "./workflow-candidate-syntax.ts";
+import { literalField } from "./workflow-candidate-fields.ts";
 import { sourceEffectNodes } from "./workflow-source-effects.ts";
 import { candidateEffectTotals } from "./workflow-candidate-counts.ts";
 import { helperEffectTotals } from "./workflow-candidate-helper-counts.ts";
@@ -69,10 +73,13 @@ function sourceFacts(symbols: CandidateSymbols): CandidateAnalysis {
   const { source } = symbols;
   const imports: CandidateImport[] = [];
   const effects: CandidateEffect[] = [];
+  const commandWaits: (string | null)[] = [];
   const unsupportedForms: string[] = [];
   function visit(node: ts.Node): void {
     const imported = sourceImport(node);
     if (imported) imports.push(imported);
+    if (ts.isCallExpression(node) && commandWaitCall(node, symbols))
+      commandWaits.push(literalField(node.arguments[0], "name"));
     const effect = protectedEffectFact(node, symbols);
     if (effect) effects.push(effect);
     if (unsupportedCandidateNode(node, symbols))
@@ -82,6 +89,7 @@ function sourceFacts(symbols: CandidateSymbols): CandidateAnalysis {
   visit(source);
   return {
     imports,
+    ...(commandWaits.length === 0 ? {} : { commandWaits }),
     effects,
     directEffects: sourceEffectNodes(source, {
       checker: symbols.checker,
@@ -153,6 +161,11 @@ export function analyzeWorkflowCandidate(
       checker,
       subpath: "cloving/workflows/steps/handoff",
       name: "handoff",
+    }),
+    commandWaitSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/wait-for-command",
+      name: "waitForCommand",
     }),
     commandSymbol: protectedHelper(modules, {
       checker,
@@ -226,6 +239,9 @@ function combineFacts(input: {
   const { localSources, facts } = input;
   return {
     localSources,
+    ...(facts.some((entry) => entry.commandWaits !== undefined)
+      ? { commandWaits: facts.flatMap((entry) => entry.commandWaits ?? []) }
+      : {}),
     imports: facts.flatMap((entry) => entry.imports),
     effects: facts.flatMap((entry) => entry.effects),
     directEffects: facts.flatMap((entry) => entry.directEffects),

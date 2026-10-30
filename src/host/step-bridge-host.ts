@@ -1,3 +1,4 @@
+import { commandWaitBridge, type CommandWaitPorts } from "./command-wait.ts";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { getStepMetadata, getWorkflowMetadata } from "workflow";
@@ -81,6 +82,7 @@ export const bridgeTiming: BridgeTiming = {
 };
 
 export interface BridgePorts {
+  readonly commandWait?: CommandWaitPorts;
   readonly decisionReceived?: (
     runId: string,
     gateId: string,
@@ -283,9 +285,29 @@ async function gate(hold: Hold, request: GateRequest): Promise<GateResult> {
   return await openBridgeGate(hold.ports, subject);
 }
 
+function hostCommandWait(hold: Hold) {
+  return commandWaitBridge({
+    ...(hold.ports.commandWait === undefined
+      ? {}
+      : { commandWait: hold.ports.commandWait }),
+    stopped: hold.ports.stopped,
+    pollMilliseconds: hold.timing.pollMilliseconds,
+    retryMilliseconds: hold.timing.retryMilliseconds,
+    runStatus: async (runId) => (await hold.ports.state()).runs[runId]?.status,
+    subject: async () => {
+      const call = hold.ports.call();
+      const world = await located(hold, call.worldRunId);
+      if (world === undefined) return undefined;
+      await inWork(hold, world.runId);
+      return { runId: world.runId, commandId: transportOf(call) };
+    },
+  });
+}
+
 export function stepBridge(ports: BridgePorts): StepBridge {
   const hold = { ports, timing: ports.timing ?? bridgeTiming };
   return {
+    ...hostCommandWait(hold),
     effect: (request) => effect(hold, request),
     gate: (request) => gate(hold, request),
     waitForDecision: async (request) => {

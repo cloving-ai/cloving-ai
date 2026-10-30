@@ -5,7 +5,11 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
 import { authorizeEffect, type EffectRequest } from "./effect-authorization.ts";
-import { record } from "./protocol.ts";
+import {
+  scenarioResult,
+  type ScenarioRequest,
+  type ScenarioResult,
+} from "./testing-requests.ts";
 import {
   stepBridgeKey,
   type HandoffValue,
@@ -14,13 +18,14 @@ import {
   type DecisionResult,
   type RunWaitOutcome,
   type StepBridge,
-  type ProtectedRequest,
-  type GateRequest,
-  type HandoffRequest,
-  type RunWaitRequest,
+  type CommandWaitRequest,
+  type CommandWaitProgress,
 } from "./step-bridge.ts";
 
 export interface StepScenario {
+  readonly commandWaits?: Readonly<
+    Record<string, readonly CommandWaitProgress[]>
+  >;
   readonly turn?: ProtectedResult;
   readonly effects?: Readonly<Record<string, readonly ProtectedResult[]>>;
   readonly gate?: GateResult;
@@ -36,19 +41,7 @@ export interface WorkflowScenario extends StepScenario {
   readonly decision?: HandoffValue;
 }
 
-export type ScenarioRequest =
-  | readonly ["effect", ProtectedRequest]
-  | readonly ["gate", GateRequest]
-  | readonly ["waitForDecision", GateRequest]
-  | readonly ["handoff", HandoffRequest]
-  | readonly ["waitForRun", RunWaitRequest]
-  | readonly ["sleep", { readonly seconds: number }];
-
-export interface ScenarioResult {
-  readonly spent?: number;
-  readonly outcome: unknown;
-  readonly requests: readonly ScenarioRequest[];
-}
+export type { ScenarioRequest, ScenarioResult } from "./testing-requests.ts";
 
 export function fakeStepBridge(scenario: StepScenario) {
   const { bridge, requests, budget } = scenarioBridge(scenario);
@@ -66,8 +59,13 @@ export function fakeStepBridge(scenario: StepScenario) {
   Object.defineProperty(globalThis, key, { configurable: true, value: bridge });
   Object.defineProperty(globalThis, sleepKey, {
     configurable: true,
-    value: (milliseconds: number): Promise<void> => {
-      requests.push(["sleep", { seconds: milliseconds / 1000 }]);
+    value: (milliseconds: number | Date): Promise<void> => {
+      requests.push([
+        "sleep",
+        milliseconds instanceof Date
+          ? { until: milliseconds.toISOString() }
+          : { seconds: milliseconds / 1000 },
+      ]);
       return Promise.resolve();
     },
   });
@@ -93,6 +91,7 @@ function scenarioBridge(scenario: StepScenario) {
   const budget = { spent: 0 };
   const bridge: StepBridge = {
     ...scenarioEffects(scenario, { requests, budget }),
+    ...scenarioCommandWaits(scenario, requests),
     gate: (request) => {
       requests.push(["gate", request]);
       return Promise.resolve(
@@ -121,6 +120,40 @@ function scenarioBridge(scenario: StepScenario) {
     },
   };
   return { bridge, requests, budget };
+}
+
+function scenarioCommandWaits(
+  scenario: StepScenario,
+  requests: ScenarioRequest[],
+) {
+  const waits = new Map(
+    Object.entries(scenario.commandWaits ?? {}).map(([name, values]) => [
+      name,
+      [...values],
+    ]),
+  );
+  return {
+    openCommandWait: (
+      request: CommandWaitRequest,
+    ): Promise<CommandWaitProgress> => {
+      requests.push(["waitForCommand", request]);
+      if (!waits.get(request.name)?.length)
+        return Promise.reject(new Error("no-scenario-result"));
+      return Promise.resolve({
+        kind: "pending",
+        deadline: 0,
+        nextCheckAt: 0,
+      });
+    },
+    checkCommandWait: (request: {
+      readonly name: string;
+    }): Promise<CommandWaitProgress> => {
+      const result = waits.get(request.name)?.shift();
+      if (result === undefined)
+        return Promise.reject(new Error("no-scenario-result"));
+      return Promise.resolve(result);
+    },
+  };
 }
 
 function scenarioEffects(
@@ -205,113 +238,6 @@ using bridge = fakeStepBridge(given);
 const outcome = await workflow(given.input, given.decision);
 await writeFile(process.argv[2], JSON.stringify({ outcome, requests: bridge.requests,
   ...(given.effectLimit === undefined ? {} : { spent: bridge.spent }) }));`;
-}
-
-function scenarioResult(value: unknown): value is ScenarioResult {
-  const result = record(value);
-  return (
-    result !== undefined &&
-    Object.hasOwn(result, "outcome") &&
-    Array.isArray(result["requests"]) &&
-    result["requests"].every(scenarioRequest) &&
-    (result["spent"] === undefined || typeof result["spent"] === "number")
-  );
-}
-
-function scenarioRequest(value: unknown): value is ScenarioRequest {
-  if (!Array.isArray(value) || value.length !== 2) return false;
-  const request = record(value[1]);
-  if (request === undefined) return false;
-  switch (value[0]) {
-    case "effect":
-      return protectedRequest(request);
-    case "gate":
-    case "waitForDecision":
-      return gateRequest(request);
-    case "handoff":
-      return handoffRequest(request);
-    case "waitForRun":
-      return runWaitRequest(request);
-    case "sleep":
-      return sleepRequest(request);
-    default:
-      return false;
-  }
-}
-
-function runWaitRequest(request: Readonly<Record<string, unknown>>): boolean {
-  return (
-    typeof request["runId"] === "string" &&
-    typeof request["maximumWaitSeconds"] === "number"
-  );
-}
-
-function sleepRequest(request: Readonly<Record<string, unknown>>): boolean {
-  const seconds = request["seconds"];
-  return (
-    typeof seconds === "number" &&
-    Number.isInteger(seconds) &&
-    seconds >= 1 &&
-    seconds <= 86400
-  );
-}
-
-function gateRequest(request: Readonly<Record<string, unknown>>): boolean {
-  return (
-    typeof request["gateId"] === "string" &&
-    (request["kind"] === "question" || request["kind"] === "approval") &&
-    typeof request["prompt"] === "string" &&
-    optionalText(request["expiresAt"])
-  );
-}
-
-function handoffRequest(request: Readonly<Record<string, unknown>>): boolean {
-  const input = record(request["input"]);
-  return (
-    typeof request["workflowId"] === "string" &&
-    input !== undefined &&
-    Object.values(input).every(handoffValue)
-  );
-}
-
-function protectedRequest(request: Readonly<Record<string, unknown>>): boolean {
-  return (
-    protectedScope(request["scope"]) &&
-    ["capability", "method", "target", "payload"].every(
-      (key) => typeof request[key] === "string",
-    ) &&
-    typeof request["units"] === "number" &&
-    optionalText(request["resource"])
-  );
-}
-
-function protectedScope(value: unknown): boolean {
-  const scope = record(value);
-  if (scope === undefined) return false;
-  const stage = record(scope["stage"]);
-  return (
-    typeof scope["phase"] === "string" &&
-    typeof scope["operation"] === "string" &&
-    typeof scope["round"] === "number" &&
-    optionalText(scope["key"]) &&
-    (scope["stage"] === undefined ||
-      (stage !== undefined &&
-        ["id", "visit", "branch"].every(
-          (key) => typeof stage[key] === "string",
-        )))
-  );
-}
-
-function optionalText(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
-}
-
-function handoffValue(value: unknown): value is HandoffValue {
-  if (value === null || ["string", "boolean", "number"].includes(typeof value))
-    return true;
-  if (Array.isArray(value)) return value.every(handoffValue);
-  const fields = record(value);
-  return fields !== undefined && Object.values(fields).every(handoffValue);
 }
 
 export async function runScenario(

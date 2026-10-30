@@ -78,6 +78,14 @@
     "./workflows/steps/sleep": {
       "types": "./dist/src/steps/sleep.d.ts",
       "import": "./dist/src/steps/sleep.js"
+    },
+    "./workflows/steps/wait-for-command": {
+      "types": "./dist/src/steps/wait-for-command.d.ts",
+      "import": "./dist/src/steps/wait-for-command.js"
+    },
+    "./workflows/steps/command-wait": {
+      "types": "./dist/src/steps/command-wait.d.ts",
+      "import": "./dist/src/steps/command-wait.js"
     }
   },
   "files": [
