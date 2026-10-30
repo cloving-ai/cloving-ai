@@ -92,6 +92,26 @@ async function measure(path: string) {
   };
 }
 
+async function inspectStore(path: string) {
+  try {
+    if (!(await metadata(path))?.isDirectory()) return null;
+    return await measure(path);
+  } catch (error) {
+    return {
+      unavailable:
+        error instanceof Error &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : "scan-failed",
+      fileCount: null,
+      totalBytes: null,
+      oldestFileDate: null,
+      newestFileDate: null,
+    };
+  }
+}
+
 export async function chatStores(
   home: string | undefined,
 ): Promise<readonly ChatStore[]> {
@@ -99,8 +119,8 @@ export async function chatStores(
   const stores: ChatStore[] = [];
   for (const { folder, ...store } of knownStores) {
     const path = join(home, folder);
-    if (!(await metadata(path))?.isDirectory()) continue;
-    stores.push({ ...store, path, ...(await measure(path)) });
+    const facts = await inspectStore(path);
+    if (facts) stores.push({ ...store, path, ...facts });
   }
   return stores;
 }

@@ -3,6 +3,7 @@ import { chmod, mkdir, symlink, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { initPromptFacts } from "../src/cli/init-prompt-command.ts";
+import { initPrompt } from "../src/cli/init-prompt.ts";
 import type { ProbeOutput, ProbeRunner } from "../src/cli/probe-command.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
@@ -85,6 +86,43 @@ await test("CLV-225 failed fact probes remain unavailable and omit private setti
     assert.deepEqual(facts.workflows, []);
     assert.deepEqual(facts.chatStores, []);
   }));
+
+await test("CLV-226 an unreadable chat directory does not block setup or other stores", () =>
+  withFiles(
+    {
+      ".claude/projects/private/session.jsonl": "private chat",
+      ".codex/sessions/rollout.jsonl.zst": "compressed fixture",
+    },
+    async (repository) => {
+      const folder = join(repository, ".claude/projects/private");
+      await chmod(folder, 0);
+      try {
+        const facts = await initPromptFacts({
+          repository,
+          environment: { HOME: repository, PATH: "" },
+          probe: probe(),
+        });
+        assert.deepEqual(facts.chatStores[0], {
+          name: "Claude Code",
+          path: join(repository, ".claude/projects"),
+          format: "JSONL",
+          documentation: "https://code.claude.com/docs/en/claude-directory",
+          unavailable: "EACCES",
+          fileCount: null,
+          totalBytes: null,
+          oldestFileDate: null,
+          newestFileDate: null,
+        });
+        assert.equal(facts.chatStores[1]?.name, "Codex");
+        assert.equal(facts.chatStores[1].fileCount, 1);
+        assert.equal(facts.chatStores[1].totalBytes, 18);
+        assert.match(initPrompt(facts), /# Steps\n/);
+        assert.doesNotMatch(JSON.stringify(facts), /private chat/);
+      } finally {
+        await chmod(folder, 0o700);
+      }
+    },
+  ));
 
 await test("CLV-226 each known store reports recursive file metadata and a documented format", () =>
   withFiles(

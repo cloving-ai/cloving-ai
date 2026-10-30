@@ -24,12 +24,32 @@ await test("CLV-225 fixed facts snapshot includes the rules, reachable targets a
     /3\. Ask for the ticket source[\s\S]*4\. \*\*Find the loops that the user already does\.\*\*[\s\S]*5\. /,
   );
   assert.match(output, /at most 50 rows/);
+  assert.match(
+    output,
+    /Unavailable stores have an error code and null measurements; report them and continue setup with the remaining facts/,
+  );
+  assert.match(
+    output,
+    /Before any count output enters this session, use shell tools to cut every text field to at most 80 characters, including repeated messages, commands, tool calls, session identifiers and file references/,
+  );
+  assert.match(
+    output,
+    /Count using the full values before truncation so distinct values with the same prefix stay separate/,
+  );
   assert.match(output, /cut to 80 characters/);
   assert.match(output, /at most 10 sessions/);
   assert.match(output, /at most 20,000 bytes/);
   assert.match(output, /at most 5 candidates/);
   assert.match(output, /closed loop only when their outputs make a cycle/);
   assert.match(output, /If the user says no, go to the next step/);
+  assert.match(
+    output,
+    /For every runtime value, including CLOVING_RUNTIME_DIR overrides, resolve the notes destination and its existing parent directories, following symbolic links, before writing/,
+  );
+  assert.match(
+    output,
+    /If the runtime is unavailable or the resolved destination is inside the repository, choose and verify an outside location first/,
+  );
   assert.equal(
     output,
     await readFile(
