@@ -8,6 +8,7 @@ import {
   requiredChecks,
 } from "../../quality/project.ts";
 import { withFiles } from "./files-fixture.ts";
+import { assertTestFailure } from "./test-failure-fixture.ts";
 
 await test("QG-09 trusted static checks inspect candidate tests without executing them", async () => {
   await withFiles(
@@ -39,7 +40,9 @@ await test("QG-09 trusted static checks inspect candidate tests without executin
         result.completed,
         requiredChecks.filter((name) => name !== "tests"),
       );
-      await assert.rejects(checkProject(directory, policy), /Check exit 1/);
+      await assertTestFailure(async () => {
+        await checkProject(directory, policy);
+      });
     },
   );
 });
