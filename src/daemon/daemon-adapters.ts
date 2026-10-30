@@ -74,6 +74,8 @@ function githubOf(
   return githubWorker({
     document: async (digest) => (await given).document(digest),
     report: async (effect) => (await given).reportEffect(effect),
+    observe: async (observation) =>
+      (await given).submit({ kind: "report-observation", ...observation }),
     operationStatus: async (operationId) =>
       (await (await given).operation(operationId))?.status,
     runStatus: async (runId) =>

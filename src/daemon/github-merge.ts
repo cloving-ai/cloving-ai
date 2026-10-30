@@ -207,42 +207,92 @@ async function readyHead(
     readonly recorded: string | undefined;
     readonly remote: string;
   },
-): Promise<string | CiResult> {
+): Promise<{ readonly updated: string; readonly merged: string } | CiResult> {
   const tree = existingTree(operation);
   let recorded = pull.recorded;
   let remote = pull.remote;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const updated = await refreshed(operation, {
+    const updated = await pushedHead(operation, {
+      ...pull,
       tree,
-      commit: pull.commit,
       recorded,
-      check: pull.check,
+      remote,
     });
-    if (updated !== pull.commit && recorded !== updated)
-      await writeRecord(operation.folder, {
-        name: "updated-head.json",
-        value: { commit: pull.commit, updated },
-      });
-    if (updated !== pull.commit && remote !== updated)
-      await operation.calls.git(tree.path, [
-        "push",
-        "--quiet",
-        "origin",
-        `${updated}:refs/heads/${tree.branch}`,
-      ]);
     const ci = await waitForCi(operation, updated);
     if (ci !== undefined) return ci;
-    const newest = await fetched(operation, await defaultBranch(operation));
-    if (
-      (
-        await operation.calls.git(tree.path, ["merge-base", updated, newest])
-      ).trim() === newest
-    )
-      return updated;
+    if (await containsBase(operation, updated)) {
+      const merged = await mergePull(operation, { ...pull, updated });
+      if (typeof merged === "string") return { updated, merged };
+      if (updated !== pull.commit && (await containsBase(operation, updated)))
+        throw merged;
+      await recordRefusal(operation, { error: merged, updated, attempt });
+    }
     recorded = updated;
     remote = updated;
   }
   throw new Error("base-moved");
+}
+
+async function recordRefusal(
+  operation: Operation,
+  refusal: {
+    readonly error: Error;
+    readonly updated: string;
+    readonly attempt: number;
+  },
+): Promise<void> {
+  const observation = await operation.observe?.({
+    condition: "working",
+    reason: "github-merge-refused",
+    evidence: `github-merge/HTTP-${String(field(refusal.error, "status"))}/head-${refusal.updated}/merge-main`,
+    attempt: refusal.attempt + 1,
+    limit: 3,
+  });
+  if (
+    observation !== undefined &&
+    !["accepted", "duplicate"].includes(observation.kind)
+  )
+    throw new Error("github-call-failed");
+}
+
+async function pushedHead(
+  operation: Operation,
+  pull: ReviewedPull & {
+    readonly tree: Place;
+    readonly recorded: string | undefined;
+    readonly remote: string;
+  },
+): Promise<string> {
+  const updated = await refreshed(operation, pull);
+  if (updated !== pull.commit && pull.recorded !== updated)
+    await writeRecord(operation.folder, {
+      name: "updated-head.json",
+      value: { commit: pull.commit, updated },
+    });
+  if (updated !== pull.commit && pull.remote !== updated)
+    await operation.calls.git(pull.tree.path, [
+      "push",
+      "--quiet",
+      "origin",
+      `${updated}:refs/heads/${pull.tree.branch}`,
+    ]);
+  return updated;
+}
+
+async function containsBase(
+  operation: Operation,
+  updated: string,
+): Promise<boolean> {
+  const newest = await fetched(operation, await defaultBranch(operation));
+  return (
+    (
+      await operation.calls.git(existingTree(operation).path, [
+        "merge-base",
+        updated,
+        newest,
+      ])
+    ).trim() === newest
+  );
 }
 
 function checkOutput(cause: unknown): string {
@@ -296,13 +346,11 @@ async function completedMerge(
     ...pull,
     updated: recorded ?? pull.commit,
   });
-  const updated =
+  const result =
     known.merged === undefined
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
-      : (recorded ?? pull.commit);
-  if (typeof updated !== "string") return updated;
-  const merged =
-    known.merged ?? (await mergePull(operation, { ...pull, updated }));
+      : { updated: recorded ?? pull.commit, merged: known.merged };
+  if ("reason" in result) return result;
   await removed(operation, place);
-  return { number: pull.number, commit: pull.commit, updated, merged };
+  return { number: pull.number, commit: pull.commit, ...result };
 }

@@ -10,7 +10,59 @@ import {
   withGithub,
   type GithubScene,
 } from "./github-worker-fixture.ts";
-import { mergeCalls } from "./github-merge-fixture.ts";
+import { mergeCalls, movingMerge } from "./github-merge-fixture.ts";
+
+for (const kind of ["rejected", "failed"]) {
+  await test(`CLV-256 stops before refreshing main when its refusal event is ${kind}`, () =>
+    withGithub(async (scene) => {
+      const settings = {
+        gh: movingMerge(scene, { limit: 1 }),
+        check: [process.execPath, "-e", ""],
+        observe: () => Promise.resolve({ kind }),
+      };
+      const worker = scene.worker(settings);
+      const commit = await opened(scene, worker);
+      scene.plan({ scores: [], mergeRefusals: 1, mergeStatus: 405 });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.equal(report.reason, "github-call-failed");
+      assert.equal(mergeCalls(scene).length, 1);
+      assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
+      assert.equal(
+        git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
+        commit,
+      );
+    }));
+}
+
+await test("CLV-256 returns a fix round conflict after refusing an unchanged head merge", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker({
+      gh: movingMerge(scene, { limit: 1, file: "one.ts" }),
+    });
+    const commit = await opened(scene, worker);
+    scene.plan({ scores: [], mergeRefusals: 1, mergeStatus: 405 });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    const repair = resultOf(report.result);
+    assert.equal(repair["reason"], "merge-conflict");
+    assert.match(String(repair["output"]), /CONFLICT.*src\/one\.ts/);
+    assert.equal(mergeCalls(scene).length, 1);
+    assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
+    assert.equal(
+      git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
+      commit,
+    );
+    assert.equal(
+      existsSync(git(treeOf(scene), ["rev-parse", "--git-path", "MERGE_HEAD"])),
+      false,
+    );
+  }));
 
 function conflictingLane(
   scene: GithubScene,
