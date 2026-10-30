@@ -1,9 +1,93 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { git, resultOf, until } from "./claude-worker-fixture.ts";
-import { advancedBase, leftMerge, mergeCalls } from "./github-merge-fixture.ts";
+import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
+import {
+  advancedBase,
+  leftMerge,
+  mergeCalls,
+  movingMerge,
+} from "./github-merge-fixture.ts";
+
+await test("CLV-256 keeps the three main merge limit after repeated moved base refusals", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker({
+      gh: movingMerge(scene, { limit: 3 }),
+      check: [process.execPath, "-e", ""],
+    });
+    const commit = await opened(scene, worker);
+    advancedBase(scene);
+    scene.plan({ scores: [], mergeRefusals: 9, mergeStatus: 405 });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.reason, "base-moved");
+    assert.equal(
+      git(treeOf(scene), [
+        "rev-list",
+        "--count",
+        "--merges",
+        `${commit}..HEAD`,
+      ]),
+      "3",
+    );
+    assert.equal(mergeCalls(scene).length, 9);
+    assert.equal(scene.state().prs[0]?.["state"], "OPEN");
+    assert.equal(existsSync(treeOf(scene)), true);
+  }));
+
+for (const status of [405, 409]) {
+  await test(`CLV-256 preserves HTTP ${String(status)} when an unchanged head still contains main`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({ scores: [], mergeRefusals: 3, mergeStatus: status });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.equal(report.reason, "github-call-failed");
+      const record = resultOf(
+        readFileSync(
+          join(scene.journal, journalKey(report.operationId), "result.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(
+        record["detail"],
+        `gh: Merge not ready (HTTP ${String(status)})`,
+      );
+      assert.equal(mergeCalls(scene).length, 1);
+      assert.equal(scene.state().prs[0]?.["state"], "OPEN");
+      assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
+    }));
+
+  await test(`CLV-256 keeps HTTP ${String(status)} for a closed pull request as github-call-failed`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({
+        scores: [],
+        mergeRefusals: 1,
+        mergeStatus: status,
+        sequences: {
+          "api GET pull": [
+            { state: "open", merged: false, head: { sha: commit } },
+            { state: "closed", merged: false, head: { sha: commit } },
+          ],
+        },
+      });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.equal(report.reason, "github-call-failed");
+      assert.equal(mergeCalls(scene).length, 1);
+      assert.equal(existsSync(treeOf(scene)), true);
+    }));
+}
 import {
   fastTiming,
   githubIntent,

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CallSettings, Calls } from "./github-calls.ts";
 import { treePlace } from "./work-tree.ts";
+import type { ObservationReport } from "../service/worker-port.ts";
 
 export interface GithubTiming {
   readonly pollMilliseconds: number;
@@ -32,6 +33,12 @@ export interface Operation {
   readonly payload: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
   readonly folder: string;
+  readonly observe?: (
+    report: Pick<
+      ObservationReport,
+      "condition" | "reason" | "evidence" | "attempt" | "limit"
+    >,
+  ) => Promise<{ readonly kind: string } | undefined>;
 }
 
 export interface Place {
