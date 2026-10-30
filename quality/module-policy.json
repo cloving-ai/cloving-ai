@@ -1463,7 +1463,8 @@
     "test/workflow-scheduler-accounting.test.ts": "test",
     "test/workflow-scheduler-control.test.ts": "test",
     "test/workflow-scheduler-pending.test.ts": "test",
-    "test/notify-schedule-retention.test.ts": "test"
+    "test/notify-schedule-retention.test.ts": "test",
+    "test/schedule-output.test.ts": "test"
   },
   "allowed": {
     "quality": [
