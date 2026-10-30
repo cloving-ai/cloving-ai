@@ -45,10 +45,8 @@ async function ended(
 async function written(file: string): Promise<string> {
   const deadline = Date.now() + testMilliseconds(10000);
   while (Date.now() < deadline) {
-    if (existsSync(file)) {
-      const text = await readFile(file, "utf8");
-      if (text !== "") return text;
-    }
+    const text = existsSync(file) ? await readFile(file, "utf8") : "";
+    if (text !== "") return text;
     await delay(50);
   }
   throw new Error("guard-marker-not-ready");

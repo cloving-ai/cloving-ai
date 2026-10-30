@@ -126,3 +126,19 @@ await test("CLV-209 picker omits an unavailable saved default", () =>
     });
     assert.equal(entry.name, "claude");
   }));
+
+await test("CLV-209 picker keeps a saved default whose name differs from its executable", () =>
+  withDoctor(async (scene) => {
+    const wrapper = await scene.program(
+      "claude-wrapper",
+      'console.log("1.0.0")',
+    );
+    const selected = await chooseHarness({
+      environment: scene.environment,
+      probe,
+      current: { name: "claude", kind: "file", path: wrapper },
+      question: () => Promise.resolve(""),
+    });
+    assert.equal(selected.name, "claude");
+    assert.equal(selected.path, wrapper);
+  }));

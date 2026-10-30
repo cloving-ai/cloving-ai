@@ -84,10 +84,12 @@ async function availableHarnesses(
         probe: context.probe,
       },
     );
+    const name = current.name;
     entries.push(
       ...discovery.entries
         .map(initEntry)
-        .filter((entry) => entry.working && matchesCurrent(entry, current)),
+        .filter((entry) => entry.working && savedHarness(entry, current))
+        .map((entry) => ({ ...entry, name })),
     );
   }
   entries.sort(
@@ -96,6 +98,16 @@ async function availableHarnesses(
       Number(matchesCurrent(left, current)),
   );
   return entries;
+}
+
+function savedHarness(
+  entry: HarnessEntry,
+  current: NonNullable<HarnessSettings["harness"]>,
+): boolean {
+  return (
+    (current.kind === undefined || current.kind === entry.kind) &&
+    (current.path === undefined || current.path === entry.path)
+  );
 }
 
 function matchesCurrent(
