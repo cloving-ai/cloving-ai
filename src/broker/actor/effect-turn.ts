@@ -1,3 +1,4 @@
+import { readCommandWaitDeadline } from "../command-wait-restore.ts";
 import type { RunDetails } from "../../authority/details.ts";
 import type { EffectState } from "../../authority/operations.ts";
 import type { EffectIntent, RunState } from "../../authority/reducer.ts";
@@ -145,6 +146,7 @@ export async function pendingEffect(
   return {
     ...intent,
     purpose,
+    ...(await readCommandWaitDeadline(connection, intent)),
     inputDigest: text(row, "input_digest"),
     leaseGeneration: integer(row, "generation"),
     capability: text(row, "capability"),

@@ -1,3 +1,5 @@
+import { checkedCommandWait } from "./command-wait-checks.ts";
+import { waitEffectTime, waitEffectChange } from "./command-wait-results.ts";
 import {
   commandWaitKey,
   commandWaitsAfter,
@@ -92,12 +94,15 @@ type EffectRule = (
 function effect(rule: EffectRule): Handler {
   return (state, recorded) => {
     const { event, run } = recorded;
+    if (!waitEffectTime(state.commandWaits ?? {}, event))
+      return invalid("invalid-recorded-time");
     const result = rule(state.effects, { event, runStatus: run.status });
     if (result.kind === "invalid") return result;
     const present = new Set(state.intents.map((intent) => intent.operationId));
     return applied(state, {
       ...recorded,
       effects: result.effects,
+      ...waitEffectChange(state, { event, result }),
       ...(result.released === undefined ? {} : { released: result.released }),
       ...(result.disposition === undefined
         ? {}
@@ -132,6 +137,7 @@ const changeCommandWait: Handler = (state, recorded) => {
 const handlers: Readonly<Record<string, Handler>> = {
   "schedule.skipped": applied,
   "command-wait.opened": changeCommandWait,
+  "command-wait.checked": checkedCommandWait,
   "command-wait.expired": changeCommandWait,
   "effect.requested": effect(requested),
   "lease.granted": effect(granted),

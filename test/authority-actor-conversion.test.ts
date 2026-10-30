@@ -58,7 +58,7 @@ async function assertConverted(
   const authority = await openedAuthority(directory, service.options);
   assert.deepEqual(await authority.state(), storedParts(expected.state));
   assert.deepEqual(await authority.events(), expected.events);
-  assert.equal((await authority.settings()).schemaVersion, 5);
+  assert.equal((await authority.settings()).schemaVersion, 6);
   assert.deepEqual(await authority.resumePinned("run-1", manifest), {
     kind: "admitted",
     manifest,

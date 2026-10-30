@@ -51,7 +51,7 @@ export function oversized(request: JsonObject): boolean {
     command["kind"] === "report-effect" &&
     command["worker"] === "command";
   const limit = report
-    ? maximumRequestBytes + commandLimits.stdoutBytes * 6
+    ? maximumRequestBytes + commandLimits.stdoutBytes * 12
     : maximumRequestBytes;
   return Buffer.byteLength(JSON.stringify(request)) > limit;
 }

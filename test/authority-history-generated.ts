@@ -149,6 +149,16 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
       pollEverySeconds: 60,
     },
     { kind: "expire-command-wait", waitName: "review" },
+    {
+      kind: "check-command-wait",
+      waitName: "review",
+      inputDigest: effectInputDigest({
+        capability: "command",
+        method: "run:review-state",
+        target: "review-state",
+        payload: body,
+      }),
+    },
     ...gates(state, subject),
     ...effects(state, subject),
     { kind: "complete-run", expectedRevision: revision },

@@ -1,5 +1,9 @@
 import type { Database, JsonObject } from "solid-objects";
 import {
+  dispatchCommandWait,
+  readCommandWaitDeadline,
+} from "../command-wait-restore.ts";
+import {
   dispatchDecision,
   type DispatchDecision,
   type DispatchRead,
@@ -56,12 +60,17 @@ async function dispatchRead(
   attempt: Attempt & { readonly available: AvailableManifest | undefined },
 ): Promise<DispatchRead> {
   const row = await connection.get(
-    "SELECT d.outcome, d.input_digest, a.lease_generation, o.released_sequence, r.status, r.workflow, p.status AS operation_status, p.capability, p.units, l.operation_id AS lease_owner, l.generation, l.expires_at, l.state AS lease_state, b.run_id, b.effect_limit, b.spent, b.capabilities, b.exhausted_sequence FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id JOIN runs r ON r.run_id = o.run_id JOIN dispatch_attempts a ON a.effect_id = d.effect_id JOIN operations p ON p.operation_id = d.operation_id JOIN leases l ON l.resource_key = p.lease_key JOIN run_budgets b ON b.run_id = o.run_id WHERE d.effect_id = ? AND d.operation_id = ?",
+    "SELECT d.outcome, d.input_digest, a.lease_generation, o.released_sequence, r.status, r.workflow, p.status AS operation_status, p.capability, p.units, p.method, p.target, p.payload, l.operation_id AS lease_owner, l.generation, l.expires_at, l.state AS lease_state, b.run_id, b.effect_limit, b.spent, b.capabilities, b.exhausted_sequence FROM deliveries d JOIN outbox o ON o.operation_id = d.operation_id JOIN runs r ON r.run_id = o.run_id JOIN dispatch_attempts a ON a.effect_id = d.effect_id JOIN operations p ON p.operation_id = d.operation_id JOIN leases l ON l.resource_key = p.lease_key JOIN run_budgets b ON b.run_id = o.run_id WHERE d.effect_id = ? AND d.operation_id = ?",
     [attempt.effectId, attempt.intent.operationId],
   );
   if (row === undefined) return absent;
   const workflow = text(row, "workflow");
   return {
+    ...(await dispatchCommandWait(connection, {
+      runId: attempt.intent.runId,
+      workflow,
+      operationId: attempt.intent.operationId,
+    })),
     attempt: {
       outcome: optionalText(row, "outcome"),
       inputDigest: text(row, "input_digest"),
@@ -78,6 +87,9 @@ async function dispatchRead(
       status: text(row, "operation_status"),
       capability: text(row, "capability"),
       units: integer(row, "units"),
+      method: text(row, "method"),
+      target: text(row, "target"),
+      payload: text(row, "payload"),
     },
     budget: storedBudget(budgetRow(row)),
     lease: {
@@ -103,9 +115,12 @@ async function called(
   const adapterCall = parts.delivery[name]?.bind(parts.delivery);
   if (adapterCall === undefined)
     return { kind: "unknown", reason: "stop-not-supported" };
+  const deadline = await parts.reader.connection((connection) =>
+    readCommandWaitDeadline(connection, intent),
+  );
   return settlement(
     await parts.calls.call(intent.operationId, (signal) =>
-      adapterCall(intent, signal),
+      adapterCall({ ...intent, ...deadline }, signal),
     ),
     intent.capability === "command"
       ? commandLimits.resultBytes
@@ -199,12 +214,17 @@ export async function deliverEffect(
   };
 }
 
-export function protectedArguments(value: JsonObject): EffectArguments {
+export function protectedArguments(
+  value: JsonObject,
+): EffectArguments & Pick<ProtectedIntent, "commandDeadline"> {
   return {
     leaseGeneration: integer(value, "leaseGeneration"),
     capability: text(value, "capability"),
     method: text(value, "method"),
     target: text(value, "target"),
     payload: text(value, "payload"),
+    ...(typeof value["commandDeadline"] === "string"
+      ? { commandDeadline: value["commandDeadline"] }
+      : {}),
   };
 }

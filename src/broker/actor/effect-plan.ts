@@ -1,3 +1,4 @@
+import { operationPhase } from "../../operation-identity.ts";
 import { isInstant } from "../../authority/instants.ts";
 import { promotions } from "../../authority/leases.ts";
 import type { Operation } from "../../authority/operations.ts";
@@ -86,7 +87,9 @@ function closure(
   const exhausted =
     (state.effects.budgets[operation.runId]?.exhaustedSequence ?? null) !==
     null;
-  return exhausted ? ["budget-exhausted"] : [];
+  return exhausted && operationPhase(operation.operationId) !== "command-wait"
+    ? ["budget-exhausted"]
+    : [];
 }
 
 export interface FollowUp extends Promotion {
@@ -174,6 +177,9 @@ const outcomes: Readonly<Record<string, Outcome>> = {
   completed: (attempt) =>
     stated({
       outcome: "completed",
+      ...(attempt.worker === "command"
+        ? { commandOutput: attempt.result }
+        : {}),
       result: attempt.result === null ? null : documentDigest(attempt.result),
       reason: attempt.reason,
       ...identified(attempt),
