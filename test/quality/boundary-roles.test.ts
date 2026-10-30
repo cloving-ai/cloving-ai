@@ -210,8 +210,9 @@ await test("CLV-055 the protected check has the product host in the host bridge 
   const importers = (role: string): string[] =>
     Object.entries(policy.allowed)
       .filter(([, targets]) => targets.includes(role))
-      .map(([name]) => name);
-  assert.deepEqual(importers("sdk-runtime"), ["workflow", "host-bridge"]);
+      .map(([name]) => name)
+      .sort();
+  assert.deepEqual(importers("sdk-runtime"), ["host-bridge", "workflow"]);
   const runtimeUsers =
     policy.reserved?.imports[
       "/candidate/node_modules/workflow/dist/runtime.d.ts"
@@ -219,5 +220,5 @@ await test("CLV-055 the protected check has the product host in the host bridge 
   assert.ok(runtimeUsers);
   assert.ok(runtimeUsers.includes("/candidate/src/host/world-host.ts"));
   assert.ok(runtimeUsers.every((file) => policy.roles[file] === "host-bridge"));
-  assert.deepEqual(importers("host-bridge"), ["test", "host-bridge", "daemon"]);
+  assert.deepEqual(importers("host-bridge"), ["daemon", "host-bridge", "test"]);
 });
