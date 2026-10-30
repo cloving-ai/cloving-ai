@@ -150,6 +150,15 @@ await test("CLV-164 retains complete nested errors in the saved failure data", a
   assert.match(String(details), /test-reporter\.test\.ts:\d+:\d+/);
 });
 
+function savedFailure(failure: unknown): { error: string; message: string } {
+  assert.ok(failure !== null && typeof failure === "object");
+  const error: unknown = Reflect.get(failure, "error");
+  const message: unknown = Reflect.get(failure, "message");
+  assert.ok(typeof error === "string");
+  assert.ok(typeof message === "string");
+  return { error, message };
+}
+
 await test("a failure with a large error value keeps a bounded report entry", async () => {
   const event = failedEvent("large value", "assertion.test.ts");
   event.data.details.error = Object.assign(new Error("x".repeat(5_000_000)), {
@@ -158,13 +167,31 @@ await test("a failure with a large error value keeps a bounded report entry", as
       expected: Array.from({ length: 1_000_000 }, (_, index) => index),
     },
   });
-  const failures = await failuresOf([event]);
-  assert.ok(failures[0] && typeof failures[0] === "object");
-  const error: unknown = Reflect.get(failures[0], "error");
-  const message: unknown = Reflect.get(failures[0], "message");
-  assert.equal(typeof error, "string");
-  assert.equal(typeof message, "string");
-  assert.ok(String(error).length <= 100_000, String(String(error).length));
-  assert.ok(String(message).length <= 100_000, String(String(message).length));
-  assert.match(String(message), /^x{100}/);
+  const { error, message } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.ok(message.length <= 100_000, String(message.length));
+  assert.match(message, /^x{100}/);
+  assert.match(error, /test-reporter\.test\.ts:\d+:\d+/);
+  assert.match(error, /actual: 'y{100}/);
+});
+
+await test("a failure reads only a bounded number of properties of a large error value", async () => {
+  const event = failedEvent("many properties", "assertion.test.ts");
+  let reads = 0;
+  const value = {};
+  for (let index = 0; index < 2_000; index += 1)
+    Object.defineProperty(value, `field${String(index)}`, {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return "z".repeat(10_000);
+      },
+    });
+  event.data.details.error = Object.assign(new Error("many properties"), {
+    cause: value,
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(reads <= 100, String(reads));
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /field0: 'z{100}/);
 });

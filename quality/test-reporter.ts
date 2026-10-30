@@ -6,6 +6,68 @@ import type { CoverageRow } from "./coverage.ts";
 const stderrLines = 20;
 const stderrLineCharacters = 500;
 const failureCharacters = 100_000;
+const boundedDepth = 8;
+const boundedItems = 100;
+const boundedCharacters = 10_000;
+
+const errorKeys = new Set(["cause", "message", "stack", "name"]);
+
+interface Bounds {
+  readonly ancestors: readonly object[];
+}
+
+function boundedText(text: string): string {
+  if (text.length <= boundedCharacters) return text;
+  return `${text.slice(0, boundedCharacters)}... ${String(text.length - boundedCharacters)} more characters`;
+}
+
+function boundedStack(error: Error): string {
+  const frames = (error.stack ?? "")
+    .split("\n")
+    .filter((line) => /^\s+at /.test(line))
+    .slice(0, boundedItems);
+  return [`${error.name}: ${boundedText(error.message)}`, ...frames].join("\n");
+}
+
+function boundedEntries(
+  value: object,
+  bounds: Bounds,
+): Array<readonly [string, unknown]> {
+  const keys = Object.keys(value).filter(
+    (key) => !(value instanceof Error && errorKeys.has(key)),
+  );
+  const entries = keys
+    .slice(0, boundedItems)
+    .map((key) => [key, bounded(Reflect.get(value, key), bounds)] as const);
+  if (keys.length <= boundedItems) return entries;
+  return [...entries, ["...", `${String(keys.length - boundedItems)} more`]];
+}
+
+function boundedError(error: Error, bounds: Bounds): Error {
+  const copy = new Error(boundedText(error.message), {
+    cause: bounded(error.cause, bounds),
+  });
+  if (error.cause === undefined) delete copy.cause;
+  copy.name = error.name;
+  copy.stack = boundedStack(error);
+  for (const [key, value] of boundedEntries(error, bounds))
+    Reflect.set(copy, key, value);
+  return copy;
+}
+
+function bounded(value: unknown, bounds: Bounds): unknown {
+  if (typeof value === "string") return boundedText(value);
+  if (typeof value !== "object" || value === null) return value;
+  if (bounds.ancestors.includes(value)) return "[Circular]";
+  if (bounds.ancestors.length >= boundedDepth) return "[Object]";
+  const next = { ancestors: [...bounds.ancestors, value] };
+  if (value instanceof Error) return boundedError(value, next);
+  if (!Array.isArray(value))
+    return Object.fromEntries(boundedEntries(value, next));
+  const items = value.slice(0, boundedItems).map((item) => bounded(item, next));
+  if (value.length <= boundedItems) return items;
+  return [...items, `... ${String(value.length - boundedItems)} more items`];
+}
 
 export interface TestFailure {
   readonly name: string;
@@ -58,10 +120,8 @@ function failureOutput(
     line,
     column,
     message: details.error.message.slice(0, failureCharacters),
-    error: inspect(details.error, {
-      depth: 8,
-      maxArrayLength: 100,
-      maxStringLength: 10_000,
+    error: inspect(bounded(details.error, { ancestors: [] }), {
+      depth: null,
       colors: false,
       customInspect: false,
     }).slice(0, failureCharacters),
