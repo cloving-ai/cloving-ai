@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { test } from "node:test";
-import { check, githubReads, withDoctor } from "./doctor-fixture.ts";
+import {
+  check,
+  githubReads,
+  withDoctor,
+  withDoctorWorkflow,
+} from "./doctor-fixture.ts";
 
 await test("CLV-207 GitHub login, origin and bot activity are read only", () =>
   withDoctor(async (scene) => {
@@ -71,7 +76,7 @@ for (const origin of [
   "https://github.example.test/example/project.git",
 ])
   await test(`CLV-207 Enterprise origin ${origin} scopes login and every GitHub read to its host`, () =>
-    withDoctor(async (scene) => {
+    withDoctorWorkflow(async (scene) => {
       execFileSync("git", [
         "-C",
         scene.repository,

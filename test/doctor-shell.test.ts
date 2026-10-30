@@ -3,7 +3,7 @@ import { access, chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
-import { check, withDoctor } from "./doctor-fixture.ts";
+import { check, withDoctorWorkflow } from "./doctor-fixture.ts";
 
 for (const scenario of [
   { launcher: "sh", options: [] },
@@ -17,7 +17,7 @@ for (const scenario of [
   { launcher: "zsh", options: ["-V"] },
 ])
   await test(`CLV-207 default harness preserves ${JSON.stringify(scenario)} wrapper arguments for its version probe`, () =>
-    withDoctor(async (scene) => {
+    withDoctorWorkflow(async (scene) => {
       const script = join(scene.root, "claude wrapper.sh");
       await writeFile(
         script,
@@ -43,7 +43,7 @@ process.stdout.write(execFileSync(${JSON.stringify(scenario.launcher === "absolu
     }));
 
 await test("CLV-207 shell wrapper probes resolve relative scripts from the repository and retain failures", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const script = join(scene.repository, "-claude-wrapper.sh");
     const environment = {
       CLOVING_CLAUDE_COMMAND: '["/bin/sh","--","-claude-wrapper.sh"]',
@@ -66,7 +66,7 @@ await test("CLV-207 shell wrapper probes resolve relative scripts from the repos
   }));
 
 await test("CLV-207 shell command strings cannot run a turn during a doctor probe", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const marker = join(scene.root, "turn-started");
     for (const arguments_ of [["-c"], ["--command"], []]) {
       const command = ["/bin/bash", ...arguments_];
@@ -80,7 +80,7 @@ await test("CLV-207 shell command strings cannot run a turn during a doctor prob
   }));
 
 await test("CLV-207 shell wrapper probes use the repository for relative resources", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     await writeFile(
       join(scene.repository, "version.txt"),
       "2.1.1 (Claude Code)\n",
@@ -97,7 +97,7 @@ await test("CLV-207 shell wrapper probes use the repository for relative resourc
   }));
 
 await test("CLV-207 a repository-relative executable harness reads repository resources", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const script = await scene.program(
       "repository-wrapper",
       'import { readFileSync } from "node:fs"; if (process.argv[2] !== "--version") process.exit(91); process.stdout.write(readFileSync("./version.txt", "utf8"));',
@@ -115,7 +115,7 @@ await test("CLV-207 a repository-relative executable harness reads repository re
   }));
 
 await test("CLV-207 zsh emulation cannot substitute its own version for a failing wrapper", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const script = join(scene.root, "failing-wrapper.sh");
     await writeFile(script, "exit 91\n");
     const output = await scene.report({
@@ -132,7 +132,7 @@ await test("CLV-207 zsh emulation cannot substitute its own version for a failin
   }));
 
 await test("CLV-207 shell terminal flags cannot substitute a launcher version for a wrapper probe", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const script = join(scene.root, "failing-wrapper.sh");
     await writeFile(script, "exit 91\n");
     for (const shell of ["/bin/bash", "/bin/zsh"])
@@ -151,7 +151,7 @@ await test("CLV-207 shell terminal flags cannot substitute a launcher version fo
 
 for (const shell of ["sh", "bash"])
   await test(`CLV-207 ${shell} wrapper scripts can be readable files in the service PATH`, () =>
-    withDoctor(async (scene) => {
+    withDoctorWorkflow(async (scene) => {
       await writeFile(
         join(scene.root, "bin/wrapper-in-path.sh"),
         'test "$1" = --version || exit 91\nprintf "2.1.1 (Claude Code)\\n"\n',
@@ -168,7 +168,7 @@ for (const shell of ["sh", "bash"])
     }));
 
 await test("CLV-207 zsh -b ends launcher options before a hyphen-leading script", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     await writeFile(
       join(scene.repository, "-wrapper.sh"),
       'test "$1" = --version || exit 91\nprintf "2.1.1 (Claude Code)\\n"\n',
@@ -182,7 +182,7 @@ await test("CLV-207 zsh -b ends launcher options before a hyphen-leading script"
 
 for (const shell of ["sh", "bash"])
   await test(`CLV-207 ${shell} keeps a failing or unreadable repository wrapper ahead of PATH`, () =>
-    withDoctor(async (scene) => {
+    withDoctorWorkflow(async (scene) => {
       await writeFile(
         join(scene.root, "bin/wrapper.sh"),
         'printf "2.1.1 (Claude Code)\\n"\n',
@@ -203,7 +203,7 @@ for (const shell of ["sh", "bash"])
     }));
 
 await test("CLV-207 script lookup cannot borrow service cwd or add a zsh PATH fallback", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const body = 'printf "2.1.1 (Claude Code)\\n"\n';
     const runtime = runtimeDirectory(scene.environment, scene.repository);
     assert.ok(runtime);
