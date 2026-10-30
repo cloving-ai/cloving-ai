@@ -33,6 +33,7 @@ import {
   recordedHarness,
   interruptedReply,
   processAlive,
+  uncertainProcess,
   resumePlan,
   recordedField,
   type TurnResume,
@@ -124,7 +125,7 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (processAlive(recordedField(started, "processId")))
+  if (await uncertainProcess(started))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
   return resumed(parts, { intent, key, folder, started, signal });
 }

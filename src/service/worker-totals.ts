@@ -9,7 +9,7 @@ import {
 } from "../worker-usage.ts";
 import type { ServiceContext } from "./replies.ts";
 
-function reportFields(text: string | undefined): Fields {
+export function reportFields(text: string | undefined): Fields {
   try {
     return record(JSON.parse(text ?? "null")) ?? {};
   } catch {

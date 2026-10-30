@@ -104,3 +104,50 @@ console.log(JSON.stringify({ html: app.inner }));
     assert.match(String(result["html"]), /#900 is in work/);
     assert.match(String(result["html"]), /#901 waits for #899/);
   });
+
+for (const spentUsd of [17.1, 21.1, null])
+  await test(`CLV-241 status and both watch renders show queue spend ${String(spentUsd)}`, () => {
+    const spend = {
+      limitUsd: 20,
+      spentUsd,
+      unknownTurns: 1,
+      turnsInWork: 2,
+      windowHours: 24,
+      holding: spentUsd !== null,
+    };
+    const model = { ...sampleModel([]), queue: { ...queue, spend } };
+    const cli = statusText({
+      kind: "run-list",
+      workflows: [],
+      runs: [],
+      queue: model.queue,
+    });
+    const html = rendered(
+      component(Page, {
+        model,
+        selected: "",
+        now: at("21:34:41"),
+        stale: false,
+        copying: noCopy,
+      }),
+    );
+    const browser = played(
+      model,
+      `location.hash = ""; replies.push(JSON.parse(process.env.WATCH_MODEL)); await load(); console.log(JSON.stringify({ html: app.inner }));`,
+    );
+    for (const text of [cli, html, String(browser["html"])]) {
+      assert.match(
+        text,
+        spentUsd === null
+          ? /Spend: Price not known of 20.00 USD in the last 24 hours/
+          : new RegExp(
+              `Spend: ${spentUsd.toFixed(2)} of 20.00 USD in the last 24 hours`,
+            ),
+      );
+      assert.match(text, /1 turn with unknown cost/);
+      assert.match(text, /2 turns in work/);
+      assert.equal(text.includes("Queue holds new runs"), spentUsd !== null);
+      assert.equal(text.includes("over the limit"), spentUsd === 21.1);
+      assert.doesNotMatch(text, /Spend: 0.00/);
+    }
+  });

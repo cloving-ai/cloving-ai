@@ -7,6 +7,7 @@ import {
 } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
+import { resumeWorktree } from "./resume-worktree.ts";
 import { readResume, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
@@ -202,6 +203,13 @@ async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
   const resume = await readResume(attempts.start.folder, started);
   if (resume === undefined)
     return { ...combined(attempts), reason: "claude-turn-interrupted" };
+  const locked = await resumeWorktree({
+    directory: attempts.start.directory,
+    folder: attempts.start.folder,
+    signal: attempts.stopping.signal,
+    stopMilliseconds: attempts.grace.milliseconds,
+  });
+  if (locked !== null) return { ...combined(attempts), reason: locked.reason };
   const prepared = await preparedRetry(attempts);
   if (typeof prepared !== "string") return prepared;
   const recovered: Attempts = {

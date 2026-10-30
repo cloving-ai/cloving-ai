@@ -49,6 +49,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly scheduleClock?: () => number;
   readonly schedules?: unknown;
   readonly queueLanes?: number;
+  readonly queueDailySpendLimitUsd?: number;
   readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
   readonly requiredChecks?: readonly string[] | null;

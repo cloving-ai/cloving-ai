@@ -75,9 +75,37 @@ export function attemptText(attempt: WorkerAttemptUsage): string {
     attempt.retryKind === undefined
       ? ""
       : ` · retryKind: ${String(attempt.retryKind)}`;
-  return `Attempt ${String(attempt.attempt)} · ${attempt.model ?? "Model not known"}${kind} · ${priceText(attempt.costUsd, attempt.estimatedCostUsd)}`;
+  const resumed =
+    attempt.resumedAfter === undefined
+      ? ""
+      : ` · resumedAfter: ${attempt.resumedAfter}`;
+  return `Attempt ${String(attempt.attempt)} · ${attempt.model ?? "Model not known"}${kind}${resumed} · ${priceText(attempt.costUsd, attempt.estimatedCostUsd)}`;
 }
 
 export function attemptTexts(value: unknown): readonly string[] {
   return (attemptsOf(value) ?? []).map(attemptText);
+}
+
+export function queueSpendLines(value: unknown): readonly string[] {
+  const spend = record(value);
+  if (spend === undefined) return [];
+  const spent = priceOf(spend["spentUsd"]);
+  const limit = priceOf(spend["limitUsd"]);
+  const unknown = Number(spend["unknownTurns"]);
+  const working = Number(spend["turnsInWork"]);
+  return [
+    `Spend: ${priceText(spent).replace(/ USD$/, "")} of ${priceText(limit)} in the last 24 hours`,
+    ...(unknown > 0
+      ? [`${String(unknown)} turn${unknown === 1 ? "" : "s"} with unknown cost`]
+      : []),
+    ...(working > 0
+      ? [`${String(working)} turn${working === 1 ? "" : "s"} in work`]
+      : []),
+    ...(spend["holding"] === true
+      ? ["Queue holds new runs for spend limit"]
+      : []),
+    ...(spent !== null && limit !== null && spent > limit
+      ? ["Spend is over the limit"]
+      : []),
+  ];
 }

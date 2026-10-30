@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import {
+  alive,
   field,
   git,
   intent,
@@ -11,6 +13,7 @@ import {
   until,
   withScene,
 } from "./claude-worker-fixture.ts";
+import { withLockOwner } from "./worktree-process-fixture.ts";
 
 const signal = new AbortController().signal;
 
@@ -67,41 +70,28 @@ await test("CLV-239 a live daemon stops recovering after two child resumes", () 
     );
   }));
 
-for (const refusal of ["missing-session", "index-lock"])
-  await test(`CLV-239 a killed child refuses recovery for ${refusal}`, () =>
-    withScene(async (scene) => {
-      await scene.worker("hold").deliver(intent(), signal);
-      await until(
-        () =>
-          field(record(scene, "operation-1/attempt-1.json"), "sessionId") ===
-          "session-1",
-      );
-      const current = scene.turns()[0];
-      assert.ok(current);
-      const saved = record(scene, "operation-1/attempt-1.json");
-      assert.ok(typeof saved === "object" && saved !== null);
-      if (refusal === "missing-session") {
-        writeFileSync(
-          join(scene.journal, journalKey("operation-1"), "attempt-1.json"),
-          JSON.stringify({ ...saved, sessionId: null }),
-        );
-      } else {
-        writeFileSync(
-          git(current.directory, ["rev-parse", "--git-path", "index.lock"]),
-          "held",
-        );
-      }
-      process.kill(current.processId, "SIGKILL");
-      await until(() => scene.reports.length === 1);
-      assert.equal(scene.turns().length, 1);
-      assert.equal(scene.reports[0]?.outcome, "failed");
-      assert.equal(
-        scene.reports[0].reason,
-        refusal === "missing-session"
-          ? "claude-turn-interrupted"
-          : "worktree-index-locked",
-      );
-    }));
+await test("CLV-239 a killed child refuses recovery for missing-session", () =>
+  withScene(async (scene) => {
+    await scene.worker("hold").deliver(intent(), signal);
+    await until(
+      () =>
+        field(record(scene, "operation-1/attempt-1.json"), "sessionId") ===
+        "session-1",
+    );
+    const current = scene.turns()[0];
+    assert.ok(current);
+    const saved = record(scene, "operation-1/attempt-1.json");
+    assert.ok(typeof saved === "object" && saved !== null);
+    writeFileSync(
+      join(scene.journal, journalKey("operation-1"), "attempt-1.json"),
+      JSON.stringify({ ...saved, sessionId: null }),
+    );
+    process.kill(current.processId, "SIGKILL");
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.turns().length, 1);
+    assert.equal(scene.reports[0]?.outcome, "failed");
+    assert.equal(scene.reports[0].reason, "claude-turn-interrupted");
+  }));
 
 await test("CLV-239 a child resume records the full budget when its cost is unknown", () =>
   withScene(async (scene) => {
@@ -176,4 +166,36 @@ await test("CLV-239 a daemon restart preserves the interrupted fallback model", 
       field(record(scene, "operation-1/attempt-4.json"), "model"),
       "sonnet",
     );
+  }));
+
+await test("CLV-240 a leftover child in a nested folder stops before a killed turn resumes", () =>
+  withScene(async (scene) => {
+    await scene.worker("tool-child").deliver(intent(), signal);
+    const childFile = join(scene.directory, "turns.log.child");
+    await until(() => existsSync(childFile + ".lines"));
+    const childId = Number(readFileSync(childFile, "utf8"));
+    const first = scene.turns()[0];
+    assert.ok(first);
+    const lockPath = git(first.directory, [
+      "rev-parse",
+      "--git-path",
+      "index.lock",
+    ]);
+    assert.equal(existsSync(lockPath), true);
+    await withLockOwner(scene, {
+      processId: childId,
+      directory: join(first.directory, "nested"),
+      lockPath,
+      run: async () => {
+        process.kill(first.processId, "SIGKILL");
+        await until(() => scene.reports.length === 1);
+        assert.equal(scene.reports[0]?.outcome, "completed");
+        assert.equal(existsSync(lockPath), false);
+        assert.equal(alive(childId), false);
+        const lines = readFileSync(childFile + ".lines", "utf8");
+        await delay(30);
+        assert.equal(readFileSync(childFile + ".lines", "utf8"), lines);
+        assert.equal(scene.turns().length, 2);
+      },
+    });
   }));

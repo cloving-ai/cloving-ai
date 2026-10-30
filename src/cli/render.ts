@@ -1,5 +1,6 @@
 import {
   priceText,
+  queueSpendLines,
   usageText,
   totalsSuffix,
   attemptTexts,
@@ -169,6 +170,7 @@ export function queueLines(value: unknown): readonly string[] {
   const skipped = queue["skipped"];
   return [
     `Queue: ${visible(queue["busy"])} of ${visible(queue["lanes"])} lanes busy`,
+    ...queueSpendLines(queue["spend"]),
     ...(Array.isArray(skipped)
       ? skipped.map((item: unknown) => {
           const dependencies = part(item, "dependencies");

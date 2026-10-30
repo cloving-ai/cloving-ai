@@ -57,3 +57,9 @@ CREATE TABLE dispatch_attempts (
   authority_epoch INTEGER NOT NULL
 ) STRICT;
 `;
+
+export const spendingIndexes = `
+CREATE INDEX events_spend_window ON events (julianday(recorded_at));
+CREATE INDEX operations_worker_settled ON operations (settled_sequence) WHERE capability = 'claude';
+CREATE INDEX operations_worker_open ON operations (requested_sequence) WHERE capability = 'claude' AND settled_sequence IS NULL AND status NOT IN ('refused', 'completed', 'failed', 'stopped', 'cancelled');
+`;

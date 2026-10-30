@@ -220,9 +220,9 @@ await test("CLV-013 an absent payload, a capability or a method that the worker 
     });
   }));
 
-await test("CLV-013 reconcile gives absent for an operation with no record, accepted for a turn in work, unknown for a turn of a different process that is alive, and failed for an interrupted turn whose recorded process is not alive", () =>
+await test("CLV-013 reconcile gives absent for an operation with no record, accepted for a turn in work, unknown for a non-Claude turn of a different process that is alive, and failed for an interrupted turn whose recorded process is not alive", () =>
   withScene(async (scene) => {
-    const worker = scene.worker("hold");
+    const worker = scene.worker("hold", { worker: "codex" });
     assert.deepEqual(await worker.reconcile(intent(), signal), {
       kind: "absent",
     });
@@ -231,7 +231,7 @@ await test("CLV-013 reconcile gives absent for an operation with no record, acce
       kind: "accepted",
       ...accepted,
     });
-    const later = scene.worker("hold");
+    const later = scene.worker("hold", { worker: "codex" });
     assert.deepEqual(await later.reconcile(intent(), signal), {
       kind: "unknown",
       evidence: `claude-turn:${key}`,
