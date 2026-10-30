@@ -18,6 +18,49 @@ import { networkCommand } from "./network-worker-fixture.ts";
 const signal = new AbortController().signal;
 const key = journalKey("operation-1");
 
+for (const kind of ["capacity", "network"])
+  await test(`CLV-239 a ${kind} retry after recovery retains the original task`, () =>
+    withScene(async (scene) => {
+      const prompt =
+        "Implement the assigned task and end with its result line.";
+      const settings = {
+        document: () => Promise.resolve(prompt),
+        retryDelay: () => Promise.resolve(),
+      };
+      const worker = scene.worker("hold", settings);
+      await worker.deliver(intent(), signal);
+      await until(
+        () =>
+          field(record(scene, "operation-1/attempt-1.json"), "sessionId") ===
+          "session-1",
+      );
+      await worker.close();
+      const next = scene.worker("resume-cost", {
+        ...settings,
+        ...(kind === "network"
+          ? { command: networkCommand(scene, ["unused", "network", "done"]) }
+          : {}),
+      });
+      assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+      await until(() => scene.reports.length === 1);
+      const [, resumed, retried] = scene.turns();
+      assert.ok(resumed && retried);
+      assert.match(resumed.prompt, /^This turn stopped because/);
+      assert.equal(resumed.prompt.includes(prompt), false);
+      assert.ok(resumed.arguments.includes("--resume"));
+      assert.ok(retried.prompt.endsWith(`\n\n${prompt}`));
+      assert.match(
+        retried.prompt,
+        new RegExp(`because the ${kind === "capacity" ? "model" : "network"}`),
+      );
+      assert.equal(retried.arguments.includes("--resume"), false);
+      assert.equal(scene.turns().length, 3);
+      assert.deepEqual(
+        scene.reports.map((report) => report.outcome),
+        ["completed"],
+      );
+    }));
+
 await test("CLV-239 the session is journaled before a result or process exit", () =>
   withScene(async (scene) => {
     await scene.worker("hold").deliver(intent(), signal);

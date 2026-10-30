@@ -34,7 +34,6 @@ import {
   interruptedReply,
   processAlive,
   resumePlan,
-  resumePrompt,
   recordedField,
   type TurnResume,
   recoverTurn,
@@ -151,13 +150,17 @@ async function resumed(
   });
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string") return interruptedReply(request, plan);
+  const prompt = await parts.settings.document(intent.payload);
+  if (aborted()) return failure("claude-start-aborted");
+  if (prompt === undefined)
+    return interruptedReply(request, "claude-turn-interrupted");
   await begun(parts, {
     key,
     folder,
     intent,
     ...plan,
     signal,
-    prompt: resumePrompt,
+    prompt,
   });
   return { kind: "accepted", receipt: key, worker };
 }

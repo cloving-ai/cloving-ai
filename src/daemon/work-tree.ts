@@ -290,10 +290,11 @@ export async function firstTurn(
     ? join(settings.journal, "runs", operationKey(runId), "targets")
     : join(settings.journal, "targets");
   const name = `${operationKey(target)}.json`;
-  const startCommit: unknown = Reflect.get(
-    Object(await readRecord(folder, name)),
-    "startCommit",
-  );
+  const record = await readRecord(folder, name);
+  const startCommit: unknown =
+    typeof record === "object" && record !== null
+      ? Reflect.get(record, "startCommit")
+      : undefined;
   if (typeof startCommit === "string") return { ...tree, startCommit };
   await writeRecord(folder, {
     name,

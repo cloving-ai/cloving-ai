@@ -80,7 +80,8 @@ export function streamResult(
 ): StreamResult | undefined {
   if (!line.includes('"result"')) return undefined;
   const record: unknown = parsed(line);
-  const field = (name: string): unknown => Reflect.get(Object(record), name);
+  if (typeof record !== "object" || record === null) return undefined;
+  const field = (name: string): unknown => Reflect.get(record, name);
   if (field("type") !== "result") return undefined;
   const models = modelUsageOf(field("models"));
   return {

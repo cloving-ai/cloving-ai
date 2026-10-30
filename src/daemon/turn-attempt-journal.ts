@@ -141,14 +141,15 @@ export async function recordedEnd(
   const attempt = ends.length;
   const selected = attemptCommand(attempts, attempt);
   const name = `attempt-${String(attempt)}.json`;
-  const started = await readRecord(start.folder, name);
-  const startedAt: unknown = Reflect.get(Object(started), "startedAt");
+  const record = await readRecord(start.folder, name);
+  const started = typeof record === "object" && record !== null ? record : {};
+  const startedAt: unknown = Reflect.get(started, "startedAt");
   if (typeof startedAt !== "string")
     throw new Error("attempt-start-time-missing");
   await written(start.folder, {
     name,
     value: {
-      ...(typeof started === "object" && started !== null ? started : {}),
+      ...started,
       ...options.metadata,
       turnStartCommit: attempts.turnStartCommit,
       ...attemptUsage(attempts, { end, attempt }),

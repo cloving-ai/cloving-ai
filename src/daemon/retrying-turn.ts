@@ -80,7 +80,7 @@ async function launched(
     progress: journal.progress,
     folder,
     ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
-    prompt,
+    prompt: entry.resumedAfter === undefined ? prompt : resumePrompt,
   });
   try {
     await journal.running(turn.processId);
@@ -209,7 +209,7 @@ async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
     options: { ...attempts.options, resume },
     ends: [...resume.ends],
   };
-  const turn = await launched(recovered, resumePrompt);
+  const turn = await launched(recovered);
   return turn === undefined
     ? attemptOutcome(recovered)
     : finished(recovered, turn);
