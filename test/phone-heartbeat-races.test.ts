@@ -1,17 +1,46 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
-import { record } from "../src/protocol.ts";
+import { record, replyLine } from "../src/protocol.ts";
 import { heartbeat } from "../src/relay/relay-heartbeat.ts";
 import { startRelay } from "../src/relay/relay-service.ts";
 import { openRelayStore } from "../src/relay/relay-store.ts";
-import { heartbeatContext, knownDevice } from "./phone-heartbeat-fixture.ts";
+import {
+  heartbeatContext,
+  knownDevice,
+  lostPhoneState,
+} from "./phone-heartbeat-fixture.ts";
 import {
   fakeRelayServer,
   registeredLink,
 } from "./phone-relay-server-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+
+await test("CLV-190 a registration-loss wait ignores a stale registered snapshot", () =>
+  withFiles({}, async (root) => {
+    const replies = [
+      { registered: true, reason: "registration-lost" },
+      { registered: false, reason: "registration-lost" },
+    ];
+    const server = createServer((socket) => {
+      socket.once("data", () => {
+        const state = replies.shift();
+        assert.ok(state);
+        socket.end(replyLine({ kind: "result", result: state }));
+      });
+    });
+    await new Promise<void>((ready) => {
+      server.listen(join(root, "phone.sock"), ready);
+    });
+    try {
+      assert.equal((await lostPhoneState(root))["registered"], false);
+      assert.deepEqual(replies, []);
+    } finally {
+      await new Promise((settle) => server.close(settle));
+    }
+  }));
 
 await test("CLV-190 a 401 for a registration that a new registration replaced keeps the new one", async () => {
   await withFiles({}, async (root) => {
