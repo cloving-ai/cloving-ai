@@ -139,57 +139,13 @@ Doctor probes harness versions and effective executable paths without running a 
 
 ## First run
 
-This first run uses `develop-prompt` on a test repository. It needs no ticket command and no GitHub repository.
+```sh
+cloving init
+```
 
-1. Make a test repository with one commit:
+Run this in your git repository. Choose the agent harness for setup; Cloving saves it in your private repository settings and opens the agent with ``run `cloving init-prompt` `` as its first message. The agent walks through setup, a first run and a first ticket with you.
 
-   ```sh
-   mkdir ~/cloving-trial
-   cd ~/cloving-trial
-   git init
-   echo "A test project." > README.md
-   git add README.md
-   git commit -m "Start the test project"
-   ```
-
-2. In terminal 1, in the test repository, start the service. Keep this terminal open:
-
-   ```sh
-   cloving start
-   ```
-
-   `cloving start` copies the workflow file into a host project, compiles it there, and starts the service. Then it prints the commands for a second terminal.
-
-3. Open the watch page on `http://127.0.0.1:3663/`.
-
-4. In terminal 2, submit a run:
-
-   ```sh
-   cloving run develop-prompt --prompt "Add a file HELLO.md with one line of text."
-   ```
-
-   The command prints a committed receipt with the run ID. A receipt does not mean completed work.
-
-5. The Claude worker does one Claude Code turn. Then the run opens one approval. Show the pending decisions:
-
-   ```sh
-   cloving questions
-   ```
-
-   The output has the approval text and the values that a decision command needs. The approval text has the round, the ticket ID, the branch, the commits, the changed files and the report of the worker.
-
-6. Read the diff before you decide. In the test repository, `git diff HEAD...BRANCH` shows the work of the branch.
-
-7. Approve or deny the work:
-
-   ```sh
-   cloving approve DECISION_REF --expected-revision N --generation N --subject-digest DIGEST
-   cloving deny DECISION_REF --text "FEEDBACK" --expected-revision N --generation N --subject-digest DIGEST
-   ```
-
-   An approval completes the run. It does not merge the branch, so merge the branch yourself, for example with `git merge BRANCH`. A denial with a feedback text starts one more round.
-
-8. `cloving status` lists the runs. `cloving status RUN_ID` shows one run with its reason, evidence and next action.
+Use `cloving init --harness <name or path>` to skip the question. A name with both a file and a shell entry needs an explicit path or `--harness shell:<name>`. A later `cloving init` lists your current default first. The harness stays attached to your terminal, uses its normal permissions and returns its exit status when the session ends.
 
 ### The service and its settings
 
@@ -516,21 +472,9 @@ Know these limits before you start:
 
 Copy a prompt, replace the words in capital letters, and give it to a coding agent.
 
-### Set up Cloving for a repository
+### Set up a repository
 
-```text
-Set up Cloving for my repository REPOSITORY_PATH. Ask me for each value that you do not know. Do not push, publish or merge anything in this setup.
-
-1. Check the platform: macOS or Linux on arm64 or x64, with the Node and npm versions of "engines" in package.json of Cloving. Check that git and the claude command work. If I want develop-issue, check that gh has a login and that Greptile reviews the GitHub repository.
-2. If I have no Cloving checkout, clone https://github.com/cloving-ai/cloving-ai.git to ~/cloving. In the checkout, run: npm ci --ignore-scripts
-3. Write a launcher ~/.local/bin/cloving that runs src/cli.ts of the checkout with the correct node program, and make it executable. Do not use npm link. Make sure that ~/.local/bin is on the search path and that "cloving --version" works.
-4. Ask me which tracker has my tickets. Write a ticket command for that tracker in ~/.local/bin. The command gets a ticket ID as its last argument and prints the text of the ticket. For develop-issue, the first line is "# " and the title, and one line is "GitHub issue: OWNER/REPOSITORY#NUMBER". Test the command with one ticket ID, and show me the output.
-5. Start the service in a terminal session that stays open, for example a tmux session. In that session, in my repository, run: CLOVING_TICKET_COMMAND='["TICKET_COMMAND"]' cloving start
-   For develop-issue, also set CLOVING_CHECK_COMMAND to the checks of my repository. Give me the address of the watch page.
-6. Make a first run with develop-prompt and a small task that I agree to. Show me the output of "cloving questions" and the diff of the branch. Do not approve or deny. I decide.
-7. Then run my first ticket: cloving run develop-ticket --ticket TICKET_ID
-   Show me the diff again before I decide.
-```
+Run `cloving init` in the repository and select your agent harness. The agent runs `cloving init-prompt` to get repository facts and the setup instructions, then guides you through the remaining steps.
 
 ### Run a continuous process
 
@@ -1057,6 +1001,8 @@ Candidate policy checking is available internally through `checkWorkflowCandidat
 The caller supplies imported symbol names, literal effect pairs (`null` represents a dynamic value), direct-effect and unsupported-form findings, and known call and unit totals. Unknown portions of a total still require runtime budget enforcement. This pure checker does not analyze source or verify these facts. The installed admission adapter in `tools/admit-workflow.ts` derives those facts from source and performs SDK compilation; the pure checker alone cannot admit or authorize a run.
 
 ## Development of Cloving
+
+The terminal integration test uses `/usr/bin/python3` (Python 3.9 or newer) and its standard `pty` module to exercise a real terminal. No Python packages are needed.
 
 The shell tests require both zsh at `/bin/zsh` and Bash at `/bin/bash`. macOS includes them. Linux contributors and CI runners must install both before setup; on Ubuntu, install the `zsh` and `bash` system packages. The fixtures exercise zsh 5.9 and Bash 3.2 or 5.2, including their real startup files; neither shell's tests are optional. `npm run check:setup` checks that both executables run and reports a missing prerequisite before compilation.
 

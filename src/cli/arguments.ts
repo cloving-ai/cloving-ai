@@ -16,7 +16,9 @@ export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "help" }
   | { readonly kind: "version" }
   | { readonly kind: "init-prompt" }
+  | { readonly kind: "init"; readonly harness: string | undefined }
   | { readonly kind: "init-prompt-help" }
+  | { readonly kind: "init-help" }
   | { readonly kind: "doctor-help" }
   | { readonly kind: "doctor"; readonly json: boolean }
   | { readonly kind: "validate-help" }
@@ -58,6 +60,7 @@ const options = {
   follow: { type: "boolean" },
   since: { type: "string" },
   repository: { type: "string" },
+  harness: { type: "string" },
 } as const;
 
 type Parsed = ReturnType<
@@ -146,6 +149,15 @@ function inspectionInvocation(
   },
 ): Invocation | undefined {
   const { values, remaining } = input;
+  if (command === "init") {
+    if (unexpected(values, ["harness", "help"]))
+      return { kind: "usage-error", code: "unexpected-option", json: false };
+    if (remaining.length > 0)
+      return { kind: "usage-error", code: "unexpected-argument", json: false };
+    return values.help
+      ? { kind: "init-help" }
+      : { kind: "init", harness: values.harness };
+  }
   if (command === "doctor") return doctorInvocation(values, remaining);
   if (command === "init-prompt") return promptInvocation(values, remaining);
   return undefined;
@@ -210,7 +222,7 @@ function knownCommand(positionals: readonly string[]): boolean {
   const [command, subcommand] = positionals;
   if (command === undefined) return true;
   if (command === "workflows") return subcommand === "validate";
-  if (command === "doctor" || command === "init-prompt") return true;
+  if (["doctor", "init-prompt", "init"].includes(command)) return true;
   return isRuntimeCommand(command);
 }
 

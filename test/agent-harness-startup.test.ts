@@ -19,6 +19,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
         {
           name: "codex",
           kind: "shell",
+          shellMode: "login",
           path: "codex",
           version: "codex-cli 0.106.0",
           working: true,
@@ -201,6 +202,7 @@ await test("CLV-208 Bash retries a failed login definition in its interactive st
       {
         name: "codex",
         kind: "shell",
+        shellMode: "interactive",
         path: "codex",
         version: "codex-cli 0.104.0",
         working: true,
@@ -238,6 +240,7 @@ for (const [startup, reason] of [
         {
           name: "codex",
           kind: "shell",
+          shellMode: "interactive",
           path: "codex",
           version: "codex-cli 0.107.0",
           working: true,
@@ -275,6 +278,7 @@ for (const [startup, reason] of [
         {
           name: "codex",
           kind: "shell",
+          shellMode: "login",
           path: "codex",
           version: "codex-cli 0.105.0",
           working: true,
