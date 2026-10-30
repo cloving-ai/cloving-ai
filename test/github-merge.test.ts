@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { ObservationReport } from "../src/service/worker-port.ts";
+import { parseCommand } from "../src/authority/commands.ts";
 import { git, journalKey, resultOf } from "./claude-worker-fixture.ts";
 import {
   committed,
@@ -13,7 +15,45 @@ import {
   advancedBase,
   mergeCalls,
   movingCheck,
+  movingMerge,
 } from "./github-merge-fixture.ts";
+
+await test("CLV-256 records the refused merge before refreshing main", () =>
+  withGithub(async (scene) => {
+    const observations: ObservationReport[] = [];
+    const settings = {
+      gh: movingMerge(scene, { limit: 1 }),
+      check: [process.execPath, "-e", ""],
+      observe: (report: ObservationReport) => {
+        assert.equal(scene.state().prs[0]?.["state"], "OPEN");
+        observations.push(report);
+        return Promise.resolve({ kind: "accepted" });
+      },
+    };
+    const worker = scene.worker(settings);
+    const commit = await opened(scene, worker);
+    scene.plan({ scores: [], mergeRefusals: 1, mergeStatus: 405 });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(observations.length, 1);
+    const observation = observations[0];
+    assert.equal(observation?.runId, report.runId);
+    assert.equal(observation.operationId, report.operationId);
+    assert.equal(observation.reason, "github-merge-refused");
+    assert.notEqual(
+      parseCommand({ kind: "report-observation", ...observation }),
+      null,
+    );
+    assert.equal(observation.attempt, 1);
+    assert.equal(observation.limit, 3);
+    assert.match(
+      observation.evidence ?? "",
+      new RegExp(`HTTP-405.*${commit}.*main`),
+    );
+  }));
 
 await test("CLV-081 completes a failed check with its output and no push or merge", () =>
   withGithub(async (scene) => {

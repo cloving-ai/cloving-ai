@@ -1,7 +1,11 @@
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { git, journalKey } from "./claude-worker-fixture.ts";
-import { committed, type GithubScene } from "./github-worker-fixture.ts";
+import {
+  committed,
+  fakeGh,
+  type GithubScene,
+} from "./github-worker-fixture.ts";
 
 export function advancedBase(scene: GithubScene): string {
   const base = committed(scene.repository, { name: "base.ts", text: "2;\n" });
@@ -34,6 +38,36 @@ export function movingCheck(
 
 export function mergeCalls(scene: GithubScene): readonly (readonly string[])[] {
   return scene.state().calls.filter((call) => call.includes("PUT"));
+}
+
+export function movingMerge(
+  scene: GithubScene,
+  options: { readonly limit: number; readonly file?: string },
+): readonly string[] {
+  const script = join(scene.directory, "move-before-merge.mjs");
+  writeFileSync(
+    script,
+    'import { mkdirSync } from "node:fs";\n' +
+      fakeGh.replace(
+        '"api PUT merge": () => {',
+        `"api PUT merge": () => {
+    const count = state.mergeMoves ?? 0;
+    const head = args.find((part) => part.startsWith("sha="));
+    if (head !== state.movedHead && count < ${String(options.limit)}) {
+      const cwd = ${JSON.stringify(scene.repository)};
+      const git = (parts) => execFileSync("git", parts, { cwd });
+      mkdirSync(cwd + "/src", { recursive: true });
+      writeFileSync(${JSON.stringify(join(scene.repository, "src", options.file ?? "base.ts"))}, String(count + 2) + ";\\n");
+      git(["add", "src"]);
+      git(["commit", "--quiet", "--allow-empty", "-m", "Move main before merge " + count]);
+      git(["push", "--quiet", "origin", "main"]);
+      state.mergeMoves = count + 1;
+      state.movedHead = head;
+    }
+    `,
+      ),
+  );
+  return ["env", "-u", "NODE_V8_COVERAGE", process.execPath, script];
 }
 
 export function leftMerge(scene: GithubScene, commit: string): string {
