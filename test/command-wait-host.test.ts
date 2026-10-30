@@ -5,6 +5,60 @@ import { commandWaitBridge } from "../src/host/command-wait.ts";
 import { commandWaitHost } from "./command-wait-host-fixture.ts";
 import { call, eventually, withHarness } from "./service-fixture.ts";
 
+await test("CLV-256 command-wait host fixture completes ordinary commands before exhausting their budget", () =>
+  withHarness(async (harness) => {
+    const entered = Promise.withResolvers<string>();
+    const release = Promise.withResolvers<{ readonly kind: "absent" }>();
+    const scene = await commandWaitHost(harness, {
+      delivery: {
+        reconcile: async (intent) => {
+          if (intent.kind === "protected-effect") {
+            entered.resolve(intent.operationId);
+            await release.promise;
+          }
+          return { kind: "absent" };
+        },
+        deliver: () =>
+          Promise.resolve({
+            kind: "completed" as const,
+            worker: "command",
+            receipt: "command-receipt",
+            result: '{"ready":false}',
+          }),
+      },
+    });
+    const acknowledged = Promise.withResolvers<undefined>();
+    const requestEffect = scene.ports.requestEffect;
+    Object.assign(scene.ports, {
+      requestEffect: async (request: Parameters<typeof requestEffect>[0]) => {
+        const reply = await requestEffect(request);
+        acknowledged.resolve(undefined);
+        return reply;
+      },
+    });
+    const ordinary = scene.ordinary(1);
+    try {
+      const operationId = await entered.promise;
+      await acknowledged.promise;
+      assert.equal(
+        (await scene.ports.operation(operationId))?.status,
+        "dispatch-pending",
+      );
+      release.resolve({ kind: "absent" });
+      const reply = await ordinary;
+      assert.equal(reply.operation?.status, "completed");
+      assert.equal(reply.receipt.kind, "accepted");
+    } finally {
+      release.resolve({ kind: "absent" });
+    }
+    assert.equal((await scene.ordinary(2)).operation?.status, "completed");
+    assert.equal(
+      (await scene.ordinary(3)).disposition?.reason,
+      "budget-exhausted",
+    );
+    assert.equal((await scene.budget())["spent"], 2);
+  }));
+
 await test("CLV-237 cancelling before a paused opening resumes ends retries without a wait or command", () =>
   withHarness(async (harness) => {
     const { ports, opening, calls, runId } = await commandWaitHost(harness);

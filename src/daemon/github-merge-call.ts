@@ -26,7 +26,11 @@ function commitOf(value: unknown, name: string): string {
 export async function knownMerge(
   operation: Operation,
   expected: ReviewedPull & { readonly updated: string },
-): Promise<{ readonly head: string; readonly merged: string | undefined }> {
+): Promise<{
+  readonly head: string;
+  readonly open: boolean;
+  readonly merged: string | undefined;
+}> {
   const pull: unknown = JSON.parse(
     await githubRead(operation, [
       "api",
@@ -34,10 +38,11 @@ export async function knownMerge(
     ]),
   );
   const head = commitOf(field(pull, "head"), "sha");
-  if (field(pull, "merged") !== true) return { head, merged: undefined };
+  const open = field(pull, "state") === "open";
+  if (field(pull, "merged") !== true) return { head, open, merged: undefined };
   if (head !== expected.commit && head !== expected.updated)
     throw new Error("merged-other-commit");
-  return { head, merged: commitOf(pull, "merge_commit_sha") };
+  return { head, open, merged: commitOf(pull, "merge_commit_sha") };
 }
 
 async function mergedNow(
@@ -83,7 +88,7 @@ async function waitForHead(
 export function mergePull(
   operation: Operation,
   pull: ReviewedPull & { readonly updated: string },
-): Promise<string> {
+): Promise<string | Error> {
   return retryGithub(operation, {
     action: async (attempt) => {
       const known = attempt > 0 ? await knownMerge(operation, pull) : undefined;
@@ -94,10 +99,14 @@ export function mergePull(
     },
     statuses: pull.updated === pull.commit ? [] : [405, 409],
   }).catch(async (error: unknown) => {
-    if (!(error instanceof Error) || error.message !== "github-network-failed")
-      throw error;
+    if (!(error instanceof Error)) throw error;
+    const refused =
+      error.message === "github-call-failed" &&
+      [405, 409].includes(Number(field(error, "status")));
+    if (error.message !== "github-network-failed" && !refused) throw error;
     const known = await knownMerge(operation, pull);
     if (known.merged !== undefined) return known.merged;
+    if (refused && known.open) return error;
     throw error;
   });
 }

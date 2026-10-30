@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { HostPorts, ServiceOptions } from "../src/service/service.ts";
 import type { Harness } from "./service-fixture.ts";
-import { call, field, fields, text } from "./service-fixture.ts";
+import { call, eventually, field, fields, text } from "./service-fixture.ts";
 import { pinned, payload } from "./command-wait-fixture.ts";
 import { start } from "./command-wait-check-fixture.ts";
 
@@ -106,8 +106,8 @@ function hostOperations(parts: {
           "budget",
         ),
       ),
-    ordinary: (round: number) =>
-      ports.requestEffect({
+    ordinary: async (round: number) => {
+      const reply = await ports.requestEffect({
         runId,
         commandId: `ordinary-${String(round)}`,
         scope: { phase: "ordinary", operation: "review", round },
@@ -116,6 +116,18 @@ function hostOperations(parts: {
         target: "review-state",
         payload,
         units: 1,
-      }),
+      });
+      const operationId = reply.operation?.operationId;
+      if (
+        operationId === undefined ||
+        reply.disposition?.disposition !== "admitted"
+      )
+        return reply;
+      const operation = await eventually(async () => {
+        const current = await ports.operation(operationId);
+        return current?.status === "completed" ? current : undefined;
+      });
+      return { ...reply, operation };
+    },
   };
 }

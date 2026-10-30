@@ -7,6 +7,7 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
+import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
   methods,
@@ -34,6 +35,9 @@ export interface GithubWorkerSettings extends MethodSettings {
   readonly journal: string;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
+  readonly observe?: (
+    report: ObservationReport,
+  ) => Promise<{ readonly kind: string }>;
   readonly operationStatus: (
     operationId: string,
   ) => Promise<string | undefined>;
@@ -121,6 +125,13 @@ async function outcome(
       target: intent.target,
       payload,
       signal,
+      observe: async (observation) =>
+        settings.observe?.({
+          ...observation,
+          runId: intent.runId,
+          operationId: intent.operationId,
+          commandId: `github:${run.key}:merge-refused:${String(observation.attempt)}`,
+        }),
     });
     return {
       outcome: "completed",
