@@ -34,16 +34,52 @@ async function descriptorUsesLock(
 
 async function processUsesLock(
   directory: string,
-  lock: { readonly dev: number; readonly ino: number },
+  lock: LockIdentity & LockPermissions,
 ): Promise<boolean | undefined> {
   try {
-    for (const descriptor of await readdir(directory)) {
-      const used = await descriptorUsesLock(`${directory}/${descriptor}`, lock);
+    for (const descriptor of await readdir(`${directory}/fd`)) {
+      const used = await descriptorUsesLock(
+        `${directory}/fd/${descriptor}`,
+        lock,
+      );
       if (used !== false) return used;
     }
     return false;
   } catch (error) {
-    return disappeared(error) ? false : undefined;
+    if (disappeared(error)) return false;
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      (error.code !== "EACCES" && error.code !== "EPERM")
+    )
+      return undefined;
+    return (await unrelatedProcess(directory, lock)) ? false : undefined;
+  }
+}
+
+interface LockPermissions {
+  readonly uid: number;
+  readonly mode: number;
+}
+
+async function unrelatedProcess(
+  directory: string,
+  lock: LockPermissions,
+): Promise<boolean> {
+  if (lock.uid !== process.geteuid?.() || (lock.mode & 0o022) !== 0)
+    return false;
+  try {
+    const status = await readFile(`${directory}/status`, "utf8");
+    const users = /^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$/m.exec(status);
+    return (
+      users !== null &&
+      users
+        .slice(1)
+        .map(Number)
+        .every((user) => Number.isSafeInteger(user) && user !== lock.uid)
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -60,13 +96,13 @@ export interface OwnedIndexLock extends LockIdentity {
 }
 
 async function lockOwners(
-  lock: LockIdentity,
+  lock: LockIdentity & LockPermissions,
 ): Promise<readonly number[] | undefined> {
   if (process.platform === "linux") {
     const processIds: number[] = [];
     for (const entry of await readdir("/proc")) {
       if (!/^\d+$/.test(entry)) continue;
-      const used = await processUsesLock(`/proc/${entry}/fd`, lock);
+      const used = await processUsesLock(`/proc/${entry}`, lock);
       if (used === undefined) return undefined;
       if (used) processIds.push(Number(entry));
     }
@@ -130,6 +166,8 @@ export async function ownedIndexLock(
       ino: identity.ino,
       ctimeMs: identity.ctimeMs,
       mtimeMs: identity.mtimeMs,
+      uid: identity.uid,
+      mode: identity.mode,
     };
     const processIds = await lockOwners(lock);
     return processIds === undefined || processIds.length === 0
