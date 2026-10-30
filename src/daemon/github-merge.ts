@@ -220,15 +220,14 @@ async function readyHead(
     });
     const ci = await waitForCi(operation, updated);
     if (ci !== undefined) return ci;
-    if (await containsBase(operation, updated)) {
-      const merged = await mergePull(operation, { ...pull, updated });
-      if (typeof merged === "string") return { updated, merged };
-      if (updated !== pull.commit && (await containsBase(operation, updated)))
-        throw merged;
-      await recordRefusal(operation, { error: merged, updated, attempt });
-    }
     recorded = updated;
     remote = updated;
+    if (!(await containsBase(operation, updated))) continue;
+
+    const merged = await mergePull(operation, { ...pull, updated });
+    if (typeof merged === "string") return { updated, merged };
+    if (await containsBase(operation, updated)) throw merged;
+    await recordRefusal(operation, { error: merged, updated, attempt });
   }
   throw new Error("base-moved");
 }

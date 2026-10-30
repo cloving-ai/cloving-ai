@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { git, resultOf, until } from "./claude-worker-fixture.ts";
+import { git, journalKey, resultOf, until } from "./claude-worker-fixture.ts";
 import {
   advancedBase,
   leftMerge,
@@ -39,6 +39,31 @@ await test("CLV-256 keeps the three main merge limit after repeated moved base r
   }));
 
 for (const status of [405, 409]) {
+  await test(`CLV-256 preserves HTTP ${String(status)} when an unchanged head still contains main`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({ scores: [], mergeRefusals: 3, mergeStatus: status });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.equal(report.reason, "github-call-failed");
+      const record = resultOf(
+        readFileSync(
+          join(scene.journal, journalKey(report.operationId), "result.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(
+        record["detail"],
+        `gh: Merge not ready (HTTP ${String(status)})`,
+      );
+      assert.equal(mergeCalls(scene).length, 1);
+      assert.equal(scene.state().prs[0]?.["state"], "OPEN");
+      assert.equal(git(treeOf(scene), ["rev-parse", "HEAD"]), commit);
+    }));
+
   await test(`CLV-256 keeps HTTP ${String(status)} for a closed pull request as github-call-failed`, () =>
     withGithub(async (scene) => {
       const worker = scene.worker();
