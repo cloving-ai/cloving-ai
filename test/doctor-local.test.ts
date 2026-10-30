@@ -11,7 +11,13 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { nodeObservation } from "../src/cli/doctor-local.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
-import { check, savedHarness, settings, withDoctor } from "./doctor-fixture.ts";
+import {
+  check,
+  savedHarness,
+  settings,
+  withDoctor,
+  withDoctorWorkflow,
+} from "./doctor-fixture.ts";
 
 const codes = [
   "git-repository",
@@ -22,6 +28,7 @@ const codes = [
   "github-origin",
   "greptile-review",
   "settings-files",
+  "no-workflow",
   "runtime-directory",
   "service",
   "ticket-command",
@@ -32,7 +39,7 @@ const codes = [
 ];
 
 await test("CLV-207 doctor emits the ordered versioned report and local successes", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const output = await scene.report();
     assert.equal(output.version, 1);
     assert.equal(
@@ -47,6 +54,7 @@ await test("CLV-207 doctor emits the ordered versioned report and local successe
       "git-repository",
       "harnesses",
       "default-harness",
+      "no-workflow",
       "settings-files",
       "ticket-command",
       "next-command",
@@ -73,6 +81,7 @@ await test("CLV-207 invalid settings fail first and skip setting dependent probe
     assert.equal(check(output, "settings-files")["result"], "fail");
     for (const code of [
       "default-harness",
+      "no-workflow",
       "gh-login",
       "ticket-command",
       "next-command",
@@ -180,7 +189,7 @@ await test("CLV-207 Node wrappers cannot substitute the launcher version for a m
   }));
 
 await test("CLV-207 Node wrapper probes keep the repository script and replace turn arguments with --version", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     await writeFile(
       join(scene.repository, "version.txt"),
       "2.1.1 (Claude Code)\n",
