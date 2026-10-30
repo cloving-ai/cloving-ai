@@ -19,6 +19,28 @@ const facts: InitPromptFacts = {
   workflows: [],
 };
 
+await test("CLV-228 first-workflow setup defers no-workflow to the template step and checks it after copying", () => {
+  const output = initPrompt(facts);
+  const first = output.split("\n").find((line) => line.startsWith("1. Run"));
+  const template = output.split("\n").find((line) => line.startsWith("5. "));
+  const verification = output
+    .split("\n")
+    .find((line) => line.startsWith("8. "));
+  assert.ok(first);
+  assert.ok(template);
+  assert.ok(verification);
+  assert.match(first, /Defer `no-workflow` to the template step/);
+  assert.match(first, /Do not run `cloving init`/);
+  assert.match(template, /cloving templates copy <name>/);
+  assert.match(template, /Run `cloving doctor --json` again after the copy/);
+  assert.match(template, /`no-workflow` must give `ok`/);
+  assert.match(verification, /including `no-workflow`/);
+  assert.doesNotMatch(
+    output,
+    /develop-(?:issue|ticket|prompt|prd)|bundled workflows/,
+  );
+});
+
 await test("CLV-228 setup queue guidance requires an explicit queue declaration", () => {
   const queue = initPrompt(facts)
     .split("\n")

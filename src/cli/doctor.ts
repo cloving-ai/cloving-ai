@@ -11,7 +11,11 @@ import {
 } from "../doctor-report.ts";
 import { privateSettingsPath, projectSettings } from "./project-settings.ts";
 import { githubObservations } from "./doctor-github.ts";
-import { bundledDoctorWorkflows, doctorWorkflows } from "./doctor-workflows.ts";
+import {
+  bundledDoctorWorkflows,
+  doctorWorkflows,
+  workflowObservation,
+} from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { harnessObservations } from "./doctor-harness.ts";
@@ -129,6 +133,7 @@ async function repositoryObservations(
     settingsValid,
     environment,
   });
+  observations["no-workflow"] = workflowObservation(workflowContext);
   const required = requiredDoctorCodes(workflowContext.workflows);
   const dependent = await configuredObservations(
     { ...options, environment },

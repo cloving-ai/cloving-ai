@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/doctor-no-workflow.test.ts": "test",
     "test/resume-index-permissions.test.ts": "test",
     "test/resume-index-lock.test.ts": "test",
     "src/daemon/resume-index-lock.ts": "daemon",

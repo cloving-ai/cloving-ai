@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { DoctorWorkflow } from "../doctor-report.ts";
+import type { DoctorObservation, DoctorWorkflow } from "../doctor-report.ts";
 import {
   configurationRoot,
   absoluteWorkflowFolder,
@@ -16,6 +16,23 @@ export const bundledDoctorWorkflows = Object.values(bundledWorkflowIds).map(
     capabilities: ["claude", "github"],
   }),
 );
+
+export function workflowObservation(context: {
+  readonly workflows: readonly DoctorWorkflow[];
+  readonly prerequisite: string | undefined;
+}): DoctorObservation {
+  if (context.prerequisite !== undefined)
+    return { result: "skip", detail: context.prerequisite };
+  const found = context.workflows.some(
+    (workflow) => workflow.scope === "project" || workflow.scope === "user",
+  );
+  return {
+    result: found ? "ok" : "fail",
+    detail: found
+      ? "Project or user workflow found"
+      : "No project or user workflow",
+  };
+}
 
 export async function doctorWorkflows(
   repository: string,

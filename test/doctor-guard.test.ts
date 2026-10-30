@@ -3,7 +3,12 @@ import { access, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { check, githubReads, withDoctor } from "./doctor-fixture.ts";
+import {
+  check,
+  githubReads,
+  withDoctor,
+  withDoctorWorkflow,
+} from "./doctor-fixture.ts";
 import { writeQueueWorkflow } from "./workflow-folder-fixture.ts";
 
 await test("CLV-207 fake GitHub and harness probes make no other network call", () =>
@@ -41,7 +46,7 @@ syncBuiltinESMExports();
   }));
 
 await test("CLV-228 a dormant queue makes the absent next command optional", () =>
-  withDoctor(async (scene) => {
+  withDoctorWorkflow(async (scene) => {
     const output = await scene.report({ CLOVING_NEXT_COMMAND: undefined });
     assert.equal(check(output, "next-command")["required"], false);
     assert.equal(check(output, "next-command")["result"], "fail");

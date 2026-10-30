@@ -207,6 +207,7 @@ await test("CLV-207 inaccessible settings locations still produce a versioned re
     assert.equal(check(output, "settings-files")["result"], "fail");
     for (const code of [
       "default-harness",
+      "no-workflow",
       "gh-login",
       "github-origin",
       "ticket-command",
@@ -230,6 +231,7 @@ await test("CLV-207 unavailable workflow discovery skips dependent checks withou
     assert.equal(check(output, "default-harness")["result"], "ok");
     assert.equal(check(output, "runtime-directory")["result"], "ok");
     for (const code of [
+      "no-workflow",
       "gh-login",
       "github-origin",
       "ticket-command",
