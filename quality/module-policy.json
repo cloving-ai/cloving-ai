@@ -1,5 +1,6 @@
 {
   "roles": {
+    "test/phone-state.test.ts": "test",
     "test/command-wait-worker-fixture.ts": "test",
     "test/command-wait-worker.test.ts": "test",
     "src/service/command-waits.ts": "service",
