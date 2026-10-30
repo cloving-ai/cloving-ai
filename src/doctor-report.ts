@@ -9,6 +9,7 @@ export const doctorCodes = [
   "github-origin",
   "greptile-review",
   "settings-files",
+  "no-workflow",
   "runtime-directory",
   "service",
   "ticket-command",
@@ -43,6 +44,7 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Install the Greptile app at https://github.com/apps/greptile, then open a first pull request: gh pr create",
   "settings-files":
     "Fix the project JSON: ${EDITOR:-vi} .cloving/config.json; for private JSON, edit <config>/cloving/projects/<repository-id>.json",
+  "no-workflow": "cloving init",
   "runtime-directory":
     'Select a private writable runtime: CLOVING_RUNTIME_DIR="$HOME/.local/state/cloving/doctor/run" cloving doctor',
   service: "Start the service: cloving start",
@@ -79,6 +81,7 @@ export function requiredDoctorCodes(
     "node-version",
     "default-harness",
     "settings-files",
+    "no-workflow",
     "runtime-directory",
   ]);
   if (workflows.some((workflow) => workflow.capabilities.includes("github"))) {

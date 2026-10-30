@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
+import { operatorFiles } from "./workflow-folder-fixture.ts";
 
 const execute = promisify(execFile);
 const entry = resolve("src/cli.ts");
@@ -35,6 +36,21 @@ export function withDoctor(use: (scene: DoctorScene) => Promise<void> | void) {
     { "repository/file": "", "bin/placeholder": "" },
     async (root) => use(await doctorScene(root)),
   );
+}
+
+export function withDoctorWorkflow(
+  use: (scene: DoctorScene) => Promise<void> | void,
+) {
+  return withDoctor(async (scene) => {
+    for (const [name, text] of Object.entries(
+      operatorFiles("project", "custom"),
+    )) {
+      const file = join(scene.root, name.replace("repo/", "repository/"));
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, text);
+    }
+    return use(scene);
+  });
 }
 
 async function doctorScene(root: string): Promise<DoctorScene> {

@@ -135,6 +135,8 @@ The package includes [the project schema](src/project-config.schema.json) and [t
 
 Run `cloving doctor` from the repository before starting the service. It lists each requirement with a fixed code, `ok`, `fail` or `skip`, and a fixing command. Required failures and skipped prerequisites exit with status 1. `cloving doctor --json` prints the same checks as `{ "version": 1, "checks": [...] }` for setup agents.
 
+The required `no-workflow` check fails when neither the project nor the user folder has a workflow declaration. Its fix is `cloving init`. During `cloving init-prompt` setup, defer this check to the template step, copy or create the workflow, then run doctor again. `no-workflow` must report `ok` before setup is ready.
+
 Doctor probes harness versions and effective executable paths without running a turn. Shell scripts and simple `node script` wrappers receive `--version` from the repository folder; unsupported launcher arguments fail the probe. GitHub login and reads use the origin's host, including GitHub Enterprise. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
 
 ## First run
