@@ -2,6 +2,7 @@ import {
   configuration,
   settingScope,
   validateSetting,
+  type Configuration,
 } from "./configuration-schema.ts";
 import { configurationValues, parseConfiguration } from "./project-settings.ts";
 import { record } from "./protocol.ts";
@@ -11,6 +12,34 @@ export interface SettingChange {
   readonly action: "set" | "unset";
   readonly value?: string;
   readonly scope: "project" | "private";
+}
+
+export type HarnessSelection = Required<
+  Pick<NonNullable<Configuration["harness"]>, "name" | "kind" | "path">
+>;
+
+export interface HarnessChange {
+  readonly harness: HarnessSelection;
+  readonly scope: "private";
+}
+
+export function selectedHarnessConfiguration(
+  contents: string | undefined,
+  selection: HarnessSelection,
+): string {
+  const previous = parseConfiguration(contents, "private");
+  const harness = previous.harness;
+  const same =
+    harness?.name === selection.name &&
+    harness.kind === selection.kind &&
+    harness.path === selection.path;
+  const next = {
+    version: 1,
+    ...previous,
+    harness: { ...(same ? harness : {}), ...selection },
+  };
+  configuration(next, "private");
+  return JSON.stringify(next, null, 2) + "\n";
 }
 
 export type JsonValue =

@@ -22,6 +22,7 @@ export interface HarnessEntry {
   readonly name: string;
   readonly kind: "file" | "shell";
   readonly path: string;
+  readonly shellMode?: ShellMode;
   readonly version: string | null;
   readonly working: boolean;
   readonly reason: string | null;
@@ -160,7 +161,7 @@ async function probeShell(
   });
   const stdout = shellBlock(output.stdout, 0);
   return probeEntry(
-    { name, kind, path },
+    { name, kind, path, ...(kind === "shell" ? { shellMode: mode } : {}) },
     {
       stdout: stdout ?? "",
       reason: output.reason ?? (stdout === null ? "shell-protocol" : null),

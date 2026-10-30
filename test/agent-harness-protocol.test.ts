@@ -31,6 +31,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
           {
             name,
             kind: "shell",
+            shellMode: "login",
             path: name,
             version: "Other 1.2",
             working: true,
