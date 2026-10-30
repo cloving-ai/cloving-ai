@@ -17,7 +17,7 @@ export async function stopChild(
       clearTimeout(timer);
       resolve();
     });
-    child.kill("SIGTERM");
+    if (!child.killed) child.kill("SIGTERM");
   });
 }
 

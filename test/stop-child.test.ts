@@ -67,6 +67,57 @@ for (const stop of [stopChild, stopChildGroup])
     });
   });
 
+for (const stop of [stopChild, stopChildGroup])
+  await test(`CLV-257 ${stop.name} preserves a covered child's shutdown after its first signal`, async () => {
+    await withFiles({}, async (directory) => {
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          'process.once("message", () => process.disconnect()); process.once("SIGTERM", () => process.send("stopping")); process.send("ready");',
+        ],
+        {
+          detached: true,
+          env: { ...process.env, NODE_V8_COVERAGE: directory },
+          stdio: ["ignore", "ignore", "inherit", "ipc"],
+        },
+      );
+      const exited = once(child, "exit");
+      const kill = child.kill.bind(child);
+      let stopping: Promise<void> | undefined;
+      try {
+        assert.deepEqual(await once(child, "message"), ["ready", undefined]);
+        const acknowledged = once(child, "message");
+        assert.equal(child.kill("SIGTERM"), true);
+        assert.deepEqual(await acknowledged, ["stopping", undefined]);
+        const signals: Array<NodeJS.Signals | number | undefined> = [];
+        child.kill = (signal) => {
+          signals.push(signal);
+          return kill(signal);
+        };
+        stopping = stop(child);
+        assert.deepEqual(signals, [], "await shutdown without a second signal");
+        child.send("release");
+        await stopping;
+        assert.deepEqual(await exited, [0, null]);
+        const recordings = await readdir(directory);
+        assert.ok(recordings.length > 0);
+        for (const file of recordings) {
+          const value: unknown = JSON.parse(
+            await readFile(join(directory, file), "utf8"),
+          );
+          assert.ok(value && typeof value === "object" && "result" in value);
+        }
+      } finally {
+        child.kill = kill;
+        if (child.connected) child.disconnect();
+        await stopChild(child);
+        await stopping;
+        await exited;
+      }
+    });
+  });
+
 await test("CLV-145 stopping a child that ignores SIGTERM escalates after a bounded grace period", async () => {
   const child = spawn(
     process.execPath,
