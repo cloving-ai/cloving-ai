@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import childProcess, { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import filesystem, { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -44,7 +44,11 @@ async function ended(
 
 async function written(file: string): Promise<string> {
   const deadline = Date.now() + testMilliseconds(10000);
-  while (Date.now() < deadline && !existsSync(file)) await delay(50);
+  while (Date.now() < deadline) {
+    const value = existsSync(file) ? await readFile(file, "utf8") : "";
+    if (value.length > 0) return value;
+    await delay(50);
+  }
   return await readFile(file, "utf8");
 }
 
@@ -74,6 +78,33 @@ function stopIfAlive(processId: number, marker: string): void {
   if (processId > 0 && alive(processId, marker))
     process.kill(processId, "SIGKILL");
 }
+
+await test("CLV-231 waits for an existing marker to contain its daemon PID", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-guard-marker-"));
+  const marker = join(root, "daemon");
+  await filesystem.writeFile(marker, "");
+  const original = filesystem.readFile;
+  let reads = 0;
+  mock.method(
+    filesystem,
+    "readFile",
+    async (...arguments_: Parameters<typeof original>) => {
+      const value = await original(...arguments_);
+      reads += 1;
+      if (reads === 1) await filesystem.writeFile(marker, "12345");
+      return value;
+    },
+  );
+  syncBuiltinESMExports();
+  try {
+    assert.equal(await written(marker), "12345");
+    assert.equal(reads, 2);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 await test("CLV-231 a reused PID does not identify a guarded daemon", () => {
   assert.equal(alive(process.pid, "unrelated-guard-marker"), false);

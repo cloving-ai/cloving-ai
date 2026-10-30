@@ -28,17 +28,14 @@ for (const kind of [
       await store.execute(opening, context);
       await store.execute(checkRequest, context);
       const deadline = start + 2_592_000_000;
+      const fields =
+        kind === "expire-command-wait"
+          ? { waitName: "team-review" }
+          : { expectedRevision: 2 };
       const ending =
         kind === "open-command-wait"
           ? { ...opening, commandId: "end" }
-          : {
-              kind,
-              runId: "run-1",
-              commandId: "end",
-              ...(kind === "expire-command-wait"
-                ? { waitName: "team-review" }
-                : { expectedRevision: 2 }),
-            };
+          : { kind, runId: "run-1", commandId: "end", ...fields };
       const result = await store.execute(ending, {
         ...context,
         recordedAt: new Date(deadline).toISOString(),
