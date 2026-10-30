@@ -7,6 +7,7 @@ const stderrLines = 20;
 const stderrLineCharacters = 500;
 const failureCharacters = 100_000;
 const boundedDepth = 8;
+const boundedObjects = 2_000;
 const boundedItems = 100;
 const boundedCharacters = 10_000;
 
@@ -14,6 +15,8 @@ const errorKeys = new Set(["cause", "message", "stack", "name"]);
 
 interface Bounds {
   readonly ancestors: readonly object[];
+  readonly seen: WeakSet<object>;
+  readonly budget: { remaining: number };
 }
 
 function boundedText(text: string): string {
@@ -74,8 +77,21 @@ function typedArray(
   return "length" in value && Symbol.iterator in value;
 }
 
+function viewBytes(value: DataView): string {
+  const count = Math.min(value.byteLength, boundedItems);
+  const bytes = Array.from({ length: count }, (_, index) =>
+    String(value.getUint8(index)),
+  );
+  const more =
+    value.byteLength > boundedItems
+      ? [`... ${rest(value.byteLength)} bytes`]
+      : [];
+  return `DataView(${String(value.byteLength)}) [ ${[...bytes, ...more].join(", ")} ]`;
+}
+
 function boundedView(value: ArrayBufferView): string {
-  if (!typedArray(value)) return `DataView(${String(value.byteLength)})`;
+  if (value instanceof DataView) return viewBytes(value);
+  if (!typedArray(value)) return Object.prototype.toString.call(value);
   const items = firstItems(value).map(String);
   const { length } = value;
   const more = length > boundedItems ? [`... ${rest(length)} items`] : [];
@@ -122,16 +138,23 @@ function boundedObject(value: object, bounds: Bounds): unknown {
   return Object.fromEntries(boundedEntries(value, bounds));
 }
 
+function copied(value: object, bounds: Bounds): unknown {
+  const builtIn = builtInCopy(value);
+  if (builtIn !== undefined) return builtIn;
+  if (value instanceof Error) return boundedError(value, bounds);
+  return boundedObject(value, bounds);
+}
+
 function bounded(value: unknown, bounds: Bounds): unknown {
   if (typeof value === "string") return boundedText(value);
   if (typeof value !== "object" || value === null) return value;
   if (bounds.ancestors.includes(value)) return "[Circular]";
+  if (bounds.seen.has(value)) return "[Shared]";
   if (bounds.ancestors.length >= boundedDepth) return "[Object]";
-  const copy = builtInCopy(value);
-  if (copy !== undefined) return copy;
-  const next = { ancestors: [...bounds.ancestors, value] };
-  if (value instanceof Error) return boundedError(value, next);
-  return boundedObject(value, next);
+  if (bounds.budget.remaining <= 0) return "[Object]";
+  bounds.budget.remaining -= 1;
+  bounds.seen.add(value);
+  return copied(value, { ...bounds, ancestors: [...bounds.ancestors, value] });
 }
 
 export interface TestFailure {
@@ -185,12 +208,19 @@ function failureOutput(
     line,
     column,
     message: details.error.message.slice(0, failureCharacters),
-    error: inspect(bounded(details.error, { ancestors: [] }), {
-      depth: null,
-      maxArrayLength: boundedItems + 1,
-      colors: false,
-      customInspect: false,
-    }).slice(0, failureCharacters),
+    error: inspect(
+      bounded(details.error, {
+        ancestors: [],
+        seen: new WeakSet(),
+        budget: { remaining: boundedObjects },
+      }),
+      {
+        depth: null,
+        maxArrayLength: boundedItems + 1,
+        colors: false,
+        customInspect: false,
+      },
+    ).slice(0, failureCharacters),
     stderr: fileStderr(output.stderr, event.data),
   });
   return true;

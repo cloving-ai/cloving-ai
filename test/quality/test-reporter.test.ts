@@ -253,3 +253,30 @@ await test("a failure bounds large built-in values and keeps distinct entries an
   assert.match(error, /<1 empty item>/);
   assert.match(error, /Uint8Array\(1000\)/);
 });
+
+await test("a failure copies a shared value one time and keeps the bytes of data views", async () => {
+  const event = failedEvent("shared values", "assertion.test.ts");
+  let reads = 0;
+  const leaf = {};
+  Object.defineProperty(leaf, "value", {
+    enumerable: true,
+    get: () => {
+      reads += 1;
+      return "leaf";
+    },
+  });
+  const middle = Array.from({ length: 100 }, () => leaf);
+  const top = Array.from({ length: 100 }, () => middle);
+  event.data.details.error = Object.assign(new Error("shared values"), {
+    cause: {
+      top,
+      first: new DataView(new Uint8Array([1, 2, 3]).buffer),
+      second: new DataView(new Uint8Array([1, 2, 4]).buffer),
+    },
+  });
+  const { error } = savedFailure((await failuresOf([event]))[0]);
+  assert.ok(reads <= 1_000, String(reads));
+  assert.ok(error.length <= 100_000, String(error.length));
+  assert.match(error, /DataView\(3\) \[ 1, 2, 3 \]/);
+  assert.match(error, /DataView\(3\) \[ 1, 2, 4 \]/);
+});
