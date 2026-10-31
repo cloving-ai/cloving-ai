@@ -8,6 +8,7 @@ import { test } from "node:test";
 import timers, { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { collectCoverage } from "../../quality/coverage-report.ts";
+import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
 
 function collected(directory: string) {
@@ -19,7 +20,7 @@ function collected(directory: string) {
       join(directory, "coverage"),
       join(directory, "main.js"),
     ],
-    { encoding: "utf8", timeout: 30000 },
+    { encoding: "utf8", timeout: testMilliseconds(30000) },
   );
   assert.equal(result.error, undefined, result.stderr);
   return result;
