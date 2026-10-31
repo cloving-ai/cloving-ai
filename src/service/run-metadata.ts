@@ -1,7 +1,35 @@
 import { issueIdentity } from "../issue-identity.ts";
 import { record, type Fields } from "../protocol.ts";
 import type { RunView } from "../authority/status.ts";
-import { result, type ServiceContext } from "./replies.ts";
+import {
+  invalidRequest,
+  isIdentifier,
+  result,
+  type ServiceContext,
+} from "./replies.ts";
+
+export async function workflowMetadata(
+  context: ServiceContext,
+  runIds: unknown,
+) {
+  if (
+    !Array.isArray(runIds) ||
+    runIds.length === 0 ||
+    runIds.length > 500 ||
+    !runIds.every(isIdentifier) ||
+    new Set(runIds).size !== runIds.length
+  )
+    return invalidRequest(
+      "Workflow metadata needs one to 500 distinct run IDs.",
+    );
+  const identities = await context.authority.queries.workflowIds(runIds);
+  return result("run-workflow-metadata", {
+    runs: runIds.map((runId) => ({
+      runId,
+      workflowId: identities[runId] ?? null,
+    })),
+  });
+}
 
 export async function ticketMetadataPage(
   context: ServiceContext,
