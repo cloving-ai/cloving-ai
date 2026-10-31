@@ -65,7 +65,7 @@ await test("CLV-258 workflow path selection fetches a base that moves after the 
             ),
         },
       },
-      commit,
+      { commit, events: ["synchronize"] },
     );
     assert.deepEqual(paths, [".github/workflows/ci.yml"]);
   }));
@@ -221,7 +221,10 @@ await test("CLV-258 malformed workflow state pages fail closed", async () => {
     null,
     [],
     [{}],
+    [null],
+    ["workflows"],
     [{ workflows: [null] }],
+    [{ workflows: ["ci.yml"] }],
     [{ workflows: [{ path: ".github/workflows/ci.yml" }] }],
   ]) {
     await assert.rejects(
@@ -240,6 +243,8 @@ await test("CLV-258 malformed workflow pages fail closed", async () => {
     null,
     [],
     [{}],
+    [null],
+    ["workflow_runs"],
     [{ workflow_runs: [null] }],
     [{ workflow_runs: [{ id: 88 }] }],
   ]) {

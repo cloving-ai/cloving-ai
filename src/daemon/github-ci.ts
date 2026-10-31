@@ -3,8 +3,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
 import { githubRead } from "./github-retry.ts";
 import {
+  expectedWorkflows,
   pendingWorkflows,
-  pullRequestWorkflows,
+  type CiHead,
 } from "./github-ci-workflows.ts";
 import {
   ciWait,
@@ -316,7 +317,7 @@ async function ciFailureOutput(
       ]);
 }
 
-async function ciSettings(operation: Operation, commit: string) {
+async function ciSettings(operation: Operation, head: CiHead) {
   const timing = {
     ...githubTiming,
     ciGraceMilliseconds: 60_000,
@@ -325,7 +326,7 @@ async function ciSettings(operation: Operation, commit: string) {
   };
   const required = requiredChecks(operation);
   const workflows =
-    required === undefined ? await pullRequestWorkflows(operation, commit) : [];
+    required === undefined ? await expectedWorkflows(operation, head) : [];
   return {
     required,
     workflows,
@@ -337,13 +338,14 @@ async function ciSettings(operation: Operation, commit: string) {
 
 export async function waitForCi(
   operation: Operation,
-  commit: string,
+  head: CiHead,
 ): Promise<CiResult | undefined> {
+  const { commit } = head;
   const wait = await ciWait(operation, commit);
   const started = wait.startedAt;
   const { required, workflows, grace, poll, limit } = await ciSettings(
     operation,
-    commit,
+    head,
   );
   const names = new Set(required);
   for (;;) {

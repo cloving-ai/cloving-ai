@@ -61,10 +61,29 @@ async function appliesToPull(
   });
 }
 
+export interface CiHead {
+  readonly commit: string;
+  readonly requested: string;
+}
+
+export function expectedWorkflows(
+  operation: Operation,
+  head: CiHead,
+): Promise<readonly string[]> {
+  return pullRequestWorkflows(operation, {
+    commit: head.commit,
+    events:
+      head.commit === head.requested
+        ? ["opened", "synchronize", "reopened"]
+        : ["synchronize"],
+  });
+}
+
 export async function pullRequestWorkflows(
   operation: Operation,
-  commit: string,
+  request: { readonly commit: string; readonly events: readonly string[] },
 ): Promise<readonly string[]> {
+  const { commit, events } = request;
   const read = (parts: readonly string[]): Promise<string> =>
     operation.calls.git(operation.settings.repository, parts);
   const paths = await read([
@@ -83,7 +102,7 @@ export async function pullRequestWorkflows(
     if (
       await appliesToPull(operation, {
         commit,
-        trigger: pullRequestTrigger(source),
+        trigger: pullRequestTrigger(source, events),
       })
     )
       workflows.push(path);
@@ -107,6 +126,8 @@ async function actionPages(
   if (!isList(pages) || pages.length === 0)
     throw new Error("github-call-failed");
   return pages.flatMap((page) => {
+    if (typeof page !== "object" || page === null)
+      throw new Error("github-call-failed");
     const items = field(page, request.key);
     if (!isList(items)) throw new Error("github-call-failed");
     return items;
@@ -122,6 +143,8 @@ async function inactiveWorkflows(
   });
   const inactive = new Set<string>();
   for (const workflow of workflows) {
+    if (typeof workflow !== "object" || workflow === null)
+      throw new Error("github-call-failed");
     const path = field(workflow, "path");
     const state = field(workflow, "state");
     if (typeof path !== "string" || typeof state !== "string")
