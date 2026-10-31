@@ -9,6 +9,37 @@ import {
   withHarness,
 } from "./service-fixture.ts";
 
+await test("CLV-244 workflow metadata batches contain only identities and preserve missing runs", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start();
+    const runId = await startedRun(harness, {
+      service,
+      commandId: "workflow-metadata",
+    });
+    const reply = await call(harness, {
+      operation: "status",
+      parameters: { metadata: "workflows", runIds: [runId, "missing"] },
+    });
+    assert.deepEqual(reply["runs"], [
+      { runId, workflowId: "develop" },
+      { runId: "missing", workflowId: null },
+    ]);
+    for (const runIds of [
+      [],
+      "bad",
+      [42],
+      [runId, runId],
+      Array.from({ length: 501 }, (_, index) => `run-${String(index)}`),
+    ]) {
+      const invalid = await call(harness, {
+        operation: "status",
+        parameters: { metadata: "workflows", runIds },
+      });
+      assert.equal(invalid["code"], "invalid-request");
+    }
+    await service.close();
+  }));
+
 await test("CLV-243 status pages stored ticket identities without run details", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
@@ -100,4 +131,21 @@ await test("CLV-184 a queue status batch uses terminal event sequences and one r
     });
     assert.equal(malformed["code"], "invalid-request");
     await service.close();
+  }));
+
+await test("CLV-244 queue status identifies its workflow and current lanes", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [{ ...harness.registration, admission: 2 }],
+    });
+    try {
+      const status = await call(harness, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.equal(field(status["queue"], "workflowId"), "develop");
+      assert.equal(field(status["queue"], "lanes"), 2);
+    } finally {
+      await service.close();
+    }
   }));
