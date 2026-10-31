@@ -15,7 +15,7 @@ import {
 } from "./watch-service-fixture.ts";
 
 const queue = {
-  workflowId: "develop-issue",
+  workflowId: "develop",
   lanes: 4,
   busy: 1,
   skipped: [
@@ -98,7 +98,7 @@ await test("CLV-184 watch data and page retain queue lanes and skip reasons", as
   assert.match(html, /#901 waits for #899/);
 });
 
-for (const hash of ["", "#workflow=develop-issue"])
+for (const hash of ["", `#workflow=${queue.workflowId}`])
   await test(`CLV-184 embedded watch script shows queue lanes and skip reasons at ${hash}`, () => {
     const model = { ...sampleModel([]), queue };
     const result = played(
