@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { cp, mkdir, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { CardForm } from "../src/cli/watch-run-input.ts";
+import { withWatchService } from "./watch-service-fixture.ts";
 import type { Watching, WatchOptions } from "./watch-fixture.ts";
 
 export const cardRequest = {
@@ -69,21 +71,82 @@ export function actionHeaders(
 
 export async function declaredWatch(
   runtimeDirectory: string,
+  workflowId = "review-corpus",
 ): Promise<WatchOptions> {
-  const product = join(import.meta.dirname, "..");
-  const fixture = join(runtimeDirectory, "declared-product");
-  await mkdir(join(fixture, "workflows"), { recursive: true });
-  for (const name of ["src", "assets", "package.json"])
-    await cp(join(product, name), join(fixture, name), { recursive: true });
-  await symlink(join(product, "node_modules"), join(fixture, "node_modules"));
+  const project = join(dirname(runtimeDirectory), "project");
+  await mkdir(project, { recursive: true });
   await writeFile(
-    join(fixture, "workflows/review-corpus.declaration.json"),
-    JSON.stringify({
-      workflowId: "review-corpus",
-      capabilities: ["claude"],
-      effectLimit: 1,
-      input: { maximumBytes: 4096, fields: { importId: { type: "string" } } },
-    }),
+    join(project, "declarations.json"),
+    JSON.stringify([
+      {
+        workflowId,
+        functionName: "reviewCorpus",
+        capabilities: ["claude"],
+        effectLimit: 1,
+        input: { maximumBytes: 4096, fields: { importId: { type: "string" } } },
+      },
+    ]),
   );
-  return { entry: join(fixture, "src/cli.ts") };
+  return {};
+}
+
+export function exampleCardForms(): readonly CardForm[] {
+  return [
+    {
+      workflowId: "develop-issue",
+      source: "input",
+      fields: [
+        {
+          name: "ticket",
+          label: "Ticket ID",
+          multiline: false,
+          optional: false,
+        },
+      ],
+    },
+    {
+      workflowId: "develop-prd",
+      source: "input",
+      fields: [
+        { name: "prompt", label: "prompt", multiline: true, optional: false },
+      ],
+    },
+  ];
+}
+
+export async function cardWatch(runtimeDirectory: string): Promise<void> {
+  const project = join(dirname(runtimeDirectory), "project");
+  await mkdir(project, { recursive: true });
+  await writeFile(
+    join(project, "declarations.json"),
+    JSON.stringify([
+      {
+        workflowId: cardRequest.workflowId,
+        functionName: "draftProposal",
+        capabilities: ["claude"],
+        effectLimit: 1,
+        input: { maximumBytes: 4096, fields: { prompt: { type: "string" } } },
+      },
+    ]),
+  );
+}
+
+export function withCardService(
+  configuration: Parameters<typeof withWatchService>[0],
+  body: Parameters<typeof withWatchService>[1],
+): Promise<void> {
+  const settings =
+    typeof configuration === "function"
+      ? { answer: configuration, configure: undefined }
+      : configuration;
+  return withWatchService(
+    {
+      ...settings,
+      configure: async (runtimeDirectory) => {
+        await cardWatch(runtimeDirectory);
+        return (await settings.configure?.(runtimeDirectory)) ?? {};
+      },
+    },
+    body,
+  );
 }

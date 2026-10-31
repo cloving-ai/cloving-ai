@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { watchData, watchReplies } from "./watch-service-fixture.ts";
+import { reviewStages } from "./watch-board-fixture.ts";
 import type { ServiceRequest } from "../src/protocol.ts";
 import {
   actionHeaders,
@@ -7,12 +9,12 @@ import {
   declaredWatch,
   pageToken,
   postCard,
+  withCardService,
 } from "./watch-action-fixture.ts";
-import { withWatchService } from "./watch-service-fixture.ts";
 
 await test("CLV-135 a run request without a page token is refused before contacting the service", () => {
   const requests: ServiceRequest[] = [];
-  return withWatchService(
+  return withCardService(
     (request) => {
       if (request.operation === "run") requests.push(request);
       return { kind: "result", result: {} };
@@ -43,7 +45,7 @@ await test("CLV-135 a valid page request forwards CLI run parameters and returns
     kind: "result",
     result: { code: "run-admitted", runId: "run-card" },
   } as const;
-  return withWatchService(
+  return withCardService(
     (request) => {
       if (request.operation === "run") requests.push(request);
       return request.operation === "run"
@@ -65,7 +67,7 @@ await test("CLV-135 a valid page request forwards CLI run parameters and returns
           operation: "run",
           parameters: {
             workflowId: "develop-prd",
-            source: "prompt",
+            source: "input",
             submission: cardRequest.fields,
             commandId: "card-1",
           },
@@ -85,7 +87,7 @@ for (const [name, patch] of [
 ] as const) {
   await test(`CLV-135 refuses ${name} without a run request`, () => {
     const requests: ServiceRequest[] = [];
-    return withWatchService(
+    return withCardService(
       (request) => {
         if (request.operation === "run") requests.push(request);
         return {
@@ -133,7 +135,7 @@ for (const [name, body] of [
 ] as const) {
   await test(`CLV-135 refuses ${name} without a run request`, () => {
     const requests: ServiceRequest[] = [];
-    return withWatchService(
+    return withCardService(
       (request) => {
         if (request.operation === "run") requests.push(request);
         return {
@@ -155,7 +157,7 @@ for (const [name, body] of [
 }
 
 await test("CLV-135 off removes the token and makes the endpoint an unknown path", () =>
-  withWatchService(
+  withCardService(
     {
       answer: () => ({
         kind: "result",
@@ -181,7 +183,7 @@ await test("CLV-135 off removes the token and makes the endpoint an unknown path
 
 await test("CLV-135 declared string inputs are exposed and forwarded with source input", () => {
   const requests: ServiceRequest[] = [];
-  return withWatchService(
+  return withCardService(
     {
       answer: (request) => {
         if (request.operation === "run") requests.push(request);
@@ -235,7 +237,7 @@ await test("CLV-135 declared string inputs are exposed and forwarded with source
 });
 
 await test("CLV-135 valid input reports an unavailable service without disguising it as a security refusal", () =>
-  withWatchService(
+  withCardService(
     () => ({
       kind: "error",
       error: { code: "service-unavailable", detail: "Start the service." },
@@ -254,7 +256,7 @@ await test("CLV-135 valid input reports an unavailable service without disguisin
 
 await test("CLV-135 missing content type and an unregistered built-in workflow are refused", () => {
   const requests: ServiceRequest[] = [];
-  return withWatchService(
+  return withCardService(
     (request) => {
       if (request.operation === "run") requests.push(request);
       return { kind: "result", result: { runs: [], workflows: [] } };
@@ -285,6 +287,52 @@ await test("CLV-135 missing content type and an unregistered built-in workflow a
         },
       });
       assert.equal(rebound.status, 403);
+    },
+  );
+});
+
+await test("CLV-228 a former bundled ID exposes declared fields and stages through the watch server", () => {
+  const workflowId = "develop-issue";
+  const { answer } = watchReplies({
+    runs: [],
+    workflows: [workflowId],
+    workflowStages: { [workflowId]: reviewStages },
+  });
+  return withCardService(
+    {
+      answer,
+      configure: (runtimeDirectory) =>
+        declaredWatch(runtimeDirectory, workflowId),
+    },
+    async (watch) => {
+      const model = await watchData(watch.address);
+      assert.deepEqual(model["cardForms"], [
+        {
+          workflowId,
+          source: "input",
+          fields: [
+            {
+              name: "importId",
+              label: "importId",
+              multiline: false,
+              optional: false,
+            },
+          ],
+        },
+      ]);
+      assert.partialDeepStrictEqual(model["workflows"], [
+        {
+          workflowId,
+          columns: [
+            "Your review",
+            "Team review",
+            "Ready to merge",
+            "Other",
+            "Done",
+            "Stopped",
+          ].map((name) => ({ name, cards: [] })),
+        },
+      ]);
     },
   );
 });

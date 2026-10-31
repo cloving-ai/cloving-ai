@@ -4,15 +4,9 @@ import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { clockTime, counted, type WatchModel } from "./watch-render.ts";
 
-export interface StartControls {
-  readonly shown: boolean;
-  readonly onToggle: () => void;
-}
-
 export interface HeaderProps {
   readonly model: WatchModel | null;
   readonly stale: boolean;
-  readonly start?: StartControls;
   readonly phone?: PhoneControls | undefined;
   readonly now?: string;
 }
@@ -108,28 +102,14 @@ export function HeaderStatus(props: HeaderProps): Shown {
 }
 
 export function HeaderActions(props: HeaderProps): Shown {
-  const { start, phone } = props;
-  if (start === undefined && phone === undefined) return null;
+  const { phone } = props;
+  if (phone === undefined) return null;
   return element("div", {
     class: "header-actions",
-    children: [
-      start === undefined
-        ? null
-        : element("button", {
-            type: "button",
-            class: "start-toggle",
-            "aria-controls": "start-run",
-            "aria-expanded": String(start.shown),
-            onClick: start.onToggle,
-            children: "Start a run",
-          }),
-      phone === undefined
-        ? null
-        : component(PhonePanel, {
-            phone,
-            now: props.now ?? props.model?.updatedAt ?? "",
-          }),
-    ],
+    children: component(PhonePanel, {
+      phone,
+      now: props.now ?? props.model?.updatedAt ?? "",
+    }),
   });
 }
 

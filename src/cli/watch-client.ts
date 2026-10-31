@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, start: null, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0 };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0 };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -12,14 +12,6 @@ function readColumnChoices(key) {
 function savePreference(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch {}
-}
-function startControls() {
-  if (state.start === null) state.start = readPreference("cloving.watch.start") === true;
-  return { shown: state.start, onToggle() {
-    state.start = !state.start;
-    savePreference("cloving.watch.start", state.start);
-    draw();
-  } };
 }
 function columnControls(model, selected) {
   const workflowId = model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId);
@@ -60,10 +52,9 @@ function draw() {
   const now = new Date().toISOString();
   const observationNow = model === null ? now : new Date(Date.parse(model.updatedAt) + performance.now() - state.receivedAt).toISOString();
   const columns = columnControls(model, selected);
-  const start = model === null ? undefined : startControls();
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
   const phone = model === null ? undefined : phoneControls(now);
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, start, cards, phone });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);

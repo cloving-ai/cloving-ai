@@ -294,7 +294,6 @@
     "src/cli/watch-render.ts": "cli",
     "src/cli/watch-run-input.ts": "cli",
     "src/cli/watch-server.ts": "cli",
-    "src/cli/watch-start-view.ts": "cli",
     "src/cli/watch-stream.ts": "cli",
     "src/cli/watch-turn.ts": "cli",
     "src/cli/watch-usage.ts": "cli",
