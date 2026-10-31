@@ -52,18 +52,21 @@ export async function outcomeOf(
 }
 
 function ticketOf(input: Fields | undefined): {
-  readonly id: unknown;
-  readonly text: unknown;
+  readonly id: string | undefined;
+  readonly text: string | undefined;
 } {
   const declared = record(record(input?.["input"])?.["ticket"]);
-  if (declared !== undefined)
-    return { id: declared["id"], text: declared["text"] };
-  return { id: input?.["ticketId"], text: input?.["ticket"] };
+  const id = declared === undefined ? input?.["ticketId"] : declared["id"];
+  const text = declared === undefined ? input?.["ticket"] : declared["text"];
+  return {
+    id: typeof id === "string" ? id : undefined,
+    text: typeof text === "string" ? text : undefined,
+  };
 }
 
 function titleOf(input: Fields | undefined, workflowId: string): string | null {
   const ticket = ticketOf(input).text;
-  if (typeof ticket !== "string") return null;
+  if (ticket === undefined) return null;
   const fallback = `Cloving task ${String(input?.["cycleId"])}`;
   const lines = ticket.split("\n");
   if (workflowId === "develop-prompt") {
@@ -100,5 +103,5 @@ export async function metadataOf(
 
 function ticketIdOf(input: Fields | undefined): string | null {
   const ticketId = ticketOf(input).id;
-  return typeof ticketId === "string" && ticketId !== "" ? ticketId : null;
+  return ticketId === undefined || ticketId === "" ? null : ticketId;
 }
