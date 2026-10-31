@@ -3,8 +3,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { watchCardForms } from "../src/cli/watch-card-forms.ts";
-import { cardRunRequest } from "../src/cli/watch-run-input.ts";
+import {
+  bundledCardForms,
+  cardRunRequest,
+} from "../src/cli/watch-run-input.ts";
 import { withHarness } from "./service-fixture.ts";
+import type { ServiceRequest } from "../src/protocol.ts";
+import {
+  watchData,
+  watchReplies,
+  withWatchService,
+} from "./watch-service-fixture.ts";
+import { actionHeaders, pageToken, postCard } from "./watch-action-fixture.ts";
 
 await test("CLV-228 no declarations means no watch forms", () =>
   withHarness(async (harness) => {
@@ -145,6 +155,40 @@ await test("CLV-228 unreadable, malformed and non-array declaration catalogs hav
     }
   }));
 
+await test("CLV-228 a declared nonstring input never falls back to a bundled form", () =>
+  withHarness(async (harness) => {
+    await writeFile(
+      join(harness.projectDirectory, "declarations.json"),
+      JSON.stringify([
+        {
+          workflowId: "develop-issue",
+          capabilities: ["claude"],
+          effectLimit: 1,
+          input: {
+            maximumBytes: 4096,
+            fields: { rounds: { type: "integer", minimum: 1, maximum: 10 } },
+          },
+        },
+      ]),
+    );
+    const forms = await watchCardForms(
+      harness.projectDirectory,
+      bundledCardForms(),
+    );
+    assert.deepEqual(
+      forms.filter((form) => form.workflowId === "develop-issue"),
+      [],
+    );
+    assert.equal(
+      cardRunRequest(forms, {
+        workflowId: "develop-issue",
+        commandId: "no-bundled-submission",
+        fields: { ticket: "900" },
+      }),
+      null,
+    );
+  }));
+
 async function writeDeclarations(directory: string): Promise<void> {
   const declaration = {
     workflowId: "declared",
@@ -173,3 +217,92 @@ async function writeDeclarations(directory: string): Promise<void> {
     ]),
   );
 }
+
+for (const [workflowId, name, label] of [
+  ["develop-issue", "ticket", "Issue number"],
+  ["develop-ticket", "ticket", "Ticket ID"],
+  ["develop-prd", "prompt", "Idea"],
+  ["develop-prompt", "prompt", "Task"],
+] as const) {
+  await test(`CLV-228 registered ${workflowId} retains its form until bundled registration is removed`, () => {
+    const requests: ServiceRequest[] = [];
+    return withWatchService(
+      (request) => {
+        if (request.operation === "run") requests.push(request);
+        return {
+          kind: "result",
+          result: { runs: [], workflows: [workflowId] },
+        };
+      },
+      async (watch) => {
+        const source = name === "ticket" ? "ticket" : "prompt";
+        const model = await watchData(watch.address);
+        assert.deepEqual(model["cardForms"], [
+          {
+            workflowId,
+            source,
+            fields: [
+              { name, label, multiline: name === "prompt", optional: false },
+            ],
+          },
+        ]);
+        const fields = { [name]: "900" };
+        const reply = await postCard(watch, {
+          headers: actionHeaders(watch, await pageToken(watch)),
+          body: JSON.stringify({
+            workflowId,
+            fields,
+            commandId: "bundled-card",
+          }),
+        });
+        assert.equal(reply.status, 200);
+        assert.deepEqual(requests, [
+          {
+            operation: "run",
+            parameters: {
+              workflowId,
+              source,
+              submission: fields,
+              commandId: "bundled-card",
+            },
+          },
+        ]);
+      },
+    );
+  });
+}
+
+await test("CLV-228 a historical bundled run cannot enable a form for an unregistered workflow", () => {
+  const { answer, requests } = watchReplies({
+    workflows: [],
+    runs: [
+      {
+        runId: "historical-bundled-run",
+        workflowId: "develop-issue",
+        latestSequence: 1,
+        state: "paused",
+      },
+    ],
+  });
+  return withWatchService(answer, async (watch) => {
+    const model = await watchData(watch.address);
+    assert.partialDeepStrictEqual(model["runs"], [
+      { runId: "historical-bundled-run", workflowId: "develop-issue" },
+    ]);
+    assert.deepEqual(model["workflows"], []);
+    assert.deepEqual(model["cardForms"], []);
+    const reply = await postCard(watch, {
+      headers: actionHeaders(watch, await pageToken(watch)),
+      body: JSON.stringify({
+        workflowId: "develop-issue",
+        fields: { ticket: "900" },
+        commandId: "unregistered-card",
+      }),
+    });
+    assert.equal(reply.status, 403);
+    assert.deepEqual(
+      requests.filter((request) => request.operation === "run"),
+      [],
+    );
+  });
+});
