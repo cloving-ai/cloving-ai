@@ -60,7 +60,7 @@ export async function withQueue(
         options.selfUpdateHold.mark,
       );
     const queue = issueQueue({
-      workflowId: "develop-issue",
+      workflowId: "develop",
       directory,
       runtimeDirectory: harness.runtimeDirectory,
       intervalMilliseconds: options.intervalMilliseconds ?? 5,

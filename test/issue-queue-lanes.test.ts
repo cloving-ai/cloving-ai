@@ -35,7 +35,7 @@ function laneService(state: {
     const id = runIdentity(String(request.parameters["commandId"]));
     state.runs.set(id, {
       runId: id,
-      workflowId: "develop-issue",
+      workflowId: "develop",
       state: "running",
     });
     return reply({ kind: "run-admitted" });
@@ -89,7 +89,7 @@ function holdService(state: {
       run,
       runs: state.ended
         ? []
-        : state.commands.map(() => ({ ...run, workflowId: "develop-issue" })),
+        : state.commands.map(() => ({ ...run, workflowId: "develop" })),
       next: null,
     });
   };
@@ -238,7 +238,7 @@ function racingCompletions(state: { reads: number; batches: number }): Handle {
     }
     return reply({
       runs: Array.from({ length: 4 }, () => ({
-        workflowId: "develop-issue",
+        workflowId: "develop",
         state: "running",
       })),
       next: null,

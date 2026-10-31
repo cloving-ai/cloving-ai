@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { call, runCli } from "./service-fixture.ts";
 import {
@@ -14,6 +16,8 @@ import {
   type Scene,
 } from "./self-host-fixture.ts";
 import { grokMessages, grokReport, grokResult } from "./grok-worker-fixture.ts";
+
+const entry = join(candidatePackageRoot, "src/cli.ts");
 
 async function configuredGrok(fixture: Scene): Promise<string> {
   const configuration = join(fixture.root, "config");
@@ -42,9 +46,10 @@ process.stdout.write(${JSON.stringify([...grokMessages, grokResult].map((event) 
   return configuration;
 }
 
-await test("CLV-213 develop-prompt status shows the grok report, model and counts after restart", () =>
+await test("CLV-213 develop status shows the grok report, model and counts after restart", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(undefined, entry);
+    await writeLocalWorkflow(fixture.repository, { input: "prompt" });
     const configuration = await configuredGrok(fixture);
     const daemon = await fixture.start({ XDG_CONFIG_HOME: configuration });
     let runId = "";
@@ -52,12 +57,13 @@ await test("CLV-213 develop-prompt status shows the grok report, model and count
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-prompt",
+          workflowId: "develop",
           source: "prompt",
           submission: { prompt: 'Add "grok"\nwith a commit' },
           commandId: "grok-prompt",
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       runId = String(admitted["runId"]);
       const decision = await reached(
         async () =>
@@ -70,7 +76,7 @@ await test("CLV-213 develop-prompt status shows the grok report, model and count
             )["decisions"],
           )[0],
       );
-      assert.match(String(field(decision, "prompt")), /Added the worker/);
+      assert.match(String(field(decision, "prompt")), /^Review this subject:/);
       await verifyStatus(fixture, runId);
     } finally {
       assert.equal(await ended(daemon), 0);

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import {
   ended,
@@ -14,9 +16,12 @@ import {
 import { call, runCli } from "./service-fixture.ts";
 import { cursorFixture, fakeCursor } from "./cursor-fixture.ts";
 
-await test("CLV-214 start uses a saved Cursor default for develop-prompt and status retains unknown usage", () =>
+const entry = join(candidatePackageRoot, "src/cli.ts");
+
+await test("CLV-214 start uses a saved Cursor default for develop and status retains unknown usage", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(undefined, entry);
+    await writeLocalWorkflow(fixture.repository, { input: "prompt" });
     const config = join(fixture.root, "config");
     await mkdir(join(config, "cloving/projects"), { recursive: true });
     const harness = fakeCursor(
@@ -32,12 +37,13 @@ await test("CLV-214 start uses a saved Cursor default for develop-prompt and sta
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-prompt",
+          workflowId: "develop",
           source: "prompt",
           submission: { prompt: "Implement the change." },
           commandId: "cursor-default",
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       const runId = String(admitted["runId"]);
       const decision = await reached(
         async () =>
@@ -50,12 +56,13 @@ await test("CLV-214 start uses a saved Cursor default for develop-prompt and sta
             )["decisions"],
           )[0],
       );
-      assert.match(String(field(decision, "prompt")), /Implemented the change/);
+      assert.match(String(field(decision, "prompt")), /^Review this subject:/);
       const status = await runCli(["status", runId], {
         directory: fixture.repository,
         runtime: fixture.runtimeDirectory,
       });
       assert.equal(status.status, 0, status.stderr);
+      assert.match(status.stdout, /Implemented the change/);
       assert.match(status.stdout, /Harness: cursor-agent/);
       assert.match(status.stdout, /Token usage not known/);
       assert.match(status.stdout, /Price not known/);
