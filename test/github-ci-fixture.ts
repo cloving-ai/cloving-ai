@@ -25,7 +25,27 @@ export function checkRun(
   };
 }
 
+export function workflowRun(
+  overrides: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> {
+  return {
+    id: 88,
+    path: ".github/workflows/ci.yml",
+    event: "pull_request",
+    head_sha: "a".repeat(40),
+    status: "completed",
+    conclusion: "success",
+    ...overrides,
+  };
+}
+
 interface CiScenarioOptions {
+  readonly workflowFiles?: Readonly<Record<string, string>>;
+  readonly changedPaths?: readonly string[];
+  readonly baseBranch?: string;
+  readonly workflowSnapshots?: readonly (readonly unknown[])[];
+  readonly workflowPages?: unknown;
+  readonly workflowStatePages?: unknown;
   readonly requiredChecks?: readonly string[] | null;
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
@@ -67,38 +87,123 @@ function checkRunsReply(options: CiScenarioOptions, times: number[]): string {
   );
 }
 
+function workflowRunsReply(
+  options: CiScenarioOptions,
+  times: readonly number[],
+): string {
+  if (Object.hasOwn(options, "workflowPages"))
+    return JSON.stringify(options.workflowPages);
+  const index = Math.max(0, times.length - 1);
+  const checks =
+    options.snapshots[Math.min(index, options.snapshots.length - 1)] ?? [];
+  const pending = checks.some(
+    (check) => Reflect.get(Object(check), "status") !== "completed",
+  );
+  const runs =
+    options.workflowSnapshots?.[
+      Math.min(index, options.workflowSnapshots.length - 1)
+    ] ??
+    (checks.length === 0
+      ? []
+      : Object.keys(options.workflowFiles ?? {}).map((path) =>
+          workflowRun({
+            path,
+            status: pending ? "in_progress" : "completed",
+            conclusion: pending ? null : "success",
+          }),
+        ));
+  return JSON.stringify([{ workflow_runs: runs }]);
+}
+
+export function workflowStatesReply(options: {
+  readonly workflowFiles?: Readonly<Record<string, string>>;
+  readonly workflowStatePages?: unknown;
+}): string {
+  if (Object.hasOwn(options, "workflowStatePages"))
+    return JSON.stringify(options.workflowStatePages);
+  return JSON.stringify([
+    {
+      workflows: Object.keys(options.workflowFiles ?? {}).map((path) => ({
+        path,
+        state: "active",
+      })),
+    },
+  ]);
+}
+
+function actionsReply(
+  options: CiScenarioOptions,
+  request: {
+    readonly parts: readonly string[];
+    readonly times: readonly number[];
+  },
+): string | undefined {
+  const has = (text: string): boolean =>
+    request.parts.some((part) => part.includes(text));
+  if (has("/actions/workflows?")) return workflowStatesReply(options);
+  if (has("/actions/runs?")) return workflowRunsReply(options, request.times);
+  if (has("/attempts/")) return attemptJobsReply(options);
+  if (has("/actions/runs/"))
+    return JSON.stringify(
+      options.workflow?.() ?? { run_attempt: 2, status: "completed" },
+    );
+  return undefined;
+}
+
 function ciReply(
   options: CiScenarioOptions,
   observed: { readonly calls: (readonly string[])[]; readonly times: number[] },
 ): Operation["calls"]["gh"] {
   return async (parts) => {
     observed.calls.push(parts);
-    if (parts.some((part) => part.includes("/attempts/")))
-      return Promise.resolve(attemptJobsReply(options));
-    if (parts.some((part) => part.includes("/actions/runs/")))
-      return Promise.resolve(
-        JSON.stringify(
-          options.workflow?.() ?? { run_attempt: 2, status: "completed" },
-        ),
-      );
+    const actions = actionsReply(options, { parts, times: observed.times });
+    if (actions !== undefined) return actions;
     if (!parts.some((part) => part.includes("/check-runs")))
-      return Promise.resolve(options.reply?.(parts) ?? "{}");
+      return Promise.resolve(
+        options.reply?.(parts) ??
+          JSON.stringify({
+            base: { ref: options.baseBranch ?? "main", sha: "b".repeat(40) },
+          }),
+      );
     return Promise.resolve(checkRunsReply(options, observed.times));
+  };
+}
+
+function ciGitReply(
+  options: CiScenarioOptions,
+  gitCalls: (readonly string[])[],
+): Operation["calls"]["git"] {
+  return (_directory, parts) => {
+    gitCalls.push(parts);
+    const files = options.workflowFiles ?? {};
+    if (parts[0] === "fetch") return Promise.resolve("");
+    if (parts[0] === "ls-tree")
+      return Promise.resolve(Object.keys(files).join("\0"));
+    if (parts[0] === "diff")
+      return Promise.resolve(
+        (options.changedPaths ?? ["src/main.ts"]).join("\0"),
+      );
+    const path = (parts[1] ?? "").split(":").slice(1).join(":");
+    if (parts[0] === "show" && Object.hasOwn(files, path))
+      return Promise.resolve(files[path] ?? "");
+    return Promise.reject(new Error("unexpected git call"));
   };
 }
 
 export async function ciScenario(options: CiScenarioOptions): Promise<{
   readonly result: Awaited<ReturnType<typeof waitForCi>>;
   readonly calls: readonly (readonly string[])[];
+  readonly gitCalls: readonly (readonly string[])[];
   readonly times: readonly number[];
 }> {
   const calls: (readonly string[])[] = [];
+  const gitCalls: (readonly string[])[] = [];
   const times: number[] = [];
   const folder =
     options.folder ?? (await mkdtemp(join(tmpdir(), "cloving-ci-")));
   const operation: Operation = {
     target: "ticket/one",
-    payload: {},
+    payload: { number: 1 },
     folder,
     signal: options.signal ?? new AbortController().signal,
     settings: {
@@ -118,12 +223,17 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     },
     calls: {
       gh: ciReply(options, { calls, times }),
-      git: () => Promise.reject(new Error("unexpected git call")),
+      git: ciGitReply(options, gitCalls),
       run: () => Promise.reject(new Error("unexpected local check")),
     },
   };
   try {
-    return { result: await waitForCi(operation, "a".repeat(40)), calls, times };
+    return {
+      result: await waitForCi(operation, "a".repeat(40)),
+      calls,
+      gitCalls,
+      times,
+    };
   } finally {
     if (options.folder === undefined)
       await rm(folder, { recursive: true, force: true });

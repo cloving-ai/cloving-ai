@@ -3,6 +3,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
 import { githubRead } from "./github-retry.ts";
 import {
+  pendingWorkflows,
+  pullRequestWorkflows,
+} from "./github-ci-workflows.ts";
+import {
   ciWait,
   workflowAttempt,
   attemptChecks,
@@ -312,23 +316,37 @@ async function ciFailureOutput(
       ]);
 }
 
-export async function waitForCi(
-  operation: Operation,
-  commit: string,
-): Promise<CiResult | undefined> {
-  const {
-    pollMilliseconds: poll,
-    ciGraceMilliseconds: grace,
-    ciLimitMilliseconds: limit,
-  } = {
+async function ciSettings(operation: Operation, commit: string) {
+  const timing = {
     ...githubTiming,
     ciGraceMilliseconds: 60_000,
     ciLimitMilliseconds: 5_400_000,
     ...operation.settings.timing,
   };
+  const required = requiredChecks(operation);
+  const workflows =
+    required === undefined ? await pullRequestWorkflows(operation, commit) : [];
+  return {
+    required,
+    workflows,
+    poll: timing.pollMilliseconds,
+    limit: timing.ciLimitMilliseconds,
+    grace: workflows.some((workflow) => workflow.kind === "push")
+      ? Infinity
+      : timing.ciGraceMilliseconds,
+  };
+}
+
+export async function waitForCi(
+  operation: Operation,
+  commit: string,
+): Promise<CiResult | undefined> {
   const wait = await ciWait(operation, commit);
   const started = wait.startedAt;
-  const required = requiredChecks(operation);
+  const { required, workflows, grace, poll, limit } = await ciSettings(
+    operation,
+    commit,
+  );
   const names = new Set(required);
   for (;;) {
     const checks = latestRuns(await checkRuns(operation, commit), required);
@@ -350,7 +368,11 @@ export async function waitForCi(
           failed: retried.failures,
         }),
       };
-    const pending = [...pendingChecks(checks, names), ...retried.pending];
+    const pending = [
+      ...pendingChecks(checks, names),
+      ...retried.pending,
+      ...(await pendingWorkflows(operation, { commit, workflows })),
+    ];
     if (
       pending.length === 0 &&
       (required !== undefined ||

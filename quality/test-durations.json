@@ -260,6 +260,7 @@
   "test/github-call-errors.test.ts": 5.346943792,
   "test/github-ci-boundaries.test.ts": 0.043415709000000004,
   "test/github-ci-diagnostics.test.ts": 0.022608375000000003,
+  "test/github-ci-late.test.ts": 0.9306155830000001,
   "test/github-ci-merge.test.ts": 25.614099083000003,
   "test/github-ci-rerun-boundaries.test.ts": 0.35316853900000006,
   "test/github-ci-rerun.test.ts": 13.152296583,
