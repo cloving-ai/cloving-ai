@@ -16,9 +16,11 @@ export interface HostProcesses {
   readonly watchPort: string;
   readonly phoneRelay: string;
   readonly updateMilliseconds: number | undefined;
+  readonly stopMilliseconds?: number;
 }
 
 interface Program {
+  readonly name: string;
   readonly child: ChildProcess;
   readonly ended: Promise<number>;
 }
@@ -26,6 +28,7 @@ interface Program {
 function launched(
   argumentsList: readonly string[],
   settings: {
+    readonly name: string;
     readonly directory: string;
     readonly environment: NodeJS.ProcessEnv;
   },
@@ -41,13 +44,35 @@ function launched(
       settle(status ?? 1);
     });
   });
-  return { child, ended };
+  return { name: settings.name, child, ended };
 }
 
-async function stopped(programs: readonly Program[]): Promise<void> {
+async function stopped(
+  programs: readonly Program[],
+  milliseconds: number,
+): Promise<void> {
   for (const program of programs)
-    if (!program.child.killed) program.child.kill("SIGTERM");
-  await Promise.all(programs.map((program) => program.ended));
+    if (
+      !program.child.killed &&
+      program.child.exitCode === null &&
+      program.child.signalCode === null
+    )
+      program.child.kill("SIGTERM");
+  await Promise.all(
+    programs.map(async (program) => {
+      const timer = setTimeout(() => {
+        if (program.child.kill("SIGKILL"))
+          process.stderr.write(
+            `Cloving stopped the ${program.name} child with SIGKILL after ${String(milliseconds / 1000)} s\n`,
+          );
+      }, milliseconds);
+      try {
+        await program.ended;
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
 }
 
 function updatingGit(settings: HostProcesses, stopping: AbortSignal) {
@@ -133,6 +158,7 @@ function productChild(
       ...rest,
     ],
     {
+      name: program === "cli" ? "watch" : program,
       directory: settings.product,
       environment: {
         ...process.env,
@@ -150,6 +176,7 @@ interface Hosted {
 
 function hostedChildren(settings: HostProcesses): Hosted {
   const daemon = launched([join(settings.project, "start.mjs")], {
+    name: "daemon",
     directory: settings.project,
     environment: process.env,
   });
@@ -173,13 +200,19 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   const { daemon, programs } = hostedChildren(settings);
   const stopping = new AbortController();
   let updating = false;
-  const interrupt = (): void => {
+  let shutdown: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (shutdown ??= stopped(programs, settings.stopMilliseconds ?? 60000));
+  const signal = (signal: NodeJS.Signals): void => {
     stopping.abort();
-    for (const program of programs) program.child.kill("SIGINT");
+    for (const program of programs) program.child.kill(signal);
+    shutdown = stop();
+  };
+  const interrupt = (): void => {
+    signal("SIGINT");
   };
   const terminate = (): void => {
-    stopping.abort();
-    for (const program of programs) program.child.kill("SIGTERM");
+    signal("SIGTERM");
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
@@ -187,7 +220,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     stopping: stopping.signal,
     stop: async () => {
       updating = true;
-      await stopped(programs);
+      await stop();
     },
   });
   try {
@@ -201,7 +234,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     return updateStatus ?? status;
   } finally {
     stopping.abort();
-    await stopped(programs);
+    await stop();
     await polling;
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", terminate);
