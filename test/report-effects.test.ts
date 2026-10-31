@@ -1,11 +1,33 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { reportFixRounds, reportPhaseTimes } from "../src/report-effects.ts";
+import {
+  reportEffectData,
+  reportFixRounds,
+  reportPhaseTimes,
+} from "../src/report-effects.ts";
 import { effectEvents } from "./report-fixture.ts";
 import { loopReport } from "../src/report.ts";
 import { fields } from "./service-fixture.ts";
 
 const at = Date.parse("2026-10-24T12:00:00Z");
+
+await test("CLV-243 non-string run IDs make effect history unavailable", () => {
+  const events = [
+    ...effectEvents("run", { method: "open-pr", sequence: 1, at }),
+    ...effectEvents("run", { method: "run-turn", sequence: 3, at }),
+    ...effectEvents("run", {
+      method: "merge",
+      sequence: 5,
+      at,
+      result: { merged: true, number: 8 },
+    }),
+  ];
+  for (const runId of [undefined, null, 7, true, {}, []])
+    assert.deepEqual(
+      reportEffectData(events.map((event) => ({ ...event, runId }))),
+      { fixRounds: null, workerTurn: null, codeReview: null, merge: null },
+    );
+});
 
 await test("CLV-243 a merged pull request with no opening effect has unknown fix rounds", () => {
   const data = reportFixRounds(

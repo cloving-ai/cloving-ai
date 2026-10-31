@@ -45,16 +45,17 @@ function pairsOf(
 
 interface EffectHistory {
   readonly pairs: readonly EffectPair[];
-  readonly runs: ReadonlyMap<unknown, readonly Fields[]>;
+  readonly runs: ReadonlyMap<string, readonly Fields[]>;
 }
 
 function historyOf(events: readonly Fields[] | null): EffectHistory | null {
   if (events === null) return null;
   try {
     const requests = requestsOf(events);
-    const runs = new Map<unknown, Fields[]>();
+    const runs = new Map<string, Fields[]>();
     for (const request of requests.values()) {
       const runId = request["runId"];
+      if (typeof runId !== "string") throw new Error("invalid-report-run-id");
       const own = runs.get(runId) ?? [];
       own.push(request);
       runs.set(runId, own);
@@ -107,9 +108,11 @@ function fixRoundDatum(
 function fixRounds(history: EffectHistory | null): ReportDatum[] | null {
   if (history === null) return null;
   try {
-    return history.pairs.flatMap((pair) =>
-      fixRoundDatum(pair, history.runs.get(pair.report["runId"]) ?? []),
-    );
+    return history.pairs.flatMap((pair) => {
+      const runId = pair.report["runId"];
+      if (typeof runId !== "string") throw new Error("invalid-report-run-id");
+      return fixRoundDatum(pair, history.runs.get(runId) ?? []);
+    });
   } catch {
     return null;
   }
