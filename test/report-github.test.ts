@@ -213,7 +213,7 @@ await test("CLV-199 one network failure retries a GET and then reports readable 
 });
 
 import { loopReport } from "../src/report.ts";
-import { fields } from "./service-fixture.ts";
+import { fields, items } from "./service-fixture.ts";
 
 await test("CLV-245 ten main CI runs have a first-attempt pass share of 0.8", async () => {
   const runs = Array.from({ length: 10 }, (_, index) => ({
@@ -253,4 +253,127 @@ await test("CLV-245 ten main CI runs have a first-attempt pass share of 0.8", as
   );
   assert.equal(quality["reason"], undefined);
   assert.equal(fields(quality["mainFirstPassShare"])["value"], 0.8);
+});
+
+function recentJobScene() {
+  const at = "2026-10-24T12:00:00Z";
+  const older = "2026-10-01T00:00:00Z";
+  const runs = [1, 2, 3].map((id) => ({
+    id,
+    name: "CI",
+    head_branch: "main",
+    head_sha: (id === 1 ? "a" : "b").repeat(40),
+    run_attempt: id === 3 ? 2 : 1,
+    conclusion: id === 3 ? "success" : "failure",
+    created_at: id === 2 ? at : older,
+    updated_at: at,
+  }));
+  const jobs = Object.fromEntries(
+    runs.flatMap((run) =>
+      Array.from({ length: run.run_attempt }, (_, index) => [
+        `runs/${String(run.id)}/attempts/${String(index + 1)}/jobs?per_page=100&page=1`,
+        {
+          jobs: [
+            {
+              id: run.id * 10 + index,
+              run_id: run.id,
+              head_sha: run.head_sha,
+              name: "quality",
+              conclusion: index === 1 ? "success" : "failure",
+              completed_at:
+                run.id === 3 ? [older, "2026-10-24T13:00:00Z"][index] : at,
+            },
+          ],
+        },
+      ]),
+    ),
+  );
+  return fixture({
+    actions: {
+      ...jobs,
+      [`runs?branch=main&created=%3E%3D${encodeURIComponent(since)}&per_page=100&page=1`]:
+        { workflow_runs: [runs[1]], total_count: 1 },
+      "runs?per_page=100&page=1": {
+        workflow_runs: Array.from({ length: 100 }, (_, index) => ({
+          ...runs[0],
+          id: index + 100,
+          updated_at: older,
+        })),
+        total_count: 1100,
+      },
+      "runs?per_page=100&page=2": { workflow_runs: runs, total_count: 1100 },
+    },
+  });
+}
+
+await test("CLV-245 recent jobs from older runs count failures and successful reruns without changing first pass", async () => {
+  const scene = recentJobScene();
+  const github = await readReportGithub({ since, settings: scene.settings });
+  const report = loopReport({
+    since: 24,
+    now: Date.parse("2026-10-25T00:00:00Z"),
+    completions: [],
+    github,
+  });
+  const quality = fields(fields(report)["quality"]);
+  const real = fields(quality["realFailures"]);
+  const flaky = fields(quality["flakyFailures"]);
+  assert.equal(real["value"], 1);
+  assert.equal(fields(items(real["evidence"])[0])["commit"], "a".repeat(40));
+  assert.deepEqual(fields(items(real["evidence"])[0])["jobIds"], [10]);
+  assert.equal(flaky["value"], 1);
+  assert.deepEqual(fields(items(flaky["evidence"])[0])["jobIds"], [20, 31]);
+  assert.equal(fields(quality["mainFirstPassShare"])["value"], 0);
+  assert.deepEqual(
+    items(fields(quality["mainFirstPassShare"])["evidence"]).map(
+      (evidence) => fields(evidence)["runId"],
+    ),
+    [2],
+  );
+  assert.equal(fields(quality["jobLogs"])["read"], 3);
+});
+
+await test("CLV-245 unreadable or invalid run activity leaves only job metrics unavailable", async () => {
+  const endpoint = "runs?per_page=100&page=1";
+  const runs = Array.from({ length: 100 }, (_, index) => ({ id: index + 1 }));
+  const cases = [
+    {
+      responses: {
+        [`repos/fixture/demo/actions/${endpoint}`]: {
+          ...output(null),
+          status: 4,
+          stderr: "authentication required",
+        },
+      },
+    },
+    {
+      actions: {
+        [endpoint]: { workflow_runs: runs },
+        "runs?per_page=100&page=2": { workflow_runs: runs },
+      },
+    },
+    {
+      actions: {
+        [endpoint]: {
+          workflow_runs: [
+            {
+              id: 1,
+              name: "CI",
+              head_branch: "main",
+              updated_at: "invalid",
+            },
+          ],
+        },
+      },
+    },
+  ];
+  for (const options of cases) {
+    const scene = fixture(options);
+    const github = await readReportGithub({ since, settings: scene.settings });
+    assert.equal(github.sources.jobs.status, "unavailable");
+    assert.equal(github.sources.ci.status, "available");
+    assert.equal(github.sources.pulls.status, "available");
+    assert.equal(github.failures, null);
+    assert.equal(github.jobLogs, null);
+  }
 });

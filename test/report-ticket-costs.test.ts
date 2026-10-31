@@ -112,3 +112,43 @@ await test("CLV-243 missing daemon or run history cannot manufacture a completed
     );
   }
 });
+
+await test("CLV-245 repeated completed closes count throughput separately and ticket cost once", () => {
+  const report = loopReport({
+    now,
+    since: 24,
+    completions: ["cheap", "expensive"].map((runId, index) => ({
+      runId,
+      sequence: index + 1,
+      at,
+      outcome: "completed" as const,
+    })),
+    costs: [10, 100].map((costUsd, index) => ({
+      runId: ["cheap", "expensive"][index] ?? "",
+      ticketId: String(index + 7),
+      turns: [{ operationId: `turn-${String(index)}`, costUsd }],
+    })),
+    github: {
+      issues: [
+        { at: at - 2 * 86_400_000, value: 1, evidence: { issue: 7 } },
+        { at: at - 1, value: 1, evidence: { issue: 7 } },
+        { at, value: 1, evidence: { issue: 7 } },
+        { at, value: 1, evidence: { issue: 8 } },
+        { at: now, value: 1, evidence: { issue: 7 } },
+      ],
+      pulls: [],
+      sources: {},
+    },
+  });
+  const costs = items(report["completedTicketCosts"]).map(fields);
+  assert.deepEqual(
+    costs.map((cost) => [cost["issue"], cost["costUsd"]]),
+    [
+      [7, 10],
+      [8, 100],
+    ],
+  );
+  assert.equal(costs[0]?.["closedAt"], at);
+  assert.equal(report.metrics["tickets.completed"].value, 3);
+  assert.equal(report.metrics["cost.medianCompletedTicketUsd"].value, 55);
+});

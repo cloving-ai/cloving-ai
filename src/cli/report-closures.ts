@@ -67,11 +67,13 @@ function historyData(events: readonly Fields[], issue: number) {
       issue,
       ...(event["id"] === undefined ? {} : { eventId: event["id"] }),
     };
-    if (event["event"] === "reopened") {
-      if (completedAt !== null && completedAt <= at)
-        reopened.push({ at, value: 1, evidence: { ...evidence, completedAt } });
-      continue;
-    }
+    if (
+      event["event"] === "reopened" &&
+      completedAt !== null &&
+      completedAt <= at
+    )
+      reopened.push({ at, value: 1, evidence: { ...evidence, completedAt } });
+    if (event["event"] === "reopened") continue;
     if (
       !["completed", "not_planned", "duplicate"].includes(
         String(event["state_reason"]),

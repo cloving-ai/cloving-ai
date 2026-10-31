@@ -15,6 +15,7 @@ const run = {
   run_attempt: 2,
   conclusion: "success",
   created_at: at,
+  updated_at: at,
 };
 const job = (
   id: number,
@@ -37,6 +38,7 @@ function scene(
   return githubReportFixture({
     actions: {
       [endpoint]: { workflow_runs: [run], total_count: 1 },
+      "runs?per_page=100&page=1": { workflow_runs: [run], total_count: 1 },
       "runs/1/attempts/1": { ...run, run_attempt: 1, conclusion: "failure" },
       "runs/1/attempts/1/jobs?per_page=100&page=1": {
         jobs: options.failed ?? [

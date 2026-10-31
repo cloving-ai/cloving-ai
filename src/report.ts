@@ -123,7 +123,10 @@ function ticketCostMetric(input: ReportInput, window: ReportWindow) {
     (input.completions ?? []).filter((event) => event.at < window.end),
     input.costs ?? [],
   );
-  const tickets = completedCosts(input, costs);
+  const tickets = completedCosts(
+    (input.github?.issues ?? []).filter((issue) => issue.at < window.end),
+    costs,
+  );
   const metric = reportMetric({
     data:
       input.completions === null || input.github?.issues == null
@@ -296,10 +299,15 @@ function commonHistory(
 }
 
 function completedCosts(
-  input: ReportInput,
+  completed: readonly ReportDatum[],
   costs: ReturnType<typeof reportRunCosts>,
 ) {
-  return (input.github?.issues ?? []).map((issue) => {
+  const issues = new Map(
+    completed
+      .toSorted((left, right) => left.at - right.at)
+      .map((issue) => [issue.evidence["issue"], issue]),
+  );
+  return [...issues.values()].map((issue) => {
     const number = issue.evidence["issue"];
     const runs = costs.filter((cost) => cost.ticketId === String(number));
     const unknown =

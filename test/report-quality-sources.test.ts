@@ -19,6 +19,7 @@ const run = {
   run_attempt: 1,
   conclusion: "success",
   created_at: new Date(at).toISOString(),
+  updated_at: new Date(at).toISOString(),
 };
 async function readQuality(options: Parameters<typeof githubReportFixture>[0]) {
   const fixture = githubReportFixture(options);
@@ -238,6 +239,7 @@ await test("CLV-245 malformed job fields leave failure counts unavailable and CI
     const result = await readQuality({
       actions: {
         [endpoint]: { workflow_runs: [run] },
+        "runs?per_page=100&page=1": { workflow_runs: [run] },
         "runs/1/attempts/1/jobs?per_page=100&page=1": {
           jobs: [{ ...good, ...invalid }],
         },
@@ -265,6 +267,7 @@ await test("CLV-245 duplicate jobs on later pages cannot produce partial failure
   const result = await readQuality({
     actions: {
       [endpoint]: { workflow_runs: [run] },
+      "runs?per_page=100&page=1": { workflow_runs: [run] },
       "runs/1/attempts/1/jobs?per_page=100&page=1": { jobs },
       "runs/1/attempts/1/jobs?per_page=100&page=2": { jobs: [jobs[0]] },
     },
@@ -290,6 +293,7 @@ await test("CLV-245 an unreadable job log retains the known failure as unknown",
   const result = await readQuality({
     actions: {
       [endpoint]: { workflow_runs: [run] },
+      "runs?per_page=100&page=1": { workflow_runs: [run] },
       "runs/1/attempts/1/jobs?per_page=100&page=1": { jobs: [job] },
     },
     responses: {

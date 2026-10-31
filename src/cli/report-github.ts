@@ -67,7 +67,10 @@ export async function readReportGithub(
 ): Promise<ReportGithub> {
   const reader = await repositoryReader(input).catch(() => null);
   if (reader === null) return unavailableGithub();
-  const runsRead = mainRuns(reader, input.since);
+  const runsRead = mainRuns(reader, {
+    since: input.since,
+    activity: "created",
+  });
   const issueRead = readClosureHistory(reader, input.since);
   const [issues, pulls, history, timelines, ready, ci, jobs] =
     await Promise.allSettled([
@@ -79,7 +82,9 @@ export async function readReportGithub(
       ),
       readyTicketsOf(reader),
       runsRead.then((runs) => firstPassData(reader, runs)),
-      runsRead.then((runs) => readCiJobs(reader, runs)),
+      mainRuns(reader, { since: input.since, activity: "updated" }).then(
+        (runs) => readCiJobs(reader, runs),
+      ),
     ]);
   return {
     reopened: issues.status === "fulfilled" ? issues.value.reopened : null,
