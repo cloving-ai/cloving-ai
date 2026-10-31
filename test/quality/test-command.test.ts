@@ -152,3 +152,61 @@ await test("CLV-044 a test run that is longer than its bound fails the test comm
     }, /execution failed/);
   });
 });
+
+await test("CLV-266 shards cover each test once in stable balanced duration order", () => {
+  const tests = ["f", "b", "d", "a", "e", "c"].map(
+    (name) => `/project/${name}.test.ts`,
+  );
+  const durations = Object.fromEntries(
+    [10, 9, 8, 7, 6, 5].map((seconds, index) => [
+      `${String.fromCharCode(97 + index)}.test.ts`,
+      seconds,
+    ]),
+  );
+  const shards = ["1/2", "2/2"].map((shard) =>
+    testCommand("/project", { tests, durations, shard }).arguments.filter(
+      (argument) => argument.endsWith(".test.ts"),
+    ),
+  );
+  assert.deepEqual(shards, [
+    ["/project/a.test.ts", "/project/d.test.ts", "/project/e.test.ts"],
+    ["/project/b.test.ts", "/project/c.test.ts", "/project/f.test.ts"],
+  ]);
+  assert.deepEqual(shards.flat().sort(), [...tests].sort());
+  const seconds = shards.map((files) =>
+    files.reduce((total, file) => total + (durations[file.slice(9)] ?? 0), 0),
+  );
+  assert.ok(Math.max(...seconds) <= Math.min(...seconds) * 1.2);
+  for (const [index, shard] of ["1/2", "2/2"].entries())
+    assert.deepEqual(
+      testCommand("/project", {
+        tests: [...tests].reverse(),
+        durations,
+        shard,
+      }).arguments.filter((argument) => argument.endsWith(".test.ts")),
+      shards[index],
+    );
+});
+
+await test("CLV-266 rejects malformed and empty shards before execution", () => {
+  for (const shard of [
+    "",
+    "0/2",
+    "3/2",
+    "1/0",
+    "01/2",
+    "1/02",
+    "1.5/2",
+    "1/2\n",
+    "1/9007199254740992",
+    "2/3",
+  ])
+    assert.throws(
+      () =>
+        testCommand("/project", {
+          tests: ["a.test.ts", "b.test.ts"],
+          shard,
+        }),
+      /CLOVING_TEST_SHARD|empty test shard/,
+    );
+});

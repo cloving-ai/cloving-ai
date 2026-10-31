@@ -1,3 +1,35 @@
+export interface TestShard {
+  readonly index: number;
+  readonly count: number;
+}
+
+export function parseTestShard(
+  value: string | undefined,
+): TestShard | undefined {
+  if (value === undefined) return undefined;
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(value);
+  const index = Number(match?.[1]);
+  const count = Number(match?.[2]);
+  if (
+    !Number.isSafeInteger(index) ||
+    !Number.isSafeInteger(count) ||
+    index > count
+  )
+    throw new Error(
+      "CLOVING_TEST_SHARD must be an index/count from 1 to count",
+    );
+  return { index, count };
+}
+
+export function parseCheckTimeFactor(value: string | undefined): number {
+  if (value === undefined) return 1;
+  if (!/^[1-9]$/.test(value))
+    throw new Error(
+      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 9",
+    );
+  return Number(value);
+}
+
 export interface CheckCommand {
   readonly check?: string;
   readonly executable: string;

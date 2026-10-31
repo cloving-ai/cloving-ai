@@ -14,6 +14,8 @@ export const requiredChecks = [
 export interface ProjectOptions extends SourceOptions {
   readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
+  readonly shard?: string;
+  readonly coverageDirectory?: string;
   readonly trustedCompilerConfiguration?: string;
   readonly architecture: DependencyPolicy;
   readonly stepExports: Readonly<Record<string, readonly string[]>>;
@@ -54,13 +56,18 @@ export async function checkProject(
     ...options,
     commandOptions: { ...options.commandOptions, timings },
   };
-  const { program, files, completed } = await checkProjectSources(
-    directory,
-    measured,
-  );
-  await checkProjectTests(directory, { program, files, options: measured });
+  const shard = parseTestShard(options.shard);
+  const checked =
+    !shard || shard.index === 1
+      ? await checkProjectSources(directory, measured)
+      : {
+          files: await sourceFiles(directory, measured),
+          completed: new Array<string>(),
+        };
+  const { files, completed } = checked;
+  await checkProjectTests(directory, { ...checked, options: measured });
   completed.push("tests");
-  assertCheckCoverage(completed);
+  if (!shard || shard.index === 1) assertCheckCoverage(completed);
   return { files, completed, timings, warnings: checkTimeWarnings(timings) };
 }
 
@@ -127,16 +134,16 @@ export async function checkProjectSources(
 async function checkProjectTests(
   directory: string,
   checked: {
-    readonly program: ReturnType<typeof compilerProgram>;
+    readonly program?: ReturnType<typeof compilerProgram>;
     readonly files: readonly string[];
     readonly options: ProjectOptions;
   },
 ): Promise<void> {
   const { program, files, options } = checked;
-  const production = productionInventory(program, {
-    files,
-    roles: options.architecture.roles,
-  });
+  const mapping = { files, roles: options.architecture.roles };
+  const production = program
+    ? productionInventory(program, mapping)
+    : productionFiles(mapping);
   removeStaleCoverageFolders({
     root: tmpdir(),
     now: () => Date.now(),
@@ -151,6 +158,10 @@ async function checkProjectTests(
       ? { commandOptions: options.commandOptions }
       : {}),
     timeFactor: options.timeFactor ?? 1,
+    ...(options.shard === undefined ? {} : { shard: options.shard }),
+    ...(options.coverageDirectory === undefined
+      ? {}
+      : { coverageDirectory: options.coverageDirectory }),
     ...(production.length > 0 ? { coverageFiles: production } : {}),
     ...(options.requiredTests ? { requiredTests: options.requiredTests } : {}),
   });
@@ -173,10 +184,14 @@ import { inspectTestIntegrity } from "./test-integrity.ts";
 import type { DependencyPolicy } from "./dependency-policy.ts";
 import { checkArchitecture } from "./architecture.ts";
 import { inspectWorkflowBoundaries } from "./workflow-boundaries.ts";
-import { productionInventory } from "./production-inventory.ts";
+import {
+  productionInventory,
+  productionFiles,
+} from "./production-inventory.ts";
 import type { SuppressionApproval } from "./suppression-approval.ts";
 import {
   checkTimeWarnings,
+  parseTestShard,
   type CheckTiming,
   type CommandOptions,
 } from "./command.ts";

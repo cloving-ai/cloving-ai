@@ -299,3 +299,28 @@ await test("QG-18 rejects an unhandled rejection from an otherwise passing test"
     });
   });
 });
+
+for (const shard of [undefined, "1/2"]) {
+  await test(`CLV-266 rejects an omitted mandatory file with shard ${String(shard)}`, async () => {
+    const source =
+      'import { test } from "node:test"; await test("required", () => {});';
+    await withFiles(
+      { "a.test.ts": source, "b.test.ts": source, "c.test.ts": source },
+      async (directory) => {
+        const paths = ["a", "b", "c"].map((name) =>
+          join(directory, `${name}.test.ts`),
+        );
+        await assert.rejects(async () => {
+          await checkTests(directory, {
+            files: paths.filter((file) => !file.endsWith("b.test.ts")),
+            requiredTests: Object.fromEntries(
+              paths.map((file) => [file, ["required"]]),
+            ),
+            coverageDirectory: join(directory, "coverage"),
+            ...(shard === undefined ? {} : { shard }),
+          });
+        }, /mandatory-test-inventory-mismatch/);
+      },
+    );
+  });
+}
