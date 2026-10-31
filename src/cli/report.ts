@@ -7,9 +7,11 @@ import {
 } from "../report.ts";
 import { send } from "./client.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { readReportFlow } from "./report-flow.ts";
 import { readReportGithub } from "./report-github.ts";
 
 interface ReportEnvironment {
+  readonly now?: number;
   readonly runtimeDirectory: string;
   readonly workingDirectory: string;
   readonly watchPr?: WatchPrSettings;
@@ -37,6 +39,7 @@ interface DaemonSnapshot {
   observedSince: number | null;
   readonly completions: Map<string, ReportCompletion>;
   readonly effects: Fields[];
+  readonly flowEvents: Fields[];
 }
 
 function appendEvents(
@@ -55,6 +58,10 @@ function appendEvents(
       )
     )
       snapshot.effects.push({ ...parsed.event, at: parsed.at });
+    if (
+      ["run.started", "schedule.skipped"].includes(String(parsed.event["type"]))
+    )
+      snapshot.flowEvents.push(parsed.event);
     const completion = reportCompletion(parsed.event);
     if (completion === null) continue;
     if (snapshot.completions.has(completion.runId))
@@ -70,6 +77,7 @@ async function daemonReport(runtime: string) {
     observedSince: null,
     completions: new Map(),
     effects: [],
+    flowEvents: [],
   };
   for (;;) {
     const reply = await send(runtime, {
@@ -92,6 +100,7 @@ async function daemonReport(runtime: string) {
       return {
         completions: [...snapshot.completions.values()],
         effects: snapshot.effects,
+        flowEvents: snapshot.flowEvents,
         observedSince: snapshot.observedSince,
       };
     if (events.length < 1000) throw new Error("incomplete-report-snapshot");
@@ -164,6 +173,7 @@ function textReport(report: Fields): string {
   lines.push(
     `Completed ticket costs (USD): ${JSON.stringify(report["completedTicketCosts"])}`,
   );
+  lines.push(`Semantics: ${JSON.stringify(report["semantics"])}`);
   lines.push(`Sources: ${JSON.stringify(report["sources"])}`);
   lines.push(`Coverage: ${JSON.stringify(report["coverage"])}`);
   return lines.join("\n") + "\n";
@@ -173,7 +183,7 @@ export async function reportCommand(
   invocation: { readonly since: number; readonly json: boolean },
   environment: ReportEnvironment,
 ): Promise<number> {
-  const now = Date.now();
+  const now = environment.now ?? Date.now();
   const since = new Date(
     now - (invocation.since + 168) * 3_600_000,
   ).toISOString();
@@ -186,7 +196,12 @@ export async function reportCommand(
   const daemon =
     daemonRead.status === "fulfilled"
       ? daemonRead.value
-      : { completions: null, effects: null, observedSince: null };
+      : {
+          completions: null,
+          effects: null,
+          flowEvents: null,
+          observedSince: null,
+        };
   const github =
     githubRead.status === "fulfilled" ? { github: githubRead.value } : {};
   const costs = await reportCosts(environment.runtimeDirectory, {
@@ -196,6 +211,11 @@ export async function reportCommand(
     issues: githubRead.status === "fulfilled" ? githubRead.value.issues : null,
   });
   const calculated = loopReport({
+    flow: await readReportFlow(environment.runtimeDirectory, {
+      events: daemon.flowEvents,
+      start: Date.parse(since),
+      completions: daemon.completions,
+    }),
     since: invocation.since,
     now,
     ...daemon,

@@ -14,6 +14,7 @@ import {
 } from "./watch-service-fixture.ts";
 
 const queue = {
+  workflowId: "develop-issue",
   lanes: 4,
   busy: 1,
   skipped: [

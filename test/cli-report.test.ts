@@ -288,3 +288,55 @@ await test("CLV-243 report counts fix rounds only for merged pull requests", asy
     },
   );
 });
+
+await test("CLV-244 report measures two queue lanes and clips runs to the window", async () => {
+  const now = Date.parse("2026-10-25T00:00:00Z");
+  const events = [
+    ["run.started", "lane-a", -30],
+    ["run.started", "lane-b", -24],
+    ["run.completed", "lane-b", -11],
+    ["run.completed", "lane-a", -4],
+  ].map(([type, runId, hours], index) => ({
+    type,
+    runId,
+    sequence: index + 1,
+    payload: {},
+    recordedAt: new Date(now + Number(hours) * 3_600_000).toISOString(),
+  }));
+  const reply = reportReply(events, [
+    { runId: "lane-a", workflowId: "queue-work" },
+    { runId: "lane-b", workflowId: "queue-work" },
+  ]);
+  await withReportSource(
+    (request) =>
+      request.operation === "status" &&
+      request.parameters["metadata"] === undefined &&
+      request.parameters["runId"] === undefined
+        ? {
+            kind: "result",
+            result: { queue: { workflowId: "queue-work", lanes: 2 } },
+          }
+        : reply(request),
+    async (harness) => {
+      const output: string[] = [];
+      await reportCommand(
+        { since: 24, json: true },
+        {
+          now,
+          runtimeDirectory: harness.runtimeDirectory,
+          workingDirectory: harness.projectDirectory,
+          terminal: { out: (text) => output.push(text) },
+        },
+      );
+      const report = fields(JSON.parse(output.join("")));
+      assert.equal(fields(report["coverage"])["flow"], undefined);
+      const metric = fields(fields(report["metrics"])["flow.busyLaneShare"]);
+      assert.equal(metric["value"], 0.6875);
+      assert.deepEqual(
+        items(metric["evidence"]).flatMap((item) => fields(item)["runIds"]),
+        ["lane-a", "lane-b"],
+      );
+      assert.match(String(fields(report["semantics"])["flowLanes"]), /current/);
+    },
+  );
+});
