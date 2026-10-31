@@ -33,8 +33,7 @@
         "CLOVING_TEST_CONCURRENCY": "3",
         "CLOVING_CI_MACOS_VERSION": "15.*",
         "NODE_OPTIONS": "--max-old-space-size=4096",
-        "CLOVING_TEST_SHARD": "${{ matrix.shard }}/2",
-        "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard"
+        "CLOVING_TEST_SHARD": "${{ matrix.shard }}/2"
       },
       "steps": [
         {
@@ -68,13 +67,16 @@
           "if": "${{ matrix.shard == '1' }}"
         },
         {
-          "run": "npm run check:quality"
+          "run": "npm run check:quality",
+          "env": {
+            "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard"
+          }
         },
         {
           "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
           "with": {
             "name": "coverage-macos-26.9.0-${{ matrix.shard }}",
-            "path": "${{ env.CLOVING_COVERAGE_DIRECTORY }}",
+            "path": "${{ runner.temp }}/cloving-coverage/shard",
             "if-no-files-found": "error",
             "overwrite": true
           }
@@ -111,8 +113,7 @@
         "CLOVING_TEST_CONCURRENCY": "4",
         "CLOVING_CI_ARCHITECTURE": "x64",
         "NODE_OPTIONS": "--max-old-space-size=4096",
-        "CLOVING_TEST_SHARD": "${{ matrix.shard }}/2",
-        "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard"
+        "CLOVING_TEST_SHARD": "${{ matrix.shard }}/2"
       },
       "steps": [
         {
@@ -151,13 +152,16 @@
           "if": "${{ matrix.shard == '1' }}"
         },
         {
-          "run": "npm run check:quality"
+          "run": "npm run check:quality",
+          "env": {
+            "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard"
+          }
         },
         {
           "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
           "with": {
             "name": "coverage-linux-${{ matrix.node }}-${{ matrix.shard }}",
-            "path": "${{ env.CLOVING_COVERAGE_DIRECTORY }}",
+            "path": "${{ runner.temp }}/cloving-coverage/shard",
             "if-no-files-found": "error",
             "overwrite": true
           }

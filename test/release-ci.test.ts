@@ -36,6 +36,16 @@ await test("CI runs every job of every event on hosted runners", async () => {
   }
 });
 
+await test("CLV-266 job environments resolve before a runner is assigned", async () => {
+  const workflow = await releaseWorkflow();
+  for (const [name, definition] of Object.entries(workflow.jobs))
+    assert.doesNotMatch(
+      JSON.stringify(definition.env ?? {}),
+      /\brunner\./,
+      name,
+    );
+});
+
 await test("CLV-097 CI checks main and version tag pushes, every pull request and manual run with least privilege", async () => {
   const workflow = await releaseWorkflow();
   assert.deepEqual(workflow.on, {
@@ -115,7 +125,6 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "4",
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/2",
-    CLOVING_COVERAGE_DIRECTORY: "${{ runner.temp }}/cloving-coverage/shard",
     CLOVING_CI_ARCHITECTURE: "x64",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -124,7 +133,6 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "3",
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/2",
-    CLOVING_COVERAGE_DIRECTORY: "${{ runner.temp }}/cloving-coverage/shard",
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -348,13 +356,15 @@ await test("CLV-266 coverage joins all six shard artifacts before the required c
 await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {
   const workflow = await releaseWorkflow();
   for (const name of ["quality_macos", "quality_linux_node"] as const) {
+    const gate = steps(workflow, name).find(
+      (step) => step.run === "npm run check:quality",
+    );
+    const directory = "${{ runner.temp }}/cloving-coverage/shard";
+    assert.deepEqual(gate?.env, { CLOVING_COVERAGE_DIRECTORY: directory });
     const upload = steps(workflow, name).find((step) =>
       step.uses?.startsWith("actions/upload-artifact@"),
     );
-    assert.equal(
-      upload?.with?.["path"],
-      "${{ env.CLOVING_COVERAGE_DIRECTORY }}",
-    );
+    assert.equal(upload?.with?.["path"], directory);
     assert.equal(upload.with["if-no-files-found"], "error");
     assert.equal(upload.with["overwrite"], true);
     assert.match(String(upload.with["name"]), /\$\{\{ matrix.shard \}\}/);
