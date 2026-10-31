@@ -85,40 +85,67 @@ export async function repositoryReader(
       ? prRepository(origin.stdout)
       : null;
   if (repository === null) throw new Error("identity");
-  const directory = settings.repository;
+  const timelines = new Map<string, Promise<unknown>>();
   return {
     repository,
-    read: async (endpoint, flags = []) => {
-      const output = await githubRetry({
-        signal,
-        pollMilliseconds: input.retryMilliseconds ?? 30_000,
-        action: async () => {
-          const output = await settings.execute({
-            directory,
-            signal,
-            command: [
-              ...command,
-              "api",
-              "--method",
-              "GET",
-              "--hostname",
-              repository.host,
-              `repos/${repository.owner}/${repository.repository}${endpoint === "" ? "" : `/${endpoint}`}`,
-              ...flags,
-            ],
-          });
-          if (output.status !== 0 || output.errorCode !== null)
-            throw Object.assign(new Error("github-call-failed"), {
-              status: Number(/\(HTTP (\d{3})\)/.exec(output.stderr)?.[1]),
-              detail: output.stderr,
-            });
-          return output.stdout;
-        },
+    read: (endpoint, flags = []) => {
+      const key = JSON.stringify([endpoint, flags]);
+      const cached = timelines.get(key);
+      if (cached !== undefined) return cached;
+      const reading = readEndpoint(input, {
+        repository,
+        command,
+        endpoint,
+        flags,
       });
-      const parsed: unknown = JSON.parse(output);
-      return parsed;
+      if (endpoint.includes("/timeline?")) timelines.set(key, reading);
+      return reading;
     },
   };
+}
+
+async function readEndpoint(
+  input: GithubReportInput,
+  request: {
+    readonly repository: PrRepository;
+    readonly command: readonly string[];
+    readonly endpoint: string;
+    readonly flags: readonly string[];
+  },
+): Promise<unknown> {
+  const settings = input.settings;
+  if (settings?.repository === undefined) throw new Error("configuration");
+  const { repository, command, endpoint, flags } = request;
+  const directory = settings.repository;
+  const signal = AbortSignal.timeout(120_000);
+  const output = await githubRetry({
+    signal,
+    pollMilliseconds: input.retryMilliseconds ?? 30_000,
+    action: async () => {
+      const output = await settings.execute({
+        directory,
+        signal,
+        command: [
+          ...command,
+          "api",
+          "--method",
+          "GET",
+          "--hostname",
+          repository.host,
+          `repos/${repository.owner}/${repository.repository}${endpoint === "" ? "" : `/${endpoint}`}`,
+          ...flags,
+        ],
+      });
+      if (output.status !== 0 || output.errorCode !== null)
+        throw Object.assign(new Error("github-call-failed"), {
+          status: Number(/\(HTTP (\d{3})\)/.exec(output.stderr)?.[1]),
+          detail: output.stderr,
+        });
+      return output.stdout;
+    },
+  });
+  const parsed: unknown = JSON.parse(output);
+  return parsed;
 }
 
 export async function issueTimeline(

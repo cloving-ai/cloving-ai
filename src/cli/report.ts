@@ -210,12 +210,12 @@ export async function reportCommand(
     end: now,
     issues: githubRead.status === "fulfilled" ? githubRead.value.issues : null,
   });
-  const flow = await readReportFlow(environment.runtimeDirectory, {
-    events: daemon.flowEvents,
-    completions: daemon.completions,
-  });
   const calculated = loopReport({
-    flow,
+    flow: await readReportFlow(environment.runtimeDirectory, {
+      events: daemon.flowEvents,
+      start: Date.parse(since),
+      completions: daemon.completions,
+    }),
     since: invocation.since,
     now,
     ...daemon,

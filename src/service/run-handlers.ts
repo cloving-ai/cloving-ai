@@ -1,5 +1,10 @@
 import { commandWaitDisplay } from "./command-waits.ts";
-import { metadataOf, outcomeOf, ticketMetadataPage } from "./run-metadata.ts";
+import {
+  metadataOf,
+  outcomeOf,
+  ticketMetadataPage,
+  workflowMetadata,
+} from "./run-metadata.ts";
 import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
 import {
   runView,
@@ -259,6 +264,8 @@ export async function status(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
+  if (parameters["metadata"] === "workflows")
+    return workflowMetadata(context, parameters["runIds"]);
   if (parameters["runIds"] !== undefined)
     return queueRunStatuses(context, parameters["runIds"]);
   const { runId } = parameters;

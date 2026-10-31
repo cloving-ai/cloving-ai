@@ -1186,6 +1186,7 @@
     "test/report-github.test.ts": "test",
     "test/report-lead-time.test.ts": "test",
     "test/report-metrics.test.ts": "test",
+    "test/report-ready-reads.test.ts": "test",
     "test/report-ticket-costs.test.ts": "test",
     "test/report.test.ts": "test",
     "test/resolver-child.ts": "test",

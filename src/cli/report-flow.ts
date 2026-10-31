@@ -34,23 +34,41 @@ async function overview(runtime: string) {
   };
 }
 
-async function workflowId(
-  runtime: string,
-  runId: string,
-): Promise<string | null> {
-  try {
-    const reply = await send(runtime, {
-      operation: "status",
-      parameters: { runId },
-    });
-    if (reply.kind === "error") return null;
-    const run = record(reply.result["run"]);
-    const id = run?.["workflowId"];
-    return run?.["runId"] === runId && typeof id === "string" && id !== ""
-      ? id
-      : null;
-  } catch {
-    return null;
+async function workflowIds(runtime: string, runIds: readonly string[]) {
+  const identities = new Map<string, string | null>();
+  for (let offset = 0; offset < runIds.length; offset += 500) {
+    const batch = runIds.slice(offset, offset + 500);
+    try {
+      const reply = await send(runtime, {
+        operation: "status",
+        parameters: { metadata: "workflows", runIds: batch },
+      });
+      if (reply.kind === "error") continue;
+      appendWorkflowIds(identities, {
+        runIds: batch,
+        values: reply.result["runs"],
+      });
+    } catch {
+      continue;
+    }
+  }
+  return identities;
+}
+
+function appendWorkflowIds(
+  identities: Map<string, string | null>,
+  batch: { readonly runIds: readonly string[]; readonly values: unknown },
+) {
+  const { values, runIds } = batch;
+  if (!Array.isArray(values) || values.length !== runIds.length) return;
+  const rows = values.map((value: unknown) => record(value));
+  if (rows.some((row, index) => row?.["runId"] !== runIds[index])) return;
+  for (const row of rows) {
+    const id = row?.["workflowId"];
+    identities.set(
+      String(row?.["runId"]),
+      typeof id === "string" && id !== "" ? id : null,
+    );
   }
 }
 
@@ -79,13 +97,11 @@ function skipsOf(
   return skips;
 }
 
-async function runsOf(
-  runtime: string,
-  input: {
-    readonly events: readonly Fields[];
-    readonly completions: readonly ReportCompletion[] | null;
-  },
-): Promise<ReportFlow["runs"]> {
+function runsOf(input: {
+  readonly events: readonly Fields[];
+  readonly start: number;
+  readonly completions: readonly ReportCompletion[] | null;
+}): ReportFlow["runs"] {
   const runs: ReportFlowRun[] = [];
   const ended = new Map(
     (input.completions ?? []).map((event) => [event.runId, event.at]),
@@ -106,18 +122,19 @@ async function runsOf(
     seen.add(runId);
     runs.push({
       runId,
-      workflowId: await workflowId(runtime, runId),
+      workflowId: null,
       start: at,
       end: ended.get(runId) ?? null,
     });
   }
-  return runs;
+  return runs.filter((run) => (run.end ?? Infinity) > input.start);
 }
 
 export async function readReportFlow(
   runtime: string,
   input: {
     readonly events: readonly Fields[] | null;
+    readonly start: number;
     readonly completions: readonly ReportCompletion[] | null;
   },
 ): Promise<ReportFlow> {
@@ -125,15 +142,21 @@ export async function readReportFlow(
     queue: null,
     workflows: [],
   }));
+  const runs =
+    input.events === null ? null : runsOf({ ...input, events: input.events });
+  const identities = await workflowIds(
+    runtime,
+    (runs ?? []).map((run) => run.runId),
+  );
   return {
     ...settings,
     skips: skipsOf(input.events),
     runs:
-      input.events === null
+      runs === null
         ? null
-        : await runsOf(runtime, {
-            events: input.events,
-            completions: input.completions,
-          }),
+        : runs.map((run) => ({
+            ...run,
+            workflowId: identities.get(run.runId) ?? null,
+          })),
   };
 }

@@ -76,6 +76,7 @@ export async function readyTicketsOf(
         'map({number, html_url} + (if has("pull_request") then {pull_request: {}} else {} end))',
       ]),
     );
+    const numbers: number[] = [];
     for (const row of values) {
       if (Object.hasOwn(row, "pull_request")) continue;
       const number = identity(row, {
@@ -84,14 +85,26 @@ export async function readyTicketsOf(
       });
       if (seen.has(number)) throw new Error("response");
       seen.add(number);
-      const ready = intervals(await issueTimeline(reader, number));
-      if (ready.length === 0) continue;
-      result.push({
-        issue: number,
-        intervals: ready,
-        dependencies: await dependencies(reader, await detail(reader, number)),
-      });
+      numbers.push(number);
+    }
+    for (let offset = 0; offset < numbers.length; offset += 5) {
+      const tickets = await Promise.all(
+        numbers
+          .slice(offset, offset + 5)
+          .map((number) => readyTicket(reader, number)),
+      );
+      result.push(...tickets.filter((ticket) => ticket !== null));
     }
     if (values.length < 100) return result;
   }
+}
+
+async function readyTicket(reader: Reader, number: number) {
+  const ready = intervals(await issueTimeline(reader, number));
+  if (ready.length === 0) return null;
+  return {
+    issue: number,
+    intervals: ready,
+    dependencies: await dependencies(reader, await detail(reader, number)),
+  };
 }

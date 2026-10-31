@@ -310,6 +310,7 @@ await test("CLV-244 report measures two queue lanes and clips runs to the window
   await withReportSource(
     (request) =>
       request.operation === "status" &&
+      request.parameters["metadata"] === undefined &&
       request.parameters["runId"] === undefined
         ? {
             kind: "result",

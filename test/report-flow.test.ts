@@ -53,6 +53,28 @@ await test("CLV-244 peak includes any workflow, ongoing and crossing runs with h
   assert.deepEqual(peak["evidence"], [{ runIds: ["crossing", "other"] }]);
 });
 
+await test("CLV-244 peak sweeps boundaries without rescanning every run per start", () => {
+  let reads = 0;
+  const runs = Array.from({ length: 300 }, (_, index) => ({
+    runId: `run-${String(index)}`,
+    workflowId: "queue",
+    get start() {
+      reads += 1;
+      return now - 24 * hour + index * 1000;
+    },
+    end: now - 24 * hour + (index + 1) * 1000,
+  })).reverse();
+  const report = loopReport({
+    ...window,
+    completions: [],
+    flow: { queue: null, runs },
+  });
+  const peak = fields(fields(report.metrics)["flow.peakActiveRuns"]);
+  assert.equal(peak["value"], 1);
+  assert.deepEqual(peak["evidence"], [{ runIds: ["run-0"] }]);
+  assert.ok(reads < runs.length * 40, `Run start reads: ${String(reads)}`);
+});
+
 await test("CLV-244 unsuccessful streak uses terminal order and completed resets the longest streak", () => {
   const completions = [
     ended("prior", { at: -25, outcome: "failed", sequence: 1 }),

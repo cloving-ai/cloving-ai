@@ -35,7 +35,9 @@ const reply = reportReply(
   ["a", "b"].map((runId) => ({ runId, workflowId: "queue" })),
 );
 const daemon = (request: Parameters<typeof reply>[0]) =>
-  request.operation === "status" && request.parameters["runId"] === undefined
+  request.operation === "status" &&
+  request.parameters["metadata"] === undefined &&
+  request.parameters["runId"] === undefined
     ? {
         kind: "result" as const,
         result: { queue: { workflowId: "queue", lanes: 2 } },

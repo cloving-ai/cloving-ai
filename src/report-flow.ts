@@ -44,17 +44,29 @@ function busyShare(input: ReportFlow, window: ReportWindow) {
 }
 
 function peakRuns(runs: readonly ReportFlowRun[], window: ReportWindow) {
-  const points = [...new Set([window.start, ...runs.map((run) => run.start)])]
-    .filter((at) => at >= window.start && at < window.end)
-    .toSorted((a, b) => a - b);
-  let peak: string[] = [];
-  for (const at of points) {
-    const active = runs.filter(
-      (run) => run.start <= at && (run.end ?? window.end) > at,
-    );
-    if (active.length > peak.length) peak = active.map((run) => run.runId);
+  const points = runs
+    .filter(
+      (run) =>
+        overlaps(run, window) && (run.end === null || run.end > run.start),
+    )
+    .flatMap((run) => [
+      { at: Math.max(run.start, window.start), change: 1 },
+      { at: Math.min(run.end ?? window.end, window.end), change: -1 },
+    ])
+    .toSorted((a, b) => a.at - b.at || a.change - b.change);
+  let active = 0;
+  let peak = 0;
+  let peakAt = window.start;
+  for (const point of points) {
+    active += point.change;
+    if (active <= peak) continue;
+    peak = active;
+    peakAt = point.at;
   }
-  return { at: window.start, value: peak.length, evidence: { runIds: peak } };
+  const runIds = runs
+    .filter((run) => run.start <= peakAt && (run.end ?? window.end) > peakAt)
+    .map((run) => run.runId);
+  return { at: window.start, value: peak, evidence: { runIds } };
 }
 
 function streaks(
