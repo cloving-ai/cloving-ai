@@ -88,7 +88,47 @@ export async function pullRequestWorkflows(
     )
       workflows.push(path);
   }
-  return workflows;
+  if (workflows.length === 0) return workflows;
+  const inactive = await inactiveWorkflows(operation);
+  return workflows.filter((path) => !inactive.has(path));
+}
+
+function isList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+async function actionPages(
+  operation: Operation,
+  request: { readonly path: string; readonly key: string },
+): Promise<readonly unknown[]> {
+  const pages: unknown = JSON.parse(
+    await githubRead(operation, ["api", "--paginate", "--slurp", request.path]),
+  );
+  if (!isList(pages) || pages.length === 0)
+    throw new Error("github-call-failed");
+  return pages.flatMap((page) => {
+    const items = field(page, request.key);
+    if (!isList(items)) throw new Error("github-call-failed");
+    return items;
+  });
+}
+
+async function inactiveWorkflows(
+  operation: Operation,
+): Promise<ReadonlySet<string>> {
+  const workflows = await actionPages(operation, {
+    path: `${repositoryPath}/actions/workflows?per_page=100`,
+    key: "workflows",
+  });
+  const inactive = new Set<string>();
+  for (const workflow of workflows) {
+    const path = field(workflow, "path");
+    const state = field(workflow, "state");
+    if (typeof path !== "string" || typeof state !== "string")
+      throw new Error("github-call-failed");
+    if (state !== "active") inactive.add(path);
+  }
+  return inactive;
 }
 
 interface WorkflowRun {
@@ -116,24 +156,12 @@ async function workflowRuns(
   operation: Operation,
   commit: string,
 ): Promise<readonly WorkflowRun[]> {
-  const pages: unknown = JSON.parse(
-    await githubRead(operation, [
-      "api",
-      "--paginate",
-      "--slurp",
-      `${repositoryPath}/actions/runs?head_sha=${commit}&event=pull_request&per_page=100`,
-    ]),
-  );
-  if (!Array.isArray(pages) || pages.length === 0)
-    throw new Error("github-call-failed");
-  return pages.flatMap((page: unknown) => {
-    if (typeof page !== "object" || page === null || !("workflow_runs" in page))
-      throw new Error("github-call-failed");
-    const runs: unknown = page.workflow_runs;
-    if (!Array.isArray(runs) || !runs.every(isWorkflowRun))
-      throw new Error("github-call-failed");
-    return runs;
+  const runs = await actionPages(operation, {
+    path: `${repositoryPath}/actions/runs?head_sha=${commit}&event=pull_request&per_page=100`,
+    key: "workflow_runs",
   });
+  if (!runs.every(isWorkflowRun)) throw new Error("github-call-failed");
+  return runs;
 }
 
 export async function pendingWorkflows(

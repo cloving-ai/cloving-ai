@@ -6,7 +6,12 @@ import { afterEach, mock, test } from "node:test";
 import { calls } from "../src/daemon/github-calls.ts";
 import { pullRequestWorkflows } from "../src/daemon/github-ci-workflows.ts";
 import { git } from "./claude-worker-fixture.ts";
-import { checkRun, ciScenario, workflowRun } from "./github-ci-fixture.ts";
+import {
+  checkRun,
+  ciScenario,
+  workflowRun,
+  workflowStatesReply,
+} from "./github-ci-fixture.ts";
 import { advancedBase } from "./github-merge-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
 
@@ -50,9 +55,13 @@ await test("CLV-258 workflow path selection fetches a base that moves after the 
         settings,
         calls: {
           ...calls(settings, signal),
-          gh: () =>
+          gh: (parts) =>
             Promise.resolve(
-              JSON.stringify({ base: { sha: base, ref: "main" } }),
+              parts.some((part) => part.includes("/actions/workflows?"))
+                ? workflowStatesReply({
+                    workflowFiles: { ".github/workflows/ci.yml": "" },
+                  })
+                : JSON.stringify({ base: { sha: base, ref: "main" } }),
             ),
         },
       },
@@ -146,6 +155,84 @@ await test("CLV-258 workflow pages use the exact head, PR event and workflow fil
         ),
     ),
   );
+});
+
+await test("CLV-258 disabled workflows do not block a passing pull request", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  for (const state of ["disabled_manually", "disabled_inactivity"]) {
+    const started = now;
+    const { result, calls } = await ciScenario({
+      workflowFiles: {
+        ".github/workflows/ci.yml": "on: pull_request\n",
+        ".github/workflows/old.yml": "on: pull_request\n",
+      },
+      workflowStatePages: [
+        {
+          workflows: [
+            { path: ".github/workflows/ci.yml", state: "active" },
+            { path: ".github/workflows/old.yml", state },
+          ],
+        },
+      ],
+      snapshots: [[checkRun()]],
+      workflowSnapshots: [[workflowRun()]],
+      onCheck: () => {
+        now += 30_000;
+      },
+      timing: { ciLimitMilliseconds: 120_000 },
+    });
+    assert.equal(result, undefined, state);
+    assert.equal(now - started, 30_000, state);
+    assert.ok(
+      calls.some(
+        (parts) =>
+          parts.includes("--paginate") &&
+          parts.includes("--slurp") &&
+          parts.includes("repos/{owner}/{repo}/actions/workflows?per_page=100"),
+      ),
+    );
+  }
+});
+
+await test("CLV-258 workflows that GitHub does not list yet stay expected", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  const { result } = await ciScenario({
+    workflowFiles: {
+      ".github/workflows/ci.yml": "on: pull_request\n",
+      ".github/workflows/new.yml": "on: pull_request\n",
+    },
+    workflowStatePages: [
+      { workflows: [{ path: ".github/workflows/ci.yml", state: "active" }] },
+    ],
+    snapshots: [[checkRun()]],
+    workflowSnapshots: [[workflowRun()]],
+    onCheck: () => {
+      now += 60_000;
+    },
+    timing: { ciLimitMilliseconds: 120_000 },
+  });
+  assert.equal(result?.reason, "ci-pending");
+});
+
+await test("CLV-258 malformed workflow state pages fail closed", async () => {
+  for (const workflowStatePages of [
+    null,
+    [],
+    [{}],
+    [{ workflows: [null] }],
+    [{ workflows: [{ path: ".github/workflows/ci.yml" }] }],
+  ]) {
+    await assert.rejects(
+      ciScenario({
+        workflowFiles: { ".github/workflows/ci.yml": "on: pull_request\n" },
+        snapshots: [[checkRun()]],
+        workflowStatePages,
+      }),
+      /github-call-failed/,
+    );
+  }
 });
 
 await test("CLV-258 malformed workflow pages fail closed", async () => {

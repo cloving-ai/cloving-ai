@@ -45,6 +45,7 @@ interface CiScenarioOptions {
   readonly baseBranch?: string;
   readonly workflowSnapshots?: readonly (readonly unknown[])[];
   readonly workflowPages?: unknown;
+  readonly workflowStatePages?: unknown;
   readonly requiredChecks?: readonly string[] | null;
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
@@ -114,22 +115,49 @@ function workflowRunsReply(
   return JSON.stringify([{ workflow_runs: runs }]);
 }
 
+export function workflowStatesReply(options: {
+  readonly workflowFiles?: Readonly<Record<string, string>>;
+  readonly workflowStatePages?: unknown;
+}): string {
+  if (Object.hasOwn(options, "workflowStatePages"))
+    return JSON.stringify(options.workflowStatePages);
+  return JSON.stringify([
+    {
+      workflows: Object.keys(options.workflowFiles ?? {}).map((path) => ({
+        path,
+        state: "active",
+      })),
+    },
+  ]);
+}
+
+function actionsReply(
+  options: CiScenarioOptions,
+  request: {
+    readonly parts: readonly string[];
+    readonly times: readonly number[];
+  },
+): string | undefined {
+  const has = (text: string): boolean =>
+    request.parts.some((part) => part.includes(text));
+  if (has("/actions/workflows?")) return workflowStatesReply(options);
+  if (has("/actions/runs?")) return workflowRunsReply(options, request.times);
+  if (has("/attempts/")) return attemptJobsReply(options);
+  if (has("/actions/runs/"))
+    return JSON.stringify(
+      options.workflow?.() ?? { run_attempt: 2, status: "completed" },
+    );
+  return undefined;
+}
+
 function ciReply(
   options: CiScenarioOptions,
   observed: { readonly calls: (readonly string[])[]; readonly times: number[] },
 ): Operation["calls"]["gh"] {
   return async (parts) => {
     observed.calls.push(parts);
-    if (parts.some((part) => part.includes("/actions/runs?")))
-      return workflowRunsReply(options, observed.times);
-    if (parts.some((part) => part.includes("/attempts/")))
-      return Promise.resolve(attemptJobsReply(options));
-    if (parts.some((part) => part.includes("/actions/runs/")))
-      return Promise.resolve(
-        JSON.stringify(
-          options.workflow?.() ?? { run_attempt: 2, status: "completed" },
-        ),
-      );
+    const actions = actionsReply(options, { parts, times: observed.times });
+    if (actions !== undefined) return actions;
     if (!parts.some((part) => part.includes("/check-runs")))
       return Promise.resolve(
         options.reply?.(parts) ??

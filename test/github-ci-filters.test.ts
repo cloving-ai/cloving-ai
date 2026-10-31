@@ -135,3 +135,45 @@ await test("CLV-258 workflows triggered only by non-head events do not block a p
     assert.equal(now - started, 30_000);
   }
 });
+
+await test("CLV-258 workflows that skip synchronize do not block an updated head", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  for (const types of ["opened", "reopened", "opened, reopened"]) {
+    const started = now;
+    const { result } = await ciScenario({
+      workflowFiles: {
+        ".github/workflows/ci.yml": "on: pull_request\n",
+        ".github/workflows/event.yml": `on: {pull_request: {types: [${types}]}}\n`,
+      },
+      snapshots: [[checkRun()]],
+      workflowSnapshots: [[workflowRun()]],
+      onCheck: () => {
+        now += 30_000;
+      },
+      timing: { ciLimitMilliseconds: 120_000 },
+    });
+    assert.equal(result, undefined, types);
+    assert.equal(now - started, 30_000, types);
+  }
+});
+
+await test("CLV-258 workflows that run on synchronize still block an updated head", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  for (const types of ["synchronize", "opened, synchronize"]) {
+    const { result } = await ciScenario({
+      workflowFiles: {
+        ".github/workflows/ci.yml": "on: pull_request\n",
+        ".github/workflows/event.yml": `on: {pull_request: {types: [${types}]}}\n`,
+      },
+      snapshots: [[checkRun()]],
+      workflowSnapshots: [[workflowRun()]],
+      onCheck: () => {
+        now += 60_000;
+      },
+      timing: { ciLimitMilliseconds: 120_000 },
+    });
+    assert.equal(result?.reason, "ci-pending", types);
+  }
+});

@@ -8,11 +8,7 @@ function headTrigger(trigger: unknown): unknown {
   if (!isRecord(trigger)) return trigger;
   const types = patterns(trigger["types"]);
   if (types === undefined) return trigger;
-  return types.some((type) =>
-    ["opened", "synchronize", "reopened"].includes(type),
-  )
-    ? trigger
-    : false;
+  return types.includes("synchronize") ? trigger : false;
 }
 
 export function pullRequestTrigger(source: string): unknown {
