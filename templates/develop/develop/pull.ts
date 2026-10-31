@@ -21,6 +21,7 @@ export async function openPull(request: {
   readonly round: number;
 }): Promise<PullRequest> {
   const { input, round } = request;
+  const issue = input.issue;
   const result = await protectedEffect({
     scope: { phase: "pull-request", operation: "github-open-pr", round: round },
     capability: "github",
@@ -30,7 +31,10 @@ export async function openPull(request: {
       title: (input.ticket.split("\n")[0] ?? "Develop task")
         .replace(/^#+\s*/, "")
         .slice(0, 200),
-      body: "Review the committed changes and repository checks for this task.",
+      body:
+        issue === null
+          ? "Cloving made this change for this task."
+          : `Refs ${issue.owner}/${issue.repository}#${String(issue.number)}\n\nCloving made this change for the ticket ${String(issue.number)}.`,
     }),
     units: 1,
   });

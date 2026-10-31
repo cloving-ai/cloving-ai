@@ -116,6 +116,10 @@ flowTests.push({
       (request) => request[0] === "effect" && request[1].method === "open-pr",
     );
     assert.ok(opened && opened[0] === "effect");
+    assert.deepEqual(JSON.parse(opened[1].payload), {
+      title: "Fix the counter",
+      body: "Refs acme/demo#42\n\nCloving made this change for the ticket 42.",
+    });
     assert.doesNotMatch(opened[1].payload, /private-check-output/);
   },
 });

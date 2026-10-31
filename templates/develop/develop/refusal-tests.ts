@@ -9,6 +9,83 @@ import { effects } from "./scenarios.ts";
 
 export const refusalTests: FlowTest[] = [];
 
+refusalTests.push({
+  name: "CLV-260 a linked pull request names the issue and preserves the ticket title",
+  run: async () => {
+    using bridge = fakeStepBridge({
+      turn: completed({ number: 7, url: "pull/7", commit }),
+    });
+    await openPull({
+      input: {
+        cycleId: input.cycleId,
+        repository: input.repository,
+        ticket:
+          "# CLV-228: Stop the registration of the bundled workflows\n\nGitHub issue: cloving-ai/cloving-ai#375 (open)",
+        issue: { owner: "cloving-ai", repository: "cloving-ai", number: 375 },
+      },
+      round: 1,
+    });
+    assert.equal(bridge.requests.length, 1);
+    const opened = bridge.requests[0];
+    assert.ok(opened && opened[0] === "effect");
+    assert.equal(opened[1].method, "open-pr");
+    assert.deepEqual(JSON.parse(opened[1].payload), {
+      title: "CLV-228: Stop the registration of the bundled workflows",
+      body: "Refs cloving-ai/cloving-ai#375\n\nCloving made this change for the ticket 375.",
+    });
+  },
+});
+
+refusalTests.push({
+  name: "CLV-260 a task without an issue opens a pull request without a reference",
+  run: async () => {
+    using bridge = fakeStepBridge({
+      turn: completed({ number: 7, url: "pull/7", commit }),
+    });
+    await openPull({
+      input: {
+        cycleId: input.cycleId,
+        repository: input.repository,
+        ticket: "### Manual task\n\nGitHub issue: acme/demo#42 (open)",
+        issue: null,
+      },
+      round: 1,
+    });
+    assert.equal(bridge.requests.length, 1);
+    const opened = bridge.requests[0];
+    assert.ok(opened && opened[0] === "effect");
+    assert.equal(opened[1].method, "open-pr");
+    assert.deepEqual(JSON.parse(opened[1].payload), {
+      title: "Manual task",
+      body: "Cloving made this change for this task.",
+    });
+  },
+});
+
+refusalTests.push({
+  name: "CLV-260 pull request titles use at most 200 characters from the first line",
+  run: async () => {
+    using bridge = fakeStepBridge({
+      turn: completed({ number: 7, url: "pull/7", commit }),
+    });
+    await openPull({
+      input: {
+        cycleId: input.cycleId,
+        repository: input.repository,
+        ticket: `### ${"Title".repeat(50)}\nSecond line`,
+        issue: null,
+      },
+      round: 1,
+    });
+    const opened = bridge.requests[0];
+    assert.ok(opened && opened[0] === "effect");
+    assert.deepEqual(JSON.parse(opened[1].payload), {
+      title: "Title".repeat(40),
+      body: "Cloving made this change for this task.",
+    });
+  },
+});
+
 for (const operation of [
   "claude run-turn",
   "github open-pr",

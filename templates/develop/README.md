@@ -14,6 +14,18 @@ review or repairable merge result gives its full output and remaining work to
 the next worker turn. Review, local-check, conflict and CI fixes share a limit
 of three fix rounds. Pending CI and an unconfigured check stop the run.
 
+`develop/pull.ts` keeps the first line of the ticket as the pull request title,
+removes leading `#` characters and limits it to 200 characters. For a task with
+a GitHub issue, the pull request body links that issue and names its number:
+
+```text
+Refs cloving-ai/cloving-ai#375
+
+Cloving made this change for the ticket 375.
+```
+
+A task without a GitHub issue uses only `Cloving made this change for this task.`
+
 `develop.test.ts` and `develop/flow-tests.ts` test the default composition through the public fake
 step bridge. The alternative configurations use `develop/option-tests.ts`, with the selected
 point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
