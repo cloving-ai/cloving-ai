@@ -10,13 +10,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { test } from "node:test";
+import { afterEach, mock, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
 import { reached } from "./self-host-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
+
+afterEach(() => {
+  mock.restoreAll();
+});
 
 for (const factor of [undefined, "3"])
   for (const signal of ["SIGTERM", "deadline"])
@@ -116,7 +120,14 @@ await test("CLV-208 host shutdown signals each child once while awaiting its exi
     const kill: unknown = descriptor.value;
     assert.ok(typeof kill === "function");
     const signals: Array<number | undefined> = [];
+    const forwarded: Array<NodeJS.Signals | number | undefined> = [];
+    const errors: string[] = [];
+    mock.method(process.stderr, "write", (line: string | Uint8Array) => {
+      errors.push(String(line));
+      return true;
+    });
     prototype.kill = function (signal) {
+      forwarded.push(signal);
       if (signal === "SIGTERM") signals.push(this.pid);
       return Reflect.apply(kill, this, [signal]) === true;
     };
@@ -137,6 +148,8 @@ await test("CLV-208 host shutdown signals each child once while awaiting its exi
       assert.equal(await hosting, 0);
       assert.equal(signals.length, 3);
       assert.equal(new Set(signals).size, 3);
+      assert.deepEqual(forwarded, ["SIGTERM", "SIGTERM", "SIGTERM"]);
+      assert.deepEqual(errors, []);
     } finally {
       process.emit("SIGTERM");
       try {

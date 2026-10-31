@@ -6,20 +6,23 @@ import { pathToFileURL } from "node:url";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
+interface ProgramOptions {
+  readonly daemonMilliseconds?: number;
+  readonly watchStartupMilliseconds?: number;
+  readonly readyPrograms?: readonly string[];
+  readonly stuckPrograms?: readonly string[];
+}
+
 export async function programs(
   root: string,
-  options: {
-    readonly daemonMilliseconds?: number;
-    readonly watchStartupMilliseconds?: number;
-    readonly readyPrograms?: readonly string[];
-  } = {},
+  options: ProgramOptions = {},
 ): Promise<{ readonly product: string; readonly project: string }> {
   const product = join(root, "product");
   const project = join(root, "project");
   await mkdir(join(product, "src"), { recursive: true });
   await mkdir(project);
   const program = (name: string): string => `
-import { existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 const parent = process.ppid;
 if (parent === 1) process.exit(0);
 writeFileSync(${JSON.stringify(join(root, `${name}-started`))}, String(process.pid));
@@ -36,11 +39,16 @@ createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok:
     : ""
 }
 const timer = setInterval(() => {}, 1000);
-process.on("SIGINT", () => process.emit("SIGTERM"));
-process.on("SIGTERM", () => setTimeout(() => {
+function stop(signal) {
+  appendFileSync(${JSON.stringify(join(root, `${name}-signals`))}, signal + "\\n");
+  if (${String(options.stuckPrograms?.includes(name) ?? false)}) return;
+  setTimeout(() => {
   writeFileSync(${JSON.stringify(join(root, `${name}-stopped`))}, "stopped");
   clearInterval(timer);
-}, 50));
+  }, 50);
+}
+process.on("SIGINT", () => stop("SIGINT"));
+process.on("SIGTERM", () => stop("SIGTERM"));
 writeFileSync(${JSON.stringify(join(root, `${name}-ready`))}, String(process.pid));
 writeFileSync(${JSON.stringify(join(root, `${name}-runtime`))}, process.env.CLOVING_RUNTIME_DIR ?? "");
 ${

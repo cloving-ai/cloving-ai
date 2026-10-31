@@ -1212,6 +1212,7 @@
     "test/self-host-profiles.test.ts": "test",
     "test/self-host-project.test.ts": "test",
     "test/self-host-runtime.test.ts": "test",
+    "test/self-host-stop.test.ts": "test",
     "test/self-host-workflows.test.ts": "test",
     "test/self-host.test.ts": "test",
     "test/self-update-abandoned.test.ts": "test",
