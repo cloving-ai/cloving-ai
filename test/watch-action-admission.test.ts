@@ -2,13 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { withHarness, fields, items } from "./service-fixture.ts";
 import { watching } from "./watch-fixture.ts";
-import { actionHeaders, pageToken, postCard } from "./watch-action-fixture.ts";
+import {
+  actionHeaders,
+  cardWatch,
+  pageToken,
+  postCard,
+} from "./watch-action-fixture.ts";
 
 await test("CLV-135 concurrent retries with the same command ID admit one real service run and reach the board", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
       workflows: [{ ...harness.registration, workflowId: "develop-prd" }],
     });
+    await cardWatch(harness.runtimeDirectory);
     const watch = await watching(harness.runtimeDirectory);
     try {
       const headers = actionHeaders(watch, await pageToken(watch));

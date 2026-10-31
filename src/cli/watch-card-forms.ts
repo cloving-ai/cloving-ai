@@ -1,20 +1,27 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isWorkflowDeclaration } from "../workflow-declaration.ts";
-import { builtinCardForms, type CardForm } from "./watch-run-input.ts";
+import { record } from "../protocol.ts";
+import type { CardForm } from "./watch-run-input.ts";
 
 export async function watchCardForms(
   directory: string,
+  fallback: readonly CardForm[] = [],
 ): Promise<readonly CardForm[]> {
-  const forms = [...builtinCardForms()];
-  const files = await readdir(directory).catch(() => []);
-  for (const file of files
-    .filter((name) => name.endsWith(".declaration.json"))
-    .sort()) {
-    const value: unknown = await readFile(join(directory, file), "utf8")
-      .then((text): unknown => JSON.parse(text))
-      .catch(() => null);
+  const forms: CardForm[] = [];
+  const declaredIds = new Set<string>();
+  const declarations: unknown = await readFile(
+    join(directory, "declarations.json"),
+    "utf8",
+  )
+    .then((text): unknown => JSON.parse(text))
+    .catch(() => null);
+  if (!Array.isArray(declarations)) return fallback;
+  for (const declaration of declarations) {
+    const value = { ...record(declaration) };
+    delete value["functionName"];
     if (!isWorkflowDeclaration(value)) continue;
+    declaredIds.add(value.workflowId);
     const entries = Object.entries(value.input.fields);
     if (
       !entries.every(
@@ -35,5 +42,7 @@ export async function watchCardForms(
       })),
     });
   }
-  return forms;
+  return forms.concat(
+    fallback.filter((form) => !declaredIds.has(form.workflowId)),
+  );
 }

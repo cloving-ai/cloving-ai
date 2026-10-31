@@ -8,10 +8,10 @@ import {
   type CardDraft,
 } from "../src/cli/watch-card-view.ts";
 import { cardReply } from "../src/cli/watch-card-reply.ts";
-import { builtinCardForms } from "../src/cli/watch-run-input.ts";
+import { exampleCardForms } from "./watch-action-fixture.ts";
 import { found, rendered } from "./watch-dom.ts";
 
-const form = builtinCardForms()[0];
+const form = exampleCardForms()[0];
 assert.ok(form);
 const draft: CardDraft = {
   commandId: "card-1",
