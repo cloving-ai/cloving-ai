@@ -94,16 +94,15 @@ async function spendScene(harness: Harness, limitUsd: number) {
   };
 }
 
-function spendOptions(
-  harness: Harness,
-  state: {
-    readonly clock: { now: string };
-    readonly counts: { admissions: number; clockReads: number };
-    readonly limitUsd: number;
-    readonly resolution: { wait: Promise<void> };
-    readonly workflow: WorkflowDeclaration;
-  },
-) {
+interface SpendState {
+  readonly clock: { now: string };
+  readonly counts: { admissions: number; clockReads: number };
+  readonly limitUsd: number;
+  readonly resolution: { wait: Promise<void> };
+  readonly workflow: WorkflowDeclaration;
+}
+
+function spendOptions(harness: Harness, state: SpendState) {
   const { clock, counts, workflow } = state;
   const destination = fakeDestination({ lostReplies: 0 });
   const registration = {
@@ -123,7 +122,17 @@ function spendOptions(
         prompt: { type: "string" as const, optional: true },
       },
     },
-    resolver: spendResolver(harness, state),
+    resolver: {
+      ...harness.registration.resolver,
+      resolve: async () => {
+        counts.admissions += 1;
+        await state.resolution.wait;
+        return {
+          kind: "resolved" as const,
+          input: { ticketId: String(counts.admissions) },
+        };
+      },
+    },
   };
   return {
     workflows: [
@@ -150,26 +159,6 @@ function spendOptions(
       return clock.now;
     },
     queueDailySpendLimitUsd: state.limitUsd,
-  };
-}
-
-function spendResolver(
-  harness: Harness,
-  state: {
-    readonly counts: { admissions: number };
-    readonly resolution: { wait: Promise<void> };
-  },
-) {
-  return {
-    ...harness.registration.resolver,
-    resolve: async () => {
-      state.counts.admissions += 1;
-      await state.resolution.wait;
-      return {
-        kind: "resolved" as const,
-        input: { ticketId: String(state.counts.admissions) },
-      };
-    },
   };
 }
 

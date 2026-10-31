@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { test } from "node:test";
 import { manifest, pin, queryDatabase } from "./authority-store-fixture.ts";
 import {
@@ -150,7 +151,7 @@ await test("CLV-008 the service stores the original input, the digests, the work
     );
   }));
 
-await test("CLV-008 invalid submissions and unusable workflows are rejected before admission", () =>
+await test("CLV-008 invalid submissions are rejected before admission", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
       workflows: [
@@ -159,11 +160,6 @@ await test("CLV-008 invalid submissions and unusable workflows are rejected befo
           ...harness.registration,
           workflowId: "batch",
           submission: { maximumBytes: 4096, fields: { cycleId: "string" } },
-        },
-        {
-          ...harness.registration,
-          workflowId: "develop-ticket",
-          availability: "unavailable",
         },
       ],
     });
@@ -185,7 +181,6 @@ await test("CLV-008 invalid submissions and unusable workflows are rejected befo
         "invalid-submission",
       ],
       [{ workflowId: "absent" }, "unknown-workflow"],
-      [{ workflowId: "develop-ticket" }, "workflow-unavailable"],
       [{ commandId: "not valid" }, "invalid-request"],
     ];
     for (const [parameters, code] of cases)
@@ -197,6 +192,34 @@ await test("CLV-008 invalid submissions and unusable workflows are rejected befo
         ["error", code],
         JSON.stringify(parameters),
       );
+    const events = await call(harness, {
+      operation: "events",
+      parameters: { after: 0, limit: 10 },
+    });
+    assert.deepEqual(field(events, "events"), []);
+    assert.deepEqual(harness.resolved, []);
+    await service.close();
+  }));
+
+await test("CLV-008 an unavailable declared workflow is rejected before admission", () =>
+  withHarness(async (harness) => {
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
+    const service = await harness.start({
+      workflows: [
+        {
+          ...harness.registration,
+          workflowId: workflow.workflowId,
+          availability: "unavailable",
+        },
+      ],
+    });
+    assert.deepEqual(
+      [
+        field(await run(harness, {}), "kind"),
+        field(await run(harness, {}), "code"),
+      ],
+      ["error", "workflow-unavailable"],
+    );
     const events = await call(harness, {
       operation: "events",
       parameters: { after: 0, limit: 10 },
