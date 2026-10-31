@@ -1,9 +1,8 @@
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
-import { Header, Queue, type StartControls } from "./watch-header-view.ts";
+import { Header, Queue } from "./watch-header-view.ts";
 export { clove, Header } from "./watch-header-view.ts";
-export type { StartControls } from "./watch-header-view.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
@@ -29,7 +28,6 @@ import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
-import { StartRun } from "./watch-start-view.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -186,7 +184,6 @@ export interface PageProps {
   readonly stale: boolean;
   readonly copying: Copying;
   readonly columns?: ColumnControls;
-  readonly start?: StartControls;
   readonly phone?: PhoneControls | undefined;
 }
 
@@ -249,23 +246,17 @@ export function BoardPage(
     readonly down: Shown;
   },
 ): Shown {
-  const { model, workflowId, down, now, stale, copying } = props;
+  const { model, workflowId, down, now, stale } = props;
   const workflow = model.workflows.find(
     (item) => item.workflowId === workflowId,
   );
-  const start = props.start ?? { shown: false, onToggle: () => undefined };
   return element("div", {
     class: "board-page",
     children: [
-      component(Header, { model, stale, start, phone: props.phone, now }),
+      component(Header, { model, stale, phone: props.phone, now }),
       component(Queue, { model }),
       down,
       component(RefusedWorkflows, { model }),
-      component(StartRun, {
-        workflows: model.workflows,
-        copying,
-        shown: start.shown,
-      }),
       component(WorkflowList, {
         workflows: model.workflows,
         selected: workflowId,

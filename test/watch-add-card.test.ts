@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { builtinCardForms } from "../src/cli/watch-run-input.ts";
+import { exampleCardForms } from "./watch-action-fixture.ts";
 import { boardModel } from "./watch-board-fixture.ts";
 import { played } from "./watch-browser.ts";
 
-for (const form of builtinCardForms()) {
+for (const form of exampleCardForms()) {
   await test(`CLV-135 ${form.workflowId} opens its labeled input on an empty board and cancels without submitting`, () => {
     const result = played(
       {
@@ -27,8 +27,8 @@ console.log(JSON.stringify({ initial, opened, closed: app.all("form").length, re
     assert.deepEqual(result["opened"], {
       forms: 1,
       label: [form.fields[0]?.label],
-      inputs: form.source === "ticket" ? 1 : 0,
-      areas: form.source === "prompt" ? 1 : 0,
+      inputs: !form.fields[0]?.multiline ? 1 : 0,
+      areas: form.fields[0]?.multiline ? 1 : 0,
     });
     assert.equal(result["closed"], 0);
     assert.deepEqual(result["requests"], ["phone.json", "data.json"]);
@@ -36,7 +36,7 @@ console.log(JSON.stringify({ initial, opened, closed: app.all("form").length, re
 }
 
 await test("CLV-135 explicit submission shows admission, reuses its command ID after an uncertain reply and does not create a card locally", () => {
-  const form = builtinCardForms().find(
+  const form = exampleCardForms().find(
     (item) => item.workflowId === "develop-prd",
   );
   const result = played(
@@ -91,7 +91,7 @@ for (const [workflowId, multiline] of [
   ["develop-prd", true],
 ] as const) {
   await test(`CLV-135 keyboard actions on ${workflowId} require an explicit submit and Escape closes`, () => {
-    const form = builtinCardForms().find(
+    const form = exampleCardForms().find(
       (item) => item.workflowId === workflowId,
     );
     const result = played(

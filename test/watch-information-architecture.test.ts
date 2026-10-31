@@ -63,7 +63,6 @@ function page(model: WatchModel, selected: string): string {
       stale: false,
       copying: noCopy,
       phone,
-      start: { shown: false, onToggle: () => undefined },
     }),
   );
 }
@@ -158,7 +157,7 @@ await test("watch design: the run page shows the same queue line and disclosure"
   assert.doesNotMatch(html, /ticket-dependency-open/);
 });
 
-await test("watch design: one header holds the status and the global actions, with Start a run before the phone controls", () => {
+await test("watch design: one header holds the status and phone controls", () => {
   const html = page(
     boardModel([], { queue, workflows: ["develop-issue"] }),
     "workflow=develop-issue",
@@ -168,13 +167,12 @@ await test("watch design: one header holds the status and the global actions, wi
     "cloving",
     "updated",
     "0 of 3 lanes busy",
-    "Start a run",
     "Connect a phone",
     "iPhone (ios) connected",
     "Remove",
   ])
     assert.ok(header.includes(text), text);
-  assert.ok(header.indexOf("Start a run") < header.indexOf("Connect a phone"));
+  assert.doesNotMatch(header, /Start a run/);
   assert.equal(html.split('<section class="phone').length - 1, 1);
 });
 
@@ -203,7 +201,6 @@ await test("watch design: page controls outside code windows use the body font a
     ".column-name button",
     ".add-card",
     ".add-card-form button",
-    ".start-card button",
   ])
     assert.match(declarations(selector), /font: [^;]*var\(--body-font\)/);
   for (const selector of [
@@ -211,7 +208,6 @@ await test("watch design: page controls outside code windows use the body font a
     ".phone button:hover",
     ".column-name button:hover",
     ".add-card:hover",
-    ".start-card button:hover",
   ]) {
     const token = hoverToken(selector);
     assert.notEqual(token, "code-head", selector);

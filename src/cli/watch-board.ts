@@ -85,7 +85,7 @@ function stepNames(
   workflowId: string,
   stages?: readonly WorkflowStage[],
 ): readonly string[] {
-  if (workflowId !== "develop-issue" && stages !== undefined)
+  if (stages !== undefined)
     return [...stages.map((stage) => stage.label), "Other"];
   return workflowId === "develop-issue"
     ? issueSteps.map((step) => step.name)
@@ -172,8 +172,7 @@ export function currentStepOf(
   },
 ): WatchStep {
   const { workflowId, stages } = workflow;
-  if (workflowId !== "develop-issue" && stages !== undefined)
-    return declaredStep(events, stages);
+  if (stages !== undefined) return declaredStep(events, stages);
   const event = chronological(events).findLast(
     (item) => stepName(item, workflowId) !== undefined,
   );
