@@ -26,6 +26,7 @@ export function checkRun(
 }
 
 interface CiScenarioOptions {
+  readonly workflowFiles?: Readonly<Record<string, string>>;
   readonly requiredChecks?: readonly string[] | null;
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
@@ -90,9 +91,11 @@ function ciReply(
 export async function ciScenario(options: CiScenarioOptions): Promise<{
   readonly result: Awaited<ReturnType<typeof waitForCi>>;
   readonly calls: readonly (readonly string[])[];
+  readonly gitCalls: readonly (readonly string[])[];
   readonly times: readonly number[];
 }> {
   const calls: (readonly string[])[] = [];
+  const gitCalls: (readonly string[])[] = [];
   const times: number[] = [];
   const folder =
     options.folder ?? (await mkdtemp(join(tmpdir(), "cloving-ci-")));
@@ -118,12 +121,26 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     },
     calls: {
       gh: ciReply(options, { calls, times }),
-      git: () => Promise.reject(new Error("unexpected git call")),
+      git: (_directory, parts) => {
+        gitCalls.push(parts);
+        const files = options.workflowFiles ?? {};
+        if (parts[0] === "ls-tree")
+          return Promise.resolve(Object.keys(files).join("\0"));
+        const path = parts[1]?.split(":").slice(1).join(":") ?? "";
+        if (parts[0] === "show" && Object.hasOwn(files, path))
+          return Promise.resolve(files[path] ?? "");
+        return Promise.reject(new Error("unexpected git call"));
+      },
       run: () => Promise.reject(new Error("unexpected local check")),
     },
   };
   try {
-    return { result: await waitForCi(operation, "a".repeat(40)), calls, times };
+    return {
+      result: await waitForCi(operation, "a".repeat(40)),
+      calls,
+      gitCalls,
+      times,
+    };
   } finally {
     if (options.folder === undefined)
       await rm(folder, { recursive: true, force: true });

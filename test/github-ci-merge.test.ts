@@ -1,9 +1,48 @@
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { git, resultOf } from "./claude-worker-fixture.ts";
 import { advancedBase, mergeCalls } from "./github-merge-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
 import { checkRun, movingCiScenario } from "./github-ci-fixture.ts";
+
+await test("CLV-258 merging waits for late Actions checks on the pushed head", () =>
+  withGithub(async (scene) => {
+    const folder = join(scene.repository, ".github/workflows");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "ci.yml"), "on: pull_request\n");
+    git(scene.repository, ["add", ".github/workflows/ci.yml"]);
+    git(scene.repository, ["commit", "-qm", "Add a pull-request workflow"]);
+    git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    const worker = scene.worker();
+    const commit = await opened(scene, worker);
+    scene.plan({
+      scores: [],
+      sequences: {
+        "api GET check-runs": [
+          [{ check_runs: [] }],
+          [{ check_runs: [] }],
+          [{ check_runs: [checkRun({ status: "queued", conclusion: null })] }],
+          [{ check_runs: [checkRun()] }],
+        ],
+      },
+    });
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["merged"], "f".repeat(40));
+    const calls = scene.state().calls;
+    const checks = calls.filter((call) =>
+      call.some((part) => part.includes(`/commits/${commit}/check-runs`)),
+    );
+    assert.equal(checks.length, 4);
+    const merge = calls.find((call) => call.includes("PUT"));
+    assert.ok(merge);
+    assert.ok(calls.indexOf(merge) > calls.indexOf(checks[3] ?? []));
+  }));
 
 await test("CLV-163 required green CI merges the checked SHA after pushing an updated head", () =>
   withGithub(async (scene) => {
