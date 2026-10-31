@@ -1,4 +1,8 @@
-import { pullRequestTrigger, workflowApplies } from "./github-ci-filters.ts";
+import {
+  pullRequestTrigger,
+  triggerKind,
+  workflowApplies,
+} from "./github-ci-filters.ts";
 import { field, repositoryPath, type Operation } from "./github-operation.ts";
 import { githubRead } from "./github-retry.ts";
 
@@ -61,29 +65,15 @@ async function appliesToPull(
   });
 }
 
-export interface CiHead {
-  readonly commit: string;
-  readonly requested: string;
-}
-
-export function expectedWorkflows(
-  operation: Operation,
-  head: CiHead,
-): Promise<readonly string[]> {
-  return pullRequestWorkflows(operation, {
-    commit: head.commit,
-    events:
-      head.commit === head.requested
-        ? ["opened", "synchronize", "reopened"]
-        : ["synchronize"],
-  });
+export interface ExpectedWorkflow {
+  readonly path: string;
+  readonly kind: "push" | "event";
 }
 
 export async function pullRequestWorkflows(
   operation: Operation,
-  request: { readonly commit: string; readonly events: readonly string[] },
-): Promise<readonly string[]> {
-  const { commit, events } = request;
+  commit: string,
+): Promise<readonly ExpectedWorkflow[]> {
   const read = (parts: readonly string[]): Promise<string> =>
     operation.calls.git(operation.settings.repository, parts);
   const paths = await read([
@@ -95,21 +85,18 @@ export async function pullRequestWorkflows(
     "--",
     ".github/workflows",
   ]);
-  const workflows: string[] = [];
+  const workflows: ExpectedWorkflow[] = [];
   for (const path of paths.split("\0")) {
     if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path)) continue;
-    const source = await read(["show", `${commit}:${path}`]);
-    if (
-      await appliesToPull(operation, {
-        commit,
-        trigger: pullRequestTrigger(source, events),
-      })
-    )
-      workflows.push(path);
+    const trigger = pullRequestTrigger(
+      await read(["show", `${commit}:${path}`]),
+    );
+    if (await appliesToPull(operation, { commit, trigger }))
+      workflows.push({ path, kind: triggerKind(trigger) });
   }
   if (workflows.length === 0) return workflows;
   const inactive = await inactiveWorkflows(operation);
-  return workflows.filter((path) => !inactive.has(path));
+  return workflows.filter((workflow) => !inactive.has(workflow.path));
 }
 
 function isList(value: unknown): value is readonly unknown[] {
@@ -189,13 +176,17 @@ async function workflowRuns(
 
 export async function pendingWorkflows(
   operation: Operation,
-  input: { readonly commit: string; readonly paths: readonly string[] },
+  input: {
+    readonly commit: string;
+    readonly workflows: readonly ExpectedWorkflow[];
+  },
 ): Promise<readonly string[]> {
-  if (input.paths.length === 0) return [];
+  if (input.workflows.length === 0) return [];
+  const paths = input.workflows.map((workflow) => workflow.path);
   const latest = new Map<string, WorkflowRun>();
   for (const run of await workflowRuns(operation, input.commit)) {
     if (run.head_sha !== input.commit || run.event !== "pull_request") continue;
-    const path = input.paths
+    const path = paths
       .filter(
         (expected) =>
           run.path === expected || run.path.startsWith(`${expected}@`),
@@ -204,10 +195,11 @@ export async function pendingWorkflows(
     if (path === undefined) continue;
     if (run.id > (latest.get(path)?.id ?? -1)) latest.set(path, run);
   }
-  const pending = input.paths.filter((path) => {
-    const run = latest.get(path);
+  const pending = input.workflows.filter((workflow) => {
+    const run = latest.get(workflow.path);
+    if (run === undefined) return workflow.kind === "push";
     return (
-      run?.status !== "completed" ||
+      run.status !== "completed" ||
       !["success", "neutral", "skipped"].includes(run.conclusion ?? "")
     );
   });

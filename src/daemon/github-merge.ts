@@ -218,10 +218,7 @@ async function readyHead(
       recorded,
       remote,
     });
-    const ci = await waitForCi(operation, {
-      commit: updated,
-      requested: pull.commit,
-    });
+    const ci = await waitForCi(operation, updated);
     if (ci !== undefined) return ci;
     recorded = updated;
     remote = updated;

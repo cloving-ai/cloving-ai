@@ -4,17 +4,15 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function headTrigger(trigger: unknown, events: readonly string[]): unknown {
-  if (!isRecord(trigger)) return trigger;
+export function triggerKind(trigger: unknown): "push" | "event" {
+  if (!isRecord(trigger)) return "push";
   const types = patterns(trigger["types"]);
-  if (types === undefined) return trigger;
-  return types.some((type) => events.includes(type)) ? trigger : false;
+  return types === undefined || types.includes("synchronize")
+    ? "push"
+    : "event";
 }
 
-export function pullRequestTrigger(
-  source: string,
-  heads: readonly string[],
-): unknown {
+export function pullRequestTrigger(source: string): unknown {
   try {
     const document: unknown = parse(source, { merge: true });
     if (!isRecord(document) || !("on" in document)) return true;
@@ -22,9 +20,7 @@ export function pullRequestTrigger(
     if (typeof events === "string") return events === "pull_request";
     if (Array.isArray(events)) return events.includes("pull_request");
     if (isRecord(events))
-      return "pull_request" in events
-        ? headTrigger(events["pull_request"], heads)
-        : false;
+      return "pull_request" in events ? events["pull_request"] : false;
     return true;
   } catch {
     return true;

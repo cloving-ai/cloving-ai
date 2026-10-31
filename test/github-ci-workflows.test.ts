@@ -65,9 +65,11 @@ await test("CLV-258 workflow path selection fetches a base that moves after the 
             ),
         },
       },
-      { commit, events: ["synchronize"] },
+      commit,
     );
-    assert.deepEqual(paths, [".github/workflows/ci.yml"]);
+    assert.deepEqual(paths, [
+      { path: ".github/workflows/ci.yml", kind: "push" },
+    ]);
   }));
 
 await test("CLV-258 workflow filenames containing an at sign retain their identity", async () => {

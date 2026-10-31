@@ -40,7 +40,6 @@ export function workflowRun(
 }
 
 interface CiScenarioOptions {
-  readonly requested?: string;
   readonly workflowFiles?: Readonly<Record<string, string>>;
   readonly changedPaths?: readonly string[];
   readonly baseBranch?: string;
@@ -230,10 +229,7 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
   };
   try {
     return {
-      result: await waitForCi(operation, {
-        commit: "a".repeat(40),
-        requested: options.requested ?? "a".repeat(40),
-      }),
+      result: await waitForCi(operation, "a".repeat(40)),
       calls,
       gitCalls,
       times,
