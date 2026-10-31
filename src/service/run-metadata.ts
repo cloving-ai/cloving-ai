@@ -51,8 +51,18 @@ export async function outcomeOf(
   };
 }
 
+function ticketOf(input: Fields | undefined): {
+  readonly id: unknown;
+  readonly text: unknown;
+} {
+  const declared = record(record(input?.["input"])?.["ticket"]);
+  if (declared !== undefined)
+    return { id: declared["id"], text: declared["text"] };
+  return { id: input?.["ticketId"], text: input?.["ticket"] };
+}
+
 function titleOf(input: Fields | undefined, workflowId: string): string | null {
-  const ticket = input?.["ticket"];
+  const ticket = ticketOf(input).text;
   if (typeof ticket !== "string") return null;
   const fallback = `Cloving task ${String(input?.["cycleId"])}`;
   const lines = ticket.split("\n");
@@ -89,6 +99,6 @@ export async function metadataOf(
 }
 
 function ticketIdOf(input: Fields | undefined): string | null {
-  const ticketId = input?.["ticketId"];
+  const ticketId = ticketOf(input).id;
   return typeof ticketId === "string" && ticketId !== "" ? ticketId : null;
 }
