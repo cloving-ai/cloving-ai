@@ -1391,6 +1391,7 @@
     "test/workflow-folder-capture-boundary.test.ts": "test",
     "test/workflow-folder-capture.test.ts": "test",
     "test/workflow-folder-conflicts.test.ts": "test",
+    "test/workflow-folder-daemon.test.ts": "test",
     "test/workflow-folder-fixture.ts": "test",
     "test/workflow-folder-imports.test.ts": "test",
     "test/workflow-folder-io.test.ts": "test",
