@@ -53,7 +53,7 @@ const watchCommand: WatchCommandRunner = async (request) => {
       cwd: request.directory,
       signal: request.signal,
       killSignal: "SIGKILL",
-      maxBuffer: 1024 * 1024,
+      maxBuffer: request.outputBytes ?? 1024 * 1024,
       encoding: "utf8",
     },
     (error, stdout) => {

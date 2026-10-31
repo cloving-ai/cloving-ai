@@ -154,9 +154,26 @@ async function runCost(runtime: string, runId: string): Promise<ReportCost> {
   };
 }
 
+function qualityTextMetrics(report: Fields): Fields {
+  const quality = record(report["quality"]) ?? {};
+  const review = record(quality["reviewScore"]) ?? {};
+  return Object.fromEntries([
+    ...Object.entries(quality)
+      .filter(([name]) => !["jobLogs", "reviewScore"].includes(name))
+      .map(([name, value]): [string, unknown] => [`quality.${name}`, value]),
+    ...Object.entries(review).map(([name, value]): [string, unknown] => [
+      `quality.reviewScore.${name}`,
+      value,
+    ]),
+  ]);
+}
+
 function textReport(report: Fields): string {
   const lines = [`Loop report ${JSON.stringify(report["window"])}`];
-  for (const [name, value] of Object.entries(record(report["metrics"]) ?? {})) {
+  for (const [name, value] of Object.entries({
+    ...record(report["metrics"]),
+    ...qualityTextMetrics(report),
+  })) {
     const metric = record(value) ?? {};
     lines.push(
       `${name}: ${metric["status"] === "unavailable" ? "unavailable" : String(metric["value"])}`,
@@ -169,6 +186,9 @@ function textReport(report: Fields): string {
     lines.push(`  evidence: ${JSON.stringify(metric["evidence"])}`);
     lines.push(`  baseline evidence: ${JSON.stringify(baseline["evidence"])}`);
   }
+  lines.push(
+    `Quality job logs: ${JSON.stringify(record(report["quality"])?.["jobLogs"])}`,
+  );
   lines.push(`Run costs (USD): ${JSON.stringify(report["runCosts"])}`);
   lines.push(
     `Completed ticket costs (USD): ${JSON.stringify(report["completedTicketCosts"])}`,

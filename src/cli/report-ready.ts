@@ -34,7 +34,10 @@ function intervals(events: readonly Fields[]): ReportReadyTicket["intervals"] {
   return result;
 }
 
-async function detail(reader: Reader, number: number): Promise<Fields> {
+async function detail(
+  reader: Pick<Reader, "repository" | "read">,
+  number: number,
+): Promise<Fields> {
   const row = record(await reader.read(`issues/${String(number)}`));
   if (
     row === undefined ||
@@ -46,7 +49,10 @@ async function detail(reader: Reader, number: number): Promise<Fields> {
   return row;
 }
 
-async function dependencies(reader: Reader, row: Fields) {
+async function dependencies(
+  reader: Pick<Reader, "repository" | "read">,
+  row: Fields,
+) {
   const body = row["body"];
   if (body !== null && typeof body !== "string") throw new Error("response");
   const result = [];
@@ -65,7 +71,7 @@ async function dependencies(reader: Reader, row: Fields) {
 }
 
 export async function readyTicketsOf(
-  reader: Reader,
+  reader: Pick<Reader, "repository" | "read">,
 ): Promise<ReportReadyTicket[]> {
   const result: ReportReadyTicket[] = [];
   const seen = new Set<number>();
@@ -99,7 +105,10 @@ export async function readyTicketsOf(
   }
 }
 
-async function readyTicket(reader: Reader, number: number) {
+async function readyTicket(
+  reader: Pick<Reader, "repository" | "read">,
+  number: number,
+) {
   const ready = intervals(await issueTimeline(reader, number));
   if (ready.length === 0) return null;
   return {

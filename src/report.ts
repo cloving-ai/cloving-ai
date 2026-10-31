@@ -1,4 +1,8 @@
 import {
+  reportQualityMetrics,
+  type ReportQualityData,
+} from "./report-quality.ts";
+import {
   reportMetric,
   outsideReportBand,
   type ReportDatum,
@@ -37,7 +41,8 @@ interface ReportInput {
   readonly completions: readonly ReportCompletion[] | null;
   readonly observedSince?: number | null;
   readonly costs?: readonly ReportCost[];
-  readonly github?: {
+  readonly github?: ReportQualityData & {
+    readonly mainFirstPass?: readonly ReportDatum[] | null;
     readonly observedSince?: number | null;
     readonly issues: readonly ReportDatum[] | null;
     readonly pulls: readonly ReportDatum[] | null;
@@ -218,7 +223,7 @@ export function loopReport(input: ReportInput) {
     kind: "loop-report",
     window: { start, end, hours: input.since },
     semantics: {
-      tickets: "currently-closed-completed",
+      tickets: "closed-completed-in-window",
       flowLanes: "current-queue-workflow-and-lane-setting",
       flowTickets:
         "ready-label-intervals-and-current-ticket-body-dependency-close-times",
@@ -240,11 +245,18 @@ export function loopReport(input: ReportInput) {
         history: { status: "unavailable" },
       },
     },
+    quality: reportQualityMetrics(
+      {
+        ...input.github,
+        effects: input.effects ?? null,
+        daemonObservedSince: input.observedSince ?? null,
+      },
+      { ...window, observedSince: input.github?.observedSince ?? null },
+    ),
     coverage: {
       ci: unavailable,
-      quality: unavailable,
+
       operator: unavailable,
-      ticketClosureHistory: unavailable,
     },
   };
 }

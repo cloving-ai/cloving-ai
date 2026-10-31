@@ -1,4 +1,5 @@
 export interface ReportDatum {
+  readonly key?: string;
   readonly at: number;
   readonly value: number | null;
   readonly evidence: Readonly<Record<string, unknown>>;
@@ -13,7 +14,7 @@ export interface ReportWindow {
 interface MetricInput {
   readonly data: readonly ReportDatum[] | null;
   readonly window: ReportWindow;
-  readonly aggregation: "count" | "median";
+  readonly aggregation: "count" | "median" | "mean" | "distinct";
 }
 
 export function reportMedian(values: readonly number[]): number | null {
@@ -43,7 +44,11 @@ function aggregate(
   const values = data.flatMap((datum) =>
     datum.value === null ? [] : [datum.value],
   );
-  return aggregation === "count"
+  if (aggregation === "mean")
+    return values.length === 0
+      ? null
+      : values.reduce((sum, value) => sum + value, 0) / values.length;
+  return aggregation === "count" || aggregation === "distinct"
     ? values.reduce((sum, value) => sum + value, 0)
     : reportMedian(values);
 }
@@ -57,7 +62,7 @@ function baseline(input: MetricInput) {
     const end = input.window.start - (index - 1) * day;
     const start = end - day;
     if (origin === null || origin > start || input.data === null) continue;
-    const data = selected(input.data, { start, end });
+    const data = metricData(input, { start, end });
     const value = aggregate(data, input.aggregation);
     if (value === null) continue;
     samples.push(value);
@@ -81,10 +86,10 @@ function historySummary(samples: readonly number[]) {
 }
 
 export function reportMetric(input: MetricInput) {
-  const data = selected(input.data ?? [], input.window);
+  const data = metricData(input, input.window);
   const value = input.data === null ? null : aggregate(data, input.aggregation);
   const comparisonValue =
-    value !== null && input.aggregation === "count"
+    value !== null && ["count", "distinct"].includes(input.aggregation)
       ? (value * 86_400_000) / (input.window.end - input.window.start)
       : value;
   const history = baseline(input);
@@ -106,4 +111,48 @@ export function outsideReportBand(
   return (
     value !== null && band !== null && (value < band.low || value > band.high)
   );
+}
+
+function metricData(
+  input: MetricInput,
+  window: Pick<ReportWindow, "start" | "end">,
+): readonly ReportDatum[] {
+  const data = selected(input.data ?? [], window);
+  if (input.aggregation !== "distinct") return data;
+  const groups = new Map<string, ReportDatum>();
+  for (const datum of data) {
+    if (datum.key === undefined) throw new Error("missing-report-datum-key");
+    const previous = groups.get(datum.key);
+    groups.set(
+      datum.key,
+      previous === undefined
+        ? datum
+        : {
+            ...datum,
+            evidence: combinedEvidence(previous.evidence, datum.evidence),
+          },
+    );
+  }
+  return [...groups.values()];
+}
+
+function combinedEvidence(
+  left: Readonly<Record<string, unknown>>,
+  right: Readonly<Record<string, unknown>>,
+) {
+  return Object.fromEntries(
+    Object.entries(right).map(([key, value]) => {
+      const earlier = left[key];
+      return [
+        key,
+        unknownList(earlier) && unknownList(value)
+          ? [...new Set<unknown>([...earlier, ...value])]
+          : value,
+      ];
+    }),
+  );
+}
+
+function unknownList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
 }

@@ -211,3 +211,46 @@ await test("CLV-199 one network failure retries a GET and then reports readable 
     assert.equal(unavailable.issues, null);
   }
 });
+
+import { loopReport } from "../src/report.ts";
+import { fields } from "./service-fixture.ts";
+
+await test("CLV-245 ten main CI runs have a first-attempt pass share of 0.8", async () => {
+  const runs = Array.from({ length: 10 }, (_, index) => ({
+    id: index + 1,
+    name: "CI",
+    head_branch: "main",
+    head_sha: String(index).repeat(40),
+    run_attempt: index < 8 ? 1 : 2,
+    conclusion: index === 9 ? "failure" : "success",
+    created_at: "2026-10-24T12:00:00Z",
+  }));
+  const scene = fixture({
+    actions: {
+      "runs/9/attempts/1": {
+        ...runs[8],
+        run_attempt: 1,
+        conclusion: "failure",
+      },
+      "runs/10/attempts/1": {
+        ...runs[9],
+        run_attempt: 1,
+        conclusion: "failure",
+      },
+      [`runs?branch=main&created=%3E%3D${encodeURIComponent(since)}&per_page=100&page=1`]:
+        { workflow_runs: runs, total_count: 10 },
+    },
+  });
+  const github = await readReportGithub({ since, settings: scene.settings });
+  const report = loopReport({
+    since: 24,
+    now: Date.parse("2026-10-25T00:00:00Z"),
+    completions: [],
+    github,
+  });
+  const quality = fields(
+    fields(report)["quality"] ?? fields(report.coverage)["quality"],
+  );
+  assert.equal(quality["reason"], undefined);
+  assert.equal(fields(quality["mainFirstPassShare"])["value"], 0.8);
+});

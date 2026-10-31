@@ -9,6 +9,12 @@ import {
 } from "./report-fixture.ts";
 
 const names = [
+  "quality.mainFirstPassShare",
+  "quality.flakyFailures",
+  "quality.realFailures",
+  "quality.revertedPullRequests",
+  "quality.reopenedTickets",
+  "quality.reviewScore.round1",
   "fixRounds.medianPerMergedPullRequest",
   "leadTime.medianHours",
   "phases.workerTurn.medianMinutes",

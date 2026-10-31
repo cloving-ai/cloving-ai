@@ -62,6 +62,8 @@ export function timestamp(value: unknown): number {
 
 export interface Reader {
   readonly repository: PrRepository;
+  readonly readNode: (nodeId: string) => Promise<unknown>;
+  readonly readLog: (endpoint: string) => Promise<string>;
   readonly read: (
     endpoint: string,
     flags?: readonly string[],
@@ -88,6 +90,27 @@ export async function repositoryReader(
   const timelines = new Map<string, Promise<unknown>>();
   return {
     repository,
+    readNode: (nodeId) =>
+      readEndpoint(input, {
+        repository,
+        command,
+        endpoint: "",
+        flags: [
+          "-f",
+          `query=query{node(id:${JSON.stringify(nodeId)}){id ... on ClosedEvent{stateReason}}}`,
+        ],
+        format: "graphql",
+      }),
+    readLog: async (endpoint) =>
+      String(
+        await readEndpoint(input, {
+          repository,
+          command,
+          endpoint,
+          flags: [],
+          format: "text",
+        }),
+      ),
     read: (endpoint, flags = []) => {
       const key = JSON.stringify([endpoint, flags]);
       const cached = timelines.get(key);
@@ -111,6 +134,7 @@ async function readEndpoint(
     readonly command: readonly string[];
     readonly endpoint: string;
     readonly flags: readonly string[];
+    readonly format?: "text" | "graphql";
   },
 ): Promise<unknown> {
   const settings = input.settings;
@@ -123,16 +147,19 @@ async function readEndpoint(
     pollMilliseconds: input.retryMilliseconds ?? 30_000,
     action: async () => {
       const output = await settings.execute({
+        outputBytes: request.format === "text" ? 2 * 1024 * 1024 : 1024 * 1024,
         directory,
         signal,
         command: [
           ...command,
           "api",
           "--method",
-          "GET",
+          request.format === "graphql" ? "POST" : "GET",
           "--hostname",
           repository.host,
-          `repos/${repository.owner}/${repository.repository}${endpoint === "" ? "" : `/${endpoint}`}`,
+          request.format === "graphql"
+            ? "graphql"
+            : `repos/${repository.owner}/${repository.repository}${endpoint === "" ? "" : `/${endpoint}`}`,
           ...flags,
         ],
       });
@@ -144,12 +171,16 @@ async function readEndpoint(
       return output.stdout;
     },
   });
+  if (request.format === "text")
+    return Buffer.from(output)
+      .subarray(0, 2 * 1024 * 1024)
+      .toString("utf8");
   const parsed: unknown = JSON.parse(output);
   return parsed;
 }
 
 export async function issueTimeline(
-  reader: Reader,
+  reader: Pick<Reader, "read">,
   issue: number,
 ): Promise<Fields[]> {
   const result: Fields[] = [];
