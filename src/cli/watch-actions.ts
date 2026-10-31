@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { send } from "./client.ts";
 import { watchCardForms } from "./watch-card-forms.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { cardRunRequest, type CardForm } from "./watch-run-input.ts";
 
 export interface WatchActions {
@@ -16,7 +16,7 @@ export async function watchActions(
 ): Promise<WatchActions> {
   return {
     runtimeDirectory,
-    forms: await watchCardForms(join(import.meta.dirname, "../../workflows")),
+    forms: await watchCardForms(join(dirname(runtimeDirectory), "project")),
     token: randomBytes(32).toString("hex"),
   };
 }

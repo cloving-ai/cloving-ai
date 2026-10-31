@@ -13,20 +13,6 @@ export interface CardForm {
   readonly fields: readonly CardField[];
 }
 
-export function builtinCardForms(): readonly CardForm[] {
-  const entries: readonly [string, "ticket" | "prompt", string][] = [
-    ["develop-issue", "ticket", "Issue number"],
-    ["develop-ticket", "ticket", "Ticket ID"],
-    ["develop-prd", "prompt", "Idea"],
-    ["develop-prompt", "prompt", "Task"],
-  ];
-  return entries.map(([workflowId, name, label]) => ({
-    workflowId,
-    source: name === "ticket" ? "ticket" : "prompt",
-    fields: [{ name, label, multiline: name === "prompt", optional: false }],
-  }));
-}
-
 function validFields(
   form: CardForm,
   fields: Readonly<Record<string, unknown>>,

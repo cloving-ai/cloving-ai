@@ -172,3 +172,59 @@ await test("CLV-128 absent or malformed service stage metadata keeps the legacy 
     });
   }
 });
+
+await test("CLV-228 former bundled IDs honor declared stages for empty boards and event histories", () => {
+  for (const workflowId of [
+    "develop-issue",
+    "develop-ticket",
+    "develop-prd",
+    "develop-prompt",
+  ]) {
+    const events = [
+      stageEvent(1, { operation: "write-draft" }),
+      stageEvent(2, { gateId: "team-review", gateKind: "approval" }),
+      stageEvent(3, { operation: "write-draft" }),
+      stageEvent(4, { operation: "unmatched" }),
+    ];
+    for (let count = 0; count <= events.length; count += 1) {
+      const model = boardModel(
+        count === 0
+          ? []
+          : [
+              boardRun("project-run", {
+                workflowId,
+                events: events.slice(0, count).toReversed(),
+              }),
+            ],
+        {
+          workflows: [workflowId],
+          workflowStages: { [workflowId]: [sampleStages[0], ...reviewStages] },
+        },
+      );
+      const board = model.workflows[0];
+      assert.deepEqual(
+        board?.columns.map((column) => column.name),
+        [
+          "Draft",
+          "Your review",
+          "Team review",
+          "Ready to merge",
+          "Other",
+          "Done",
+          "Stopped",
+        ],
+      );
+      const cards = board.columns.flatMap((column) => column.cards);
+      assert.equal(cards.length, count === 0 ? 0 : 1);
+      assert.deepEqual(
+        cards[0]?.currentStep ?? null,
+        count === 0
+          ? null
+          : {
+              name: ["Draft", "Team review", "Draft", "Other"][count - 1],
+              startedAt: events[count - 1]?.recordedAt,
+            },
+      );
+    }
+  }
+});

@@ -29,7 +29,6 @@ import {
   attemptText,
   totalsSuffix,
 } from "./usage-render.ts";
-import { startPrompts, StartCard, StartRun } from "./watch-start-view.ts";
 import {
   Board,
   boardSizing,
@@ -159,9 +158,6 @@ const functions = [
   Command,
   Decision,
   Events,
-  startPrompts,
-  StartCard,
-  StartRun,
   BannerDetail,
   Banner,
   Phases,
@@ -234,7 +230,6 @@ body { margin: 0 auto; max-width: 1800px; padding: 0 20px 96px; }
 body:has(.board-page) { padding-bottom: 0; overflow: hidden; }
 .board-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .board-page > header, .board-page > .down { flex-shrink: 0; }
-.start-run { flex-shrink: 0; max-height: 45dvh; overflow-y: auto; }
 .workflow-refusals { flex-shrink: 0; max-height: 25dvh; overflow-y: auto; overflow-wrap: anywhere; }
 .workflow-refusals h2 { margin: 8px 0; }
 a { color: var(--accent-strong); }
@@ -256,12 +251,6 @@ header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding
 .brand svg { width: 30px; height: 30px; color: var(--accent); }
 a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 6px var(--code-bg); }
 h2, h3 { font-family: var(--heading-font); font-weight: 700; }
-.start-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 12px; }
-.start-card { min-width: 0; padding: 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.start-card h3 { margin: 0; }
-.start-card p { margin: 6px 0 12px; }
-.start-card .command { grid-template-columns: minmax(0, 1fr); margin: 0; }
-.start-card button { justify-self: end; }
 .workspace { display: flex; width: 100%; margin-top: 12px; flex: 1; min-height: 0; }
 .workflows { display: flex; flex-direction: row; flex-shrink: 0; gap: 8px; min-width: 0; margin-top: 12px; padding: 6px; overflow-x: auto; overflow-y: hidden; }
 .workflows a { display: grid; flex-shrink: 0; white-space: nowrap; gap: 2px; border-bottom: 3px solid transparent; padding: 10px; color: inherit; text-decoration: none; }
@@ -280,8 +269,8 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .column-cards { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .column.collapsed { flex: 0 0 ${String(boardSizing.collapsedColumnWidth)}px; min-width: ${String(boardSizing.collapsedColumnWidth)}px; padding: 6px; }
 .collapsed .column-name { writing-mode: vertical-rl; padding: 0; }
-header button, .phone button, .column-name button, .add-card, .add-card-form button, .start-card button { font: 500 13px/1.4 var(--body-font); color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
-header button:hover, .phone button:hover, .column-name button:hover, .add-card:hover, .add-card-form button:hover, .start-card button:hover { background: var(--surface-2); }
+header button, .phone button, .column-name button, .add-card, .add-card-form button { font: 500 13px/1.4 var(--body-font); color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); margin: 0; }
+header button:hover, .phone button:hover, .column-name button:hover, .add-card:hover, .add-card-form button:hover { background: var(--surface-2); }
 .add-card, .add-card-form button { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); margin: 4px 8px 4px 0; }
 .add-card { width: 100%; text-align: left; margin: 4px 0; }
 .add-card-form { padding: 8px 0; overflow-wrap: anywhere; }

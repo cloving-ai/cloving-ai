@@ -1,3 +1,4 @@
+import { exampleCardForms } from "./watch-action-fixture.ts";
 import { browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -7,7 +8,7 @@ import type { WatchModel } from "../src/cli/watch-render.ts";
 import { shownWait, waitModel } from "./command-wait-display-fixture.ts";
 import { test } from "node:test";
 import { pageDocument } from "../src/cli/watch-page.ts";
-import { builtinCardForms, type CardForm } from "../src/cli/watch-run-input.ts";
+import type { CardForm } from "../src/cli/watch-run-input.ts";
 import { boardModel } from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 
@@ -28,7 +29,7 @@ async function cardBoard(
   const streams = new Set<ServerResponse>();
   let model = options.model ?? {
     ...boardModel([], { workflows: [workflowId] }),
-    cardForms: options.form === undefined ? builtinCardForms() : [options.form],
+    cardForms: options.form === undefined ? exampleCardForms() : [options.form],
   };
   const server = createServer((request, response) => {
     if (request.url === "/preact.mjs") {
