@@ -4,7 +4,7 @@ import {
   type ReportDatum,
   type ReportWindow,
 } from "./report-statistics.ts";
-import { reportFixRounds, reportPhaseTimes } from "./report-effects.ts";
+import { reportEffectData } from "./report-effects.ts";
 import type { Fields } from "./protocol.ts";
 
 export const reportOutcomes = [
@@ -76,20 +76,17 @@ function outcomeMetrics(
 }
 
 function effectMetrics(input: ReportInput, window: ReportWindow) {
+  const data = reportEffectData(input.effects ?? null);
   const metrics: Record<string, ReturnType<typeof reportMetric>> = {
     "fixRounds.medianPerMergedPullRequest": reportMetric({
-      data: reportFixRounds(input.effects ?? null),
+      data: data.fixRounds,
       window,
       aggregation: "median",
     }),
   };
-  for (const [phase, method] of [
-    ["workerTurn", "run-turn"],
-    ["codeReview", "wait-review"],
-    ["merge", "merge"],
-  ])
-    metrics[`phases.${String(phase)}.medianMinutes`] = reportMetric({
-      data: reportPhaseTimes(input.effects ?? null, String(method)),
+  for (const phase of ["workerTurn", "codeReview", "merge"] as const)
+    metrics[`phases.${phase}.medianMinutes`] = reportMetric({
+      data: data[phase],
       window,
       aggregation: "median",
     });
@@ -121,7 +118,10 @@ function githubMetrics(input: ReportInput, window: ReportWindow) {
 }
 
 function ticketCostMetric(input: ReportInput, window: ReportWindow) {
-  const costs = reportRunCosts(input.completions ?? [], input.costs ?? []);
+  const costs = reportRunCosts(
+    (input.completions ?? []).filter((event) => event.at < window.end),
+    input.costs ?? [],
+  );
   const tickets = completedCosts(input, costs);
   const metric = reportMetric({
     data:
@@ -239,9 +239,12 @@ export function reportRunCosts(
   completions: readonly ReportCompletion[],
   costs: readonly ReportCost[],
 ) {
+  const byRun = new Map<string, ReportCost>();
+  for (const cost of costs)
+    if (!byRun.has(cost.runId)) byRun.set(cost.runId, cost);
   return completions.map((event) => {
-    const turns =
-      costs.find((cost) => cost.runId === event.runId)?.turns ?? null;
+    const cost = byRun.get(event.runId);
+    const turns = cost?.turns ?? null;
     const known =
       turns !== null && turns.every((turn) => turn.costUsd !== null);
     const total = known
@@ -249,7 +252,7 @@ export function reportRunCosts(
       : null;
     return {
       runId: event.runId,
-      ticketId: costs.find((cost) => cost.runId === event.runId)?.ticketId,
+      ticketId: cost?.ticketId,
       outcome: event.outcome,
       completedAt: event.at,
       costUsd: total !== null && Number.isFinite(total) ? total : null,

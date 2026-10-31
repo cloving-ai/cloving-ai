@@ -67,6 +67,33 @@ export function reportReply(
         },
       };
     }
+    if (
+      request.operation === "status" &&
+      request.parameters["metadata"] === "tickets"
+    ) {
+      const after = request.parameters["after"];
+      if (typeof after !== "string") throw new Error("invalid-fixture-cursor");
+      const remaining = runs
+        .filter((run) => String(run["runId"]) > after)
+        .sort((left, right) =>
+          String(left["runId"]) < String(right["runId"]) ? -1 : 1,
+        );
+      const shown = remaining.slice(
+        0,
+        Number(request.parameters["limit"] ?? 500),
+      );
+      return {
+        kind: "result",
+        result: {
+          runs: shown.map((run) => ({
+            runId: run["runId"],
+            ticketId: run["ticketId"],
+          })),
+          next:
+            remaining.length > shown.length ? shown.at(-1)?.["runId"] : null,
+        },
+      };
+    }
     const runId = request.parameters["runId"];
     return {
       kind: "result",

@@ -189,10 +189,12 @@ export async function reportCommand(
       : { completions: null, effects: null, observedSince: null };
   const github =
     githubRead.status === "fulfilled" ? { github: githubRead.value } : {};
-  const costs: ReportCost[] = [];
-  for (const event of daemon.completions ?? [])
-    if (event.at < now)
-      costs.push(await runCost(environment.runtimeDirectory, event.runId));
+  const costs = await reportCosts(environment.runtimeDirectory, {
+    completions: daemon.completions ?? [],
+    start: Date.parse(since),
+    end: now,
+    issues: githubRead.status === "fulfilled" ? githubRead.value.issues : null,
+  });
   const calculated = loopReport({
     since: invocation.since,
     now,
@@ -259,4 +261,85 @@ function runTicket(run: Fields | undefined): Pick<ReportCost, "ticketId"> {
   return ticketId === null || (typeof ticketId === "string" && ticketId !== "")
     ? { ticketId }
     : {};
+}
+
+async function ticketIndex(
+  runtime: string,
+): Promise<Map<string, string | null>> {
+  const index = new Map<string, string | null>();
+  let after = "";
+  for (;;) {
+    const reply = await send(runtime, {
+      operation: "status",
+      parameters: { metadata: "tickets", after, limit: 500 },
+    });
+    if (reply.kind === "error") throw new Error(reply.error.code);
+    const runs = reply.result["runs"];
+    if (!Array.isArray(runs)) throw new Error("invalid-report-ticket-index");
+    const latest = appendTicketIndex(index, { runs, after });
+    const next = reply.result["next"];
+    if (next === null) return index;
+    if (typeof next !== "string" || next !== latest || next <= after)
+      throw new Error("invalid-report-ticket-cursor");
+    after = next;
+  }
+}
+
+async function reportCosts(
+  runtime: string,
+  input: {
+    readonly completions: readonly ReportCompletion[];
+    readonly start: number;
+    readonly end: number;
+    readonly issues:
+      readonly { readonly at: number; readonly evidence: Fields }[] | null;
+  },
+): Promise<ReportCost[]> {
+  const ended = input.completions.filter((event) => event.at < input.end);
+  const costs: ReportCost[] = [];
+  for (const event of ended.filter((event) => event.at >= input.start))
+    costs.push(await runCost(runtime, event.runId));
+  const older = ended.filter((event) => event.at < input.start);
+  const tickets = new Set(
+    (input.issues ?? [])
+      .filter((issue) => issue.at >= input.start && issue.at < input.end)
+      .map((issue) => String(issue.evidence["issue"])),
+  );
+  if (older.length === 0 || tickets.size === 0) return costs;
+  try {
+    const index = await ticketIndex(runtime);
+    for (const event of older) {
+      const ticketId = index.get(event.runId);
+      if (ticketId === undefined) continue;
+      costs.push(
+        ticketId !== null && tickets.has(ticketId)
+          ? await runCost(runtime, event.runId)
+          : { runId: event.runId, ticketId, turns: null },
+      );
+    }
+  } catch {
+    return costs;
+  }
+  return costs;
+}
+
+function appendTicketIndex(
+  index: Map<string, string | null>,
+  page: { readonly runs: readonly unknown[]; readonly after: string },
+): string {
+  let latest = page.after;
+  for (const value of page.runs) {
+    const row = record(value);
+    const runId = row?.["runId"];
+    const ticketId = row?.["ticketId"];
+    if (
+      typeof runId !== "string" ||
+      runId <= latest ||
+      !(ticketId === null || (typeof ticketId === "string" && ticketId !== ""))
+    )
+      throw new Error("invalid-report-ticket-index");
+    index.set(runId, ticketId);
+    latest = runId;
+  }
+  return latest;
 }

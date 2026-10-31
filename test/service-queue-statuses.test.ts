@@ -3,10 +3,57 @@ import { test } from "node:test";
 import {
   call,
   field,
+  text,
   items,
   startedRun,
   withHarness,
 } from "./service-fixture.ts";
+
+await test("CLV-243 status pages stored ticket identities without run details", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [
+        {
+          ...harness.registration,
+          resolver: {
+            ...harness.registration.resolver,
+            resolve: (request) =>
+              Promise.resolve({
+                kind: "resolved",
+                input: { ticketId: request.submission["prompt"] },
+              }),
+          },
+        },
+      ],
+    });
+    const expected = [];
+    for (const ticketId of ["7", "8"]) {
+      const reply = await call(harness, {
+        operation: "run",
+        parameters: {
+          workflowId: "develop",
+          source: "prompt",
+          submission: { prompt: ticketId },
+          commandId: `ticket-${ticketId}`,
+        },
+      });
+      expected.push({ runId: text(reply, "runId"), ticketId });
+    }
+    expected.sort((left, right) => (left.runId < right.runId ? -1 : 1));
+    const first = await call(harness, {
+      operation: "status",
+      parameters: { metadata: "tickets", limit: 1 },
+    });
+    assert.deepEqual(first["runs"], expected.slice(0, 1));
+    assert.equal(first["next"], expected[0]?.runId);
+    const second = await call(harness, {
+      operation: "status",
+      parameters: { metadata: "tickets", limit: 1, after: first["next"] },
+    });
+    assert.deepEqual(second["runs"], expected.slice(1));
+    assert.equal(second["next"], null);
+    await service.close();
+  }));
 
 await test("CLV-184 a queue status batch uses terminal event sequences and one run snapshot", () =>
   withHarness(async (harness) => {

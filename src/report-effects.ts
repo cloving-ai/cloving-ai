@@ -17,31 +17,52 @@ function resultOf(value: unknown): Fields {
   return result;
 }
 
-function requestsOf(events: readonly Fields[]): Fields[] {
+function requestsOf(events: readonly Fields[]): Map<string, Fields> {
   const requests = new Map<string, Fields>();
   for (const event of events) {
     if (event["type"] !== "effect.requested") continue;
-    const key = JSON.stringify([
-      event["runId"],
-      payloadOf(event)["operationId"],
-    ]);
+    const key = effectKey(event);
     if (!requests.has(key)) requests.set(key, event);
   }
-  return [...requests.values()];
+  return requests;
 }
 
-function pairsOf(events: readonly Fields[]): EffectPair[] {
-  const requests = requestsOf(events);
+function effectKey(event: Fields): string {
+  return JSON.stringify([event["runId"], payloadOf(event)["operationId"]]);
+}
+
+function pairsOf(
+  events: readonly Fields[],
+  requests: ReadonlyMap<string, Fields>,
+): EffectPair[] {
   return events.flatMap((report) => {
     if (report["type"] !== "effect.reported") return [];
-    const request = requests.find(
-      (item) =>
-        item["runId"] === report["runId"] &&
-        payloadOf(item)["operationId"] === payloadOf(report)["operationId"],
-    );
+    const request = requests.get(effectKey(report));
     if (request === undefined) throw new Error("missing-report-effect-request");
     return [{ request, report }];
   });
+}
+
+interface EffectHistory {
+  readonly pairs: readonly EffectPair[];
+  readonly runs: ReadonlyMap<unknown, readonly Fields[]>;
+}
+
+function historyOf(events: readonly Fields[] | null): EffectHistory | null {
+  if (events === null) return null;
+  try {
+    const requests = requestsOf(events);
+    const runs = new Map<unknown, Fields[]>();
+    for (const request of requests.values()) {
+      const runId = request["runId"];
+      const own = runs.get(runId) ?? [];
+      own.push(request);
+      runs.set(runId, own);
+    }
+    return { pairs: pairsOf(events, requests), runs };
+  } catch {
+    return null;
+  }
 }
 
 function fixRoundDatum(
@@ -57,7 +78,7 @@ function fixRoundDatum(
     return [];
   const result = resultOf(payload["result"]);
   if (!mergedResult(result["merged"])) return [];
-  const own = requests.filter((item) => item["runId"] === report["runId"]);
+  const own = requests;
   const opened = own.find((item) => payloadOf(item)["method"] === "open-pr");
   const rounds =
     opened === undefined
@@ -83,42 +104,58 @@ function fixRoundDatum(
   ];
 }
 
-export function reportFixRounds(
-  events: readonly Fields[] | null,
-): ReportDatum[] | null {
-  if (events === null) return null;
+function fixRounds(history: EffectHistory | null): ReportDatum[] | null {
+  if (history === null) return null;
   try {
-    const requests = requestsOf(events);
-    return pairsOf(events).flatMap((pair) => fixRoundDatum(pair, requests));
+    return history.pairs.flatMap((pair) =>
+      fixRoundDatum(pair, history.runs.get(pair.report["runId"]) ?? []),
+    );
   } catch {
     return null;
   }
 }
 
+function phaseTimes(
+  history: EffectHistory | null,
+  method: string,
+): ReportDatum[] | null {
+  if (history === null) return null;
+  return history.pairs.flatMap(({ request, report }) => {
+    if (payloadOf(request)["method"] !== method) return [];
+    const at = Number(report["at"]);
+    const minutes = (at - Number(request["at"])) / 60_000;
+    return [
+      {
+        at,
+        value: Number.isFinite(minutes) && minutes >= 0 ? minutes : null,
+        evidence: {
+          runId: report["runId"],
+          operationId: payloadOf(report)["operationId"],
+        },
+      },
+    ];
+  });
+}
+
+export function reportFixRounds(events: readonly Fields[] | null) {
+  return fixRounds(historyOf(events));
+}
+
 export function reportPhaseTimes(
   events: readonly Fields[] | null,
   method: string,
-): ReportDatum[] | null {
-  if (events === null) return null;
-  try {
-    return pairsOf(events).flatMap(({ request, report }) => {
-      if (payloadOf(request)["method"] !== method) return [];
-      const at = Number(report["at"]);
-      const minutes = (at - Number(request["at"])) / 60_000;
-      return [
-        {
-          at,
-          value: Number.isFinite(minutes) && minutes >= 0 ? minutes : null,
-          evidence: {
-            runId: report["runId"],
-            operationId: payloadOf(report)["operationId"],
-          },
-        },
-      ];
-    });
-  } catch {
-    return null;
-  }
+) {
+  return phaseTimes(historyOf(events), method);
+}
+
+export function reportEffectData(events: readonly Fields[] | null) {
+  const history = historyOf(events);
+  return {
+    fixRounds: fixRounds(history),
+    workerTurn: phaseTimes(history, "run-turn"),
+    codeReview: phaseTimes(history, "wait-review"),
+    merge: phaseTimes(history, "merge"),
+  };
 }
 
 function mergedResult(value: unknown): boolean {

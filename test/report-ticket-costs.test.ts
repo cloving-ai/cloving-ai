@@ -6,6 +6,38 @@ import { fields, items } from "./service-fixture.ts";
 const now = Date.parse("2026-10-25T00:00:00Z");
 const at = now - 3_600_000;
 
+await test("CLV-243 completions at or after the report end cannot invalidate a completed ticket price", () => {
+  const report = loopReport({
+    now,
+    since: 24,
+    completions: [at, now, now + 1].map((endedAt, index) => ({
+      runId: `run-${String(index)}`,
+      sequence: index + 1,
+      at: endedAt,
+      outcome: "completed" as const,
+    })),
+    costs: [
+      {
+        runId: "run-0",
+        ticketId: "7",
+        turns: [{ operationId: "turn", costUsd: 2.5 }],
+      },
+    ],
+    github: {
+      issues: [{ at, value: 1, evidence: { issue: 7 } }],
+      pulls: [],
+      sources: {},
+    },
+  });
+  const ticket = fields(items(report["completedTicketCosts"])[0]);
+  assert.equal(ticket["costUsd"], 2.5);
+  assert.deepEqual(fields(ticket["evidence"])["runIds"], ["run-0"]);
+  assert.equal(
+    fields(fields(report["metrics"])["cost.medianCompletedTicketUsd"])["value"],
+    2.5,
+  );
+});
+
 await test("CLV-243 ticket costs group all attempts by ticket and preserve a known ticket beside an unknown ticket", () => {
   const completions = ["partial", "done", "other"].map((runId, index) => ({
     runId,

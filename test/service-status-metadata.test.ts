@@ -226,6 +226,34 @@ await test("CLV-072 a completion between status reads cannot show completed with
 
 after(removeTemporaryDirectories);
 
+await test("CLV-243 ticket metadata cannot classify an unreadable stored input as an unrelated run", async () => {
+  const { store } = await opened(await temporaryDirectory());
+  try {
+    await executeStored(store, storedGate[0] ?? {});
+    const state = await store.state();
+    const details = state.details["run-1"];
+    assert.ok(details);
+    const context = statusContext({
+      ...store,
+      state: () =>
+        Promise.resolve({
+          ...state,
+          details: {
+            ...state.details,
+            "run-1": { ...details, input: "missing-input" },
+          },
+        }),
+      queries: { ...store.queries, document: () => Promise.resolve(undefined) },
+    });
+    await assert.rejects(
+      status(context, { metadata: "tickets" }),
+      /unavailable/,
+    );
+  } finally {
+    await store.close();
+  }
+});
+
 await test("CLV-072 completed status reads its outcome without loading the event history", async () => {
   const { store } = await opened(await temporaryDirectory());
   try {
