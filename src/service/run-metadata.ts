@@ -1,7 +1,33 @@
 import { issueIdentity } from "../issue-identity.ts";
 import { record, type Fields } from "../protocol.ts";
 import type { RunView } from "../authority/status.ts";
-import type { ServiceContext } from "./replies.ts";
+import { result, type ServiceContext } from "./replies.ts";
+
+export async function ticketMetadataPage(
+  context: ServiceContext,
+  page: { readonly after: string; readonly limit: number },
+) {
+  const state = await context.authority.state();
+  const identifiers = Object.keys(state.runs)
+    .sort()
+    .filter((runId) => runId > page.after);
+  const shown = identifiers.slice(0, page.limit);
+  const runs = [];
+  for (const runId of shown) {
+    const digest = state.details[runId]?.input;
+    const document = digest
+      ? await context.authority.queries.document(digest)
+      : "{}";
+    const input = record(JSON.parse(document ?? "null"));
+    if (input === undefined)
+      throw new Error("report-ticket-metadata-unavailable");
+    runs.push({ runId, ticketId: ticketIdOf(input) });
+  }
+  return result("run-ticket-metadata", {
+    runs,
+    next: identifiers.length > shown.length ? shown.at(-1) : null,
+  });
+}
 
 export async function outcomeOf(
   context: ServiceContext,
@@ -53,12 +79,16 @@ export async function metadataOf(
     ? await context.authority.queries.document(source.digest)
     : undefined;
   const input = record(JSON.parse(document ?? "null"));
-  const ticketId = input?.["ticketId"];
   return {
-    ticketId: typeof ticketId === "string" && ticketId !== "" ? ticketId : null,
+    ticketId: ticketIdOf(input),
     title: titleOf(input, source.workflowId),
     ...(source.workflowId === "develop-issue"
       ? { issueIdentity: issueIdentity(input?.["ticket"]) }
       : {}),
   };
+}
+
+function ticketIdOf(input: Fields | undefined): string | null {
+  const ticketId = input?.["ticketId"];
+  return typeof ticketId === "string" && ticketId !== "" ? ticketId : null;
 }

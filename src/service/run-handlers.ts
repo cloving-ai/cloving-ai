@@ -1,5 +1,5 @@
 import { commandWaitDisplay } from "./command-waits.ts";
-import { metadataOf, outcomeOf } from "./run-metadata.ts";
+import { metadataOf, outcomeOf, ticketMetadataPage } from "./run-metadata.ts";
 import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
 import {
   runView,
@@ -265,6 +265,8 @@ export async function status(
   const page = listParameters(parameters);
   if (page === undefined)
     return invalidRequest("The status request is not valid.");
+  if (parameters["metadata"] === "tickets")
+    return ticketMetadataPage(context, page);
   const current = await snapshot(context);
   if (runId === undefined)
     return listed(context, { snapshot: current, ...page });

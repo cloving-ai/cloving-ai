@@ -1,29 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readReportGithub } from "../src/cli/report-github.ts";
-import type {
-  WatchCommandOutput,
-  WatchCommandRequest,
-} from "../src/cli/watch-pr-command.ts";
-
-const since = "2026-10-17T00:00:00.000Z";
-const output = (value: unknown): WatchCommandOutput => ({
-  stdout: JSON.stringify(value),
-  stderr: "",
-  status: 0,
-  errorCode: null,
-});
-const issue = (
-  number: number,
-  extra: Readonly<Record<string, unknown>> = {},
-) => ({
-  number,
-  html_url: `https://github.example/fixture/demo/issues/${String(number)}`,
-  closed_at: "2026-10-24T12:00:00Z",
-  state: "closed",
-  state_reason: "completed",
-  ...extra,
-});
+import {
+  githubReportFixture as fixture,
+  issue,
+  since,
+  output,
+} from "./report-github-fixture.ts";
 const pull = (
   number: number,
   extra: Readonly<Record<string, unknown>> = {},
@@ -34,111 +17,6 @@ const pull = (
   merged_at: "2026-10-24T12:00:00Z",
   ...extra,
 });
-
-function projectedIssues(values: unknown, query: string | undefined) {
-  if (
-    query !==
-    'map({number, html_url, closed_at, state, state_reason} + (if has("pull_request") then {pull_request: {}} else {} end))'
-  )
-    throw new Error("invalid-fixture-projection");
-  if (!Array.isArray(values)) throw new Error("invalid-fixture-rows");
-  return values.map((value: unknown) =>
-    Object.fromEntries(
-      Object.entries(value ?? {}).filter(([key]) =>
-        [
-          "number",
-          "html_url",
-          "closed_at",
-          "state",
-          "state_reason",
-          "pull_request",
-        ].includes(key),
-      ),
-    ),
-  );
-}
-
-function issueOutput(
-  request: WatchCommandRequest,
-  input: { readonly pages: unknown; readonly limit: number | undefined },
-): WatchCommandOutput {
-  const { pages, limit } = input;
-  const endpoint =
-    request.command.find((part) => part.startsWith("repos/")) ?? "";
-  const page = Number(/page=(\d+)$/.exec(endpoint)?.[1] ?? 1);
-  let values: unknown = pages;
-  if (Array.isArray(pages) && !request.command.includes("--slurp"))
-    values = page <= pages.length ? pages[page - 1] : [];
-  const query = request.command.indexOf("--jq");
-  if (query !== -1)
-    values = projectedIssues(values, request.command[query + 1]);
-  const result = output(values);
-  return limit !== undefined && Buffer.byteLength(result.stdout) > limit
-    ? {
-        ...result,
-        stdout: "",
-        status: 1,
-        errorCode: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-      }
-    : result;
-}
-
-function fixture(
-  options: {
-    readonly issues?: unknown;
-    readonly pulls?: unknown;
-    readonly pullPages?: readonly unknown[];
-    readonly failures?: readonly WatchCommandOutput[];
-    readonly created?: string;
-    readonly repositoryName?: string;
-    readonly issueOutputLimit?: number;
-  } = {},
-) {
-  const commands: (readonly string[])[] = [];
-  let attempts = 0;
-  const issueRows = options.issues ?? [[]];
-  const pullPages = options.pullPages ?? [options.pulls ?? []];
-  const metadata = {
-    full_name: options.repositoryName ?? "fixture/demo",
-    created_at: options.created ?? "2026-01-01T00:00:00Z",
-  };
-  const execute = (
-    request: WatchCommandRequest,
-  ): Promise<WatchCommandOutput> => {
-    commands.push(request.command);
-    if (request.command[0] === "git")
-      return Promise.resolve({
-        ...output(null),
-        stdout: "git@github.example:fixture/demo.git\n",
-      });
-    const endpoint =
-      request.command.find((part) => part.startsWith("repos/")) ?? "";
-    if (endpoint === "repos/fixture/demo")
-      return Promise.resolve(output(metadata));
-    if (endpoint.includes("/issues?")) {
-      const failure = options.failures?.[attempts];
-      attempts += 1;
-      return Promise.resolve(
-        failure ??
-          issueOutput(request, {
-            pages: issueRows,
-            limit: options.issueOutputLimit,
-          }),
-      );
-    }
-    const page = Number(/page=(\d+)$/.exec(endpoint)?.[1] ?? 1);
-    return Promise.resolve(output(pullPages[page - 1] ?? []));
-  };
-  return {
-    commands,
-    attempts: () => attempts,
-    settings: {
-      repository: "/fixture/repo",
-      githubCommand: JSON.stringify(["fake-gh", "prefix"]),
-      execute,
-    },
-  };
-}
 
 await test("CLV-199 GitHub reads validate repository identity and separate completed tickets from merged pull requests", async () => {
   const scene = fixture({

@@ -4,6 +4,7 @@ import {
   type ReportDatum,
   type ReportWindow,
 } from "./report-statistics.ts";
+import { reportEffectData } from "./report-effects.ts";
 import type { Fields } from "./protocol.ts";
 
 export const reportOutcomes = [
@@ -24,6 +25,7 @@ export interface ReportCompletion {
 
 export interface ReportCost {
   readonly runId: string;
+  readonly ticketId?: string | null;
   readonly turns:
     | readonly {
         readonly operationId: string;
@@ -34,6 +36,7 @@ export interface ReportCost {
 }
 
 interface ReportInput {
+  readonly effects?: readonly Fields[] | null;
   readonly since: number;
   readonly now: number;
   readonly completions: readonly ReportCompletion[] | null;
@@ -43,6 +46,7 @@ interface ReportInput {
     readonly observedSince?: number | null;
     readonly issues: readonly ReportDatum[] | null;
     readonly pulls: readonly ReportDatum[] | null;
+    readonly leadTimes?: readonly ReportDatum[] | null;
     readonly sources: Fields;
   };
 }
@@ -71,9 +75,97 @@ function outcomeMetrics(
   );
 }
 
+function effectMetrics(input: ReportInput, window: ReportWindow) {
+  const data = reportEffectData(input.effects ?? null);
+  const metrics: Record<string, ReturnType<typeof reportMetric>> = {
+    "fixRounds.medianPerMergedPullRequest": reportMetric({
+      data: data.fixRounds,
+      window,
+      aggregation: "median",
+    }),
+  };
+  for (const phase of ["workerTurn", "codeReview", "merge"] as const)
+    metrics[`phases.${phase}.medianMinutes`] = reportMetric({
+      data: data[phase],
+      window,
+      aggregation: "median",
+    });
+  return metrics;
+}
+
+function githubMetrics(input: ReportInput, window: ReportWindow) {
+  const observed = {
+    ...window,
+    observedSince: input.github?.observedSince ?? null,
+  };
+  return {
+    "leadTime.medianHours": reportMetric({
+      data: input.github?.leadTimes ?? null,
+      window: observed,
+      aggregation: "median",
+    }),
+    "tickets.completed": reportMetric({
+      data: input.github?.issues ?? null,
+      window: observed,
+      aggregation: "count",
+    }),
+    "pullRequests.merged": reportMetric({
+      data: input.github?.pulls ?? null,
+      window: observed,
+      aggregation: "count",
+    }),
+  };
+}
+
+function ticketCostMetric(input: ReportInput, window: ReportWindow) {
+  const costs = reportRunCosts(
+    (input.completions ?? []).filter((event) => event.at < window.end),
+    input.costs ?? [],
+  );
+  const tickets = completedCosts(input, costs);
+  const metric = reportMetric({
+    data:
+      input.completions === null || input.github?.issues == null
+        ? null
+        : tickets.map((ticket) => ({
+            at: ticket.closedAt,
+            value: ticket.costUsd,
+            evidence: ticket.evidence,
+          })),
+    window: {
+      ...window,
+      observedSince: commonHistory(
+        window.observedSince,
+        input.github?.observedSince ?? null,
+      ),
+    },
+    aggregation: "median",
+  });
+  const completedTicketCosts = tickets
+    .filter(
+      (ticket) =>
+        ticket.closedAt >= window.start && ticket.closedAt < window.end,
+    )
+    .map((ticket) => ({
+      ...ticket,
+      ...costHistory(ticket.costUsd, metric.baseline),
+    }));
+  return { metric, completedTicketCosts };
+}
+
+function costHistory(
+  cost: number | null,
+  baseline: ReturnType<typeof reportMetric>["baseline"],
+) {
+  return {
+    baseline,
+    ...(outsideReportBand(cost, baseline.band) ? { mark: "outside" } : {}),
+  };
+}
+
 function metricCollection(input: ReportInput, window: ReportWindow) {
   const costs = reportRunCosts(input.completions ?? [], input.costs ?? []);
-  const metrics = outcomeMetrics(input, window);
+  const tickets = ticketCostMetric(input, window);
   const costMetric = reportMetric({
     data:
       input.completions === null
@@ -86,21 +178,13 @@ function metricCollection(input: ReportInput, window: ReportWindow) {
     window,
     aggregation: "median",
   });
-  metrics["cost.medianRunUsd"] = costMetric;
-  const githubWindow = {
-    ...window,
-    observedSince: input.github?.observedSince ?? null,
+  const metrics = {
+    ...outcomeMetrics(input, window),
+    ...effectMetrics(input, window),
+    ...githubMetrics(input, window),
+    "cost.medianRunUsd": costMetric,
+    "cost.medianCompletedTicketUsd": tickets.metric,
   };
-  metrics["tickets.completed"] = reportMetric({
-    data: input.github?.issues ?? null,
-    window: githubWindow,
-    aggregation: "count",
-  });
-  metrics["pullRequests.merged"] = reportMetric({
-    data: input.github?.pulls ?? null,
-    window: githubWindow,
-    aggregation: "count",
-  });
   const runCosts = costs
     .filter(
       (cost) =>
@@ -108,12 +192,13 @@ function metricCollection(input: ReportInput, window: ReportWindow) {
     )
     .map((cost) => ({
       ...cost,
-      baseline: costMetric.baseline,
-      ...(outsideReportBand(cost.costUsd, costMetric.baseline.band)
-        ? { mark: "outside" }
-        : {}),
+      ...costHistory(cost.costUsd, costMetric.baseline),
     }));
-  return { metrics, runCosts };
+  return {
+    metrics,
+    runCosts,
+    completedTicketCosts: tickets.completedTicketCosts,
+  };
 }
 
 export function loopReport(input: ReportInput) {
@@ -145,11 +230,7 @@ export function loopReport(input: ReportInput) {
       flow: unavailable,
       quality: unavailable,
       operator: unavailable,
-      phases: unavailable,
-      fixRounds: unavailable,
-      leadTime: unavailable,
       ticketClosureHistory: unavailable,
-      completedTicketCosts: unavailable,
     },
   };
 }
@@ -158,9 +239,12 @@ export function reportRunCosts(
   completions: readonly ReportCompletion[],
   costs: readonly ReportCost[],
 ) {
+  const byRun = new Map<string, ReportCost>();
+  for (const cost of costs)
+    if (!byRun.has(cost.runId)) byRun.set(cost.runId, cost);
   return completions.map((event) => {
-    const turns =
-      costs.find((cost) => cost.runId === event.runId)?.turns ?? null;
+    const cost = byRun.get(event.runId);
+    const turns = cost?.turns ?? null;
     const known =
       turns !== null && turns.every((turn) => turn.costUsd !== null);
     const total = known
@@ -168,11 +252,43 @@ export function reportRunCosts(
       : null;
     return {
       runId: event.runId,
+      ticketId: cost?.ticketId,
       outcome: event.outcome,
       completedAt: event.at,
       costUsd: total !== null && Number.isFinite(total) ? total : null,
       turns,
       evidence: { runId: event.runId, sequence: event.sequence },
+    };
+  });
+}
+
+function commonHistory(
+  daemon: number | null,
+  github: number | null,
+): number | null {
+  return daemon === null || github === null ? null : Math.max(daemon, github);
+}
+
+function completedCosts(
+  input: ReportInput,
+  costs: ReturnType<typeof reportRunCosts>,
+) {
+  return (input.github?.issues ?? []).map((issue) => {
+    const number = issue.evidence["issue"];
+    const runs = costs.filter((cost) => cost.ticketId === String(number));
+    const unknown =
+      costs.some((cost) => cost.ticketId === undefined) ||
+      runs.length === 0 ||
+      runs.some((run) => run.costUsd === null);
+    const total = unknown
+      ? null
+      : runs.reduce((sum, run) => sum + (run.costUsd ?? 0), 0);
+    return {
+      issue: number,
+      closedAt: issue.at,
+      costUsd: total !== null && Number.isFinite(total) ? total : null,
+      runs,
+      evidence: { issue: number, runIds: runs.map((run) => run.runId) },
     };
   });
 }
