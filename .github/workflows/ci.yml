@@ -71,10 +71,6 @@
           "run": "npm run check:quality"
         },
         {
-          "run": "npm run build",
-          "if": "${{ matrix.shard == '1' }}"
-        },
-        {
           "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
           "with": {
             "name": "coverage-macos-26.9.0-${{ matrix.shard }}",
@@ -156,10 +152,6 @@
         },
         {
           "run": "npm run check:quality"
-        },
-        {
-          "run": "npm run build",
-          "if": "${{ matrix.shard == '1' }}"
         },
         {
           "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",

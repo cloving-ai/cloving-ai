@@ -7,6 +7,7 @@ import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import {
   checkTimeWarnings,
   parseTestShard,
+  runCommand,
   type CheckTiming,
 } from "../quality/command.ts";
 
@@ -20,6 +21,17 @@ const commandOptions = { timings };
 try {
   if (!selected || selected.index === 1)
     await checkNpmInputs(process.cwd(), commandOptions);
+  if (selected)
+    runCommand(
+      {
+        check: "test-build",
+        executable: "npm",
+        arguments: ["run", "build"],
+        directory: process.cwd(),
+        timeoutMilliseconds: 60000 * timeFactor,
+      },
+      commandOptions,
+    );
   const generated = await inspectGenerated(process.cwd());
   const result = await checkProject(process.cwd(), {
     timeFactor,

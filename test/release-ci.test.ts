@@ -86,7 +86,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
   }
 });
 
-await test("CLV-266 only shard 1 runs setup and build checks", async () => {
+await test("CLV-266 only shard 1 runs setup checks and the gate prepares test builds", async () => {
   const workflow = await releaseWorkflow();
   for (const name of [
     "quality_macos",
@@ -95,9 +95,7 @@ await test("CLV-266 only shard 1 runs setup and build checks", async () => {
   ] as const) {
     for (const step of steps(workflow, name)) {
       assert.equal(step["continue-on-error"], undefined);
-      const conditional = ["npm run check:setup", "npm run build"].includes(
-        step.run ?? "",
-      );
+      const conditional = step.run === "npm run check:setup";
       assert.equal(
         step.if,
         conditional && name !== "publish"
@@ -150,7 +148,6 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     "npm ci --ignore-scripts",
     "npm run check:setup",
     "npm run check:quality",
-    "npm run build",
   ]);
 });
 

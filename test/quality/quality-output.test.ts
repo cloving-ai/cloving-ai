@@ -134,3 +134,65 @@ for (const scenario of [
     });
   });
 }
+
+async function runtimeGate(
+  shard: string | undefined,
+): Promise<Record<string, string>> {
+  return {
+    ...(await failingGate("coverage")),
+    "package.json": JSON.stringify({
+      type: "module",
+      scripts: { build: "node build.mjs" },
+    }),
+    "build.mjs": `
+      import { mkdirSync, writeFileSync } from "node:fs";
+      mkdirSync("dist/src", { recursive: true });
+      writeFileSync("dist/src/main.d.ts", "export declare const value: number;");
+    `,
+    "quality/generated-output.ts": `
+      import assert from "node:assert/strict";
+      import { existsSync } from "node:fs";
+      export async function inspectGenerated() {
+        assert.equal(existsSync("dist/src/main.d.ts"), ${String(shard !== undefined)});
+        return { outputs: {} };
+      }
+    `,
+    "quality/project.ts": `
+      export { writeProjectReport } from ${moduleUrl("quality/project.ts")};
+      export async function checkProject(directory, options) {
+        return { timings: options.commandOptions.timings, warnings: [] };
+      }
+    `,
+  };
+}
+
+for (const shard of [undefined, "1/2", "2/2"]) {
+  await test(`CLV-266 prepares runtime declarations before shard ${String(shard)} tests`, async () => {
+    await withFiles(await runtimeGate(shard), (directory) => {
+      const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          CLOVING_CHECK_TIME_FACTOR: "1",
+          CLOVING_TEST_SHARD: shard,
+        },
+        encoding: "utf8",
+        timeout: testMilliseconds(10_000),
+      });
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 0, result.stderr);
+      const report: unknown = JSON.parse(result.stdout);
+      assert.ok(report && typeof report === "object" && "timings" in report);
+      assert.ok(Array.isArray(report.timings));
+      const expected = shard === "2/2" ? [] : ["npm-inputs"];
+      if (shard !== undefined) expected.push("test-build");
+      assert.deepEqual(
+        report.timings.map((timing: unknown) => {
+          assert.ok(timing && typeof timing === "object" && "check" in timing);
+          return timing.check;
+        }),
+        expected,
+      );
+    });
+  });
+}
