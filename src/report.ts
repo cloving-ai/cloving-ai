@@ -5,23 +5,17 @@ import {
   type ReportWindow,
 } from "./report-statistics.ts";
 import { reportEffectData } from "./report-effects.ts";
+import { reportFlowMetrics } from "./report-flow.ts";
+import type { ReportFlow } from "./report-flow-types.ts";
+import type { ReportReadyTicket } from "./report-flow-types.ts";
 import type { Fields } from "./protocol.ts";
 
-export const reportOutcomes = [
-  "completed",
-  "partial",
-  "blocked",
-  "failed",
-  "cancelled",
-] as const;
-export type ReportOutcome = (typeof reportOutcomes)[number];
-
-export interface ReportCompletion {
-  readonly runId: string;
-  readonly sequence: number;
-  readonly at: number;
-  readonly outcome: ReportOutcome;
-}
+import { reportOutcomes, type ReportCompletion } from "./report-flow-types.ts";
+export {
+  reportOutcomes,
+  type ReportCompletion,
+  type ReportOutcome,
+} from "./report-flow-types.ts";
 
 export interface ReportCost {
   readonly runId: string;
@@ -36,6 +30,7 @@ export interface ReportCost {
 }
 
 interface ReportInput {
+  readonly flow?: ReportFlow;
   readonly effects?: readonly Fields[] | null;
   readonly since: number;
   readonly now: number;
@@ -46,6 +41,7 @@ interface ReportInput {
     readonly observedSince?: number | null;
     readonly issues: readonly ReportDatum[] | null;
     readonly pulls: readonly ReportDatum[] | null;
+    readonly ready?: readonly ReportReadyTicket[] | null;
     readonly leadTimes?: readonly ReportDatum[] | null;
     readonly sources: Fields;
   };
@@ -180,6 +176,17 @@ function metricCollection(input: ReportInput, window: ReportWindow) {
   });
   const metrics = {
     ...outcomeMetrics(input, window),
+    ...reportFlowMetrics(
+      {
+        flow: input.flow,
+        completions: input.completions,
+        ready: {
+          tickets: input.github?.ready ?? null,
+          observedSince: input.github?.observedSince ?? null,
+        },
+      },
+      window,
+    ),
     ...effectMetrics(input, window),
     ...githubMetrics(input, window),
     "cost.medianRunUsd": costMetric,
@@ -212,6 +219,14 @@ export function loopReport(input: ReportInput) {
     window: { start, end, hours: input.since },
     semantics: {
       tickets: "currently-closed-completed",
+      flowLanes: "current-queue-workflow-and-lane-setting",
+      flowTickets:
+        "ready-label-intervals-and-current-ticket-body-dependency-close-times",
+      flowIdle:
+        "elapsed-hours-with-spare-capacity-and-at-least-one-eligible-ticket",
+      flowWait: "sum-of-ticket-hours-by-dependency-or-full-lanes",
+      flowStreak:
+        "terminal-time-then-sequence;current-carries-history;longest-counts-window-ends",
       costs: "lifetime-turn-cost-attributed-at-run-end",
     },
     ...metricCollection(input, window),
@@ -227,7 +242,6 @@ export function loopReport(input: ReportInput) {
     },
     coverage: {
       ci: unavailable,
-      flow: unavailable,
       quality: unavailable,
       operator: unavailable,
       ticketClosureHistory: unavailable,

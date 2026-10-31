@@ -15,6 +15,14 @@ const names = [
   "phases.codeReview.medianMinutes",
   "phases.merge.medianMinutes",
   "cost.medianCompletedTicketUsd",
+  "flow.busyLaneShare",
+  "flow.idleLaneHoursWithReadyTicket",
+  "flow.peakActiveRuns",
+  "flow.readyWaitHours.dependency",
+  "flow.readyWaitHours.noLane",
+  "flow.scheduleSkips",
+  "flow.unsuccessfulStreak.current",
+  "flow.unsuccessfulStreak.longest",
 ];
 
 await test("CLV-243 README documents every new report value and completed-ticket details", async () => {

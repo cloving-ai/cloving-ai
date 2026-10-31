@@ -1,23 +1,28 @@
 import type { ReportDatum } from "../report-statistics.ts";
-import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import {
+  repositoryReader,
+  issueTimeline,
+  rows,
+  identity,
+  timestamp,
+  type Reader,
+  type GithubReportInput,
+} from "./report-github-reader.ts";
+import { readyTicketsOf } from "./report-ready.ts";
+import type { ReportReadyTicket } from "../report-flow-types.ts";
 
 export interface ReportGithub {
   readonly observedSince: number | null;
   readonly issues: readonly ReportDatum[] | null;
   readonly pulls: readonly ReportDatum[] | null;
   readonly leadTimes: readonly ReportDatum[] | null;
+  readonly ready: readonly ReportReadyTicket[] | null;
   readonly sources: Readonly<
     Record<
-      "issues" | "pulls" | "history" | "timelines",
+      "issues" | "pulls" | "history" | "timelines" | "ready",
       { readonly status: string; readonly reason?: string }
     >
   >;
-}
-
-interface GithubReportInput {
-  readonly since: string;
-  readonly settings?: WatchPrSettings;
-  readonly retryMilliseconds?: number;
 }
 
 export async function readReportGithub(
@@ -30,7 +35,9 @@ export async function readReportGithub(
       issues: null,
       pulls: null,
       leadTimes: null,
+      ready: null,
       sources: {
+        ready: { status: "unavailable", reason: "configuration-or-identity" },
         issues: { status: "unavailable", reason: "configuration-or-identity" },
         pulls: { status: "unavailable", reason: "configuration-or-identity" },
         history: { status: "unavailable", reason: "configuration-or-identity" },
@@ -41,20 +48,23 @@ export async function readReportGithub(
       },
     };
   const issueRead = issuesOf(reader, input.since);
-  const [issues, pulls, history, timelines] = await Promise.allSettled([
+  const [issues, pulls, history, timelines, ready] = await Promise.allSettled([
     issueRead,
     pullsOf(reader, input.since),
     repositoryCreatedAt(reader),
     issueRead.then((values) =>
       leadTimesOf(reader, { issues: values, since: input.since }),
     ),
+    readyTicketsOf(reader),
   ]);
   return {
     observedSince: history.status === "fulfilled" ? history.value : null,
     issues: issues.status === "fulfilled" ? issues.value : null,
     pulls: pulls.status === "fulfilled" ? pulls.value : null,
+    ready: ready.status === "fulfilled" ? ready.value : null,
     leadTimes: timelines.status === "fulfilled" ? timelines.value : null,
     sources: {
+      ready: source(ready),
       issues: source(issues),
       pulls: source(pulls),
       history: source(history),
@@ -64,67 +74,6 @@ export async function readReportGithub(
 }
 
 import { record, type Fields } from "../protocol.ts";
-import { githubRetry } from "./github-retry.ts";
-import { prRepository, type PrRepository } from "./watch-pr-identity.ts";
-
-function commandOf(value: string | undefined): readonly string[] {
-  const command: unknown = JSON.parse(value ?? '["gh"]');
-  if (
-    !Array.isArray(command) ||
-    command.length === 0 ||
-    !command.every(
-      (part: unknown) =>
-        typeof part === "string" && part !== "" && !part.includes("\0"),
-    )
-  )
-    throw new Error("configuration");
-  return command.map(String);
-}
-
-function rows(value: unknown): readonly Fields[] {
-  if (!Array.isArray(value)) throw new Error("response");
-  return value.map((item: unknown) => {
-    const row = record(item);
-    if (row === undefined) throw new Error("response");
-    return row;
-  });
-}
-
-function identity(
-  row: Fields,
-  context: {
-    readonly repository: PrRepository;
-    readonly kind: "issues" | "pull";
-  },
-): number {
-  const { repository, kind } = context;
-  const number = row["number"];
-  const url = row["html_url"];
-  if (
-    typeof number !== "number" ||
-    !Number.isSafeInteger(number) ||
-    number <= 0 ||
-    typeof url !== "string" ||
-    url.toLowerCase() !==
-      `https://${repository.host}/${repository.owner}/${repository.repository}/${kind}/${String(number)}`
-  )
-    throw new Error("identity");
-  return number;
-}
-
-function timestamp(value: unknown): number {
-  if (typeof value !== "string" || !Number.isFinite(Date.parse(value)))
-    throw new Error("response");
-  return Date.parse(value);
-}
-
-interface Reader {
-  readonly repository: PrRepository;
-  readonly read: (
-    endpoint: string,
-    flags?: readonly string[],
-  ) => Promise<unknown>;
-}
 
 async function issuesOf(
   reader: Reader,
@@ -198,57 +147,6 @@ async function pullsOf(
   }
 }
 
-async function repositoryReader(input: GithubReportInput): Promise<Reader> {
-  const settings = input.settings;
-  if (settings?.repository === undefined) throw new Error("configuration");
-  const command = commandOf(settings.githubCommand);
-  const signal = AbortSignal.timeout(120_000);
-  const origin = await settings.execute({
-    command: ["git", "config", "--local", "--get-all", "remote.origin.url"],
-    directory: settings.repository,
-    signal,
-  });
-  const repository =
-    origin.status === 0 && origin.errorCode === null
-      ? prRepository(origin.stdout)
-      : null;
-  if (repository === null) throw new Error("identity");
-  const directory = settings.repository;
-  return {
-    repository,
-    read: async (endpoint, flags = []) => {
-      const output = await githubRetry({
-        signal,
-        pollMilliseconds: input.retryMilliseconds ?? 30_000,
-        action: async () => {
-          const output = await settings.execute({
-            directory,
-            signal,
-            command: [
-              ...command,
-              "api",
-              "--method",
-              "GET",
-              "--hostname",
-              repository.host,
-              `repos/${repository.owner}/${repository.repository}${endpoint === "" ? "" : `/${endpoint}`}`,
-              ...flags,
-            ],
-          });
-          if (output.status !== 0 || output.errorCode !== null)
-            throw Object.assign(new Error("github-call-failed"), {
-              status: Number(/\(HTTP (\d{3})\)/.exec(output.stderr)?.[1]),
-              detail: output.stderr,
-            });
-          return output.stdout;
-        },
-      });
-      const parsed: unknown = JSON.parse(output);
-      return parsed;
-    },
-  };
-}
-
 function source(result: PromiseSettledResult<unknown>) {
   if (result.status === "fulfilled") return { status: "available" };
   const reason =
@@ -287,23 +185,15 @@ async function lastReadyAt(
   issue: ReportDatum,
 ): Promise<number | null> {
   let ready: number | null = null;
-  const pages = new Set<string>();
-  for (let page = 1; ; page += 1) {
-    const values = rows(
-      await reader.read(
-        `issues/${String(issue.evidence["issue"])}/timeline?per_page=100&page=${String(page)}`,
-      ),
-    );
-    const signature = JSON.stringify(values);
-    if (pages.has(signature)) throw new Error("response");
-    pages.add(signature);
-    for (const row of values) {
-      if (!readyLabel(row)) continue;
-      const at = timestamp(row["created_at"]);
-      if (at <= issue.at && (ready === null || at > ready)) ready = at;
-    }
-    if (values.length < 100) return ready;
+  for (const row of await issueTimeline(
+    reader,
+    Number(issue.evidence["issue"]),
+  )) {
+    if (!readyLabel(row)) continue;
+    const at = timestamp(row["created_at"]);
+    if (at <= issue.at && (ready === null || at > ready)) ready = at;
   }
+  return ready;
 }
 
 async function leadTimesOf(

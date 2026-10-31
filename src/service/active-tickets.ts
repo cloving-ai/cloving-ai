@@ -52,6 +52,7 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const active = await activeWorkflow(context, workflow.workflowId);
   return {
     queue: {
+      workflowId: workflow.workflowId,
       ...(await queueSpend(context)),
       lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
       busy: active.length,

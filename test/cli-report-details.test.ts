@@ -184,9 +184,21 @@ await test("CLV-243 unavailable GitHub does not read costs beyond the report and
       assert.equal(output.status, 0, output.stderr);
       assert.deepEqual(
         requests
-          .filter((request) => request.operation === "status")
+          .filter(
+            (request) =>
+              request.operation === "status" &&
+              request.parameters["runId"] !== undefined,
+          )
           .map((request) => request.parameters["runId"]),
         ["run-1"],
+      );
+      assert.equal(
+        requests.filter(
+          (request) =>
+            request.operation === "status" &&
+            request.parameters["runId"] === undefined,
+        ).length,
+        1,
       );
       assert.equal(fields(items(parsed(output)["runCosts"])[0])["costUsd"], 0);
     },

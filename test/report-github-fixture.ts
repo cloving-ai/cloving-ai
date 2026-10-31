@@ -69,6 +69,8 @@ function issueOutput(
 }
 
 interface GithubReportOptions {
+  readonly readyIssues?: readonly (readonly unknown[])[];
+  readonly details?: Readonly<Record<number, unknown>>;
   readonly timelineFailures?: readonly WatchCommandOutput[];
   readonly timelines?: Readonly<Record<number, readonly unknown[]>>;
   readonly issues?: unknown;
@@ -84,12 +86,7 @@ export function githubReportFixture(options: GithubReportOptions = {}) {
   const commands: (readonly string[])[] = [];
   let attempts = 0;
   let timelineAttempts = 0;
-  const issueRows = options.issues ?? [[]];
   const pullPages = options.pullPages ?? [options.pulls ?? []];
-  const metadata = {
-    full_name: options.repositoryName ?? "fixture/demo",
-    created_at: options.created ?? "2026-01-01T00:00:00Z",
-  };
   const execute = (
     request: WatchCommandRequest,
   ): Promise<WatchCommandOutput> => {
@@ -101,15 +98,15 @@ export function githubReportFixture(options: GithubReportOptions = {}) {
       });
     const endpoint =
       request.command.find((part) => part.startsWith("repos/")) ?? "";
-    if (endpoint === "repos/fixture/demo")
-      return Promise.resolve(output(metadata));
+    const ready = readyOutput(endpoint, options);
+    if (ready !== undefined) return Promise.resolve(ready);
     if (endpoint.includes("/issues?")) {
       const failure = options.failures?.[attempts];
       attempts += 1;
       return Promise.resolve(
         failure ??
           issueOutput(request, {
-            pages: issueRows,
+            pages: options.issues ?? [[]],
             limit: options.issueOutputLimit,
           }),
       );
@@ -153,4 +150,21 @@ function timelineOutput(input: {
   const failure = input.options.timelineFailures?.[input.attempt];
   const value = input.options.timelines?.[input.issue]?.[input.page - 1];
   return failure ?? output(value === undefined ? [] : value);
+}
+
+function readyOutput(
+  endpoint: string,
+  options: GithubReportOptions,
+): WatchCommandOutput | undefined {
+  if (endpoint === "repos/fixture/demo")
+    return output({
+      full_name: options.repositoryName ?? "fixture/demo",
+      created_at: options.created ?? "2026-01-01T00:00:00Z",
+    });
+  if (endpoint.includes("/issues?state=all"))
+    return output(options.readyIssues?.[pageOf(endpoint) - 1] ?? []);
+  const detail = /issues\/(\d+)$/.exec(endpoint);
+  return detail === null
+    ? undefined
+    : output(options.details?.[Number(detail[1])]);
 }

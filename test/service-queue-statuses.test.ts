@@ -101,3 +101,20 @@ await test("CLV-184 a queue status batch uses terminal event sequences and one r
     assert.equal(malformed["code"], "invalid-request");
     await service.close();
   }));
+
+await test("CLV-244 queue status identifies its workflow and current lanes", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [{ ...harness.registration, admission: 2 }],
+    });
+    try {
+      const status = await call(harness, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.equal(field(status["queue"], "workflowId"), "develop");
+      assert.equal(field(status["queue"], "lanes"), 2);
+    } finally {
+      await service.close();
+    }
+  }));
