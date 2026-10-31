@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { exampleCardForms } from "./watch-action-fixture.ts";
+import { exampleCardForms, multilineCardForm } from "./watch-action-fixture.ts";
 import { boardModel } from "./watch-board-fixture.ts";
 import { played } from "./watch-browser.ts";
 
@@ -52,9 +52,9 @@ globalThis.fetch = async (address, options) => {
   if (submissions.length === 1) throw new Error("lost");
   return { ok: true, json: async () => ({ kind: "result", result: { code: "run-admitted", runId: "run-new" } }) };
 };
-const area = app.all("textarea")[0];
-area.value = "Useful idea";
-area.listeners.get("input").call(area, { currentTarget: area, type: "input" });
+const input = app.all("input")[0];
+input.value = "Useful idea";
+input.listeners.get("input").call(input, { currentTarget: input, type: "input" });
 const submit = () => app.all("form")[0].listeners.get("submit").call(app.all("form")[0], { type: "submit", preventDefault() {} });
 submit();
 submit();
@@ -86,14 +86,10 @@ console.log(JSON.stringify({ submissions, uncertain, html: app.inner, cards: app
   assert.equal(result["cards"], 0);
 });
 
-for (const [workflowId, multiline] of [
-  ["develop", false],
-  ["idea-to-issue", true],
-] as const) {
+for (const form of [...exampleCardForms(), multilineCardForm]) {
+  const { workflowId } = form;
+  const multiline = form.fields[0]?.multiline ?? false;
   await test(`CLV-135 keyboard actions on ${workflowId} require an explicit submit and Escape closes`, () => {
-    const form = exampleCardForms().find(
-      (item) => item.workflowId === workflowId,
-    );
     const result = played(
       { ...boardModel([], { workflows: [workflowId] }), cardForms: [form] },
       `

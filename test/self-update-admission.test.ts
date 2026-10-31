@@ -1,8 +1,10 @@
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
+import type { ServiceRequest } from "../src/protocol.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { selfUpdateActive } from "../tools/self-update-host.ts";
 import { selfUpdater } from "../tools/self-update.ts";
@@ -10,12 +12,12 @@ import { lockCommand, withUpdate } from "./self-update-fixture.ts";
 import { withHarness } from "./service-fixture.ts";
 
 function heldSubmission(code = "no-ready-ticket") {
-  const submitting = Promise.withResolvers<undefined>();
+  const submitting = Promise.withResolvers<ServiceRequest>();
   const release = Promise.withResolvers<undefined>();
   const handle: Handle = async (request) => {
     if (request.operation === "status")
       return { kind: "result", result: { runs: [], next: null } };
-    submitting.resolve(undefined);
+    submitting.resolve(request);
     await release.promise;
     return {
       kind: "error",
@@ -75,7 +77,9 @@ await test("CLV-138 an expired queue hold is renewed before the final idle check
 });
 
 await test("CLV-138 an in-flight queue submission prevents updating before its run is visible", async () => {
-  await withHarness(async ({ stateDirectory: directory, runtimeDirectory }) => {
+  await withHarness(async (harness) => {
+    const { stateDirectory: directory, runtimeDirectory } = harness;
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     await withUpdate(async (fixture) => {
       const { submitting, release, handle } = heldSubmission();
       const listener = await listen({
@@ -83,13 +87,16 @@ await test("CLV-138 an in-flight queue submission prevents updating before its r
         handle,
       });
       const queue = issueQueue({
-        workflowId: "develop-issue",
+        workflowId: workflow.workflowId,
         directory,
         runtimeDirectory,
         intervalMilliseconds: 5,
       });
       try {
-        await submitting.promise;
+        assert.equal(
+          (await submitting.promise).parameters["workflowId"],
+          "develop",
+        );
         const updater = selfUpdater({
           ...fixture.settings,
           directory,
@@ -115,7 +122,9 @@ await test("CLV-138 an in-flight queue submission prevents updating before its r
 });
 
 await test("CLV-138 a failed queue submission releases its marker so updating can proceed", async () => {
-  await withHarness(async ({ stateDirectory: directory, runtimeDirectory }) => {
+  await withHarness(async (harness) => {
+    const { stateDirectory: directory, runtimeDirectory } = harness;
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     await withUpdate(async (fixture) => {
       const { submitting, release, handle } =
         heldSubmission("invalid-ticket-id");
@@ -124,13 +133,16 @@ await test("CLV-138 a failed queue submission releases its marker so updating ca
         handle,
       });
       const queue = issueQueue({
-        workflowId: "develop-issue",
+        workflowId: workflow.workflowId,
         directory,
         runtimeDirectory,
         intervalMilliseconds: 5,
       });
       try {
-        await submitting.promise;
+        assert.equal(
+          (await submitting.promise).parameters["workflowId"],
+          "develop",
+        );
         const updater = selfUpdater({
           ...fixture.settings,
           directory,

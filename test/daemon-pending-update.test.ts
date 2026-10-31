@@ -53,7 +53,7 @@ await test("CLV-141 the hold expires exactly 30 minutes after its start and repo
     const timestamp = clock.now;
     await withPendingUpdate(
       timestamp - 50 * 60 * 1000,
-      async ({ counts, lines, commands, stop }) => {
+      async ({ counts, lines, commands, stop, submittedWorkflowIds }) => {
         await eventually(() => (counts.scans >= 3 ? true : undefined));
         assert.equal(counts.submissions, 0);
         assert.deepEqual(lines, ["Queue holding for pending self-update\n"]);
@@ -65,6 +65,7 @@ await test("CLV-141 the hold expires exactly 30 minutes after its start and repo
         clock.now += 1;
         await eventually(() => (counts.submissions >= 3 ? true : undefined));
         await stop();
+        assert.deepEqual([...new Set(submittedWorkflowIds)], ["develop"]);
         assert.deepEqual(lines, [
           "Queue holding for pending self-update\n",
           "Queue continuing after pending self-update time limit\n",
@@ -136,7 +137,7 @@ await test("CLV-141 a queue restart preserves the hold start and its original de
       await scene.stop();
       clock.now += 20 * 60 * 1000;
       const queue = issueQueue({
-        workflowId: "develop-issue",
+        workflowId: "develop",
         directory: scene.directory,
         runtimeDirectory: scene.runtimeDirectory,
         intervalMilliseconds: 5,

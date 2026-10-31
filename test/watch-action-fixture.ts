@@ -109,11 +109,19 @@ export function exampleCardForms(): readonly CardForm[] {
       workflowId: "idea-to-issue",
       source: "input",
       fields: [
-        { name: "idea", label: "idea", multiline: true, optional: false },
+        { name: "idea", label: "idea", multiline: false, optional: false },
       ],
     },
   ];
 }
+
+export const multilineCardForm: CardForm = {
+  workflowId: "multiline-request",
+  source: "input",
+  fields: [
+    { name: "request", label: "Request", multiline: true, optional: false },
+  ],
+};
 
 export async function cardWatch(runtimeDirectory: string): Promise<void> {
   const project = join(dirname(runtimeDirectory), "project");

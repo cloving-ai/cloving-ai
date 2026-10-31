@@ -1,4 +1,4 @@
-import { exampleCardForms } from "./watch-action-fixture.ts";
+import { exampleCardForms, multilineCardForm } from "./watch-action-fixture.ts";
 import { browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -76,12 +76,16 @@ async function cardBoard(
   };
 }
 
-await test("CLV-135 opening a card focuses its input so immediate Escape closes it", async () => {
-  await using board = await cardBoard();
-  await using browser = await realBrowser();
-  const page = await browser.page({ width: 800, height: 700 });
-  await page.navigate(board.url);
-  const result = await page.evaluate(`new Promise((resolve, reject) => {
+for (const [workflowId, form, focused] of [
+  ["idea-to-issue", undefined, "input"],
+  [multilineCardForm.workflowId, multilineCardForm, "textarea"],
+] as const)
+  await test(`CLV-135 opening ${workflowId} focuses its input so immediate Escape closes it`, async () => {
+    await using board = await cardBoard(workflowId, { form });
+    await using browser = await realBrowser();
+    const page = await browser.page({ width: 800, height: 700 });
+    await page.navigate(board.url);
+    const result = await page.evaluate(`new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { clearInterval(timer); reject(new Error("board not loaded")); }, 5000);
     const timer = setInterval(() => {
       const button = [...document.querySelectorAll("button")].find((item) => item.textContent === "+ Add a card");
@@ -93,14 +97,15 @@ await test("CLV-135 opening a card focuses its input so immediate Escape closes 
       resolve({ focused, forms: document.querySelectorAll("form").length });
     }, 20);
   })`);
-  assert.equal(result["focused"], "textarea");
-  assert.equal(result["forms"], 0);
-});
+    assert.equal(result["focused"], focused);
+    assert.equal(result["forms"], 0);
+  });
 
 for (const [workflowId, modifiers, form] of [
   ["develop", {}, undefined],
-  ["idea-to-issue", { ctrlKey: true }, undefined],
-  ["idea-to-issue", { metaKey: true }, undefined],
+  ["idea-to-issue", {}, undefined],
+  [multilineCardForm.workflowId, { ctrlKey: true }, multilineCardForm],
+  [multilineCardForm.workflowId, { metaKey: true }, multilineCardForm],
   [
     "review-corpus",
     {},
