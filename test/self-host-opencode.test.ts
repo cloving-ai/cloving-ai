@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import {
   ended,
@@ -14,9 +16,12 @@ import {
 import { call } from "./service-fixture.ts";
 import { fakeOpencode, opencodeReport } from "./opencode-fixture.ts";
 
-await test("CLV-212 saved opencode runs develop-prompt and status retains report and total tokens", () =>
+const entry = join(candidatePackageRoot, "src/cli.ts");
+
+await test("CLV-212 saved opencode runs develop and status retains report and total tokens", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(undefined, entry);
+    await writeLocalWorkflow(fixture.repository, { input: "prompt" });
     const config = join(fixture.root, "config");
     await mkdir(join(config, "cloving/projects"), { recursive: true });
     const program = fakeOpencode({ directory: fixture.root });
@@ -36,12 +41,13 @@ await test("CLV-212 saved opencode runs develop-prompt and status retains report
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-prompt",
+          workflowId: "develop",
           source: "prompt",
           submission: { prompt: "Make an opencode change." },
           commandId: "saved-opencode",
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       const runId = String(admitted["runId"]);
       const decision = await reached(
         async () =>
@@ -54,12 +60,13 @@ await test("CLV-212 saved opencode runs develop-prompt and status retains report
             )["decisions"],
           )[0],
       );
-      assert.ok(String(field(decision, "prompt")).includes(opencodeReport));
+      assert.match(String(field(decision, "prompt")), /^Review this subject:/);
       const status = await call(fixture, {
         operation: "status",
         parameters: { runId },
       });
       const turn = items(field(status["run"], "workerTurns"))[0];
+      assert.ok(String(field(turn, "summary")).includes(opencodeReport));
       assert.equal(field(turn, "harness"), "opencode");
       assert.deepEqual(field(turn, "usage"), {
         input_tokens: 300,

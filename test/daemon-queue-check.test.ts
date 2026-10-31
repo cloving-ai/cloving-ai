@@ -25,10 +25,12 @@ function changingRun(counts: {
   reads: number;
   submissions: number;
   readonly submissionReads: number[];
+  readonly workflowIds: string[];
 }): Handle {
   const runId = runIdentity("prior-command");
   return (request) => {
     if (request.operation === "run") {
+      counts.workflowIds.push(String(request.parameters["workflowId"]));
       counts.submissionReads.push(counts.reads);
       counts.submissions += 1;
       return Promise.resolve(empty);
@@ -47,7 +49,7 @@ function changingRun(counts: {
     }
     return Promise.resolve(
       result({
-        runs: [{ runId, workflowId: "develop-issue", state: "completed" }],
+        runs: [{ runId, workflowId: "develop", state: "completed" }],
         next: null,
       }),
     );
@@ -55,13 +57,19 @@ function changingRun(counts: {
 }
 
 await test("CLV-084 a tracked run ending between status reads cannot admit another ticket before its outcome is checked", async () => {
-  const counts = { reads: 0, submissions: 0, submissionReads: [] };
+  const counts = {
+    reads: 0,
+    submissions: 0,
+    submissionReads: [],
+    workflowIds: [],
+  };
   await withQueue(
     { commands: ["prior-command"], handle: changingRun(counts) },
     async (scene) => {
       await eventually(() => (counts.submissions > 0 ? true : undefined));
       await scene.stop();
       assert.ok(counts.submissions > 0);
+      assert.deepEqual([...new Set(counts.workflowIds)], ["develop"]);
       assert.deepEqual([...new Set(counts.submissionReads)], [3]);
       assert.deepEqual(await scene.commands(), []);
     },
@@ -123,16 +131,14 @@ function pagedRuns(tracking: { pages: string[]; submissions: number }): Handle {
               runs: [
                 {
                   runId: "first",
-                  workflowId: "develop-issue",
+                  workflowId: "develop",
                   state: "completed",
                 },
               ],
               next: "first",
             }
           : {
-              runs: [
-                { runId: "last", workflowId: "develop-issue", state: "paused" },
-              ],
+              runs: [{ runId: "last", workflowId: "develop", state: "paused" }],
               next: null,
             },
       ),
@@ -241,7 +247,7 @@ await test("CLV-092 repeated timeouts wait a full cycle, reuse the request and t
           assert.deepEqual(original, {
             operation: "run",
             parameters: {
-              workflowId: "develop-issue",
+              workflowId: "develop",
               source: "ticket",
               submission: { ticket: "next" },
               commandId: original.parameters["commandId"],
@@ -291,7 +297,7 @@ await test("CLV-092 an active issue defers a pending retry and preserves its req
     async (scene) => {
       try {
         const first = await eventually(() => retry.submissions[0]);
-        retry.status.runs = [{ workflowId: "develop-issue", state: "running" }];
+        retry.status.runs = [{ workflowId: "develop", state: "running" }];
         first.reply.resolve(timeout);
         const priorScans = retry.status.scans;
         await eventually(() =>
@@ -302,9 +308,7 @@ await test("CLV-092 an active issue defers a pending retry and preserves its req
         assert.deepEqual(await scene.commands(), [
           first.request.parameters["commandId"],
         ]);
-        retry.status.runs = [
-          { workflowId: "develop-issue", state: "completed" },
-        ];
+        retry.status.runs = [{ workflowId: "develop", state: "completed" }];
         const second = await eventually(() => retry.submissions[1]);
         assert.deepEqual(second.request, first.request);
         assert.deepEqual(await scene.commands(), [
