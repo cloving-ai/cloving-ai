@@ -54,6 +54,7 @@ for (const template of ["develop", "idea-to-issue"] as const)
         assert.deepEqual(
           listed["workflows"].filter(
             (id: unknown) =>
+              typeof id === "string" &&
               !Object.values(bundledWorkflowIds).some(
                 (bundled) => id === bundled,
               ),
