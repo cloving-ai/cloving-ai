@@ -11,7 +11,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { issueQueue } from "./src/daemon/issue-queue.ts";
 import { listen } from "./src/service/transport.ts";
 import { eventually, withHarness } from "./test/service-fixture.ts";
-import { writeDeclaredWorkflow } from "./test/workflow-folder-fixture.ts";
 const commandIds = async (file) => {
   const value = JSON.parse(await readFile(file, "utf8"));
   return Array.isArray(value) ? value : value.commands;
@@ -38,7 +37,6 @@ function statusFailure(options: {
 }): string {
   return observed(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   const commands = ${JSON.stringify(options.commands)};
   const replies = ${JSON.stringify(options.replies)};
@@ -136,7 +134,6 @@ await test("CLV-084 invalid command journals stop polling without replacing the 
   ]) {
     const stderr = observed(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   const original = ${JSON.stringify(JSON.stringify(value))};
   await writeFile(file, original);
@@ -153,7 +150,6 @@ await withHarness(async (harness) => {
 await test("CLV-084 unreadable command journals stop polling with one diagnostic", () => {
   const stderr = observed(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   await mkdir(join(harness.stateDirectory, "queue-commands.json"));
   const queue = issueQueue({ workflowId: "develop", directory: harness.stateDirectory,
     runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 5 });
@@ -167,7 +163,6 @@ await withHarness(async (harness) => {
 function retriedSubmission(code: string) {
   return observation(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   let commandId;
   const listener = await listen({
@@ -223,7 +218,6 @@ await test("CLV-102 an unavailable ticket command reports one retry and keeps it
 await test("CLV-102 an unavailable next-ticket command admits one run with the same request on the next cycle", () => {
   const output = observation(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   const requests = [];
   const intervalMilliseconds = 40;
@@ -276,7 +270,6 @@ await withHarness(async (harness) => {
 function stoppedSubmission(codes: readonly string[]) {
   return observation(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   const codes = ${JSON.stringify(codes)};
   const requests = [];
@@ -336,7 +329,6 @@ await test("CLV-092 empty and active refusals retire a timed-out command and all
   for (const code of ["no-ready-ticket", "workflow-active"]) {
     const output = observation(`
 await withHarness(async (harness) => {
-  await writeDeclaredWorkflow(harness.projectDirectory);
   const file = join(harness.stateDirectory, "queue-commands.json");
   const requests = [];
   const released = Promise.withResolvers();

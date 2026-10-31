@@ -5,7 +5,6 @@ import { issueQueue } from "../src/daemon/issue-queue.ts";
 import { record } from "../src/protocol.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { withHarness } from "./service-fixture.ts";
-import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 
 async function queueCommands(file: string): Promise<readonly string[]> {
   const saved: unknown = JSON.parse(await readFile(file, "utf8"));
@@ -36,7 +35,6 @@ export async function withQueue(
   }) => Promise<void>,
 ): Promise<void> {
   return withHarness(async (harness) => {
-    await writeDeclaredWorkflow(harness.projectDirectory);
     const directory = harness.stateDirectory;
     const file = join(directory, "queue-commands.json");
     await writeFile(

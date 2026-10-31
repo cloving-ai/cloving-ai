@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import {
   ended,
@@ -14,11 +16,15 @@ import {
 import { call, parsed, runCli } from "./service-fixture.ts";
 import { unknownUsage } from "./worker-report-fixture.ts";
 
+const entry = join(candidatePackageRoot, "src/cli.ts");
+
 await test("CLV-215 the service runs a generic harness and CLI status keeps unknown usage", () =>
   withoutChildren(async () => {
     const fixture = await scene(
       'for await (const chunk of process.stdin) String(chunk); console.log("Generic report.\\nTicket status: complete");',
+      entry,
     );
+    await writeLocalWorkflow(fixture.repository);
     const config = join(fixture.root, "config");
     await mkdir(join(config, "cloving/projects"), { recursive: true });
     await writeFile(
@@ -36,12 +42,13 @@ await test("CLV-215 the service runs a generic harness and CLI status keeps unkn
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-ticket",
+          workflowId: "develop",
           source: "ticket",
           submission: { ticket: "CLV-900" },
           commandId: "generic-turn",
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       const runId = String(admitted["runId"]);
       const turn = await reached(
         async () =>
