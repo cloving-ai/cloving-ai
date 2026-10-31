@@ -39,13 +39,13 @@ await test("CLV-156 accepts only whole test concurrency settings from 1 to 8", (
     );
 });
 
-await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
+await test("CLV-099 accepts only whole check time factors from 1 to 9", () => {
   assert.equal(parseCheckTimeFactor(undefined), 1);
-  for (const value of ["1", "2", "3", "4", "5"])
+  for (const value of ["1", "2", "3", "4", "5", "6", "7", "8", "9"])
     assert.equal(parseCheckTimeFactor(value), Number(value));
   for (const value of [
     "0",
-    "6",
+    "10",
     "1.5",
     "-1",
     "3x",
@@ -58,7 +58,7 @@ await test("CLV-099 accepts only whole check time factors from 1 to 5", () => {
   ])
     assert.throws(
       () => parseCheckTimeFactor(value),
-      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5/,
+      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 9/,
     );
 });
 

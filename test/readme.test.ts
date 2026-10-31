@@ -57,7 +57,7 @@ await test("CLV-201 the README folder workflow example passes candidate declarat
 await test("CLV-099 the README explains the developer gate time factor and default", () => {
   assert.match(
     readme,
-    /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5.*default 1.*test and coverage.*time limits/,
+    /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 9.*default 1.*test and coverage.*time limits/,
   );
 });
 

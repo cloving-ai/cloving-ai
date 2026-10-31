@@ -57,14 +57,14 @@ await test("CLV-107 QG-15 passes the check time factor to each hook subprocess",
 });
 
 await test("CLV-107 rejects invalid factors before any inner hook check runs", () => {
-  for (const factor of ["0", "6", "1.5", "", "3x"]) {
+  for (const factor of ["0", "10", "1.5", "", "3x"]) {
     const result = probeHookCheck({
       environment: { CLOVING_CHECK_TIME_FACTOR: factor },
       expectedExit: 2,
     });
     assert.equal(
       result.diagnostic,
-      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 5",
+      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 9",
     );
     assert.equal(result.stdout, "");
     assert.doesNotMatch(result.stderr, /check:start|input-policy:read/);

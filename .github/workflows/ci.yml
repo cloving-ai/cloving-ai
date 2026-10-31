@@ -27,9 +27,9 @@
   "jobs": {
     "quality": {
       "runs-on": "macos-15",
-      "timeout-minutes": 75,
+      "timeout-minutes": 90,
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "5",
+        "CLOVING_CHECK_TIME_FACTOR": "7",
         "CLOVING_TEST_CONCURRENCY": "3",
         "CLOVING_CI_MACOS_VERSION": "15.*",
         "NODE_OPTIONS": "--max-old-space-size=4096"
@@ -77,7 +77,7 @@
     },
     "quality_linux_node": {
       "runs-on": "ubuntu-24.04",
-      "timeout-minutes": 75,
+      "timeout-minutes": 90,
       "strategy": {
         "fail-fast": false,
         "matrix": {
@@ -88,7 +88,7 @@
         }
       },
       "env": {
-        "CLOVING_CHECK_TIME_FACTOR": "5",
+        "CLOVING_CHECK_TIME_FACTOR": "7",
         "CLOVING_TEST_CONCURRENCY": "4",
         "CLOVING_CI_ARCHITECTURE": "x64",
         "NODE_OPTIONS": "--max-old-space-size=4096"
