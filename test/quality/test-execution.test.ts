@@ -150,7 +150,7 @@ await test("CLV-099 rejects an invalid time factor before the first gate check",
     assert.equal(result.status, 1);
     assert.match(
       result.stderr,
-      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 5/,
+      /CLOVING_CHECK_TIME_FACTOR.*whole number from 1 to 9/,
     );
     assert.equal(result.stdout, "");
   });

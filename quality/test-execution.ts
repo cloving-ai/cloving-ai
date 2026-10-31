@@ -36,9 +36,9 @@ export function parseTestConcurrency(
 
 export function parseCheckTimeFactor(value: string | undefined): number {
   if (value === undefined) return 1;
-  if (!/^[1-5]$/.test(value))
+  if (!/^[1-9]$/.test(value))
     throw new Error(
-      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 5",
+      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 9",
     );
   return Number(value);
 }

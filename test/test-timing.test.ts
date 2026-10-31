@@ -62,10 +62,10 @@ await test("CLV-147 test durations follow the check time factor and reject inval
     assert.equal(testMilliseconds(200), 200);
     process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
     assert.equal(testMilliseconds(200), 600);
-    for (const factor of ["0", "6", "1.5", "invalid", ""]) {
+    for (const factor of ["0", "10", "1.5", "invalid", ""]) {
       process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
       assert.throws(() => testMilliseconds(200), {
-        message: "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 5",
+        message: "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 9",
       });
     }
   } finally {
