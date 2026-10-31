@@ -86,6 +86,11 @@ const actions = {
   "api GET check-runs": () => out([{ check_runs: [{ id: 101, name: "quality_linux", app: { slug: "github-actions" }, status: "completed", conclusion: "success", details_url: null }] }]),
   "api GET attempt-jobs": () => out([{ jobs: [101, 102].map((id) => ({ check_run_url: "https://api.github.com/repos/acme/demo/check-runs/" + id })) }]),
   "api GET workflow-run": () => out({ run_attempt: 2, status: "completed" }),
+  "api GET workflow-runs": () => {
+    const head = new URL("https://api.github.com/" + path).searchParams.get("head_sha");
+    const paths = execFileSync("git", ["-C", origin, "ls-tree", "-r", "--name-only", head, "--", ".github/workflows"], { encoding: "utf8" }).trim().split("\\n");
+    out([{ workflow_runs: paths.map((path, index) => ({ id: 88 + index, path, head_sha: head, event: "pull_request", status: "completed", conclusion: "success" })) }]);
+  },
   "run rerun": () => out(""),
   "run view": () => out(args.includes("--log-failed") ? "Failed assertion" : { jobs: [{ databaseId: 101, name: "quality_linux", steps: [{ name: "Run quality", conclusion: "failure" }] }] }),
   "api GET issues": () => {
@@ -121,7 +126,7 @@ const actions = {
       return;
     }
     const merged = pr.state === "MERGED";
-    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), head: { sha: merged ? pr.mergedHead : readHead(pr) } });
+    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), base: { ref: pr.base, sha: headOf(pr.base) }, head: { sha: merged ? pr.mergedHead : readHead(pr) } });
   },
   "api PUT merge": () => {
     const pr = state.prs.find((item) => item.number === number);
@@ -145,7 +150,7 @@ const actions = {
   },
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
-const kind = path.includes("/attempts/") ? "attempt-jobs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
+const kind = path.includes("/attempts/") ? "attempt-jobs" : path.includes("/actions/runs?") ? "workflow-runs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));

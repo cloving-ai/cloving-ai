@@ -1,9 +1,68 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
-import { checkRun, ciScenario } from "./github-ci-fixture.ts";
+import { checkRun, ciScenario, workflowRun } from "./github-ci-fixture.ts";
 
 afterEach(() => {
   mock.restoreAll();
+});
+
+await test("CLV-258 a passing fast workflow cannot hide a workflow whose checks arrive five minutes later", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  const fast = checkRun({ name: "fast" });
+  const late = checkRun({ id: 102, name: "quality" });
+  const fastWorkflow = workflowRun({ path: ".github/workflows/fast.yml" });
+  const { result, times } = await ciScenario({
+    workflowFiles: {
+      ".github/workflows/fast.yml": "on: pull_request\n",
+      ".github/workflows/ci.yml": "on: pull_request\n",
+    },
+    snapshots: [
+      [fast],
+      [fast],
+      [fast],
+      [fast],
+      [fast],
+      [fast, { ...late, status: "queued", conclusion: null }],
+      [fast, late],
+    ],
+    workflowSnapshots: [
+      [fastWorkflow],
+      [fastWorkflow],
+      [fastWorkflow],
+      [fastWorkflow],
+      [fastWorkflow],
+      [fastWorkflow, workflowRun({ status: "in_progress", conclusion: null })],
+      [fastWorkflow, workflowRun()],
+    ],
+    onCheck: () => {
+      now += 60_000;
+    },
+  });
+  assert.equal(result, undefined);
+  assert.deepEqual(
+    times,
+    [0, 60_000, 120_000, 180_000, 240_000, 300_000, 360_000],
+  );
+});
+
+await test("CLV-258 a docs-only pull request keeps the grace when paths exclude it", async () => {
+  let now = 0;
+  mock.method(Date, "now", () => now);
+  const { result, times } = await ciScenario({
+    workflowFiles: {
+      ".github/workflows/ci.yml":
+        'on:\n  pull_request:\n    paths: ["src/**"]\n',
+    },
+    changedPaths: ["docs/guide.md"],
+    snapshots: [[]],
+    onCheck: () => {
+      now += 30_000;
+    },
+    timing: { ciLimitMilliseconds: 120_000 },
+  });
+  assert.equal(result, undefined);
+  assert.deepEqual(times, [0, 30_000]);
 });
 
 await test("CLV-258 a pull-request workflow still waits after two minutes without checks", async () => {

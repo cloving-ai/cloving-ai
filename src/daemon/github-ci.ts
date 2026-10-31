@@ -2,7 +2,10 @@ import { settingsEnvironment } from "../cli/project-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { githubText } from "./github-calls.ts";
 import { githubRead } from "./github-retry.ts";
-import { hasPullRequestWorkflow } from "./github-ci-workflows.ts";
+import {
+  pendingWorkflows,
+  pullRequestWorkflows,
+} from "./github-ci-workflows.ts";
 import {
   ciWait,
   workflowAttempt,
@@ -321,13 +324,14 @@ async function ciSettings(operation: Operation, commit: string) {
     ...operation.settings.timing,
   };
   const required = requiredChecks(operation);
-  const expectsChecks =
-    required === undefined && (await hasPullRequestWorkflow(operation, commit));
+  const workflows =
+    required === undefined ? await pullRequestWorkflows(operation, commit) : [];
   return {
     required,
+    workflows,
     poll: timing.pollMilliseconds,
     limit: timing.ciLimitMilliseconds,
-    grace: expectsChecks ? Infinity : timing.ciGraceMilliseconds,
+    grace: workflows.length > 0 ? Infinity : timing.ciGraceMilliseconds,
   };
 }
 
@@ -337,7 +341,10 @@ export async function waitForCi(
 ): Promise<CiResult | undefined> {
   const wait = await ciWait(operation, commit);
   const started = wait.startedAt;
-  const { required, grace, poll, limit } = await ciSettings(operation, commit);
+  const { required, workflows, grace, poll, limit } = await ciSettings(
+    operation,
+    commit,
+  );
   const names = new Set(required);
   for (;;) {
     const checks = latestRuns(await checkRuns(operation, commit), required);
@@ -359,7 +366,11 @@ export async function waitForCi(
           failed: retried.failures,
         }),
       };
-    const pending = [...pendingChecks(checks, names), ...retried.pending];
+    const pending = [
+      ...pendingChecks(checks, names),
+      ...retried.pending,
+      ...(await pendingWorkflows(operation, { commit, paths: workflows })),
+    ];
     if (
       pending.length === 0 &&
       (required !== undefined ||

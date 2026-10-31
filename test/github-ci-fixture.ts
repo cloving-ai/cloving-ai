@@ -25,8 +25,26 @@ export function checkRun(
   };
 }
 
+export function workflowRun(
+  overrides: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> {
+  return {
+    id: 88,
+    path: ".github/workflows/ci.yml",
+    event: "pull_request",
+    head_sha: "a".repeat(40),
+    status: "completed",
+    conclusion: "success",
+    ...overrides,
+  };
+}
+
 interface CiScenarioOptions {
   readonly workflowFiles?: Readonly<Record<string, string>>;
+  readonly changedPaths?: readonly string[];
+  readonly baseBranch?: string;
+  readonly workflowSnapshots?: readonly (readonly unknown[])[];
+  readonly workflowPages?: unknown;
   readonly requiredChecks?: readonly string[] | null;
   readonly snapshots: readonly (readonly unknown[])[];
   readonly pages?: unknown;
@@ -68,12 +86,42 @@ function checkRunsReply(options: CiScenarioOptions, times: number[]): string {
   );
 }
 
+function workflowRunsReply(
+  options: CiScenarioOptions,
+  times: readonly number[],
+): string {
+  if (Object.hasOwn(options, "workflowPages"))
+    return JSON.stringify(options.workflowPages);
+  const index = Math.max(0, times.length - 1);
+  const checks =
+    options.snapshots[Math.min(index, options.snapshots.length - 1)] ?? [];
+  const pending = checks.some(
+    (check) => Reflect.get(Object(check), "status") !== "completed",
+  );
+  const runs =
+    options.workflowSnapshots?.[
+      Math.min(index, options.workflowSnapshots.length - 1)
+    ] ??
+    (checks.length === 0
+      ? []
+      : Object.keys(options.workflowFiles ?? {}).map((path) =>
+          workflowRun({
+            path,
+            status: pending ? "in_progress" : "completed",
+            conclusion: pending ? null : "success",
+          }),
+        ));
+  return JSON.stringify([{ workflow_runs: runs }]);
+}
+
 function ciReply(
   options: CiScenarioOptions,
   observed: { readonly calls: (readonly string[])[]; readonly times: number[] },
 ): Operation["calls"]["gh"] {
   return async (parts) => {
     observed.calls.push(parts);
+    if (parts.some((part) => part.includes("/actions/runs?")))
+      return workflowRunsReply(options, observed.times);
     if (parts.some((part) => part.includes("/attempts/")))
       return Promise.resolve(attemptJobsReply(options));
     if (parts.some((part) => part.includes("/actions/runs/")))
@@ -83,8 +131,33 @@ function ciReply(
         ),
       );
     if (!parts.some((part) => part.includes("/check-runs")))
-      return Promise.resolve(options.reply?.(parts) ?? "{}");
+      return Promise.resolve(
+        options.reply?.(parts) ??
+          JSON.stringify({
+            base: { ref: options.baseBranch ?? "main", sha: "b".repeat(40) },
+          }),
+      );
     return Promise.resolve(checkRunsReply(options, observed.times));
+  };
+}
+
+function ciGitReply(
+  options: CiScenarioOptions,
+  gitCalls: (readonly string[])[],
+): Operation["calls"]["git"] {
+  return (_directory, parts) => {
+    gitCalls.push(parts);
+    const files = options.workflowFiles ?? {};
+    if (parts[0] === "ls-tree")
+      return Promise.resolve(Object.keys(files).join("\0"));
+    if (parts[0] === "diff")
+      return Promise.resolve(
+        (options.changedPaths ?? ["src/main.ts"]).join("\0"),
+      );
+    const path = parts[1]?.split(":").slice(1).join(":") ?? "";
+    if (parts[0] === "show" && Object.hasOwn(files, path))
+      return Promise.resolve(files[path] ?? "");
+    return Promise.reject(new Error("unexpected git call"));
   };
 }
 
@@ -101,7 +174,7 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     options.folder ?? (await mkdtemp(join(tmpdir(), "cloving-ci-")));
   const operation: Operation = {
     target: "ticket/one",
-    payload: {},
+    payload: { number: 1 },
     folder,
     signal: options.signal ?? new AbortController().signal,
     settings: {
@@ -121,16 +194,7 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     },
     calls: {
       gh: ciReply(options, { calls, times }),
-      git: (_directory, parts) => {
-        gitCalls.push(parts);
-        const files = options.workflowFiles ?? {};
-        if (parts[0] === "ls-tree")
-          return Promise.resolve(Object.keys(files).join("\0"));
-        const path = parts[1]?.split(":").slice(1).join(":") ?? "";
-        if (parts[0] === "show" && Object.hasOwn(files, path))
-          return Promise.resolve(files[path] ?? "");
-        return Promise.reject(new Error("unexpected git call"));
-      },
+      git: ciGitReply(options, gitCalls),
       run: () => Promise.reject(new Error("unexpected local check")),
     },
   };
