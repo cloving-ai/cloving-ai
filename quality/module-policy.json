@@ -1452,6 +1452,7 @@
     "tools/admit-workflow.ts": "candidate-adapter",
     "tools/check-clean.ts": "build",
     "tools/check-protected-quality.ts": "build",
+    "tools/check-quality-sources.ts": "build",
     "tools/check-quality.ts": "build",
     "tools/check-shard-coverage.ts": "build",
     "tools/check-shells.ts": "build",

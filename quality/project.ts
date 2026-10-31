@@ -71,6 +71,26 @@ export async function checkProject(
   return { files, completed, timings, warnings: checkTimeWarnings(timings) };
 }
 
+export async function checkProjectTestShard(
+  directory: string,
+  options: ProjectOptions,
+): Promise<ProjectReport> {
+  if (!parseTestShard(options.shard)) throw new Error("missing-test-shard");
+  const timings = options.commandOptions?.timings ?? [];
+  const measured = {
+    ...options,
+    commandOptions: { ...options.commandOptions, timings },
+  };
+  const files = await sourceFiles(directory, measured);
+  await checkProjectTests(directory, { files, options: measured });
+  return {
+    files,
+    completed: ["tests"],
+    timings,
+    warnings: checkTimeWarnings(timings),
+  };
+}
+
 export async function checkProjectSources(
   directory: string,
   options: ProjectOptions,
