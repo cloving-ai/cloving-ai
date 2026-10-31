@@ -32,13 +32,96 @@ export function pullRequestTrigger(source: string): unknown {
   }
 }
 
-function patternToken(token: string): string {
-  if (token === "**/") return "(?:.*/)?";
-  if (token === "**") return ".*";
-  if (token === "*") return "[^/]*";
-  if (token === "?" || token === "+" || token.startsWith("[")) return token;
+interface CharacterToken {
+  readonly kind: "character";
+  readonly matcher: RegExp;
+  readonly optional: boolean;
+  readonly repeat: boolean;
+}
+
+type PatternToken = CharacterToken | { readonly kind: "directory" };
+
+function patternToken(token: string): PatternToken {
+  if (token === "**/") return { kind: "directory" };
+  if (token === "*" || token === "**")
+    return {
+      kind: "character",
+      matcher: token === "*" ? /[^/]/ : /[\s\S]/,
+      optional: true,
+      repeat: true,
+    };
   const literal = token.startsWith("\\") ? token.slice(1) : token;
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const source = token.startsWith("[")
+    ? token
+    : literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return {
+    kind: "character",
+    matcher: new RegExp(`^${source}$`),
+    optional: false,
+    repeat: false,
+  };
+}
+
+function patternTokens(source: string): readonly PatternToken[] {
+  const tokens: PatternToken[] = [];
+  for (const raw of source.match(
+    /\*\*\/|\*\*|\*|\[[a-zA-Z0-9-]+\]|\\[\s\S]|[\s\S]/g,
+  ) ?? []) {
+    if (raw !== "?" && raw !== "+") {
+      tokens.push(patternToken(raw));
+      continue;
+    }
+    const previous = tokens.pop();
+    if (previous?.kind !== "character" || previous.optional || previous.repeat)
+      throw new Error("invalid-workflow-filter");
+    tokens.push({ ...previous, optional: raw === "?", repeat: raw === "+" });
+  }
+  return tokens;
+}
+
+interface PatternState {
+  readonly value: string;
+  readonly previous: readonly boolean[];
+}
+
+function advanceDirectory({
+  value,
+  previous,
+}: PatternState): readonly boolean[] {
+  let reachable = false;
+  return Array.from({ length: value.length + 1 }, (_, index) => {
+    const matches =
+      previous[index] === true || (reachable && value[index - 1] === "/");
+    reachable ||= previous[index] === true;
+    return matches;
+  });
+}
+
+function advancePattern(
+  token: CharacterToken,
+  input: PatternState,
+): readonly boolean[] {
+  const { value, previous } = input;
+  const next: boolean[] = [];
+  for (let index = 0; index <= value.length; index += 1) {
+    const consumes = index > 0 && token.matcher.test(value[index - 1] ?? "");
+    next[index] =
+      (token.optional && previous[index] === true) ||
+      (consumes &&
+        (previous[index - 1] === true ||
+          (token.repeat && next[index - 1] === true)));
+  }
+  return next;
+}
+
+function matchesPattern(value: string, source: string): boolean {
+  let previous: readonly boolean[] = [true];
+  for (const token of patternTokens(source))
+    previous =
+      token.kind === "directory"
+        ? advanceDirectory({ value, previous })
+        : advancePattern(token, { value, previous });
+  return previous[value.length] === true;
 }
 
 function selected(
@@ -49,11 +132,8 @@ function selected(
   for (const pattern of patterns) {
     const negative = pattern.startsWith("!");
     const source = negative ? pattern.slice(1) : pattern;
-    const tokens =
-      source.match(/\*\*\/|\*\*|\*|\[[a-zA-Z0-9-]+\]|\\.|./g) ?? [];
     try {
-      if (new RegExp(`^${tokens.map(patternToken).join("")}$`).test(value))
-        included = !negative;
+      if (matchesPattern(value, source)) included = !negative;
     } catch {
       return undefined;
     }

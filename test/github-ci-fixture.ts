@@ -148,13 +148,14 @@ function ciGitReply(
   return (_directory, parts) => {
     gitCalls.push(parts);
     const files = options.workflowFiles ?? {};
+    if (parts[0] === "fetch") return Promise.resolve("");
     if (parts[0] === "ls-tree")
       return Promise.resolve(Object.keys(files).join("\0"));
     if (parts[0] === "diff")
       return Promise.resolve(
         (options.changedPaths ?? ["src/main.ts"]).join("\0"),
       );
-    const path = parts[1]?.split(":").slice(1).join(":") ?? "";
+    const path = (parts[1] ?? "").split(":").slice(1).join(":");
     if (parts[0] === "show" && Object.hasOwn(files, path))
       return Promise.resolve(files[path] ?? "");
     return Promise.reject(new Error("unexpected git call"));

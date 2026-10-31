@@ -42,6 +42,13 @@ async function appliesToPull(
   )
     return true;
   const { base, branch } = await pullBase(operation);
+  await operation.calls.git(operation.settings.repository, [
+    "fetch",
+    "--quiet",
+    "--no-tags",
+    "origin",
+    base,
+  ]);
   const paths = await operation.calls.git(operation.settings.repository, [
     "diff",
     "--name-only",

@@ -1,10 +1,65 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, mock, test } from "node:test";
+import { calls } from "../src/daemon/github-calls.ts";
+import { pullRequestWorkflows } from "../src/daemon/github-ci-workflows.ts";
+import { git } from "./claude-worker-fixture.ts";
 import { checkRun, ciScenario, workflowRun } from "./github-ci-fixture.ts";
+import { advancedBase } from "./github-merge-fixture.ts";
+import { opened, withGithub } from "./github-worker-fixture.ts";
 
 afterEach(() => {
   mock.restoreAll();
 });
+
+await test("CLV-258 workflow path selection fetches a base that moves after the last fetch", () =>
+  withGithub(async (scene) => {
+    const workflows = join(scene.repository, ".github/workflows");
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(
+      join(workflows, "ci.yml"),
+      'on: {pull_request: {paths: ["src/**"]}}\n',
+    );
+    git(scene.repository, ["add", ".github/workflows"]);
+    git(scene.repository, ["commit", "-qm", "Add the workflow"]);
+    git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    const commit = await opened(scene, scene.worker());
+    const stale = join(scene.directory, "stale");
+    execFileSync("git", ["clone", "--quiet", scene.origin, stale]);
+    const base = advancedBase(scene);
+    assert.throws(() =>
+      execFileSync("git", ["cat-file", "-e", base], {
+        cwd: stale,
+        stdio: "ignore",
+      }),
+    );
+    const signal = new AbortController().signal;
+    const settings = {
+      repository: stale,
+      worktrees: scene.worktrees,
+      gh: ["fake-gh"],
+    };
+    const paths = await pullRequestWorkflows(
+      {
+        target: "ticket/one",
+        payload: { number: 1 },
+        folder: join(scene.directory, "ci"),
+        signal,
+        settings,
+        calls: {
+          ...calls(settings, signal),
+          gh: () =>
+            Promise.resolve(
+              JSON.stringify({ base: { sha: base, ref: "main" } }),
+            ),
+        },
+      },
+      commit,
+    );
+    assert.deepEqual(paths, [".github/workflows/ci.yml"]);
+  }));
 
 await test("CLV-258 workflow filenames containing an at sign retain their identity", async () => {
   let now = 0;

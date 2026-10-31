@@ -1,9 +1,32 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { afterEach, mock, test } from "node:test";
+import { promisify } from "node:util";
 import { checkRun, ciScenario, workflowRun } from "./github-ci-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 afterEach(() => {
   mock.restoreAll();
+});
+
+await test("CLV-258 repeated wildcard filters finish without exponential backtracking", async () => {
+  const module = new URL("../src/daemon/github-ci-filters.ts", import.meta.url);
+  const source = `
+    import { workflowApplies } from ${JSON.stringify(module.href)};
+    const pattern = "*a".repeat(30) + "b";
+    const context = { branch: "main", paths: ["a".repeat(200)] };
+    console.log(JSON.stringify([
+      workflowApplies({ paths: [pattern] }, context),
+      workflowApplies({ "paths-ignore": [pattern] }, context),
+      workflowApplies({ paths: [pattern] }, { ...context, paths: ["a".repeat(200) + "b"] }),
+    ]));
+  `;
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    ["--input-type=module", "-e", source],
+    { timeout: testMilliseconds(2000) },
+  );
+  assert.deepEqual(JSON.parse(stdout), [false, true, true]);
 });
 
 const cases = [
