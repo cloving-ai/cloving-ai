@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
+import {
+  isCandidateDeclaration,
+  type CandidateDeclaration,
+} from "../src/workflow-candidate.ts";
 import type { WorkflowFolderInput } from "../tools/workflow-folders.ts";
 import {
   candidateDeclaration,
@@ -10,7 +13,7 @@ import {
 export async function writeDeclaredWorkflow(
   repository: string,
   template: "develop" | "idea-to-issue" = "develop",
-): Promise<void> {
+): Promise<CandidateDeclaration> {
   if (template === "idea-to-issue") await writeDeclaredWorkflow(repository);
   await cp(
     join(import.meta.dirname, "../templates", template),
@@ -21,6 +24,15 @@ export async function writeDeclaredWorkflow(
         !source.endsWith("/template.json") && !source.endsWith("/README.md"),
     },
   );
+  const declaration: unknown = JSON.parse(
+    await readFile(
+      join(repository, ".cloving/workflows", `${template}.declaration.json`),
+      "utf8",
+    ),
+  );
+  if (!isCandidateDeclaration(declaration))
+    throw new Error("invalid-fixture-declaration");
+  return declaration;
 }
 
 export async function writeLocalWorkflow(

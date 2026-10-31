@@ -18,7 +18,7 @@ interface BoardOptions {
 }
 
 async function cardBoard(
-  workflowId = "develop-prd",
+  workflowId = "idea-to-issue",
   options: BoardOptions = {},
 ) {
   const library = await readFile(new URL(import.meta.resolve("preact")));
@@ -98,9 +98,9 @@ await test("CLV-135 opening a card focuses its input so immediate Escape closes 
 });
 
 for (const [workflowId, modifiers, form] of [
-  ["develop-issue", {}, undefined],
-  ["develop-prd", { ctrlKey: true }, undefined],
-  ["develop-prd", { metaKey: true }, undefined],
+  ["develop", {}, undefined],
+  ["idea-to-issue", { ctrlKey: true }, undefined],
+  ["idea-to-issue", { metaKey: true }, undefined],
   [
     "review-corpus",
     {},

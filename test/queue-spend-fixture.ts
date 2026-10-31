@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
+import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
 import type { Fields } from "../src/protocol.ts";
 import type { Service } from "../src/service/service.ts";
 import { fakeDestination } from "./effect-fixture.ts";
@@ -40,6 +42,7 @@ export async function withQueueSpend(
 }
 
 async function spendScene(harness: Harness, limitUsd: number) {
+  const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
   const clock = { now: "2026-10-10T12:00:00.000Z" };
   const counts = { admissions: 0, clockReads: 0 };
   const resolution = { wait: Promise.resolve() };
@@ -48,6 +51,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
     counts,
     limitUsd,
     resolution,
+    workflow,
   });
   let service = await harness.start(options);
   let queue: ReturnType<typeof issueQueue> | undefined;
@@ -55,7 +59,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
     call(harness, { operation: "status", parameters: { limit: 1 } });
   const startQueue = () => {
     queue = issueQueue({
-      workflowId: "develop-issue",
+      workflowId: workflow.workflowId,
       directory: harness.stateDirectory,
       runtimeDirectory: harness.runtimeDirectory,
       lanes: 2,
@@ -80,7 +84,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
       service = await harness.start(options);
       startQueue();
     },
-    begin: async (name: string, workflowId = "develop-issue") =>
+    begin: async (name: string, workflowId = workflow.workflowId) =>
       begin(harness, { service, name, workflowId }),
     pendingTurn: (runId: string, round = 1) =>
       pendingTurn(service, { runId, round }),
@@ -97,16 +101,21 @@ function spendOptions(
     readonly counts: { admissions: number; clockReads: number };
     readonly limitUsd: number;
     readonly resolution: { wait: Promise<void> };
+    readonly workflow: WorkflowDeclaration;
   },
 ) {
-  const { clock, counts } = state;
+  const { clock, counts, workflow } = state;
   const destination = fakeDestination({ lostReplies: 0 });
   const registration = {
     ...harness.registration,
-    workflowId: "develop-issue",
+    workflowId: workflow.workflowId,
     admission: 2,
     effectLimit: 20,
-    manifest: { ...harness.registration.manifest, capabilities: ["claude"] },
+    manifest: {
+      ...harness.registration.manifest,
+      queue: workflow.queue ?? false,
+      capabilities: ["claude"],
+    },
     submission: {
       maximumBytes: 4096,
       fields: {
@@ -114,17 +123,7 @@ function spendOptions(
         prompt: { type: "string" as const, optional: true },
       },
     },
-    resolver: {
-      ...harness.registration.resolver,
-      resolve: async () => {
-        counts.admissions += 1;
-        await state.resolution.wait;
-        return {
-          kind: "resolved" as const,
-          input: { ticketId: String(counts.admissions) },
-        };
-      },
-    },
+    resolver: spendResolver(harness, state),
   };
   return {
     workflows: [
@@ -138,7 +137,10 @@ function spendOptions(
         ...harness.registration,
         workflowId: "manual",
         effectLimit: 20,
-        manifest: registration.manifest,
+        manifest: {
+          ...harness.registration.manifest,
+          capabilities: ["claude"],
+        },
       },
     ],
     delivery: destination.delivery,
@@ -148,6 +150,26 @@ function spendOptions(
       return clock.now;
     },
     queueDailySpendLimitUsd: state.limitUsd,
+  };
+}
+
+function spendResolver(
+  harness: Harness,
+  state: {
+    readonly counts: { admissions: number };
+    readonly resolution: { wait: Promise<void> };
+  },
+) {
+  return {
+    ...harness.registration.resolver,
+    resolve: async () => {
+      state.counts.admissions += 1;
+      await state.resolution.wait;
+      return {
+        kind: "resolved" as const,
+        input: { ticketId: String(state.counts.admissions) },
+      };
+    },
   };
 }
 
