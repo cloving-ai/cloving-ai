@@ -36,6 +36,7 @@ interface DaemonSnapshot {
   latest: number | null;
   observedSince: number | null;
   readonly completions: Map<string, ReportCompletion>;
+  readonly effects: Fields[];
 }
 
 function appendEvents(
@@ -48,6 +49,12 @@ function appendEvents(
     snapshot.after = parsed.sequence;
     if (snapshot.observedSince === null || parsed.at < snapshot.observedSince)
       snapshot.observedSince = parsed.at;
+    if (
+      ["effect.requested", "effect.reported"].includes(
+        String(parsed.event["type"]),
+      )
+    )
+      snapshot.effects.push({ ...parsed.event, at: parsed.at });
     const completion = reportCompletion(parsed.event);
     if (completion === null) continue;
     if (snapshot.completions.has(completion.runId))
@@ -62,6 +69,7 @@ async function daemonReport(runtime: string) {
     latest: null,
     observedSince: null,
     completions: new Map(),
+    effects: [],
   };
   for (;;) {
     const reply = await send(runtime, {
@@ -83,6 +91,7 @@ async function daemonReport(runtime: string) {
     if (snapshot.after >= snapshot.latest)
       return {
         completions: [...snapshot.completions.values()],
+        effects: snapshot.effects,
         observedSince: snapshot.observedSince,
       };
     if (events.length < 1000) throw new Error("incomplete-report-snapshot");
@@ -110,13 +119,11 @@ async function runCost(runtime: string, runId: string): Promise<ReportCost> {
   });
   if (reply.kind === "error") return { runId, turns: null };
   const run = record(reply.result["run"]);
-  const turns = run?.["workerTurns"];
-  if (
-    run?.["runId"] !== runId ||
-    !Array.isArray(turns) ||
-    !settledSpending(run)
-  )
-    return { runId, turns: null };
+  if (run?.["runId"] !== runId) return { runId, turns: null };
+  const turns = run["workerTurns"];
+  const ticket = runTicket(run);
+  if (!Array.isArray(turns) || !settledSpending(run))
+    return { runId, ...ticket, turns: null };
   const parsed = turns.map((value: unknown) => {
     const turn = record(value);
     const operationId = turn?.["operationId"];
@@ -131,6 +138,7 @@ async function runCost(runtime: string, runId: string): Promise<ReportCost> {
   });
   return {
     runId,
+    ...ticket,
     turns: parsed.some((turn) => turn === null)
       ? null
       : parsed.filter((turn) => turn !== null),
@@ -153,6 +161,9 @@ function textReport(report: Fields): string {
     lines.push(`  baseline evidence: ${JSON.stringify(baseline["evidence"])}`);
   }
   lines.push(`Run costs (USD): ${JSON.stringify(report["runCosts"])}`);
+  lines.push(
+    `Completed ticket costs (USD): ${JSON.stringify(report["completedTicketCosts"])}`,
+  );
   lines.push(`Sources: ${JSON.stringify(report["sources"])}`);
   lines.push(`Coverage: ${JSON.stringify(report["coverage"])}`);
   return lines.join("\n") + "\n";
@@ -175,15 +186,12 @@ export async function reportCommand(
   const daemon =
     daemonRead.status === "fulfilled"
       ? daemonRead.value
-      : { completions: null, observedSince: null };
+      : { completions: null, effects: null, observedSince: null };
   const github =
     githubRead.status === "fulfilled" ? { github: githubRead.value } : {};
   const costs: ReportCost[] = [];
   for (const event of daemon.completions ?? [])
-    if (
-      event.at >= now - (invocation.since + 168) * 3_600_000 &&
-      event.at < now
-    )
+    if (event.at < now)
       costs.push(await runCost(environment.runtimeDirectory, event.runId));
   const calculated = loopReport({
     since: invocation.since,
@@ -244,4 +252,11 @@ export function reportCompletion(event: Fields): ReportCompletion | null {
   )
     throw new Error("invalid-report-event");
   return { runId, sequence, at: Date.parse(at), outcome };
+}
+
+function runTicket(run: Fields | undefined): Pick<ReportCost, "ticketId"> {
+  const ticketId = run?.["ticketId"];
+  return ticketId === null || (typeof ticketId === "string" && ticketId !== "")
+    ? { ticketId }
+    : {};
 }

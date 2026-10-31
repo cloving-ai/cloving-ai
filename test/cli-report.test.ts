@@ -254,3 +254,37 @@ await test("CLV-199 actual zero is distinguished from unknown or malformed settl
     );
   });
 });
+
+import { fixRoundEvents } from "./report-fixture.ts";
+
+await test("CLV-243 report counts fix rounds only for merged pull requests", async () => {
+  await withReportSource(
+    reportReply(fixRoundEvents(Date.now() - 3_600_000)),
+    async (harness) => {
+      const output = await harness.cli(["report", "--since", "24", "--json"]);
+      assert.equal(output.status, 0, output.stderr);
+      const report = parsed(output);
+      assert.equal(
+        Object.hasOwn(fields(report["coverage"]), "fixRounds"),
+        false,
+      );
+      const metric = fields(
+        fields(report["metrics"])["fixRounds.medianPerMergedPullRequest"],
+      );
+      assert.equal(metric["value"], 1);
+      assert.deepEqual(
+        items(metric["evidence"]).map((item) => {
+          const value = fields(item);
+          return [value["runId"], value["pullRequest"], value["fixRounds"]];
+        }),
+        [
+          ["fix-0", 10, 0],
+          ["fix-1", 11, 2],
+          ["fix-2", 12, 1],
+        ],
+      );
+      assert.equal(fields(metric["baseline"])["history"], "short");
+      assert.equal(metric["mark"], undefined);
+    },
+  );
+});

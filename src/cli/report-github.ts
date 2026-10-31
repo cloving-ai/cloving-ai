@@ -5,9 +5,10 @@ export interface ReportGithub {
   readonly observedSince: number | null;
   readonly issues: readonly ReportDatum[] | null;
   readonly pulls: readonly ReportDatum[] | null;
+  readonly leadTimes: readonly ReportDatum[] | null;
   readonly sources: Readonly<
     Record<
-      "issues" | "pulls" | "history",
+      "issues" | "pulls" | "history" | "timelines",
       { readonly status: string; readonly reason?: string }
     >
   >;
@@ -28,25 +29,36 @@ export async function readReportGithub(
       observedSince: null,
       issues: null,
       pulls: null,
+      leadTimes: null,
       sources: {
         issues: { status: "unavailable", reason: "configuration-or-identity" },
         pulls: { status: "unavailable", reason: "configuration-or-identity" },
         history: { status: "unavailable", reason: "configuration-or-identity" },
+        timelines: {
+          status: "unavailable",
+          reason: "configuration-or-identity",
+        },
       },
     };
-  const [issues, pulls, history] = await Promise.allSettled([
-    issuesOf(reader, input.since),
+  const issueRead = issuesOf(reader, input.since);
+  const [issues, pulls, history, timelines] = await Promise.allSettled([
+    issueRead,
     pullsOf(reader, input.since),
     repositoryCreatedAt(reader),
+    issueRead.then((values) =>
+      leadTimesOf(reader, { issues: values, since: input.since }),
+    ),
   ]);
   return {
     observedSince: history.status === "fulfilled" ? history.value : null,
     issues: issues.status === "fulfilled" ? issues.value : null,
     pulls: pulls.status === "fulfilled" ? pulls.value : null,
+    leadTimes: timelines.status === "fulfilled" ? timelines.value : null,
     sources: {
       issues: source(issues),
       pulls: source(pulls),
       history: source(history),
+      timelines: source(timelines),
     },
   };
 }
@@ -268,4 +280,57 @@ function completedIssue(row: Fields): boolean {
   )
     throw new Error("response");
   return row["state_reason"] === "completed";
+}
+
+async function lastReadyAt(
+  reader: Reader,
+  issue: ReportDatum,
+): Promise<number | null> {
+  let ready: number | null = null;
+  const pages = new Set<string>();
+  for (let page = 1; ; page += 1) {
+    const values = rows(
+      await reader.read(
+        `issues/${String(issue.evidence["issue"])}/timeline?per_page=100&page=${String(page)}`,
+      ),
+    );
+    const signature = JSON.stringify(values);
+    if (pages.has(signature)) throw new Error("response");
+    pages.add(signature);
+    for (const row of values) {
+      if (!readyLabel(row)) continue;
+      const at = timestamp(row["created_at"]);
+      if (at <= issue.at && (ready === null || at > ready)) ready = at;
+    }
+    if (values.length < 100) return ready;
+  }
+}
+
+async function leadTimesOf(
+  reader: Reader,
+  input: { readonly issues: readonly ReportDatum[]; readonly since: string },
+): Promise<readonly ReportDatum[]> {
+  const result: ReportDatum[] = [];
+  for (const issue of input.issues.filter(
+    (item) => item.at >= Date.parse(input.since),
+  )) {
+    const ready = await lastReadyAt(reader, issue);
+    result.push({
+      at: issue.at,
+      value: ready === null ? null : (issue.at - ready) / 3_600_000,
+      evidence: {
+        ...issue.evidence,
+        readyAt: ready === null ? null : new Date(ready).toISOString(),
+        closedAt: new Date(issue.at).toISOString(),
+      },
+    });
+  }
+  return result;
+}
+
+function readyLabel(row: Fields): boolean {
+  return (
+    row["event"] === "labeled" &&
+    record(row["label"])?.["name"] === "cloving: ready"
+  );
 }
