@@ -4,6 +4,43 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { treeOf, withGithub } from "./github-worker-fixture.ts";
 
+await test("CLV-200 create-issue posts the exact report text through the privacy check", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker({ privateTexts: ["private organization"] });
+    const result = await scene.perform(worker, {
+      method: "create-issue",
+      payload: { text: "# Daily review\n\n## Facts\nPublic evidence." },
+    });
+    assert.equal(result.outcome, "completed", JSON.stringify(result));
+    const create = scene
+      .state()
+      .calls.find((call) => call[0] === "issue" && call[1] === "create");
+    assert.ok(create);
+    assert.equal(
+      create[create.indexOf("--body") + 1],
+      "\n## Facts\nPublic evidence.\n<!-- cloving-prd:ticket/one -->",
+    );
+  }));
+
+await test("CLV-200 direct report posts reject private text and ambiguous draft inputs", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker({ privateTexts: ["private organization"] });
+    for (const payload of [
+      { text: "# Daily review\nprivate organization" },
+      { text: "# Daily review", draft: "draft.md" },
+      { text: "# Daily review", expectedDigests: ["sha256:" + "a".repeat(64)] },
+      { text: 7 },
+      { text: "x".repeat(65537) },
+    ]) {
+      const result = await scene.perform(worker, {
+        method: "create-issue",
+        payload,
+      });
+      assert.equal(result.outcome, "failed", JSON.stringify(result));
+    }
+    assert.ok(scene.state().calls.every((call) => call[0] !== "issue"));
+  }));
+
 await test("CLV-075 create-issue posts the draft once with a cycle marker", () =>
   withGithub(async (scene) => {
     const worker = scene.worker({ privateTexts: ["private organization"] });

@@ -1,4 +1,8 @@
 import { packedCommandWait } from "./packed-command-wait.ts";
+import {
+  packedReviewSources,
+  packedReviewTemplate,
+} from "./packed-review-template.ts";
 import { packedDaemon, packedEnvironment } from "./packed-daemon-fixture.ts";
 import { operatorRestart } from "./operator-restart-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -88,7 +92,7 @@ async function installed(root: string): Promise<string> {
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
-    packedTemplateSources.concat(packedIdeaSources),
+    packedTemplateSources.concat(packedIdeaSources, packedReviewSources),
   );
   assert.deepEqual(
     paths.filter((path) =>
@@ -111,6 +115,7 @@ async function installed(root: string): Promise<string> {
   await packagedFontFiles(join(root, "node_modules/cloving"));
   await packedDevelopTemplate(join(root, "node_modules/cloving"));
   await packedIdeaTemplate(join(root, "node_modules/cloving"));
+  await packedReviewTemplate(join(root, "node_modules/cloving"));
   await packedStages(root);
   return join(root, "node_modules/.bin/cloving");
 }

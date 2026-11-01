@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "name": "review-day",
+  "summary": "Review the loops each day, critique the evidence and ask a person to approve at most one reversible improvement.",
+  "points": [
+    {
+      "id": "post",
+      "question": "Where should the reviewed report go?",
+      "options": [
+        {
+          "id": "privacy",
+          "label": "Post after the privacy check",
+          "summary": "Post the critiqued report and label only that new issue cloving: review.",
+          "change": "Keep postAfterPrivacy as postReport from review-day/post.ts in review-day.ts. Configure privateTexts with at least one nonblank item.",
+          "requires": {},
+          "needs": [
+            "default-harness",
+            "gh-login",
+            "github-origin",
+            "private-texts"
+          ]
+        },
+        {
+          "id": "result",
+          "label": "Keep in the run result",
+          "summary": "Return the report without posting a review issue.",
+          "change": "Remove the postReport import and await postReport(input, text) call from review-day.ts. Remove create-issue from methods.github. If next.nothing is also selected, remove github from capabilities and remove methods.github. Set selection.post to result in review-day/scenarios.ts.",
+          "requires": {},
+          "needs": ["default-harness"]
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "question": "What happens after one proposal is approved?",
+      "options": [
+        {
+          "id": "idea",
+          "label": "Hand to idea-to-issue",
+          "summary": "Wait for the ticket and label only that new issue cloving: improvement.",
+          "change": "Keep handoffProposal as nextProposal from review-day/next.ts in review-day.ts and idea-to-issue in workflow.handoffs. Copy idea-to-issue into the private workflow folder and select its next.nothing option so it neither starts development nor adds cloving: ready.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        },
+        {
+          "id": "nothing",
+          "label": "Do nothing after approval",
+          "summary": "Record the decision without starting another workflow or changing any issue.",
+          "change": "Remove the nextProposal import from review-day.ts. Replace the chooseProposal assignment and the conditional nextProposal call with await chooseProposal(input, report.proposals). Set workflow.handoffs to [] and selection.next to nothing in review-day/scenarios.ts. If post.result is selected, remove github from capabilities and remove methods.github.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    }
+  ]
+}

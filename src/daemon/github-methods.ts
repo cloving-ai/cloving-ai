@@ -11,7 +11,12 @@ import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
-import { captureDraft, createIssue, discard } from "./github-issue-methods.ts";
+import {
+  captureDraft,
+  createIssue,
+  discard,
+  repositoryName,
+} from "./github-issue-methods.ts";
 import {
   existingTree,
   defaultBranch,
@@ -104,7 +109,13 @@ function labels(operation: Operation, name: string): readonly string[] {
 }
 
 async function label(operation: Operation): Promise<unknown> {
-  const repository = `${text(operation, "owner")}/${text(operation, "repository")}`;
+  const repository =
+    !Object.hasOwn(operation.payload, "owner") &&
+    !Object.hasOwn(operation.payload, "repository")
+      ? repositoryName(
+          await operation.calls.gh(["repo", "view", "--json", "nameWithOwner"]),
+        )
+      : `${text(operation, "owner")}/${text(operation, "repository")}`;
   const number = integer(operation, "number");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !Number.isSafeInteger(number))
     throw new Error("invalid-payload");
