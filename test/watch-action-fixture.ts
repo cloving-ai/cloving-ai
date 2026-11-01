@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { request } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import type { CardForm } from "../src/cli/watch-run-input.ts";
 import { withWatchService } from "./watch-service-fixture.ts";
 import type { Watching, WatchOptions } from "./watch-fixture.ts";
 
 export const cardRequest = {
-  workflowId: "develop-prd",
-  fields: { prompt: "A useful idea" },
+  workflowId: "idea-to-issue",
+  fields: { idea: "A useful idea" },
   commandId: "card-1",
 };
 
@@ -93,7 +94,7 @@ export async function declaredWatch(
 export function exampleCardForms(): readonly CardForm[] {
   return [
     {
-      workflowId: "develop-issue",
+      workflowId: "develop",
       source: "input",
       fields: [
         {
@@ -105,29 +106,29 @@ export function exampleCardForms(): readonly CardForm[] {
       ],
     },
     {
-      workflowId: "develop-prd",
+      workflowId: "idea-to-issue",
       source: "input",
       fields: [
-        { name: "prompt", label: "prompt", multiline: true, optional: false },
+        { name: "idea", label: "idea", multiline: false, optional: false },
       ],
     },
   ];
 }
 
+export const multilineCardForm: CardForm = {
+  workflowId: "multiline-request",
+  source: "input",
+  fields: [
+    { name: "request", label: "Request", multiline: true, optional: false },
+  ],
+};
+
 export async function cardWatch(runtimeDirectory: string): Promise<void> {
   const project = join(dirname(runtimeDirectory), "project");
-  await mkdir(project, { recursive: true });
+  const declaration = await writeDeclaredWorkflow(project, "idea-to-issue");
   await writeFile(
     join(project, "declarations.json"),
-    JSON.stringify([
-      {
-        workflowId: cardRequest.workflowId,
-        functionName: "draftProposal",
-        capabilities: ["claude"],
-        effectLimit: 1,
-        input: { maximumBytes: 4096, fields: { prompt: { type: "string" } } },
-      },
-    ]),
+    JSON.stringify([{ ...declaration.workflow, functionName: "ideaToIssue" }]),
   );
 }
 

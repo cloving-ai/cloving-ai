@@ -23,7 +23,10 @@ for (const template of ["develop", "idea-to-issue"] as const)
   await test(`CLV-261 the shared project fixture registers ${template} once at daemon startup`, () =>
     withoutChildren(async () => {
       const fixture = await scene(undefined, entry);
-      await writeDeclaredWorkflow(fixture.repository, template);
+      const written = await writeDeclaredWorkflow(fixture.repository, template);
+      assert.partialDeepStrictEqual(written, {
+        workflow: { workflowId: template },
+      });
       const expected =
         template === "develop" ? [template] : ["develop", template];
       for (const name of expected) {

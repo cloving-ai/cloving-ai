@@ -1,3 +1,4 @@
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ const signal = new AbortController().signal;
 
 await test("CLV-184 a full service still identifies an alias of its active issue", () =>
   withHarness(async (harness) => {
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     const resolver = issueResolver({
       repository: harness.projectDirectory,
       command: [
@@ -24,9 +26,13 @@ await test("CLV-184 a full service still identifies an alias of its active issue
       workflows: [
         {
           ...harness.registration,
-          workflowId: "develop-issue",
+          workflowId: workflow.workflowId,
+          manifest: {
+            ...harness.registration.manifest,
+            queue: workflow.queue ?? false,
+          },
           admission: 1,
-          submission: { maximumBytes: 4096, fields: { ticket: "string" } },
+          submission: workflow.input,
           resolver,
         },
       ],
@@ -35,7 +41,8 @@ await test("CLV-184 a full service still identifies an alias of its active issue
       call(harness, {
         operation: "run",
         parameters: {
-          workflowId: "develop-issue",
+          workflowId: "develop",
+          source: "input",
           commandId: ticket,
           submission: { ticket },
         },
@@ -152,7 +159,7 @@ await test("CLV-184 an alias of an active GitHub issue is refused even when the 
       nextCommand: [process.execPath, "-e", 'process.stdout.write("900")'],
     });
     const resolved = await resolver.resolve({
-      workflowId: "develop-issue",
+      workflowId: "develop",
       commandId: "alias",
       signal,
       submission: { ticket: "next" },
@@ -177,7 +184,7 @@ await test("CLV-184 a failed dependency lookup refuses admission and the same co
       githubCommand: [process.execPath, command],
     });
     const request = {
-      workflowId: "develop-issue",
+      workflowId: "develop",
       commandId: "lookup-retry",
       signal,
       submission: { ticket: "900" },
@@ -214,7 +221,7 @@ process.stdout.write(id === "999" ? "# Ready task" : readFileSync(process.argv[2
     });
     const resolve = (ticketId: string) =>
       resolver.resolve({
-        workflowId: "develop-issue",
+        workflowId: "develop",
         commandId: ticketId,
         signal,
         submission: { ticket: ticketId },

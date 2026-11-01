@@ -50,7 +50,7 @@ await test("CLV-094 totals ended worker operations once across failed reports, r
     });
     const another = await startedRun(harness, {
       service: scene.service,
-      workflowId: "develop-issue",
+      workflowId: "develop",
       commandId: "another-run",
     });
     await reportTurn(
@@ -224,7 +224,7 @@ await test("CLV-094 invalid or missing reported prices and overflowing price sum
           ? scene.runId
           : await startedRun(harness, {
               service: scene.service,
-              workflowId: "develop-issue",
+              workflowId: "develop",
               commandId: `price-${String(index)}`,
             });
       const owned = { ...scene, runId };
@@ -239,7 +239,7 @@ await test("CLV-094 invalid or missing reported prices and overflowing price sum
     }
     const runId = await startedRun(harness, {
       service: scene.service,
-      workflowId: "develop-issue",
+      workflowId: "develop",
       commandId: "sum-overflow",
     });
     for (const round of [1, 2])

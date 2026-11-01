@@ -12,7 +12,13 @@ import {
 await test("CLV-135 concurrent retries with the same command ID admit one real service run and reach the board", () =>
   withHarness(async (harness) => {
     const service = await harness.start({
-      workflows: [{ ...harness.registration, workflowId: "develop-prd" }],
+      workflows: [
+        {
+          ...harness.registration,
+          workflowId: "idea-to-issue",
+          submission: { maximumBytes: 65536, fields: { idea: "string" } },
+        },
+      ],
     });
     await cardWatch(harness.runtimeDirectory);
     const watch = await watching(harness.runtimeDirectory);

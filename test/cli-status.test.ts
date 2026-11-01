@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 import { rendered } from "../src/cli/render.ts";
 import type { Fields } from "../src/protocol.ts";
@@ -150,7 +151,7 @@ await test("CLV-094 status text and JSON show separate worker turns and run tota
     const json = await harness.cli(["status", scene.runId, "--json"]);
     assert.equal(json.status, 0, json.stderr);
     const run = field(parsed(json), "run");
-    assert.equal(field(run, "workflowId"), "develop-issue");
+    assert.equal(field(run, "workflowId"), "develop");
     assert.equal(field(run, "claudeCostUsd"), null);
     assert.deepEqual(field(run, "usage"), scenarioTotal);
     assert.deepEqual(field(run, "workerTurns"), turns);
@@ -205,7 +206,8 @@ await test("CLV-133 status JSON exposes the selected cost display and preserves 
     });
 });
 
-function registrations(harness: Harness) {
+async function registrations(harness: Harness) {
+  const declaration = await writeDeclaredWorkflow(harness.projectDirectory);
   const table = ticketRegistrationTable(
     {
       repository: "/fixture/private-repository",
@@ -216,6 +218,7 @@ function registrations(harness: Harness) {
       ],
     },
     [
+      { ...declaration.workflow, functionName: "develop" },
       {
         workflowId: "review-run",
         functionName: "reviewRun",
@@ -232,7 +235,7 @@ function registrations(harness: Harness) {
       },
     ],
   );
-  return table.map((row) => ({
+  return table.slice(4).map((row) => ({
     ...row,
     manifest: harness.registration.manifest,
     availability: "available" as const,
@@ -264,13 +267,13 @@ async function assertInputs(
   }
 }
 
-await test("CLV-181 develop-issue input reaches single and listed JSON status across restart", () =>
+await test("CLV-181 declared ticket input reaches single and listed JSON status across restart", () =>
   withHarness(async (harness) => {
-    const workflows = registrations(harness);
+    const workflows = await registrations(harness);
     const service = await harness.start({ workflows });
     const admitted = await harness.cli([
       "run",
-      "develop-issue",
+      "develop",
       "--ticket",
       "297",
       "--command-id",
@@ -349,7 +352,9 @@ await test("CLV-181 text input escapes terminal controls and guards non-object i
 
 await test("CLV-181 declared workflow input reaches single and listed JSON status across restart", () =>
   withHarness(async (harness) => {
-    const service = await harness.start({ workflows: registrations(harness) });
+    const service = await harness.start({
+      workflows: await registrations(harness),
+    });
     await writeFile(
       join(harness.projectDirectory, "input.json"),
       JSON.stringify({
