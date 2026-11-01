@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   job,
   metadata,
+  prepareShellAttempt,
   releaseWorkflow,
   script,
   steps,
@@ -105,6 +106,10 @@ await test("CLV-266 only shard 1 runs setup checks and the gate prepares test bu
   ] as const) {
     for (const step of steps(workflow, name)) {
       assert.equal(step["continue-on-error"], undefined);
+      assert.equal(
+        step["timeout-minutes"],
+        step.id === "prepare-shells" ? 3 : undefined,
+      );
       const conditional = step.run === "npm run check:setup";
       assert.equal(
         step.if,
@@ -285,7 +290,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
 });
 
-await test("CLV-208 Linux CI prepares zsh before setup and skips sudo when installed", async () => {
+await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
   const workflow = await releaseWorkflow();
   const linuxSteps = steps(workflow, "quality_linux_node");
   const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
@@ -293,33 +298,17 @@ await test("CLV-208 Linux CI prepares zsh before setup and skips sudo when insta
     (step) => step.run === "npm run check:setup",
   );
   assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
-  const run = linuxSteps[prepare]?.run;
-  assert.ok(typeof run === "string");
-  const fixture = `
-test() {
-  [[ "$*" == "-x /bin/zsh" ]] || exit 90
-  return "$ZSH_STATUS"
-}
-sudo() {
-  printf '%s\\n' "$*"
-  if [[ "$*" == "apt-get update" ]]; then return "$UPDATE_STATUS"; fi
-}
-`;
-  const command = fixture + run;
-  for (const [zshStatus, updateStatus, status, output] of [
-    ["0", "0", 0, ""],
-    ["1", "0", 0, "apt-get update\napt-get install -y zsh\n"],
-    ["1", "9", 9, "apt-get update\n"],
+  for (const [zshStatus, updateStatus, installStatus, status, output] of [
+    ["0", "0", "0", 0, ""],
+    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
+    ["1", "9", "0", 9, "update --error-on=any\n"],
+    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
   ] as const) {
-    const result = spawnSync(
-      "/bin/bash",
-      ["-e", "-o", "pipefail", "-c", command],
-      {
-        env: { ZSH_STATUS: zshStatus, UPDATE_STATUS: updateStatus },
-        encoding: "utf8",
-        timeout: 10000,
-      },
-    );
+    const result = prepareShellAttempt(workflow, {
+      ZSH_STATUS: zshStatus,
+      UPDATE_STATUS: updateStatus,
+      INSTALL_STATUS: installStatus,
+    });
     assert.equal(result.error, undefined);
     assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);

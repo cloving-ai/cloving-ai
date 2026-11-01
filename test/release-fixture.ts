@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { chmod, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -83,6 +83,43 @@ export function script(workflow: ReleaseWorkflow, id: string): string {
   const run = steps(workflow, "publish").find((step) => step.id === id)?.run;
   assert.ok(typeof run === "string", `Missing shell step: ${id}`);
   return run;
+}
+
+const prepareShellFixture = `
+test() {
+  [[ "$*" == "-x /bin/zsh" ]] || exit 90
+  return "$ZSH_STATUS"
+}
+sudo() {
+  [[ "$1" == apt-get && "$2" == -o ]] || exit 91
+  source_list="\${3#Dir::Etc::sourcelist=}"
+  shift 3
+  [[ "$(cat "$source_list")" == 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu noble main universe' ]] || exit 92
+  [[ "$*" == '-o Dir::Etc::sourceparts=- -o Acquire::https::Timeout=30 -o Acquire::Retries=2 '* ]] || exit 93
+  shift 6
+  printf '%s\\n' "$*"
+  if [[ "$1" == update ]]; then return "$UPDATE_STATUS"; fi
+  return "$INSTALL_STATUS"
+}
+`;
+
+export function prepareShellAttempt(
+  workflow: ReleaseWorkflow,
+  environment: Readonly<Record<string, string>>,
+): SpawnSyncReturns<string> {
+  const run = steps(workflow, "quality_linux_node").find(
+    (step) => step.id === "prepare-shells",
+  )?.run;
+  assert.ok(typeof run === "string");
+  return spawnSync(
+    "/bin/bash",
+    ["-e", "-o", "pipefail", "-c", prepareShellFixture + run],
+    {
+      env: { PATH: "/usr/bin:/bin", ...environment },
+      encoding: "utf8",
+      timeout: 10000,
+    },
+  );
 }
 
 function permits(workflow: ReleaseWorkflow, context: ReleaseContext): boolean {

@@ -8,6 +8,7 @@ export interface WorkflowStep {
   readonly run?: string;
   readonly if?: string;
   readonly "continue-on-error"?: boolean;
+  readonly "timeout-minutes"?: number;
   readonly with?: Readonly<Record<string, string | boolean>>;
   readonly env?: StringRecord;
 }
@@ -102,6 +103,10 @@ function isStep(value: unknown): value is WorkflowStep {
     ) &&
     (value["continue-on-error"] === undefined ||
       typeof value["continue-on-error"] === "boolean") &&
+    optional(
+      value["timeout-minutes"],
+      (minutes) => typeof minutes === "number",
+    ) &&
     (value["with"] === undefined || isRecordOf(value["with"], isInput)) &&
     (value["env"] === undefined || isStringRecord(value["env"]))
   );

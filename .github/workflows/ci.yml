@@ -145,7 +145,8 @@
         {
           "id": "prepare-shells",
           "name": "Install zsh when missing",
-          "run": "if ! test -x /bin/zsh; then\n  sudo apt-get update\n  sudo apt-get install -y zsh\nfi"
+          "timeout-minutes": 3,
+          "run": "if ! test -x /bin/zsh; then\n  source_list=\"$(mktemp)\"\n  trap 'rm -f \"$source_list\"' EXIT\n  printf '%s\\n' 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu noble main universe' > \"$source_list\"\n  apt_options=(-o \"Dir::Etc::sourcelist=$source_list\" -o Dir::Etc::sourceparts=- -o Acquire::https::Timeout=30 -o Acquire::Retries=2)\n  sudo apt-get \"${apt_options[@]}\" update --error-on=any\n  sudo apt-get \"${apt_options[@]}\" install -y zsh\nfi"
         },
         {
           "run": "npm run check:setup",
