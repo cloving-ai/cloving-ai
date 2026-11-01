@@ -1,5 +1,6 @@
 import {
   runCommand,
+  parseTestShard,
   runSupervisedCommand,
   type CheckCommand,
   type CommandOptions,
@@ -10,12 +11,14 @@ import {
   claimCoverageFolder,
   releaseCoverageFolder,
 } from "./coverage-folders.ts";
-import { extname, join, relative, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { availableParallelism, tmpdir } from "node:os";
 import { checkCoverage } from "./coverage.ts";
 import recordedDurations from "./test-durations.json" with { type: "json" };
 import packageMetadata from "#package" with { type: "json" };
 import { workflowTestHook } from "../tools/workflow-test-hook.ts";
+import { exportShardCoverage } from "./shard-coverage.ts";
+import { selectTestShard } from "./test-shards.ts";
 import { reportTestFailures } from "./test-failures.ts";
 
 export function testConcurrency(cores: number): number {
@@ -34,19 +37,14 @@ export function parseTestConcurrency(
   return Number(value);
 }
 
-export function parseCheckTimeFactor(value: string | undefined): number {
-  if (value === undefined) return 1;
-  if (!/^[1-9]$/.test(value))
-    throw new Error(
-      "CLOVING_CHECK_TIME_FACTOR must be a whole number from 1 to 9",
-    );
-  return Number(value);
-}
+export { parseCheckTimeFactor } from "./command.ts";
 
 export interface TestExecutionOptions {
   readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly coverageFiles?: readonly string[];
+  readonly shard?: string;
+  readonly coverageDirectory?: string;
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
 }
 
@@ -98,10 +96,23 @@ export async function checkTests(
   execution: TestExecution,
 ): Promise<void> {
   const { files, ...options } = execution;
-  const tests = files
+  if (parseTestShard(options.shard) && !options.coverageDirectory)
+    throw new Error("missing-shard-coverage-directory");
+  const inventory = files
     .filter((file) => /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/.test(file))
     .map((file) => realpathSync(file))
     .sort();
+  if (
+    Object.keys(options.requiredTests ?? {}).some(
+      (file) => !inventory.includes(realpathSync(file)),
+    )
+  )
+    throw new Error("mandatory-test-inventory-mismatch");
+  const tests = selectTestShard(directory, {
+    tests: inventory,
+    durations: recordedDurations,
+    ...(options.shard === undefined ? {} : { shard: options.shard }),
+  }).sort();
   if (tests.length === 0)
     throw new Error("Cannot accept an empty test inventory");
   const temporary = mkdtempSync(join(tmpdir(), "cloving-test-coverage-"));
@@ -136,6 +147,7 @@ export function testCommand(
     readonly timeFactor?: number;
     readonly durations?: Readonly<Record<string, number>>;
     readonly reporter?: "durations";
+    readonly shard?: string;
   },
 ): CheckCommand {
   return {
@@ -151,9 +163,10 @@ export function testCommand(
       resolve(import.meta.dirname, "test-runner.ts"),
       `--test-reporter=${run.reporter ?? "gate"}`,
       `--test-concurrency=${String(parseTestConcurrency(process.env["CLOVING_TEST_CONCURRENCY"], availableParallelism()))}`,
-      ...orderTests(directory, {
+      ...selectTestShard(directory, {
         tests: run.tests,
         durations: run.durations ?? recordedDurations,
+        ...(run.shard === undefined ? {} : { shard: run.shard }),
       }),
     ],
     directory,
@@ -163,22 +176,6 @@ export function testCommand(
       ? {}
       : { coverageDirectory: run.coverageDirectory }),
   };
-}
-
-function orderTests(
-  directory: string,
-  run: {
-    readonly tests: readonly string[];
-    readonly durations: Readonly<Record<string, number>>;
-  },
-): string[] {
-  const seconds = (file: string): number =>
-    run.durations[relative(directory, resolve(directory, file))] ?? Infinity;
-  return [...run.tests].sort().sort((left, right) => {
-    const first = seconds(left);
-    const second = seconds(right);
-    return first === second ? 0 : second - first;
-  });
 }
 
 export function coverageCommand(
@@ -202,6 +199,33 @@ export function coverageCommand(
   };
 }
 
+function validateExecutionReport(
+  output: string,
+  run: {
+    readonly tests: readonly string[];
+    readonly options: TestExecutionOptions;
+  },
+): void {
+  const { tests, options } = run;
+  const report: unknown = JSON.parse(output);
+  if (!report || typeof report !== "object")
+    throw new Error("Invalid test report");
+  reportTestFailures(report, output);
+  validateReport(report, tests);
+  validateOutcomes(report);
+  if (options.requiredTests)
+    validateRequiredTests(
+      report,
+      options.shard
+        ? Object.fromEntries(
+            Object.entries(options.requiredTests).filter(([file]) =>
+              tests.includes(realpathSync(file)),
+            ),
+          )
+        : options.requiredTests,
+    );
+}
+
 async function executeTests(
   directory: string,
   run: {
@@ -219,15 +243,16 @@ async function executeTests(
     }),
     options.commandOptions,
   );
-  const report: unknown = JSON.parse(output);
-  if (!report || typeof report !== "object")
-    throw new Error("Invalid test report");
-  reportTestFailures(report, output);
-  validateReport(report, tests);
-  validateOutcomes(report);
-  if (options.requiredTests)
-    validateRequiredTests(report, options.requiredTests);
+  validateExecutionReport(output, { tests, options });
   if (!options.coverageFiles) return;
+  if (options.shard && options.coverageDirectory) {
+    await exportShardCoverage(directory, {
+      rawDirectory: temporary,
+      outputDirectory: options.coverageDirectory,
+      files: options.coverageFiles,
+    });
+    return;
+  }
   const coverage: unknown = JSON.parse(
     runCommand(
       coverageCommand(directory, {

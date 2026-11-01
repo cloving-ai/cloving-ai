@@ -9,7 +9,7 @@ import { convert } from "ast-v8-to-istanbul";
 import istanbul from "istanbul-lib-coverage";
 import ts from "typescript";
 import { checkSuppressions } from "./suppression-approval.ts";
-import { parseCheckTimeFactor } from "./test-execution.ts";
+import { parseCheckTimeFactor } from "./command.ts";
 import type { CoverageRow } from "./coverage.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -75,6 +75,19 @@ async function coverageRecording(file: string): Promise<unknown> {
   }
 }
 
+export async function readScriptCoverage(
+  file: string,
+): Promise<Profiler.ScriptCoverage[]> {
+  const value = await coverageRecording(file);
+  if (
+    !record(value) ||
+    !Array.isArray(value["result"]) ||
+    !value["result"].every(script)
+  )
+    throw new Error("invalid-raw-coverage");
+  return value["result"];
+}
+
 async function scriptCoverage(
   directory: string,
   expected: ReadonlySet<string>,
@@ -85,14 +98,8 @@ async function scriptCoverage(
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json"))
       throw new Error("invalid-raw-coverage-entry");
-    const value = await coverageRecording(join(directory, entry.name));
-    if (
-      !record(value) ||
-      !Array.isArray(value["result"]) ||
-      !value["result"].every(script)
-    )
-      throw new Error("invalid-raw-coverage");
-    for (const coverage of value["result"].filter(
+    const recordings = await readScriptCoverage(join(directory, entry.name));
+    for (const coverage of recordings.filter(
       (coverage) =>
         coverage.url.startsWith("file:") &&
         expected.has(fileURLToPath(coverage.url)),
