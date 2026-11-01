@@ -14,7 +14,15 @@ export async function queueRun(
   context: Pick<ServiceContext, "authority">,
   runId: string,
 ): Promise<boolean> {
-  return (await context.authority.queries.manifest(runId))?.queue === true;
+  const { queries } = context.authority;
+  if ((await queries.manifest(runId))?.queue === true) return true;
+  if ((await queries.workflowIds([runId]))[runId] !== "develop-issue")
+    return false;
+  const { events } = await queries.eventsAfter({ runId, after: 0, limit: 1 });
+  return (
+    events[0]?.type === "run.created" &&
+    events[0].payload["resolver"] === "issue-command:1"
+  );
 }
 
 export async function queueSpend(context: SpendContext): Promise<Fields> {
