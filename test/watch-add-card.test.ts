@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { exampleCardForms } from "./watch-action-fixture.ts";
+import { exampleCardForms, multilineCardForm } from "./watch-action-fixture.ts";
 import { boardModel } from "./watch-board-fixture.ts";
 import { played } from "./watch-browser.ts";
 
@@ -37,12 +37,12 @@ console.log(JSON.stringify({ initial, opened, closed: app.all("form").length, re
 
 await test("CLV-135 explicit submission shows admission, reuses its command ID after an uncertain reply and does not create a card locally", () => {
   const form = exampleCardForms().find(
-    (item) => item.workflowId === "develop-prd",
+    (item) => item.workflowId === "idea-to-issue",
   );
   const result = played(
-    { ...boardModel([], { workflows: ["develop-prd"] }), cardForms: [form] },
+    { ...boardModel([], { workflows: ["idea-to-issue"] }), cardForms: [form] },
     `
-location.hash = "#workflow=develop-prd";
+location.hash = "#workflow=idea-to-issue";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
 app.all("button").find((node) => node.text === "+ Add a card").dispatch("click");
@@ -52,9 +52,9 @@ globalThis.fetch = async (address, options) => {
   if (submissions.length === 1) throw new Error("lost");
   return { ok: true, json: async () => ({ kind: "result", result: { code: "run-admitted", runId: "run-new" } }) };
 };
-const area = app.all("textarea")[0];
-area.value = "Useful idea";
-area.listeners.get("input").call(area, { currentTarget: area, type: "input" });
+const input = app.all("input")[0];
+input.value = "Useful idea";
+input.listeners.get("input").call(input, { currentTarget: input, type: "input" });
 const submit = () => app.all("form")[0].listeners.get("submit").call(app.all("form")[0], { type: "submit", preventDefault() {} });
 submit();
 submit();
@@ -75,7 +75,7 @@ console.log(JSON.stringify({ submissions, uncertain, html: app.inner, cards: app
   assert.equal(Reflect.get(Object(sent), "method"), "POST");
   const body: unknown = Reflect.get(Object(sent), "body");
   assert.deepEqual(Reflect.get(Object(body), "fields"), {
-    prompt: "Useful idea",
+    idea: "Useful idea",
   });
   assert.match(
     String(Reflect.get(Object(body), "commandId")),
@@ -86,14 +86,10 @@ console.log(JSON.stringify({ submissions, uncertain, html: app.inner, cards: app
   assert.equal(result["cards"], 0);
 });
 
-for (const [workflowId, multiline] of [
-  ["develop-issue", false],
-  ["develop-prd", true],
-] as const) {
+for (const form of [...exampleCardForms(), multilineCardForm]) {
+  const { workflowId } = form;
+  const multiline = form.fields[0]?.multiline ?? false;
   await test(`CLV-135 keyboard actions on ${workflowId} require an explicit submit and Escape closes`, () => {
-    const form = exampleCardForms().find(
-      (item) => item.workflowId === workflowId,
-    );
     const result = played(
       { ...boardModel([], { workflows: [workflowId] }), cardForms: [form] },
       `
@@ -140,7 +136,7 @@ for (const [label, forms] of [
   ["off", []],
 ] as const) {
   await test(`CLV-135 ${label} hides add-card controls`, () => {
-    const workflowId = label === "off" ? "develop-prd" : "unknown";
+    const workflowId = label === "off" ? "idea-to-issue" : "unknown";
     const result = played(
       { ...boardModel([], { workflows: [workflowId] }), cardForms: forms },
       `

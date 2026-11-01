@@ -1287,6 +1287,7 @@
     "test/service-resolver.test.ts": "test",
     "test/service-runs.test.ts": "test",
     "test/service-schedule.test.ts": "test",
+    "test/service-status-declared-ticket.test.ts": "test",
     "test/service-status-issue-identity.test.ts": "test",
     "test/service-status-metadata.test.ts": "test",
     "test/service-step-bridge.test.ts": "test",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { watchCardForms } from "../src/cli/watch-card-forms.ts";
 import {
@@ -14,7 +14,22 @@ import {
   watchReplies,
   withWatchService,
 } from "./watch-service-fixture.ts";
-import { actionHeaders, pageToken, postCard } from "./watch-action-fixture.ts";
+import {
+  actionHeaders,
+  cardWatch,
+  exampleCardForms,
+  pageToken,
+  postCard,
+} from "./watch-action-fixture.ts";
+
+await test("CLV-261 the idea example matches the declared watch form", () =>
+  withHarness(async (harness) => {
+    await cardWatch(harness.runtimeDirectory);
+    assert.deepEqual(
+      await watchCardForms(join(dirname(harness.runtimeDirectory), "project")),
+      exampleCardForms().filter((form) => form.workflowId === "idea-to-issue"),
+    );
+  }));
 
 await test("CLV-228 no declarations means no watch forms", () =>
   withHarness(async (harness) => {

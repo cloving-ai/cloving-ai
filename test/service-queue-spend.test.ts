@@ -70,7 +70,7 @@ await test("CLV-241 shared admission holds new queue runs and preserves admitted
     const retry = await call(scene.harness, {
       operation: "run",
       parameters: {
-        workflowId: "develop-issue",
+        workflowId: "develop",
         source: "prompt",
         submission: { prompt: "admitted" },
         commandId: "admitted",
@@ -123,7 +123,7 @@ function queueRequest(commandId: string, ticket = "specific") {
   return {
     operation: "run",
     parameters: {
-      workflowId: "develop-issue",
+      workflowId: "develop",
       source: "ticket",
       submission: { ticket },
       commandId,
