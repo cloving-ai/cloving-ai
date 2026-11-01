@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import {
   ended,
@@ -17,7 +19,11 @@ import { chunkStream } from "./gemini-fixture.ts";
 
 await test("CLV-211 start runs a saved Gemini default without inheriting the Claude command", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(
+      undefined,
+      join(candidatePackageRoot, "src/cli.ts"),
+    );
+    await writeLocalWorkflow(fixture.repository);
     const program = join(fixture.root, "saved-gemini");
     await writeFile(
       program,
@@ -47,24 +53,19 @@ await test("CLV-211 start runs a saved Gemini default without inheriting the Cla
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-ticket",
+          workflowId: "develop",
           source: "ticket",
           submission: { ticket: "CLV-900" },
           commandId: "private-gemini",
         },
       });
-      const decision = await reached(
-        async () =>
-          items(
-            (
-              await call(fixture, {
-                operation: "questions",
-                parameters: { runId: admitted["runId"] },
-              })
-            )["decisions"],
-          )[0],
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
+      const { decision, summary } = await reviewedReport(
+        fixture,
+        String(admitted["runId"]),
       );
-      assert.match(String(field(decision, "prompt")), /Added HELLO.md/);
+      assert.match(String(field(decision, "prompt")), /Review this subject:/);
+      assert.match(summary, /Added HELLO.md/);
     } finally {
       assert.equal(await ended(daemon), 0);
     }
@@ -72,7 +73,11 @@ await test("CLV-211 start runs a saved Gemini default without inheriting the Cla
 
 await test("CLV-210 start runs the saved Codex program without an environment worker", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(
+      undefined,
+      join(candidatePackageRoot, "src/cli.ts"),
+    );
+    await writeLocalWorkflow(fixture.repository);
     const config = join(fixture.root, "config");
     await mkdir(join(config, "cloving/projects"), { recursive: true });
     const program = join(fixture.root, "saved-codex");
@@ -96,25 +101,20 @@ await test("CLV-210 start runs the saved Codex program without an environment wo
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-ticket",
+          workflowId: "develop",
           source: "ticket",
           submission: { ticket: "CLV-900" },
           commandId: "private-codex",
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       const runId = String(admitted["runId"]);
-      const decision = await reached(
-        async () =>
-          items(
-            (
-              await call(fixture, {
-                operation: "questions",
-                parameters: { runId },
-              })
-            )["decisions"],
-          )[0],
+      const { decision, summary } = await reviewedReport(fixture, runId);
+      assert.match(
+        String(field(decision, "prompt")),
+        /The worker report has no ticket status line\./,
       );
-      assert.match(String(field(decision, "prompt")), /Done\./);
+      assert.match(summary, /Done\./);
     } finally {
       assert.equal(await ended(daemon), 0);
     }
@@ -136,17 +136,22 @@ for (const ending of ["failed", "stopped"])
         ending === "failed"
           ? "process.stdin.resume();process.exitCode=1;"
           : "process.stdin.resume();setInterval(() => {}, 1000);";
-      const fixture = await scene(script);
+      const fixture = await scene(
+        script,
+        join(candidatePackageRoot, "src/cli.ts"),
+      );
+      await writeLocalWorkflow(fixture.repository);
       const daemon = await fixture.start();
       const admitted = await call(fixture, {
         operation: "run",
         parameters: {
-          workflowId: "develop-ticket",
+          workflowId: "develop",
           source: "ticket",
           submission: { ticket: "CLV-900" },
           commandId: ending,
         },
       });
+      assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
       const runId = String(admitted["runId"]);
       try {
         if (ending === "stopped") await dropRunningTurn(fixture, runId);
@@ -161,6 +166,33 @@ for (const ending of ["failed", "stopped"])
         assert.equal(await ended(reopened), 0);
       }
     }));
+
+async function reviewedReport(
+  fixture: { readonly runtimeDirectory: string },
+  runId: string,
+) {
+  const decision = await reached(
+    async () =>
+      items(
+        (
+          await call(fixture, {
+            operation: "questions",
+            parameters: { runId },
+          })
+        )["decisions"],
+      )[0],
+  );
+  const status = await call(fixture, {
+    operation: "status",
+    parameters: { runId },
+  });
+  return {
+    decision,
+    summary: String(
+      field(items(field(status["run"], "workerTurns"))[0], "summary"),
+    ),
+  };
+}
 
 async function dropRunningTurn(
   fixture: { readonly runtimeDirectory: string },

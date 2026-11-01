@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import type { EffectReport } from "../src/service/service.ts";
 import { operationOf } from "./effect-fixture.ts";
 import {
@@ -10,10 +11,11 @@ import {
 } from "./service-effect-fixture.ts";
 import { field, type Harness } from "./service-fixture.ts";
 
-export function workerScene(harness: Harness): Promise<Scene> {
+export async function workerScene(harness: Harness): Promise<Scene> {
+  const declaration = await writeDeclaredWorkflow(harness.projectDirectory);
   return effectScene(harness, {
     effectLimit: 20,
-    workflowId: "develop-issue",
+    workflowId: declaration.workflow.workflowId,
     capabilities: ["claude", "fake-harness"],
   });
 }

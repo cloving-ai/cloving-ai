@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { after, test } from "node:test";
 import type { Authority } from "../src/broker/actor/authority.ts";
 import type { ServiceContext } from "../src/service/replies.ts";
@@ -26,16 +27,18 @@ import {
 } from "./service-fixture.ts";
 import { view } from "./service-views.ts";
 
+const storedTicketIds = ["DEMO-1", " demo-1 ", " ", "", null, 42, {}];
+
 const titleCases = [
   [
-    "develop-ticket",
+    "develop",
     "#  CLV-067: Continue a GitHub operation after a daemon restart  \nDetails",
     "CLV-067: Continue a GitHub operation after a daemon restart",
   ],
-  ["develop-issue", "# Issue title\r\nDetails", "Issue title"],
-  ["develop-ticket", "No heading\n# Later heading", "Cloving task cycle-title"],
-  ["develop-issue", "\n# Later heading", "Cloving task cycle-title"],
-  ["develop-ticket", `# ${"t".repeat(201)}`, "t".repeat(200)],
+  ["develop", "# Issue title\r\nDetails", "Issue title"],
+  ["develop", "No heading\n# Later heading", "Cloving task cycle-title"],
+  ["develop", "\n# Later heading", "Cloving task cycle-title"],
+  ["develop", `# ${"t".repeat(201)}`, "t".repeat(200)],
   ["develop-prompt", "\n \t\n#  Prompt heading  \nBody", "Prompt heading"],
   ["develop-prompt", "\n  Plain prompt  \nBody", "Plain prompt"],
   ["develop-prompt", "\n \t\n", "Cloving task cycle-title"],
@@ -79,12 +82,13 @@ function identityInput(request: {
 
 await test("CLV-091 single status exposes the exact stored ticket ID alongside the submitted input and existing metadata", () =>
   withHarness(async (harness) => {
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     const service = await harness.start({
       workflows: [
-        harness.registration,
+        { ...harness.registration, workflowId: "empty-input" },
         {
           ...harness.registration,
-          workflowId: "develop-issue",
+          workflowId: workflow.workflowId,
           resolver: {
             ...harness.registration.resolver,
             resolve: identityInput,
@@ -92,19 +96,11 @@ await test("CLV-091 single status exposes the exact stored ticket ID alongside t
         },
       ],
     });
-    for (const [index, ticketId] of [
-      "DEMO-1",
-      " demo-1 ",
-      " ",
-      "",
-      null,
-      42,
-      {},
-    ].entries()) {
+    for (const [index, ticketId] of storedTicketIds.entries()) {
       const reply = await call(harness, {
         operation: "run",
         parameters: {
-          workflowId: "develop-issue",
+          workflowId: "develop",
           source: "prompt",
           submission: { prompt: JSON.stringify(ticketId) },
           commandId: `identity-${String(index)}`,
@@ -133,7 +129,10 @@ await test("CLV-091 single status exposes the exact stored ticket ID alongside t
         /Private ticket text|private-repository|different-cycle|"ticket"|"repository"/,
       );
     }
-    const missing = await admitted(harness, "missing-input-id");
+    const missing = await admitted(harness, {
+      commandId: "missing-input-id",
+      workflowId: "empty-input",
+    });
     assert.equal(field(await view(harness, missing), "ticketId"), null);
     await service.close();
   }));
@@ -300,7 +299,8 @@ await test("CLV-072 completed status reads its outcome without loading the event
 
 await test("CLV-072 status derives ticket, issue and prompt titles from the stored input", () =>
   withHarness(async (harness) => {
-    const workflows = ["develop-ticket", "develop-issue", "develop-prompt"].map(
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
+    const workflows = [workflow.workflowId, "develop-prompt"].map(
       (workflowId) => ({
         ...harness.registration,
         workflowId,
@@ -320,7 +320,10 @@ await test("CLV-072 status derives ticket, issue and prompt titles from the stor
       }),
     );
     const service = await harness.start({
-      workflows: [...workflows, harness.registration],
+      workflows: [
+        ...workflows,
+        { ...harness.registration, workflowId: "empty-input" },
+      ],
     });
     for (const [index, [workflowId, prompt, title]] of titleCases.entries()) {
       const reply = await call(harness, {
@@ -337,7 +340,10 @@ await test("CLV-072 status derives ticket, issue and prompt titles from the stor
         title,
       );
     }
-    const untitled = await admitted(harness, "no-ticket");
+    const untitled = await admitted(harness, {
+      commandId: "no-ticket",
+      workflowId: "empty-input",
+    });
     assert.equal(field(await view(harness, untitled), "title"), null);
     await service.close();
   }));

@@ -1,3 +1,4 @@
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
@@ -10,6 +11,7 @@ interface PendingScene {
   readonly mark: string;
   readonly lines: string[];
   readonly counts: { scans: number; submissions: number };
+  readonly submittedWorkflowIds: string[];
   readonly commands: () => Promise<string>;
   readonly stop: () => Promise<void>;
 }
@@ -18,10 +20,13 @@ export async function withPendingUpdate(
   timestamp: number,
   body: (scene: PendingScene) => Promise<void>,
 ): Promise<void> {
-  await withHarness(async ({ stateDirectory: directory, runtimeDirectory }) => {
+  await withHarness(async (harness) => {
+    const { stateDirectory: directory, runtimeDirectory } = harness;
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     const mark = join(directory, "pending-self-update");
     await writeFile(mark, `${String(timestamp)}\n`);
     const counts = { scans: 0, submissions: 0 };
+    const submittedWorkflowIds: string[] = [];
     const lines: string[] = [];
     const output = process.stderr.write.bind(process.stderr);
     process.stderr.write = (line: string | Uint8Array) => {
@@ -39,6 +44,7 @@ export async function withPendingUpdate(
           });
         }
         counts.submissions += 1;
+        submittedWorkflowIds.push(String(request.parameters["workflowId"]));
         return Promise.resolve({
           kind: "error",
           error: { code: "no-ready-ticket", detail: "No ready ticket." },
@@ -46,7 +52,7 @@ export async function withPendingUpdate(
       },
     });
     const queue = issueQueue({
-      workflowId: "develop-issue",
+      workflowId: workflow.workflowId,
       directory,
       runtimeDirectory,
       intervalMilliseconds: 5,
@@ -58,6 +64,7 @@ export async function withPendingUpdate(
         mark,
         lines,
         counts,
+        submittedWorkflowIds,
         stop: queue.stop,
         commands: () =>
           readFile(join(directory, "queue-commands.json"), "utf8"),

@@ -1,3 +1,4 @@
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered as statusText } from "../src/cli/render.ts";
@@ -14,7 +15,7 @@ import {
 } from "./watch-service-fixture.ts";
 
 const queue = {
-  workflowId: "develop-issue",
+  workflowId: "develop",
   lanes: 4,
   busy: 1,
   skipped: [
@@ -29,12 +30,18 @@ const queue = {
 
 await test("CLV-184 service status and CLI show busy lanes and skipped tickets", () =>
   withHarness(async (harness) => {
+    const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     const service = await harness.start({
       workflows: [
         {
           ...harness.registration,
-          workflowId: "develop-issue",
+          workflowId: workflow.workflowId,
+          manifest: {
+            ...harness.registration.manifest,
+            queue: workflow.queue ?? false,
+          },
           admission: 4,
+          submission: workflow.input,
           resolver: {
             ...harness.registration.resolver,
             resolve: () =>
@@ -44,14 +51,16 @@ await test("CLV-184 service status and CLI show busy lanes and skipped tickets",
         },
       ],
     });
-    await call(harness, {
+    const admitted = await call(harness, {
       operation: "run",
       parameters: {
-        workflowId: "develop-issue",
+        workflowId: "develop",
+        source: "input",
         commandId: "busy",
-        submission: { prompt: "Task" },
+        submission: { ticket: "900" },
       },
     });
+    assert.equal(admitted["kind"], "run-admitted");
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.deepEqual(status["queue"], queue);
     const text = statusText(status);
@@ -89,7 +98,7 @@ await test("CLV-184 watch data and page retain queue lanes and skip reasons", as
   assert.match(html, /#901 waits for #899/);
 });
 
-for (const hash of ["", "#workflow=develop-issue"])
+for (const hash of ["", `#workflow=${queue.workflowId}`])
   await test(`CLV-184 embedded watch script shows queue lanes and skip reasons at ${hash}`, () => {
     const model = { ...sampleModel([]), queue };
     const result = played(

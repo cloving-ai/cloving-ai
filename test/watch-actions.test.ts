@@ -27,8 +27,8 @@ await test("CLV-135 a run request without a page token is refused before contact
           origin: new URL(watch.address).origin,
         },
         body: JSON.stringify({
-          workflowId: "develop-prd",
-          fields: { prompt: "Idea" },
+          workflowId: "idea-to-issue",
+          fields: { idea: "Idea" },
           commandId: "card-1",
         }),
       });
@@ -52,7 +52,7 @@ await test("CLV-135 a valid page request forwards CLI run parameters and returns
         ? admitted
         : {
             kind: "result",
-            result: { runs: [], workflows: ["develop-prd"] },
+            result: { runs: [], workflows: ["idea-to-issue"] },
           };
     },
     async (watch) => {
@@ -66,7 +66,7 @@ await test("CLV-135 a valid page request forwards CLI run parameters and returns
         {
           operation: "run",
           parameters: {
-            workflowId: "develop-prd",
+            workflowId: "idea-to-issue",
             source: "input",
             submission: cardRequest.fields,
             commandId: "card-1",
@@ -92,7 +92,7 @@ for (const [name, patch] of [
         if (request.operation === "run") requests.push(request);
         return {
           kind: "result",
-          result: { runs: [], workflows: ["develop-prd"] },
+          result: { runs: [], workflows: ["idea-to-issue"] },
         };
       },
       async (watch) => {
@@ -111,7 +111,7 @@ for (const [name, patch] of [
 for (const [name, body] of [
   [
     "oversized body",
-    JSON.stringify({ ...cardRequest, fields: { prompt: "x".repeat(16384) } }),
+    JSON.stringify({ ...cardRequest, fields: { idea: "x".repeat(16384) } }),
   ],
   [
     "unknown workflow",
@@ -121,7 +121,7 @@ for (const [name, body] of [
     "extra field",
     JSON.stringify({
       ...cardRequest,
-      fields: { prompt: "Idea", authority: "yes" },
+      fields: { idea: "Idea", authority: "yes" },
     }),
   ],
   [
@@ -129,7 +129,7 @@ for (const [name, body] of [
     JSON.stringify({ ...cardRequest, source: "prompt" }),
   ],
   ["invalid JSON", "{"],
-  ["invalid field", JSON.stringify({ ...cardRequest, fields: { prompt: 42 } })],
+  ["invalid field", JSON.stringify({ ...cardRequest, fields: { idea: 42 } })],
   ["missing field", JSON.stringify({ ...cardRequest, fields: {} })],
   ["empty command", JSON.stringify({ ...cardRequest, commandId: "" })],
 ] as const) {
@@ -140,7 +140,7 @@ for (const [name, body] of [
         if (request.operation === "run") requests.push(request);
         return {
           kind: "result",
-          result: { runs: [], workflows: ["develop-prd"] },
+          result: { runs: [], workflows: ["idea-to-issue"] },
         };
       },
       async (watch) => {
@@ -161,7 +161,7 @@ await test("CLV-135 off removes the token and makes the endpoint an unknown path
     {
       answer: () => ({
         kind: "result",
-        result: { runs: [], workflows: ["develop-prd"] },
+        result: { runs: [], workflows: ["idea-to-issue"] },
       }),
       configure: () =>
         Promise.resolve({ environment: { CLOVING_WATCH_ACTIONS: "off" } }),
@@ -254,7 +254,7 @@ await test("CLV-135 valid input reports an unavailable service without disguisin
     },
   ));
 
-await test("CLV-135 missing content type and an unregistered built-in workflow are refused", () => {
+await test("CLV-135 missing content type and an unregistered workflow are refused", () => {
   const requests: ServiceRequest[] = [];
   return withCardService(
     (request) => {
