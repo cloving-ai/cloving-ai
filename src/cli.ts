@@ -174,7 +174,11 @@ function toolProcess(input: {
     `${input.tool}${extname(import.meta.filename)}`,
   );
   const child = spawn(process.execPath, [program, ...input.argumentsList], {
-    stdio: "inherit",
+    detached: input.tool === "red-green-command",
+    stdio:
+      input.tool === "red-green-command"
+        ? ["inherit", "inherit", "inherit", "ipc"]
+        : "inherit",
     env: {
       ...process.env,
       PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),

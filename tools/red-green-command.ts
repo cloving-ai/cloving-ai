@@ -54,7 +54,7 @@ async function run(input: {
       [...input.test, ...input.files],
       options,
     );
-    return { ...tested, output: (prepared?.output ?? "") + tested.output };
+    return tested;
   } finally {
     git(["worktree", "remove", "--force", tree]);
     rmSync(temporary, { recursive: true, force: true });
@@ -142,7 +142,7 @@ function classify(input: {
     if (skip.test(result.output))
       return { verdict: "skipped-test", output: result.output };
   if (red.status === 0) return { verdict: "false-red", output: red.output };
-  if (!assertion.test(red.output))
+  if (red.status === null || !assertion.test(red.output))
     return { verdict: "red-not-assertion", output: red.output };
   if (green.status !== 0)
     return { verdict: "green-failed", output: green.output };
@@ -195,6 +195,8 @@ const controller = new AbortController();
 const interrupt = (): void => {
   controller.abort();
 };
+process.on("disconnect", interrupt);
+if (!process.connected) interrupt();
 process.on("SIGTERM", interrupt);
 process.on("SIGINT", interrupt);
 try {
@@ -205,6 +207,8 @@ try {
   );
   process.exitCode = 1;
 } finally {
+  process.off("disconnect", interrupt);
+  if (process.connected) process.disconnect?.();
   process.off("SIGTERM", interrupt);
   process.off("SIGINT", interrupt);
 }

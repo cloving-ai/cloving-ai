@@ -12,6 +12,32 @@ import { rmSync } from "node:fs";
 import { git } from "./claude-worker-fixture.ts";
 import { redGreen } from "./red-green-fixture.ts";
 
+for (const output of ["ERR_ASSERTION", "# SKIP"])
+  await test(`CLV-248 successful preparation output ${output} is not test evidence`, () =>
+    withRedGreen(
+      {
+        red: { status: 1, output: "ERR_MODULE_NOT_FOUND" },
+        green: { status: 0, output: "green passed" },
+      },
+      (scene) => {
+        const result = verdict(
+          {
+            ...scene,
+            settings: {
+              ...scene.settings,
+              prepare: [
+                process.execPath,
+                "-e",
+                `console.log(${JSON.stringify(output)})`,
+              ],
+            },
+          },
+          "red-not-assertion",
+        );
+        assert.equal(result["output"], "ERR_MODULE_NOT_FOUND");
+      },
+    ));
+
 await test("CLV-248 stderr supplies assertion evidence and is retained with stdout", () =>
   withRedGreen(
     {

@@ -8,6 +8,7 @@ import { selfUpdater } from "./self-update.ts";
 import { selfUpdateActive } from "./self-update-host.ts";
 
 export interface HostProcesses {
+  readonly environment?: Readonly<NodeJS.ProcessEnv>;
   readonly project: string;
   readonly product: string;
   readonly runtime: string;
@@ -161,7 +162,7 @@ function productChild(
       name: program === "cli" ? "watch" : program,
       directory: settings.product,
       environment: {
-        ...process.env,
+        ...(settings.environment ?? process.env),
         CLOVING_RUNTIME_DIR: settings.runtime,
         CLOVING_WATCH_REPOSITORY: settings.repository,
       },
@@ -178,7 +179,7 @@ function hostedChildren(settings: HostProcesses): Hosted {
   const daemon = launched([join(settings.project, "start.mjs")], {
     name: "daemon",
     directory: settings.project,
-    environment: process.env,
+    environment: settings.environment ?? process.env,
   });
   const watch =
     settings.watchPort === "off"

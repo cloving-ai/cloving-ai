@@ -962,14 +962,14 @@ The daemon maps this object to `CLOVING_RED_GREEN`. An environment value takes p
 
 Register the tool in `CLOVING_COMMANDS` with the absolute path of the installed executable, for example `{"red-green":["/opt/cloving/bin/cloving","red-green"]}`. Declare `red-green` in the workflow's `commands` list. A workflow can then call `runCommand` with `name: "red-green"` and `input: { head: commitId }`. Increase `CLOVING_COMMAND_SECONDS`, for example to `600`, to allow both preparation and test runs. This setting also bounds each preparation or test command inside the tool.
 
-The red run uses a detached temporary worktree at the base with only the selected tests restored from the head. The green run uses another detached worktree at the head. Both runs use the same test paths. The tool removes each tree after the run, a command failure, a timeout, SIGINT or SIGTERM. It preserves the repository folder's branch, index and files. The commands run as the current user.
+The red run uses a detached temporary worktree at the base with only the selected tests restored from the head. The green run uses another detached worktree at the head. Both runs use the same test paths. The tool removes each tree after the run, a command failure, a timeout, SIGINT or SIGTERM. Cleanup also runs after the operator stops the command or its process group. It preserves the repository folder's branch, index and files. The commands run as the current user.
 
-The tool prints one JSON object with `verdict`, `base`, `head`, `files` and `output`. The output contains the last 16,000 characters from the run that decides the verdict. With no selected tests, the verdict is `no-test-change` and no command runs. Otherwise, both runs occur. The first applicable rule decides:
+The tool prints one JSON object with `verdict`, `base`, `head`, `files` and `output`. The output contains the last 16,000 characters from the command that decides the verdict. Successful preparation logs do not supply assertion or skip evidence. With no selected tests, the verdict is `no-test-change` and no command runs. Otherwise, both runs occur. The first applicable rule decides:
 
 1. Preparation fails in either run: `prepare-failed`.
 2. Either run matches the skip pattern: `skipped-test`.
 3. The red run succeeds: `false-red`.
-4. The red run fails without the assertion pattern: `red-not-assertion`.
+4. The red run is interrupted, times out, or fails without the assertion pattern: `red-not-assertion`.
 5. The green run fails: `green-failed`.
 6. Otherwise: `accepted`.
 

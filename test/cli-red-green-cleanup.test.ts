@@ -18,6 +18,37 @@ const passing = {
   green: { status: 0, output: "pass" },
 };
 
+for (const stop of [
+  "setInterval(()=>{},1000)",
+  'process.kill(process.pid,"SIGTERM")',
+])
+  await test(`CLV-248 an unfinished assertion red is rejected: ${stop}`, () =>
+    withRedGreen(passing, (scene) => {
+      const configured = {
+        ...scene,
+        settings: {
+          ...scene.settings,
+          test: [
+            process.execPath,
+            "-e",
+            `if(require("node:fs").readFileSync("src/sum.ts","utf8")==="base"){console.log("ERR_ASSERTION");${stop}}else console.log("head passed")`,
+          ],
+        },
+      };
+      const previous = process.env["CLOVING_COMMAND_SECONDS"];
+      process.env["CLOVING_COMMAND_SECONDS"] = "1";
+      try {
+        assert.match(
+          String(verdict(configured, "red-not-assertion")["output"]),
+          /ERR_ASSERTION/,
+        );
+      } finally {
+        if (previous === undefined)
+          delete process.env["CLOVING_COMMAND_SECONDS"];
+        else process.env["CLOVING_COMMAND_SECONDS"] = previous;
+      }
+    }));
+
 await test("CLV-248 a detached descendant with inherited pipes cannot prevent timeout cleanup", () =>
   withRedGreen(passing, async (scene) => {
     const marker = join(scene.directory, "escaped-");
