@@ -1,4 +1,5 @@
-import type { WatchPhase } from "./watch-render.ts";
+import type { WorkflowStage } from "../workflow-declaration.ts";
+import type { WatchPhase, WatchPullRequest } from "./watch-render.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -17,8 +18,7 @@ const endings = [
 
 const review = { open: "gate.opened", close: "gate.decided" };
 const effect = { open: "effect.requested", close: "effect.reported" };
-const issueWorkflow = "develop-issue";
-export const issueSteps = [
+export const pullRequestSteps = [
   { name: "Work tree", operation: "github-prepare" },
   { name: "Agent turn", operation: "claude-turn" },
   { name: "Pull request", operation: "github-open-pr" },
@@ -101,6 +101,102 @@ function operationOf(event: Fields | undefined): readonly unknown[] {
   }
 }
 
+export function pullRequestStepOf(event: unknown) {
+  const scope = operationOf(record(event));
+  return pullRequestSteps.find(
+    (step) =>
+      step.operation === scope[4] ||
+      (step.name === "Code review" && scope[3] === "review") ||
+      (step.name === "Merge" && scope[3] === "merge"),
+  );
+}
+
+function stepEffects(
+  events: readonly Fields[],
+  context: {
+    readonly step: (typeof pullRequestSteps)[number];
+    readonly round: number;
+  },
+): readonly Fields[] {
+  const { step, round } = context;
+  const repeated = roundOperations.includes(step.operation);
+  const currentTurn = events.findLastIndex(
+    (event) =>
+      event["type"] === effect.open && operationOf(event)[4] === "claude-turn",
+  );
+  const requested = new Set(
+    events
+      .slice(currentTurn + 1)
+      .filter((event) => event["type"] === effect.open)
+      .map((event) => record(event["payload"])["operationId"]),
+  );
+  return events.filter((event) => {
+    if (pullRequestStepOf(event) !== step) return false;
+    if (!repeated) return true;
+    const scope = operationOf(event);
+    return roundOperations.includes(String(scope[4]))
+      ? scope[1] === round
+      : requested.has(record(event["payload"])["operationId"]);
+  });
+}
+
+export function stageOf(
+  event: unknown,
+  stages: readonly WorkflowStage[],
+): WorkflowStage | undefined {
+  const fields = record(event);
+  if ([effect.open, effect.close].includes(String(fields["type"]))) {
+    const operation = operationOf(fields)[4];
+    return stages.find((stage) =>
+      stage.operations?.some((name) => name === operation),
+    );
+  }
+  const payload = record(fields["payload"]);
+  return (
+    stages.find((stage) =>
+      stage.gateIds?.some((name) => name === payload["gateId"]),
+    ) ??
+    stages.find((stage) =>
+      stage.gateKinds?.some((name) => name === payload["gateKind"]),
+    )
+  );
+}
+
+function declaredSpans(
+  events: readonly Fields[],
+  stages: readonly WorkflowStage[],
+): Span[] {
+  return stages.map((stage) => {
+    const index = events.findLastIndex(
+      (event) =>
+        [effect.open, review.open].includes(String(event["type"])) &&
+        stageOf(event, stages) === stage,
+    );
+    const opening = events[index];
+    const pair = opening?.["type"] === review.open ? review : effect;
+    const identity = pair === review ? "gateId" : "operationId";
+    const key = record(opening?.["payload"])[identity];
+    const closing = events
+      .slice(index + 1)
+      .findLast(
+        (event) =>
+          event["type"] === pair.close &&
+          key !== undefined &&
+          record(event["payload"])[identity] === key,
+      );
+    const payload = record(closing?.["payload"]);
+    const failed =
+      unfinished.includes(String(payload["outcome"])) ||
+      payload["decision"] === "denied";
+    return {
+      name: stage.label,
+      startedAt: timeOf(opening),
+      endedAt: timeOf(closing),
+      ending: failed ? "failed" : "done",
+    };
+  });
+}
+
 function currentRound(events: readonly Fields[]): number {
   const requested = events.findLast(
     (event) =>
@@ -110,20 +206,25 @@ function currentRound(events: readonly Fields[]): number {
   return typeof round === "number" ? round : 1;
 }
 
-function spans(events: readonly Fields[], workflowId: string): Span[] {
-  if (workflowId !== issueWorkflow) return ticketSpans(events);
+function spans(
+  events: readonly Fields[],
+  workflow: {
+    readonly pullRequest?: WatchPullRequest | null;
+    readonly stages?: readonly WorkflowStage[] | undefined;
+  },
+): Span[] {
+  if (workflow.stages !== undefined)
+    return [...admission(events), ...declaredSpans(events, workflow.stages)];
+  if (workflow.pullRequest == null) return ticketSpans(events);
   const effects = events.filter((event) =>
     [effect.open, effect.close].includes(String(event["type"])),
   );
   const round = currentRound(effects);
   return [
     ...admission(events),
-    ...issueSteps.map((step) => {
+    ...pullRequestSteps.map((step) => {
       const repeated = roundOperations.includes(step.operation);
-      const own = effects.filter((event) => {
-        const scope = operationOf(event);
-        return scope[4] === step.operation && (!repeated || scope[1] === round);
-      });
+      const own = stepEffects(effects, { step, round });
       const last = own.findLast((event) => event["type"] === effect.close);
       const outcome = String(record(last?.["payload"])["outcome"]);
       return {
@@ -166,10 +267,13 @@ function advanced(phases: readonly WatchPhase[]): WatchPhase[] {
 
 export function phasesOf(
   events: readonly unknown[],
-  workflowId = "",
+  workflow: {
+    readonly pullRequest?: WatchPullRequest | null;
+    readonly stages?: readonly WorkflowStage[] | undefined;
+  } = {},
 ): WatchPhase[] {
   const known = events.map(record);
-  const steps = spans(known, workflowId);
+  const steps = spans(known, workflow);
   const [end] = ends(known);
   if (end !== undefined)
     return [...steps.map((span) => phase(span, "failed")), end];

@@ -43,7 +43,7 @@ await test("CLV-079 an active run with only a creation event has no step start t
     }),
   ]);
   assert.deepEqual(model.runs[0]?.currentStep, {
-    name: "Work tree",
+    name: "Other",
     startedAt: null,
   });
 });
@@ -66,6 +66,7 @@ await test("CLV-077 boards follow registration order and place each active run a
       "Pull request",
       "Code review",
       "Merge",
+      "Other",
       "Done",
       "Stopped",
     ],
@@ -87,11 +88,12 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
   assert.deepEqual(
     issue.columns.map((column) => column.cards.map((card) => card.runId)),
     [
-      ["not-started", "github-prepare"],
+      ["github-prepare"],
       ["round-2", "claude-turn"],
       ["github-open-pr"],
       ["github-wait-review"],
       ["github-merge"],
+      ["not-started"],
       [],
       [],
     ],
@@ -121,11 +123,11 @@ await test("CLV-077 active cards identify the newest step and Claude round", () 
     currentStep: { name: "Agent turn", startedAt: "2026-10-14T11:00:00Z" },
     endedAt: null,
     decisionWaiting: false,
-    round: 2,
+    round: null,
     greptileScore: null,
     pullRequestNumber: null,
   });
-  assert.equal(issue.columns[0]?.cards[0]?.round, 1);
+  assert.equal(issue.columns[0]?.cards[0]?.round, null);
   assert.equal(issue.latestAt, boardTime);
 });
 
@@ -156,8 +158,8 @@ await test("CLV-077 terminal cards use outcomes, include only the last seven day
     boardRun("future", { state: "failed", latestAt: "2026-10-15T00:00:00Z" }),
   ]).workflows;
   assert.ok(board);
-  const done = board.columns[5];
-  const stoppedColumn = board.columns[6];
+  const done = board.columns[6];
+  const stoppedColumn = board.columns[7];
   assert.ok(done);
   assert.ok(stoppedColumn);
   assert.deepEqual(
@@ -184,11 +186,11 @@ await test("CLV-077 failed and dropped runs are stopped and the seven-day bounda
   ]).workflows[0];
   assert.ok(boundary);
   assert.deepEqual(
-    boundary.columns[5]?.cards.map((card) => card.runId),
+    boundary.columns[6]?.cards.map((card) => card.runId),
     ["boundary"],
   );
   assert.deepEqual(
-    boundary.columns[6]?.cards.map((card) => card.runId).sort(),
+    boundary.columns[7]?.cards.map((card) => card.runId).sort(),
     ["dropped", "failed"],
   );
 });

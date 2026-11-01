@@ -72,7 +72,7 @@ export function boardEvent(
   options: { readonly at?: string; readonly round?: number } = {},
 ): Record<string, unknown> {
   return {
-    sequence: 1,
+    sequence: Date.parse(options.at ?? boardTime),
     recordedAt: options.at ?? boardTime,
     type: operation === "review" ? "gate.opened" : "effect.requested",
     payload: {
@@ -188,6 +188,14 @@ function renamedScenario(
   };
 }
 
+export const pullStages = [
+  { name: "prepare", label: "Work tree", operations: ["github-prepare"] },
+  { name: "work", label: "Agent turn", operations: ["claude-turn"] },
+  { name: "pull", label: "Pull request", operations: ["github-open-pr"] },
+  { name: "review", label: "Code review", operations: ["github-wait-review"] },
+  { name: "merge", label: "Merge", operations: ["github-merge"] },
+] as const;
+
 export function boardModel(
   runs: readonly unknown[],
   changes: Partial<WatchInputs> = {},
@@ -198,6 +206,7 @@ export function boardModel(
     updatedAt: boardTime,
     service: "up",
     workflows: workflowIds,
+    workflowStages: { "develop-issue": pullStages },
     runs,
     decisions: [],
     turns: [],

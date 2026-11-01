@@ -16,11 +16,9 @@ function scenario(): { readonly stopped: WatchRun; readonly later: WatchRun } {
 const attention = { text: "Needs attention", laterRunId: null };
 const done = { text: "Ticket completed by later run", laterRunId: "B" };
 
-await test("CLV-091 the rule only marks completed blocked issue runs", () => {
+await test("CLV-091 the rule only marks completed blocked runs", () => {
   const { stopped, later } = scenario();
   for (const changes of [
-    { workflowId: "develop-ticket" },
-    { workflowId: "develop-prompt" },
     ...["running", "waiting_gate", "paused", "failed", "cancelled"].map(
       (state) => ({ state }),
     ),
@@ -51,9 +49,6 @@ await test("CLV-129 a successor needs established issue identity and its own mer
       { repository: "other" },
       { number: 8 },
     ].map((changes) => ({ issueIdentity: { ...identity, ...changes } })),
-    ...["develop-ticket", "develop-prompt"].map((workflowId) => ({
-      workflowId,
-    })),
     ...["running", "waiting_gate", "paused", "failed", "cancelled"].map(
       (state) => ({ state }),
     ),
@@ -198,4 +193,20 @@ await test("CLV-123 a later partial run does not complete an earlier blocked tic
     completionMarkOf(stopped, [{ ...later, ticketStatus: "partial" }]),
     attention,
   );
+});
+
+await test("CLV-263 completion follows issue and merge evidence across workflow IDs", () => {
+  const { stopped, later } = scenario();
+  for (const workflowId of ["develop", "custom", "develop-ticket"]) {
+    assert.deepEqual(
+      completionMarkOf({ ...stopped, workflowId }, []),
+      attention,
+    );
+    assert.deepEqual(
+      completionMarkOf({ ...stopped, workflowId }, [
+        { ...later, workflowId: "successor" },
+      ]),
+      done,
+    );
+  }
 });

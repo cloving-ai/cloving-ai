@@ -6,22 +6,19 @@ import type { CardForm } from "./watch-run-input.ts";
 
 export async function watchCardForms(
   directory: string,
-  fallback: readonly CardForm[] = [],
 ): Promise<readonly CardForm[]> {
   const forms: CardForm[] = [];
-  const declaredIds = new Set<string>();
   const declarations: unknown = await readFile(
     join(directory, "declarations.json"),
     "utf8",
   )
     .then((text): unknown => JSON.parse(text))
     .catch(() => null);
-  if (!Array.isArray(declarations)) return fallback;
+  if (!Array.isArray(declarations)) return [];
   for (const declaration of declarations) {
     const value = { ...record(declaration) };
     delete value["functionName"];
     if (!isWorkflowDeclaration(value)) continue;
-    declaredIds.add(value.workflowId);
     const entries = Object.entries(value.input.fields);
     if (
       !entries.every(
@@ -42,7 +39,5 @@ export async function watchCardForms(
       })),
     });
   }
-  return forms.concat(
-    fallback.filter((form) => !declaredIds.has(form.workflowId)),
-  );
+  return forms;
 }

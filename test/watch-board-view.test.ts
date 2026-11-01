@@ -152,6 +152,7 @@ await test("CLV-079 the workflow navigation shows counts and selection with orde
       "Pull request",
       "Code review",
       "Merge",
+      "Other",
       "Done",
       "Stopped",
     ],

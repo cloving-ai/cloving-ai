@@ -3,10 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { watchCardForms } from "../src/cli/watch-card-forms.ts";
-import {
-  bundledCardForms,
-  cardRunRequest,
-} from "../src/cli/watch-run-input.ts";
+import { cardRunRequest } from "../src/cli/watch-run-input.ts";
 import { withHarness } from "./service-fixture.ts";
 import type { ServiceRequest } from "../src/protocol.ts";
 import {
@@ -48,7 +45,7 @@ await test("CLV-228 former bundled IDs use only their declared fields", () =>
       functionName: "projectWorkflow",
       capabilities: ["claude"],
       effectLimit: 1,
-      input: { maximumBytes: 4096, fields: { subject: { type: "string" } } },
+      input: { maximumBytes: 4096, fields: { ticket: { type: "string" } } },
     }));
     await writeFile(
       join(harness.projectDirectory, "declarations.json"),
@@ -61,8 +58,8 @@ await test("CLV-228 former bundled IDs use only their declared fields", () =>
         source: "input",
         fields: [
           {
-            name: "subject",
-            label: "subject",
+            name: "ticket",
+            label: "ticket",
             multiline: false,
             optional: false,
           },
@@ -186,10 +183,7 @@ await test("CLV-228 a declared nonstring input never falls back to a bundled for
         },
       ]),
     );
-    const forms = await watchCardForms(
-      harness.projectDirectory,
-      bundledCardForms(),
-    );
+    const forms = await watchCardForms(harness.projectDirectory);
     assert.deepEqual(
       forms.filter((form) => form.workflowId === "develop-issue"),
       [],
@@ -233,13 +227,13 @@ async function writeDeclarations(directory: string): Promise<void> {
   );
 }
 
-for (const [workflowId, name, label] of [
-  ["develop-issue", "ticket", "Issue number"],
-  ["develop-ticket", "ticket", "Ticket ID"],
-  ["develop-prd", "prompt", "Idea"],
-  ["develop-prompt", "prompt", "Task"],
-] as const) {
-  await test(`CLV-228 registered ${workflowId} retains its form until bundled registration is removed`, () => {
+for (const workflowId of [
+  "develop-issue",
+  "develop-ticket",
+  "develop-prd",
+  "develop-prompt",
+]) {
+  await test(`CLV-263 registered ${workflowId} has no form without a declaration`, () => {
     const requests: ServiceRequest[] = [];
     return withWatchService(
       (request) => {
@@ -250,38 +244,18 @@ for (const [workflowId, name, label] of [
         };
       },
       async (watch) => {
-        const source = name === "ticket" ? "ticket" : "prompt";
         const model = await watchData(watch.address);
-        assert.deepEqual(model["cardForms"], [
-          {
-            workflowId,
-            source,
-            fields: [
-              { name, label, multiline: name === "prompt", optional: false },
-            ],
-          },
-        ]);
-        const fields = { [name]: "900" };
+        assert.deepEqual(model["cardForms"], []);
         const reply = await postCard(watch, {
           headers: actionHeaders(watch, await pageToken(watch)),
           body: JSON.stringify({
             workflowId,
-            fields,
-            commandId: "bundled-card",
+            fields: { ticket: "900" },
+            commandId: "undeclared-card",
           }),
         });
-        assert.equal(reply.status, 200);
-        assert.deepEqual(requests, [
-          {
-            operation: "run",
-            parameters: {
-              workflowId,
-              source,
-              submission: fields,
-              commandId: "bundled-card",
-            },
-          },
-        ]);
+        assert.equal(reply.status, 403);
+        assert.deepEqual(requests, []);
       },
     );
   });

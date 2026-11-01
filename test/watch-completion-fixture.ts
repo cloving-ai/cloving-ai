@@ -21,7 +21,7 @@ export function completionReplies(
       runId: "a-stopped",
       ticketId: "DEMO-1",
       issueIdentity: { owner: "fixture", repository: "demo", number: 7 },
-      workflowId: "develop-issue",
+      workflowId: "develop",
       state: "completed",
       outcome: { kind: "blocked" },
       latestAt: recent,
@@ -31,7 +31,7 @@ export function completionReplies(
       runId: `done-${String(index).padStart(2, "0")}`,
       ticketId: "OTHER",
       issueIdentity: { owner: "fixture", repository: "demo", number: 8 },
-      workflowId: "develop-issue",
+      workflowId: "develop",
       state: "completed",
       outcome: { kind: "handoff_requested" },
       latestAt: recent,
@@ -41,7 +41,7 @@ export function completionReplies(
       runId: "zz-later",
       ticketId: "DEMO-1",
       issueIdentity: { owner: "fixture", repository: "demo", number: 7 },
-      workflowId: "develop-issue",
+      workflowId: "develop",
       state: "completed",
       outcome: { kind: "handoff_requested" },
       latestAt,
@@ -58,7 +58,7 @@ export function completionReplies(
       at: 1000,
     }),
   };
-  const replies = watchReplies({ runs, eventsByRun });
+  const replies = watchReplies({ runs, eventsByRun, workflows: ["develop"] });
   const answer = (request: ServiceRequest): Reply =>
     summarizedReply(request, replies.answer(request));
   return { ...replies, answer, runs };
@@ -98,7 +98,7 @@ function pagedEvidence(
 export function stoppedMark(model: Fields): unknown {
   const board = items(model["workflows"])
     .map(fields)
-    .find((workflow) => workflow["workflowId"] === "develop-issue");
+    .find((workflow) => workflow["workflowId"] === "develop");
   const column = items(board?.["columns"])
     .map(fields)
     .find((column) => column["name"] === "Stopped");
@@ -126,6 +126,7 @@ export function terminalDetailReplies(times: {
   }));
   const replies = watchReplies({
     runs: [{ ...stopped, latestAt: times.now }, ...changing, later],
+    workflows: ["develop"],
   });
   const answer: typeof replies.answer = (request) => {
     const reply = replies.answer(request);

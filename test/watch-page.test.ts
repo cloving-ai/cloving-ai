@@ -1,4 +1,5 @@
-import { activeBoardModel } from "./watch-board-fixture.ts";
+import { boardRun, boardModel, boardEvent } from "./watch-board-fixture.ts";
+import { mergeJournal, mergePull } from "./watch-merge-fixture.ts";
 import { played } from "./watch-browser.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -333,7 +334,18 @@ await test("CLV-098 the embedded favicon uses the header clove shape with a fixe
 
 await test("CLV-098 embedded board rendering includes review pills and stopped presentation", () => {
   const result = played(
-    activeBoardModel(),
+    boardModel(
+      [
+        boardRun("round-2", {
+          events: [boardEvent("claude-turn", { round: 2 })],
+        }),
+      ],
+      {
+        githubRecords: [
+          mergeJournal("round-2", { method: "open-pr", report: mergePull }),
+        ],
+      },
+    ),
     `
 location.hash = "#workflow=develop-issue";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
