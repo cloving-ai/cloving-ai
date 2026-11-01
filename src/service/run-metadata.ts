@@ -133,3 +133,44 @@ function ticketIdOf(input: Fields | undefined): string | null {
   const ticketId = ticketOf(input).id;
   return ticketId === undefined || ticketId === "" ? null : ticketId;
 }
+
+export async function scheduleMetadata(
+  context: ServiceContext,
+): Promise<Fields> {
+  if (context.schedule === undefined) return {};
+  const reply = await context.schedule({ action: "list" });
+  if (reply.kind !== "result" || !Array.isArray(reply.result["schedules"]))
+    return { schedules: { status: "unavailable" } };
+  const schedules: readonly unknown[] = reply.result["schedules"];
+  if (schedules.length === 0) return {};
+  return {
+    schedules: schedules.map((value) => {
+      const schedule = record(value) ?? {};
+      return Object.fromEntries(
+        [
+          "workflowId",
+          "everySeconds",
+          "state",
+          "failuresInRow",
+          "nextAt",
+          "stoppedAt",
+        ].map((name) => [name, schedule[name]]),
+      );
+    }),
+  };
+}
+
+export async function scheduledMetadata(
+  context: ServiceContext,
+  run: { readonly runId: string; readonly workflowId: string },
+): Promise<{ readonly scheduled?: { readonly slot: number } }> {
+  const commandId = (await context.authority.queries.run(run.runId))
+    ?.admissionCommandId;
+  const prefix = `schedule:${run.workflowId}:`;
+  if (typeof commandId !== "string" || !commandId.startsWith(prefix)) return {};
+  const suffix = commandId.slice(prefix.length);
+  const slot = Number(suffix);
+  return /^(0|[1-9][0-9]*)$/.test(suffix) && Number.isSafeInteger(slot)
+    ? { scheduled: { slot } }
+    : {};
+}

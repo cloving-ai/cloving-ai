@@ -1,5 +1,7 @@
 import { commandWaitDisplay } from "./command-waits.ts";
 import {
+  scheduleMetadata,
+  scheduledMetadata,
   metadataOf,
   outcomeOf,
   ticketMetadataPage,
@@ -118,6 +120,7 @@ async function effectInput(
 
 type ShownRun = RunView &
   RunLinks & {
+    readonly scheduled?: { readonly slot: number };
     readonly commandOperations: readonly OperationView[];
     readonly input: Fields | null;
     readonly workflowId: string;
@@ -134,6 +137,7 @@ async function viewOf(
   const run = isIdentifier(scope.runId) ? state.runs[scope.runId] : undefined;
   if (run === undefined) return undefined;
   const details = state.details[run.runId];
+  const workflowId = scope.snapshot.workflowIds[run.runId] ?? run.workflow;
   const effects = await effectInput(context, run.runId);
   const input = {
     ...effects,
@@ -161,10 +165,14 @@ async function viewOf(
   };
   return {
     ...runView(input),
+    ...(await scheduledMetadata(context, {
+      runId: run.runId,
+      workflowId,
+    })),
     commandOperations: effects.commandOperations,
     ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
     input: await submittedInput(context, details?.submission),
-    workflowId: scope.snapshot.workflowIds[run.runId] ?? run.workflow,
+    workflowId,
     latestAt: times[run.runId] ?? null,
     unresolvedEffects: unresolvedEffects(input),
     feedback: await feedbackOf(context, { state, runId: run.runId }),
@@ -174,6 +182,7 @@ async function viewOf(
 function summary(view: ShownRun): Fields {
   return {
     runId: view.runId,
+    ...(view.scheduled === undefined ? {} : { scheduled: view.scheduled }),
     ...linksOf(view),
     input: view.input,
     workflowId: view.workflowId,
@@ -237,6 +246,7 @@ async function listed(
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
     ...(await queueOverview(context)),
+    ...(await scheduleMetadata(context)),
     workflows: context.registry.workflowIds,
     workflowRefusals: context.workflowRefusals ?? [],
     ...(Object.keys(context.registry.workflowStages).length === 0

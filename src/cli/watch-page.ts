@@ -1,3 +1,8 @@
+import {
+  scheduleStatusLine,
+  scheduledText,
+  shownScheduled,
+} from "./schedule-render.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -97,6 +102,9 @@ import {
 } from "./watch-header-view.ts";
 
 const functions = [
+  scheduleStatusLine,
+  scheduledText,
+  shownScheduled,
   record,
   commandText,
   Commands,

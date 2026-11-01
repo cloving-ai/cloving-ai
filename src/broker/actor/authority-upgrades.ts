@@ -10,7 +10,11 @@ import {
 } from "../../storage/decision-snapshots.ts";
 import { loadSnapshot } from "../../storage/domain-rows.ts";
 import { upgradeDecisions } from "../decision-upgrade.ts";
-import { upgradeEffects, upgradeSpendingIndexes } from "../effect-upgrade.ts";
+import {
+  upgradeEffects,
+  upgradeEventIndexes,
+  upgradeSpendingIndexes,
+} from "../effect-upgrade.ts";
 
 const upgrades = [
   { from: "adopted", load: loadSnapshot, apply: upgradeDecisions },
@@ -18,6 +22,7 @@ const upgrades = [
   { from: "effected", load: loadEffected, apply: upgradeCommandWaits },
   { from: "waiting", load: loadWaiting, apply: upgradeCommandWaitChecks },
   { from: "checked", load: loadCurrent, apply: upgradeSpendingIndexes },
+  { from: "indexed", load: loadCurrent, apply: upgradeEventIndexes },
 ] as const;
 
 export type UpgradeStep = (typeof upgrades)[number];

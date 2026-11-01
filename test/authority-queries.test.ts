@@ -223,3 +223,39 @@ await test("CLV-072 completion reads survive reopening", async () => {
     await reopened.close();
   }
 });
+
+await test("CLV-247 run reads retain the admission command ID after later events and reopening", async () => {
+  const directory = await temporaryDirectory();
+  const authority = await openedAuthority(directory);
+  const admitted = [
+    ["run-1", "schedule:review:12"],
+    ["run-2", "manual"],
+  ] as const;
+  try {
+    for (const [runId, commandId] of admitted) {
+      const results = await executeAll(authority, [
+        { command: { ...admission, runId, commandId } },
+        { command: { ...started, runId, commandId: `later:${runId}` } },
+      ]);
+      assert.deepEqual(
+        results.map((result) => result.kind),
+        ["accepted", "accepted"],
+      );
+      assert.partialDeepStrictEqual(await authority.queries.run(runId), {
+        admissionCommandId: commandId,
+      });
+    }
+    assert.equal(await authority.queries.run("missing"), undefined);
+  } finally {
+    await authority.close();
+  }
+  const reopened = await openedAuthority(directory);
+  try {
+    for (const [runId, commandId] of admitted)
+      assert.partialDeepStrictEqual(await reopened.queries.run(runId), {
+        admissionCommandId: commandId,
+      });
+  } finally {
+    await reopened.close();
+  }
+});
