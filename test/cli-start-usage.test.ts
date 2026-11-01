@@ -156,17 +156,15 @@ await test("CLV-083 keeps the Claude command and runs Codex without a sandbox by
   ]);
 });
 
-await test("CLV-075 the default Claude command allows web research and help describes develop-prd", () => {
+await test("CLV-262 default Claude tools allow web research and help names no bundled workflow", () => {
   const tools =
     defaultCommand[defaultCommand.indexOf("--allowedTools") + 1]?.split(",");
   assert.ok(tools?.includes("WebSearch"));
   assert.ok(tools?.includes("WebFetch"));
-  for (const name of ["CLOVING_PRIVATE_TEXTS", "CLOVING_GH_COMMAND"])
-    assert.match(
-      String(commandUsage["start"])
-        .split("\n")
-        .find((line) => line.startsWith(`  ${name} `)) ?? "",
-      /develop-prd/,
+  for (const name of ["run", "start"])
+    assert.doesNotMatch(
+      String(commandUsage[name]),
+      /develop-(ticket|issue|prompt|prd)/,
     );
 });
 

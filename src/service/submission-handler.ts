@@ -219,11 +219,7 @@ async function spendRefusal(
   context: ServiceContext,
   admission: Admission,
 ): Promise<Reply | undefined> {
-  if (
-    admission.workflowId !== "develop-issue" &&
-    admission.workflow.manifest.queue !== true
-  )
-    return undefined;
+  if (admission.workflow.manifest.queue !== true) return undefined;
   const spend = record((await queueSpend(context))["spend"]);
   return spend?.["holding"] === true
     ? failed("queue-spend-limit", {
@@ -242,9 +238,8 @@ function admissionRefusal(
     readonly activeTickets: readonly Fields[];
   },
 ): Reply | undefined {
-  const { workflowId, commandId, submission, activeTickets } = request;
-  const tickets =
-    workflowId === "develop-issue" || hasTicketField(workflow.submission);
+  const { commandId, submission, activeTickets } = request;
+  const tickets = hasTicketField(workflow.submission);
   if (
     tickets &&
     typeof submission["ticket"] === "string" &&
@@ -346,7 +341,6 @@ export function submissionHandler(
     const keys = [`command:${String(parameters["commandId"])}`];
     const workflowId = String(parameters["workflowId"]);
     if (
-      workflowId === "develop-issue" ||
       hasTicketField(context.registry.byId(workflowId)?.submission) ||
       context.registry.byId(workflowId)?.admission !== undefined
     )

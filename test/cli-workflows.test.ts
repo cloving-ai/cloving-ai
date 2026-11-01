@@ -107,7 +107,7 @@ await test("CLV-224 human listing leaves an active service project unchanged", (
       });
       assert.equal(result.status, 0, result.stdout + result.stderr);
       assert.match(result.stdout, /personal \(user, admitted\)/);
-      assert.match(result.stdout, /develop-ticket \(bundled, admitted\)/);
+      assert.doesNotMatch(result.stdout, /\(bundled,/);
       assert.equal(
         await readFile(join(root, "service/project/package.json"), "utf8"),
         "active project sentinel",
@@ -237,7 +237,7 @@ await test("CLV-224 workflow test distinguishes unknown IDs from missing tests",
       for (const [name, code] of [
         ["missing", "unknown-workflow"],
         ["declared-id", "workflow-test-missing"],
-        ["develop-ticket", "workflow-test-missing"],
+        ["develop-ticket", "unknown-workflow"],
       ]) {
         const result = cli(root, { args: ["test", name ?? ""] });
         assert.equal(result.status, 1, result.stdout + result.stderr);
@@ -270,7 +270,7 @@ await test("CLV-224 listing retains folder-level refusal codes", () =>
         human.stdout,
         /unknown \(user, refused: unsafe-workflow-path\)/,
       );
-      assert.match(human.stdout, /develop-ticket \(bundled, admitted\)/);
+      assert.doesNotMatch(human.stdout, /\(bundled,/);
     },
   ));
 

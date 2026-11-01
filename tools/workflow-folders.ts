@@ -13,7 +13,6 @@ import { record } from "../src/protocol.ts";
 import {
   workflowConflicts,
   type WorkflowConflictCode,
-  type WorkflowReservation,
 } from "../src/workflow-discovery.ts";
 import { admitWorkflowCandidate } from "./admit-workflow.ts";
 import type { CandidatePackageOptions } from "./workflow-candidate-program.ts";
@@ -31,7 +30,6 @@ export interface WorkflowFolderInput {
   readonly home: string;
   readonly xdgConfigHome?: string | undefined;
   readonly userFolder?: string | undefined;
-  readonly bundled: readonly WorkflowReservation[];
 }
 
 interface WorkflowLabel {
@@ -73,7 +71,7 @@ export interface WorkflowFolderRefusal extends WorkflowLabel {
 }
 
 export interface WorkflowListing {
-  readonly scope: "bundled" | "project" | "user";
+  readonly scope: "project" | "user";
   readonly workflowId: string | null;
   readonly file: string;
   readonly admitted: boolean;
@@ -301,7 +299,7 @@ export async function loadWorkflowFolders(
   const candidates: WorkflowFolderCandidate[] = [];
   const refusals: WorkflowFolderRefusal[] = [];
   const { repository, snapshots } = await scanFolders(input, refusals);
-  const conflicts = workflowConflicts(snapshots.map(identity), input.bundled);
+  const conflicts = workflowConflicts(snapshots.map(identity));
   for (const [index, entry] of snapshots.entries()) {
     const label = entry.kind === "captured" ? entry.snapshot : entry;
     const codes = [

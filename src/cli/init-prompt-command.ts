@@ -80,18 +80,16 @@ async function inventory(
       (row) =>
         `${String(row["name"])}: ${String(row["points"])} decision points`,
     ),
-    workflows: workflows
-      .filter((row) => row["scope"] !== "bundled")
-      .map((row) => {
-        const { scope, workflowId, file, admitted, codes } = row;
-        if (
-          typeof scope !== "string" ||
-          (workflowId !== null && typeof workflowId !== "string") ||
-          typeof file !== "string"
-        )
-          throw new Error("workflow-inspection-invalid");
-        return { scope, workflowId, file, admitted, codes };
-      }),
+    workflows: workflows.map((row) => {
+      const { scope, workflowId, file, admitted, codes } = row;
+      if (
+        typeof scope !== "string" ||
+        (workflowId !== null && typeof workflowId !== "string") ||
+        typeof file !== "string"
+      )
+        throw new Error("workflow-inspection-invalid");
+      return { scope, workflowId, file, admitted, codes };
+    }),
   };
 }
 

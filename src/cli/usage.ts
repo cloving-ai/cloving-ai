@@ -139,10 +139,10 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
-  CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, which the workflow develop-issue uses for pull requests and develop-prd uses for issues. The watch board also uses it to read pull request status. The default is gh.
-  CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that the workflow develop-issue runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.
-  CLOVING_REQUIRED_CHECKS          A JSON list of required check run names before a develop-issue merge. Unset requires all GitHub Actions checks; a repository with no CI can merge after 60 seconds. The latest run of each name decides. The CI wait limit is 90 minutes.
-  CLOVING_PRIVATE_TEXTS            A JSON list of texts that the workflow develop-issue does not push in a file or in a commit message. The workflow develop-prd requires the list before posting an issue. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
+  CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, used by workflows for pull requests and issues. The watch board also uses it to read pull request status. The default is gh.
+  CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that a workflow runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.
+  CLOVING_REQUIRED_CHECKS          A JSON list of required check run names before a workflow merge. Unset requires all GitHub Actions checks; a repository with no CI can merge after 60 seconds. The latest run of each name decides. The CI wait limit is 90 minutes.
+  CLOVING_PRIVATE_TEXTS            A JSON list of texts that workflows do not push in a file or in a commit message. An issue-posting workflow can require the list. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
 `,
 };
 
@@ -158,7 +158,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving <command> [--help]
 
 Commands:
-  workflows list      List bundled, project and user workflows and refusal codes.
+  workflows list      List project and user workflows and refusal codes.
   workflows test      Run project and user workflow tests without a service.
   workflows validate  Check a compiled workflow manifest, its artifacts and optional runtime input.
   templates list      List the workflow templates of the package.

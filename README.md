@@ -17,10 +17,9 @@ This pre-release has one supervised slice: a service for one git repository, a w
 What works now:
 
 - `cloving start` starts the service for one git repository, with the workflow host, the Claude worker and a watch page.
-- Three workflows from one workflow file: `develop-prompt`, `develop-ticket` and `develop-issue`.
-- `cloving start` loads the bundled `workflows/`, repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
-- In a run of `develop-ticket` or `develop-prompt`, the operator approves or denies the work of each round. A run has a maximum of three rounds.
-- In a run of `develop-issue`, Greptile reviews the pull request. The GitHub worker merges the pull request at the confidence score 5/5, with no human approval.
+- `cloving start` registers workflows from repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
+- The `develop` template supports ticket or task-text input and human or automatic review.
+- The default `develop` template uses Greptile review and merges at the confidence score 5/5, with no human approval.
 - Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge.
 - The watch page shows the runs, the events and the work of the worker as it occurs.
 
@@ -39,7 +38,7 @@ A run needs these tools:
 
 - `git`.
 - The `claude` command of Claude Code on the search path. The Claude worker runs it as the current user.
-- For `develop-issue` only: the `gh` command with a login, and a GitHub repository that Greptile reviews. The worker uses the `gh` login and the git credentials of the current user.
+- For workflows that use GitHub: the `gh` command with a login. Workflows that select Greptile review also need Greptile on the repository. The worker uses the `gh` login and the git credentials of the current user.
 
 Install the executable from npm:
 
@@ -48,7 +47,7 @@ npm install --global cloving --ignore-scripts
 cloving --version
 ```
 
-This package replaces the older Cloving CLI under the same npm name. The installed package includes startup, the watch command, bundled workflows and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
+This package replaces the older Cloving CLI under the same npm name. The installed package includes startup, the watch command, workflow templates and the SDK compiler integration. It starts without a source checkout or development dependencies, using the installed runtime dependencies. Installation runs no scripts and starts no service.
 
 For checkout development, get the code and install the dependencies:
 
@@ -91,7 +90,7 @@ npm install --ignore-scripts --omit=dev /path/to/TARBALL
 ./node_modules/.bin/cloving start
 ```
 
-The installed executable includes JavaScript for startup, the watch command and bundled workflows. It uses the installed runtime dependencies, including the SDK compiler, without a source checkout. Runtime state and generated workflow artifacts use the configured runtime location outside the installation. Installation scripts are unnecessary. The checkout launcher above remains supported, including its existing checkout self-update behavior; installing a tarball does not add package self-updates.
+The installed executable includes JavaScript for startup, the watch command and workflow support. It uses the installed runtime dependencies, including the SDK compiler, without a source checkout. Runtime state and generated workflow artifacts use the configured runtime location outside the installation. Installation scripts are unnecessary. The checkout launcher above remains supported, including its existing checkout self-update behavior; installing a tarball does not add package self-updates.
 
 For a project-local tarball installation, use `./node_modules/.bin/cloving` wherever the examples below say `cloving`, or add your project's `node_modules/.bin` to the search path. After a build, `npm link` also supplies the executable.
 
@@ -177,7 +176,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
-- `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop-issue`; the GitHub command and private-text list also apply to `develop-prd`.
+- `CLOVING_GH_COMMAND`, `CLOVING_CHECK_COMMAND` and `CLOVING_PRIVATE_TEXTS`: settings of `develop`; the GitHub command and private-text list also apply to `idea-to-issue`.
 
 A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='["npm", "test"]'`.
 
@@ -272,20 +271,16 @@ Operator values combine GitHub merges and repository issue-label events with dae
 
 ## Daily development
 
-`cloving start` copies the TypeScript files in `workflows/` into a host project and compiles them there. The bundled workflows are:
+`cloving start` compiles and registers only project and user workflows. The start guide lists each registered workflow with a run command that matches its input contract. With no workflow, the service still starts and prints "No workflow. Run: cloving init". Status continues to show stored runs after their workflows have been removed.
 
-- `develop-prompt` takes the text of a task. Use it for a small task with no ticket, or for a first try in a new repository.
-- `develop-ticket` takes a ticket ID and reads the ticket itself. Use it for the normal work on a ticket, when you want to read each diff and merge the branch yourself.
-- `develop-issue` takes a ticket ID too, and sends the work through a GitHub pull request. Use it for a small ticket with clear criteria, in a GitHub repository that Greptile reviews and that has a check command. For continuous self-development, use the private `develop` copy described below.
-- `develop-prd` takes an idea, researches the code and web, reviews a draft PRD, and posts it as a GitHub issue. It then hands the issue number to `develop-issue` to build automatically. Set `CLOVING_PRIVATE_TEXTS` to a nonempty JSON list before starting the daemon. A refused post preserves the worktree and draft. If the handoff is refused, it adds `cloving: ready` so the issue queue can build it later. The PRD run retains `issue-N` as its promotion, shows the refusal code in its outcome reason, and removes its worktree after posting. If the fallback label fails, status also shows `issueUpdate: failed`; inspect the GitHub operation and queue the issue after resolving the failure.
+Use `cloving init` to choose and configure a template. The `develop` template supports ticket input, queue selection, review and merge choices. The `idea-to-issue` template researches an idea and hands the resulting issue to a declared development workflow. The commands below assume those templates have been copied and configured:
 
 ```sh
 cloving start                                  # terminal 1, in the repository
-cloving run develop-ticket --ticket TICKET_ID  # terminal 2
-cloving run develop-issue --ticket TICKET_ID   # the work goes through a pull request
-cloving run develop-issue --next               # select the next ready ticket
-cloving run develop-prompt --prompt "the text of the task"
-cloving run develop-prd --prompt "Show the cost of each run on the watch page"
+cloving run develop --ticket TICKET_ID         # terminal 2
+cloving run develop --next                     # select the next ready ticket
+printf '%s\n' '{"idea":"Show the cost of each run on the watch page"}' > idea.json
+cloving run idea-to-issue --input idea.json
 cloving watch                                  # the live page, also started by cloving start
 cloving questions
 cloving approve DECISION_REF --expected-revision N --generation N --subject-digest DIGEST
@@ -296,17 +291,17 @@ The rule: read the diff before you approve.
 
 Claude turns have web research tools by default, an empty GitHub CLI configuration folder, and no GitHub token environment variables. This is not a sandbox: a turn can still find other credentials. The PRD refusal rules catch the listed private text and common sensitive forms; unlisted private names can pass. A `post-uncertain` result requires checking GitHub before trying another run.
 
-`cloving status RUN_ID --json` includes `run.input`, and `cloving status --json` includes `input` on each listed run. It is the normalized submission admitted with the run, such as `{"ticket":"297"}` for `develop-issue` or the submitted fields of a declared workflow. It survives service restarts and excludes resolver-added ticket text and repository paths. Older runs without a stored submission show `null`. The text status of one run shows `Input:` as compact JSON, limited to the first 200 characters with `…` appended when longer. Terminal control and hidden format characters are escaped.
+`cloving status RUN_ID --json` includes `run.input`, and `cloving status --json` includes `input` on each listed run. It is the normalized submission admitted with the run, such as `{"ticket":"297"}` for a ticket workflow or the submitted fields of another declared workflow. It survives service restarts and excludes resolver-added ticket text and repository paths. Older runs without a stored submission show `null`. The text status of one run shows `Input:` as compact JSON, limited to the first 200 characters with `…` appended when longer. Terminal control and hidden format characters are escaped.
 
 ### The ticket command
 
 `CLOVING_TICKET_COMMAND` (a JSON list of texts) names the ticket command. The contract of a ticket command:
 
 - It gets a ticket ID as its last argument and prints the text of the ticket.
-- For `develop-issue`, a first line that starts with `# ` gives the title of the pull request. With no such line, the title is `Cloving task <cycle ID>`.
-- For `develop-issue`, a line `GitHub issue: <owner>/<repository>#<number>` makes the pull request reference that issue. Cloving closes it after a merge only when the worker reports complete work.
+- The `develop` template uses the first ticket line as the pull request title, removes leading Markdown heading markers and limits it to 200 characters.
+- For `develop`, a line `GitHub issue: <owner>/<repository>#<number>` makes the pull request reference that issue. Cloving closes it after a merge only when the worker reports complete work.
 
-The daemon runs the ticket command when it admits a run. The printed text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop-ticket` is refused with `ticket-source-not-configured`. A ticket ID has letters, digits and the characters `. _ : -` only.
+The daemon runs the ticket command when it admits a run. The printed text becomes the stored input of the run, so a later change of the ticket does not change the run. A ticket that the command does not give is refused with `ticket-not-available`. With no ticket command, `develop` is refused with `ticket-source-not-configured`. A ticket ID has letters, digits and the characters `. _ : -` only.
 
 This example ticket command reads a GitHub issue. Save it as `~/.local/bin/github-ticket`, and make it executable:
 
@@ -325,7 +320,7 @@ Then start the service with the setting:
 CLOVING_TICKET_COMMAND='["github-ticket"]' cloving start
 ```
 
-`cloving run develop-issue --next` and `cloving run develop-ticket --next` use the reserved ticket ID `next`, just like `--ticket next`. Set `CLOVING_NEXT_COMMAND` to a JSON list naming your selection command and its arguments. The daemon adds no argument. The command chooses a ready ticket in your tracker and prints its ID; the daemon trims it and reads the ticket with `CLOVING_TICKET_COMMAND`. Both commands share the resolver's 30-second deadline. Selection logic stays in your command, and each invocation submits only one run.
+`cloving run develop --next` uses the reserved ticket ID `next`, just like `--ticket next`. Set `CLOVING_NEXT_COMMAND` to a JSON list naming your selection command and its arguments. The daemon adds no argument. The command chooses a ready ticket in your tracker and prints its ID; the daemon trims it and reads the ticket with `CLOVING_TICKET_COMMAND`. Both commands share the resolver's 30-second deadline. Selection logic stays in your command, and each invocation submits only one run.
 
 Set `CLOVING_QUEUE_SECONDS` to a whole number from 10 to 3600 to poll for ready tickets. The queue starts the declared workflow with `"queue": true` and requires both ticket commands when that workflow exists. If no workflow declares it, no queue starts, even when the interval is set. `CLOVING_QUEUE_LANES` sets the number of simultaneous runs, from 1 to 4, and requires `CLOVING_QUEUE_SECONDS`; its default is 1. For example, `CLOVING_QUEUE_LANES=4` admits at most one new ticket each cycle until four lanes are busy. Each run has its own branch and work tree. Manual submissions to the queue workflow share this limit and receive `workflow-active` when all lanes are busy. A ticket already being developed receives `ticket-active`. After a restart that moves the queue to another workflow, active runs of earlier queue workflows still occupy lanes and exclude their tickets.
 
@@ -345,7 +340,7 @@ A saved harness named `grok` runs `grok --output-format streaming-messages-json 
 
 Grok token counts come only from the terminal result, including its subagents. Input includes uncached input and cache creation; cache reads and output remain separate. Missing, all-zero or stderr-warned incomplete usage shows `Token usage not known`. An estimate requires complete usage attributed to exactly one model with a configured price. Mixed models and missing prices show `Price not known`. Grok uses token-based estimates and ignores its projected cost field. No Grok model prices are built in.
 
-### Review rounds of `develop-ticket` and `develop-prompt`
+### Human review with a local branch
 
 Worker turns retry an exact Codex capacity refusal or a Claude overload after 60 seconds, then 180 seconds. Claude worker turns also retry a failed result whose text starts with `API Error: Can't reach the API server`: the first retry waits 10 minutes and the second waits 40 minutes. The retry number selects the wait for its kind, with at most three attempts across both kinds. Other failures are not retried. Each wait starts after the failed attempt ends. Stopping during a wait returns `stopped`; a daemon restart fails the recorded operation for existing recovery.
 
@@ -355,11 +350,11 @@ Before a retry, Cloving checks the work tree's git index lock, including linked 
 
 `CLOVING_FALLBACK_MODELS` accepts a JSON array of at most three nonempty model names, for example `'["gpt-6-astra"]'`. Without the setting or with `[]`, every attempt keeps the main model. The first attempt and first retry use the main model; each later attempt uses the next configured fallback within the existing attempt limit. With three attempts, only the first fallback can be used. The worker command must explicitly name a model with `-m NAME`, `--model NAME` or `--model=NAME`; otherwise it stays unchanged and the private journal records `fallback-model-unavailable`. Fallbacks apply only when the preceding attempt ended with a capacity refusal. A network retry keeps the model of the configured command. A fallback model can have a higher price. Each attempt's estimate uses its own model's price; an unknown price or missing token count leaves the total estimate unknown. Malformed settings refuse daemon start with `invalid-fallback-models`.
 
-A run of `develop-ticket` or `develop-prompt` has one to three review rounds. Each round does one Claude Code turn in the work tree of the run, on the branch `cloving/<ticket id>-…`, and then opens one approval. The first round makes the work tree. The approval text has the round, the ticket ID, the branch, the commits, the changed files and the report of the worker. Read the diff before you decide. The decision has these results:
+A develop template copy configured for human review and the local-branch merge option has up to four review rounds. Each round does one Claude Code turn in the work tree of the run, on its generated task branch, and then opens one approval. The first round makes the work tree. The approval identifies the immutable review subject, including its target and commit. Read that commit’s diff before you decide. The decision has these results:
 
 - An approval completes the run. It does not merge the branch. Merge the branch yourself.
-- A denial with a feedback text (`--text`) in round 1 or 2 starts the next round. The Claude worker gets the feedback text and adds commits to the same branch.
-- A denial with no text, or a denial in round 3, ends the run.
+- A denial with a feedback text (`--text`) in rounds 1 to 3 starts the next round. The Claude worker gets the feedback text and adds commits to the same branch.
+- A denial with no text, or a denial in round 4, ends the run.
 
 The worker is not confined. It runs the `claude` command of the search path as the current user, with file edits and shell commands permitted in the work tree and a spend limit of 5 USD for each turn. `CLOVING_CLAUDE_COMMAND` (a JSON list of texts) replaces the command.
 
@@ -445,19 +440,19 @@ separate starting commits; concurrent runs on one branch do not isolate their
 commits. Index flags inside submodules and other settings that hide changes
 are outside these checks. Every GitHub worker method refuses `branch:` targets
 with `branch-target-not-supported`, so this target adds no Cloving push or merge
-step. The bundled development workflows keep their existing targets.
+step. Each project or user workflow declares its own targets.
 
-### Pull requests of `develop-issue`
+### Pull requests of `develop`
 
-A run of `develop-issue` opens no approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title and the referenced issue come from the ticket text (see "The ticket command"). The pull request body uses `Refs owner/repository#N`, so the merge itself does not close the issue. Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.
+The default `develop` template uses automatic review without an approval. The GitHub worker makes the work tree from the newest commit of the default branch of `origin`. After the Claude turn, the worker pushes the branch and opens a pull request. The title and the referenced issue come from the ticket text (see "The ticket command"). The pull request body uses `Refs owner/repository#N`, so the merge itself does not close the issue. Then the worker waits for the Greptile review of the pushed commit, and asks for a review with a comment after 5 minutes.
 
-When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`. Start and blocked label failures leave the run's outcome unchanged. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
+When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`. A failed label operation throws and can fail the template run. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
 
 The last worker report must end with exactly one line: `Ticket status: complete` or `Ticket status: partial`. A partial report must put `Remaining:` immediately before a list with one `- ` item per line, followed by the status line. The worker records the parsed status and remaining items before shortening the summary, so summary limits cannot remove those fields. If the preserved fields exceed the result byte limit, the turn fails with `claude-result-too-large` and retains bounded cost metadata; the full report stays in the private turn log. Older recorded turns still use summary parsing. Missing, repeated, unknown or malformed status reports count as partial with the remaining item "The worker report has no ticket status line."
 
 After a merge, a protected GitHub operation updates the issue body and labels. Complete work closes the issue with reason `completed` and adds "Completed in pull request #M." to `## Cloving status`. Partial work keeps the issue open and appends `- Pull request #M: partial. Remaining: ...` to that section at the end of the body, preserving earlier partial lines and other body text. Items are separated by semicolons. The issue privacy check runs before new remaining text is written; a refusal uses "Remaining work is in the private run report." instead. No issue comment is posted. Status writes add and remove only workflow labels, preserving unrelated label edits. Before a body write, Cloving rereads the issue and refuses a changed body with `github-issue-conflict`; the merged outcome records `issueUpdate: failed`. GitHub does not support conditional PATCH requests for this endpoint, so this check cannot make the read and write atomic.
 
-Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The effect limit stays at 20 units: the post-merge status operation replaces the final label operation.
+Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The unmodified develop template declares an effect limit of 27 units.
 
 Partial history comes only from a hidden HTML comment at the end of the issue body, beginning with `cloving-status`. Its JSON object has `version: 1`, a `partialRuns` array of pull request numbers and remaining-item lists, and an optional `completedPullRequest`. Double hyphens and greater-than signs in JSON strings are escaped so they cannot end the comment. Each write regenerates the readable section from this data and replaces the exact previously generated section. Other Markdown stays unchanged, including status examples, lists, tables, HTML and unclosed fences. Missing, broken or unknown metadata counts as zero earlier partial runs and is replaced on the next write; readable text is never used to reconstruct history. A block followed by other issue text is left unchanged and counts as missing terminal metadata.
 
@@ -475,7 +470,7 @@ When a GitHub Actions check fails in its first workflow attempt, Cloving request
 
 A second failure returns `ci-failed` with the outputs of both attempts, including failed check names, failed steps and failed log tails, with private texts hidden and at most 6,000 characters in total. Checks outside GitHub Actions or without an Actions run link retain the immediate failure behavior. The failure starts a worker fix round that must repair CI, including failures the pull request did not cause, and commit the fix. The new commit receives a new Greptile review and CI gate. Review, local check, conflict and CI repairs share the existing limit of three fix rounds.
 
-The watch board keeps blocked `develop-issue` runs in `Stopped`. A validated local merge report shows `PR merged · #N`. A later completed run for the same established GitHub issue must have its own validated merge report to show `Ticket completed by later run`. The original and later run have separate links. Either local proof prevents a GitHub read. These marks preserve the recorded run outcome.
+The watch board preserves the displays of historical pull-request runs, including blocked runs in `Stopped`. A validated local merge report shows `PR merged · #N`. A later completed run for the same established GitHub issue must have its own validated merge report to show `Ticket completed by later run`. The original and later run have separate links. Either local proof prevents a GitHub read. These marks preserve the recorded run outcome.
 
 Otherwise, the board reads the recorded pull request with `CLOVING_GH_COMMAND` (default `gh`). It validates the PR and issue identities against the configured repository's local origin. The first queued or active read shows `Checking PR`. A confirmed merge shows `PR merged · #N`; a failed read shows `PR status unavailable`. An unmerged PR shows `Needs attention`. A separate `Stale` mark appears when the last successful unmerged observation is older than 120 seconds, including after a failed refresh. A successful refresh resets its age. Confirmed merges never become stale.
 
@@ -487,7 +482,7 @@ The GitHub worker does not push a change that has the path of the home folder in
 
 In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
 
-The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts `develop`; `develop-issue` receives no queued runs while this copy is admitted.
+The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts only the declared queue workflow, `develop`.
 
 Use one terminal session for the service that stays open, for example a `tmux` session. Do these steps for each issue:
 
@@ -553,9 +548,9 @@ Do not merge a pull request yourself. Do not approve or deny for me.
 Help me write a ticket for Cloving. A Claude Code worker gets the full text of the ticket and no other context. Ask me questions until each part is clear. Then write the ticket in Markdown with these parts:
 
 # TITLE
-  One line. For develop-issue, it becomes the title of the pull request.
+  One line. For develop, it becomes the title of the pull request.
 GitHub issue: OWNER/REPOSITORY#NUMBER
-  Only for develop-issue. The pull request references this issue; complete work closes it after the merge.
+  Only for develop. The pull request references this issue; complete work closes it after the merge.
 ## Problem
   What is wrong now, with facts.
 ## Desired outcome
@@ -573,24 +568,23 @@ GitHub issue: OWNER/REPOSITORY#NUMBER
 
 Rules:
 - One ticket has one behavior. If the work needs more than one pull request, split the ticket.
-- Write no secret, no private data and no local file path. For develop-issue, the ticket text and the branch become public.
+- Write no secret, no private data and no local file path. For develop, the ticket text and the branch become public.
 - Use one term for one thing.
 ```
 
 ## Develop a workflow
 
-`cloving start` loads workflows from three folders:
+`cloving start` loads workflows from two folders:
 
-- The bundled `workflows/` folder in the Cloving package. Startup compiles each TypeScript file in this folder.
 - The repository `.cloving/workflows/` folder.
 - The user `cloving/workflows/` folder under an absolute `XDG_CONFIG_HOME`, otherwise under `~/.config`. An unset or relative `XDG_CONFIG_HOME` uses that default.
 
 The private setting `workflows.folder` replaces the user folder with an absolute folder path, for example a private git repository of your own workflows. Set it with `cloving config set workflows.folder <path>`. Cloving reads the folder where it is. The folder itself must not be a symbolic link; a link in the path above it is allowed. `cloving workflows list` shows its workflows with the scope `user`.
 
-A workflow is a TypeScript file in the form of `workflows/develop-ticket.ts`:
+A workflow is a TypeScript file in the form of `templates/develop/develop.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
-- The first argument is the input of the run. A resolver of the daemon makes it, for example `cycleId`, `ticketId`, `ticket` and `repository`. With `decisionGate`, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine that argument before it asks for an effect, as `decided()` in `workflows/develop-ticket.ts` does. With `waitForDecision`, the decision returns to the same call.
+- The first argument is the input of the run. The declared resolver provides `cycleId`, `repository` and the submitted fields under `input`; a ticket field becomes `{ id, text }`. With `decisionGate`, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine that argument before it asks for an effect. With `waitForDecision`, the decision returns to the same call.
 - The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `waitForDecision` from `cloving/workflows/steps/wait-for-decision`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
@@ -603,7 +597,10 @@ import { decisionGate } from "cloving/workflows/steps/decision-gate";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
 export async function developTicket(
-  input: { readonly cycleId: string; readonly ticket: string },
+  input: {
+    readonly cycleId: string;
+    readonly input: { readonly ticket: { readonly id: string; readonly text: string } };
+  },
   decision?: {
     readonly gateId: string;
     readonly decision: string;
@@ -629,7 +626,7 @@ export async function developTicket(
     capability: "claude",
     method: "run-turn",
     target: input.cycleId,
-    payload: input.ticket,
+    payload: input.input.ticket.text,
     units: 1,
   });
   if (turn.kind !== "completed")
@@ -659,7 +656,7 @@ export async function developTicket(
 }
 ```
 
-In this example, an approval completes the run and a denial ends it. `workflows/develop-ticket.ts` also starts one more round after a denial with a feedback text.
+In this example, an approval completes the run and a denial ends it. A copy of `templates/develop/develop.ts` configured for person review and local-branch delivery also supports repair rounds after a denial with feedback.
 
 New workflows can await a decision in the same call:
 
@@ -828,9 +825,9 @@ const attached = await protectedEffect({
 
 The method uploads the file as an asset of the release `release`, with the asset name `pr-<number>-<name>`. Then it creates or updates one comment on the pull request with a link to the asset, so a second call adds no second comment. When the release does not exist, the method creates it as a pre-release that is not the latest release. `name` is a file name with the extension `.mp4`, `.webm` or `.png`. The file must be a regular file of at most 100 MB, and a symbolic link is refused. `release` has lowercase letters, digits and hyphens, and it cannot start with `v` and a digit, so it never matches a version tag. The comment text must pass the same privacy check as issue texts. The failure reasons are `invalid-payload`, `attachment-not-available`, `attachment-too-large` and the usual GitHub reasons. The candidate declaration must include `methods: { "github": ["attach-asset"] }`.
 
-The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
+The template tests use `fakeStepBridge` from `cloving/workflows/testing` to record effect and gate requests and supply fake results. `templates/develop/develop.test.ts` exercises the develop template through that public testing API.
 
-Use `cloving workflows list` to inspect bundled, project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.
+Use `cloving workflows list` to inspect project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.
 
 Put tests beside each folder workflow as `<name>.test.ts`, then run `cloving workflows test <workflow-id>`. Omit the ID to run all available project and user workflow tests. Both commands accept `--repository <directory>`. The Node test runner prints its results and supplies the exit status. Unknown IDs report `unknown-workflow`; known workflows without tests report `workflow-test-missing`. Neither needs a running service.
 
@@ -865,9 +862,9 @@ await test("develop uses the fake worker result", async () => {
 
 Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `gate` supplies a decision-gate result, `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order, and `decision` supplies the workflow's second argument. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect or gate results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
 
-The four built-in registrations (`develop-ticket`, `develop-issue`, `develop-prd` and `develop-prompt`) keep their existing input contracts and resolvers.
+There are no built-in registrations. Workflow IDs are available to project and user declarations.
 
-For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the folders and bundled workflows.
+For a repository or user folder workflow, use one `<name>.ts` file with one exported workflow function. Put one `<name>.declaration.json` file beside it. Function names and workflow IDs must be unique across the project and user folders.
 
 Discovery considers files in the folder root and ignores `.d.ts` and `.test.ts` files. Put local TypeScript helpers in subfolders: for example, `develop.ts` can import `./develop/prompts.ts`. Helpers can import further `.ts` files through `./` paths within those subfolders and need no workflow function or declaration. Imports with parent traversal, absolute paths or a `node_modules` component are refused, as are package imports outside the public `cloving/workflows` modules.
 
@@ -902,7 +899,7 @@ The declaration has two fields: `workflow` contains the workflow declaration, an
 
 The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities contain one or more of `claude`, `github` and `command`. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, booleans, or tickets. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
 
-A declaration can have one `"ticket": { "type": "ticket" }` field, named `ticket`. Submit its ID as a string. When it is the only required field, use `cloving run <workflow-id> --ticket 312` or `--next`. You can also use `--input ticket.json` with `{"ticket":"312"}`; include every other required field in that file. At admission, the daemon reads the configured ticket command and replaces the ID with `{ "id": "312", "text": "# ..." }` inside the workflow's `input`. `--next` selects the ID through the configured next command. Missing sources keep the `ticket-source-not-configured` and `next-source-not-configured` refusals. The `Needs #N` dependency rule and `ticket-active` refusal apply as for `develop-issue`. Active tickets are checked within each workflow, so different workflows can work on the same ticket. Doctor requires `ticket-command` for these declarations, and the watch form labels the field **Ticket ID**.
+A declaration can have one `"ticket": { "type": "ticket" }` field, named `ticket`. Submit its ID as a string. When it is the only required field, use `cloving run <workflow-id> --ticket 312` or `--next`. You can also use `--input ticket.json` with `{"ticket":"312"}`; include every other required field in that file. At admission, the daemon reads the configured ticket command and replaces the ID with `{ "id": "312", "text": "# ..." }` inside the workflow's `input`. `--next` selects the ID through the configured next command. Missing sources keep the `ticket-source-not-configured` and `next-source-not-configured` refusals. The `Needs #N` dependency rule and `ticket-active` refusal apply as for `develop`. Active tickets are checked within each workflow, so different workflows can work on the same ticket. Doctor requires `ticket-command` for these declarations, and the watch form labels the field **Ticket ID**.
 
 Optional `commands` lists distinct names from `CLOVING_COMMANDS`; executable paths and arguments belong only in the operator setting. The `command` capability requires at least one name. Registration refuses an unknown name with `command-unknown`. The execution pin retains these names with each run, and authority refuses `command` effects whose `run:<name>` method is absent from that run's pinned list with `command-not-declared`. Reordering names preserves the pin; changing names changes it. Omitted and empty lists preserve legacy pins.
 
@@ -946,7 +943,7 @@ The daemon starts the operator command without a shell in the repository folder 
 
 The journal records a claim before starting the process. Completed effects replay their stored result after restart. A claimed effect without a result fails with `command-interrupted` after restart and never starts again, including when the earlier process may have written data. Each logical operation starts at most one command; use a new operation scope for a new invocation. The watch run page and `cloving status <run>` show each command name, state, exit status and duration.
 
-Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The built-in `develop-prd` declares `develop-issue` as its only handoff target and calls it after creating an issue; the other built-in workflows declare none. A refused PRD handoff adds `cloving: ready` for the queue and records the refusal in the PRD run's outcome.
+Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The `idea-to-issue` template declares `develop` as its only handoff target and calls it after creating an issue. Both workflows must be copied and admitted. A refused PRD handoff adds `cloving: ready` for the queue and records the refusal in the PRD run's outcome.
 
 Use `handoff` inside a workflow to submit input to a declared target:
 
@@ -954,7 +951,7 @@ Use `handoff` inside a workflow to submit input to a declared target:
 import { handoff } from "cloving/workflows/steps/handoff";
 
 const runId = await handoff({
-  workflowId: "develop-issue",
+  workflowId: "develop",
   input: { ticket: "CLV-123" },
 });
 ```
@@ -1040,7 +1037,7 @@ At daemon startup, Cloving also checks these folders on both macOS and Linux:
 - Project: `.cloving/workflows` under the repository selected by `cloving start --repository REPOSITORY` (the current repository by default).
 - User: `$XDG_CONFIG_HOME/cloving/workflows` when `XDG_CONFIG_HOME` is absolute; otherwise `$HOME/.config/cloving/workflows`. macOS uses these same XDG rules.
 
-Missing folders are left absent. Discovery reads top-level `.ts` files, excluding `.d.ts`, and requires a matching `<name>.declaration.json`. Unlike the bundled declaration above, an operator declaration wraps the workflow metadata and lists the effect methods it may request:
+Missing folders are left absent. Discovery reads top-level `.ts` files, excluding `.d.ts`, and requires a matching `<name>.declaration.json`. A project or user declaration wraps the workflow metadata and lists the effect methods it may request:
 
 ```json
 {
@@ -1059,7 +1056,7 @@ Missing folders are left absent. Discovery reads top-level `.ts` files, excludin
 
 Use one exported async workflow function with `"use workflow"` and the public `cloving/workflows` helpers. Each capability requires a nonempty list of distinct method names. Declaration, source and actual SDK compilation must pass admission before registration. Declaring a method grants no execution authority; the broker still enforces each run's capabilities and budget. Submit inputs with `cloving run project-review --input input.json`.
 
-Admitted project and user workflows appear beside the bundled registrations. A refused neighbor does not stop valid workflows from loading. `cloving status --json` exposes `workflowRefusals`; status and watch show each refusal's scope, safe file label and codes without its source text. These codes identify the failed check:
+Only admitted project and user workflows are registered. A refused neighbor does not stop valid workflows from loading. `cloving status --json` exposes `workflowRefusals`; status and watch show each refusal's scope, safe file label and codes without its source text. These codes identify the failed check:
 
 | Codes | Meaning |
 | --- | --- |
@@ -1067,7 +1064,7 @@ Admitted project and user workflows appear beside the bundled registrations. A r
 | `forbidden-import`, `missing-export` | Import outside the public helper surface, or an unavailable named export. |
 | `unsupported-source`, `dynamic-effect`, `direct-effect` | Unsupported source form, a nonliteral effect request, or a direct effect outside helpers. |
 | `undeclared-effect`, `effect-limit` | Requested method absent from the declaration, or statically known work exceeding the limit. |
-| `workflow-conflict`, `bundled-name-reserved` | Conflicting basename, workflow ID or function name across operator files, or collision with a bundled registration. |
+| `workflow-conflict` | Conflicting basename, workflow ID or function name across project and user files. |
 | `unsafe-workflow-path`, `workflow-read-failed`, `workflow-source-changed` | Unsafe file or folder path, unreadable input, or input changed during capture. |
 | `compile-failed` | Candidate analysis or SDK compilation could not complete. |
 
@@ -1095,7 +1092,7 @@ npm pack --ignore-scripts
 
 After a merge or branch update changes `package.json` or `package-lock.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks. Copied `node_modules` can still contain the previous versions; the developer gate rejects a mismatch with the lockfile.
 
-`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and bundled workflows; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `decisionGate`, `waitForDecision`, `handoff`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
+`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and workflow templates; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `decisionGate`, `waitForDecision`, `handoff`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 

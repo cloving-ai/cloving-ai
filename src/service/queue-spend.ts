@@ -12,11 +12,16 @@ type SpendContext = Pick<
 
 export async function queueRun(
   context: Pick<ServiceContext, "authority">,
-  run: { readonly runId: string; readonly workflowId: string | undefined },
+  runId: string,
 ): Promise<boolean> {
+  const { queries } = context.authority;
+  if ((await queries.manifest(runId))?.queue === true) return true;
+  if ((await queries.workflowIds([runId]))[runId] !== "develop-issue")
+    return false;
+  const { events } = await queries.eventsAfter({ runId, after: 0, limit: 1 });
   return (
-    run.workflowId === "develop-issue" ||
-    (await context.authority.queries.manifest(run.runId))?.queue === true
+    events[0]?.type === "run.created" &&
+    events[0].payload["resolver"] === "issue-command:1"
   );
 }
 
@@ -29,7 +34,6 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
     through: new Date(now).toISOString(),
   });
   const runIds = [...new Set(operations.map((operation) => operation.runId))];
-  const workflows = await context.authority.queries.workflowIds(runIds);
   const costs: number[] = [];
   const totals = {
     costs,
@@ -38,8 +42,7 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
   };
   const queued = new Set<string>();
   for (const runId of runIds) {
-    if (await queueRun(context, { runId, workflowId: workflows[runId] }))
-      queued.add(runId);
+    if (await queueRun(context, runId)) queued.add(runId);
   }
   for (const operation of operations) {
     if (queued.has(operation.runId))

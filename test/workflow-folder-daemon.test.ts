@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
-import { bundledWorkflowIds } from "../src/workflow-discovery.ts";
 import { call } from "./service-fixture.ts";
 import {
   ended,
@@ -54,16 +53,7 @@ for (const template of ["develop", "idea-to-issue"] as const)
         });
         assert.deepEqual(listed["workflowRefusals"], []);
         assert.ok(Array.isArray(listed["workflows"]));
-        assert.deepEqual(
-          listed["workflows"].filter(
-            (id: unknown) =>
-              typeof id === "string" &&
-              !Object.values(bundledWorkflowIds).some(
-                (bundled) => id === bundled,
-              ),
-          ),
-          expected,
-        );
+        assert.deepEqual(listed["workflows"], expected);
       } finally {
         assert.equal(await ended(daemon), 0);
       }
