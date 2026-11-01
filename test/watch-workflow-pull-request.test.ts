@@ -21,6 +21,25 @@ import {
   stageEvent,
 } from "./watch-board-fixture.ts";
 import { observedBoard } from "../src/cli/watch-pr-board.ts";
+import { currentStepOf } from "../src/cli/watch-board.ts";
+import { phasesOf } from "../src/cli/watch-phases.ts";
+import type { WatchPullRequest } from "../src/cli/watch-render.ts";
+
+await test("CLV-263 watch step and phase inputs retain concrete pull request types", () => {
+  const boardInputs: readonly Parameters<typeof currentStepOf>[1][] = [
+    { pullRequest: mergePull, stages: undefined },
+    { pullRequest: null, stages: undefined },
+    { stages: undefined },
+  ];
+  const phaseInputs: readonly NonNullable<Parameters<typeof phasesOf>[1]>[] =
+    boardInputs;
+  const boardPullRequests: readonly (WatchPullRequest | null | undefined)[] =
+    boardInputs.map((workflow) => workflow.pullRequest);
+  const phasePullRequests: readonly (WatchPullRequest | null | undefined)[] =
+    phaseInputs.map((workflow) => workflow.pullRequest);
+  assert.deepEqual(boardPullRequests, [mergePull, null, undefined]);
+  assert.deepEqual(phasePullRequests, [mergePull, null, undefined]);
+});
 
 await test("CLV-263 blocked develop pull requests receive observations", () => {
   const model = workflowModel("develop", {

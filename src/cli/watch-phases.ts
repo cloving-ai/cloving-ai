@@ -1,5 +1,5 @@
 import type { WorkflowStage } from "../workflow-declaration.ts";
-import type { WatchPhase } from "./watch-render.ts";
+import type { WatchPhase, WatchPullRequest } from "./watch-render.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -209,7 +209,7 @@ function currentRound(events: readonly Fields[]): number {
 function spans(
   events: readonly Fields[],
   workflow: {
-    readonly pullRequest?: unknown;
+    readonly pullRequest?: WatchPullRequest | null;
     readonly stages?: readonly WorkflowStage[] | undefined;
   },
 ): Span[] {
@@ -268,7 +268,7 @@ function advanced(phases: readonly WatchPhase[]): WatchPhase[] {
 export function phasesOf(
   events: readonly unknown[],
   workflow: {
-    readonly pullRequest?: unknown;
+    readonly pullRequest?: WatchPullRequest | null;
     readonly stages?: readonly WorkflowStage[] | undefined;
   } = {},
 ): WatchPhase[] {

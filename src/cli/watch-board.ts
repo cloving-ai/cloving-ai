@@ -12,6 +12,7 @@ import { sameIssue } from "./watch-pr-identity.ts";
 import type {
   WatchCard,
   WatchCompletionMark,
+  WatchPullRequest,
   WatchRun,
   WatchStep,
   WatchWorkflow,
@@ -84,7 +85,7 @@ export function stagesFor(
 }
 
 function stepNames(
-  workflow: { readonly pullRequest?: unknown },
+  workflow: { readonly pullRequest?: WatchPullRequest | null },
   stages?: readonly WorkflowStage[],
 ): readonly string[] {
   if (stages !== undefined)
@@ -106,7 +107,7 @@ function operationOf(event: unknown): readonly unknown[] {
 
 function stepName(
   event: unknown,
-  workflow: { readonly pullRequest?: unknown },
+  workflow: { readonly pullRequest?: WatchPullRequest | null },
 ): string | undefined {
   const type = record(event)?.["type"];
   if (workflow.pullRequest == null && type === "gate.opened")
@@ -150,7 +151,7 @@ function declaredStep(
 export function currentStepOf(
   events: readonly unknown[],
   workflow: {
-    readonly pullRequest?: unknown;
+    readonly pullRequest?: WatchPullRequest | null;
     readonly stages: readonly WorkflowStage[] | undefined;
   },
 ): WatchStep {
@@ -280,7 +281,8 @@ export function boardsOf(
     const names = [
       ...stepNames(
         {
-          pullRequest: own.find((run) => run.pullRequest !== null)?.pullRequest,
+          pullRequest:
+            own.find((run) => run.pullRequest !== null)?.pullRequest ?? null,
         },
         stagesFor(inputs.workflowStages, workflowId),
       ),
