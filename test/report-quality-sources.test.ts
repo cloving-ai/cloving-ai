@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loopReport } from "../src/report.ts";
-import { reportFailureData } from "../src/report-quality.ts";
+import {
+  reportFailureData,
+  type ReportQualityData,
+} from "../src/report-quality.ts";
 import { readReportGithub } from "../src/cli/report-github.ts";
 import { githubReportFixture, issue, since } from "./report-github-fixture.ts";
 import { effectEvents } from "./report-fixture.ts";
@@ -10,6 +13,21 @@ import { fields } from "./service-fixture.ts";
 const at = Date.parse("2026-10-24T12:00:00Z");
 const now = Date.parse("2026-10-25T00:00:00Z");
 const commit = "a".repeat(40);
+
+await test("CLV-245 job log counters retain concrete numeric fields", () => {
+  const input: ReportQualityData = {
+    jobLogs: { read: 50, notRead: 3, limit: 50, maximumBytes: 2_097_152 },
+  };
+  assert.ok(input.jobLogs);
+  const counters: readonly number[] = [
+    input.jobLogs.read,
+    input.jobLogs.notRead,
+    input.jobLogs.limit,
+    input.jobLogs.maximumBytes,
+  ];
+  assert.deepEqual(counters, [50, 3, 50, 2_097_152]);
+});
+
 const endpoint = `runs?branch=main&created=%3E%3D${encodeURIComponent(since)}&per_page=100&page=1`;
 const run = {
   id: 1,

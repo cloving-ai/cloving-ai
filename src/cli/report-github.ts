@@ -18,7 +18,7 @@ import type { ReportReadyTicket } from "../report-flow-types.ts";
 export interface ReportGithub {
   readonly reopened: readonly ReportDatum[] | null;
   readonly reverts: readonly ReportDatum[] | null;
-  readonly jobLogs: Fields | null;
+  readonly jobLogs: Awaited<ReturnType<typeof readCiJobs>>["jobLogs"] | null;
   readonly failures: ReturnType<typeof reportFailureData> | null;
   readonly mainFirstPass: readonly ReportDatum[] | null;
   readonly observedSince: number | null;

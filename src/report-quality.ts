@@ -65,7 +65,12 @@ export interface ReportQualityData {
   readonly daemonObservedSince?: number | null;
   readonly reopened?: readonly ReportDatum[] | null;
   readonly reverts?: readonly ReportDatum[] | null;
-  readonly jobLogs?: Readonly<Record<string, unknown>> | null;
+  readonly jobLogs?: {
+    readonly read: number;
+    readonly notRead: number;
+    readonly limit: number;
+    readonly maximumBytes: number;
+  } | null;
   readonly mainFirstPass?: readonly ReportDatum[] | null;
   readonly failures?: {
     readonly flaky: readonly ReportDatum[];
