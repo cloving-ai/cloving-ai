@@ -12,6 +12,15 @@ export async function mainRuns(
   reader: Reader,
   input: { readonly since: string; readonly activity: "created" | "updated" },
 ) {
+  return (await ciRuns(reader, input)).filter(
+    (run) => run["head_branch"] === "main",
+  );
+}
+
+export async function ciRuns(
+  reader: Reader,
+  input: { readonly since: string; readonly activity: "created" | "updated" },
+) {
   const filter =
     input.activity === "created"
       ? `branch=main&created=%3E%3D${encodeURIComponent(input.since)}&`
@@ -21,7 +30,7 @@ export async function mainRuns(
     maximum: input.activity === "created" ? 1000 : Infinity,
   });
   return runs.filter((run) => {
-    if (run["name"] !== "CI" || run["head_branch"] !== "main") return false;
+    if (run["name"] !== "CI") return false;
     if (timestamp(run[`${input.activity}_at`]) < Date.parse(input.since))
       return false;
     timestamp(run["created_at"]);

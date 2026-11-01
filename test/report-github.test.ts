@@ -377,3 +377,14 @@ await test("CLV-245 unreadable or invalid run activity leaves only job metrics u
     assert.equal(github.jobLogs, null);
   }
 });
+
+import { ciUsageScene, ciUsageReport } from "./report-ci-fixture.ts";
+await test("CLV-246 CI jobs expose runner limit shares and job evidence", async () => {
+  const report = await ciUsageReport(ciUsageScene());
+  const ci = fields(report["ci"]);
+  assert.equal(ci["reason"], undefined);
+  assert.equal(
+    fields(fields(ci["jobLimitShare"])["localMacos"])["value"],
+    50 / 75,
+  );
+});

@@ -1,7 +1,10 @@
+import { readOperatorLabels } from "./report-operator.ts";
 import { readClosureHistory } from "./report-closures.ts";
 import { readCiJobs } from "./report-ci-jobs.ts";
 import { reportFailureData } from "../report-quality.ts";
-import { mainRuns, firstPassData } from "./report-ci.ts";
+import { readCiUsage } from "./report-ci-usage.ts";
+import type { ReportCiData } from "../report-ci.ts";
+import { ciRuns, mainRuns, firstPassData } from "./report-ci.ts";
 import type { ReportDatum } from "../report-statistics.ts";
 import {
   repositoryReader,
@@ -9,6 +12,7 @@ import {
   rows,
   identity,
   timestamp,
+  reportSource as source,
   type Reader,
   type GithubReportInput,
 } from "./report-github-reader.ts";
@@ -16,6 +20,8 @@ import { readyTicketsOf } from "./report-ready.ts";
 import type { ReportReadyTicket } from "../report-flow-types.ts";
 
 export interface ReportGithub {
+  readonly labels: readonly ReportDatum[] | null;
+  readonly ciUsage: ReportCiData | null;
   readonly reopened: readonly ReportDatum[] | null;
   readonly reverts: readonly ReportDatum[] | null;
   readonly jobLogs: Awaited<ReturnType<typeof readCiJobs>>["jobLogs"] | null;
@@ -28,7 +34,17 @@ export interface ReportGithub {
   readonly ready: readonly ReportReadyTicket[] | null;
   readonly sources: Readonly<
     Record<
-      "issues" | "pulls" | "history" | "timelines" | "ready" | "ci" | "jobs",
+      | "issues"
+      | "pulls"
+      | "history"
+      | "timelines"
+      | "ready"
+      | "ci"
+      | "ciUsage"
+      | "ciUsageJobs"
+      | "ciUsageWorkflows"
+      | "jobs"
+      | "labels",
       { readonly status: string; readonly reason?: string }
     >
   >;
@@ -40,6 +56,8 @@ function unavailableGithub(): ReportGithub {
     reason: "configuration-or-identity",
   };
   return {
+    labels: null,
+    ciUsage: null,
     reopened: null,
     reverts: null,
     jobLogs: null,
@@ -51,8 +69,12 @@ function unavailableGithub(): ReportGithub {
     leadTimes: null,
     ready: null,
     sources: {
+      labels: unavailable,
       jobs: unavailable,
       ci: unavailable,
+      ciUsage: unavailable,
+      ciUsageJobs: unavailable,
+      ciUsageWorkflows: unavailable,
       ready: unavailable,
       issues: unavailable,
       pulls: unavailable,
@@ -72,7 +94,7 @@ export async function readReportGithub(
     activity: "created",
   });
   const issueRead = readClosureHistory(reader, input.since);
-  const [issues, pulls, history, timelines, ready, ci, jobs] =
+  const [issues, pulls, history, timelines, ready, ci, jobs, ciUsage, labels] =
     await Promise.allSettled([
       issueRead,
       pullsOf(reader, input.since),
@@ -85,19 +107,29 @@ export async function readReportGithub(
       mainRuns(reader, { since: input.since, activity: "updated" }).then(
         (runs) => readCiJobs(reader, runs),
       ),
+      ciRuns(reader, { since: input.since, activity: "updated" }).then((runs) =>
+        readCiUsage(reader, runs),
+      ),
+      readOperatorLabels(reader, input.since),
     ]);
   return {
+    labels: settledValue(labels),
     reopened: issues.status === "fulfilled" ? issues.value.reopened : null,
     reverts: pulls.status === "fulfilled" ? pulls.value.reverts : null,
-    ...qualitySources({ jobs, ci }),
+    ...ciSourceData({ jobs, ci, ciUsage }),
     observedSince: history.status === "fulfilled" ? history.value : null,
     issues: issues.status === "fulfilled" ? issues.value.completed : null,
     pulls: pulls.status === "fulfilled" ? pulls.value.pulls : null,
     ready: ready.status === "fulfilled" ? ready.value : null,
     leadTimes: timelines.status === "fulfilled" ? timelines.value : null,
     sources: {
+      labels: source(labels),
       jobs: source(jobs),
       ci: source(ci),
+      ciUsage: source(ciUsage),
+      ...(ciUsage.status === "fulfilled"
+        ? ciUsage.value.sources
+        : { ciUsageJobs: source(ciUsage), ciUsageWorkflows: source(ciUsage) }),
       ready: source(ready),
       issues: source(issues),
       pulls: source(pulls),
@@ -149,16 +181,6 @@ async function pullsOf(reader: Reader, since: string) {
           : reverts.filter((item) => item !== null),
       };
   }
-}
-
-function source(result: PromiseSettledResult<unknown>) {
-  if (result.status === "fulfilled") return { status: "available" };
-  const reason =
-    result.reason instanceof Error &&
-    result.reason.message === "github-network-failed"
-      ? "github-network-failed"
-      : "read-failed";
-  return { status: "unavailable", reason };
 }
 
 async function repositoryCreatedAt(reader: Reader): Promise<number> {
@@ -218,12 +240,16 @@ function readyLabel(row: Fields): boolean {
   );
 }
 
-function qualitySources(input: {
+function ciSourceData(input: {
   readonly jobs: PromiseSettledResult<Awaited<ReturnType<typeof readCiJobs>>>;
   readonly ci: PromiseSettledResult<readonly ReportDatum[]>;
+  readonly ciUsage: PromiseSettledResult<
+    Awaited<ReturnType<typeof readCiUsage>>
+  >;
 }) {
-  const { jobs, ci } = input;
+  const { jobs, ci, ciUsage } = input;
   return {
+    ciUsage: ciUsage.status === "fulfilled" ? ciUsage.value.data : null,
     jobLogs: jobs.status === "fulfilled" ? jobs.value.jobLogs : null,
     failures:
       jobs.status === "fulfilled" ? reportFailureData(jobs.value) : null,
@@ -235,4 +261,10 @@ function revertOf(row: Fields, datum: ReportDatum): (ReportDatum | null)[] {
   const title = row["title"];
   if (typeof title !== "string") return [null];
   return title.startsWith('Revert "') ? [datum] : [];
+}
+
+function settledValue<Value>(
+  result: PromiseSettledResult<Value>,
+): Value | null {
+  return result.status === "fulfilled" ? result.value : null;
 }

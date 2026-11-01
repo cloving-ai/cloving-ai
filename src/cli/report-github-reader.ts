@@ -9,6 +9,16 @@ export interface GithubReportInput {
   readonly retryMilliseconds?: number;
 }
 
+export function reportSource(result: PromiseSettledResult<unknown>) {
+  if (result.status === "fulfilled") return { status: "available" };
+  const reason =
+    result.reason instanceof Error &&
+    result.reason.message === "github-network-failed"
+      ? "github-network-failed"
+      : "read-failed";
+  return { status: "unavailable", reason };
+}
+
 function commandOf(value: string | undefined): readonly string[] {
   const command: unknown = JSON.parse(value ?? '["gh"]');
   if (
@@ -121,7 +131,7 @@ export async function repositoryReader(
         endpoint,
         flags,
       });
-      if (endpoint.includes("/timeline?")) timelines.set(key, reading);
+      timelines.set(key, reading);
       return reading;
     },
   };
