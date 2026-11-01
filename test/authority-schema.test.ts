@@ -14,7 +14,7 @@ await test("CLV-007 every authority connection uses WAL, full synchronization, f
   const directory = await temporaryDirectory();
   const authority = await openedAuthority(directory);
   assert.deepEqual(await authority.settings(), {
-    schemaVersion: 7,
+    schemaVersion: 8,
     journalMode: "wal",
     synchronous: 2,
     foreignKeys: 1,
@@ -23,7 +23,7 @@ await test("CLV-007 every authority connection uses WAL, full synchronization, f
   });
   await authority.close();
   assert.deepEqual(query(directory, "PRAGMA user_version"), [
-    { user_version: 7 },
+    { user_version: 8 },
   ]);
   assert.match(
     JSON.stringify(
@@ -32,20 +32,20 @@ await test("CLV-007 every authority connection uses WAL, full synchronization, f
         "SELECT version, checksum FROM schema_migrations ORDER BY version",
       ),
     ),
-    /^\[\{"version":1,"checksum":"[0-9a-f]{64}"\},\{"version":2,"checksum":"[0-9a-f]{64}"\},\{"version":3,"checksum":"[0-9a-f]{64}"\},\{"version":4,"checksum":"[0-9a-f]{64}"\},\{"version":5,"checksum":"[0-9a-f]{64}"\},\{"version":6,"checksum":"[0-9a-f]{64}"\},\{"version":7,"checksum":"[0-9a-f]{64}"\}\]$/,
+    /^\[\{"version":1,"checksum":"[0-9a-f]{64}"\},\{"version":2,"checksum":"[0-9a-f]{64}"\},\{"version":3,"checksum":"[0-9a-f]{64}"\},\{"version":4,"checksum":"[0-9a-f]{64}"\},\{"version":5,"checksum":"[0-9a-f]{64}"\},\{"version":6,"checksum":"[0-9a-f]{64}"\},\{"version":7,"checksum":"[0-9a-f]{64}"\},\{"version":8,"checksum":"[0-9a-f]{64}"\}\]$/,
   );
 });
 
 await test("CLV-007 an authority database from a newer schema version is refused and left unchanged", async () => {
   const directory = await temporaryDirectory();
-  change(directory, "PRAGMA user_version = 8");
+  change(directory, "PRAGMA user_version = 9");
   assert.deepEqual(await openAuthority(directory), {
     kind: "refused",
     reason: "unsupported-schema",
-    detail: "8",
+    detail: "9",
   });
   assert.deepEqual(query(directory, "PRAGMA user_version"), [
-    { user_version: 8 },
+    { user_version: 9 },
   ]);
   assert.deepEqual(query(directory, "PRAGMA journal_mode"), [
     { journal_mode: "delete" },
@@ -66,7 +66,7 @@ await test("CLV-007 an authority database whose recorded schema checksum differs
   assert.deepEqual(await openAuthority(directory), {
     kind: "refused",
     reason: "schema-mismatch",
-    detail: "7",
+    detail: "8",
   });
 });
 
@@ -83,7 +83,7 @@ await test("CLV-007 an authority database whose tables or indexes differ from it
     assert.deepEqual(await openAuthority(directory), {
       kind: "refused",
       reason: "schema-mismatch",
-      detail: "7",
+      detail: "8",
     });
   }
 });
@@ -123,7 +123,7 @@ await test("CLV-007 a schema mismatch is refused before the file changes its jou
 
 await test("CLV-007 a connection that does not report every required setting is a storage failure", () => {
   const required = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     journalMode: "wal",
     synchronous: 2,
     foreignKeys: 1,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { watchReader } from "../src/cli/watch-reads.ts";
-import { fields } from "./service-fixture.ts";
+import { fields, items } from "./service-fixture.ts";
 import {
   boardModel,
   boardRun,
@@ -227,4 +227,33 @@ await test("CLV-228 former bundled IDs honor declared stages for empty boards an
       );
     }
   }
+});
+
+await test("CLV-263 archived detail retains declared phases for a former bundled ID", async () => {
+  const workflowId = "develop-issue";
+  const { answer } = watchReplies({
+    runs: [
+      {
+        runId: "archived",
+        workflowId,
+        state: "completed",
+        latestSequence: 1,
+        latestAt: "2020-01-01T00:00:00Z",
+      },
+    ],
+    workflows: [workflowId],
+    workflowStages: { [workflowId]: sampleStages },
+    events: [stageEvent(1, { operation: "write-draft" })],
+  });
+  await withWatchService(answer, async (watch) => {
+    const response = await fetch(`${watch.address}data.json?runId=archived`);
+    assert.equal(response.status, 200);
+    const model = fields(await response.json());
+    assert.deepEqual(
+      items(fields(model["run"])["phases"]).map(
+        (phase) => fields(phase)["name"],
+      ),
+      ["Admitted", "Started", "Draft", "Review", "Completed"],
+    );
+  });
 });

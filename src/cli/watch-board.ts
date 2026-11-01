@@ -1,13 +1,19 @@
+import type { ShownSchedules } from "./schedule-render.ts";
 import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
 import { record } from "../protocol.ts";
 import { isInstant } from "../authority/instants.ts";
-import { issueSteps } from "./watch-phases.ts";
+import {
+  pullRequestSteps,
+  pullRequestStepOf,
+  stageOf,
+} from "./watch-phases.ts";
 import { sameIssue } from "./watch-pr-identity.ts";
 import type {
   WatchCard,
   WatchCompletionMark,
+  WatchPullRequest,
   WatchRun,
   WatchStep,
   WatchWorkflow,
@@ -33,8 +39,7 @@ export function completionMarkOf(
       text: `PR merged · #${String(run.mergeProof.number)}`,
       laterRunId: null,
     };
-  if (run.workflowId !== "develop-issue" || run.outcome !== "blocked")
-    return null;
+  if (run.outcome !== "blocked") return null;
   const completedAt = eventTime(run, "run.completed");
   const later = candidates
     .filter(
@@ -42,7 +47,6 @@ export function completionMarkOf(
         sameIssue(run.issueIdentity, candidate.issueIdentity) &&
         candidate.mergeProof != null &&
         candidate.runId !== run.runId &&
-        candidate.workflowId === "develop-issue" &&
         candidate.state === "completed" &&
         candidate.outcome === "handoff_requested" &&
         candidate.ticketStatus !== "partial" &&
@@ -82,13 +86,13 @@ export function stagesFor(
 }
 
 function stepNames(
-  workflowId: string,
+  workflow: { readonly pullRequest?: WatchPullRequest | null },
   stages?: readonly WorkflowStage[],
 ): readonly string[] {
   if (stages !== undefined)
     return [...stages.map((stage) => stage.label), "Other"];
-  return workflowId === "develop-issue"
-    ? issueSteps.map((step) => step.name)
+  return workflow.pullRequest != null
+    ? pullRequestSteps.map((step) => step.name)
     : ["Agent turn", "Your review"];
 }
 
@@ -102,14 +106,16 @@ function operationOf(event: unknown): readonly unknown[] {
   }
 }
 
-function stepName(event: unknown, workflowId: string): string | undefined {
+function stepName(
+  event: unknown,
+  workflow: { readonly pullRequest?: WatchPullRequest | null },
+): string | undefined {
   const type = record(event)?.["type"];
-  if (workflowId !== "develop-issue" && type === "gate.opened")
+  if (workflow.pullRequest == null && type === "gate.opened")
     return "Your review";
   if (type !== "effect.requested") return undefined;
-  if (workflowId !== "develop-issue") return "Agent turn";
-  return issueSteps.find((step) => step.operation === operationOf(event)[4])
-    ?.name;
+  if (workflow.pullRequest == null) return "Agent turn";
+  return pullRequestStepOf(event)?.name;
 }
 
 function startedAt(event: unknown): string | null {
@@ -121,27 +127,6 @@ function chronological(events: readonly unknown[]): readonly unknown[] {
   return events.toSorted(
     (first, second) =>
       Date.parse(startedAt(first) ?? "") - Date.parse(startedAt(second) ?? ""),
-  );
-}
-
-function declaredStage(
-  event: unknown,
-  stages: readonly WorkflowStage[],
-): WorkflowStage | undefined {
-  if (record(event)?.["type"] === "effect.requested") {
-    const operation = operationOf(event)[4];
-    return stages.find((stage) =>
-      stage.operations?.some((name) => name === operation),
-    );
-  }
-  const payload = record(record(event)?.["payload"]);
-  return (
-    stages.find((stage) =>
-      stage.gateIds?.some((name) => name === payload?.["gateId"]),
-    ) ??
-    stages.find((stage) =>
-      stage.gateKinds?.some((name) => name === payload?.["gateKind"]),
-    )
   );
 }
 
@@ -160,25 +145,24 @@ function declaredStep(
         Number(record(second)?.["sequence"]) -
         Number(record(first)?.["sequence"]),
     )[0];
-  const stage = declaredStage(event, stages);
+  const stage = stageOf(event, stages);
   return { name: stage?.label ?? "Other", startedAt: startedAt(event) };
 }
 
 export function currentStepOf(
   events: readonly unknown[],
   workflow: {
-    readonly workflowId: string;
+    readonly pullRequest?: WatchPullRequest | null;
     readonly stages: readonly WorkflowStage[] | undefined;
   },
 ): WatchStep {
-  const { workflowId, stages } = workflow;
+  const { stages } = workflow;
   if (stages !== undefined) return declaredStep(events, stages);
   const event = chronological(events).findLast(
-    (item) => stepName(item, workflowId) !== undefined,
+    (item) => stepName(item, workflow) !== undefined,
   );
   return {
-    name:
-      stepName(event, workflowId) ?? stepNames(workflowId)[0] ?? "Agent turn",
+    name: stepName(event, workflow) ?? stepNames(workflow)[0] ?? "Agent turn",
     startedAt: startedAt(event),
   };
 }
@@ -204,10 +188,7 @@ function pullRequestCardDetails(
   run: WatchRun,
 ): Pick<WatchCard, "round" | "greptileScore" | "pullRequestNumber"> {
   return {
-    round:
-      run.workflowId === "develop-issue" || run.pullRequest !== null
-        ? run.round
-        : null,
+    round: run.pullRequest !== null ? run.round : null,
     greptileScore: run.reviews.at(-1)?.score ?? null,
     pullRequestNumber: run.pullRequest?.number ?? null,
   };
@@ -216,6 +197,7 @@ function pullRequestCardDetails(
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
+    ...(run.scheduled === undefined ? {} : { scheduled: run.scheduled }),
     commandWaits: run.commandWaits ?? [],
     spent: run.spent,
     limit: run.limit,
@@ -245,6 +227,7 @@ function stepOrder(first: WatchCard, second: WatchCard): number {
 }
 
 interface BoardInputs {
+  readonly schedules?: ShownSchedules;
   readonly workflows: readonly string[];
   readonly workflowStages?: WorkflowStages;
   readonly updatedAt: string;
@@ -279,30 +262,49 @@ function summaryOf(value: unknown): {
   };
 }
 
+function runSummaryOf(run: WatchRun): ReturnType<typeof summaryOf> {
+  return {
+    state: run.state,
+    waiting:
+      run.decisions.length > 0 ||
+      run.awaitedRunId != null ||
+      activeCommandWait(run.commandWaits ?? []),
+    latestAt: run.latestAt,
+  };
+}
+
 export function boardsOf(
   inputs: BoardInputs,
   runs: readonly WatchRun[],
 ): WatchWorkflow[] {
+  const schedules = inputs.schedules ?? [];
   return inputs.workflows.map((workflowId) => {
     const own = runs.filter((run) => run.workflowId === workflowId);
+    const schedule =
+      "status" in schedules
+        ? undefined
+        : schedules.find((entry) => entry.workflowId === workflowId);
     const summaries =
       inputs.summaries === undefined
-        ? own.map((run) => ({
-            state: run.state,
-            waiting:
-              run.decisions.length > 0 ||
-              run.awaitedRunId != null ||
-              activeCommandWait(run.commandWaits ?? []),
-            latestAt: run.latestAt,
-          }))
+        ? own.map(runSummaryOf)
         : inputs.summaries
             .filter((value) => record(value)?.["workflowId"] === workflowId)
             .map(summaryOf);
-    const columns = [
-      ...stepNames(workflowId, stagesFor(inputs.workflowStages, workflowId)),
+    const names = [
+      ...stepNames(
+        {
+          pullRequest:
+            own.find((run) => run.pullRequest !== null)?.pullRequest ?? null,
+        },
+        stagesFor(inputs.workflowStages, workflowId),
+      ),
+      ...own
+        .filter((run) => activeRun(run.state))
+        .map((run) => run.currentStep.name),
       "Done",
       "Stopped",
-    ].map((name) => {
+    ];
+    const columns = [...new Set(names)].map((name) => {
       const cards = own
         .filter((run) => columnOf(run, inputs.updatedAt) === name)
         .map((run) => cardOf(run, inputs.completionCandidates ?? runs));
@@ -321,6 +323,7 @@ export function boardsOf(
     });
     return {
       workflowId,
+      ...(schedule === undefined ? {} : { schedule }),
       activeCount: summaries.filter((run) => activeRun(run.state)).length,
       waitingCount: summaries.filter((run) => run.waiting).length,
       latestAt: latestTime(summaries.map((run) => run.latestAt)),

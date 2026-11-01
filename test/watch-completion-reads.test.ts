@@ -94,3 +94,27 @@ await test("CLV-129 missing or conflicting issue identity prevents older candida
     });
   }
 });
+
+await test("CLV-263 each workflow retains completion evidence for its visible stopped cards", async () => {
+  const replies = completionReplies();
+  const stopped = replies.runs[0];
+  const later = replies.runs.at(-1);
+  assert.ok(stopped && later);
+  replies.runs.splice(
+    1,
+    replies.runs.length - 2,
+    ...Array.from({ length: 20 }, (_, index) => ({
+      ...stopped,
+      runId: `other-${String(index)}`,
+      workflowId: "other",
+      state: "failed",
+      latestAt: new Date(Date.now() + 1000).toISOString(),
+    })),
+  );
+  await withWatchService(replies.answer, async (_watch, runtime) => {
+    const read = await watchReader(runtime, mergeRepository).read(
+      new Date(Date.now() + 2000).toISOString(),
+    );
+    assert.equal(read.completionCandidates[0]?.status.runId, later["runId"]);
+  });
+});

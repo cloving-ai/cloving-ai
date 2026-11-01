@@ -1,3 +1,5 @@
+import { activeSchedule, scheduleModel } from "./watch-schedule-fixture.ts";
+import { boardTime } from "./watch-board-fixture.ts";
 import { exampleCardForms, multilineCardForm } from "./watch-action-fixture.ts";
 import { browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
@@ -228,4 +230,54 @@ await test("CLV-238 the browser run card and detail refresh wait times and freez
   );
   assert.match(String(frozen["html"]), /2159999 s left/);
   assert.match(String(frozen["html"]), /command-wait-invalid-output/);
+});
+
+await test("CLV-247 the browser board refreshes schedule states and marks scheduled cards and details", async () => {
+  await using board = await cardBoard("review-queue", {
+    model: scheduleModel(),
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1000, height: 800 });
+  await page.navigate(board.url);
+  for (const state of ["active", "paused", "stopped"] as const) {
+    const schedule = {
+      ...activeSchedule,
+      state,
+      nextAt: state === "active" ? activeSchedule.nextAt : null,
+      stoppedAt: state === "stopped" ? Date.parse(boardTime) : null,
+      failuresInRow: state === "stopped" ? 3 : 0,
+    };
+    board.update(scheduleModel(schedule));
+    const output = await page.evaluate(`new Promise((resolve, reject) => {
+      location.hash = "workflow=review-queue";
+      const timeout = setTimeout(() => { clearInterval(timer); reject(new Error("schedule display not refreshed")); }, 5000);
+      const timer = setInterval(() => {
+        const board = document.querySelector(".board");
+        const text = board?.textContent ?? "";
+        if (!text.includes(${JSON.stringify(`every 300 s, ${state}`)})) return;
+        clearInterval(timer); clearTimeout(timeout);
+        resolve({ text, cards: [...board.querySelectorAll(".card")].map(card => card.textContent) });
+      }, 20);
+    })`);
+    const text = String(output["text"]);
+    assert.ok(text.includes(`Schedule review-queue: every 300 s, ${state}`));
+    assert.equal(text.includes("next run at"), state === "active");
+    assert.equal(text.includes("stopped at"), state === "stopped");
+    const cards = output["cards"];
+    assert.ok(Array.isArray(cards));
+    assert.equal(
+      cards.filter((card: unknown) => String(card).includes("scheduled 12"))
+        .length,
+      1,
+    );
+  }
+  const detail = await page.evaluate(`new Promise((resolve, reject) => {
+    location.hash = "workflow=review-queue&run=scheduled-run";
+    const timeout = setTimeout(() => { clearInterval(timer); reject(new Error("scheduled detail not loaded")); }, 5000);
+    const timer = setInterval(() => {
+      if (!document.querySelector(".run-usage")) return;
+      clearInterval(timer); clearTimeout(timeout); resolve({ text: document.body.textContent });
+    }, 20);
+  })`);
+  assert.match(String(detail["text"]), /scheduled 12/);
 });

@@ -1,3 +1,4 @@
+import { shownScheduled, type ShownSchedules } from "./schedule-render.ts";
 import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
@@ -125,6 +126,10 @@ export function activityOf(line: string): WatchItem[] {
   return value["type"] === "result" ? ended(value) : [];
 }
 
+export function turnActivity(lines: readonly string[]): WatchItem[] {
+  return lines.flatMap(activityOf).slice(-activityLimit - 1);
+}
+
 function concise(items: readonly WatchItem[]): WatchItem[] {
   return items.map((item, index) => {
     const before = items[index - 1];
@@ -157,7 +162,7 @@ export interface TurnRecords {
   readonly key: string;
   readonly started: unknown;
   readonly result: unknown;
-  readonly lines: readonly string[];
+  readonly activity: readonly WatchItem[];
   readonly activeAt?: string | null;
 }
 
@@ -182,8 +187,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     outcome: records.result === null ? "in work" : outcome,
     costUsd: priceOf(report["costUsd"]),
     estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
-    activity: records.lines
-      .flatMap(activityOf)
+    activity: records.activity
       .map((item) =>
         item.kind === "result"
           ? {
@@ -220,6 +224,7 @@ export function decisionCommands(
 }
 
 export interface WatchInputs {
+  readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
@@ -281,14 +286,19 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
+  const pull = pullOf(
+    { records: inputs.githubRecords, repository: inputs.repository ?? null },
+    runId,
+  );
   const ticketId = text(status["ticketId"]);
-  const issue =
-    workflowId === "develop-issue"
-      ? establishedIssue(inputs.repository ?? null, status["issueIdentity"])
-      : null;
+  const issue = establishedIssue(
+    inputs.repository ?? null,
+    status["issueIdentity"],
+  );
   return {
     runId,
     workflowId,
+    ...shownScheduled(status["scheduled"]),
     ...runLinksOf(status),
     commandWaits: shownCommandWaits(status["commandWaits"]),
     ticketId: ticketId === "" ? null : ticketId,
@@ -300,7 +310,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
     usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), {
-      workflowId,
+      pullRequest: pull.pullRequest,
       stages: stagesFor(inputs.workflowStages, workflowId),
     }),
     round: roundOf(list(record(value)["events"])),
@@ -322,16 +332,13 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ...(status["commandEffects"] === undefined
       ? {}
       : { commandEffects: shownCommands(status["commandEffects"]) }),
-    phases: phasesOf(list(record(value)["events"]), workflowId),
+    phases: phasesOf(list(record(value)["events"]), {
+      pullRequest: pull.pullRequest,
+      stages: stagesFor(inputs.workflowStages, workflowId),
+    }),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),
-    ...pullOf(
-      {
-        records: inputs.githubRecords,
-        repository: inputs.repository ?? null,
-      },
-      runId,
-    ),
+    ...pull,
   };
 }
 
@@ -353,6 +360,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   );
   return {
     workflows,
+    ...(inputs.schedules === undefined ? {} : { schedules: inputs.schedules }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     startWorkflowId: startWorkflowOf(workflows),

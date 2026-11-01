@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   activityOf,
   decisionCommands,
+  turnActivity,
   turnOf,
   watchModel,
   type TurnRecords,
@@ -107,11 +108,12 @@ const said = line({
 });
 const finished = (result: string, cost: number): string =>
   line({ type: "result", result, total_cost_usd: cost });
+const workingLines = [said, finished("Done.", 0.5)];
 const working = {
   key: "k1",
   started,
   result: null,
-  lines: [said, finished("Done.", 0.5)],
+  activity: turnActivity(workingLines),
 };
 
 await test("CLV-016 the watch model gives a turn its run, its state and its cost from the journal records", () => {
@@ -143,7 +145,7 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
     key: "k1",
     started: { operationId: "not a list" },
     result: { outcome: "failed" },
-    lines: [],
+    activity: [],
   });
   assert.deepEqual(
     [ended.runId, ended.outcome, ended.costUsd, ended.target],
@@ -151,11 +153,22 @@ await test("CLV-016 the watch model gives a turn its run, its state and its cost
   );
 });
 
+await test("the watch keeps the activity of a turn stream, and drops its tool results", () => {
+  const quiet = line({
+    type: "user",
+    message: { content: [{ type: "tool_result", content: "x".repeat(1000) }] },
+  });
+  assert.deepEqual(turnActivity([said, quiet, finished("Done.", 0.5), ""]), [
+    { kind: "say", text: "a" },
+    { kind: "result", text: "Done.", costUsd: 0.5 },
+  ]);
+});
+
 await test("CLV-016 the watch model gives a turn at its end its end time, and the commits, the files and the report of the worker result", () => {
   const completed = turnOf({
     key: "k1",
     started,
-    lines: [],
+    activity: [],
     result: {
       outcome: "completed",
       endedAt: "2026-10-13T21:34:39.000Z",
@@ -197,7 +210,11 @@ function shownTurn(records: TurnRecords) {
 await test("CLV-016 the watch model shows a result that repeats the message before it as one short line with the cost", () => {
   const repeated = shownTurn({
     ...working,
-    lines: [finished("Done.", 0.25), ...working.lines, finished("a", 0.5)],
+    activity: turnActivity([
+      finished("Done.", 0.25),
+      ...workingLines,
+      finished("a", 0.5),
+    ]),
   });
   assert.deepEqual(repeated.activity, [
     { kind: "result", text: "Done. (cost Price not known)" },
@@ -207,7 +224,7 @@ await test("CLV-016 the watch model shows a result that repeats the message befo
   ]);
   const echoed = shownTurn({
     ...working,
-    lines: [said, said, finished("a", 0.5)],
+    activity: turnActivity([said, said, finished("a", 0.5)]),
   });
   assert.deepEqual(echoed.activity, [
     { kind: "say", text: "a" },
@@ -223,11 +240,11 @@ await test("CLV-080 turns retain only recent activity before path replacement", 
   }));
   const turn = turnOf({
     ...working,
-    lines: [
+    activity: turnActivity([
       line({ type: "assistant", message: { content } }),
       finished("Done.", 1.25),
       line({ type: "system" }),
-    ],
+    ]),
   });
   assert.equal(turn.activity.length, 401);
   assert.deepEqual(turn.activity, [
@@ -240,11 +257,11 @@ await test("CLV-080 turns retain only recent activity before path replacement", 
 await test("CLV-080 the activity limit preserves the summary of a repeated result", () => {
   const turn = shownTurn({
     ...working,
-    lines: [
+    activity: turnActivity([
       ...Array<string>(500).fill(said),
       finished("a", 1.25),
       ...Array<string>(399).fill(said),
-    ],
+    ]),
   });
   assert.equal(turn.activity.length, 400);
   assert.deepEqual(turn.activity[0], {
@@ -296,7 +313,7 @@ function modelOf(runs: readonly unknown[]): ReturnType<typeof watchModel> {
     workflows: ["develop-issue", "develop-ticket", "develop-prompt"],
     runs,
     decisions: [decision],
-    turns: [turnOf({ key: "k1", started, result: null, lines: [] })],
+    turns: [turnOf({ key: "k1", started, result: null, activity: [] })],
     githubRecords: [],
   });
 }

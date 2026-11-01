@@ -1,4 +1,5 @@
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
+import { shownSchedules, type ShownSchedules } from "./schedule-render.ts";
 import {
   isWorkflowStages,
   type WorkflowStages,
@@ -28,6 +29,7 @@ interface ReadRun {
 }
 
 export interface WatchRead {
+  readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly service: string;
   readonly workflows: readonly string[];
@@ -162,7 +164,6 @@ function matchingCompletion(
   const issue = establishedIssue(context.repository, status["issueIdentity"]);
   return (
     status.state === "completed" &&
-    status["workflowId"] === "develop-issue" &&
     record(status["outcome"])?.["kind"] === "handoff_requested" &&
     record(status["outcome"])?.["ticketStatus"] !== "partial" &&
     record(status["outcome"])?.["issueUpdate"] !== "failed" &&
@@ -221,10 +222,7 @@ function refreshedStatus(run: ReadRun, status: ReadStatus): ReadRun {
       .filter((name) => Object.hasOwn(status, name))
       .map((name) => [name, status[name]]),
   );
-  return {
-    ...run,
-    status: { ...run.status, ...links },
-  };
+  return { ...run, status: { ...run.status, ...links } };
 }
 
 async function detailed(reader: Reader, summary: ReadStatus): Promise<ReadRun> {
@@ -283,7 +281,6 @@ function stoppedIssues(
     .filter(
       (status) =>
         recentRun(status.latestAt, context.now) &&
-        status["workflowId"] === "develop-issue" &&
         (["failed", "cancelled"].includes(status.state) ||
           (status.state === "completed" &&
             record(status["outcome"])?.["kind"] === "blocked")),
@@ -291,10 +288,12 @@ function stoppedIssues(
     .toSorted(
       (first, second) =>
         Date.parse(second.latestAt ?? "") - Date.parse(first.latestAt ?? ""),
-    )
-    .slice(0, 20);
+    );
+  const retained = [
+    ...Map.groupBy(stopped, (status) => status["workflowId"]).values(),
+  ].flatMap((group) => group.slice(0, 20));
   return new Set(
-    stopped.flatMap((status) => {
+    retained.flatMap((status) => {
       const issue = establishedIssue(
         context.repository,
         status["issueIdentity"],
@@ -333,9 +332,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
       ? []
       : summaries.filter(
           (summary) =>
-            !recentRun(summary.latestAt, now) &&
-            summary["workflowId"] === "develop-issue" &&
-            summary.state === "completed",
+            !recentRun(summary.latestAt, now) && summary.state === "completed",
         );
   for (const summary of older) {
     const candidate = await completionOf(reader, { summary, issues });
@@ -343,6 +340,9 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   }
   return {
     service: "up",
+    ...("schedules" in status
+      ? { schedules: shownSchedules(status["schedules"]) }
+      : {}),
     ...(record(status["queue"]) === undefined
       ? {}
       : { queue: record(status["queue"]) ?? {} }),
@@ -372,9 +372,11 @@ async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
     known !== undefined && known.sequence === status.latestSequence
       ? refreshedStatus(known.value, status)
       : await remember(reader, status);
+  const metadata = await asked(reader, { operation: "status", parameters: {} });
   return {
     ...unavailable,
     service: "up",
+    workflowStages: stageMetadata(metadata["workflowStages"]),
     runs: [value],
     decisions: await decisionsOf(reader),
   };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { activityOf, turnOf } from "../src/cli/watch-model.ts";
+import { activityOf, turnActivity, turnOf } from "../src/cli/watch-model.ts";
 import { component } from "../src/cli/watch-element.ts";
 import { Card } from "../src/cli/watch-board-view.ts";
 import { Run } from "../src/cli/watch-view.ts";
@@ -38,7 +38,9 @@ function scenario() {
         outcome: index === 0 ? "completed" : "failed",
         result: JSON.stringify(turn),
       },
-      lines: ['{"type":"result","result":"Done.","total_cost_usd":9}'],
+      activity: turnActivity([
+        '{"type":"result","result":"Done.","total_cost_usd":9}',
+      ]),
     }),
   );
   return boardModel(
@@ -74,7 +76,7 @@ await test("CLV-133 result activity uses stored estimates when no reported cost 
       outcome: "completed",
       result: JSON.stringify({ costUsd: null, estimatedCostUsd: 2.2 }),
     },
-    lines: ['{"type":"result","result":"Done."}'],
+    activity: turnActivity(['{"type":"result","result":"Done."}']),
   });
   const model = boardModel([{ status: { runId: "run-1" } }], { turns: [turn] });
   assert.equal(
@@ -126,7 +128,7 @@ await test("CLV-094 old raw logs cannot restore invalid prices, unknown stored t
       key: "k",
       started: {},
       result: { outcome: "completed", result: JSON.stringify({ costUsd }) },
-      lines: ['{"type":"result","total_cost_usd":9}'],
+      activity: turnActivity(['{"type":"result","total_cost_usd":9}']),
     });
     assert.equal(turn.costUsd, null);
     assert.deepEqual(turn.usage, unknownUsage);
@@ -208,10 +210,10 @@ await test("CLV-094 persisted ended turns override a stale active journal and pr
       key: "k",
       started: { operationId },
       result: null,
-      lines: [
+      activity: turnActivity([
         '{"type":"assistant","message":{"content":[{"type":"text","text":"Working."}]}}',
         '{"type":"result","result":"Done.","total_cost_usd":9}',
-      ],
+      ]),
     });
     const model = boardModel(
       [

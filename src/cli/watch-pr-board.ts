@@ -8,7 +8,7 @@ function observedCard(
   if (card.completionMark?.text !== "Needs attention") return card;
   const run = context.model.runs.find((run) => run.runId === card.runId);
   if (
-    run?.workflowId !== "develop-issue" ||
+    run === undefined ||
     run.state !== "completed" ||
     run.outcome !== "blocked" ||
     run.pullRequest === null

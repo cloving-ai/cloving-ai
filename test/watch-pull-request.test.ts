@@ -225,7 +225,7 @@ const records = [
   { started: { operationId: "not a list" }, result: null },
 ];
 
-await test("CLV-065 the watch model gives a develop-issue run its steps, its pull request, its completed reviews in the order of the rounds and its merge commit from the records of the GitHub journal", () => {
+await test("CLV-065 the watch model gives a pull request run its steps, its pull request, its completed reviews in the order of the rounds and its merge commit from the records of the GitHub journal", () => {
   const model = watchModel({
     home: "/fixture/home",
     client: "cloving",
@@ -261,7 +261,7 @@ await test("CLV-065 the watch model gives a develop-issue run its steps, its pul
         8,
       ],
       ["run-4", null, [], null, 5],
-      ["run-3", null, [], null, 8],
+      ["run-3", null, [], null, 5],
     ],
   );
 });
