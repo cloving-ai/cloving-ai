@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
 import { component } from "../src/cli/watch-element.ts";
-import { turnOf } from "../src/cli/watch-model.ts";
+import { turnActivity, turnOf } from "../src/cli/watch-model.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
 import { rendered } from "./watch-dom.ts";
@@ -89,7 +89,7 @@ function activityModel(message: ActivityMessage) {
       worktree,
     },
     result: null,
-    lines: [JSON.stringify(message)],
+    activity: turnActivity([JSON.stringify(message)]),
   });
   return boardModel([boardRun("run-1")], { home, turns: [turn] });
 }
