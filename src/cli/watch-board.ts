@@ -262,6 +262,17 @@ function summaryOf(value: unknown): {
   };
 }
 
+function runSummaryOf(run: WatchRun): ReturnType<typeof summaryOf> {
+  return {
+    state: run.state,
+    waiting:
+      run.decisions.length > 0 ||
+      run.awaitedRunId != null ||
+      activeCommandWait(run.commandWaits ?? []),
+    latestAt: run.latestAt,
+  };
+}
+
 export function boardsOf(
   inputs: BoardInputs,
   runs: readonly WatchRun[],
@@ -275,14 +286,7 @@ export function boardsOf(
         : schedules.find((entry) => entry.workflowId === workflowId);
     const summaries =
       inputs.summaries === undefined
-        ? own.map((run) => ({
-            state: run.state,
-            waiting:
-              run.decisions.length > 0 ||
-              run.awaitedRunId != null ||
-              activeCommandWait(run.commandWaits ?? []),
-            latestAt: run.latestAt,
-          }))
+        ? own.map(runSummaryOf)
         : inputs.summaries
             .filter((value) => record(value)?.["workflowId"] === workflowId)
             .map(summaryOf);
