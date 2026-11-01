@@ -28,6 +28,7 @@ interface ReadRun {
 }
 
 export interface WatchRead {
+  readonly schedules?: unknown;
   readonly queue?: Fields;
   readonly service: string;
   readonly workflows: readonly string[];
@@ -343,6 +344,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   }
   return {
     service: "up",
+    ...("schedules" in status ? { schedules: status["schedules"] } : {}),
     ...(record(status["queue"]) === undefined
       ? {}
       : { queue: record(status["queue"]) ?? {} }),

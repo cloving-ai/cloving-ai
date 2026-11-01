@@ -1,3 +1,4 @@
+import { scheduleStatusLine, scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
 import type { CardForm } from "./watch-run-input.ts";
@@ -145,6 +146,12 @@ export function Card(props: {
             children: cardStep(card, now),
           }),
           component(CardReview, { card, workflowId }),
+          card.scheduled === undefined
+            ? null
+            : element("span", {
+                class: "meta",
+                children: scheduledText(card.scheduled),
+              }),
           element("span", {
             class: "card-cost",
             children: `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`,
@@ -306,6 +313,12 @@ export function Board(props: {
         class: "visually-hidden",
         children: workflow.workflowId,
       }),
+      workflow.schedule === undefined
+        ? null
+        : element("p", {
+            class: "meta",
+            children: scheduleStatusLine(workflow.schedule, "watch"),
+          }),
       element("div", {
         class: "columns",
         children: workflow.columns.map((column, index) =>
