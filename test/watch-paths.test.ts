@@ -188,7 +188,10 @@ await test("CLV-079 the model makes run text relative to every worktree and hide
   assert.equal(turn.worktree, "79-d6730fd0");
   assert.equal(run.turns[1]?.worktree, "other-tree");
   assert.equal(Object.hasOwn(model, "host"), false);
-  assert.equal(model.workflows[0]?.columns[0]?.cards[0]?.title, expected);
+  assert.equal(
+    model.workflows[0]?.columns.flatMap((column) => column.cards)[0]?.title,
+    expected,
+  );
 });
 
 await test("CLV-079 folder boundaries include punctuation but preserve different folder names", () => {

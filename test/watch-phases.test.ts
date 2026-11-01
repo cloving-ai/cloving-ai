@@ -120,7 +120,7 @@ const step = (
   effect("effect.reported", { second: seconds[1], operation }),
 ];
 const issued = (events: readonly unknown[]): readonly string[] =>
-  phasesOf(events, "develop-issue").map(
+  phasesOf(events, { pullRequest: { number: 12 } }).map(
     (phase) => `${phase.name}: ${phase.state}`,
   );
 const opened = [
@@ -137,7 +137,7 @@ const reviewing = [
   }),
 ];
 
-await test("CLV-065 the watch phases give a develop-issue run the steps of its pull request from the effects of each operation, with no review step of the operator", () => {
+await test("CLV-065 the watch phases give a pull request run the steps of its pull request from the effects of each operation, with no review step of the operator", () => {
   const merged = [
     ...opened,
     ...step(["github-wait-review", 1], [13, 20]),
@@ -154,18 +154,26 @@ await test("CLV-065 the watch phases give a develop-issue run the steps of its p
     "Merge: done",
     "Completed: done",
   ]);
-  assert.deepEqual(phasesOf(merged, "develop-issue").slice(2, 7), [
-    { name: "Work tree", state: "done", startedAt: at(2), endedAt: at(3) },
-    { name: "Agent turn", state: "done", startedAt: at(4), endedAt: at(10) },
-    { name: "Pull request", state: "done", startedAt: at(11), endedAt: at(12) },
-    {
-      name: "Code review",
-      state: "done",
-      startedAt: at(13),
-      endedAt: at(20),
-    },
-    { name: "Merge", state: "done", startedAt: at(21), endedAt: at(22) },
-  ]);
+  assert.deepEqual(
+    phasesOf(merged, { pullRequest: { number: 12 } }).slice(2, 7),
+    [
+      { name: "Work tree", state: "done", startedAt: at(2), endedAt: at(3) },
+      { name: "Agent turn", state: "done", startedAt: at(4), endedAt: at(10) },
+      {
+        name: "Pull request",
+        state: "done",
+        startedAt: at(11),
+        endedAt: at(12),
+      },
+      {
+        name: "Code review",
+        state: "done",
+        startedAt: at(13),
+        endedAt: at(20),
+      },
+      { name: "Merge", state: "done", startedAt: at(21), endedAt: at(22) },
+    ],
+  );
 });
 
 const secondRound = [
@@ -188,26 +196,29 @@ await test("CLV-068 the watch phases show the current Claude round and leave its
     "Merge: pending",
     "Completed: pending",
   ]);
-  assert.deepEqual(phasesOf(secondRound, "develop-issue").slice(3, 6), [
-    {
-      name: "Agent turn, round 2",
-      state: "active",
-      startedAt: at(21),
-      endedAt: null,
-    },
-    {
-      name: "Pull request, round 2",
-      state: "pending",
-      startedAt: null,
-      endedAt: null,
-    },
-    {
-      name: "Code review, round 2",
-      state: "pending",
-      startedAt: null,
-      endedAt: null,
-    },
-  ]);
+  assert.deepEqual(
+    phasesOf(secondRound, { pullRequest: { number: 12 } }).slice(3, 6),
+    [
+      {
+        name: "Agent turn, round 2",
+        state: "active",
+        startedAt: at(21),
+        endedAt: null,
+      },
+      {
+        name: "Pull request, round 2",
+        state: "pending",
+        startedAt: null,
+        endedAt: null,
+      },
+      {
+        name: "Code review, round 2",
+        state: "pending",
+        startedAt: null,
+        endedAt: null,
+      },
+    ],
+  );
 });
 
 await test("CLV-068 a completed two-round issue run shows completed steps timed only within the current round", () => {
@@ -230,10 +241,9 @@ await test("CLV-068 a completed two-round issue run shows completed steps timed 
     "Completed: done",
   ]);
   assert.deepEqual(
-    phasesOf(completed, "develop-issue").map(({ startedAt, endedAt }) => [
-      startedAt,
-      endedAt,
-    ]),
+    phasesOf(completed, { pullRequest: { number: 12 } }).map(
+      ({ startedAt, endedAt }) => [startedAt, endedAt],
+    ),
     [
       [at(0), at(0)],
       [at(1), at(1)],
@@ -271,7 +281,7 @@ await test("CLV-068 the watch phases show the waiting Greptile review, then show
     effect("effect.reported", { second: 30, operation: ["claude-turn", 2] }),
     ...step(["github-open-pr", 2], [31, 32]),
   ];
-  assert.deepEqual(phasesOf(twice, "develop-issue")[3], {
+  assert.deepEqual(phasesOf(twice, { pullRequest: { number: 12 } })[3], {
     name: "Agent turn, round 2",
     state: "done",
     startedAt: at(21),
@@ -284,7 +294,7 @@ await test("CLV-068 the watch phases show the waiting Greptile review, then show
   ]);
 });
 
-await test("CLV-065 the watch phases show a step of a develop-issue run as failed when the last report of its operation failed or stopped, and as active at a new request of the operation", () => {
+await test("CLV-065 the watch phases show a step of a pull request run as failed when the last report of its operation failed or stopped, and as active at a new request of the operation", () => {
   const operation = ["github-open-pr", 1] as const;
   const reported = (outcome: string): Record<string, unknown>[] => [
     ...opened.slice(0, -1),
@@ -313,4 +323,59 @@ await test("CLV-065 the watch phases show a step of a develop-issue run as faile
     "Pull request: done",
     "Code review: active",
   ]);
+});
+
+await test("CLV-263 declared gate phases close by gate ID when the decision has no kind", () => {
+  const events = [
+    {
+      sequence: 1,
+      ...event("gate.opened", 1),
+      payload: { gateId: "review-one", gateKind: "approval" },
+    },
+    {
+      sequence: 2,
+      ...event("gate.decided", 2),
+      payload: { gateId: "review-one", decision: "denied" },
+    },
+  ];
+  assert.deepEqual(
+    phasesOf(events, {
+      stages: [{ name: "review", label: "Review", gateKinds: ["approval"] }],
+    })[2],
+    {
+      name: "Review",
+      state: "failed",
+      startedAt: at(1),
+      endedAt: at(2),
+    },
+  );
+});
+
+await test("CLV-263 a late public review report cannot complete the next worker round", () => {
+  const review = (type: string, second: number) => ({
+    ...event(type, second),
+    payload: {
+      operationId: JSON.stringify([
+        "cloving-operation",
+        1,
+        "run-1",
+        "review",
+        "greptile",
+        null,
+        "old-commit",
+      ]),
+      outcome: "completed",
+    },
+  });
+  const history = [
+    review("effect.requested", 1),
+    effect("effect.requested", { second: 2, operation: ["claude-turn", 2] }),
+    review("effect.reported", 3),
+  ];
+  assert.deepEqual(phasesOf(history, { pullRequest: { number: 12 } })[5], {
+    name: "Code review, round 2",
+    startedAt: null,
+    endedAt: null,
+    state: "pending",
+  });
 });

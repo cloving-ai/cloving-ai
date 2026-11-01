@@ -281,11 +281,15 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
+  const pull = pullOf(
+    { records: inputs.githubRecords, repository: inputs.repository ?? null },
+    runId,
+  );
   const ticketId = text(status["ticketId"]);
-  const issue =
-    workflowId === "develop-issue"
-      ? establishedIssue(inputs.repository ?? null, status["issueIdentity"])
-      : null;
+  const issue = establishedIssue(
+    inputs.repository ?? null,
+    status["issueIdentity"],
+  );
   return {
     runId,
     workflowId,
@@ -300,7 +304,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
     usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), {
-      workflowId,
+      pullRequest: pull.pullRequest,
       stages: stagesFor(inputs.workflowStages, workflowId),
     }),
     round: roundOf(list(record(value)["events"])),
@@ -322,16 +326,13 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ...(status["commandEffects"] === undefined
       ? {}
       : { commandEffects: shownCommands(status["commandEffects"]) }),
-    phases: phasesOf(list(record(value)["events"]), workflowId),
+    phases: phasesOf(list(record(value)["events"]), {
+      pullRequest: pull.pullRequest,
+      stages: stagesFor(inputs.workflowStages, workflowId),
+    }),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),
-    ...pullOf(
-      {
-        records: inputs.githubRecords,
-        repository: inputs.repository ?? null,
-      },
-      runId,
-    ),
+    ...pull,
   };
 }
 

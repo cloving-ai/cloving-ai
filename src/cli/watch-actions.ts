@@ -3,11 +3,7 @@ import type { IncomingMessage } from "node:http";
 import { send } from "./client.ts";
 import { watchCardForms } from "./watch-card-forms.ts";
 import { dirname, join } from "node:path";
-import {
-  bundledCardForms,
-  cardRunRequest,
-  type CardForm,
-} from "./watch-run-input.ts";
+import { cardRunRequest, type CardForm } from "./watch-run-input.ts";
 
 export interface WatchActions {
   readonly forms: readonly CardForm[];
@@ -20,10 +16,7 @@ export async function watchActions(
 ): Promise<WatchActions> {
   return {
     runtimeDirectory,
-    forms: await watchCardForms(
-      join(dirname(runtimeDirectory), "project"),
-      bundledCardForms(),
-    ),
+    forms: await watchCardForms(join(dirname(runtimeDirectory), "project")),
     token: randomBytes(32).toString("hex"),
   };
 }
