@@ -45,7 +45,7 @@ function issuePage(line: string): readonly Pull[] {
   return page.map((issue: unknown) => issueOf(issue));
 }
 
-function repositoryName(reply: string): string {
+export function repositoryName(reply: string): string {
   const repository: unknown = JSON.parse(reply);
   if (
     typeof repository !== "object" ||

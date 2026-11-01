@@ -216,6 +216,7 @@ function readmeFindings(text: string): readonly string[] {
           !settings.has(name) &&
           ![
             "CLOVING_TURN_ID",
+            "CLOVING_ATTACHMENTS_DIRECTORY",
             "CLOVING_RUN_ID",
             "CLOVING_OPERATION_ID",
             "CLOVING_CHECK_TIME_FACTOR",
