@@ -1,4 +1,4 @@
-import { shownSchedules } from "./schedule-render.ts";
+import type { ShownSchedules } from "./schedule-render.ts";
 import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
@@ -247,7 +247,7 @@ function stepOrder(first: WatchCard, second: WatchCard): number {
 }
 
 interface BoardInputs {
-  readonly schedules?: unknown;
+  readonly schedules?: ShownSchedules;
   readonly workflows: readonly string[];
   readonly workflowStages?: WorkflowStages;
   readonly updatedAt: string;
@@ -286,7 +286,7 @@ export function boardsOf(
   inputs: BoardInputs,
   runs: readonly WatchRun[],
 ): WatchWorkflow[] {
-  const schedules = shownSchedules(inputs.schedules);
+  const schedules = inputs.schedules ?? [];
   return inputs.workflows.map((workflowId) => {
     const own = runs.filter((run) => run.workflowId === workflowId);
     const schedule =

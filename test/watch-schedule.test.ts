@@ -124,19 +124,29 @@ await test("CLV-247 watch displays scheduler unavailability and preserves absent
   assert.equal(field(boardModel([]), "schedules"), undefined);
 });
 
-await test("CLV-247 schedule displays ignore malformed serialized entries and run marks", () => {
-  const malformed = [
-    null,
-    false,
-    "schedule",
-    {},
-    { ...activeSchedule, workflowId: 42 },
-    { ...activeSchedule, everySeconds: "300" },
-    { ...activeSchedule, failuresInRow: "0" },
-    { ...activeSchedule, state: "unknown" },
-  ];
-  const model = boardModel([], { schedules: malformed });
-  assert.deepEqual(field(model, "schedules"), []);
+await test("CLV-247 watch reads discard malformed schedules before projection", () =>
+  withHarness(async (harness) => {
+    const malformed = [
+      null,
+      false,
+      "schedule",
+      {},
+      { ...activeSchedule, workflowId: 42 },
+      { ...activeSchedule, everySeconds: "300" },
+      { ...activeSchedule, failuresInRow: "0" },
+      { ...activeSchedule, state: "unknown" },
+    ];
+    await harness.start({
+      schedule: () =>
+        Promise.resolve(result("schedules", { schedules: malformed })),
+    });
+    const read = await watchReader(harness.runtimeDirectory).read(boardTime);
+    assert.deepEqual(read.schedules, []);
+    const model = boardModel(read.runs, read);
+    assert.deepEqual(field(model, "schedules"), []);
+  }));
+
+await test("CLV-247 schedule displays ignore malformed run marks", () => {
   for (const scheduled of [
     null,
     {},
@@ -155,27 +165,39 @@ await test("CLV-247 schedule displays ignore malformed serialized entries and ru
   }
 });
 
-await test("CLV-247 schedule displays omit invalid dates and suppress next times while paused", () => {
-  const invalid = {
-    ...activeSchedule,
-    nextAt: 8640000000000001,
-    stoppedAt: "bad-date",
-  };
-  const model = boardModel([], {
-    workflows: ["review-queue"],
-    schedules: [invalid],
-  });
-  const [workflow] = model.workflows;
-  assert.ok(workflow);
-  assert.deepEqual(field(workflow, "schedule"), {
-    ...activeSchedule,
-    nextAt: null,
-    stoppedAt: null,
-  });
-  assert.doesNotMatch(
-    rendered(component(Board, { workflow, now: boardTime })),
-    /next run at|stopped at|Invalid Date/,
-  );
+await test("CLV-247 watch reads normalize schedule dates before projection", () =>
+  withHarness(async (harness) => {
+    const invalid = {
+      ...activeSchedule,
+      nextAt: 8640000000000001,
+      stoppedAt: "bad-date",
+    };
+    await harness.start({
+      schedule: () =>
+        Promise.resolve(result("schedules", { schedules: [invalid] })),
+    });
+    const read = await watchReader(harness.runtimeDirectory).read(boardTime);
+    assert.deepEqual(read.schedules, [
+      { ...activeSchedule, nextAt: null, stoppedAt: null },
+    ]);
+    const model = boardModel(read.runs, {
+      ...read,
+      workflows: ["review-queue"],
+    });
+    const [workflow] = model.workflows;
+    assert.ok(workflow);
+    assert.deepEqual(field(workflow, "schedule"), {
+      ...activeSchedule,
+      nextAt: null,
+      stoppedAt: null,
+    });
+    assert.doesNotMatch(
+      rendered(component(Board, { workflow, now: boardTime })),
+      /next run at|stopped at|Invalid Date/,
+    );
+  }));
+
+await test("CLV-247 paused schedules suppress next times", () => {
   const [paused] = scheduleModel({
     ...activeSchedule,
     state: "paused",

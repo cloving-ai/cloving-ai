@@ -1,4 +1,4 @@
-import { shownSchedules, shownScheduled } from "./schedule-render.ts";
+import { shownScheduled, type ShownSchedules } from "./schedule-render.ts";
 import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
@@ -221,7 +221,7 @@ export function decisionCommands(
 }
 
 export interface WatchInputs {
-  readonly schedules?: unknown;
+  readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
@@ -356,9 +356,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   );
   return {
     workflows,
-    ...(inputs.schedules === undefined
-      ? {}
-      : { schedules: shownSchedules(inputs.schedules) }),
+    ...(inputs.schedules === undefined ? {} : { schedules: inputs.schedules }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     startWorkflowId: startWorkflowOf(workflows),
