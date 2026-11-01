@@ -131,10 +131,7 @@ await test("CLV-199 multi-day counts compare a daily equivalent and unavailable 
   assert.equal(fields(metrics["runs.completed"])["comparisonValue"], 2);
   assert.equal(fields(metrics["tickets.completed"])["status"], "unavailable");
   assert.equal(fields(metrics["tickets.completed"])["value"], null);
-  assert.equal(
-    fields(fields(report["coverage"])["ci"])["status"],
-    "unavailable",
-  );
+  assert.equal(fields(report.ci.timeouts)["status"], "unavailable");
 });
 
 await test("CLV-199 ended-run costs keep turn evidence, include real zero and never substitute estimated prices", () => {

@@ -217,3 +217,36 @@ function reviewScoreOf(report: Fields): number | null {
   }
   return score;
 }
+
+export function reportOperatorEffects(
+  events: readonly Fields[] | null,
+  method: "merge" | "label",
+) {
+  const history = historyOf(events);
+  if (history === null) return null;
+  try {
+    return history.pairs.flatMap(({ request, report }) => {
+      const requested = payloadOf(request);
+      const reported = payloadOf(report);
+      if (requested["method"] !== method) return [];
+      if (
+        method === "merge" &&
+        (reported["outcome"] !== "completed" ||
+          !mergedResult(resultOf(reported["result"])["merged"]))
+      )
+        return [];
+      const number = resultOf(requested["payload"])["number"];
+      const at = Number(report["at"]);
+      if (
+        typeof number !== "number" ||
+        !Number.isSafeInteger(number) ||
+        number < 1 ||
+        !Number.isFinite(at)
+      )
+        throw new Error("invalid-report-effect");
+      return [{ number, at }];
+    });
+  } catch {
+    return null;
+  }
+}

@@ -3,6 +3,7 @@ import { rows, timestamp, type Reader } from "./report-github-reader.ts";
 import { positiveInteger } from "./report-ci.ts";
 
 export interface ReportJob {
+  readonly details: Fields;
   readonly id: number;
   readonly runId: number;
   readonly commit: string;
@@ -26,6 +27,7 @@ function parsedJob(row: Fields, run: Fields): ReportJob {
   )
     throw new Error("response");
   return {
+    details: row,
     id: positiveInteger(row["id"]),
     name,
     commit,
@@ -58,7 +60,7 @@ async function attemptJobs(reader: Reader, run: Fields): Promise<ReportJob[]> {
   }
 }
 
-export async function readCiJobs(reader: Reader, runs: readonly Fields[]) {
+export async function ciJobs(reader: Reader, runs: readonly Fields[]) {
   const jobs: ReportJob[] = [];
   for (const run of runs) {
     const attempts = positiveInteger(run["run_attempt"]);
@@ -67,6 +69,11 @@ export async function readCiJobs(reader: Reader, runs: readonly Fields[]) {
         ...(await attemptJobs(reader, { ...run, run_attempt: attempt })),
       );
   }
+  return jobs;
+}
+
+export async function readCiJobs(reader: Reader, runs: readonly Fields[]) {
+  const jobs = await ciJobs(reader, runs);
   const names: Record<number, readonly string[]> = {};
   const failed = [
     ...new Map(

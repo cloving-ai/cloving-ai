@@ -9,6 +9,13 @@ import {
 } from "./report-fixture.ts";
 
 const names = [
+  "ci.jobMinutes.localMacos",
+  "ci.jobLimitShare.localMacos",
+  "ci.runnerWaitMinutes.localMacos",
+  "ci.timeouts",
+  "ci.reruns",
+  "operator.merges",
+  "operator.labelChanges",
   "quality.mainFirstPassShare",
   "quality.flakyFailures",
   "quality.realFailures",

@@ -121,7 +121,7 @@ export async function repositoryReader(
         endpoint,
         flags,
       });
-      if (endpoint.includes("/timeline?")) timelines.set(key, reading);
+      timelines.set(key, reading);
       return reading;
     },
   };
