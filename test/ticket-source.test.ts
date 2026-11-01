@@ -3,11 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-  issueResolver,
-  promptResolver,
-  ticketResolver,
-} from "../src/daemon/ticket-registration.ts";
+import { declaredResolver } from "../src/daemon/ticket-registration.ts";
 import { ticketLimits, ticketText } from "../src/daemon/ticket-source.ts";
 
 const board = `
@@ -29,6 +25,10 @@ const command = [
   join(directory, "board.mjs"),
   String(ticketLimits.textBytes + 1),
 ];
+const ticketContract = {
+  maximumBytes: 4096,
+  fields: { ticket: { type: "ticket" as const } },
+};
 const open = new AbortController().signal;
 
 function request(submission: Readonly<Record<string, unknown>>): {
@@ -38,7 +38,7 @@ function request(submission: Readonly<Record<string, unknown>>): {
   readonly signal: AbortSignal;
 } {
   return {
-    workflowId: "develop-ticket",
+    workflowId: "project-develop",
     submission,
     commandId: "c-1",
     signal: open,
@@ -86,82 +86,7 @@ await test("CLV-016 the ticket source gives a failure for a command that fails, 
   assert.partialDeepStrictEqual(await stopped, { kind: "failed" });
 });
 
-await test("CLV-016 the ticket resolver gives the workflow the ticket ID, the ticket text and a cycle ID with the ticket ID, and it refuses an ID that is no identifier, a ticket that the command does not give, and a daemon with no ticket command", async () => {
-  const resolver = ticketResolver({ command, repository: "/repository" });
-  assert.deepEqual(await resolver.resolve(request({ ticket: "CLV-016" })), {
-    kind: "resolved",
-    input: {
-      cycleId: "clv-016-a6f7ef47",
-      ticketId: "CLV-016",
-      ticket: "# CLV-016: Connect the board\n\nThe text of the ticket.",
-      repository: "/repository",
-    },
-  });
-  assert.deepEqual(await resolver.resolve(request({ ticket: "CLV 016; rm" })), {
-    kind: "rejected",
-    code: "invalid-ticket-id",
-    detail: "A ticket ID has letters, digits and the characters . _ : - only.",
-  });
-  assert.deepEqual(await resolver.resolve(request({ ticket: "CLV-404" })), {
-    kind: "rejected",
-    code: "ticket-not-available",
-    detail:
-      "The ticket command ended with the code 3: Error: no task has the key CLV-404",
-  });
-  assert.deepEqual(
-    await ticketResolver({
-      command: undefined,
-      repository: "/repository",
-    }).resolve(request({ ticket: "CLV-016" })),
-    {
-      kind: "rejected",
-      code: "ticket-source-not-configured",
-      detail:
-        "The daemon has no ticket command. Set CLOVING_TICKET_COMMAND, or use the workflow develop-prompt.",
-    },
-  );
-  assert.deepEqual(
-    [resolver.id, promptResolver("/repository").id],
-    ["ticket-command", "ticket-prompt"],
-  );
-});
-
-await test("CLV-016 the prompt resolver gives the workflow the prompt as the ticket text", async () => {
-  assert.deepEqual(
-    await promptResolver("/repository").resolve(
-      request({ prompt: "Add the file." }),
-    ),
-    {
-      kind: "resolved",
-      input: {
-        cycleId: "task-a6f7ef47ee8d",
-        ticket: "Add the file.",
-        repository: "/repository",
-      },
-    },
-  );
-});
-
-await test("CLV-063 the issue resolver gives the workflow the ticket of the ticket resolver with the pull request delivery, and refuses the same tickets", async () => {
-  const resolver = issueResolver({ command, repository: "/repository" });
-  assert.deepEqual(await resolver.resolve(request({ ticket: "CLV-016" })), {
-    kind: "resolved",
-    input: {
-      cycleId: "clv-016-a6f7ef47",
-      ticketId: "CLV-016",
-      ticket: "# CLV-016: Connect the board\n\nThe text of the ticket.",
-      repository: "/repository",
-      delivery: "pull-request",
-    },
-  });
-  assert.equal(
-    (await resolver.resolve(request({ ticket: "CLV-404" }))).kind,
-    "rejected",
-  );
-  assert.equal(resolver.id, "issue-command");
-});
-
-await test("CLV-070 both ticket resolvers select the next ID without adding arguments and resolve its ticket", async () => {
+await test("CLV-070 the declared ticket resolver selects the next ID without adding arguments and resolves its ticket", async () => {
   const source = {
     repository: "/repository",
     command,
@@ -171,15 +96,10 @@ await test("CLV-070 both ticket resolvers select the next ID without adding argu
       'if (process.argv.length !== 1) process.exit(2); process.stdout.write("  CLV-016\\n");',
     ],
   };
-  for (const factory of [ticketResolver, issueResolver]) {
-    const resolver = factory(source);
-    const direct = await resolver.resolve(request({ ticket: "CLV-016" }));
-    assert.equal(direct.kind, "resolved");
-    assert.deepEqual(
-      await resolver.resolve(request({ ticket: "next" })),
-      direct,
-    );
-  }
+  const resolver = declaredResolver(source, ticketContract);
+  const direct = await resolver.resolve(request({ ticket: "CLV-016" }));
+  assert.equal(direct.kind, "resolved");
+  assert.deepEqual(await resolver.resolve(request({ ticket: "next" })), direct);
 });
 
 const selections = [
@@ -219,7 +139,7 @@ const selections = [
 ] as const;
 
 for (const selection of selections)
-  await test(`CLV-070 both ticket resolvers reject next selection with ${selection.name}`, async () => {
+  await test(`CLV-070 the declared ticket resolver rejects next selection with ${selection.name}`, async () => {
     const source = {
       repository: "/repository",
       command: [
@@ -232,12 +152,12 @@ for (const selection of selections)
           ? undefined
           : [process.execPath, "-e", selection.script],
     };
-    for (const factory of [ticketResolver, issueResolver]) {
-      const result = await factory(source).resolve(request({ ticket: "next" }));
-      assert.partialDeepStrictEqual(result, {
-        kind: "rejected",
-        code: selection.code,
-        ...("detail" in selection ? { detail: selection.detail } : {}),
-      });
-    }
+    const result = await declaredResolver(source, ticketContract).resolve(
+      request({ ticket: "next" }),
+    );
+    assert.partialDeepStrictEqual(result, {
+      kind: "rejected",
+      code: selection.code,
+      ...("detail" in selection ? { detail: selection.detail } : {}),
+    });
   });

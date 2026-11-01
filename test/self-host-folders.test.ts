@@ -29,14 +29,7 @@ await test("CLV-124 real daemon startup registers admitted operator snapshots an
         parameters: {},
       });
       assert.deepEqual(listed["workflowRefusals"], operatorRefusals);
-      assert.deepEqual(listed["workflows"], [
-        "develop-ticket",
-        "develop-issue",
-        "develop-prd",
-        "develop-prompt",
-        "project-run",
-        "user-run",
-      ]);
+      assert.deepEqual(listed["workflows"], ["project-run", "user-run"]);
       assert.deepEqual(listed["runs"], []);
       assert.doesNotMatch(JSON.stringify(listed), /SOURCE_SENTINEL/);
       await runOperator(fixture, "project-run");

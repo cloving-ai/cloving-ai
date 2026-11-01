@@ -235,7 +235,7 @@ async function registrations(harness: Harness) {
       },
     ],
   );
-  return table.slice(4).map((row) => ({
+  return table.map((row) => ({
     ...row,
     manifest: harness.registration.manifest,
     availability: "available" as const,

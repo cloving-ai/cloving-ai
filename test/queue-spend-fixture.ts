@@ -142,15 +142,15 @@ function spendOptions(harness: Harness, state: SpendState) {
         workflowId: "queued",
         manifest: { ...registration.manifest, queue: true },
       },
-      {
+      ...["manual", "develop-issue"].map((workflowId) => ({
         ...harness.registration,
-        workflowId: "manual",
+        workflowId,
         effectLimit: 20,
         manifest: {
           ...harness.registration.manifest,
           capabilities: ["claude"],
         },
-      },
+      })),
     ],
     delivery: destination.delivery,
     effects: { leaseMilliseconds: 4 * 3_600_000 },

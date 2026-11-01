@@ -7,15 +7,6 @@ import {
   absoluteWorkflowFolder,
 } from "../project-settings.ts";
 import { isCandidateDeclaration } from "../workflow-candidate.ts";
-import { bundledWorkflowIds } from "../workflow-discovery.ts";
-
-export const bundledDoctorWorkflows = Object.values(bundledWorkflowIds).map(
-  (workflowId): DoctorWorkflow => ({
-    scope: "bundled",
-    workflowId,
-    capabilities: ["claude", "github"],
-  }),
-);
 
 export function workflowObservation(context: {
   readonly workflows: readonly DoctorWorkflow[];
@@ -23,9 +14,7 @@ export function workflowObservation(context: {
 }): DoctorObservation {
   if (context.prerequisite !== undefined)
     return { result: "skip", detail: context.prerequisite };
-  const found = context.workflows.some(
-    (workflow) => workflow.scope === "project" || workflow.scope === "user",
-  );
+  const found = context.workflows.length > 0;
   return {
     result: found ? "ok" : "fail",
     detail: found
@@ -73,5 +62,5 @@ export async function doctorWorkflows(
         discovered.push({ scope, ...declaration.workflow });
     }
   }
-  return [...bundledDoctorWorkflows, ...discovered];
+  return discovered;
 }

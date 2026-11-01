@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  promptResolver,
+  declaredResolver,
   ticketRegistrations,
   ticketRegistrationTable,
 } from "../src/daemon/ticket-registration.ts";
@@ -39,19 +39,23 @@ await test("CLV-161 a daemon registration stores the serving bundle digest in th
     const manifests = await manifestsIn(directory);
     const bundleDigest = "a".repeat(64);
     const options = {
-      table: ticketRegistrationTable({
-        repository: directory,
-        command: undefined,
-      }),
+      table: ticketRegistrationTable(
+        {
+          repository: directory,
+          command: undefined,
+        },
+        [
+          {
+            ...declared,
+            capabilities: ["claude", "github"],
+            functionName: "develop",
+            input: { maximumBytes: 4096, fields: { prompt: "string" } },
+          },
+        ],
+      ),
       bundleDigest,
     };
-    const admitted = await ticketRegistrations(
-      {
-        developPrd: manifests["develop"],
-        developTicket: manifests["developOther"],
-      },
-      options,
-    );
+    const admitted = await ticketRegistrations(manifests, options);
     assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
     await withHarness(async (harness) => {
       const service = await harness.start({
@@ -60,7 +64,7 @@ await test("CLV-161 a daemon registration stores the serving bundle digest in th
       const result = await call(harness, {
         operation: "run",
         parameters: {
-          workflowId: "develop-prompt",
+          workflowId: "review-run",
           source: "prompt",
           submission: { prompt: "Task" },
           commandId: "pinned",
@@ -85,48 +89,8 @@ await test("CLV-161 a daemon registration stores the serving bundle digest in th
     });
   }));
 
-await test("CLV-169 only develop-prd declares the develop-issue handoff", () => {
-  const table = ticketRegistrationTable({
-    repository: "/repositories/example",
-    command: undefined,
-  });
-  assert.deepEqual(
-    table.map((row) => [row.workflowId, row.handoffs]),
-    [
-      ["develop-ticket", []],
-      ["develop-issue", []],
-      ["develop-prd", ["develop-issue"]],
-      ["develop-prompt", []],
-    ],
-  );
-});
-
-await test("CLV-169 the PRD handoff survives manifest admission", async () => {
-  await withProject({}, async (_cli, directory) => {
-    const manifests = await manifestsIn(directory);
-    const table = ticketRegistrationTable({
-      repository: directory,
-      command: undefined,
-    });
-    const admitted = await ticketRegistrations(
-      {
-        developPrd: manifests["develop"],
-        developTicket: manifests["developOther"],
-      },
-      { table },
-    );
-    assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
-    const prd = admitted.registrations.find(
-      (row) => row.workflowId === "develop-prd",
-    );
-    assert.ok(prd);
-    assert.deepEqual(prd.handoffs, ["develop-issue"]);
-    assert.deepEqual(prd.manifest.handoffs, ["develop-issue"]);
-  });
-});
-
 await test("CLV-168 unknown handoff targets refuse registration before manifest admission", async () => {
-  for (const handoffs of [["missing"], ["develop-ticket", "missing"]]) {
+  for (const handoffs of [["missing"], ["review-run", "missing"]]) {
     const table = ticketRegistrationTable(
       { repository: "/repositories/example", command: undefined },
       [{ ...declared, handoffs }],
@@ -157,7 +121,7 @@ await test("CLV-168 registrations retain forward, self and cyclic handoff declar
           handoffs: ["a"],
         },
       ],
-    ).slice(4);
+    );
     const admitted = await ticketRegistrations(await manifestsIn(directory), {
       table,
     });
@@ -197,8 +161,8 @@ await test("CLV-089 a declared workflow registers its manifest, effect limit and
       [declared],
     );
     assert.deepEqual(
-      table.slice(0, 4).map((row) => row.workflowId),
-      ["develop-ticket", "develop-issue", "develop-prd", "develop-prompt"],
+      table.map((row) => row.workflowId),
+      ["review-run"],
     );
     const row = table.find((entry) => entry.workflowId === "review-run");
     assert.ok(row);
@@ -229,27 +193,14 @@ await test("CLV-089 a declared workflow registers its manifest, effect limit and
   });
 });
 
-await test("CLV-089 duplicate declared IDs cannot shadow built-in or declared registrations", async () => {
-  for (const declarations of [
-    [{ ...declared, workflowId: "develop-ticket" }],
+await test("CLV-089 duplicate declared IDs refuse registration", async () => {
+  const table = ticketRegistrationTable(
+    { repository: "/repositories/example", command: undefined },
     [declared, declared],
-  ]) {
-    const table = ticketRegistrationTable(
-      { repository: "/repositories/example", command: undefined },
-      declarations,
-    );
-    const result = await ticketRegistrations({}, { table });
-    assert.equal(result.kind, "rejected");
-    assert.match(result.detail, /duplicate-workflow-id/);
-  }
-});
-
-await test("CLV-081 develop-issue admits preparation, four complete rounds and labels with 20 effects", () => {
-  const row = ticketRegistrationTable({
-    repository: "/repositories/example",
-    command: undefined,
-  }).find((entry) => entry.workflowId === "develop-issue");
-  assert.equal(row?.effectLimit, 20);
+  );
+  const result = await ticketRegistrations({}, { table });
+  assert.equal(result.kind, "rejected");
+  assert.match(result.detail, /duplicate-workflow-id/);
 });
 
 async function manifestsIn(directory: string): Promise<Record<string, string>> {
@@ -296,7 +247,10 @@ await test("CLV-074 registrations admit the manifest of each row's workflow func
         maximumBytes: 65_536,
         fields: { prompt: "string" as const },
       },
-      resolver: promptResolver(directory),
+      resolver: declaredResolver(
+        { repository: directory, command: undefined },
+        { maximumBytes: 65536, fields: { prompt: "string" } },
+      ),
     }));
     const admitted = await ticketRegistrations(manifests, { table });
     assert.equal(admitted.kind, "admitted", JSON.stringify(admitted));
@@ -321,20 +275,4 @@ await test("CLV-074 registrations admit the manifest of each row's workflow func
       })),
     );
   });
-});
-
-await test("CLV-075 develop-prd registers its own function with prompt input and eight effects", () => {
-  const row = ticketRegistrationTable({
-    repository: "/repositories/example",
-    command: undefined,
-  }).find((entry) => entry.workflowId === "develop-prd");
-  assert.ok(row);
-  assert.equal(row.functionName, "developPrd");
-  assert.equal(row.effectLimit, 8);
-  assert.deepEqual(row.handoffs, ["develop-issue"]);
-  assert.deepEqual(row.submission, {
-    maximumBytes: 65_536,
-    fields: { prompt: "string" },
-  });
-  assert.equal(row.resolver.id, promptResolver("/repositories/example").id);
 });

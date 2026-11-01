@@ -12,12 +12,9 @@ type SpendContext = Pick<
 
 export async function queueRun(
   context: Pick<ServiceContext, "authority">,
-  run: { readonly runId: string; readonly workflowId: string | undefined },
+  runId: string,
 ): Promise<boolean> {
-  return (
-    run.workflowId === "develop-issue" ||
-    (await context.authority.queries.manifest(run.runId))?.queue === true
-  );
+  return (await context.authority.queries.manifest(runId))?.queue === true;
 }
 
 export async function queueSpend(context: SpendContext): Promise<Fields> {
@@ -29,7 +26,6 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
     through: new Date(now).toISOString(),
   });
   const runIds = [...new Set(operations.map((operation) => operation.runId))];
-  const workflows = await context.authority.queries.workflowIds(runIds);
   const costs: number[] = [];
   const totals = {
     costs,
@@ -38,8 +34,7 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
   };
   const queued = new Set<string>();
   for (const runId of runIds) {
-    if (await queueRun(context, { runId, workflowId: workflows[runId] }))
-      queued.add(runId);
+    if (await queueRun(context, runId)) queued.add(runId);
   }
   for (const operation of operations) {
     if (queued.has(operation.runId))

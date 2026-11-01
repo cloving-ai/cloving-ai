@@ -26,6 +26,7 @@ await test("CLV-225 init-prompt prints facts and setup instructions without runn
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^# Facts\n/);
+    assert.doesNotMatch(result.stdout, /develop-(ticket|issue|prompt|prd)/);
     assert.match(result.stdout, /"chatStores": \[/);
     assert.match(result.stdout, /"fileCount": 1/);
     assert.match(result.stdout, /"totalBytes": 17/);

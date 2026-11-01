@@ -43,7 +43,6 @@ await test("CLV-124 refusal ordering uses scope then label and preserves all pol
     "effect-limit",
     "direct-effect",
     "workflow-conflict",
-    "bundled-name-reserved",
     "unsafe-workflow-path",
     "workflow-read-failed",
     "workflow-source-changed",

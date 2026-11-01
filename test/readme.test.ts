@@ -24,7 +24,7 @@ await test("CLV-201 the README names every scanned workflow folder", () => {
     .split("## Develop a workflow\n")[1]
     ?.split("\n## ")[0];
   assert.ok(development);
-  for (const folder of [...folders, "workflows/"])
+  for (const folder of folders)
     assert.ok(development.includes("`" + folder + "`"), folder);
 });
 

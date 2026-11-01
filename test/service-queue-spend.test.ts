@@ -6,6 +6,19 @@ import { withQueueSpend } from "./queue-spend-fixture.ts";
 import { record } from "../src/protocol.ts";
 import { call, eventually } from "./service-fixture.ts";
 
+await test("CLV-262 a formerly bundled ID without a queue declaration neither spends nor holds the queue budget", () =>
+  withQueueSpend(async (scene) => {
+    const queued = await scene.begin("queued-cost");
+    await scene.turn(queued, { costUsd: 17 });
+    await scene.finish(queued);
+    const manual = await scene.begin("former-bundled", "develop-issue");
+    await scene.turn(manual, { costUsd: 2000 });
+    assert.equal(
+      record(record((await scene.status())["queue"])?.["spend"])?.["spentUsd"],
+      17,
+    );
+  }));
+
 await test("CLV-241 spend reads only queue reports with a settlement inside the window", () =>
   withQueueSpend(async (scene) => {
     scene.clock.now = "2026-10-09T12:00:00.000Z";

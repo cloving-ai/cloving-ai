@@ -1,7 +1,81 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { call, field, text, withHarness } from "./service-fixture.ts";
+import {
+  call,
+  field,
+  items,
+  parsed,
+  startedRun,
+  text,
+  withHarness,
+} from "./service-fixture.ts";
 import { view } from "./service-views.ts";
+
+const legacyInput = {
+  cycleId: "legacy-issue",
+  ticketId: "63",
+  ticket: "# Old issue\nGitHub issue: example/project#63 (closed)",
+};
+
+await test("CLV-262 status retains completed bundled runs after their registrations are removed", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [
+        {
+          ...harness.registration,
+          workflowId: "develop-issue",
+          resolver: {
+            ...harness.registration.resolver,
+            resolve: () =>
+              Promise.resolve({
+                kind: "resolved",
+                input: legacyInput,
+              }),
+          },
+        },
+      ],
+    });
+    const runId = await startedRun(harness, {
+      service,
+      workflowId: "develop-issue",
+      commandId: "legacy",
+    });
+    assert.equal(
+      (
+        await service.worker.submit({
+          kind: "complete-run",
+          runId,
+          commandId: "legacy-complete",
+          expectedRevision: 2,
+          outcome: "handoff_requested",
+        })
+      ).kind,
+      "accepted",
+    );
+    await service.close();
+    const restarted = await harness.start({ workflows: [] });
+    const shownRuns: unknown[] = [];
+    for (const argumentsList of [["status"], ["status", runId]]) {
+      const result = await harness.cli([...argumentsList, "--json"]);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      const reply = parsed(result);
+      const shown =
+        argumentsList.length === 1 ? items(reply["runs"])[0] : reply["run"];
+      assert.equal(field(shown, "runId"), runId);
+      assert.equal(field(shown, "workflowId"), "develop-issue");
+      assert.equal(field(shown, "state"), "completed");
+      shownRuns.push(shown);
+    }
+    const shown = shownRuns[1];
+    assert.equal(field(shown, "ticketId"), "63");
+    assert.equal(field(shown, "title"), "Old issue");
+    assert.deepEqual(field(shown, "issueIdentity"), {
+      owner: "example",
+      repository: "project",
+      number: 63,
+    });
+    await restarted.close();
+  }));
 
 await test("CLV-129 single issue status exposes only one valid stored issue marker without establishing a host", () =>
   withHarness(async (harness) => {
