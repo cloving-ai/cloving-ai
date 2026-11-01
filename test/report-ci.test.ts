@@ -154,3 +154,32 @@ await test("CLV-246 unreadable jobs preserve reruns and unreadable runs do not b
     );
   }
 });
+
+await test("CLV-246 CI usage sources expose feature-branch run, job and workflow read failures", async () => {
+  const paths = {
+    ciUsage: "repos/fixture/demo/actions/runs?per_page=100&page=1",
+    ciUsageJobs:
+      "repos/fixture/demo/actions/runs/246/attempts/1/jobs?per_page=100&page=1",
+    ciUsageWorkflows: `repos/fixture/demo/contents/.github/workflows/ci.yml?ref=${ciCommit}`,
+  };
+  for (const [failed, failure] of Object.entries(paths)) {
+    const report = await ciUsageReport(scene({ failure }));
+    const sources = report.sources.github;
+    assert.equal(fields(sources[failed])["status"], "unavailable");
+    assert.equal(fields(sources[failed])["reason"], "read-failed");
+    assert.equal(fields(sources["ci"])["status"], "available");
+    for (const name of Object.keys(paths)) {
+      const status =
+        failed === "ciUsage" || name === failed ? "unavailable" : "available";
+      assert.equal(fields(sources[name])["status"], status);
+    }
+  }
+});
+
+await test("CLV-246 empty CI usage reads expose available sources without job samples", async () => {
+  const report = await ciUsageReport(githubReportFixture());
+  for (const name of ["ciUsage", "ciUsageJobs", "ciUsageWorkflows"])
+    assert.deepEqual(report.sources.github[name], { status: "available" });
+  assert.equal(report.ci.reruns.value, 0);
+  assert.equal(report.ci.jobMinutes["localMacos"]?.value, null);
+});

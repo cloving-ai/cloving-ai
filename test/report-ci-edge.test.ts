@@ -137,3 +137,21 @@ await test("CLV-246 a job ending exactly at its limit counts once as a timeout",
     [1],
   );
 });
+
+await test("CLV-246 hosted runner descriptions accept only strings or string arrays", async () => {
+  for (const description of [
+    { image: "ubuntu-latest" },
+    ["ubuntu-latest", 1],
+  ]) {
+    const result = await ciUsageReport(
+      ciUsageScene({
+        jobs: [ciJob(1, { labels: [] })],
+        workflow: JSON.stringify({
+          jobs: { quality: { "runs-on": description } },
+        }),
+      }),
+    );
+    assert.equal(result.ci.jobMinutes["hostedLinux"]?.status, "unavailable");
+    assert.equal(result.ci.reruns.value, 0);
+  }
+});

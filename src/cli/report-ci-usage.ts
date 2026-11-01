@@ -2,9 +2,19 @@ import { record, type Fields } from "../protocol.ts";
 import { type ReportCiData, type RunnerKind } from "../report-ci.ts";
 import type { ReportDatum } from "../report-statistics.ts";
 import { ciJobs, type ReportJob } from "./report-ci-jobs.ts";
-import { timestamp, type Reader } from "./report-github-reader.ts";
+import {
+  reportSource,
+  timestamp,
+  type Reader,
+} from "./report-github-reader.ts";
 
 type JobGroups = Record<RunnerKind, ReportDatum[]>;
+interface CiUsageRead {
+  readonly data: ReportCiData;
+  readonly sources: Readonly<
+    Record<"ciUsageJobs" | "ciUsageWorkflows", ReturnType<typeof reportSource>>
+  >;
+}
 function groups(): JobGroups {
   return { localMacos: [], localLinux: [], hostedMacos: [], hostedLinux: [] };
 }
@@ -50,7 +60,13 @@ function definitionOf(jobs: Fields, name: string): Fields {
 }
 
 function runnerSystem(value: unknown): "Macos" | "Linux" | null {
-  const description = JSON.stringify(value ?? null).toLowerCase();
+  if (typeof value === "string") return runnerSystem([value]);
+  if (
+    !Array.isArray(value) ||
+    !value.every((item: unknown) => typeof item === "string")
+  )
+    return null;
+  const description = value.join(" ").toLowerCase();
   const macos = /\bmacos\b|\bosx\b/.test(description);
   const linux = /\blinux\b|\bubuntu\b/.test(description);
   if (macos === linux) return null;
@@ -162,10 +178,33 @@ function jobData(
   };
 }
 
+async function workflowDefinitions(reader: Reader, runs: readonly Fields[]) {
+  const results = await Promise.allSettled(
+    runs.map((run) => workflowJobs(reader, run)),
+  );
+  return {
+    definitions: new Map(
+      runs.map((run, index) => {
+        const result = results[index];
+        return [
+          Number(run["id"]),
+          result?.status === "fulfilled" ? result.value : null,
+        ] as const;
+      }),
+    ),
+    source: reportSource(
+      results.find((result) => result.status === "rejected") ?? {
+        status: "fulfilled",
+        value: null,
+      },
+    ),
+  };
+}
+
 export async function readCiUsage(
   reader: Reader,
   runs: readonly Fields[],
-): Promise<ReportCiData> {
+): Promise<CiUsageRead> {
   const reruns = runs
     .filter((run) => Number(run["run_attempt"]) > 1)
     .map((run) => ({
@@ -180,17 +219,25 @@ export async function readCiUsage(
     timeouts: null,
     reruns,
   };
-  const jobs = await ciJobs(reader, runs).catch(() => null);
-  if (jobs === null) return empty;
-  const definitions = new Map<number, Fields | null>();
-  for (const run of runs)
-    definitions.set(
-      Number(run["id"]),
-      await workflowJobs(reader, run).catch(() => null),
-    );
+  const [jobs] = await Promise.allSettled([ciJobs(reader, runs)]);
+  const workflows = await workflowDefinitions(reader, runs);
+  const sources = {
+    ciUsageJobs: reportSource(jobs),
+    ciUsageWorkflows: workflows.source,
+  };
+  if (jobs.status === "rejected") return { data: empty, sources };
   try {
-    return { ...jobData(jobs, definitions), reruns };
-  } catch {
-    return empty;
+    return {
+      data: { ...jobData(jobs.value, workflows.definitions), reruns },
+      sources,
+    };
+  } catch (reason) {
+    return {
+      data: empty,
+      sources: {
+        ...sources,
+        ciUsageJobs: reportSource({ status: "rejected", reason }),
+      },
+    };
   }
 }

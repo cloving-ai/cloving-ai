@@ -6,7 +6,12 @@ type MetricGroup = Readonly<Record<string, Metric>>;
 type MetricSection = Readonly<Record<string, Metric | MetricGroup>>;
 type TextReport = Omit<ReturnType<typeof loopReport>, "window" | "runCosts"> & {
   readonly window: Readonly<Record<string, string | number>>;
-  readonly runCosts: readonly unknown[];
+  readonly runCosts: readonly (Omit<
+    ReturnType<typeof loopReport>["runCosts"][number],
+    "completedAt"
+  > & {
+    readonly completedAt: string;
+  })[];
 };
 
 function isMetric(value: Metric | MetricGroup): value is Metric {

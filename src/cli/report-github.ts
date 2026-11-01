@@ -12,6 +12,7 @@ import {
   rows,
   identity,
   timestamp,
+  reportSource as source,
   type Reader,
   type GithubReportInput,
 } from "./report-github-reader.ts";
@@ -39,6 +40,9 @@ export interface ReportGithub {
       | "timelines"
       | "ready"
       | "ci"
+      | "ciUsage"
+      | "ciUsageJobs"
+      | "ciUsageWorkflows"
       | "jobs"
       | "labels",
       { readonly status: string; readonly reason?: string }
@@ -68,6 +72,9 @@ function unavailableGithub(): ReportGithub {
       labels: unavailable,
       jobs: unavailable,
       ci: unavailable,
+      ciUsage: unavailable,
+      ciUsageJobs: unavailable,
+      ciUsageWorkflows: unavailable,
       ready: unavailable,
       issues: unavailable,
       pulls: unavailable,
@@ -107,10 +114,9 @@ export async function readReportGithub(
     ]);
   return {
     labels: settledValue(labels),
-    ciUsage: settledValue(ciUsage),
     reopened: issues.status === "fulfilled" ? issues.value.reopened : null,
     reverts: pulls.status === "fulfilled" ? pulls.value.reverts : null,
-    ...qualitySources({ jobs, ci }),
+    ...ciSourceData({ jobs, ci, ciUsage }),
     observedSince: history.status === "fulfilled" ? history.value : null,
     issues: issues.status === "fulfilled" ? issues.value.completed : null,
     pulls: pulls.status === "fulfilled" ? pulls.value.pulls : null,
@@ -120,6 +126,10 @@ export async function readReportGithub(
       labels: source(labels),
       jobs: source(jobs),
       ci: source(ci),
+      ciUsage: source(ciUsage),
+      ...(ciUsage.status === "fulfilled"
+        ? ciUsage.value.sources
+        : { ciUsageJobs: source(ciUsage), ciUsageWorkflows: source(ciUsage) }),
       ready: source(ready),
       issues: source(issues),
       pulls: source(pulls),
@@ -171,16 +181,6 @@ async function pullsOf(reader: Reader, since: string) {
           : reverts.filter((item) => item !== null),
       };
   }
-}
-
-function source(result: PromiseSettledResult<unknown>) {
-  if (result.status === "fulfilled") return { status: "available" };
-  const reason =
-    result.reason instanceof Error &&
-    result.reason.message === "github-network-failed"
-      ? "github-network-failed"
-      : "read-failed";
-  return { status: "unavailable", reason };
 }
 
 async function repositoryCreatedAt(reader: Reader): Promise<number> {
@@ -240,12 +240,16 @@ function readyLabel(row: Fields): boolean {
   );
 }
 
-function qualitySources(input: {
+function ciSourceData(input: {
   readonly jobs: PromiseSettledResult<Awaited<ReturnType<typeof readCiJobs>>>;
   readonly ci: PromiseSettledResult<readonly ReportDatum[]>;
+  readonly ciUsage: PromiseSettledResult<
+    Awaited<ReturnType<typeof readCiUsage>>
+  >;
 }) {
-  const { jobs, ci } = input;
+  const { jobs, ci, ciUsage } = input;
   return {
+    ciUsage: ciUsage.status === "fulfilled" ? ciUsage.value.data : null,
     jobLogs: jobs.status === "fulfilled" ? jobs.value.jobLogs : null,
     failures:
       jobs.status === "fulfilled" ? reportFailureData(jobs.value) : null,

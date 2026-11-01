@@ -99,10 +99,7 @@ function effectMetrics(input: ReportInput, window: ReportWindow) {
 }
 
 function githubMetrics(input: ReportInput, window: ReportWindow) {
-  const observed = {
-    ...window,
-    observedSince: input.github?.observedSince ?? null,
-  };
+  const observed = githubWindow(input, window);
   return {
     "leadTime.medianHours": reportMetric({
       data: input.github?.leadTimes ?? null,
@@ -120,6 +117,10 @@ function githubMetrics(input: ReportInput, window: ReportWindow) {
       aggregation: "count",
     }),
   };
+}
+
+function githubWindow(input: ReportInput, window: ReportWindow) {
+  return { ...window, observedSince: input.github?.observedSince ?? null };
 }
 
 function ticketCostMetric(input: ReportInput, window: ReportWindow) {
@@ -237,16 +238,6 @@ function operatorMetrics(input: ReportInput, window: ReportWindow) {
   );
 }
 
-function operatingMetrics(input: ReportInput, window: ReportWindow) {
-  return {
-    ci: reportCiMetrics(input.github?.ciUsage ?? undefined, {
-      ...window,
-      observedSince: input.github?.observedSince ?? null,
-    }),
-    operator: operatorMetrics(input, window),
-  };
-}
-
 export function loopReport(input: ReportInput) {
   const end = input.now;
   const start = end - input.since * 3_600_000;
@@ -285,9 +276,13 @@ export function loopReport(input: ReportInput) {
         effects: input.effects ?? null,
         daemonObservedSince: input.observedSince ?? null,
       },
-      { ...window, observedSince: input.github?.observedSince ?? null },
+      githubWindow(input, window),
     ),
-    ...operatingMetrics(input, window),
+    ci: reportCiMetrics(
+      input.github?.ciUsage ?? undefined,
+      githubWindow(input, window),
+    ),
+    operator: operatorMetrics(input, window),
     coverage: {},
   };
 }
