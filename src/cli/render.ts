@@ -9,47 +9,14 @@ import {
 import { record, type Fields } from "../protocol.ts";
 import { workflowRefusals } from "../workflow-refusals.ts";
 import { commandText, shownCommands } from "./command-effects.ts";
-import { scheduleLines } from "./schedule-render.ts";
+import {
+  scheduledText,
+  statusScheduleLines,
+  scheduleLines,
+} from "./schedule-render.ts";
 
-function show(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function escaped(character: string): string {
-  return `\\u${(character.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`;
-}
-
-const hiddenRanges: readonly (readonly [number, number])[] = [
-  [0x00, 0x1f],
-  [0x7f, 0x9f],
-  [0x061c, 0x061c],
-  [0x200b, 0x200f],
-  [0x2028, 0x202e],
-  [0x2060, 0x2069],
-  [0xfeff, 0xfeff],
-];
-
-function hidden(character: string): boolean {
-  const code = character.codePointAt(0) ?? 0;
-  return hiddenRanges.some(([first, last]) => code >= first && code <= last);
-}
-
-export function oneLine(value: unknown): string {
-  return Array.from(show(value), (character) =>
-    hidden(character) ? escaped(character) : character,
-  ).join("");
-}
-
-function visible(value: unknown): string {
-  return show(value)
-    .split("\n")
-    .map((line) =>
-      Array.from(line, (character) =>
-        hidden(character) ? escaped(character) : character,
-      ).join(""),
-    )
-    .join("\n    ");
-}
+import { show, oneLine, visible } from "./terminal-text.ts";
+export { oneLine } from "./terminal-text.ts";
 
 export function errorText(error: Fields): string {
   const { candidates } = error;
@@ -88,7 +55,7 @@ function admitted(result: Fields): readonly string[] {
 }
 
 function runLine(run: unknown): string {
-  const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}`;
+  const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}${part(run, "scheduled") === undefined ? "" : `  ${scheduledText(part(run, "scheduled"))}`}`;
   return [
     line,
     ...ciLines(run).map((notice) => `    ${notice}`),
@@ -147,6 +114,7 @@ function runList(result: Fields): readonly string[] {
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
     ...queueLines(result["queue"]),
+    ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...(refusals.length === 0
       ? []
       : [
@@ -261,6 +229,7 @@ export function runStatus(result: Fields): readonly string[] {
   const suffix = totalsSuffix(part(run, "state"));
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
+    ...[scheduledText(part(run, "scheduled"))].filter((mark) => mark !== ""),
     `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
     ...outcomeLines(part(run, "outcome")),

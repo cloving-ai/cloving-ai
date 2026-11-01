@@ -1,3 +1,4 @@
+import { scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
@@ -145,6 +146,9 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
   return [
     component(Banner, { run, now }),
+    run.scheduled === undefined
+      ? null
+      : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
     component(HandoffLinks, { run }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
     element("section", {
@@ -256,6 +260,9 @@ export function BoardPage(
       component(Header, { model, stale, phone: props.phone, now }),
       component(Queue, { model }),
       down,
+      model.schedules !== undefined && "status" in model.schedules
+        ? element("p", { class: "meta", children: "Schedules: unavailable" })
+        : null,
       component(RefusedWorkflows, { model }),
       component(WorkflowList, {
         workflows: model.workflows,

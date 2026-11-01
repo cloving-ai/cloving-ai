@@ -19,7 +19,8 @@ export const decidedVersion = 3;
 export const effectedVersion = 4;
 export const waitingVersion = 5;
 export const checkedVersion = 6;
-export const currentVersion = 7;
+export const spendingVersion = 7;
+export const currentVersion = 8;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -128,6 +129,7 @@ const schemas = [
   commandWaitSchema,
   commandWaitCheckSchema,
   spendingIndexes,
+  "CREATE INDEX events_run_type_sequence ON events (run_id, type, sequence);",
 ];
 
 const checksums = schemas.map((schema) =>
@@ -149,6 +151,7 @@ export type SchemaState =
   | { readonly kind: "effected" }
   | { readonly kind: "waiting" }
   | { readonly kind: "checked" }
+  | { readonly kind: "indexed" }
   | { readonly kind: "current" }
   | SchemaRefusal;
 
@@ -159,6 +162,7 @@ const versionKinds = [
   "effected",
   "waiting",
   "checked",
+  "indexed",
   "current",
 ] as const;
 
@@ -204,6 +208,7 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await upgradeSchema(connection, effectedVersion);
   await upgradeSchema(connection, waitingVersion);
   await upgradeSchema(connection, checkedVersion);
+  await upgradeSchema(connection, spendingVersion);
   await upgradeSchema(connection, currentVersion);
 }
 

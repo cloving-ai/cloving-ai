@@ -1,4 +1,5 @@
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
+import { shownSchedules, type ShownSchedules } from "./schedule-render.ts";
 import {
   isWorkflowStages,
   type WorkflowStages,
@@ -28,6 +29,7 @@ interface ReadRun {
 }
 
 export interface WatchRead {
+  readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly service: string;
   readonly workflows: readonly string[];
@@ -220,10 +222,7 @@ function refreshedStatus(run: ReadRun, status: ReadStatus): ReadRun {
       .filter((name) => Object.hasOwn(status, name))
       .map((name) => [name, status[name]]),
   );
-  return {
-    ...run,
-    status: { ...run.status, ...links },
-  };
+  return { ...run, status: { ...run.status, ...links } };
 }
 
 async function detailed(reader: Reader, summary: ReadStatus): Promise<ReadRun> {
@@ -341,6 +340,9 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   }
   return {
     service: "up",
+    ...("schedules" in status
+      ? { schedules: shownSchedules(status["schedules"]) }
+      : {}),
     ...(record(status["queue"]) === undefined
       ? {}
       : { queue: record(status["queue"]) ?? {} }),

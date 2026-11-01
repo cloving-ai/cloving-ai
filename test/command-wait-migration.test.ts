@@ -11,6 +11,7 @@ import {
 import { context, opening, waitStore } from "./command-wait-fixture.ts";
 
 const versionFour = `
+DROP INDEX events_run_type_sequence;
 DROP INDEX events_spend_window;
 DROP INDEX operations_worker_settled;
 DROP INDEX operations_worker_open;
@@ -33,7 +34,7 @@ await test("CLV-235 version 4 migration restores a recorded wait without renewin
   alterDatabase(directory, versionFour);
   const reopened = (await opened(directory)).store;
   try {
-    assert.equal((await reopened.settings()).schemaVersion, 7);
+    assert.equal((await reopened.settings()).schemaVersion, 8);
     assert.deepEqual(await reopened.state(), before);
     assert.equal((await reopened.effects.budget("run-1"))?.spent, 0);
   } finally {
@@ -61,7 +62,7 @@ await test("CLV-235 version 4 upgrades without changing legacy state or restorin
   alterDatabase(directory, versionFour);
   const reopened = (await opened(directory)).store;
   try {
-    assert.equal((await reopened.settings()).schemaVersion, 7);
+    assert.equal((await reopened.settings()).schemaVersion, 8);
     assert.deepEqual(await reopened.state(), before);
     assert.equal((await reopened.effects.budget("run-1"))?.spent, 0);
   } finally {
@@ -106,7 +107,7 @@ await test("CLV-235 an interrupted wait migration rolls back to version 4 and re
   alterDatabase(directory, "DROP TRIGGER fail_wait_migration;");
   const retried = (await opened(directory)).store;
   try {
-    assert.equal((await retried.settings()).schemaVersion, 7);
+    assert.equal((await retried.settings()).schemaVersion, 8);
     assert.deepEqual(await retried.state(), before);
   } finally {
     await retried.close();

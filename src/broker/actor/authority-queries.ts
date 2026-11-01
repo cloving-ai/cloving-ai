@@ -60,6 +60,7 @@ export interface CompletionCursor {
 }
 
 export interface RunRecord extends RunState {
+  readonly admissionCommandId: string | null;
   readonly sequence: number;
 }
 
@@ -85,12 +86,16 @@ async function run(
   runId: string,
 ): Promise<RunRecord | undefined> {
   const row = await connection.get(
-    "SELECT run_id, status, revision, workflow, paused_from, gates, sequence FROM runs WHERE run_id = ?",
+    "SELECT r.run_id, r.status, r.revision, r.workflow, r.paused_from, r.gates, r.sequence, c.command_id AS admission_command_id FROM runs r LEFT JOIN events c ON c.run_id = r.run_id AND c.type = 'run.created' WHERE r.run_id = ? ORDER BY c.sequence LIMIT 1",
     [runId],
   );
   if (row === undefined) return undefined;
   const record = runRow(row);
-  return { ...storedRun(record), sequence: record.sequence };
+  return {
+    ...storedRun(record),
+    sequence: record.sequence,
+    admissionCommandId: optionalText(row, "admission_command_id"),
+  };
 }
 
 async function runOrigins(
