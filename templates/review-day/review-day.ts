@@ -1,6 +1,6 @@
 import type { CycleOutcome } from "cloving/workflows";
 import { reviewFacts, type ReviewInput } from "./review-day/facts.ts";
-import { reviewTurn } from "./review-day/turn.ts";
+import { reviewTurns } from "./review-day/turn.ts";
 import { renderReport } from "./review-day/report.ts";
 import { postAfterPrivacy as postReport } from "./review-day/post.ts";
 import { enforceCritique } from "./review-day/critique.ts";
@@ -11,16 +11,7 @@ export async function reviewDay(input: ReviewInput): Promise<CycleOutcome> {
   "use workflow";
   try {
     const facts = await reviewFacts();
-    const draft = await reviewTurn(input, {
-      phase: "analyze",
-      facts,
-      draft: null,
-    });
-    const critique = await reviewTurn(input, {
-      phase: "critique",
-      facts,
-      draft,
-    });
+    const { draft, critique } = await reviewTurns(input, facts);
     const report = enforceCritique(draft, { critique, facts });
     const text = renderReport(report);
     await postReport(input, text);

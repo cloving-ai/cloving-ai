@@ -1,6 +1,6 @@
 import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import type { ReviewInput } from "./facts.ts";
-import type { Proposal } from "./report.ts";
+import { proposalText, type Proposal } from "./report.ts";
 
 export async function chooseProposal(
   input: ReviewInput,
@@ -15,7 +15,8 @@ export async function chooseProposal(
     ]
       .concat(
         proposals.map(
-          (proposal, index) => `${String(index + 1)}. ${proposal.text}`,
+          (proposal, index) =>
+            `${String(index + 1)}. ${proposalText(proposal)}`,
         ),
       )
       .join("\n\n"),

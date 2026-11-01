@@ -52,6 +52,7 @@ await test("CLV-200 approval of proposal two waits for idea-to-issue then labels
     "run:improvements",
     "run-turn",
     "run-turn",
+    "discard",
     ...(selection.post === "privacy" ? ["create-issue", "label"] : []),
     "waitForDecision",
   ];
@@ -269,6 +270,7 @@ await test("CLV-200 analyzes and critiques facts before posting and opens no dec
     "run:improvements",
     "run-turn",
     "run-turn",
+    "discard",
     ...(selection.post === "privacy" ? ["create-issue", "label"] : []),
   ]);
   for (const section of [

@@ -44,7 +44,7 @@ await test("CLV-200 review-day declares two choices, daily commands and a bounde
   assert.deepEqual(declaration.methods, {
     command: ["run:report", "run:reviews", "run:improvements"],
     claude: ["run-turn"],
-    github: ["create-issue", "label"],
+    github: ["create-issue", "label", "discard"],
   });
   const readme = await readFile(new URL("README.md", root), "utf8");
   for (const requirement of [

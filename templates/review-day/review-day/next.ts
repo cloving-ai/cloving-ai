@@ -1,7 +1,7 @@
 import { handoff } from "cloving/workflows/steps/handoff";
 import { waitForRun } from "cloving/workflows/steps/wait-for-run";
 import type { ReviewInput } from "./facts.ts";
-import type { Proposal } from "./report.ts";
+import { proposalText, type Proposal } from "./report.ts";
 import { labelIssue } from "./label.ts";
 
 export async function handoffProposal(
@@ -10,7 +10,7 @@ export async function handoffProposal(
 ): Promise<void> {
   const runId = await handoff({
     workflowId: "idea-to-issue",
-    input: { idea: proposal.text },
+    input: { idea: proposalText(proposal) },
   });
   const outcome = await waitForRun({ runId, maximumWaitSeconds: 86400 });
   const match =

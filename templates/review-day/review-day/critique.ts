@@ -22,7 +22,9 @@ function removal(
   if (
     context.facts.improvements.some(
       (issue) =>
-        typeof issue["loop"] !== "string" || issue["loop"] === proposal.loop,
+        typeof issue["loop"] !== "string" ||
+        issue["loop"].trim() === "" ||
+        issue["loop"].trim() === proposal.loop.trim(),
     )
   )
     return "open improvement";

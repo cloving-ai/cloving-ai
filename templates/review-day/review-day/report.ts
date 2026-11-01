@@ -31,15 +31,28 @@ function texts(value: unknown): readonly string[] {
 
 function proposal(value: unknown): Proposal {
   const item = fields(value);
-  const loop = text(item["loop"]);
-  const change = text(item["text"]);
-  const heading = `Loop: ${loop}\n\n`;
   return {
     id: text(item["id"]),
-    loop,
-    text: change.startsWith(heading) ? change : heading + change,
+    loop: text(item["loop"]),
+    text: text(item["text"]),
     evidence: texts(item["evidence"]),
   };
+}
+
+export function proposalText(proposal: Proposal): string {
+  const heading = `Loop: ${proposal.loop}\n\n`;
+  const missing = proposal.evidence.filter(
+    (link) => !proposal.text.includes(link),
+  );
+  const links =
+    missing.length === 0
+      ? ""
+      : "\n\nEvidence:\n" + missing.map((link) => `- ${link}`).join("\n");
+  return (
+    (proposal.text.startsWith(heading)
+      ? proposal.text
+      : heading + proposal.text) + links
+  );
 }
 
 export function parseReport(value: unknown): ReviewReport {
@@ -68,7 +81,10 @@ export function renderReport(report: ReviewReport): string {
     [
       "Proposals",
       report.proposals
-        .map((proposal, index) => `${String(index + 1)}. ${proposal.text}`)
+        .map(
+          (proposal, index) =>
+            `${String(index + 1)}. ${proposalText(proposal)}`,
+        )
         .join("\n\n") || "None.",
     ],
     ["Watch list", report.watchList],

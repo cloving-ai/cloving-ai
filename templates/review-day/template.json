@@ -24,7 +24,7 @@
           "id": "result",
           "label": "Keep in the run result",
           "summary": "Return the report without posting a review issue.",
-          "change": "Remove the postReport import and await postReport(input, text) call from review-day.ts. Remove create-issue from methods.github. If next.nothing is also selected, remove github from capabilities and remove methods.github. Set selection.post to result in review-day/scenarios.ts.",
+          "change": "Remove the postReport import and await postReport(input, text) call from review-day.ts. Remove create-issue from methods.github. If next.nothing is also selected, remove label from methods.github. Keep github in capabilities and discard in methods.github for turn worktree cleanup in every option. Set selection.post to result in review-day/scenarios.ts.",
           "requires": {},
           "needs": ["default-harness"]
         }
@@ -46,7 +46,7 @@
           "id": "nothing",
           "label": "Do nothing after approval",
           "summary": "Record the decision without starting another workflow or changing any issue.",
-          "change": "Remove the nextProposal import from review-day.ts. Replace the chooseProposal assignment and the conditional nextProposal call with await chooseProposal(input, report.proposals). Set workflow.handoffs to [] and selection.next to nothing in review-day/scenarios.ts. If post.result is selected, remove github from capabilities and remove methods.github.",
+          "change": "Remove the nextProposal import from review-day.ts. Replace the chooseProposal assignment and the conditional nextProposal call with await chooseProposal(input, report.proposals). Set workflow.handoffs to [] and selection.next to nothing in review-day/scenarios.ts. If post.result is selected, remove label from methods.github. Keep github in capabilities and discard in methods.github for turn worktree cleanup in every option.",
           "requires": {},
           "needs": []
         }

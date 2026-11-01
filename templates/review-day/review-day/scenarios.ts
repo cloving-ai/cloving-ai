@@ -47,6 +47,7 @@ export function effects() {
     "github create-issue": [
       completed({ number: 9, url: "https://github.com/acme/demo/issues/9" }),
     ],
+    "github discard": [completed()],
     "github label": [completed(), completed()],
   };
 }

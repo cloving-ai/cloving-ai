@@ -71,20 +71,19 @@ async function reviewDeclaration(
     ...(selected.post === "privacy" || selected.next === "idea"
       ? ["label"]
       : []),
+    "discard",
   ];
   return JSON.stringify({
     ...declaration,
     workflow: {
       ...declaration.workflow,
-      capabilities: github.length
-        ? ["command", "claude", "github"]
-        : ["command", "claude"],
+      capabilities: ["command", "claude", "github"],
       handoffs: selected.next === "idea" ? ["idea-to-issue"] : [],
     },
     methods: {
       command: declaration.methods["command"],
       claude: declaration.methods["claude"],
-      ...(github.length ? { github } : {}),
+      github,
     },
   });
 }

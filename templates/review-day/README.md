@@ -60,6 +60,15 @@ declaration entry from `run-turn` to `run-turn:reviewDay` to use that profile.
 The default unprofiled method does not apply the named profile's budget. The two
 turns return JSON in their final summary; they need no write or shell tools.
 Set the budget to your chosen per-turn limit.
+Both turns must keep their complete serialized JSON within 12000 characters,
+including escaping, below the worker's 16000-character summary limit. Condense
+repeated prose while retaining every required section, evidence link and removal
+reason. Oversized or incomplete JSON blocks the run before posting.
+
+After the turns, including a failed turn or invalid report, `github discard`
+removes this run's temporary worktree and branch before posting or waiting for a
+decision. Failed cleanup blocks the run. Retain `github` in capabilities and
+`discard` in methods for all options, including `post.result` with `next.nothing`.
 
 Analyze and critique use the same nine rules and all three command outputs.
 Critique is a separate turn. It removes unsupported claims, lists removals,
