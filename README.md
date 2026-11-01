@@ -804,6 +804,21 @@ Replace that call with `mergeByPerson({ pull: pull, check: "beforeMerge" })` to 
 
 Both steps use the existing GitHub `merge` worker method and one protected effect unit. The candidate declaration must include the `github` capability and `methods: { "github": ["merge"] }`. The step subpaths and `cloving/workflows` export the step functions. Import the types `PullRequest`, `MergeRequest` and `MergeResult` from `cloving/workflows`. Fake scenarios give worker results in `effects["github merge"]` and person decisions in `decisions`.
 
+To show a file on a pull request, for example a demo video, a worker turn writes the file into the folder in `CLOVING_ATTACHMENTS_DIRECTORY`. Each turn of a run gets the same folder, outside the work tree. Then the workflow asks for the GitHub method `attach-asset`:
+
+```ts
+const attached = await protectedEffect({
+  scope: { phase: "pull-request", operation: "github-attach-demo", round: 1 },
+  capability: "github",
+  method: "attach-asset",
+  target: runTarget,
+  payload: JSON.stringify({ number: pull.number, name: "demo.mp4", release: "pr-demos", comment: "Demo of the change." }),
+  units: 1,
+});
+```
+
+The method uploads the file as an asset of the release `release`, with the asset name `pr-<number>-<name>`. Then it creates or updates one comment on the pull request with a link to the asset, so a second call adds no second comment. When the release does not exist, the method creates it as a pre-release that is not the latest release. `name` is a file name with the extension `.mp4`, `.webm` or `.png`. The file must be a regular file of at most 100 MB, and a symbolic link is refused. `release` has lowercase letters, digits and hyphens, and it cannot start with `v` and a digit, so it never matches a version tag. The comment text must pass the same privacy check as issue texts. The failure reasons are `invalid-payload`, `attachment-not-available`, `attachment-too-large` and the usual GitHub reasons. The candidate declaration must include `methods: { "github": ["attach-asset"] }`.
+
 The workflow tests run the workflow function with a fake step bridge (`test/develop-workflow-fixture.ts`). The fixture resolves `cloving/workflows` to the files of `src`, records each effect request and gate request, and gives the results of a scenario. `test/develop-ticket-workflow.test.ts` and `test/develop-issue-workflow.test.ts` use it.
 
 Use `cloving workflows list` to inspect bundled, project and user workflows without a service. `--json` prints an array with `scope`, `workflowId`, `file`, `admitted`, `codes` and each valid parsed declaration. Invalid declarations have a null ID. Inspection uses the same folder admission and compiler as startup in a disposable project directory.

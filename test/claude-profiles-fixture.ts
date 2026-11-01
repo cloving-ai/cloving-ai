@@ -26,7 +26,7 @@ export function command(scene: Scene): readonly string[] {
     `import { writeFileSync } from "node:fs";
 for await (const chunk of process.stdin) String(chunk);
 writeFileSync(${JSON.stringify(join(scene.directory, "profile-ran"))}, "ran");
-const names = ["REVIEW_ONLY", "TURN_NAME", "CLOVING_TURN_ID", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_CONFIG_DIR"];
+const names = ["REVIEW_ONLY", "TURN_NAME", "CLOVING_TURN_ID", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_CONFIG_DIR", "CLOVING_ATTACHMENTS_DIRECTORY"];
 const env = Object.fromEntries(names.map((name) => [name, process.env[name]]));
 console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify({ env, arguments: process.argv.slice(2) }) }));
 `,

@@ -7,6 +7,7 @@ import {
   type Finding,
   type Scored,
 } from "./github-calls.ts";
+import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { merge } from "./github-merge.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
@@ -30,6 +31,8 @@ const triggerText = "@greptileai";
 const maximumReviewRequests = 3;
 
 export const methodReasons: ReadonlySet<string> = new Set([
+  "attachment-not-available",
+  "attachment-too-large",
   "draft-not-available",
   "draft-changed",
   "draft-too-large",
@@ -363,6 +366,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],
+  ["attach-asset", attachAsset],
   ["wait-review", waitReview],
   [
     "merge",
