@@ -1,3 +1,7 @@
+import { readClosureHistory } from "./report-closures.ts";
+import { readCiJobs } from "./report-ci-jobs.ts";
+import { reportFailureData } from "../report-quality.ts";
+import { mainRuns, firstPassData } from "./report-ci.ts";
 import type { ReportDatum } from "../report-statistics.ts";
 import {
   repositoryReader,
@@ -12,6 +16,11 @@ import { readyTicketsOf } from "./report-ready.ts";
 import type { ReportReadyTicket } from "../report-flow-types.ts";
 
 export interface ReportGithub {
+  readonly reopened: readonly ReportDatum[] | null;
+  readonly reverts: readonly ReportDatum[] | null;
+  readonly jobLogs: Awaited<ReturnType<typeof readCiJobs>>["jobLogs"] | null;
+  readonly failures: ReturnType<typeof reportFailureData> | null;
+  readonly mainFirstPass: readonly ReportDatum[] | null;
   readonly observedSince: number | null;
   readonly issues: readonly ReportDatum[] | null;
   readonly pulls: readonly ReportDatum[] | null;
@@ -19,51 +28,76 @@ export interface ReportGithub {
   readonly ready: readonly ReportReadyTicket[] | null;
   readonly sources: Readonly<
     Record<
-      "issues" | "pulls" | "history" | "timelines" | "ready",
+      "issues" | "pulls" | "history" | "timelines" | "ready" | "ci" | "jobs",
       { readonly status: string; readonly reason?: string }
     >
   >;
+}
+
+function unavailableGithub(): ReportGithub {
+  const unavailable = {
+    status: "unavailable",
+    reason: "configuration-or-identity",
+  };
+  return {
+    reopened: null,
+    reverts: null,
+    jobLogs: null,
+    failures: null,
+    mainFirstPass: null,
+    observedSince: null,
+    issues: null,
+    pulls: null,
+    leadTimes: null,
+    ready: null,
+    sources: {
+      jobs: unavailable,
+      ci: unavailable,
+      ready: unavailable,
+      issues: unavailable,
+      pulls: unavailable,
+      history: unavailable,
+      timelines: unavailable,
+    },
+  };
 }
 
 export async function readReportGithub(
   input: GithubReportInput,
 ): Promise<ReportGithub> {
   const reader = await repositoryReader(input).catch(() => null);
-  if (reader === null)
-    return {
-      observedSince: null,
-      issues: null,
-      pulls: null,
-      leadTimes: null,
-      ready: null,
-      sources: {
-        ready: { status: "unavailable", reason: "configuration-or-identity" },
-        issues: { status: "unavailable", reason: "configuration-or-identity" },
-        pulls: { status: "unavailable", reason: "configuration-or-identity" },
-        history: { status: "unavailable", reason: "configuration-or-identity" },
-        timelines: {
-          status: "unavailable",
-          reason: "configuration-or-identity",
-        },
-      },
-    };
-  const issueRead = issuesOf(reader, input.since);
-  const [issues, pulls, history, timelines, ready] = await Promise.allSettled([
-    issueRead,
-    pullsOf(reader, input.since),
-    repositoryCreatedAt(reader),
-    issueRead.then((values) =>
-      leadTimesOf(reader, { issues: values, since: input.since }),
-    ),
-    readyTicketsOf(reader),
-  ]);
+  if (reader === null) return unavailableGithub();
+  const runsRead = mainRuns(reader, {
+    since: input.since,
+    activity: "created",
+  });
+  const issueRead = readClosureHistory(reader, input.since);
+  const [issues, pulls, history, timelines, ready, ci, jobs] =
+    await Promise.allSettled([
+      issueRead,
+      pullsOf(reader, input.since),
+      repositoryCreatedAt(reader),
+      issueRead.then((values) =>
+        leadTimesOf(reader, { issues: values.completed, since: input.since }),
+      ),
+      readyTicketsOf(reader),
+      runsRead.then((runs) => firstPassData(reader, runs)),
+      mainRuns(reader, { since: input.since, activity: "updated" }).then(
+        (runs) => readCiJobs(reader, runs),
+      ),
+    ]);
   return {
+    reopened: issues.status === "fulfilled" ? issues.value.reopened : null,
+    reverts: pulls.status === "fulfilled" ? pulls.value.reverts : null,
+    ...qualitySources({ jobs, ci }),
     observedSince: history.status === "fulfilled" ? history.value : null,
-    issues: issues.status === "fulfilled" ? issues.value : null,
-    pulls: pulls.status === "fulfilled" ? pulls.value : null,
+    issues: issues.status === "fulfilled" ? issues.value.completed : null,
+    pulls: pulls.status === "fulfilled" ? pulls.value.pulls : null,
     ready: ready.status === "fulfilled" ? ready.value : null,
     leadTimes: timelines.status === "fulfilled" ? timelines.value : null,
     sources: {
+      jobs: source(jobs),
+      ci: source(ci),
       ready: source(ready),
       issues: source(issues),
       pulls: source(pulls),
@@ -75,45 +109,8 @@ export async function readReportGithub(
 
 import { record, type Fields } from "../protocol.ts";
 
-async function issuesOf(
-  reader: Reader,
-  since: string,
-): Promise<readonly ReportDatum[]> {
-  const result: ReportDatum[] = [];
-  const seen = new Set<number>();
-  for (let page = 1; ; page += 1) {
-    const values = rows(
-      await reader.read(
-        `issues?state=closed&since=${encodeURIComponent(since)}&per_page=100&page=${String(page)}`,
-        [
-          "--jq",
-          'map({number, html_url, closed_at, state, state_reason} + (if has("pull_request") then {pull_request: {}} else {} end))',
-        ],
-      ),
-    );
-    for (const row of values) {
-      if (Object.hasOwn(row, "pull_request")) continue;
-      const number = identity(row, {
-        repository: reader.repository,
-        kind: "issues",
-      });
-      if (seen.has(number)) throw new Error("response");
-      seen.add(number);
-      if (!completedIssue(row)) continue;
-      result.push({
-        at: timestamp(row["closed_at"]),
-        value: 1,
-        evidence: { issue: number },
-      });
-    }
-    if (values.length < 100) return result;
-  }
-}
-
-async function pullsOf(
-  reader: Reader,
-  since: string,
-): Promise<readonly ReportDatum[]> {
+async function pullsOf(reader: Reader, since: string) {
+  const reverts: (ReportDatum | null)[] = [];
   const result: ReportDatum[] = [];
   const seen = new Set<number>();
   for (let page = 1; ; page += 1) {
@@ -131,11 +128,13 @@ async function pullsOf(
       seen.add(number);
       timestamp(row["updated_at"]);
       if (row["merged_at"] === null) continue;
-      result.push({
+      const datum = {
         at: timestamp(row["merged_at"]),
         value: 1,
         evidence: { pullRequest: number },
-      });
+      };
+      result.push(datum);
+      reverts.push(...revertOf(row, datum));
     }
     if (
       values.length < 100 ||
@@ -143,7 +142,12 @@ async function pullsOf(
         (row) => Date.parse(String(row["updated_at"])) < Date.parse(since),
       )
     )
-      return result;
+      return {
+        pulls: result,
+        reverts: reverts.includes(null)
+          ? null
+          : reverts.filter((item) => item !== null),
+      };
   }
 }
 
@@ -167,17 +171,6 @@ async function repositoryCreatedAt(reader: Reader): Promise<number> {
   )
     throw new Error("identity");
   return timestamp(repository?.["created_at"]);
-}
-
-function completedIssue(row: Fields): boolean {
-  if (
-    row["state"] !== "closed" ||
-    !["completed", "not_planned", "duplicate"].includes(
-      String(row["state_reason"]),
-    )
-  )
-    throw new Error("response");
-  return row["state_reason"] === "completed";
 }
 
 async function lastReadyAt(
@@ -223,4 +216,23 @@ function readyLabel(row: Fields): boolean {
     row["event"] === "labeled" &&
     record(row["label"])?.["name"] === "cloving: ready"
   );
+}
+
+function qualitySources(input: {
+  readonly jobs: PromiseSettledResult<Awaited<ReturnType<typeof readCiJobs>>>;
+  readonly ci: PromiseSettledResult<readonly ReportDatum[]>;
+}) {
+  const { jobs, ci } = input;
+  return {
+    jobLogs: jobs.status === "fulfilled" ? jobs.value.jobLogs : null,
+    failures:
+      jobs.status === "fulfilled" ? reportFailureData(jobs.value) : null,
+    mainFirstPass: ci.status === "fulfilled" ? ci.value : null,
+  };
+}
+
+function revertOf(row: Fields, datum: ReportDatum): (ReportDatum | null)[] {
+  const title = row["title"];
+  if (typeof title !== "string") return [null];
+  return title.startsWith('Revert "') ? [datum] : [];
 }

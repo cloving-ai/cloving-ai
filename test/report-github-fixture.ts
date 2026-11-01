@@ -48,8 +48,7 @@ function issueOutput(
   input: { readonly pages: unknown; readonly limit: number | undefined },
 ): WatchCommandOutput {
   const { pages, limit } = input;
-  const endpoint =
-    request.command.find((part) => part.startsWith("repos/")) ?? "";
+  const endpoint = endpointOf(request);
   const page = pageOf(endpoint);
   let values: unknown = pages;
   if (Array.isArray(pages) && !request.command.includes("--slurp"))
@@ -69,6 +68,11 @@ function issueOutput(
 }
 
 interface GithubReportOptions {
+  readonly nodes?: Readonly<Record<string, unknown>>;
+  readonly responses?: Readonly<Record<string, WatchCommandOutput>>;
+  readonly closures?: Readonly<Record<number, readonly unknown[]>>;
+  readonly logs?: Readonly<Record<string, string>>;
+  readonly actions?: Readonly<Record<string, unknown>>;
   readonly readyIssues?: readonly (readonly unknown[])[];
   readonly details?: Readonly<Record<number, unknown>>;
   readonly timelineFailures?: readonly WatchCommandOutput[];
@@ -96,8 +100,9 @@ export function githubReportFixture(options: GithubReportOptions = {}) {
         ...output(null),
         stdout: "git@github.example:fixture/demo.git\n",
       });
-    const endpoint =
-      request.command.find((part) => part.startsWith("repos/")) ?? "";
+    const endpoint = endpointOf(request);
+    const quality = qualityOutput(request, options);
+    if (quality !== undefined) return Promise.resolve(quality);
     const ready = readyOutput(endpoint, options);
     if (ready !== undefined) return Promise.resolve(ready);
     if (endpoint.includes("/issues?")) {
@@ -161,10 +166,93 @@ function readyOutput(
       full_name: options.repositoryName ?? "fixture/demo",
       created_at: options.created ?? "2026-01-01T00:00:00Z",
     });
-  if (endpoint.includes("/issues?state=all"))
+  if (endpoint.includes("/issues?state=all") && !endpoint.includes("&since="))
     return output(options.readyIssues?.[pageOf(endpoint) - 1] ?? []);
   const detail = /issues\/(\d+)$/.exec(endpoint);
   return detail === null
     ? undefined
     : output(options.details?.[Number(detail[1])]);
+}
+
+function closureOutput(
+  options: GithubReportOptions,
+  input: { readonly number: number; readonly page: number },
+): unknown {
+  const { number, page } = input;
+  const explicit = options.closures?.[number];
+  if (explicit !== undefined) return explicit[page - 1] ?? [];
+  if (page !== 1 || !Array.isArray(options.issues)) return [];
+  const row: unknown = options.issues
+    .flat()
+    .find(
+      (value: unknown) =>
+        typeof value === "object" &&
+        value !== null &&
+        "number" in value &&
+        value.number === number,
+    );
+  if (
+    typeof row !== "object" ||
+    row === null ||
+    !("closed_at" in row) ||
+    !("state_reason" in row)
+  )
+    return [];
+  return [
+    {
+      event: "closed",
+      state_reason: row.state_reason,
+      created_at: row.closed_at,
+    },
+  ];
+}
+
+function qualityOutput(
+  request: WatchCommandRequest,
+  options: GithubReportOptions,
+): WatchCommandOutput | undefined {
+  const endpoint = endpointOf(request);
+  const response = options.responses?.[endpoint];
+  if (response !== undefined) return response;
+  const action = actionOutput(endpoint, options);
+  if (action !== undefined) return action;
+  if (request.command.includes("graphql")) return nodeOutput(request, options);
+  const closure = /issues\/(\d+)\/events/.exec(endpoint);
+  return closure === null
+    ? undefined
+    : output(
+        closureOutput(options, {
+          number: Number(closure[1]),
+          page: pageOf(endpoint),
+        }),
+      );
+}
+
+function nodeOutput(
+  request: WatchCommandRequest,
+  options: GithubReportOptions,
+): WatchCommandOutput {
+  const query = request.command.find((part) => part.startsWith("query=")) ?? "";
+  const node = /node\(id:("[^"]+")\)/.exec(query)?.[1];
+  const id = node === undefined ? "" : String(JSON.parse(node));
+  return output({ data: { node: options.nodes?.[id] } });
+}
+
+function endpointOf(request: WatchCommandRequest): string {
+  return request.command.find((part) => part.startsWith("repos/")) ?? "";
+}
+
+function actionOutput(
+  endpoint: string,
+  options: GithubReportOptions,
+): WatchCommandOutput | undefined {
+  if (endpoint.endsWith("/logs"))
+    return { ...output(null), stdout: options.logs?.[endpoint] ?? "no names" };
+  if (endpoint.includes("/actions/"))
+    return output(
+      options.actions?.[endpoint.split("/actions/")[1] ?? ""] ?? {
+        workflow_runs: [],
+      },
+    );
+  return undefined;
 }
