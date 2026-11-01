@@ -1251,7 +1251,6 @@
     "test/self-host-issue.test.ts": "test",
     "test/self-host-launcher.test.ts": "test",
     "test/self-host-opencode.test.ts": "test",
-    "test/self-host-prd.test.ts": "test",
     "test/self-host-processes-fixture.ts": "test",
     "test/self-host-processes.test.ts": "test",
     "test/self-host-profiles.test.ts": "test",

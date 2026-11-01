@@ -67,7 +67,7 @@ export function doctorExitCode(checks: readonly DoctorCheck[]): number {
 
 export interface DoctorWorkflow {
   readonly queue?: boolean;
-  readonly scope: "bundled" | "project" | "user";
+  readonly scope: "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
   readonly input?: SubmissionContract;
@@ -88,20 +88,11 @@ export function requiredDoctorCodes(
     codes.add("gh-login");
     codes.add("github-origin");
   }
-  const bundled = workflows
-    .filter((workflow) => workflow.scope === "bundled")
-    .map((workflow) => workflow.workflowId);
-  const issue = bundled.includes("develop-issue");
-  if (issue) codes.add("check-command");
   if (workflows.some((workflow) => workflow.queue === true)) {
     codes.add("next-command");
     codes.add("queue-interval");
   }
-  if (
-    workflows.some((workflow) => hasTicketField(workflow.input)) ||
-    bundled.some((name) => ["develop-ticket", "develop-issue"].includes(name))
-  )
+  if (workflows.some((workflow) => hasTicketField(workflow.input)))
     codes.add("ticket-command");
-  if (bundled.includes("develop-prd")) codes.add("private-texts");
   return [...codes];
 }

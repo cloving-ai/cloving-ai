@@ -40,9 +40,7 @@ function workflows(
   return ticketRegistrationTable(
     { repository: harness.projectDirectory, command, ...options.source },
     options.declarations ?? [declaration],
-  )
-    .slice(4)
-    .map((row) => ({ ...harness.registration, ...row }));
+  ).map((row) => ({ ...harness.registration, ...row }));
 }
 
 function submit(

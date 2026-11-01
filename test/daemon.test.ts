@@ -9,6 +9,14 @@ import {
   worldDirectory,
 } from "../src/daemon/host-environment.ts";
 
+const declaration = {
+  workflowId: "project-run",
+  functionName: "develop",
+  effectLimit: 1,
+  capabilities: ["claude"],
+  input: { maximumBytes: 4096, fields: {} },
+} as const;
+
 await test("CLV-010 the host environment names the Local World of the host directory, its queue bound and the ownership lease", () => {
   assert.deepEqual(hostEnvironment({ directory: "/host", concurrency: 8 }), {
     WORKFLOW_TARGET_WORLD: "local",
@@ -33,7 +41,8 @@ await test("CLV-010 the daemon refuses to start with a workflow manifest that is
       directory,
       runtimeDirectory: join(directory, "run"),
       repository: directory,
-      manifests: { developTicket: join(directory, "cloving.workflow.json") },
+      manifests: { develop: join(directory, "cloving.workflow.json") },
+      declarations: [declaration],
       workflows: {},
       handler: () => Promise.resolve(new Response("")),
       command: ["true"],
@@ -58,6 +67,7 @@ await test("CLV-074 the daemon refuses a registration whose function has no mani
       runtimeDirectory: join(directory, "run"),
       repository: directory,
       manifests: {},
+      declarations: [declaration],
       workflows: {},
       handler: () => Promise.resolve(new Response("")),
       command: ["true"],
@@ -66,7 +76,7 @@ await test("CLV-074 the daemon refuses a registration whose function has no mani
     assert.deepEqual(opening, {
       kind: "refused",
       reason: "workflow-rejected",
-      detail: "Missing manifest for workflow function developTicket.",
+      detail: "Missing manifest for workflow function develop.",
     });
     assert.equal(existsSync(join(directory, "state")), false);
     assert.equal(existsSync(join(directory, "run")), false);

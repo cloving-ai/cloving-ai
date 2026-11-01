@@ -73,20 +73,11 @@ for (const name of ["workflow", "@workflow/core"]) {
     }));
 }
 
-await test("CLV-124 missing operator folders preserve bundled startup and remain absent", () =>
+await test("CLV-262 missing operator folders produce an empty bundle and remain absent", () =>
   withFiles({ "repo/marker": "" }, async (root) => {
-    const settings = await project(
-      root,
-      manifestCompiler({
-        workflows: {
-          "workflows/bundled.ts": {
-            bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
-          },
-        },
-      }),
-    );
+    const settings = await project(root, manifestCompiler({}));
     const result = await preparedProject(settings);
-    assert.deepEqual(Object.keys(result.manifests), ["bundled"]);
+    assert.deepEqual(Object.keys(result.manifests), []);
     assert.deepEqual(result.declarations, []);
     assert.deepEqual(result.workflowRefusals, []);
     for (const folder of [join(root, "repo/.cloving"), join(root, "config")])
@@ -97,19 +88,10 @@ await test("CLV-154 startup shares retained modules inside its bundle store and 
   withFiles(
     { "repo/marker": "", "node_modules/installed/package.json": "{}" },
     async (root) => {
-      const settings = await project(
-        root,
-        manifestCompiler({
-          workflows: {
-            "workflows/bundled.ts": {
-              bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
-            },
-          },
-        }),
-      );
+      const settings = await project(root, manifestCompiler({}));
       for (const attempt of ["first", "second"]) {
         const result = await preparedProject(settings);
-        assert.deepEqual(Object.keys(result.manifests), ["bundled"]);
+        assert.deepEqual(Object.keys(result.manifests), []);
         assert.ok((await lstat(join(root, "node_modules"))).isDirectory());
         assert.equal(
           await readFile(
@@ -126,46 +108,6 @@ await test("CLV-154 startup shares retained modules inside its bundle store and 
       }
     },
   ));
-
-await test("CLV-202 bundled declarations survive project staging and registration", () =>
-  withFiles({ "repo/marker": "" }, async (root) => {
-    const settings = await project(
-      root,
-      manifestCompiler({
-        workflows: {
-          "workflows/bundled.ts": {
-            bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
-          },
-        },
-      }),
-    );
-    const declaration = {
-      ...candidateDeclaration.workflow,
-      workflowId: "review-corpus",
-      capabilities: ["claude", "claude"],
-    };
-    const sidecar = "workflows/bundled.declaration.json";
-    await writeFile(
-      join(settings.product, sidecar),
-      JSON.stringify(declaration),
-    );
-    const result = await preparedProject(settings);
-    assert.deepEqual(result.declarations, [
-      { ...declaration, capabilities: ["claude"], functionName: "bundled" },
-    ]);
-    assert.deepEqual(result.workflowRefusals, []);
-    assert.equal(
-      await readFile(join(settings.project, sidecar), "utf8"),
-      JSON.stringify(declaration),
-    );
-    assert.deepEqual(
-      JSON.parse(
-        await readFile(join(settings.project, "declarations.json"), "utf8"),
-      ),
-      result.declarations,
-    );
-    assert.equal(typeof result.manifests["bundled"], "string");
-  }));
 
 await test("CLV-124 startup stops on a failed compiler without exposing its output", () =>
   withFiles({ "repo/marker": "" }, async (root) => {
@@ -194,16 +136,7 @@ await test("CLV-124 startup rejects a combined bundle missing its admitted candi
         JSON.stringify(candidateDeclaration),
     },
     async (root) => {
-      const settings = await project(
-        root,
-        manifestCompiler({
-          workflows: {
-            "workflows/bundled.ts": {
-              bundled: { workflowId: "workflow//./workflows/bundled//bundled" },
-            },
-          },
-        }),
-      );
+      const settings = await project(root, manifestCompiler({}));
       await assert.rejects(preparedProject(settings), {
         message: "The admitted workflow is missing from the compiled bundle.",
       });

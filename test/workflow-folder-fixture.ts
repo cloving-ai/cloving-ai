@@ -122,7 +122,6 @@ export function folderInput(directory: string): WorkflowFolderInput {
     repository: join(directory, "repo"),
     home: directory,
     xdgConfigHome: join(directory, "config"),
-    bundled: [],
   };
 }
 

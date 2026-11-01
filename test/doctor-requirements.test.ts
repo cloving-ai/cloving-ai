@@ -10,7 +10,7 @@ import {
 } from "../src/doctor-report.ts";
 
 const issue: DoctorWorkflow = {
-  scope: "bundled",
+  scope: "project",
   workflowId: "develop-issue",
   capabilities: ["github"],
 };
@@ -61,30 +61,11 @@ await test("CLV-207 a user workflow with github makes both GitHub checks require
   assert.ok(!codes.includes("check-command"));
 });
 
-await test("CLV-207 bundled issue needs ticket and check commands and PRD needs private texts", () => {
-  const codes = requiredDoctorCodes([
-    issue,
-    { scope: "bundled", workflowId: "develop-prd", capabilities: ["github"] },
-  ]);
-  assert.ok(codes.includes("check-command"));
-  assert.ok(codes.includes("ticket-command"));
-  assert.ok(codes.includes("private-texts"));
-});
-
-await test("CLV-207 bundled ticket needs the ticket command without requiring a merge check", () => {
-  const codes = requiredDoctorCodes([
-    {
-      scope: "bundled",
-      workflowId: "develop-ticket",
-      capabilities: ["claude"],
-    },
-  ]);
-  assert.ok(codes.includes("ticket-command"));
-  assert.ok(!codes.includes("check-command"));
-});
-
-await test("CLV-228 bundled workflow IDs do not opt into the queue", () => {
+await test("CLV-262 workflow IDs do not opt into the queue or ticket requirements", () => {
   const active = requiredDoctorCodes([issue]);
+  assert.ok(!active.includes("ticket-command"));
+  assert.ok(!active.includes("check-command"));
+  assert.ok(!active.includes("private-texts"));
   assert.ok(!active.includes("next-command"));
   assert.ok(!active.includes("queue-interval"));
   const inactive = requiredDoctorCodes([]);

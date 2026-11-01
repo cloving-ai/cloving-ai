@@ -49,6 +49,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { field, items } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { reviewStages } from "./watch-board-fixture.ts";
+import { record } from "../src/protocol.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -150,7 +151,12 @@ async function artifacts(root: string): Promise<void> {
   const manifest: unknown = JSON.parse(
     await readFile(join(project, "artifacts/manifest.json"), "utf8"),
   );
-  assert.match(JSON.stringify(field(manifest, "workflows")), /developTicket/);
+  assert.deepEqual(
+    Object.values(record(field(manifest, "workflows")) ?? {})
+      .flatMap((entry) => Object.keys(record(entry) ?? {}))
+      .sort(),
+    ["approval", "packedDecision", "projectWorkflow", "userWorkflow"],
+  );
   assert.match(JSON.stringify(field(manifest, "steps")), /step\/\/cloving\//);
   for (const name of ["flow.mjs", "steps.mjs", "client.mjs"])
     assert.ok(
@@ -223,18 +229,15 @@ function registrations(
     cwd: root,
     env: settings.env,
   });
-  for (const name of [
-    "develop-ticket",
-    "develop-prompt",
-    "develop-issue",
-    "develop-prd",
-  ])
-    assert.match(status, new RegExp(name));
   const document: unknown = JSON.parse(status);
   assert.deepEqual(field(document, "runs"), []);
   assert.deepEqual(field(document, "workflowRefusals"), operatorRefusals);
-  for (const workflow of ["project-run", "user-run"])
-    assert.ok(items(field(document, "workflows")).includes(workflow));
+  assert.deepEqual(field(document, "workflows"), [
+    "decision-wait",
+    "project-run",
+    "approval",
+    "user-run",
+  ]);
 }
 
 async function phoneStatus(

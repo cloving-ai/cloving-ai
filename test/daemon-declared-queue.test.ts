@@ -5,14 +5,27 @@ import { withConsumer } from "./world-host-fixture.ts";
 
 const declared = `${queuePrelude}
 const declaration = (workflowId, queue) => ({
-  workflowId, queue, functionName: "custom", effectLimit: 1,
-  capabilities: ["claude", "github"],
-  input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+  ...projectWorkflow, workflowId, queue, functionName: "custom",
 });
 settings.manifests.custom = settings.manifests.developTicket;
 settings.workflows.custom = workflows.develop;
 settings.declarations = [declaration("develop", true), declaration("other", false)];
 `;
+
+await test("CLV-262 an unqueued formerly bundled ID keeps its ticket admissions independent of the queue", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${declared}
+settings.declarations = [declaration("other", true), declaration("develop-issue", false)];
+writeFileSync("ready", "900");
+const daemon = await launched({ queueLanes: 2 });
+try {
+  await until(() => existsSync("input-900"));
+  assert.equal((await submitted("independent", { workflowId: "develop-issue", submission: { ticket: "900" } })).kind, "run-admitted");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
 
 await test("CLV-228 the daemon leaves the queue dormant when no declaration takes it", () =>
   withConsumer(queueWorkflow, async (consumer) => {
@@ -157,7 +170,7 @@ try {
   assert.equal(readFileSync("skips", "utf8").trim(), "900");
   assert.equal((await submitted("old-ticket", { workflowId: "other", submission: { ticket: "900" } })).code, "ticket-active");
   assert.equal((await submitted("old-lane", { workflowId: "other", submission: { ticket: "902" } })).code, "workflow-active");
-  assert.equal((await submitted("bundled-ticket", { workflowId: "develop-issue", submission: { ticket: "901" } })).code, "ticket-active");
+  assert.equal((await submitted("bundled-ticket", { workflowId: "develop-issue", submission: { ticket: "901" } })).code, "unknown-workflow");
 ${retained ? 'assert.equal((await submitted("former-ticket", { workflowId: "develop", submission: { ticket: "901" } })).code, "ticket-active");' : ""}
   assert.equal((await asked("status")).queue.busy, 2);
   const prior = (await runs()).find(run => run.workflowId === "develop");

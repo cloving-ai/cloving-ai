@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { ticketResolver } from "../src/daemon/ticket-registration.ts";
+import { declaredResolver } from "../src/daemon/ticket-registration.ts";
 import {
   call,
   field,
@@ -50,7 +50,10 @@ setInterval(() => {}, 1000);`;
           {
             ...harness.registration,
             submission: { maximumBytes: 4096, fields: { ticket: "string" } },
-            resolver: ticketResolver(source),
+            resolver: declaredResolver(source, {
+              maximumBytes: 4096,
+              fields: { ticket: { type: "ticket" } },
+            }),
           },
         ],
       });

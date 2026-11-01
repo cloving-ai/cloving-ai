@@ -188,7 +188,7 @@ await test("CLV-207 workflow discovery ignores incomplete and invalid files with
     await writeFile(join(folder, "invalid.declaration.json"), "{}");
     await writeFile(join(folder, "malformed.declaration.json"), "not JSON");
     const found = await doctorWorkflows(scene.repository, scene.environment);
-    assert.ok(found.every((item) => item.scope === "bundled"));
+    assert.deepEqual(found, []);
     await assert.rejects(
       doctorWorkflows(scene.repository, {
         XDG_CONFIG_HOME: join(scene.repository, "file"),

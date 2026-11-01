@@ -19,7 +19,6 @@ const refusalCodes = new Set([
   "effect-limit",
   "direct-effect",
   "workflow-conflict",
-  "bundled-name-reserved",
   "unsafe-workflow-path",
   "workflow-read-failed",
   "workflow-source-changed",

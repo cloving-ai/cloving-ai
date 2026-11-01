@@ -98,9 +98,7 @@ async function testWorkflows(
 ): Promise<number> {
   const { id, repository } = options;
   const selected = workflows.filter(
-    (workflow) =>
-      workflow.scope !== "bundled" &&
-      (id === undefined || workflow.workflowId === id),
+    (workflow) => id === undefined || workflow.workflowId === id,
   );
   if (
     id !== undefined &&

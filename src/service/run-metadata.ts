@@ -97,7 +97,7 @@ function titleOf(input: Fields | undefined, workflowId: string): string | null {
   if (ticket === undefined) return null;
   const fallback = `Cloving task ${String(input?.["cycleId"])}`;
   const lines = ticket.split("\n");
-  if (workflowId === "develop-prompt") {
+  if (workflowId === "develop-prompt" && !Object.hasOwn(input ?? {}, "input")) {
     const first = lines.find((line) => /\S/.test(line));
     return first === undefined
       ? fallback
@@ -123,9 +123,9 @@ export async function metadataOf(
   return {
     ticketId: ticketIdOf(input),
     title: titleOf(input, source.workflowId),
-    ...(source.workflowId === "develop-issue"
-      ? { issueIdentity: issueIdentity(input?.["ticket"]) }
-      : {}),
+    ...(ticketOf(input).text === undefined
+      ? {}
+      : { issueIdentity: issueIdentity(ticketOf(input).text) }),
   };
 }
 

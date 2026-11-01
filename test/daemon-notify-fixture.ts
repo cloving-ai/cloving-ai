@@ -11,7 +11,7 @@ export async function scenario(ticketId) {
 }
 export async function develop(input) {
   "use workflow";
-  const choice = await scenario(input.ticketId);
+  const choice = await scenario(input.input.ticket.id);
   if (choice.kind === "failed") throw new Error("fixture failure");
   if (choice.kind === "blocked" || choice.kind === "handoff_requested")
     return { kind: choice.kind, reason: "fixture outcome reason" };
@@ -33,6 +33,6 @@ const notices = () => existsSync("notifications")
   ? readFileSync("notifications", "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse) : [];
 const submitNotice = async (ticket, choice) => {
   if (choice) writeFileSync("scenario-" + ticket, JSON.stringify(choice));
-  return (await submitted(ticket, { workflowId: "develop-ticket", submission: { ticket } })).runId;
+  return (await submitted(ticket, { submission: { ticket } })).runId;
 };
 `;

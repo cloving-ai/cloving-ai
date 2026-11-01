@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { field, ran, request } from "./develop-workflow-fixture.ts";
-import { ticketRegistrationTable } from "../src/daemon/ticket-registration.ts";
 
 import {
   cycleId,
@@ -306,13 +305,9 @@ function failed(): unknown {
 
 function mergeScenario(reasons: readonly string[]): unknown {
   const commits = ["1", "2", "3", "4"].map((digit) => digit.repeat(40));
-  const registration = ticketRegistrationTable({
-    repository: input.repository,
-    command: undefined,
-  }).find((entry) => entry.workflowId === "develop-issue");
   return {
     input,
-    effectLimit: registration?.effectLimit,
+    effectLimit: 20,
     effects: {
       "github prepare": [prepared],
       "github close-issue": [completed({})],
