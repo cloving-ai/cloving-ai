@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  declaredQueuePrelude as queuePrelude,
-  queueWorkflow,
-} from "./daemon-queue-fixture.ts";
+import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
 await test("CLV-084 the daemon queue admits the next ready issue with the ticket command input", () =>
@@ -13,7 +10,7 @@ writeFileSync("ready", "CLV-900");
 const daemon = await launched();
 try {
   const run = await until(async () => (await runs())[0]);
-  assert.equal(run.workflowId, "queue-task");
+  assert.equal(run.workflowId, "develop");
   await until(() => existsSync("input-CLV-900"));
   const input = JSON.parse(readFileSync("input-CLV-900", "utf8"));
   assert.deepEqual(input.input, { ticket: { id: "CLV-900", text: "# CLV-900: Queue task" } });
@@ -87,10 +84,12 @@ process.exit(0);
 await test("CLV-084 active issue runs hold the queue until handoff and other workflows do not hold it", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
+settings.declarations.push({ ...settings.declarations[0], workflowId: "other-develop", queue: false });
 const daemon = await launched({ queueMilliseconds: 100 });
 try {
   const manual = await submitted("manual");
-  const other = await submitted("other", { workflowId: "develop-ticket", submission: { ticket: "CLV-902" } });
+  const other = await submitted("other", { workflowId: "other-develop", submission: { ticket: "CLV-902" } });
+  assert.equal(other.kind, "run-admitted", JSON.stringify(other));
   writeFileSync("ready", "CLV-901");
   await until(() => existsSync("input-CLV-900"));
   await delay(350);

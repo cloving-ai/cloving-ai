@@ -29,7 +29,9 @@ import { startDaemon } from ${product("src/daemon/daemon.ts")};
 import { call } from ${product("test/service-fixture.ts")};
 import { runIdentity } from ${product("src/service/submission-handler.ts")};
 import { testMilliseconds } from ${product("test/test-timing.ts")};
+import { writeDeclaredWorkflow } from ${product("test/workflow-folder-fixture.ts")};
 const directory = process.cwd();
+const { workflow: projectWorkflow } = await writeDeclaredWorkflow(directory);
 const runtimeDirectory = directory + "/runtime";
 const compiled = JSON.parse(readFileSync("artifacts/manifest.json", "utf8"));
 const definition = Object.values(compiled.workflows).flatMap(Object.values)[0];
@@ -43,8 +45,9 @@ if (existsSync("ready")) process.stdout.write(readFileSync("ready", "utf8"));\`)
 writeFileSync("ticket.mjs", 'process.stdout.write("# " + process.argv.at(-1) + ": Queue task");');
 const settings = {
   directory, runtimeDirectory, repository: directory,
-  manifests: { developTicket: directory + "/develop.workflow.json", developPrd: directory + "/develop.workflow.json" },
-  workflows: { developTicket: workflows.develop, developPrd: workflows.develop },
+  manifests: { developTicket: directory + "/develop.workflow.json", developPrd: directory + "/develop.workflow.json", develop: directory + "/develop.workflow.json" },
+  workflows: { developTicket: workflows.develop, developPrd: workflows.develop, develop: workflows.develop },
+  declarations: [{ ...projectWorkflow, functionName: "develop" }],
   handler: POST, command: ["false"], concurrency: 1,
   nextCommand: [process.execPath, directory + "/next.mjs"],
   ticketCommand: [process.execPath, directory + "/ticket.mjs"],
@@ -73,18 +76,6 @@ const launched = async (overrides = {}) => {
   return opening.daemon;
 };
 const submitted = async (commandId, overrides = {}) => asked("run", {
-  workflowId: settings.declarations?.find(row => row.queue === true)?.workflowId ?? "develop-issue", source: "ticket", submission: { ticket: "CLV-900" }, commandId, ...overrides
+  workflowId: settings.declarations.find(row => row.queue === true)?.workflowId ?? "develop", source: "ticket", submission: { ticket: "CLV-900" }, commandId, ...overrides
 });
 `;
-
-export const declaredQueueSettings = `
-settings.manifests.queueTask = settings.manifests.developTicket;
-settings.workflows.queueTask = workflows.develop;
-settings.declarations = [{
-  workflowId: "queue-task", queue: true, functionName: "queueTask", effectLimit: 1,
-  capabilities: ["claude", "github"],
-  input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
-}];
-`;
-
-export const declaredQueuePrelude = queuePrelude + declaredQueueSettings;

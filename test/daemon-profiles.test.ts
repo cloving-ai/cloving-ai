@@ -27,10 +27,11 @@ writeFileSync("worker.mjs", \`for await (const chunk of process.stdin) String(ch
 console.log(JSON.stringify({ type: "result", is_error: false, result: process.env.TURN_NAME }));\`);
 const daemon = await launched({ queueMilliseconds: undefined,
   command: [process.execPath, directory + "/worker.mjs"],
-  profiles: { checker: { env: { TURN_NAME: "{turn}" }, workflows: ["develop-issue"] } },
+  profiles: { checker: { env: { TURN_NAME: "{turn}" }, workflows: ["develop"] } },
 });
 try {
-  const accepted = await submitted("profile-check");
+  const accepted = await submitted("profile-check", { workflowId: "develop" });
+  assert.equal(accepted.kind, "run-admitted", JSON.stringify(accepted));
   await until(async () => (await shown(accepted.runId)).state === "completed");
   const run = await shown(accepted.runId);
   assert.equal(run.effects.length, 1);
