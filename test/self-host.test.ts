@@ -3,8 +3,11 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { writeLocalWorkflow } from "./workflow-folder-fixture.ts";
 import {
   ended,
+  fakeClaude,
   field,
   git,
   items,
@@ -52,7 +55,7 @@ function ticket(id: string, commandId: string): Record<string, unknown> {
 
 function prompted(prompt: string, commandId: string): Record<string, unknown> {
   return {
-    workflowId: "develop-prompt",
+    workflowId: "develop",
     source: "prompt",
     submission: { prompt },
     commandId,
@@ -168,7 +171,11 @@ async function ticketRun(): Promise<void> {
 }
 
 async function resumedTurn(): Promise<void> {
-  const { directory, runtimeDirectory, start } = await scene(slowClaude);
+  const { directory, repository, runtimeDirectory, start } = await scene(
+    slowClaude,
+    join(candidatePackageRoot, "src/cli.ts"),
+  );
+  await writeLocalWorkflow(repository, { input: "prompt" });
   const asked: Asked = (operation, parameters) =>
     call({ runtimeDirectory }, { operation, parameters });
   const effects = async (runId: string): Promise<readonly unknown[]> => {
@@ -180,6 +187,7 @@ async function resumedTurn(): Promise<void> {
   };
   const first = await start();
   const admitted = await asked("run", prompted("A long ticket.", "c-1"));
+  assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
   const runId = String(admitted["runId"]);
   await reached(async () =>
     (await effects(runId)).slice(1).includes("running") ? runId : undefined,
@@ -202,7 +210,12 @@ async function resumedTurn(): Promise<void> {
   const decision = await reached(
     async () => items((await asked("questions", { runId }))["decisions"])[0],
   );
-  assert.match(String(field(decision, "prompt")), /The resumed task is done/);
+  const status = await asked("status", { runId });
+  assert.match(
+    String(field(items(field(status["run"], "workerTurns"))[0], "summary")),
+    /The resumed task is done/,
+  );
+  assert.equal(field(decision, "type"), "approval");
   await approved(asked, { runId, decision });
   assert.deepEqual(await effects(runId), ["completed", "completed"]);
   assert.equal(await ended(second), 0);
@@ -269,7 +282,14 @@ await test("CLV-062 a denial with a feedback text starts round 2 in the same wor
 
 await test("CLV-070 start passes the next command to the daemon and run next admits the selected ticket", () =>
   withoutChildren(async () => {
-    const { repository, runtimeDirectory, start } = await scene();
+    const { repository, runtimeDirectory, start } = await scene(
+      fakeClaude.replace(
+        "I added the file ticket-work.txt.",
+        "I added the file ticket-work.txt.\\nTicket status: complete",
+      ),
+      join(candidatePackageRoot, "src/cli.ts"),
+    );
+    await writeLocalWorkflow(repository);
     const daemon = await start({
       CLOVING_NEXT_COMMAND: JSON.stringify([
         process.execPath,
@@ -278,7 +298,7 @@ await test("CLV-070 start passes the next command to the daemon and run next adm
       ]),
     });
     const admitted = await runCli(
-      ["run", "develop-ticket", "--next", "--command-id", "c-next", "--json"],
+      ["run", "develop", "--next", "--command-id", "c-next", "--json"],
       { directory: repository, runtime: runtimeDirectory },
     );
     assert.equal(admitted.status, 0, admitted.stdout + admitted.stderr);
@@ -294,7 +314,12 @@ await test("CLV-070 start passes the next command to the daemon and run next adm
       );
       return items(reply["decisions"])[0];
     });
-    assert.match(String(field(decision, "prompt")), /ticket CLV-900/);
+    assert.equal(field(decision, "type"), "approval");
+    const status = await call(
+      { runtimeDirectory },
+      { operation: "status", parameters: { runId: field(receipt, "runId") } },
+    );
+    assert.equal(field(status["run"], "ticketId"), "CLV-900");
     assert.equal(await ended(daemon), 0);
   }));
 
