@@ -173,7 +173,6 @@ async function commented(
 
 export async function attachAsset(operation: Operation): Promise<unknown> {
   const attachment = attachmentOf(operation);
-  const file = await attachedFile(operation, attachment.name);
   operatorPrivateTexts(operation.settings);
   const repository = repositoryName(
     await operation.calls.gh(["repo", "view", "--json", "nameWithOwner"]),
@@ -182,6 +181,7 @@ export async function attachAsset(operation: Operation): Promise<unknown> {
     settings: operation.settings,
     repository,
   });
+  const file = await attachedFile(operation, attachment.name);
   try {
     const url = await uploaded(operation, { ...attachment, file });
     await commented(operation, { ...attachment, url });

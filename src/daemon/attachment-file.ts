@@ -1,8 +1,9 @@
 import { constants, type Stats } from "node:fs";
-import { lstat, open, rm, writeFile, type FileHandle } from "node:fs/promises";
+import { lstat, open, rm, type FileHandle } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const maximumBytes = 104_857_600;
+const chunkBytes = 1_048_576;
 const pngSignature = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
@@ -68,7 +69,7 @@ export async function openedAttachment(place: {
     throw new Error("attachment-not-available");
   const handle = await open(
     join(place.folder, place.name),
-    constants.O_RDONLY | constants.O_NOFOLLOW,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   ).catch(() => undefined);
   if (handle === undefined) throw new Error("attachment-not-available");
   try {
@@ -80,10 +81,30 @@ export async function openedAttachment(place: {
   }
 }
 
+async function copiedChunks(
+  source: FileHandle,
+  target: FileHandle,
+): Promise<void> {
+  const chunk = Buffer.alloc(chunkBytes);
+  let position = 0;
+  for (;;) {
+    const { bytesRead } = await source.read(chunk, 0, chunkBytes, position);
+    if (bytesRead === 0) return;
+    position += bytesRead;
+    if (position > maximumBytes) throw new Error("attachment-too-large");
+    await target.write(chunk, 0, bytesRead);
+  }
+}
+
 export async function copiedAttachment(
   handle: FileHandle,
   copy: string,
 ): Promise<void> {
   await rm(copy, { force: true });
-  await writeFile(copy, await handle.readFile(), { flag: "wx" });
+  const target = await open(copy, "wx");
+  try {
+    await copiedChunks(handle, target);
+  } finally {
+    await target.close();
+  }
 }

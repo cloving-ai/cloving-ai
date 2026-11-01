@@ -30,6 +30,7 @@ export interface GithubState {
   uploaded?: Buffer;
   readonly comments: unknown[];
   readonly create?: "concurrent" | "refused";
+  readonly onReleases?: () => void;
 }
 
 export function release(assets: readonly string[]): unknown {
@@ -67,8 +68,10 @@ function readCall(
     return Promise.resolve(JSON.stringify({ nameWithOwner: "acme/demo" }));
   if (joined === "api user")
     return Promise.resolve(JSON.stringify({ login: "cloving-bot" }));
-  if (joined.includes("/releases?per_page=100"))
+  if (joined.includes("/releases?per_page=100")) {
+    state.onReleases?.();
     return Promise.resolve(JSON.stringify([state.releases]));
+  }
   if (joined.includes("/issues/12/comments?per_page=100"))
     return Promise.resolve(JSON.stringify([state.comments]));
   return undefined;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, truncateSync } from "node:fs";
 import {
   link,
   mkdir,
@@ -124,6 +125,41 @@ await test("CLV-268 attach-asset refuses a run with no attachment folder", () =>
     const gh = fakeGh(scene, { releases: [], comments: [] });
     await assert.rejects(
       attach(operation(scene, { payload, gh })),
+      /attachment-not-available/,
+    );
+    assert.equal(releaseCalls(scene), 0);
+  }));
+
+await test("CLV-268 a file that grows after its check stops the copy at the size limit", () =>
+  withScene(async (scene) => {
+    assert.ok(attach);
+    const file = join(scene.attachments, "demo.mp4");
+    const gh = fakeGh(scene, {
+      releases: [],
+      comments: [],
+      onReleases: () => {
+        truncateSync(file, 104_857_601);
+      },
+    });
+    await assert.rejects(
+      attach(operation(scene, { payload, gh })),
+      /attachment-too-large/,
+    );
+    assert.equal(
+      scene.calls.some((parts) => parts[1] === "upload"),
+      false,
+    );
+  }));
+
+await test("CLV-268 a named pipe is refused without waiting for a writer", () =>
+  withScene(async (scene) => {
+    assert.ok(attach);
+    execFileSync("mkfifo", [join(scene.attachments, "pipe.mp4")]);
+    const gh = fakeGh(scene, { releases: [], comments: [] });
+    await assert.rejects(
+      attach(
+        operation(scene, { payload: { ...payload, name: "pipe.mp4" }, gh }),
+      ),
       /attachment-not-available/,
     );
     assert.equal(releaseCalls(scene), 0);
