@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  declaredQueuePrelude as queuePrelude,
-  queueWorkflow,
-} from "./daemon-queue-fixture.ts";
+import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
 const blockedAfterRestart = `${queuePrelude}

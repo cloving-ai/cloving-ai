@@ -5,9 +5,7 @@ import { withConsumer } from "./world-host-fixture.ts";
 
 const declared = `${queuePrelude}
 const declaration = (workflowId, queue) => ({
-  workflowId, queue, functionName: "custom", effectLimit: 1,
-  capabilities: ["claude", "github"],
-  input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+  ...projectWorkflow, workflowId, queue, functionName: "custom",
 });
 settings.manifests.custom = settings.manifests.developTicket;
 settings.workflows.custom = workflows.develop;

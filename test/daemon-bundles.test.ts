@@ -58,9 +58,9 @@ await until(async () => (await shown(runId)).state === "waiting_gate");
 await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
 await first.close();
 ${currentGeneration}
-const manifests = { developTicket: directory + "/current-project/develop.workflow.json", developPrd: directory + "/current-project/develop.workflow.json" };
+const manifests = { developTicket: directory + "/current-project/develop.workflow.json", developPrd: directory + "/current-project/develop.workflow.json", develop: directory + "/current-project/develop.workflow.json" };
 const loaded = [];
-const daemon = await launched({ bundleDigest: currentDigest, manifests, queueMilliseconds: undefined, workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); return await loadWorkflowBundle(directory); } });
+const daemon = await launched({ bundleDigest: currentDigest, manifests, queueMilliseconds: undefined, workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop, develop: currentClient.develop }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); return await loadWorkflowBundle(directory); } });
 try {
   assert.deepEqual(loaded, [directory + "/" + bundlePath]);
   const answer = await asked("decision", { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId: "answer" });
