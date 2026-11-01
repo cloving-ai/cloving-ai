@@ -179,9 +179,9 @@ function jobData(
 }
 
 async function workflowDefinitions(reader: Reader, runs: readonly Fields[]) {
-  const results = await Promise.allSettled(
-    runs.map((run) => workflowJobs(reader, run)),
-  );
+  const results: PromiseSettledResult<Fields>[] = [];
+  for (const run of runs)
+    results.push(...(await Promise.allSettled([workflowJobs(reader, run)])));
   return {
     definitions: new Map(
       runs.map((run, index) => {

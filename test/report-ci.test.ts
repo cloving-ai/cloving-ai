@@ -183,3 +183,61 @@ await test("CLV-246 empty CI usage reads expose available sources without job sa
   assert.equal(report.ci.reruns.value, 0);
   assert.equal(report.ci.jobMinutes["localMacos"]?.value, null);
 });
+
+await test("CLV-246 distinct workflow commits are read sequentially without losing job evidence", async () => {
+  const runs = Array.from({ length: 16 }, (_, index) =>
+    ciRun(index + 1, { head_sha: (index + 1).toString(16).padStart(40, "0") }),
+  );
+  const fixture = githubReportFixture({
+    actions: {
+      "runs?per_page=100&page=1": { workflow_runs: runs },
+      ...Object.fromEntries(
+        runs.map((run) => [
+          `runs/${String(run.id)}/attempts/1/jobs?per_page=100&page=1`,
+          { jobs: [ciJob(run.id, { run_id: run.id, head_sha: run.head_sha })] },
+        ]),
+      ),
+    },
+    responses: Object.fromEntries(
+      runs.map((run) => [
+        `repos/fixture/demo/contents/.github/workflows/ci.yml?ref=${run.head_sha}`,
+        workflowResponse(
+          JSON.stringify({ jobs: { quality: { "timeout-minutes": 75 } } }),
+        ),
+      ]),
+    ),
+  });
+  let active = 0;
+  let peak = 0;
+  let reads = 0;
+  const report = await ciUsageReport({
+    ...fixture,
+    settings: {
+      ...fixture.settings,
+      execute: async (request) => {
+        const workflowRead = Number(
+          request.command.some((part) => part.includes("/contents/")),
+        );
+        active += workflowRead;
+        reads += workflowRead;
+        peak = Math.max(peak, active);
+        try {
+          return await fixture.settings.execute(request);
+        } finally {
+          active -= workflowRead;
+        }
+      },
+    },
+  });
+  assert.equal(peak, 1);
+  assert.equal(reads, runs.length);
+  const share = report.ci.jobLimitShare["localMacos"];
+  assert.equal(share?.value, 50 / 75);
+  assert.deepEqual(
+    share.evidence.map((item) => item["jobId"]),
+    runs.map((run) => run.id),
+  );
+  assert.deepEqual(report.sources.github["ciUsageWorkflows"], {
+    status: "available",
+  });
+});
