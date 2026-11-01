@@ -1,3 +1,4 @@
+import { textReport } from "./report-text.ts";
 import { record, type Fields } from "../protocol.ts";
 import {
   loopReport,
@@ -152,51 +153,6 @@ async function runCost(runtime: string, runId: string): Promise<ReportCost> {
       ? null
       : parsed.filter((turn) => turn !== null),
   };
-}
-
-function qualityTextMetrics(report: Fields): Fields {
-  const quality = record(report["quality"]) ?? {};
-  const review = record(quality["reviewScore"]) ?? {};
-  return Object.fromEntries([
-    ...Object.entries(quality)
-      .filter(([name]) => !["jobLogs", "reviewScore"].includes(name))
-      .map(([name, value]): [string, unknown] => [`quality.${name}`, value]),
-    ...Object.entries(review).map(([name, value]): [string, unknown] => [
-      `quality.reviewScore.${name}`,
-      value,
-    ]),
-  ]);
-}
-
-function textReport(report: Fields): string {
-  const lines = [`Loop report ${JSON.stringify(report["window"])}`];
-  for (const [name, value] of Object.entries({
-    ...record(report["metrics"]),
-    ...qualityTextMetrics(report),
-  })) {
-    const metric = record(value) ?? {};
-    lines.push(
-      `${name}: ${metric["status"] === "unavailable" ? "unavailable" : String(metric["value"])}`,
-    );
-    const baseline = record(metric["baseline"]) ?? {};
-    lines.push(
-      `  history: ${String(baseline["history"])}; median: ${String(baseline["median"])}; band: ${JSON.stringify(baseline["band"])}${metric["mark"] === "outside" ? "; outside" : ""}`,
-    );
-    lines.push(`  comparison value: ${String(metric["comparisonValue"])}`);
-    lines.push(`  evidence: ${JSON.stringify(metric["evidence"])}`);
-    lines.push(`  baseline evidence: ${JSON.stringify(baseline["evidence"])}`);
-  }
-  lines.push(
-    `Quality job logs: ${JSON.stringify(record(report["quality"])?.["jobLogs"])}`,
-  );
-  lines.push(`Run costs (USD): ${JSON.stringify(report["runCosts"])}`);
-  lines.push(
-    `Completed ticket costs (USD): ${JSON.stringify(report["completedTicketCosts"])}`,
-  );
-  lines.push(`Semantics: ${JSON.stringify(report["semantics"])}`);
-  lines.push(`Sources: ${JSON.stringify(report["sources"])}`);
-  lines.push(`Coverage: ${JSON.stringify(report["coverage"])}`);
-  return lines.join("\n") + "\n";
 }
 
 export async function reportCommand(

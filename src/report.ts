@@ -8,6 +8,8 @@ import {
   type ReportDatum,
   type ReportWindow,
 } from "./report-statistics.ts";
+import { reportOperatorMetrics } from "./report-operator.ts";
+import { reportCiMetrics, type ReportCiData } from "./report-ci.ts";
 import { reportEffectData } from "./report-effects.ts";
 import { reportFlowMetrics } from "./report-flow.ts";
 import type { ReportFlow } from "./report-flow-types.ts";
@@ -42,6 +44,8 @@ interface ReportInput {
   readonly observedSince?: number | null;
   readonly costs?: readonly ReportCost[];
   readonly github?: ReportQualityData & {
+    readonly labels?: readonly ReportDatum[] | null;
+    readonly ciUsage?: ReportCiData | null;
     readonly mainFirstPass?: readonly ReportDatum[] | null;
     readonly observedSince?: number | null;
     readonly issues: readonly ReportDatum[] | null;
@@ -95,10 +99,7 @@ function effectMetrics(input: ReportInput, window: ReportWindow) {
 }
 
 function githubMetrics(input: ReportInput, window: ReportWindow) {
-  const observed = {
-    ...window,
-    observedSince: input.github?.observedSince ?? null,
-  };
+  const observed = githubWindow(input, window);
   return {
     "leadTime.medianHours": reportMetric({
       data: input.github?.leadTimes ?? null,
@@ -116,6 +117,10 @@ function githubMetrics(input: ReportInput, window: ReportWindow) {
       aggregation: "count",
     }),
   };
+}
+
+function githubWindow(input: ReportInput, window: ReportWindow) {
+  return { ...window, observedSince: input.github?.observedSince ?? null };
 }
 
 function ticketCostMetric(input: ReportInput, window: ReportWindow) {
@@ -216,11 +221,27 @@ function metricCollection(input: ReportInput, window: ReportWindow) {
   };
 }
 
+function operatorMetrics(input: ReportInput, window: ReportWindow) {
+  return reportOperatorMetrics(
+    {
+      effects: input.effects ?? null,
+      pulls: input.github?.pulls ?? null,
+      labels: input.github?.labels ?? null,
+    },
+    {
+      ...window,
+      observedSince: commonHistory(
+        window.observedSince,
+        input.github?.observedSince ?? null,
+      ),
+    },
+  );
+}
+
 export function loopReport(input: ReportInput) {
   const end = input.now;
   const start = end - input.since * 3_600_000;
   const window = { start, end, observedSince: input.observedSince ?? null };
-  const unavailable = { status: "unavailable", reason: "not-implemented" };
   return {
     schemaVersion: 1,
     kind: "loop-report",
@@ -235,6 +256,7 @@ export function loopReport(input: ReportInput) {
       flowWait: "sum-of-ticket-hours-by-dependency-or-full-lanes",
       flowStreak:
         "terminal-time-then-sequence;current-carries-history;longest-counts-window-ends",
+      operatorLabels: "time-match-within-2-minutes-for-same-issue",
       costs: "lifetime-turn-cost-attributed-at-run-end",
     },
     ...metricCollection(input, window),
@@ -254,13 +276,14 @@ export function loopReport(input: ReportInput) {
         effects: input.effects ?? null,
         daemonObservedSince: input.observedSince ?? null,
       },
-      { ...window, observedSince: input.github?.observedSince ?? null },
+      githubWindow(input, window),
     ),
-    coverage: {
-      ci: unavailable,
-
-      operator: unavailable,
-    },
+    ci: reportCiMetrics(
+      input.github?.ciUsage ?? undefined,
+      githubWindow(input, window),
+    ),
+    operator: operatorMetrics(input, window),
+    coverage: {},
   };
 }
 
