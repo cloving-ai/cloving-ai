@@ -582,6 +582,7 @@
     "test/authority-decision-upgrade.test.ts": "test",
     "test/authority-decisions.test.ts": "test",
     "test/authority-delivery-gaps.test.ts": "test",
+    "test/authority-event-index.test.ts": "test",
     "test/authority-fixture.ts": "test",
     "test/authority-history-generated.ts": "test",
     "test/authority-history-parity.test.ts": "test",

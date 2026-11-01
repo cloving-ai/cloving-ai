@@ -142,24 +142,21 @@ export async function scheduleMetadata(
   if (reply.kind !== "result" || !Array.isArray(reply.result["schedules"]))
     return { schedules: { status: "unavailable" } };
   const schedules: readonly unknown[] = reply.result["schedules"];
+  if (schedules.length === 0) return {};
   return {
-    ...(schedules.length === 0
-      ? {}
-      : {
-          schedules: schedules.map((value) => {
-            const schedule = record(value) ?? {};
-            return Object.fromEntries(
-              [
-                "workflowId",
-                "everySeconds",
-                "state",
-                "failuresInRow",
-                "nextAt",
-                "stoppedAt",
-              ].map((name) => [name, schedule[name]]),
-            );
-          }),
-        }),
+    schedules: schedules.map((value) => {
+      const schedule = record(value) ?? {};
+      return Object.fromEntries(
+        [
+          "workflowId",
+          "everySeconds",
+          "state",
+          "failuresInRow",
+          "nextAt",
+          "stoppedAt",
+        ].map((name) => [name, schedule[name]]),
+      );
+    }),
   };
 }
 
