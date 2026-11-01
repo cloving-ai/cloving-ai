@@ -35,6 +35,8 @@ import { hostedPrograms } from "./self-host-processes.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
 import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
+import { checkSubmission } from "../src/submission.ts";
+import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -224,6 +226,23 @@ process.once("SIGTERM", stop);
   );
 }
 
+function runCommand(declaration: DeclaredWorkflow): string {
+  const { workflowId, input } = declaration;
+  for (const [field, value, argument] of [
+    ["ticket", "ticket-id", "--ticket <ticket-id>"],
+    ["prompt", "task text", '--prompt "<text>"'],
+  ] as const) {
+    const checked = checkSubmission(input, {
+      workflowId,
+      source: field,
+      submission: { [field]: value },
+    });
+    if (checked.kind === "valid")
+      return `  ${client} run ${workflowId} ${argument}`;
+  }
+  return `  ${client} run ${workflowId} --input <json-file>`;
+}
+
 function guide(workflows: RegisteredWorkflows): string {
   return [
     "Cloving runs. Stop it with Control-C.",
@@ -239,10 +258,9 @@ function guide(workflows: RegisteredWorkflows): string {
         `Refused workflow ${refusal.scope} ${refusal.label}: ${refusal.codes.join(", ")}`,
     ),
     "Commands for a second terminal:",
-    `  ${client} run develop-ticket --ticket <ticket-id>`,
-    `  ${client} run develop-issue --ticket <ticket-id>`,
-    `  ${client} run develop-prompt --prompt "<the text of the task>"`,
-    `  ${client} run develop-prd --prompt "<the idea>"`,
+    ...(workflows.declarations.length === 0
+      ? ["No workflow. Run: cloving init"]
+      : workflows.declarations.map(runCommand)),
     `  ${client} status`,
     `  ${client} questions`,
     `  ${client} watch`,

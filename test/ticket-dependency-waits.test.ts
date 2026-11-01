@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ticketDependencyWaits } from "../src/daemon/ticket-dependency-waits.ts";
-import { issueResolver } from "../src/daemon/ticket-registration.ts";
+import { declaredResolver } from "../src/daemon/ticket-registration.ts";
 import { call, withHarness } from "./service-fixture.ts";
 
 const ticket =
@@ -14,14 +14,17 @@ const signal = new AbortController().signal;
 await test("CLV-184 a full service still identifies an alias of its active issue", () =>
   withHarness(async (harness) => {
     const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
-    const resolver = issueResolver({
-      repository: harness.projectDirectory,
-      command: [
-        process.execPath,
-        "-e",
-        'process.stdout.write("GitHub issue: example/project#900")',
-      ],
-    });
+    const resolver = declaredResolver(
+      {
+        repository: harness.projectDirectory,
+        command: [
+          process.execPath,
+          "-e",
+          'process.stdout.write("GitHub issue: example/project#900")',
+        ],
+      },
+      workflow.input,
+    );
     const service = await harness.start({
       workflows: [
         {
@@ -154,10 +157,13 @@ await test("CLV-184 dependency checks refuse unknown state and unavailable ticke
 await test("CLV-184 an alias of an active GitHub issue is refused even when the next command ignores skips", () =>
   withHarness(async (harness) => {
     const source = await sourceAt(harness.projectDirectory);
-    const resolver = issueResolver({
-      ...source,
-      nextCommand: [process.execPath, "-e", 'process.stdout.write("900")'],
-    });
+    const resolver = declaredResolver(
+      {
+        ...source,
+        nextCommand: [process.execPath, "-e", 'process.stdout.write("900")'],
+      },
+      { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+    );
     const resolved = await resolver.resolve({
       workflowId: "develop",
       commandId: "alias",
@@ -179,10 +185,13 @@ await test("CLV-184 a failed dependency lookup refuses admission and the same co
     const source = await sourceAt(harness.projectDirectory);
     const command = join(harness.projectDirectory, "lookup.mjs");
     await writeFile(command, "process.exit(1);");
-    const resolver = issueResolver({
-      ...source,
-      githubCommand: [process.execPath, command],
-    });
+    const resolver = declaredResolver(
+      {
+        ...source,
+        githubCommand: [process.execPath, command],
+      },
+      { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+    );
     const request = {
       workflowId: "develop",
       commandId: "lookup-retry",
@@ -211,14 +220,17 @@ appendFileSync(${JSON.stringify(join(directory, "reads"))}, id + "\\n");
 process.stdout.write(id === "999" ? "# Ready task" : readFileSync(process.argv[2], "utf8"));`,
     );
     const skips = join(directory, "skips");
-    const resolver = issueResolver({
-      ...source,
-      nextCommand: [
-        process.execPath,
-        "-e",
-        `require("node:fs").writeFileSync(${JSON.stringify(skips)}, process.env.CLOVING_SKIP_TICKETS); process.stdout.write("999");`,
-      ],
-    });
+    const resolver = declaredResolver(
+      {
+        ...source,
+        nextCommand: [
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(${JSON.stringify(skips)}, process.env.CLOVING_SKIP_TICKETS); process.stdout.write("999");`,
+        ],
+      },
+      { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
+    );
     const resolve = (ticketId: string) =>
       resolver.resolve({
         workflowId: "develop",

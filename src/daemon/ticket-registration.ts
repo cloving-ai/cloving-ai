@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { admitCompiled } from "../cli/validate.ts";
 import {
   isCommandWaits,
@@ -13,7 +12,6 @@ import type {
 } from "../service/registry.ts";
 import { ticketCommandText, ticketText } from "./ticket-source.ts";
 import { declaredInput } from "./declared-input.ts";
-import { bundledWorkflowIds } from "../workflow-discovery.ts";
 import { declaredManifest } from "../execution-pin.ts";
 import { record } from "../protocol.ts";
 import { hasTicketField, type SubmissionContract } from "../submission.ts";
@@ -24,10 +22,7 @@ import {
   TicketDependencyReadError,
 } from "./ticket-dependency-waits.ts";
 
-export const ticketWorkflow = bundledWorkflowIds.ticket;
-export const promptWorkflow = bundledWorkflowIds.prompt;
-export const issueWorkflow = bundledWorkflowIds.issue;
-export const ticketCapabilities = ["claude", "github"];
+const defaultCapabilities = ["claude", "github"];
 
 const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
 
@@ -40,10 +35,6 @@ export type TicketRegistrations =
 
 function rejected(code: string, detail: string): Resolution {
   return { kind: "rejected", code, detail };
-}
-
-function digest(commandId: string): string {
-  return createHash("sha256").update(commandId).digest("hex");
 }
 
 export interface TicketSource {
@@ -67,7 +58,7 @@ async function ticket(
   source: TicketSource,
   request: ResolutionRequest,
 ): Promise<Resolution> {
-  const { command, repository } = source;
+  const { command } = source;
   const ticketId = String(request.submission["ticket"]);
   if (ticketId === "next") return nextTicket(source, request);
   if (!ticketIdentifier.test(ticketId))
@@ -78,19 +69,16 @@ async function ticket(
   if (command === undefined)
     return rejected(
       "ticket-source-not-configured",
-      "The daemon has no ticket command. Set CLOVING_TICKET_COMMAND, or use the workflow develop-prompt.",
+      "The daemon has no ticket command. Set CLOVING_TICKET_COMMAND.",
     );
   const read = await ticketText(command, { ticketId, signal: request.signal });
   if (read.kind === "failed")
     return rejected("ticket-not-available", read.detail);
-  const name = ticketId.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   return {
     kind: "resolved",
     input: {
-      cycleId: `${name}-${digest(request.commandId).slice(0, 8)}`,
       ticketId,
       ticket: read.text,
-      repository,
     },
   };
 }
@@ -130,18 +118,10 @@ async function nextTicket(
   return ticket(source, { ...request, submission: { ticket: selected.text } });
 }
 
-export function ticketResolver(source: TicketSource): Resolver {
-  return {
-    id: "ticket-command",
-    version: "1",
-    resolve: (request) => ticket(source, request),
-  };
-}
-
-export function issueResolver(source: TicketSource): Resolver {
+function ticketResolver(source: TicketSource): Resolver {
   const waits = ticketDependencyWaits(source);
   return {
-    id: "issue-command",
+    id: "ticket-command",
     version: "1",
     skippedTickets: waits.skipped,
     resolve: (request) =>
@@ -196,23 +176,7 @@ async function issueTicket(
     );
   return {
     kind: "resolved",
-    input: { ...input, delivery: "pull-request" },
-  };
-}
-
-export function promptResolver(repository: string): Resolver {
-  return {
-    id: "ticket-prompt",
-    version: "1",
-    resolve: (request) =>
-      Promise.resolve({
-        kind: "resolved",
-        input: {
-          cycleId: `task-${digest(request.commandId).slice(0, 12)}`,
-          ticket: String(request.submission["prompt"]),
-          repository,
-        },
-      }),
+    input,
   };
 }
 
@@ -220,52 +184,18 @@ export function ticketRegistrationTable(
   source: TicketSource,
   declarations: readonly DeclaredWorkflow[] = [],
 ): readonly TicketRegistration[] {
-  return [
-    {
-      workflowId: ticketWorkflow,
-      functionName: "developTicket",
-      effectLimit: 8,
-      handoffs: [],
-      submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
-      resolver: ticketResolver(source),
-    },
-    {
-      workflowId: issueWorkflow,
-      functionName: "developTicket",
-      effectLimit: 20,
-      handoffs: [],
-      submission: { maximumBytes: 4_096, fields: { ticket: "string" } },
-      resolver: issueResolver(source),
-    },
-    {
-      workflowId: bundledWorkflowIds.prd,
-      functionName: "developPrd",
-      effectLimit: 8,
-      handoffs: [issueWorkflow],
-      submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
-      resolver: promptResolver(source.repository),
-    },
-    {
-      workflowId: promptWorkflow,
-      functionName: "developTicket",
-      effectLimit: 8,
-      handoffs: [],
-      submission: { maximumBytes: 65_536, fields: { prompt: "string" } },
-      resolver: promptResolver(source.repository),
-    },
-    ...declarations.map(({ input, ...declaration }) => ({
-      ...declaration,
-      submission: input,
-      resolver: declaredResolver(source, input),
-    })),
-  ];
+  return declarations.map(({ input, ...declaration }) => ({
+    ...declaration,
+    submission: input,
+    resolver: declaredResolver(source, input),
+  }));
 }
 
-function declaredResolver(
+export function declaredResolver(
   source: TicketSource,
   contract: SubmissionContract,
 ): Resolver {
-  const tickets = hasTicketField(contract) ? issueResolver(source) : undefined;
+  const tickets = hasTicketField(contract) ? ticketResolver(source) : undefined;
   return {
     id: "declared-input",
     version: "1",
@@ -312,7 +242,7 @@ export async function ticketRegistrations(
   for (const row of options.table) {
     const {
       functionName,
-      capabilities = ticketCapabilities,
+      capabilities = defaultCapabilities,
       ...registration
     } = row;
     const manifest = manifests[functionName];
@@ -373,7 +303,7 @@ function commandRegistrationRefusal(
   if (
     Object.hasOwn(row, "commandWaits") &&
     !isCommandWaits(row.commandWaits, {
-      capabilities: row.capabilities ?? ticketCapabilities,
+      capabilities: row.capabilities ?? defaultCapabilities,
       commands: row.commands ?? [],
     })
   )

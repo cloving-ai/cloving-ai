@@ -182,7 +182,7 @@ await test("CLV-235 operator registration retains commands and waits in the admi
           input: { maximumBytes: 64, fields: { ticket: { type: "ticket" } } },
         },
       ],
-    ).slice(4);
+    );
     const result = await ticketRegistrations(
       { review: file },
       {
@@ -207,7 +207,7 @@ await test("CLV-235 registration refuses invalid wait permissions before reading
   const table = ticketRegistrationTable(
     { repository: "/repositories/example", command: undefined },
     [{ ...declaration, capabilities: ["command"], functionName: "review" }],
-  ).slice(4);
+  );
   for (const extra of [
     { commandWaits: { review: { ...reviewWait, command: "other" } } },
     { commandWaits: { review: reviewWait }, capabilities: ["claude"] },
@@ -272,7 +272,7 @@ await test("CLV-178 refuses unknown operator command names before manifest admis
         commandWaits: { review: reviewWait },
       },
     ],
-  ).slice(4);
+  );
   assert.deepEqual(await ticketRegistrations({}, { table }), {
     kind: "rejected",
     detail: "command-unknown: review-queue -> review-requests",

@@ -11,11 +11,7 @@ import {
 } from "../doctor-report.ts";
 import { privateSettingsPath, projectSettings } from "./project-settings.ts";
 import { githubObservations } from "./doctor-github.ts";
-import {
-  bundledDoctorWorkflows,
-  doctorWorkflows,
-  workflowObservation,
-} from "./doctor-workflows.ts";
+import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { harnessObservations } from "./doctor-harness.ts";
@@ -151,7 +147,7 @@ async function workflowRequirements(
 ) {
   if (!context.settingsValid)
     return {
-      workflows: bundledDoctorWorkflows,
+      workflows: [],
       prerequisite: "Settings files are invalid",
     };
   try {
@@ -161,7 +157,7 @@ async function workflowRequirements(
     };
   } catch (error) {
     return {
-      workflows: bundledDoctorWorkflows,
+      workflows: [],
       prerequisite: `Workflow requirements unavailable: ${error instanceof Error ? error.message : "discovery failed"}`,
     };
   }

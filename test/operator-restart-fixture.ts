@@ -69,14 +69,7 @@ export async function operatorInventory(
   address: string,
 ) {
   const status = await call(fixture, { operation: "status", parameters: {} });
-  assert.deepEqual(status["workflows"], [
-    "develop-ticket",
-    "develop-issue",
-    "develop-prd",
-    "develop-prompt",
-    "project-operator",
-    "user-operator",
-  ]);
+  assert.deepEqual(status["workflows"], ["project-operator", "user-operator"]);
   assert.deepEqual(status["workflowRefusals"], restartRefusals);
   const response = await fetch(`${address}data.json`, {
     signal: AbortSignal.timeout(5000),

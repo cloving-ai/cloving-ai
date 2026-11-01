@@ -1,3 +1,4 @@
+import { doctorWorkflows } from "../src/cli/doctor-workflows.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -14,6 +15,14 @@ await test("CLV-228 doctor fails a required no-workflow check without project or
     assert.equal(item["required"], true);
     assert.equal(item["fix"], "cloving init");
     assert.equal(output.status, 1);
+  }));
+
+await test("CLV-262 doctor discovers no bundled workflow requirements", () =>
+  withDoctor(async (scene) => {
+    assert.deepEqual(
+      await doctorWorkflows(scene.repository, scene.environment),
+      [],
+    );
   }));
 
 for (const scope of ["project", "user"] as const)

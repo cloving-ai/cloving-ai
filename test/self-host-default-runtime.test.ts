@@ -111,7 +111,8 @@ await test("CLV-204 start from repository A or outside git selects B and prints 
       const commands = host.output
         .split("\n")
         .filter((line) => line.startsWith("  cloving "));
-      assert.equal(commands.length, 7);
+      assert.equal(commands.length, 3);
+      assert.match(host.output, /No workflow\. Run: cloving init/);
       const prefix = `  cloving --repository ${work.repository}`;
       for (const command of commands) {
         assert.ok(command.startsWith(prefix), command);

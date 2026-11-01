@@ -6,6 +6,74 @@ import { withQueueSpend } from "./queue-spend-fixture.ts";
 import { record } from "../src/protocol.ts";
 import { call, eventually } from "./service-fixture.ts";
 
+await test("CLV-262 historical bundled issue runs retain queue lanes, skipped tickets and spending after restart", () =>
+  withQueueSpend(
+    async (scene) => {
+      const legacy = await scene.begin("historical-issue", "develop-issue");
+      await scene.turn(legacy, { costUsd: 17 });
+      await scene.pendingTurn(legacy, 2);
+      const manual = await scene.begin("manual-issue-resolver", "manual");
+      await scene.turn(manual, { costUsd: 2000 });
+      await scene.finish(manual);
+      await scene.restart(
+        scene.registrations.filter((row) => row.workflowId !== "develop-issue"),
+      );
+      const queue = record((await scene.status())["queue"]);
+      assert.equal(queue?.["busy"], 1);
+      assert.deepEqual(queue["skipped"], [
+        { ticketId: "900", reason: "ticket-active" },
+      ]);
+      assert.deepEqual(queue["spend"], {
+        limitUsd: 20,
+        spentUsd: 17,
+        unknownTurns: 0,
+        turnsInWork: 1,
+        windowHours: 24,
+        holding: true,
+      });
+      assert.equal(
+        (await call(scene.harness, queueRequest("duplicate", "900")))["code"],
+        "ticket-active",
+      );
+      await scene.finish(legacy);
+      assert.equal(record((await scene.status())["queue"])?.["busy"], 0);
+      assert.equal(
+        (await call(scene.harness, queueRequest("next-issue")))["code"],
+        "queue-spend-limit",
+      );
+    },
+    {
+      issueResolver: {
+        id: "issue-command",
+        version: "1",
+        resolve: () =>
+          Promise.resolve({
+            kind: "resolved",
+            input: {
+              ticketId: "900",
+              ticket: "# Old issue",
+              delivery: "pull-request",
+            },
+          }),
+      },
+    },
+  ));
+
+await test("CLV-262 a formerly bundled ID without a queue declaration neither spends nor holds the queue budget", () =>
+  withQueueSpend(async (scene) => {
+    const queued = await scene.begin("queued-cost");
+    await scene.turn(queued, { costUsd: 17 });
+    await scene.finish(queued);
+    const manual = await scene.begin("former-bundled", "develop-issue");
+    await scene.turn(manual, { costUsd: 2000 });
+    assert.equal(record((await scene.status())["queue"])?.["busy"], 0);
+    assert.deepEqual(record((await scene.status())["queue"])?.["skipped"], []);
+    assert.equal(
+      record(record((await scene.status())["queue"])?.["spend"])?.["spentUsd"],
+      17,
+    );
+  }));
+
 await test("CLV-241 spend reads only queue reports with a settlement inside the window", () =>
   withQueueSpend(async (scene) => {
     scene.clock.now = "2026-10-09T12:00:00.000Z";

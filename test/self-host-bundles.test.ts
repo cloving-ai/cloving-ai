@@ -1,20 +1,30 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import {
-  candidatePackageRoot,
-  preparedProject,
-} from "./candidate-package-fixture.ts";
+import { preparedProject } from "./candidate-package-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { operatorFiles } from "./workflow-folder-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 await test("CLV-219 a source bootstrap client resolves the SDK hook runtime", () =>
-  withFiles({ "repo/marker": "" }, (root) => {
+  withFiles({ "repo/marker": "" }, async (root) => {
     const project = join(root, "project");
+    for (const [name, text] of Object.entries(
+      operatorFiles("project", "candidate"),
+    )) {
+      await mkdir(dirname(join(root, name)), { recursive: true });
+      await writeFile(join(root, name), text);
+    }
     preparedProject({
       project,
       repository: join(root, "repo"),
@@ -28,7 +38,7 @@ await test("CLV-219 a source bootstrap client resolves the SDK hook runtime", ()
         "--no-strip-types",
         "--input-type=module",
         "-e",
-        `const workflows = await import(${JSON.stringify(client.href)}); console.log(typeof workflows.developTicket);`,
+        `const workflows = await import(${JSON.stringify(client.href)}); console.log(typeof workflows.candidate);`,
       ],
       { cwd: project, encoding: "utf8", timeout: testMilliseconds(10000) },
     );
@@ -46,13 +56,6 @@ async function retainedSnapshot(input: {
   readonly retained: string;
   readonly declarations: unknown;
 }) {
-  assert.equal(
-    await readFile(join(input.retained, "workflows/develop-prd.ts"), "utf8"),
-    await readFile(
-      join(candidatePackageRoot, "workflows/develop-prd.ts"),
-      "utf8",
-    ),
-  );
   const dependencies = await readFile(
     join(input.retained, "dependencies.json"),
     "utf8",
@@ -202,36 +205,4 @@ await test("candidate package builds exclude the external compiler from runtime 
       contents.every((report) => !report.includes("typescript/lib/_tsc.js")),
       "the TypeScript compiler must not generate runtime coverage",
     );
-  }));
-
-await test("CLV-202 bundled chats declarations abort startup before retaining a bundle", () =>
-  withFiles({ "repo/marker": "" }, async (root) => {
-    const declaration = join(
-      candidatePackageRoot,
-      "workflows/develop-prd.declaration.json",
-    );
-    await writeFile(
-      declaration,
-      JSON.stringify({
-        workflowId: "retired-corpus",
-        effectLimit: 1,
-        capabilities: ["chats"],
-        input: { maximumBytes: 1024, fields: {} },
-      }),
-    );
-    try {
-      assert.throws(
-        () =>
-          preparedProject({
-            project: join(root, "project"),
-            repository: join(root, "repo"),
-            home: root,
-            xdgConfigHome: join(root, "config"),
-          }),
-        /invalid-workflow-declaration: develop-prd\.declaration\.json/,
-      );
-      assert.deepEqual(await bundleIds(root), ["project", "repo"]);
-    } finally {
-      await rm(declaration);
-    }
   }));

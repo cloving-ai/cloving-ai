@@ -82,7 +82,7 @@ await test("CLV-218 queue declarations conflict across workflow identities", asy
     functionNames: [name],
     queue: true,
   }));
-  assert.deepEqual(workflowConflicts(identities, []), [
+  assert.deepEqual(workflowConflicts(identities), [
     ["queue-workflow-conflict"],
     ["queue-workflow-conflict"],
   ]);

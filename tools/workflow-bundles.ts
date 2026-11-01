@@ -210,6 +210,7 @@ export async function retainWorkflowBundle(
   }
   const temporary = await mkdtemp(join(input.directory, ".pending-"));
   try {
+    await mkdir(join(temporary, "workflows"), { mode: 0o700 });
     for (const { name, bytes } of files) {
       const path = join(temporary, name);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });

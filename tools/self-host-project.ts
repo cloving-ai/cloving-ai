@@ -1,31 +1,16 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { findPackageJSON } from "node:module";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import { record } from "../src/protocol.ts";
 import {
   isWorkflowDeclaration,
   type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
-import {
-  bundledWorkflowIds,
-  type WorkflowReservation,
-} from "../src/workflow-discovery.ts";
 import type { WorkflowRefusal } from "../src/workflow-refusals.ts";
-import {
-  workflowDeclarations,
-  workflowFiles,
-  workflowManifests,
-} from "./self-host-workflows.ts";
+import { workflowManifests } from "./self-host-workflows.ts";
 import {
   loadWorkflowFolders,
   type WorkflowFolderCandidate,
@@ -56,9 +41,7 @@ export interface RegisteredWorkflows {
   readonly workflowRefusals: readonly WorkflowRefusal[];
 }
 
-async function initializeProject(
-  settings: ProjectSettings,
-): Promise<readonly string[]> {
+async function initializeProject(settings: ProjectSettings): Promise<void> {
   const { project, product } = settings;
   await rm(project, { recursive: true, force: true });
   await mkdir(join(project, "workflows"), { recursive: true, mode: 0o700 });
@@ -66,8 +49,6 @@ async function initializeProject(
     join(project, "package.json"),
     '{"name":"cloving-self-host","private":true,"type":"module"}',
   );
-  const files = await workflowFiles(join(product, "workflows"));
-  for (const file of files) await copyWorkflow(settings, file);
   const modules = join(project, "node_modules");
   await mkdir(join(modules, "cloving"), { recursive: true });
   const dependencies = new Map(
@@ -103,7 +84,6 @@ async function initializeProject(
       ),
     }),
   );
-  return files;
 }
 
 async function compile(settings: ProjectSettings) {
@@ -134,28 +114,6 @@ async function compile(settings: ProjectSettings) {
   if (!isWorkflowManifest(compiled))
     throw new Error("The compiled workflow manifest is invalid.");
   return compiled;
-}
-
-function reservations(input: {
-  readonly files: readonly string[];
-  readonly manifests: ReturnType<typeof workflowManifests>;
-  readonly declarations: readonly DeclaredWorkflow[];
-}): readonly WorkflowReservation[] {
-  const { files, manifests, declarations } = input;
-  return [
-    ...files.map((file) => ({
-      baseName: basename(file, extname(file)),
-    })),
-    ...Object.entries(manifests).map(([functionName, manifest]) => ({
-      baseName: manifest.name,
-      workflowId: manifest.workflowId,
-      functionName,
-    })),
-    ...[
-      ...Object.values(bundledWorkflowIds),
-      ...declarations.map((item) => item.workflowId),
-    ].map((workflowId) => ({ workflowId })),
-  ];
 }
 
 interface StagedCandidate {
@@ -236,56 +194,6 @@ function operatorDeclaration(
   };
 }
 
-async function copyWorkflow(
-  settings: ProjectSettings,
-  file: string,
-): Promise<void> {
-  const { product, project } = settings;
-  await copyFile(
-    join(product, "workflows", file),
-    join(project, "workflows", file),
-  );
-  const sidecar = `${basename(file, extname(file))}.declaration.json`;
-  const declaration = await readFile(join(product, "workflows", sidecar)).catch(
-    (error: unknown) => {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        return undefined;
-      throw error;
-    },
-  );
-  if (declaration !== undefined)
-    await writeFile(join(project, "workflows", sidecar), declaration);
-}
-
-function bundledListings(input: {
-  readonly product: string;
-  readonly files: readonly string[];
-  readonly manifests: ReturnType<typeof workflowManifests>;
-  readonly declarations: readonly DeclaredWorkflow[];
-}): WorkflowListing[] {
-  const { product, files, manifests, declarations } = input;
-  const byFunction = new Map(
-    declarations.map(({ functionName, ...declaration }) => [
-      functionName,
-      declaration,
-    ]),
-  );
-  return Object.entries(manifests).map(([functionName, manifest]) => {
-    const declaration = byFunction.get(functionName);
-    const file = files.find(
-      (file) => basename(file, extname(file)) === manifest.name,
-    );
-    return {
-      scope: "bundled" as const,
-      workflowId: declaration?.workflowId ?? manifest.name,
-      file: join(product, "workflows", file ?? manifest.name),
-      admitted: true,
-      codes: [],
-      ...(declaration === undefined ? {} : { declaration }),
-    };
-  });
-}
-
 async function writeManifests(
   project: string,
   compiled: ReturnType<typeof workflowManifests>,
@@ -306,28 +214,15 @@ export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
   const { product, project } = settings;
-  const files = await initializeProject(settings);
-  let compiled = await compile(settings);
-  const bundled = workflowManifests(compiled);
-  const declarations = await workflowDeclarations(
-    join(project, "workflows"),
-    bundled,
-  );
-  const folders = await loadWorkflowFolders(
-    {
-      ...settings,
-      bundled: reservations({ files, manifests: bundled, declarations }),
-    },
-    { packageRoot: await workflowPackageRoot(product) },
-  );
+  await initializeProject(settings);
+  const folders = await loadWorkflowFolders(settings, {
+    packageRoot: await workflowPackageRoot(product),
+  });
   const staged = await stageCandidates(project, folders.candidates);
-  if (staged.length > 0) compiled = await compile(settings);
-  const combined = [
-    ...declarations,
-    ...staged.map((candidate) =>
-      operatorDeclaration({ ...candidate, project }, compiled),
-    ),
-  ];
+  const compiled = await compile(settings);
+  const combined = staged.map((candidate) =>
+    operatorDeclaration({ ...candidate, project }, compiled),
+  );
   const manifests = await writeManifests(
     project,
     workflowManifests(compiled, combined),
@@ -349,12 +244,7 @@ export async function preparedProject(
   await rm(modules, { force: true });
   await symlink(join(project, "node_modules"), modules);
   return {
-    workflows: bundledListings({
-      product,
-      files,
-      manifests: bundled,
-      declarations,
-    }).concat(folders.workflows),
+    workflows: folders.workflows,
     repository: folders.repository,
     bundleDigest,
     manifests,

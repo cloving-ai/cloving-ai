@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
 import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
 import { folderInput, operatorFiles } from "./workflow-folder-fixture.ts";
+import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 function conflictingText(
@@ -81,35 +82,36 @@ for (const [secondScope, key] of [
   });
 }
 
-for (const key of ["baseName", "workflowId", "functionName"] as const) {
-  await test(`CLV-124 bundled ${key} remains reserved against both scopes`, () =>
-    withFiles(
-      {
-        ...operatorFiles("project", "project"),
-        ...operatorFiles("user", "user"),
-      },
-      async (directory) => {
-        const result = await loadWorkflowFolders({
-          ...folderInput(directory),
-          bundled: ["project", "user"].map((name) => ({
-            baseName: "bundled-base",
-            workflowId: "bundled-id",
-            functionName: "bundledFunction",
-            [key]: name,
-          })),
-        });
-        assert.deepEqual(result.candidates, []);
-        assert.deepEqual(result.refusals, [
-          {
-            scope: "project",
-            label: "project.ts",
-            codes: ["bundled-name-reserved"],
-          },
-          { scope: "user", label: "user.ts", codes: ["bundled-name-reserved"] },
-        ]);
-      },
-    ));
-}
+for (const workflowId of [
+  "develop-ticket",
+  "develop-issue",
+  "develop-prompt",
+  "develop-prd",
+])
+  await test(`CLV-262 ${workflowId} is free in project and user workflows`, async () => {
+    for (const scope of ["project", "user"] as const)
+      await withFiles(
+        { "repo/marker": "", ...operatorFiles(scope, "candidate") },
+        async (directory) => {
+          const folder =
+            scope === "project"
+              ? "repo/.cloving/workflows"
+              : "config/cloving/workflows";
+          const declaration = {
+            ...candidateDeclaration,
+            workflow: { ...candidateDeclaration.workflow, workflowId },
+          };
+          await filesystem.writeFile(
+            `${directory}/${folder}/candidate.declaration.json`,
+            JSON.stringify(declaration),
+          );
+          const result = await loadWorkflowFolders(folderInput(directory));
+          assert.deepEqual(result.refusals, []);
+          assert.equal(result.candidates.length, 1);
+          assert.equal(result.workflows[0]?.workflowId, workflowId);
+        },
+      );
+  });
 
 await test("CLV-124 a malformed declaration cannot hide its source base name from conflicts", () =>
   withFiles(

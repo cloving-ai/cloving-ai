@@ -34,7 +34,6 @@ await test("CLV-124 captures and admits valid project and user neighbors without
       repository,
       home: directory,
       xdgConfigHome: join(directory, "config"),
-      bundled: [],
     });
     assert.equal(result.repository, repository);
     assert.deepEqual(

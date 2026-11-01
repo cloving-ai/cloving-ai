@@ -54,9 +54,7 @@ await test("CLV-089 declared IDs that match inherited object names run without r
         },
       })),
     );
-    const workflows = table
-      .slice(4)
-      .map((row) => ({ ...harness.registration, ...row }));
+    const workflows = table.map((row) => ({ ...harness.registration, ...row }));
     const service = await harness.start({ workflows });
     await writeFile(
       join(harness.projectDirectory, "input.json"),

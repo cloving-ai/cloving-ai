@@ -4,6 +4,7 @@ import { issueQueue } from "../src/daemon/issue-queue.ts";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
 import type { Fields } from "../src/protocol.ts";
 import type { Service } from "../src/service/service.ts";
+import type { Resolver } from "../src/service/registry.ts";
 import { fakeDestination } from "./effect-fixture.ts";
 import {
   call,
@@ -19,10 +20,13 @@ export async function withQueueSpend(
       readonly messages: string[];
     },
   ) => Promise<void>,
-  settings: { readonly limitUsd?: number } = {},
+  settings: {
+    readonly limitUsd?: number;
+    readonly issueResolver?: Resolver;
+  } = {},
 ): Promise<void> {
   await withHarness(async (harness) => {
-    const scene = await spendScene(harness, settings.limitUsd ?? 20);
+    const scene = await spendScene(harness, settings);
     const messages: string[] = [];
     const original = process.stderr.write.bind(process.stderr);
     process.stderr.write = (line: string | Uint8Array) => {
@@ -41,7 +45,10 @@ export async function withQueueSpend(
   });
 }
 
-async function spendScene(harness: Harness, limitUsd: number) {
+async function spendScene(
+  harness: Harness,
+  settings: { readonly limitUsd?: number; readonly issueResolver?: Resolver },
+) {
   const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
   const clock = { now: "2026-10-10T12:00:00.000Z" };
   const counts = { admissions: 0, clockReads: 0 };
@@ -49,7 +56,11 @@ async function spendScene(harness: Harness, limitUsd: number) {
   const options = spendOptions(harness, {
     clock,
     counts,
-    limitUsd,
+    limitUsd: settings.limitUsd ?? 20,
+    issueResolver: settings.issueResolver ?? {
+      ...harness.registration.resolver,
+      id: "declared-input",
+    },
     resolution,
     workflow,
   });
@@ -71,6 +82,7 @@ async function spendScene(harness: Harness, limitUsd: number) {
     clock,
     counts,
     resolution,
+    registrations: options.workflows,
     status,
     startQueue,
     worker: () => service.worker,
@@ -78,10 +90,10 @@ async function spendScene(harness: Harness, limitUsd: number) {
       await queue?.stop();
       await service.close();
     },
-    restart: async () => {
+    restart: async (workflows = options.workflows) => {
       await queue?.stop();
       await service.close();
-      service = await harness.start(options);
+      service = await harness.start({ ...options, workflows });
       startQueue();
     },
     begin: async (name: string, workflowId = workflow.workflowId) =>
@@ -100,6 +112,7 @@ interface SpendState {
   readonly limitUsd: number;
   readonly resolution: { wait: Promise<void> };
   readonly workflow: WorkflowDeclaration;
+  readonly issueResolver: Resolver;
 }
 
 function spendOptions(harness: Harness, state: SpendState) {
@@ -108,17 +121,17 @@ function spendOptions(harness: Harness, state: SpendState) {
   const registration = {
     ...harness.registration,
     workflowId: workflow.workflowId,
+    queue: workflow.queue ?? false,
     admission: 2,
     effectLimit: 20,
     manifest: {
       ...harness.registration.manifest,
-      queue: workflow.queue ?? false,
       capabilities: ["claude"],
     },
     submission: {
       maximumBytes: 4096,
       fields: {
-        ticket: { type: "string" as const, optional: true },
+        ticket: { type: "ticket" as const, optional: true },
         prompt: { type: "string" as const, optional: true },
       },
     },
@@ -142,15 +155,16 @@ function spendOptions(harness: Harness, state: SpendState) {
         workflowId: "queued",
         manifest: { ...registration.manifest, queue: true },
       },
-      {
+      ...["manual", "develop-issue"].map((workflowId) => ({
         ...harness.registration,
-        workflowId: "manual",
+        workflowId,
+        resolver: state.issueResolver,
         effectLimit: 20,
         manifest: {
           ...harness.registration.manifest,
           capabilities: ["claude"],
         },
-      },
+      })),
     ],
     delivery: destination.delivery,
     effects: { leaseMilliseconds: 4 * 3_600_000 },

@@ -1,24 +1,30 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { SubmissionContract } from "../src/submission.ts";
 import { scene, reached } from "./self-host-fixture.ts";
-import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
+import {
+  candidateDeclaration,
+  validCandidateSource,
+} from "./workflow-candidate-fixtures.ts";
+import { record } from "../src/protocol.ts";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 
 async function workflowFile(
   folder: string,
   entry: {
     readonly name: string;
     readonly fields: SubmissionContract["fields"];
+    readonly queue?: boolean;
   },
 ) {
   const { name, fields } = entry;
   await mkdir(folder, { recursive: true });
   await writeFile(
     join(folder, name + ".ts"),
-    `export async function ${name}() { "use workflow"; return { kind: "blocked" }; }`,
+    validCandidateSource.replaceAll("candidate", name),
   );
   await writeFile(
     join(folder, name + ".declaration.json"),
@@ -27,7 +33,7 @@ async function workflowFile(
       workflow: {
         ...candidateDeclaration.workflow,
         workflowId: name,
-        queue: true,
+        queue: entry.queue ?? true,
         input: { maximumBytes: 4096, fields },
       },
     }),
@@ -36,7 +42,10 @@ async function workflowFile(
 
 async function startOutput(
   fixture: Awaited<ReturnType<typeof scene>>,
-  environment: Readonly<NodeJS.ProcessEnv> = {},
+  options: {
+    readonly environment?: Readonly<NodeJS.ProcessEnv>;
+    readonly inspect?: () => void;
+  } = {},
 ) {
   const child = spawn(process.execPath, [resolve("src/cli.ts"), "start"], {
     cwd: fixture.repository,
@@ -53,7 +62,7 @@ async function startOutput(
         process.execPath,
         join(fixture.root, "fake-claude.mjs"),
       ]),
-      ...environment,
+      ...options.environment,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -69,11 +78,13 @@ async function startOutput(
   try {
     await reached(() =>
       Promise.resolve(
-        /Cloving runs|The daemon did not start/.test(output.text)
+        child.exitCode !== null ||
+          /Cloving runs|The daemon did not start/.test(output.text)
           ? true
           : undefined,
       ),
     );
+    options.inspect?.();
   } finally {
     child.kill("SIGTERM");
     await closed;
@@ -81,13 +92,87 @@ async function startOutput(
   return output.text;
 }
 
+function registered(fixture: Awaited<ReturnType<typeof scene>>) {
+  const status = spawnSync(
+    process.execPath,
+    [resolve("src/cli.ts"), "status", "--json"],
+    {
+      cwd: fixture.repository,
+      env: { ...process.env, CLOVING_RUNTIME_DIR: fixture.runtimeDirectory },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(status.status, 0, status.stdout + status.stderr);
+  return record(JSON.parse(status.stdout))?.["workflows"];
+}
+
+await test("CLV-262 start with no project or user workflow registers nothing and guides initialization", async () => {
+  const fixture = await scene();
+  const output = await startOutput(fixture, {
+    inspect: () => {
+      assert.deepEqual(registered(fixture), []);
+    },
+  });
+  assert.match(output, /Cloving runs/);
+  assert.match(output, /No workflow\. Run: cloving init/);
+  assert.doesNotMatch(output, /run develop-(ticket|issue|prompt|prd)/);
+});
+
+await test("CLV-262 start registers a template under a formerly bundled ID and guides its ticket command", async () => {
+  const fixture = await scene();
+  const declaration = await writeDeclaredWorkflow(fixture.repository);
+  await writeFile(
+    join(fixture.repository, ".cloving/workflows/develop.declaration.json"),
+    JSON.stringify({
+      ...declaration,
+      workflow: { ...declaration.workflow, workflowId: "develop-issue" },
+    }),
+  );
+  const output = await startOutput(fixture, {
+    inspect: () => {
+      assert.deepEqual(registered(fixture), ["develop-issue"]);
+    },
+  });
+  assert.match(output, /Cloving runs/);
+  assert.doesNotMatch(output, /Refused workflow|bundled-name-reserved/);
+  assert.match(output, /run develop-issue --ticket <ticket-id>/);
+  assert.doesNotMatch(output, /run develop-(ticket|prompt|prd)/);
+});
+
+await test("CLV-262 start guides project and user workflows with their declared inputs", async () => {
+  const fixture = await scene();
+  await workflowFile(join(fixture.repository, ".cloving/workflows"), {
+    name: "report",
+    fields: { rounds: { type: "integer" } },
+    queue: false,
+  });
+  await workflowFile(join(fixture.root, "config/cloving/workflows"), {
+    name: "notes",
+    fields: { prompt: { type: "string" } },
+    queue: false,
+  });
+  const output = await startOutput(fixture, {
+    inspect: () => {
+      assert.deepEqual(registered(fixture), ["report", "notes"]);
+    },
+  });
+  assert.match(output, /run report --input <json-file>/);
+  assert.match(output, /run notes --prompt "<text>"/);
+  assert.doesNotMatch(
+    output,
+    /No workflow|run develop-(ticket|issue|prompt|prd)/,
+  );
+});
+
 await test("CLV-228 start needs no ticket commands when a queue interval has no declared target", async () => {
   const fixture = await scene();
   for (const command of [undefined, "[]"]) {
     const output = await startOutput(fixture, {
-      CLOVING_QUEUE_SECONDS: "10",
-      CLOVING_TICKET_COMMAND: command,
-      CLOVING_NEXT_COMMAND: command,
+      environment: {
+        CLOVING_QUEUE_SECONDS: "10",
+        CLOVING_TICKET_COMMAND: command,
+        CLOVING_NEXT_COMMAND: command,
+      },
     });
     assert.match(output, /Cloving runs/);
     assert.doesNotMatch(output, /The daemon did not start/);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { fakeGh, ghState, statusBody } from "./github-worker-fixture.ts";
 import {
   ended,
@@ -68,6 +69,7 @@ function githubEnvironment(
   work: Pick<Scene, "root" | "origin">,
 ): Readonly<Record<string, string>> {
   return {
+    CLOVING_PHONE_RELAY: "off",
     CLOVING_GH_COMMAND: JSON.stringify([
       process.execPath,
       join(work.root, "fake-gh.mjs"),
@@ -81,11 +83,12 @@ function githubEnvironment(
 
 async function issueStarted(asked: Asked): Promise<string> {
   const admitted = await asked("run", {
-    workflowId: "develop-issue",
+    workflowId: "develop",
     source: "ticket",
     submission: { ticket: "CLV-900" },
     commandId: "c-1",
   });
+  assert.equal(admitted["kind"], "run-admitted", JSON.stringify(admitted));
   return String(admitted["runId"]);
 }
 
@@ -107,15 +110,17 @@ async function issueRun(): Promise<void> {
     ),
   );
   const { root, repository, origin, runtimeDirectory } = work;
+  await writeDeclaredWorkflow(repository);
   const stateFile = join(root, "gh-state.json");
   writeFileSync(join(root, "fake-gh.mjs"), fakeGh);
   writeFileSync(stateFile, issueState([5]));
   const before = git(repository, ["rev-parse", "HEAD"]);
+  const untouched = git(repository, ["status", "--short"]);
   const asked: Asked = (operation, parameters) =>
     call({ runtimeDirectory }, { operation, parameters });
   const daemon = await work.start(githubEnvironment(work));
   const run = await completion(asked, await issueStarted(asked));
-  assert.deepEqual(field(run, "budget"), { limit: 20, spent: 7 });
+  assert.deepEqual(field(run, "budget"), { limit: 27, spent: 7 });
   assertIssueLabels(stateFile, []);
   const [pull] = pulls(stateFile);
   assert.deepEqual(
@@ -141,12 +146,12 @@ async function issueRun(): Promise<void> {
       git(repository, ["rev-parse", "HEAD"]),
       git(repository, ["status", "--short"]),
     ],
-    ["", "", false, before, ""],
+    ["", "", false, before, untouched],
   );
   assert.equal(await ended(daemon), 0);
 }
 
-await test("CLV-063 the workflow develop-issue makes a work tree from origin, asks the Claude worker for one turn, opens a pull request that references the issue and closes it after the merge, merges it at the Greptile score 5/5, and removes the branches and the work tree", () =>
+await test("CLV-262 a declared template workflow runs GitHub effects, merges the issue change and cleans its worktree", () =>
   withoutChildren(issueRun));
 
 function reviewRead(stateFile: string): true | undefined {
@@ -164,6 +169,7 @@ async function restartedReview(): Promise<void> {
       "I added the file ticket-work.txt.\\nTicket status: complete",
     ),
   );
+  await writeDeclaredWorkflow(work.repository);
   const stateFile = join(work.root, "gh-state.json");
   writeFileSync(join(work.root, "fake-gh.mjs"), fakeGh);
   writeFileSync(stateFile, issueState([]));
@@ -189,75 +195,5 @@ async function restartedReview(): Promise<void> {
   assert.equal(await ended(second), 0);
 }
 
-await test("CLV-067 a stop and a start of the daemon while the run waits for the Greptile review do not end the run, and the new daemon continues the wait and merges the pull request at the score 5/5", () =>
+await test("CLV-262 a declared template workflow resumes its GitHub review after daemon restart", () =>
   withoutChildren(restartedReview));
-
-function pauseStatusWrite(root: string): { marker: string; command: string } {
-  const marker = join(root, "status-paused");
-  const command = join(root, "paused-gh.mjs");
-  writeFileSync(
-    command,
-    `
-import { writeFileSync } from "node:fs";
-if (process.argv.includes("PATCH")) {
-  writeFileSync(${JSON.stringify(marker)}, "");
-  await new Promise(() => { setInterval(() => undefined, 1000); });
-}
-await import("./fake-gh.mjs");
-`,
-  );
-  return { marker, command };
-}
-
-async function restartedStatus(): Promise<void> {
-  const work = await scene(
-    fakeClaude.replace(
-      "I added the file ticket-work.txt.",
-      "Changed.\\nRemaining:\\n- Test recovery.\\nTicket status: partial",
-    ),
-  );
-  const stateFile = join(work.root, "gh-state.json");
-  const { marker, command } = pauseStatusWrite(work.root);
-  writeFileSync(join(work.root, "fake-gh.mjs"), fakeGh);
-  writeFileSync(stateFile, issueState([5]));
-  const asked: Asked = (operation, parameters) =>
-    call(
-      { runtimeDirectory: work.runtimeDirectory },
-      { operation, parameters },
-    );
-  const environment = githubEnvironment(work);
-  const first = await work.start({
-    ...environment,
-    CLOVING_GH_COMMAND: JSON.stringify([process.execPath, command]),
-  });
-  const runId = await issueStarted(asked);
-  await reached(() => Promise.resolve(existsSync(marker) ? true : undefined));
-  assert.equal(pulls(stateFile)[0]?.["state"], "MERGED");
-  assertIssueLabels(stateFile, ["cloving: in progress"]);
-  assert.equal(await ended(first), 0);
-  const second = await work.start(environment);
-  const run = await completion(asked, runId);
-  assert.equal(field(field(run, "outcome"), "ticketStatus"), "partial");
-  const state = record(JSON.parse(readFileSync(stateFile, "utf8")));
-  const issue = record(field(state["issues"], 0));
-  assert.equal(issue["state"], "open");
-  assert.deepEqual(issue["labels"], ["cloving: ready"]);
-  assert.equal(
-    issue["body"],
-    statusBody("Original body.", {
-      partialRuns: [{ pullRequest: 1, remaining: ["Test recovery."] }],
-    }),
-  );
-  const calls = state["calls"];
-  assert.ok(Array.isArray(calls));
-  assert.equal(
-    calls.filter(
-      (call: unknown) => Array.isArray(call) && call.includes("PATCH"),
-    ).length,
-    1,
-  );
-  assert.equal(await ended(second), 0);
-}
-
-await test("CLV-123 restart after merge and before issue status writes the partial result once", () =>
-  withoutChildren(restartedStatus));
