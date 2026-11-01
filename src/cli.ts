@@ -267,6 +267,11 @@ else if (command === "templates")
     tool: "template-command",
     argumentsList: options,
   });
+else if (command === "red-green")
+  process.exitCode = await toolProcess({
+    tool: "red-green-command",
+    argumentsList: options,
+  });
 else if (command === "start") process.exitCode = await start();
 else {
   const invocation = parseInvocation(process.argv.slice(2));
