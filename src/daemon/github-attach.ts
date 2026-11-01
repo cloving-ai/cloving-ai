@@ -1,5 +1,6 @@
-import { copyFile, lstat, rm } from "node:fs/promises";
+import { rm, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
+import { copiedAttachment, openedAttachment } from "./attachment-file.ts";
 import { attachmentFolder } from "./attachments.ts";
 import { repositoryName } from "./github-issue-methods.ts";
 import { issuePrivacy, operatorPrivateTexts } from "./github-issue-privacy.ts";
@@ -10,8 +11,6 @@ import {
   type Operation,
 } from "./github-operation.ts";
 import { githubRead } from "./github-retry.ts";
-
-const maximumBytes = 104_857_600;
 
 interface Attachment {
   readonly number: number;
@@ -44,22 +43,14 @@ function attachmentOf(operation: Operation): Attachment {
   return { number, name, release, comment };
 }
 
-async function attachedFile(
-  operation: Operation,
-  name: string,
-): Promise<string> {
-  const file = join(
-    attachmentFolder({
+function attachedFile(operation: Operation, name: string): Promise<FileHandle> {
+  return openedAttachment({
+    folder: attachmentFolder({
       worktrees: operation.settings.worktrees,
       target: operation.target,
     }),
     name,
-  );
-  const status = await lstat(file).catch(() => undefined);
-  if (status === undefined || !status.isFile())
-    throw new Error("attachment-not-available");
-  if (status.size > maximumBytes) throw new Error("attachment-too-large");
-  return file;
+  });
 }
 
 async function pages(
@@ -84,12 +75,12 @@ async function releaseOf(operation: Operation, tag: string): Promise<unknown> {
   return releases.find((item) => field(item, "tag_name") === tag);
 }
 
-async function uploaded(
+async function ensuredRelease(
   operation: Operation,
-  attachment: Attachment & { readonly file: string },
-): Promise<string> {
-  const { release, file } = attachment;
-  if ((await releaseOf(operation, release)) === undefined)
+  release: string,
+): Promise<void> {
+  if ((await releaseOf(operation, release)) !== undefined) return;
+  try {
     await operation.calls.gh([
       "release",
       "create",
@@ -101,10 +92,21 @@ async function uploaded(
       "--notes",
       "Demo videos of pull requests. Cloving uploads them.",
     ]);
+  } catch (error) {
+    if ((await releaseOf(operation, release)) === undefined) throw error;
+  }
+}
+
+async function uploaded(
+  operation: Operation,
+  attachment: Attachment & { readonly file: FileHandle },
+): Promise<string> {
+  const { release } = attachment;
+  await ensuredRelease(operation, release);
   const asset = `pr-${String(attachment.number)}-${attachment.name}`;
   const copy = join(operation.folder, asset);
-  await copyFile(file, copy);
   try {
+    await copiedAttachment(attachment.file, copy);
     await operation.calls.gh(["release", "upload", release, copy, "--clobber"]);
   } finally {
     await rm(copy, { force: true });
@@ -119,6 +121,16 @@ async function uploaded(
   return url;
 }
 
+async function ownLogin(operation: Operation): Promise<string> {
+  const user: unknown = JSON.parse(
+    await githubRead(operation, ["api", "user"]),
+  );
+  const login = field(user, "login");
+  if (typeof login !== "string" || login === "")
+    throw new Error("github-call-failed");
+  return login;
+}
+
 async function commented(
   operation: Operation,
   attachment: Attachment & { readonly url: string },
@@ -130,9 +142,14 @@ async function commented(
     operation,
     `${repositoryPath}/issues/${String(number)}/comments?per_page=100`,
   );
+  const login = await ownLogin(operation);
   const known = comments.find((item) => {
     const existing = field(item, "body");
-    return typeof existing === "string" && existing.includes(marker);
+    return (
+      typeof existing === "string" &&
+      existing.includes(marker) &&
+      field(field(item, "user"), "login") === login
+    );
   });
   const id = field(known, "id");
   if (typeof id === "number") {
@@ -165,7 +182,11 @@ export async function attachAsset(operation: Operation): Promise<unknown> {
     settings: operation.settings,
     repository,
   });
-  const url = await uploaded(operation, { ...attachment, file });
-  await commented(operation, { ...attachment, url });
-  return { number: attachment.number, url };
+  try {
+    const url = await uploaded(operation, { ...attachment, file });
+    await commented(operation, { ...attachment, url });
+    return { number: attachment.number, url };
+  } finally {
+    await file.close();
+  }
 }

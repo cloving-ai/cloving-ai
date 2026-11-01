@@ -1,118 +1,29 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  rm,
-  symlink,
-  truncate,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { methods } from "../src/daemon/github-methods.ts";
-import type { Operation } from "../src/daemon/github-operation.ts";
-
-const target = "task-0123456789ab";
-const download =
-  "https://github.com/acme/demo/releases/download/pr-demos/pr-12-demo.mp4";
-
-interface Scene {
-  readonly root: string;
-  readonly attachments: string;
-  readonly calls: (readonly string[])[];
-}
-
-function release(assets: readonly string[]): unknown {
-  return {
-    tag_name: "pr-demos",
-    assets: assets.map((name) => ({
-      name,
-      browser_download_url: `https://github.com/acme/demo/releases/download/pr-demos/${name}`,
-    })),
-  };
-}
-
-function fakeGh(
-  scene: Scene,
-  state: { releases: unknown[]; readonly comments: unknown[] },
-): (parts: readonly string[]) => Promise<string> {
-  return (parts) => {
-    scene.calls.push(parts);
-    const joined = parts.join(" ");
-    if (joined === "repo view --json nameWithOwner")
-      return Promise.resolve(JSON.stringify({ nameWithOwner: "acme/demo" }));
-    if (joined.includes("/releases?per_page=100"))
-      return Promise.resolve(JSON.stringify([state.releases]));
-    if (parts[0] === "release" && parts[1] === "create") {
-      state.releases = [release([])];
-      return Promise.resolve("");
-    }
-    if (parts[0] === "release" && parts[1] === "upload") {
-      state.releases = [release(["pr-12-demo.mp4"])];
-      return Promise.resolve("");
-    }
-    if (joined.includes("/issues/12/comments?per_page=100"))
-      return Promise.resolve(JSON.stringify([state.comments]));
-    return Promise.resolve(JSON.stringify({ id: 77 }));
-  };
-}
-
-function operation(
-  scene: Scene,
-  request: {
-    readonly payload: Readonly<Record<string, unknown>>;
-    readonly gh: (parts: readonly string[]) => Promise<string>;
-  },
-): Operation {
-  return {
-    settings: {
-      repository: join(scene.root, "repository"),
-      worktrees: join(scene.root, "worktrees"),
-      gh: ["gh"],
-      environment: {},
-      privateTexts: ["zapier"],
-    },
-    calls: {
-      gh: request.gh,
-      git: () => Promise.reject(new Error("unexpected git call")),
-      run: () => Promise.reject(new Error("unexpected command")),
-    },
-    target,
-    payload: request.payload,
-    signal: new AbortController().signal,
-    folder: join(scene.root, "operation"),
-  };
-}
-
-async function withScene(work: (scene: Scene) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "cloving-attach-"));
-  const attachments = join(root, "attachments", target);
-  await mkdir(attachments, { recursive: true });
-  await mkdir(join(root, "operation"), { recursive: true });
-  await writeFile(join(attachments, "demo.mp4"), "video");
-  try {
-    await work({ root, attachments, calls: [] });
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-}
+import {
+  download,
+  fakeGh,
+  operation,
+  payload,
+  release,
+  video,
+  withScene,
+  type GithubState,
+} from "./github-attach-fixture.ts";
 
 const attach = methods.get("attach-asset");
-const payload = {
-  number: 12,
-  name: "demo.mp4",
-  release: "pr-demos",
-  comment: "Demo of the change.",
-};
 
 await test("CLV-268 attach-asset creates the demo release, uploads the file and comments on the pull request", () =>
   withScene(async (scene) => {
     assert.ok(attach);
-    const gh = fakeGh(scene, { releases: [], comments: [] });
+    const state: GithubState = { releases: [], comments: [] };
+    const gh = fakeGh(scene, state);
     const result = await attach(operation(scene, { payload, gh }));
     assert.deepEqual(result, { number: 12, url: download });
+    assert.ok(state.uploaded?.equals(video));
     const create = scene.calls.find(
       (parts) => parts[0] === "release" && parts[1] === "create",
     );
@@ -142,13 +53,17 @@ await test("CLV-268 attach-asset creates the demo release, uploads the file and 
     );
   }));
 
-await test("CLV-268 a second attach updates its comment and creates no release", () =>
+await test("CLV-268 a second attach updates its own comment and creates no release", () =>
   withScene(async (scene) => {
     assert.ok(attach);
     const gh = fakeGh(scene, {
       releases: [release(["pr-12-demo.mp4"])],
       comments: [
-        { id: 5, body: "Old.\n\n<!-- cloving-attachment:12:demo.mp4 -->" },
+        {
+          id: 5,
+          body: "Old.\n\n<!-- cloving-attachment:12:demo.mp4 -->",
+          user: { login: "cloving-bot" },
+        },
       ],
     });
     await attach(operation(scene, { payload, gh }));
@@ -161,57 +76,52 @@ await test("CLV-268 a second attach updates its comment and creates no release",
     assert.ok(update.includes("repos/{owner}/{repo}/issues/comments/5"));
   }));
 
-await test("CLV-268 attach-asset refuses unsafe names, releases and texts before any GitHub call", () =>
+await test("CLV-268 a marked comment of another author gets no update, and the daemon posts its own", () =>
   withScene(async (scene) => {
     assert.ok(attach);
-    const cases: readonly [Readonly<Record<string, unknown>>, RegExp][] = [
-      [{ ...payload, name: "../demo.mp4" }, /invalid-payload/],
-      [{ ...payload, name: "clips/demo.mp4" }, /invalid-payload/],
-      [{ ...payload, name: "demo.exe" }, /invalid-payload/],
-      [{ ...payload, release: "v1.4.0" }, /invalid-payload/],
-      [{ ...payload, release: "PR demos" }, /invalid-payload/],
-      [{ ...payload, number: 0 }, /invalid-payload/],
-      [{ ...payload, name: "missing.mp4" }, /attachment-not-available/],
-      [
-        { ...payload, comment: `See ${scene.root}/notes.` },
-        /private-path-in-change/,
+    const gh = fakeGh(scene, {
+      releases: [release(["pr-12-demo.mp4"])],
+      comments: [
+        {
+          id: 5,
+          body: "<!-- cloving-attachment:12:demo.mp4 -->",
+          user: { login: "someone" },
+        },
       ],
-    ];
-    for (const [given, reason] of cases) {
-      const gh = fakeGh(scene, { releases: [], comments: [] });
-      await assert.rejects(
-        attach(operation(scene, { payload: given, gh })),
-        reason,
-      );
-    }
+    });
+    await attach(operation(scene, { payload, gh }));
     assert.equal(
-      scene.calls.some((parts) => parts[0] === "release"),
+      scene.calls.some((parts) => parts.includes("PATCH")),
       false,
     );
+    const posted = scene.calls.at(-1) ?? [];
+    assert.ok(posted.includes("repos/{owner}/{repo}/issues/12/comments"));
   }));
 
-await test("CLV-268 attach-asset refuses a symbolic link and a file over 100 MB", () =>
+await test("CLV-268 a release that another call creates at the same time is used", () =>
   withScene(async (scene) => {
     assert.ok(attach);
-    await writeFile(join(scene.root, "secret.mp4"), "secret");
-    await symlink(
-      join(scene.root, "secret.mp4"),
-      join(scene.attachments, "link.mp4"),
+    const gh = fakeGh(scene, {
+      releases: [],
+      comments: [],
+      create: "concurrent",
+    });
+    assert.deepEqual(await attach(operation(scene, { payload, gh })), {
+      number: 12,
+      url: download,
+    });
+  }));
+
+await test("CLV-268 a refused release creation fails when no release exists", () =>
+  withScene(async (scene) => {
+    assert.ok(attach);
+    const gh = fakeGh(scene, { releases: [], comments: [], create: "refused" });
+    await assert.rejects(
+      attach(operation(scene, { payload, gh })),
+      /github-call-failed/,
     );
-    await writeFile(join(scene.attachments, "large.mp4"), "");
-    await truncate(join(scene.attachments, "large.mp4"), 104_857_601);
-    for (const [name, reason] of [
-      ["link.mp4", /attachment-not-available/],
-      ["large.mp4", /attachment-too-large/],
-    ] as const) {
-      const gh = fakeGh(scene, { releases: [], comments: [] });
-      await assert.rejects(
-        attach(operation(scene, { payload: { ...payload, name }, gh })),
-        reason,
-      );
-    }
     assert.equal(
-      scene.calls.some((parts) => parts[0] === "release"),
+      scene.calls.some((parts) => parts[1] === "upload"),
       false,
     );
   }));

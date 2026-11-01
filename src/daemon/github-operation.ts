@@ -2,6 +2,8 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CallSettings, Calls } from "./github-calls.ts";
+import { rm } from "node:fs/promises";
+import { attachmentFolder } from "./attachments.ts";
 import { treePlace } from "./work-tree.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 
@@ -83,6 +85,13 @@ export async function removeWorktree(
     await repository(["worktree", "remove", "--force", place.path]);
   if ((await repository(["branch", "--list", place.branch])).trim() !== "")
     await repository(["branch", "-D", place.branch]);
+  await rm(
+    attachmentFolder({
+      worktrees: operation.settings.worktrees,
+      target: operation.target,
+    }),
+    { recursive: true, force: true },
+  );
 }
 
 export async function defaultBranch(operation: Operation): Promise<string> {
