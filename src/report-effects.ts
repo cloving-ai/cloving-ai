@@ -167,3 +167,53 @@ function mergedResult(value: unknown): boolean {
     (typeof value === "string" && /^[a-f0-9]{40}$/i.test(value))
   );
 }
+
+export function reportReviewScores(events: readonly Fields[] | null) {
+  const history = historyOf(events);
+  if (history === null) return null;
+  const rounds: Record<string, ReportDatum[]> = { round1: [] };
+  for (const { request, report } of history.pairs) {
+    if (payloadOf(request)["method"] !== "wait-review") continue;
+    const own = history.runs.get(String(request["runId"])) ?? [];
+    const round = own.filter(
+      (event) =>
+        payloadOf(event)["method"] === "wait-review" &&
+        Number(event["sequence"]) <= Number(request["sequence"]),
+    ).length;
+    const key = `round${String(round)}`;
+    const data = rounds[key] ?? [];
+    const score = reviewScoreOf(report);
+    data.push({
+      at: Number(report["at"]),
+      value: score,
+      evidence: {
+        runId: report["runId"],
+        operationId: payloadOf(report)["operationId"],
+        sequence: report["sequence"],
+        round,
+        score,
+      },
+    });
+    rounds[key] = data;
+  }
+  return rounds;
+}
+
+function reviewScoreOf(report: Fields): number | null {
+  let score: number | null = null;
+  try {
+    const result = resultOf(payloadOf(report)["result"]);
+    const value = result["score"];
+    if (
+      payloadOf(report)["outcome"] === "completed" &&
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 5
+    )
+      score = value;
+  } catch {
+    score = null;
+  }
+  return score;
+}

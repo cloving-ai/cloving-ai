@@ -13,6 +13,7 @@ export interface WatchCommandOutput {
 }
 
 export interface WatchCommandRequest {
+  readonly outputBytes?: number;
   readonly command: readonly string[];
   readonly directory: string;
   readonly signal: AbortSignal;

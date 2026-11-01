@@ -171,6 +171,7 @@ export async function configuredReportCli(
   const at = new Date(Date.now() - 3_600_000).toISOString();
   const program = `const endpoint = process.argv.find((part) => part.startsWith("repos/"));
 if (endpoint === "repos/fixture/demo") console.log(JSON.stringify({full_name:"fixture/demo",created_at:"2026-01-01T00:00:00Z"}));
+else if (endpoint.includes("/events?")) console.log(JSON.stringify([{event:"closed",state_reason:"completed",created_at:${JSON.stringify(at)}}]));
 else if (endpoint.includes("/timeline?")) console.log(JSON.stringify([{event:"labeled",label:{name:"cloving: ready"},created_at:${JSON.stringify(new Date(Date.parse(at) - 30 * 3_600_000).toISOString())}}]));
 else if (endpoint.includes("/issues?")) console.log(JSON.stringify([{number:7,html_url:"https://github.example/fixture/demo/issues/7",closed_at:${JSON.stringify(at)},state:"closed",state_reason:"completed"}]));
 else console.log(JSON.stringify([{number:8,html_url:"https://github.example/fixture/demo/pull/8",updated_at:${JSON.stringify(at)},merged_at:${JSON.stringify(at)}}]));`;
