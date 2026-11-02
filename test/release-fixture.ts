@@ -128,11 +128,9 @@ function permits(workflow: ReleaseWorkflow, context: ReleaseContext): boolean {
     "",
   );
   const terms: Readonly<Record<string, boolean>> = {
-    "success()":
-      context.quality === "success" && context.quality_linux === "success",
-    "needs.quality.result == 'success'": context.quality === "success",
-    "needs.quality_linux.result == 'success'":
-      context.quality_linux === "success",
+    "success()": context.release_check === "success",
+    "needs.release_check.result == 'success'":
+      context.release_check === "success",
     "github.event_name == 'push'": context.github.event_name === "push",
     "github.ref_type == 'tag'": context.github.ref_type === "tag",
     "startsWith(github.ref, 'refs/tags/v')": context.github.ref
@@ -152,8 +150,7 @@ export interface ReleaseContext {
     readonly ref: string;
     readonly ref_name: string;
   };
-  readonly quality: string;
-  readonly quality_linux: string;
+  readonly release_check: string;
 }
 
 export const tagged: ReleaseContext = {
@@ -163,8 +160,7 @@ export const tagged: ReleaseContext = {
     ref: `refs/tags/v${packageVersion}`,
     ref_name: `v${packageVersion}`,
   },
-  quality: "success",
-  quality_linux: "success",
+  release_check: "success",
 };
 
 const fake = `#!/usr/bin/env node

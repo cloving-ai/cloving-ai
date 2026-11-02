@@ -149,7 +149,7 @@ await test("CLV-101 release metadata and both lock versions describe the public 
     assert.deepEqual(root[name], manifest[name], name);
 });
 
-await test("CLV-097 branches, pull requests, dispatches and failed, cancelled or skipped quality run no release commands", async () => {
+await test("CLV-097 branches, pull requests, dispatches and a failed, cancelled or skipped release check run no release commands", async () => {
   const contexts = [
     {
       ...tagged,
@@ -164,13 +164,9 @@ await test("CLV-097 branches, pull requests, dispatches and failed, cancelled or
       ...tagged,
       github: { ...tagged.github, event_name: "workflow_dispatch" },
     },
-    ...["failure", "cancelled", "skipped"].map((quality) => ({
+    ...["failure", "cancelled", "skipped"].map((release_check) => ({
       ...tagged,
-      quality,
-    })),
-    ...["failure", "cancelled", "skipped"].map((quality_linux) => ({
-      ...tagged,
-      quality_linux,
+      release_check,
     })),
     { ...tagged, github: { ...tagged.github, ref: "refs/tags/release" } },
   ];

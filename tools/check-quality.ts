@@ -12,6 +12,7 @@ import { productStepExports } from "../quality/product-steps.ts";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import {
   checkTimeWarnings,
+  parseTestCoverage,
   parseTestShard,
   runCommand,
   runSupervisedCommand,
@@ -23,6 +24,7 @@ const timeFactor = parseCheckTimeFactor(
 );
 const shard = process.env["CLOVING_TEST_SHARD"];
 const selected = parseTestShard(shard);
+const coverage = parseTestCoverage(process.env["CLOVING_TEST_COVERAGE"]);
 const timings: CheckTiming[] = [];
 const commandOptions = { timings };
 
@@ -68,8 +70,13 @@ async function checkQuality(): Promise<void> {
     const result = await checkProjectTestShard(process.cwd(), {
       timeFactor,
       shard,
-      coverageDirectory:
-        process.env["CLOVING_COVERAGE_DIRECTORY"] ?? "coverage/shard",
+      coverage,
+      ...(coverage === "off"
+        ? {}
+        : {
+            coverageDirectory:
+              process.env["CLOVING_COVERAGE_DIRECTORY"] ?? "coverage/shard",
+          }),
       commandOptions,
       generated: generated.outputs,
       architecture: proposedModulePolicy(process.cwd()),

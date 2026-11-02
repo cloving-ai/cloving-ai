@@ -171,6 +171,8 @@ async function runtimeGate(
         return { program: {}, files: [], completed: requiredChecks.slice(0, -1) };
       }
       export async function checkProjectTestShard(directory, options) {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync("coverage-options.json", JSON.stringify([options.coverage ?? null, options.coverageDirectory ?? null]));
         return { files: [], completed: ["tests"], timings: options.commandOptions.timings, warnings: [] };
       }
       export async function checkProject(directory, options) {
@@ -179,6 +181,48 @@ async function runtimeGate(
     `,
   };
 }
+
+async function coverageShard(setting: string | undefined) {
+  return await withFiles(await runtimeGate("2/2"), async (directory) => {
+    const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        CLOVING_CHECK_TIME_FACTOR: "1",
+        CLOVING_TEST_SHARD: "2/2",
+        CLOVING_TEST_COVERAGE: setting,
+      },
+      encoding: "utf8",
+      timeout: testMilliseconds(10_000),
+    });
+    const recorded = await readFile(
+      resolve(directory, "coverage-options.json"),
+      "utf8",
+    ).then(
+      (text): unknown => JSON.parse(text),
+      () => null,
+    );
+    return { status: result.status, stderr: result.stderr, recorded };
+  });
+}
+
+for (const [setting, options] of [
+  [undefined, ["on", "coverage/shard"]],
+  ["on", ["on", "coverage/shard"]],
+  ["off", ["off", null]],
+] as const)
+  await test(`a shard takes its coverage from CLOVING_TEST_COVERAGE=${String(setting)}`, async () => {
+    const result = await coverageShard(setting);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.recorded, options);
+  });
+
+await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value", async () => {
+  const result = await coverageShard("no");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /CLOVING_TEST_COVERAGE must be on or off/);
+  assert.equal(result.recorded, null);
+});
 
 for (const shard of [undefined, "1/2", "2/2"]) {
   await test(`CLV-266 prepares runtime declarations before shard ${String(shard)} tests`, async () => {

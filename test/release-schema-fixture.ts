@@ -39,6 +39,7 @@ export interface ReleaseWorkflow {
     readonly coverage: WorkflowJob;
     readonly quality_linux: WorkflowJob;
     readonly quality_linux_node: WorkflowJob;
+    readonly release_check: WorkflowJob;
     readonly publish: WorkflowJob;
   };
 }
@@ -157,6 +158,7 @@ export function isWorkflow(value: unknown): value is ReleaseWorkflow {
       "coverage",
       "quality_linux",
       "quality_linux_node",
+      "release_check",
       "publish",
     ].every((name) => name in jobs)
   );
