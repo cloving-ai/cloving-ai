@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
-import { analyzeWorkflowCandidate } from "./candidate-package-fixture.ts";
+import { candidateAnalyzer } from "./candidate-package-fixture.ts";
 import {
   candidateDeclaration,
   candidateEffectExpression,
   candidateSource,
 } from "./workflow-candidate-fixtures.ts";
 
+const analyzeWorkflowCandidate = candidateAnalyzer();
 const effect = `await ${candidateEffectExpression};`;
 
 await test("CLV-216 preserves runtime accounting for recursion without local imports", () => {

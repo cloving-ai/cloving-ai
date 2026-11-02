@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
-import { analyzeWorkflowCandidate } from "./candidate-package-fixture.ts";
+import { candidateAnalyzer } from "./candidate-package-fixture.ts";
 import {
   candidateDeclaration,
   candidateSource,
 } from "./workflow-candidate-fixtures.ts";
+
+const analyzeWorkflowCandidate = candidateAnalyzer();
 
 const sources = {
   process: [

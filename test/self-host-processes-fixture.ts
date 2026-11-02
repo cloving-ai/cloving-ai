@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
+import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import { testMilliseconds } from "./test-timing.ts";
+import { withUpdateRepository } from "./self-update-git-fixture.ts";
 
 interface ProgramOptions {
   readonly daemonMilliseconds?: number;
@@ -201,4 +203,42 @@ function ready() {
 }
 ready();
 `;
+}
+
+export async function readyPrograms(root: string): Promise<readonly string[]> {
+  return (await readdir(root))
+    .filter((name) => name.endsWith("-ready"))
+    .map((name) => name.replace(/-ready$/, ""))
+    .sort();
+}
+
+export async function cancelledGit(options: {
+  readonly command: string;
+  readonly signal: string;
+}): Promise<void> {
+  await withUpdateRepository(async ({ root, repository, git, old }) => {
+    const result = await stalledCheck(root, { repository, ...options });
+    assert.equal(result.error, undefined, result.stderr);
+    assert.equal(result.status, 0, result.stderr);
+    for (const name of ["daemon", "watch"])
+      assert.equal(
+        await readFile(join(root, `${name}-stopped`), "utf8"),
+        "stopped",
+      );
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+  });
+}
+
+export async function deadlineGit(command: string): Promise<void> {
+  await withUpdateRepository(async ({ root, repository, git, old }) => {
+    const result = await stalledCheck(root, {
+      repository,
+      command,
+      signal: "deadline",
+    });
+    assert.equal(result.error, undefined, result.stderr);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+  });
 }

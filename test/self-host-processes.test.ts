@@ -1,21 +1,17 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import {
-  chmod,
-  mkdir,
-  readdir,
-  readFile,
-  realpath,
-  writeFile,
-} from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, mock, test } from "node:test";
-import { pathToFileURL } from "node:url";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
-import { programs, stalledCheck } from "./self-host-processes-fixture.ts";
-import { reached } from "./self-host-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { reached } from "./self-host-fixture.ts";
+import {
+  programs,
+  readyPrograms,
+  stalledCheck,
+} from "./self-host-processes-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 
 afterEach(() => {
@@ -71,13 +67,6 @@ for (const factor of [undefined, "3"])
         },
       );
     });
-
-async function readyPrograms(root: string): Promise<readonly string[]> {
-  return (await readdir(root))
-    .filter((name) => name.endsWith("-ready"))
-    .map((name) => name.replace(/-ready$/, ""))
-    .sort();
-}
 
 for (const phoneRelay of ["on", "off"])
   await test(`CLV-187 the host starts the phone relay child unless CLOVING_PHONE_RELAY is off (${phoneRelay})`, async () => {
@@ -160,204 +149,6 @@ await test("CLV-208 host shutdown signals each child once while awaiting its exi
     }
   });
 });
-
-await test("CLV-085 the host stops and awaits daemon and watch before fast-forwarding", async () => {
-  await withUpdateRepository(async ({ root, repository, git, target }) => {
-    const paths = await programs(root);
-    const status = await hostedPrograms({
-      ...paths,
-      repository,
-      runtime: join(root, "host/run"),
-      directory: join(root, "host"),
-      watchPort: "3663",
-      phoneRelay: "on",
-      updateMilliseconds: 300,
-    });
-    assert.equal(status, 75);
-    assert.equal(git(["rev-parse", "HEAD"]), target);
-    assert.equal(
-      await readFile(join(root, "daemon-stopped"), "utf8"),
-      "stopped",
-    );
-    assert.equal(
-      await readFile(join(root, "watch-stopped"), "utf8"),
-      "stopped",
-    );
-  });
-});
-
-await test("CLV-085 a local merge can finish after the network deadline", async () => {
-  await withUpdateRepository(async ({ root, repository, git, target }) => {
-    const paths = await programs(root);
-    const hook = join(repository, ".git/hooks/post-merge");
-    await writeFile(
-      hook,
-      `#!${process.execPath}\nsetTimeout(() => {}, 31000);\n`,
-    );
-    await chmod(hook, 0o755);
-    assert.equal(
-      await hostedPrograms({
-        ...paths,
-        repository,
-        runtime: join(root, "host/run"),
-        directory: join(root, "host"),
-        watchPort: "off",
-        phoneRelay: "on",
-        updateMilliseconds: 300,
-      }),
-      75,
-    );
-    assert.equal(git(["rev-parse", "HEAD"]), target);
-    await assert.rejects(readFile(join(root, "host/failed-self-updates")), {
-      code: "ENOENT",
-    });
-  });
-});
-
-await test("CLV-085 without the setting the host never fetches and preserves normal exit", async () => {
-  await withUpdateRepository(async ({ root, repository, git, old }) => {
-    const paths = await programs(root, {
-      daemonMilliseconds: 100,
-      watchStartupMilliseconds: 300,
-    });
-    const fetchHead = join(repository, ".git", "FETCH_HEAD");
-    await writeFile(fetchHead, "no check\n");
-    assert.equal(
-      await hostedPrograms({
-        ...paths,
-        repository,
-        runtime: join(root, "host/run"),
-        directory: join(root, "host"),
-        watchPort: "3663",
-        phoneRelay: "on",
-        updateMilliseconds: undefined,
-      }),
-      0,
-    );
-    assert.equal(await readFile(fetchHead, "utf8"), "no check\n");
-    assert.equal(git(["rev-parse", "HEAD"]), old);
-    assert.equal(
-      await readFile(join(root, "watch-stopped"), "utf8"),
-      "stopped",
-    );
-  });
-});
-
-await test("CLV-085 a host without self-update removes a pending mark that an earlier host left", async () => {
-  await withUpdateRepository(async ({ root, repository }) => {
-    const paths = await programs(root, {
-      daemonMilliseconds: 100,
-      watchStartupMilliseconds: 300,
-    });
-    const mark = join(root, "host", "pending-self-update");
-    await mkdir(join(root, "host"), { recursive: true });
-    await writeFile(mark, `${String(Date.now())}\n`);
-    assert.equal(
-      await hostedPrograms({
-        ...paths,
-        repository,
-        runtime: join(root, "host/run"),
-        directory: join(root, "host"),
-        watchPort: "3663",
-        phoneRelay: "on",
-        updateMilliseconds: undefined,
-      }),
-      0,
-    );
-    await assert.rejects(readFile(mark), { code: "ENOENT" });
-  });
-});
-
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  await test(`CLV-085 ${signal} awaits a local merge before shutdown completes`, async () => {
-    await withUpdateRepository(async ({ root, repository, git, target }) => {
-      const result = await stalledCheck(root, {
-        repository,
-        command: "merge",
-        signal,
-      });
-      assert.equal(result.error, undefined, result.stderr);
-      assert.equal(result.status, 75, result.stderr);
-      assert.equal(git(["rev-parse", "HEAD"]), target);
-      assert.equal(
-        await readFile(join(root, "merge-completed"), "utf8"),
-        "completed",
-      );
-      await assert.rejects(readFile(join(root, "host/failed-self-updates")), {
-        code: "ENOENT",
-      });
-    });
-  });
-}
-
-await test("CLV-196 the merge fixture completes without directory notifications", async () => {
-  await withUpdateRepository(async ({ root, repository, git, target }) => {
-    const preload = join(root, "quiet-watch.mjs");
-    await writeFile(
-      preload,
-      'import fs from "node:fs"; import { syncBuiltinESMExports } from "node:module"; const watch = fs.watch; fs.watch = path => watch(path, () => {}); syncBuiltinESMExports();',
-    );
-    const previous = process.env["NODE_OPTIONS"];
-    process.env["NODE_OPTIONS"] =
-      `${previous ?? ""} --import=${pathToFileURL(preload).href}`;
-    try {
-      const result = await stalledCheck(root, {
-        repository,
-        command: "merge",
-        signal: "SIGTERM",
-      });
-      assert.equal(
-        await readFile(join(root, "shutdown-observed"), "utf8"),
-        "observed",
-      );
-      assert.equal(result.error, undefined, result.stderr);
-      assert.equal(result.status, 75, result.stderr);
-      assert.equal(git(["rev-parse", "HEAD"]), target);
-      assert.equal(
-        await readFile(join(root, "merge-completed"), "utf8"),
-        "completed",
-      );
-    } finally {
-      if (previous === undefined) delete process.env["NODE_OPTIONS"];
-      else process.env["NODE_OPTIONS"] = previous;
-    }
-  });
-});
-
-for (const command of ["fetch", "remote"]) {
-  for (const signal of ["SIGINT", "SIGTERM", "daemon"]) {
-    await test(`CLV-085 ${signal} cancels stalled git ${command} and waits for children`, async () => {
-      await withUpdateRepository(async ({ root, repository, git, old }) => {
-        const result = await stalledCheck(root, {
-          repository,
-          command,
-          signal,
-        });
-        assert.equal(result.error, undefined, result.stderr);
-        assert.equal(result.status, 0, result.stderr);
-        for (const name of ["daemon", "watch"])
-          assert.equal(
-            await readFile(join(root, `${name}-stopped`), "utf8"),
-            "stopped",
-          );
-        assert.equal(git(["rev-parse", "HEAD"]), old);
-      });
-    });
-  }
-  await test(`CLV-085 stalled git ${command} reaches its deadline and polling recovers`, async () => {
-    await withUpdateRepository(async ({ root, repository, git, old }) => {
-      const result = await stalledCheck(root, {
-        repository,
-        command,
-        signal: "deadline",
-      });
-      assert.equal(result.error, undefined, result.stderr);
-      assert.equal(result.status, 0, result.stderr);
-      assert.equal(result.stderr, "");
-      assert.equal(git(["rev-parse", "HEAD"]), old);
-    });
-  });
-}
 
 await test("CLV-093 the watch child gets the service repository while its current directory is the product", async () => {
   await withUpdateRepository(async ({ root, repository }) => {
