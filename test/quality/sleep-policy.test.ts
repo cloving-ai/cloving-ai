@@ -18,7 +18,7 @@ await test("CLV-233 only the workflow sleep composition gains the SDK import all
   assert.doesNotThrow(() => {
     checkReservedImports({ files: [helper], edges: [edge] }, policy);
   });
-  const workflow = resolve("workflows/develop-ticket.ts");
+  const workflow = resolve("templates/develop/develop.ts");
   assert.throws(() => {
     checkReservedImports(
       { files: [workflow], edges: [{ ...edge, from: workflow }] },
