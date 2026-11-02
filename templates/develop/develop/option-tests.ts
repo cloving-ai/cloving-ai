@@ -4,7 +4,15 @@ import {
   type ScenarioRequest,
 } from "cloving/workflows/testing";
 import { develop } from "../develop.ts";
-import { commit, input, completed, effects, selection } from "./scenarios.ts";
+import {
+  commit,
+  input,
+  completed,
+  effects,
+  selection,
+  repairVerdicts,
+  verificationEffects,
+} from "./scenarios.ts";
 
 const taskText =
   "Develop the submitted task text.\n\nGitHub issue: acme/demo#42 (open)";
@@ -33,6 +41,9 @@ function scenarioEffects() {
       completed({ summary: "Reviewed.", reviewVerdict: "accept" }),
     ],
     "github partial-issue": [completed({ ticketStatus: "partial" })],
+    "command run:red-green": [
+      completed({ verdict: "accepted", output: "Passed." }),
+    ],
   };
 }
 
@@ -46,7 +57,9 @@ function completeCalls(): string[] {
   if (selection.merge === "local") return acceptance;
   return ["prepare"].concat(
     selection.input === "ticket" ? ["label"] : [],
-    ["run-turn", "open-pr", review[selection.accept] ?? "unknown-review"],
+    ["run-turn", "open-pr"],
+    selection.verify === "red-green" ? ["run:red-green"] : [],
+    [review[selection.accept] ?? "unknown-review"],
     selection.merge === "person" ? ["approval", "merge"] : ["merge"],
     selection.input === "ticket" ? ["close-issue"] : [],
   );
@@ -67,7 +80,7 @@ export const optionTests = [
       using bridge = fakeStepBridge({
         effects: scenarioEffects(),
         decisions: [approved, approved],
-        effectLimit: 27,
+        effectLimit: selection.verify === "red-green" ? 31 : 27,
       });
       assert.deepEqual(await develop(requestInput()), {
         kind: "handoff_requested",
@@ -171,4 +184,120 @@ export const optionTests = [
       assert.equal(updates.length, Number(selection.partial === "queue"));
     },
   },
-];
+].concat(selection.verify === "red-green" ? verificationTests() : []);
+
+function verificationTests() {
+  return repairTests().concat(passingTests(), unavailableTests(), limitTests());
+}
+
+function repairTests() {
+  return repairVerdicts.map((verdict) => ({
+    name: `CLV-249 ${verdict} starts a fix turn with the full tool output`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: verificationEffects([verdict, "accepted"]),
+        decisions: [approved, approved],
+        effectLimit: 31,
+      });
+      assert.equal((await develop(requestInput())).kind, "handoff_requested");
+      const expected = completeCalls();
+      expected.splice(
+        expected.indexOf("run:red-green") + 1,
+        0,
+        "run-turn",
+        "open-pr",
+        "run:red-green",
+      );
+      assert.deepEqual(bridge.requests.map(callName), expected);
+      const fix = bridge.requests.find(
+        (request) =>
+          request[0] === "effect" &&
+          request[1].method === "run-turn" &&
+          request[1].scope.round === 2,
+      );
+      assert.ok(fix && fix[0] === "effect");
+      assert.ok(fix[1].payload.includes(`Address ${verdict}`));
+      assert.ok(fix[1].payload.endsWith(`${verdict}\nFull test output.`));
+    },
+  }));
+}
+
+function passingTests() {
+  return ["accepted", "no-test-change"].map((verdict) => ({
+    name: `CLV-249 ${verdict} continues to review and merge`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: verificationEffects([verdict]),
+        decisions: [approved, approved],
+      });
+      assert.equal((await develop(requestInput())).kind, "handoff_requested");
+      assert.deepEqual(bridge.requests.map(callName), completeCalls());
+    },
+  }));
+}
+
+function limitTests() {
+  return [
+    {
+      name: "CLV-249 verification repairs stop after four development rounds",
+      run: async () => {
+        using bridge = fakeStepBridge({
+          effects: verificationEffects(Array(4).fill("false-red")),
+          effectLimit: 31,
+        });
+        assert.deepEqual(await develop(requestInput()), {
+          kind: "blocked",
+          cycleId: input.cycleId,
+          reason: "false-red",
+          evidenceId: "merge",
+        });
+        const names = bridge.requests.map(callName);
+        assert.equal(names.filter((name) => name === "run-turn").length, 4);
+        assert.equal(
+          names.filter((name) => name === "run:red-green").length,
+          4,
+        );
+        assert.ok(!names.includes("wait-review") && !names.includes("merge"));
+      },
+    },
+  ];
+}
+
+function unavailableTests() {
+  const unavailable = [
+    completed({
+      verdict: "prepare-failed",
+      output: "Dependency preparation failed.",
+    }),
+    { kind: "failed" as const, operationId: "command", reason: "exit-1" },
+    { kind: "unavailable" as const, reason: "cloving-host-unavailable" },
+    { ...completed(null), result: "invalid JSON" },
+    completed(null),
+    completed({ verdict: "unknown", output: "Unknown verdict." }),
+    completed({ verdict: "accepted" }),
+    completed({ verdict: "false-red", output: 42 }),
+  ];
+  return unavailable.map((result, index) => ({
+    name: `CLV-249 unavailable verification ${String(index)} blocks without a fix turn`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: {
+          ...verificationEffects(["accepted"]),
+          "command run:red-green": [result],
+        },
+      });
+      assert.deepEqual(await develop(requestInput()), {
+        kind: "blocked",
+        cycleId: input.cycleId,
+        reason: "red-green-unavailable",
+        evidenceId: "red-green",
+      });
+      const complete = completeCalls();
+      const expected = complete.slice(0, complete.indexOf("run:red-green") + 1);
+      assert.deepEqual(
+        bridge.requests.map(callName),
+        expected.concat(selection.input === "ticket" ? ["label"] : []),
+      );
+    },
+  }));
+}

@@ -4,6 +4,7 @@ import { developFiles } from "./develop-template-flow-fixture.ts";
 export interface DevelopSelection {
   readonly input: string;
   readonly select: string;
+  readonly verify: string;
   readonly accept: string;
   readonly merge: string;
   readonly partial: string;
@@ -14,6 +15,7 @@ const prefix = "repo/.cloving/workflows/";
 export const automatic = {
   input: "ticket",
   select: "queue",
+  verify: "none",
   accept: "greptile",
   merge: "green",
   partial: "queue",
@@ -21,6 +23,7 @@ export const automatic = {
 export const reviewed = {
   input: "ticket",
   select: "person",
+  verify: "none",
   accept: "person",
   merge: "local",
   partial: "person",
@@ -33,6 +36,15 @@ export const completeConfigurations = [
   { ...automatic, merge: "person" },
   { ...reviewed, merge: "green" },
   { ...reviewed, input: "task-text", accept: "turn", merge: "green" },
+  { ...automatic, verify: "red-green" },
+  { ...automatic, verify: "red-green", merge: "person" },
+  {
+    ...reviewed,
+    input: "task-text",
+    verify: "red-green",
+    accept: "turn",
+    merge: "green",
+  },
 ];
 
 function edit(
@@ -58,9 +70,27 @@ export async function configuredDevelopFiles(
     edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   acceptanceFiles(files, selected.accept);
   deliveryFiles(files, selected);
+  if (selected.verify === "red-green") verificationFiles(files);
   files[prefix + "develop.declaration.json"] = declaration(selected);
   scenarioFiles(files, selected);
   return files;
+}
+
+function verificationFiles(files: Record<string, string>): void {
+  edit(files, {
+    file: "develop/round.ts",
+    from: "import { acceptWork }",
+    to: 'import { verifyRedGreen } from "./red-green.ts";\nimport { acceptWork }',
+  });
+  edit(files, {
+    file: "develop/round.ts",
+    from: "const pull = await openPull({ input, round });",
+    to: `const pull = await openPull({ input, round });
+    const verification = await verifyRedGreen({ cycleId: input.cycleId, head: pull.commit, round });
+    if (verification !== null && "kind" in verification) return verification;
+    if (verification !== null)
+      return repair({ cycleId: input.cycleId, round, report, result: verification });`,
+  });
 }
 
 function acceptanceFiles(files: Record<string, string>, accept: string): void {
@@ -189,6 +219,15 @@ function localFiles(files: Record<string, string>): void {
 
 function declaration(selected: DevelopSelection): string {
   const local = selected.merge === "local";
+  const verification =
+    selected.verify === "red-green"
+      ? {
+          effectLimit: 31,
+          capabilities: ["command"],
+          workflow: { commands: ["red-green"] },
+          methods: { command: ["run:red-green"] },
+        }
+      : { effectLimit: 27, capabilities: [], workflow: {}, methods: {} };
   const claude =
     selected.accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"];
   const github = [
@@ -203,8 +242,11 @@ function declaration(selected: DevelopSelection): string {
   return JSON.stringify({
     workflow: {
       workflowId: "develop",
-      effectLimit: 27,
-      capabilities: local ? ["claude"] : ["claude", "github"],
+      effectLimit: verification.effectLimit,
+      capabilities: (local ? ["claude"] : ["claude", "github"]).concat(
+        verification.capabilities,
+      ),
+      ...verification.workflow,
       ...(selected.select === "queue" ? { queue: true } : {}),
       input: {
         maximumBytes: 65536,
@@ -214,6 +256,9 @@ function declaration(selected: DevelopSelection): string {
             : { prompt: { type: "string" } },
       },
     },
-    methods: local ? { claude } : { claude, github },
+    methods: {
+      ...(local ? { claude } : { claude, github }),
+      ...verification.methods,
+    },
   });
 }
