@@ -116,7 +116,7 @@ await test("CLV-223 copied function names avoid reserved words and names of othe
       ["delete", "deleteWorkflow"],
       ["dev-1", "dev1"],
       ["dev1", "dev1Workflow"],
-      ["develop-ticket", "developTicketWorkflow"],
+      ["develop-ticket", "developTicket"],
     ] as const) {
       const copied = templates(root, ["copy", "develop", "--id", id]);
       assert.equal(copied.status, 0, copied.stderr);
