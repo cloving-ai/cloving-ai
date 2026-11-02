@@ -7,6 +7,7 @@ export {
   completed,
   effects,
   partialEffects,
+  verificationEffects,
 } from "../templates/develop/develop/scenarios.ts";
 
 export const workflow = fileURLToPath(

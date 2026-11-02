@@ -49,7 +49,22 @@ for (const selected of completeConfigurations)
         );
         assert.deepEqual(
           declaration.workflow.capabilities,
-          selected.merge === "local" ? ["claude"] : ["claude", "github"],
+          (selected.merge === "local"
+            ? ["claude"]
+            : ["claude", "github"]
+          ).concat(selected.verify === "red-green" ? ["command"] : []),
+        );
+        assert.equal(
+          declaration.workflow.effectLimit,
+          selected.verify === "red-green" ? 31 : 27,
+        );
+        assert.deepEqual(
+          declaration.workflow.commands,
+          selected.verify === "red-green" ? ["red-green"] : undefined,
+        );
+        assert.deepEqual(
+          declaration.methods["command"],
+          selected.verify === "red-green" ? ["run:red-green"] : undefined,
         );
       },
     );

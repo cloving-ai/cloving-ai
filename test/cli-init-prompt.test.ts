@@ -40,7 +40,7 @@ await test("CLV-225 init-prompt prints facts and setup instructions without runn
     assert.match(result.stdout, /# Rules\n/);
     assert.match(result.stdout, /# Steps\n/);
     assert.match(result.stdout, /Make the first workflow/);
-    assert.match(result.stdout, /develop.*5 decision points/);
+    assert.match(result.stdout, /develop.*6 decision points/);
     assert.equal(result.stderr, "");
   }));
 
