@@ -87,10 +87,9 @@ function verificationFiles(files: Record<string, string>): void {
     from: "const pull = await openPull({ input, round });",
     to: `const pull = await openPull({ input, round });
     const verification = await verifyRedGreen({ cycleId: input.cycleId, head: pull.commit, round });
-    if (verification !== null) {
-      if ("kind" in verification) return verification;
-      return repair({ cycleId: input.cycleId, round, report, result: verification });
-    }`,
+    if (verification !== null && "kind" in verification) return verification;
+    if (verification !== null)
+      return repair({ cycleId: input.cycleId, round, report, result: verification });`,
   });
 }
 

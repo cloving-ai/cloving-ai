@@ -85,10 +85,9 @@ const verification = await verifyRedGreen({
   head: pull.commit,
   round,
 });
-if (verification !== null) {
-  if ("kind" in verification) return verification;
+if (verification !== null && "kind" in verification) return verification;
+if (verification !== null)
   return repair({ cycleId: input.cycleId, round, report, result: verification });
-}
 ```
 
 Add `"command"` to `workflow.capabilities`, `"commands": ["red-green"]` to
