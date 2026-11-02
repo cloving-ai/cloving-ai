@@ -1,6 +1,6 @@
 import { createHook } from "workflow";
 import type { DecisionResult, GateRequest } from "../step-bridge.ts";
-import { openDecisionWait } from "./decision-gate.ts";
+import { openDecisionWait } from "./open-decision-wait.ts";
 
 export async function waitForDecision(
   request: GateRequest,

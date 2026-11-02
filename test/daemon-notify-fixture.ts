@@ -2,7 +2,7 @@ import { queuePrelude } from "./daemon-queue-fixture.ts";
 
 export const notifyWorkflow = `
 import { readFileSync, existsSync } from "node:fs";
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 export async function scenario(ticketId) {
   "use step";
   return existsSync("scenario-" + ticketId)
@@ -15,8 +15,8 @@ export async function develop(input) {
   if (choice.kind === "failed") throw new Error("fixture failure");
   if (choice.kind === "blocked" || choice.kind === "handoff_requested")
     return { kind: choice.kind, reason: "fixture outcome reason" };
-  const gate = await decisionGate({ gateId: "review-1", kind: choice.kind, prompt: choice.prompt });
-  return { kind: "waiting_for_decision", decisionId: gate.decisionId };
+  await waitForDecision({ gateId: "review-1", kind: choice.kind, prompt: choice.prompt });
+  return { kind: "completed" };
 }
 `;
 

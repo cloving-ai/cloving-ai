@@ -2,17 +2,14 @@ import { servicePrelude } from "./world-host-fixture.ts";
 
 export const questionSource = `
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
-export async function develop(input, decision) {
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
+export async function develop(input) {
   "use workflow";
   const prepared = await protectedEffect({ scope: { phase: "work", operation: "prepare", round: 1 }, capability: "fake-harness", method: "run-turn", target: "fixture", payload: "prepare question", units: 1 });
   if (prepared.kind !== "completed") return { kind: "blocked", cycleId: input.cycleId, reason: prepared.reason };
-  if (!decision) {
-    const gate = await decisionGate({ gateId: "design-choice", kind: "question", prompt: "Choose a parser: earlier or later.", expiresAt: "2026-10-21T10:00:00.000Z" });
-    return gate.kind === "opened" ? { kind: "waiting_for_decision", cycleId: input.cycleId, decisionId: gate.decisionId } : { kind: "blocked", cycleId: input.cycleId, reason: gate.reason };
-  }
+  const decision = await waitForDecision({ gateId: "design-choice", kind: "question", prompt: "Choose a parser: earlier or later.", expiresAt: "2026-10-21T10:00:00.000Z" });
   if (decision.decision === "expired") return { kind: "blocked", cycleId: input.cycleId, reason: "answer-missing" };
-  if (decision.gateId !== "design-choice" || decision.decision !== "answered" || decision.answer !== "earlier") return { kind: "blocked", cycleId: input.cycleId, reason: "answer-invalid" };
+  if (decision.decision !== "answered" || decision.answer !== "earlier") return { kind: "blocked", cycleId: input.cycleId, reason: "answer-invalid" };
   const finished = await protectedEffect({ scope: { phase: "work", operation: "finish", round: 1 }, capability: "fake-harness", method: "run-turn", target: "fixture", payload: decision.answer, units: 1 });
   return { kind: finished.kind === "completed" ? "handoff_requested" : "blocked", cycleId: input.cycleId };
 }

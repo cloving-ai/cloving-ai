@@ -1,3 +1,9 @@
+import {
+  commandJson,
+  errorObject,
+  readCommandReply,
+  readCommandRequest,
+} from "./command-requests.ts";
 import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
@@ -18,7 +24,6 @@ import {
   pendingSummary,
   rendered,
   runOverview,
-  statusJson,
 } from "./render.ts";
 import type { RuntimeInvocation } from "./runtime-arguments.ts";
 import { commandUsage } from "./usage.ts";
@@ -51,25 +56,6 @@ interface Format {
   readonly announced?: boolean;
 }
 
-function errorObject(error: ServiceError, format: Format): Fields {
-  if (error.code === "event-gap")
-    return {
-      schemaVersion: 1,
-      kind: "event-gap",
-      after: error["after"],
-      earliestAvailable: error["earliestAvailable"],
-      latestSequence: error["latestSequence"],
-    };
-  return {
-    schemaVersion: 1,
-    kind: "error",
-    ...error,
-    commandId: error["commandId"] ?? format.commandId ?? null,
-    runId: error["runId"] ?? null,
-    currentRevision: error["currentRevision"] ?? null,
-  };
-}
-
 function failed(
   environment: CommandEnvironment,
   failure: { readonly error: ServiceError; readonly format: Format },
@@ -95,7 +81,7 @@ function presented(
     return failed(environment, { error: reply.error, format });
   environment.terminal.out(
     format.json
-      ? `${JSON.stringify(statusJson(reply.result))}\n`
+      ? `${JSON.stringify(commandJson(reply))}\n`
       : rendered(reply.result),
   );
   return 0;
@@ -105,12 +91,12 @@ async function requested(
   environment: Located,
   exchange: { readonly request: ServiceRequest; readonly format: Format },
 ): Promise<number> {
-  const reply = await send(environment.runtimeDirectory, exchange.request);
+  const reply = await readCommandReply(
+    environment.runtimeDirectory,
+    exchange.request,
+  );
   return presented(environment, {
-    reply:
-      exchange.request.operation === "status"
-        ? await withCiReruns(environment.runtimeDirectory, reply)
-        : reply,
+    reply,
     format: exchange.format,
   });
 }
@@ -244,10 +230,7 @@ async function status(
   }
   return requested(environment, {
     format: { json },
-    request: {
-      operation: "status",
-      parameters: present({ runId, limit, after }),
-    },
+    request: readCommandRequest(invocation),
   });
 }
 
@@ -303,15 +286,7 @@ async function events(
   const print = (event: Fields): void => {
     terminal.out(json ? `${JSON.stringify(event)}\n` : `${eventText(event)}\n`);
   };
-  const request = {
-    operation: "events",
-    parameters: present({
-      runId: invocation.runId,
-      after: invocation.after,
-      limit: invocation.limit,
-      follow: following,
-    }),
-  };
+  const request = readCommandRequest(invocation);
   const reply = following
     ? await follow(environment.runtimeDirectory, {
         request,
@@ -374,10 +349,7 @@ function located(
   if (invocation.kind === "watch") return watch(environment, invocation);
   return requested(environment, {
     format: { json: invocation.json },
-    request: {
-      operation: "questions",
-      parameters: present({ runId: invocation.runId }),
-    },
+    request: readCommandRequest(invocation),
   });
 }
 

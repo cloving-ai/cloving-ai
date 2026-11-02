@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
@@ -9,7 +9,7 @@ import { testMilliseconds } from "./test-timing.ts";
 import { prOutput } from "./watch-pr-fixture.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { alive, until } from "./claude-worker-fixture.ts";
-import { fields, withHarness } from "./service-fixture.ts";
+import { fields, items, withHarness } from "./service-fixture.ts";
 import {
   configuredPrWatch,
   directPrWatch,
@@ -136,6 +136,26 @@ await test("CLV-093 CLI terminates a held GitHub command after five seconds", as
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     },
   );
+});
+
+await test("CLV-093 the fake GitHub command writes no inherited test coverage", async () => {
+  await withHarness(async (harness) => {
+    const options = await configuredPrWatch(harness.runtimeDirectory);
+    const [command = "", ...argumentsList] = items(
+      JSON.parse(options.environment?.["CLOVING_GH_COMMAND"] ?? "[]"),
+    ).map(String);
+    const coverage = join(dirname(harness.runtimeDirectory), "fake-coverage");
+    await mkdir(coverage);
+    await releasePr(harness.runtimeDirectory, true);
+    const output = await promisify(execFile)(command, argumentsList, {
+      env: { ...process.env, NODE_V8_COVERAGE: coverage },
+      timeout: testMilliseconds(10000),
+      killSignal: "SIGKILL",
+    });
+    assert.equal(output.stdout, prOutput(true).stdout);
+    assert.equal(output.stderr, "");
+    assert.deepEqual(await readdir(coverage), []);
+  });
 });
 
 for (const notifications of ["duplicated", "missing"])

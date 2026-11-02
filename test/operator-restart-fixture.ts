@@ -31,14 +31,11 @@ export async function restartFiles(fixture: OperatorRestart, version: string) {
     await writeFile(
       join(folder, `${scope}.ts`),
       `
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
-export async function ${scope}Operator(input: { cycleId: string; repository: string; input: { repository: string } }, continuation?: { gateId: string; decision: string; answer: string | null }) {
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
+export async function ${scope}Operator(input: { cycleId: string; repository: string; input: { repository: string } }) {
   "use workflow";
-  if (continuation !== undefined) {
-    return { kind: continuation.gateId === "operator-answer" && continuation.decision === "answered" && continuation.answer === ${JSON.stringify(version)} && input.repository === ${JSON.stringify(fixture.repository)} && input.input.repository === "submitted-override" ? "handoff_requested" : "blocked", reason: ${JSON.stringify(version)} };
-  }
-  const gate = await decisionGate({ gateId: "operator-answer", kind: "question", prompt: ${JSON.stringify(`${scope}:${version}`)} });
-  return gate.kind === "opened" ? { kind: "waiting_for_decision", cycleId: input.cycleId, decisionId: gate.decisionId } : { kind: "blocked" };
+  const decision = await waitForDecision({ gateId: "operator-answer", kind: "question", prompt: ${JSON.stringify(`${scope}:${version}`)} });
+  return { kind: decision.decision === "answered" && decision.answer === ${JSON.stringify(version)} && input.repository === ${JSON.stringify(fixture.repository)} && input.input.repository === "submitted-override" ? "handoff_requested" : "blocked", reason: ${JSON.stringify(version)} };
 }`,
     );
     await writeFile(
@@ -153,16 +150,6 @@ export async function waitingOperator(
   const runId = String(admitted["runId"]);
   const question = await operatorQuestion(fixture, runId);
   assert.equal(field(question, "prompt"), `${scope}:${version}`);
-  await reached(async () => {
-    const events = await call(fixture, {
-      operation: "events",
-      parameters: { runId, after: 0, limit: 100 },
-    });
-    return JSON.stringify(events).includes("gate.wait-registered")
-      ? events
-      : undefined;
-  });
-  await settledOperatorSegments(fixture);
   return { runId, question };
 }
 
@@ -203,7 +190,6 @@ export async function answeredOperator(
     reason: version,
   });
   assert.deepEqual(field(run, "budget"), { limit: 1, spent: 0 });
-  await settledOperatorSegments(fixture);
 }
 
 export async function operatorRestart(
@@ -235,6 +221,7 @@ export async function operatorRestart(
       const current = await waitingOperator(fixture, { scope, version: "v2" });
       await answeredOperator(fixture, { runId: current.runId, version: "v2" });
     }
+    await settledOperatorSegments(fixture);
   } finally {
     await second.stop();
   }

@@ -23,23 +23,14 @@ export async function develop(input: { cycleId: string }) {
 }
 `;
 
-export const mixedDecisionWorkflow = decisionWorkflow
-  .replace(
-    "import { waitForDecision }",
-    'import { decisionGate } from "cloving/workflows/steps/decision-gate";\nimport { waitForDecision }',
-  )
+export const singleCallDecisionWorkflow = decisionWorkflow
   .replace(
     "input: { cycleId: string })",
-    "input: { cycleId: string }, continuation?: { decision: string })",
+    "input: { cycleId: string }, ...extra: unknown[])",
   )
   .replace(
-    "  const settings = await gateSettings();",
-    `
-  if (continuation === undefined) {
-    await decisionGate({ gateId: "legacy", kind: "approval", prompt: "Continue?" });
-    return { kind: "waiting_for_decision", cycleId: input.cycleId, decisionId: "legacy" };
-  }
-  const settings = await gateSettings();`,
+    "promotionId: decision.decision,",
+    "promotionId: decision.decision, argumentCount: 1 + extra.length,",
   );
 
 export const decisionPrelude = `${servicePrelude}
