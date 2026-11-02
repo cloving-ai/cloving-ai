@@ -758,6 +758,7 @@
     "test/cli.test.ts": "test",
     "test/codex-fixture.ts": "test",
     "test/codex-stream.test.ts": "test",
+    "test/codex-worker-resume.test.ts": "test",
     "test/codex-worker.test.ts": "test",
     "test/command-candidate.test.ts": "test",
     "test/command-deadline.test.ts": "test",

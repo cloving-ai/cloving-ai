@@ -89,14 +89,14 @@ for (const status of [
     assert.deepEqual(scene.calls, []);
   });
 
-for (const harness of [
-  "codex",
-  "gemini",
-  "opencode",
-  "grok",
-  "cursor",
-  "shell",
-])
+await test("CLV-269 startup recovers a turn of the codex harness through the worker", async () => {
+  const scene = recovery();
+  scene.current.harness = "codex";
+  await recoverClaude(scene.worker, scene.ports);
+  assert.equal(scene.calls.length, 1);
+});
+
+for (const harness of ["gemini", "opencode", "grok", "cursor", "shell"])
   await test(`CLV-239 startup leaves the ${harness} harness unchanged`, async () => {
     const scene = recovery();
     scene.current.harness = harness;
