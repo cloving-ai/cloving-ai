@@ -24,7 +24,9 @@ const timeFactor = parseCheckTimeFactor(
 );
 const shard = process.env["CLOVING_TEST_SHARD"];
 const selected = parseTestShard(shard);
-const coverage = parseTestCoverage(process.env["CLOVING_TEST_COVERAGE"]);
+const coverage = selected
+  ? parseTestCoverage(process.env["CLOVING_TEST_COVERAGE"])
+  : "on";
 const timings: CheckTiming[] = [];
 const commandOptions = { timings };
 

@@ -182,14 +182,22 @@ async function runtimeGate(
   };
 }
 
-async function coverageShard(setting: string | undefined) {
-  return await withFiles(await runtimeGate("2/2"), async (directory) => {
+function recordedOptions(text: string): readonly (string | null)[] {
+  const value: unknown = JSON.parse(text);
+  assert.ok(Array.isArray(value));
+  return value.map((item: unknown) => (typeof item === "string" ? item : null));
+}
+
+async function coverageGate(
+  shard: string | undefined,
+  setting: string | undefined,
+) {
+  return await withFiles(await runtimeGate(shard), async (directory) => {
     const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
       cwd: directory,
       env: {
         ...process.env,
-        CLOVING_CHECK_TIME_FACTOR: "1",
-        CLOVING_TEST_SHARD: "2/2",
+        CLOVING_TEST_SHARD: shard,
         CLOVING_TEST_COVERAGE: setting,
       },
       encoding: "utf8",
@@ -198,10 +206,7 @@ async function coverageShard(setting: string | undefined) {
     const recorded = await readFile(
       resolve(directory, "coverage-options.json"),
       "utf8",
-    ).then(
-      (text): unknown => JSON.parse(text),
-      () => null,
-    );
+    ).then(recordedOptions, () => null);
     return { status: result.status, stderr: result.stderr, recorded };
   });
 }
@@ -212,16 +217,18 @@ for (const [setting, options] of [
   ["off", ["off", null]],
 ] as const)
   await test(`a shard takes its coverage from CLOVING_TEST_COVERAGE=${String(setting)}`, async () => {
-    const result = await coverageShard(setting);
+    const result = await coverageGate("2/2", setting);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.recorded, options);
   });
 
-await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value", async () => {
-  const result = await coverageShard("no");
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /CLOVING_TEST_COVERAGE must be on or off/);
-  assert.equal(result.recorded, null);
+await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value, and the local gate ignores it", async () => {
+  const shard = await coverageGate("2/2", "no");
+  assert.equal(shard.status, 1);
+  assert.match(shard.stderr, /CLOVING_TEST_COVERAGE must be on or off/);
+  assert.equal(shard.recorded, null);
+  const local = await coverageGate(undefined, "no");
+  assert.equal(local.status, 0, local.stderr);
 });
 
 for (const shard of [undefined, "1/2", "2/2"]) {
