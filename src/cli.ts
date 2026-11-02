@@ -174,7 +174,11 @@ function toolProcess(input: {
     `${input.tool}${extname(import.meta.filename)}`,
   );
   const child = spawn(process.execPath, [program, ...input.argumentsList], {
-    stdio: "inherit",
+    detached: input.tool === "red-green-command",
+    stdio:
+      input.tool === "red-green-command"
+        ? ["inherit", "inherit", "inherit", "ipc"]
+        : "inherit",
     env: {
       ...process.env,
       PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
@@ -265,6 +269,11 @@ if (command === "workflows" && ["list", "test"].includes(options[0] ?? ""))
 else if (command === "templates")
   process.exitCode = await toolProcess({
     tool: "template-command",
+    argumentsList: options,
+  });
+else if (command === "red-green")
+  process.exitCode = await toolProcess({
+    tool: "red-green-command",
     argumentsList: options,
   });
 else if (command === "start") process.exitCode = await start();

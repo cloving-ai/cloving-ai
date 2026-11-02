@@ -340,6 +340,7 @@ await launchers(
   manifests,
 );
 process.exitCode = await hostedPrograms({
+  environment,
   project,
   product,
   runtime,

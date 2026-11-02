@@ -5,11 +5,20 @@ import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
 
+export interface RedGreenSettings {
+  readonly test: readonly string[];
+  readonly testFiles: readonly string[];
+  readonly prepare?: readonly string[];
+  readonly assertionPattern?: string;
+  readonly skipPattern?: string;
+}
+
 export interface Configuration {
   readonly version: 1;
   readonly checks?: {
     readonly beforeMerge?: readonly string[];
     readonly required?: readonly string[];
+    readonly redGreen?: RedGreenSettings;
   };
   readonly tickets?: {
     readonly command?: readonly string[];
@@ -56,6 +65,7 @@ interface Schema {
   readonly maximum?: number;
   readonly exclusiveMinimum?: number;
   readonly maxItems?: number;
+  readonly minItems?: number;
   readonly anyOf?: readonly Schema[];
 }
 
@@ -147,9 +157,14 @@ function validate(value: unknown, checked: Checked): void {
   }
   scalar(value, checked);
   if (schema.type === "object") validateObject(value, checked);
-  if (schema.type !== "array") return;
+  if (schema.type === "array") validateArray(value, checked);
+}
+
+function validateArray(value: unknown, { schema, field }: Checked): void {
   if (!Array.isArray(value)) invalid(field);
   if (schema.maxItems !== undefined && value.length > schema.maxItems)
+    invalid(field);
+  if (schema.minItems !== undefined && value.length < schema.minItems)
     invalid(field);
   if (schema.items === undefined) return;
   for (const [index, item] of value.entries())

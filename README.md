@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
+The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `tickets.command`, `tickets.nextCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command` and `workflows.folder`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -942,6 +942,38 @@ The helper is also exported from `cloving/workflows`. It accepts serializable JS
 The daemon starts the operator command without a shell in the repository folder and writes the JSON input to stdin. It uses the Claude turn environment, including its GitHub credential isolation, plus `CLOVING_RUN_ID` and `CLOVING_OPERATION_ID`. Stdout is limited to 1 MiB of bytes and decoded as UTF-8 text; invalid byte sequences become replacement characters. Stderr is limited to 64 KiB and retained only in the effect journal as `command.stderr.log`. Exceeding either output limit fails with `command-output-limit`; a nonzero exit fails with `command-exit`, with its exit status retained in the journal and status display. An unavailable command name fails with `command-unknown`.
 
 The journal records a claim before starting the process. Completed effects replay their stored result after restart. A claimed effect without a result fails with `command-interrupted` after restart and never starts again, including when the earlier process may have written data. Each logical operation starts at most one command; use a new operation scope for a new invocation. The watch run page and `cloving status <run>` show each command name, state, exit status and duration.
+
+`cloving red-green` checks the changed tests of a commit. It reads `{"head":"<full commit ID>"}` on standard input in the repository folder. The base is the merge base of that commit and `refs/remotes/origin/HEAD`. Configure `checks.redGreen` in `.cloving/config.json`:
+
+```json
+{
+  "version": 1,
+  "checks": {
+    "redGreen": {
+      "test": ["node", "--test"],
+      "testFiles": ["test/"],
+      "prepare": ["npm", "ci", "--ignore-scripts"]
+    }
+  }
+}
+```
+
+The daemon maps this object to `CLOVING_RED_GREEN`. An environment value takes priority. For direct use, set `CLOVING_RED_GREEN` to the same JSON object. `test` is an argument array. The tool appends the added or changed file paths under the `testFiles` prefixes. It excludes deleted files. `prepare` is optional and runs before each test command. Optional `assertionPattern` and `skipPattern` are regular expression strings. The defaults are `ERR_ASSERTION` and `# SKIP\b`, which match non-terminal `node --test` output.
+
+Register the tool in `CLOVING_COMMANDS` with the absolute path of the installed executable, for example `{"red-green":["/opt/cloving/bin/cloving","red-green"]}`. Declare `red-green` in the workflow's `commands` list. A workflow can then call `runCommand` with `name: "red-green"` and `input: { head: commitId }`. Increase `CLOVING_COMMAND_SECONDS`, for example to `600`, to allow both preparation and test runs. This setting also bounds each preparation or test command inside the tool.
+
+The red run uses a detached temporary worktree at the base with only the selected tests restored from the head. The green run uses another detached worktree at the head. Both runs use the same test paths. The tool removes each tree after the run, a command failure, a timeout, SIGINT or SIGTERM. Cleanup also runs after the operator stops the command or its process group. It preserves the repository folder's branch, index and files. The commands run as the current user.
+
+The tool prints one JSON object with `verdict`, `base`, `head`, `files` and `output`. The output contains the last 16,000 characters from the command that decides the verdict. Successful preparation logs do not supply assertion or skip evidence. With no selected tests, the verdict is `no-test-change` and no command runs. Otherwise, both runs occur. The first applicable rule decides:
+
+1. Preparation fails in either run: `prepare-failed`.
+2. Either run matches the skip pattern: `skipped-test`.
+3. The red run succeeds: `false-red`.
+4. The red run is interrupted, times out, or fails without the assertion pattern: `red-not-assertion`.
+5. The green run fails: `green-failed`.
+6. Otherwise: `accepted`.
+
+Every verdict exits with status 0 so a workflow can send the result to a fix turn. Invalid input, invalid settings and git errors exit with status 1. This tool does not change the develop template or the full-suite checks on the head.
 
 Optional `handoffs` lists distinct registered workflow IDs. Registration refuses unknown targets. The execution pin retains these permissions with each run: target order does not affect the pin, while adding or removing a target changes it. Omitted and empty lists keep existing pins. Stored permissions survive restart and retained workflow versions. The `idea-to-issue` template declares `develop` as its only handoff target and calls it after creating an issue. Both workflows must be copied and admitted. A refused PRD handoff adds `cloving: ready` for the queue and records the refusal in the PRD run's outcome.
 
