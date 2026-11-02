@@ -24,19 +24,33 @@ await test("CLV-112 bounds test concurrency by available cores", () => {
     assert.equal(testConcurrency(cores), concurrency);
 });
 
-await test("CLV-156 accepts only whole test concurrency settings from 1 to 8", () => {
+await test("CLV-175 accepts whole test concurrency settings from 1 to 16", () => {
   for (const cores of [1, 3, 4, 24])
     assert.equal(
       parseTestConcurrency(undefined, cores),
       testConcurrency(cores),
     );
-  for (const value of ["1", "2", "3", "4", "5", "6", "7", "8"])
-    assert.equal(parseTestConcurrency(value, 3), Number(value));
-  for (const value of ["0", "9", "x", "2.5", "-1", "", " 3", "3 ", "03", "3\n"])
-    assert.throws(
-      () => parseTestConcurrency(value, 3),
-      /CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 8/,
-    );
+  for (let value = 1; value <= 16; value++)
+    assert.equal(parseTestConcurrency(String(value), 3), value);
+});
+
+await test("CLV-175 rejects invalid test concurrency with the supported range", () => {
+  for (const value of [
+    "0",
+    "17",
+    "abc",
+    "2.5",
+    "-1",
+    "",
+    " 3",
+    "3 ",
+    "03",
+    "3\n",
+    "16\n",
+  ])
+    assert.throws(() => parseTestConcurrency(value, 3), {
+      message: "CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 16",
+    });
 });
 
 await test("CLV-099 accepts only whole check time factors from 1 to 9", () => {
