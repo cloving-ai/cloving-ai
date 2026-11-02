@@ -253,14 +253,14 @@ await test("CLV-073 the README checks accept options, the package path and a pat
   assert.deepEqual(readmeFindings(valid), []);
 });
 
-await test("CLV-156 the README recognizes and documents test concurrency", () => {
+await test("CLV-175 the README recognizes and documents test concurrency", () => {
   assert.deepEqual(
     readmeFindings(`${valid}Set CLOVING_TEST_CONCURRENCY to 3.\n`),
     [],
   );
   assert.match(
     readme,
-    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 8.*Ubuntu CI sets it to 4/,
+    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 16.*one fewer worker.*minimum of 2 and a maximum of 4.*macOS CI sets it to 3 and Ubuntu CI sets it to 4/,
   );
 });
 
