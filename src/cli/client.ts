@@ -55,6 +55,7 @@ interface Exchange {
   readonly request: ServiceRequest;
   readonly onEvent: (event: Fields) => void;
   readonly interruption?: Interruption;
+  readonly signal?: AbortSignal;
 }
 
 function exchange(context: Exchange): Promise<Reply> {
@@ -66,7 +67,7 @@ function exchange(context: Exchange): Promise<Reply> {
       error: { code: address.reason, detail: address.detail },
     });
   return new Promise((settle) => {
-    const socket = net.connect(address.path);
+    const socket = net.connect({ path: address.path, signal: context.signal });
     let buffered = "";
     let written = false;
     socket.setEncoding("utf8");
@@ -114,11 +115,21 @@ function exchange(context: Exchange): Promise<Reply> {
 
 const unobserved = (): undefined => undefined;
 
+export interface ClientRequest extends ServiceRequest {
+  readonly signal?: AbortSignal;
+}
+
 export function send(
   runtimeDirectory: string,
-  request: ServiceRequest,
+  input: ClientRequest,
 ): Promise<Reply> {
-  return exchange({ runtimeDirectory, request, onEvent: unobserved });
+  const { signal, ...request } = input;
+  return exchange({
+    runtimeDirectory,
+    request,
+    onEvent: unobserved,
+    ...(signal === undefined ? {} : { signal }),
+  });
 }
 
 function listedRuns(result: Fields): Fields[] {
