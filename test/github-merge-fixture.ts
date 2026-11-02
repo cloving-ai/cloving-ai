@@ -1,5 +1,5 @@
-import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { git, journalKey } from "./claude-worker-fixture.ts";
 import {
   committed,
@@ -105,4 +105,15 @@ export function pausedMerge(scene: GithubScene): readonly string[] {
   `,
   );
   return ["env", "-u", "NODE_V8_COVERAGE", process.execPath, script];
+}
+
+export function matchesCall(parts: readonly string[], call: string): boolean {
+  return (
+    (call === "api PUT merge" && parts.includes("PUT")) ||
+    (call === "api GET pull" &&
+      parts.length === 2 &&
+      parts[1]?.endsWith("/pulls/1") === true) ||
+    (call === "api GET check-runs" &&
+      parts.some((part) => part.includes("/check-runs")))
+  );
 }
