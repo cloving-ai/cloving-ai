@@ -1,7 +1,42 @@
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { redGreenProcess } from "../tools/red-green-process.ts";
+import { withScene } from "./claude-worker-fixture.ts";
+import { stopHeld } from "./red-green-fixture.ts";
+
+await test("CLV-248 held process cleanup rejects invalid markers before signalling", () =>
+  withScene((scene) => {
+    const marker = join(scene.directory, "held.json");
+    const original = process.kill.bind(process);
+    const signals: number[] = [];
+    process.kill = (identifier) => {
+      signals.push(identifier);
+      return true;
+    };
+    try {
+      for (const value of [
+        null,
+        [],
+        13,
+        "held",
+        {},
+        { pid: "123" },
+        { pid: null },
+      ]) {
+        writeFileSync(marker, JSON.stringify(value));
+        assert.throws(() => {
+          stopHeld(marker);
+        }, /Invalid held process marker/);
+        assert.deepEqual(signals, []);
+      }
+    } finally {
+      process.kill = original;
+    }
+    return Promise.resolve();
+  }));
 
 await test("CLV-248 an empty executable array cannot start a test process", async () => {
   await assert.rejects(

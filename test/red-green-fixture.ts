@@ -164,11 +164,13 @@ export function runs(scene: RedGreenScene): unknown[] {
 
 export function stopHeld(marker: string): void {
   if (!existsSync(marker)) return;
-  const held: unknown = JSON.parse(readFileSync(marker, "utf8"));
-  const pid = Number(Reflect.get(Object(held), "pid"));
+  const held = record(JSON.parse(readFileSync(marker, "utf8")));
+  if (held === undefined || typeof held["pid"] !== "number")
+    throw new Error("Invalid held process marker");
+  const pid = held["pid"];
   try {
     process.kill(pid, "SIGKILL");
   } catch (error) {
-    if (Reflect.get(Object(error), "code") !== "ESRCH") throw error;
+    if (record(error)?.["code"] !== "ESRCH") throw error;
   }
 }

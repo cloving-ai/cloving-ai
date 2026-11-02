@@ -3,6 +3,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { startCommand } from "../src/daemon/command-process.ts";
+import { record } from "../src/protocol.ts";
 import { alive, git, until } from "./claude-worker-fixture.ts";
 import { fakeCommandClock } from "./command-worker-fixture.ts";
 import {
@@ -70,8 +71,9 @@ for (const phase of ["prepare", "test"])
 
 function removeHeldTree(repository: string, marker: string): void {
   if (!existsSync(marker)) return;
-  const held: unknown = JSON.parse(readFileSync(marker, "utf8"));
-  const tree = String(Reflect.get(Object(held), "directory"));
+  const held = record(JSON.parse(readFileSync(marker, "utf8")));
+  const tree = held?.["directory"];
+  assert.ok(typeof tree === "string");
   if (!existsSync(tree)) return;
   git(repository, ["worktree", "remove", "--force", tree]);
   rmSync(dirname(tree), { recursive: true, force: true });
@@ -91,15 +93,19 @@ async function assertStopped(
   options: { readonly marker: string; readonly before: string },
 ): Promise<void> {
   const { marker, before } = options;
-  const held: unknown = JSON.parse(readFileSync(marker, "utf8"));
-  const descendant: unknown = JSON.parse(
-    readFileSync(marker + ".child", "utf8"),
+  const held = record(JSON.parse(readFileSync(marker, "utf8")));
+  const descendant = record(
+    JSON.parse(readFileSync(marker + ".child", "utf8")),
   );
-  await until(
-    () => !existsSync(String(Reflect.get(Object(held), "directory"))),
-  );
-  assert.equal(alive(Number(Reflect.get(Object(held), "pid"))), false);
-  assert.equal(alive(Number(Reflect.get(Object(descendant), "pid"))), false);
+  const directory = held?.["directory"];
+  const pid = held?.["pid"];
+  const descendantPid = descendant?.["pid"];
+  assert.ok(typeof directory === "string");
+  assert.ok(typeof pid === "number");
+  assert.ok(typeof descendantPid === "number");
+  await until(() => !existsSync(directory));
+  assert.equal(alive(pid), false);
+  assert.equal(alive(descendantPid), false);
   assert.equal(
     git(scene.repository, ["worktree", "list", "--porcelain"]).split(
       "worktree ",

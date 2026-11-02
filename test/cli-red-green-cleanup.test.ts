@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { record } from "../src/protocol.ts";
 import { alive, git, until } from "./claude-worker-fixture.ts";
 import { stopChild } from "./stop-child.ts";
 import {
@@ -115,16 +116,16 @@ for (const phase of ["prepare", "test"])
       });
       try {
         await until(() => existsSync(marker));
-        const held: unknown = JSON.parse(readFileSync(marker, "utf8"));
-        const pid = Number(Reflect.get(Object(held), "pid"));
+        const held = record(JSON.parse(readFileSync(marker, "utf8")));
+        const pid = held?.["pid"];
+        const directory = held?.["directory"];
+        assert.ok(typeof pid === "number");
+        assert.ok(typeof directory === "string");
         child.kill("SIGTERM");
         await until(() => result.closed);
         assert.equal(result.status, 1, result.stderr);
         assert.equal(alive(pid), false);
-        assert.equal(
-          existsSync(String(Reflect.get(Object(held), "directory"))),
-          false,
-        );
+        assert.equal(existsSync(directory), false);
         assert.equal(
           git(scene.repository, ["worktree", "list", "--porcelain"]).split(
             "worktree ",
