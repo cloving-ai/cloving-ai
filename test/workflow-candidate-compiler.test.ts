@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { candidateCompiler } from "../tools/workflow-candidate-program.ts";
-import { createWorkflowCandidateAnalyzer } from "../tools/workflow-candidate-source.ts";
+import {
+  analyzeWorkflowCandidate,
+  createWorkflowCandidateAnalyzer,
+} from "../tools/workflow-candidate-source.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { candidateSource } from "./workflow-candidate-fixtures.ts";
 
@@ -55,8 +58,26 @@ await test("CLV-176 a shared candidate compiler keeps analysis independent of fi
   const effect = candidateSource("process.exit(0);");
   const clean = analyze(pure);
   const refused = analyze(effect);
+  const installed = { packageRoot: candidatePackageRoot };
+  assert.deepEqual(analyzeWorkflowCandidate(pure, installed), clean);
+  assert.deepEqual(analyzeWorkflowCandidate(effect, installed), refused);
   assert.deepEqual(clean.analysis.directEffects, []);
   assert.ok(refused.analysis.directEffects.length > 0);
   assert.deepEqual(analyze(pure), clean);
   assert.deepEqual(analyze(effect), refused);
+});
+
+await test("CLV-176 shared and single-use analyzers inspect the same helper files", () => {
+  const installed = {
+    packageRoot: candidatePackageRoot,
+    helpers: { "shared/helper.ts": "export function helper() { return 1; }" },
+  };
+  const analyze = createWorkflowCandidateAnalyzer(installed);
+  const source =
+    'import { helper } from "./shared/helper.ts";\n' +
+    candidateSource("return helper();");
+  const result = analyze(source);
+  assert.deepEqual(result.analysis.localSources, ["shared/helper.ts"]);
+  assert.deepEqual(result.analysis.directEffects, []);
+  assert.deepEqual(analyzeWorkflowCandidate(source, installed), result);
 });
