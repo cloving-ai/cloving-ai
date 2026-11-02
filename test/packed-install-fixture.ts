@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
-import { field } from "./self-host-fixture.ts";
+import { cp, lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { basename, join, relative } from "node:path";
+import { withFiles } from "./quality/files-fixture.ts";
+import { field, items } from "./self-host-fixture.ts";
+
+const checkoutOnly = new Set([
+  ".claude",
+  ".cloving",
+  ".codex",
+  ".git",
+  ".swc",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 
 export function packedCommand(
   executable: string,
@@ -23,6 +35,53 @@ export function packedCommand(
   assert.equal(result.error, undefined, result.stderr);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   return result.stdout;
+}
+
+export interface PackedArchive {
+  readonly filename: string;
+  readonly paths: readonly string[];
+}
+
+function packedText(value: unknown): string {
+  assert.ok(typeof value === "string");
+  return value;
+}
+
+export async function packCheckoutCopy(
+  checkout: string,
+  destination: string,
+): Promise<PackedArchive> {
+  return await withFiles({}, async (directory) => {
+    const source = join(directory, "package");
+    await cp(checkout, source, {
+      recursive: true,
+      filter: (path) => !checkoutOnly.has(relative(checkout, path)),
+    });
+    await symlink(join(checkout, "node_modules"), join(source, "node_modules"));
+    packedCommand("npm", { args: ["run", "build"], cwd: source });
+    await assert.rejects(lstat(join(source, "dist/workflows")), {
+      code: "ENOENT",
+    });
+    const packed: unknown = JSON.parse(
+      packedCommand("npm", {
+        args: [
+          "pack",
+          "--ignore-scripts",
+          "--json",
+          "--pack-destination",
+          destination,
+        ],
+        cwd: source,
+      }),
+    );
+    const archive = items(packed)[0];
+    return {
+      filename: packedText(field(archive, "filename")),
+      paths: items(field(archive, "files")).map((file) =>
+        packedText(field(file, "path")),
+      ),
+    };
+  });
 }
 
 interface PackedInstallation {
