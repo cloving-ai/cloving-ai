@@ -3,20 +3,14 @@ import { test } from "node:test";
 import { servicePrelude, withConsumer } from "./world-host-fixture.ts";
 
 const workflows = `
-import { getWorkflowMetadata } from "workflow";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
-export async function ask() {
-  "use step";
-  return await globalThis.clovingGate(getWorkflowMetadata().workflowRunId);
-}
-
-export async function develop(input: { cycleId: string }, continuation?: { answer: string | null }) {
+export async function develop() {
   "use workflow";
-  if (continuation !== undefined)
-    return { kind: "handoff_requested", promotionId: "original:" + continuation.answer };
   await protectedEffect({ scope: { phase: "work", operation: "effect", round: 1 }, capability: "fake-harness", method: "run-turn", target: "workspace/main", payload: "before the wait", units: 1 });
-  return { kind: "waiting_for_decision", cycleId: input.cycleId, decisionId: await ask() };
+  const decision = await waitForDecision({ gateId: "design-1", kind: "question", prompt: "question of run-1" });
+  return { kind: "handoff_requested", promotionId: "original:" + decision.answer };
 }
 
 export async function editedDevelop() {
@@ -41,7 +35,7 @@ await test("CLV-153 supplied retained executables preserve continuation selectio
 const service = await hosted();
 const runId = await submitted("original");
 await until(async () => (await stateOf(runId)) === "waiting_gate");
-await until(async () => (await tagged()).every((run) => run.status === "completed"));
+await until(async () => (await (await getWorld()).events.list({ runId: (await tagged())[0].receipt, resolveData: "none" })).data.some(event => event.eventType === "hook_created"));
 print({ runId, budget: await budget(runId) });
 await service.close();
 `);
@@ -53,8 +47,9 @@ await service.close();
       `${servicePrelude}${versions}
 const service = await hosted({ registrations: [current], retainedWorkflows: [original], resolveWorkflow });
 const runId = process.env.RUN_ID;
-const answer = await answered(runId);
-const duplicate = await answered(runId);
+const parameters = { subjectDigest: digestOf("question of run-1") };
+const answer = await answered(runId, parameters);
+const duplicate = await answered(runId, parameters);
 await until(async () => (await stateOf(runId)) === "completed");
 const edited = await submitted("edited");
 await until(async () => (await stateOf(edited)) === "completed");
@@ -69,7 +64,7 @@ await service.close();
     assert.deepEqual(second.lines, [
       {
         answers: ["decision-recorded", "decision-recorded"],
-        outputs: [null, "original:Use the table parser.", "edited"],
+        outputs: ["original:Use the table parser.", "edited"],
         effects: 1,
         budgets: [
           { limit: 5, spent: 1 },

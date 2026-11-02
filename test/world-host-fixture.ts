@@ -138,25 +138,17 @@ const hosted = async (overrides = {}) => {
       };
       const stopping = new AbortController();
       const timing = { lookupTries: 250, pollMilliseconds: testMilliseconds(20), retryMilliseconds: testMilliseconds(100) };
+      const openGate = async (opening) => {
+        const receipt = await given.openGate(opening);
+        if (opening.waitMode === "hook" && existsSync("halt-before-wait")) await halt("halted-before-wait");
+        return receipt;
+      };
       const registerWait = async (wait) => { if (existsSync("halt-before-wait")) await halt("halted-before-wait"); return await given.registerWait(wait); };
-      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, registerWait, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
+      const remove = registerStepBridge(stepBridge({ ...given, requestEffect, openGate, registerWait, run: taggedRun, call: sdkStepCall, stopped: stopping.signal, timing }));
       return { close: async () => { stopping.abort(); remove(); await loop.stop(); await host.host.close(); }, reports: loop.reports };
     },
   });
   if (opening.kind !== "started") { print(opening); process.exit(3); }
-  globalThis.clovingGate = async (worldRunId) => {
-    let found;
-    await until(async () => (found = await taggedRun(worldRunId)) !== undefined);
-    const runId = found.runId;
-    const opened = Object.values((await ports.state()).gates).some((gate) => gate.runId === runId && gate.gateId === "design-1");
-    if (opened) return runId + "/design-1";
-    await until(async () => (await ports.state()).runs[runId].status === "running");
-    const prompt = "question of " + runId;
-    await opening.service.worker.openGate({ runId, commandId: "open:" + worldRunId, expectedRevision: (await ports.state()).runs[runId].revision, gateId: "design-1", kind: "question", prompt, subject: digestOf(prompt) });
-    while (existsSync("hold-wait")) await delay(testMilliseconds(10));
-    await opening.service.worker.registerWait({ runId, commandId: "wait:" + worldRunId, gateId: "design-1" });
-    return runId + "/design-1";
-  };
   return opening.service;
 };
 const answered = async (runId, overrides = {}) => (await asked("decision", { command: "answer", reference: runId + "/design-1", text: "Use the table parser.", subjectDigest: digestOf("question of " + runId), expectedRevision: 1, generation: 1, commandId: "c-answer", ...overrides }));
@@ -286,7 +278,8 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows": "./src/workflows.ts",
         "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",
         "./workflows/steps/protected-effect": "./src/steps/protected-effect.ts",
-        "./workflows/steps/decision-gate": "./src/steps/decision-gate.ts",
+        "./workflows/steps/open-decision-wait":
+          "./src/steps/open-decision-wait.ts",
         "./workflows/steps/wait-for-decision":
           "./src/steps/wait-for-decision.ts",
         "./workflows/steps/review-by-person": "./src/steps/review-by-person.ts",

@@ -6,18 +6,12 @@ import {
   stoppedDecision,
 } from "./decision-resume.ts";
 
-export type WorkflowFunction = (
-  input: unknown,
-  continuation?: Continuation,
-) => Promise<unknown>;
+export type WorkflowFunction = (input: unknown) => Promise<unknown>;
 
-export interface Continuation {
-  readonly gateId: string;
-  readonly decision: string;
-  readonly answer: string | null;
-}
-
-export interface RunIntent extends Partial<Continuation> {
+export interface RunIntent {
+  readonly gateId?: string;
+  readonly decision?: string;
+  readonly answer?: string | null;
   readonly kind: string;
   readonly runId: string;
   readonly operationId: string;
@@ -78,32 +72,18 @@ async function reconciled(
   };
 }
 
-async function continuation(
-  parts: StartParts,
-  intent: RunIntent,
-): Promise<Continuation | undefined> {
-  const { kind, gateId, decision, answer } = intent;
-  if (kind === "start-run") return undefined;
-  if (kind !== "continue-run" || gateId === undefined || decision === undefined)
-    throw new Error(`unsupported-intent: ${kind}`);
-  if (answer === undefined || answer === null)
-    return { gateId, decision, answer: null };
-  const text = await parts.document(answer);
-  if (text === undefined) throw new Error(`answer-not-available: ${gateId}`);
-  return { gateId, decision, answer: text };
-}
-
 async function delivered(
   parts: StartParts,
   intent: RunIntent,
 ): Promise<{ readonly receipt: string }> {
-  const continued = await continuation(parts, intent);
+  if (intent.kind !== "start-run")
+    throw new Error(`unsupported-intent: ${intent.kind}`);
   const workflow = await parts.workflow(intent);
   const input = await parts.input(intent.runId);
   if (workflow === undefined || input === undefined)
     throw new Error(`start-not-available: ${intent.runId}`);
   const argument: unknown = JSON.parse(input);
-  const started = await start(workflow, [argument, continued], {
+  const started = await start(workflow, [argument], {
     attributes: {
       [runTag]: intent.runId,
       [operationTag]: intent.operationId,

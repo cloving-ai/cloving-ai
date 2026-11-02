@@ -82,6 +82,9 @@ writeFileSync(root + "/gh-request", JSON.stringify(process.argv.slice(2)));
     environment: {
       CLOVING_WATCH_REPOSITORY: repository,
       CLOVING_GH_COMMAND: JSON.stringify([
+        "env",
+        "-u",
+        "NODE_V8_COVERAGE",
         process.execPath,
         program,
         "prefix with spaces",

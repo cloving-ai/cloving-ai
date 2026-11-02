@@ -38,21 +38,16 @@ export async function develop(input: { cycleId: string }) {
 `;
 
 const segmented = `
-import { getWorkflowMetadata } from "workflow";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
-export async function ask() {
-  "use step";
-  return await globalThis.clovingGate(getWorkflowMetadata().workflowRunId);
-}
-
-export async function develop(input: { cycleId: string }, continuation?: { gateId: string }) {
+export async function develop(input: { cycleId: string }) {
   "use workflow";
   const cycleId = input.cycleId;
-  const round = continuation === undefined ? 1 : 2;
-  const effect = await protectedEffect(${request});
-  if (continuation === undefined)
-    return { kind: "waiting_for_decision", cycleId, decisionId: await ask(), effect };
+  const round = 1;
+  await protectedEffect(${request});
+  await waitForDecision({ gateId: "design-1", kind: "question", prompt: "question of " + cycleId });
+  const effect = await protectedEffect(${request.replace("round }", "round: 2 }")});
   return { kind: "handoff_requested", cycleId, effect };
 }
 `;
@@ -268,14 +263,14 @@ ${finished}`,
     assert.equal(new Set(asked.map((entry) => entry[2])).size, 1);
   }));
 
-await test("CLV-059 the run budget of a run is one record across two SDK segments", () =>
+await test("CLV-059 the run budget of a run is one record across a same-call decision wait", () =>
   withConsumer(segmented, async (consumer) => {
     const result = await consumer.run(`${servicePrelude}${effects}
 const service = await hosted();
 const runId = await submitted("c-1");
 await until(async () => (await stateOf(runId)) === "waiting_gate");
 const before = (await shownRun(runId)).budget;
-await answered(runId);
+await answered(runId, { subjectDigest: digestOf("question of cycle-1") });
 await until(async () => (await stateOf(runId)) === "completed");
 print({ runId, before, ...(await summary(runId)) });
 await service.close();
@@ -298,7 +293,7 @@ await service.close();
           [operationOf(runId, 2), "completed"],
         ],
         [operationOf(runId, 1), operationOf(runId, 2)],
-        2,
+        1,
       ],
     );
   }));

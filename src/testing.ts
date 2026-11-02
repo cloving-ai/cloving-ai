@@ -38,7 +38,6 @@ export interface WorkflowScenario extends StepScenario {
   readonly workflow: string;
   readonly exportName: string;
   readonly input: HandoffValue;
-  readonly decision?: HandoffValue;
 }
 
 export type { ScenarioRequest, ScenarioResult } from "./testing-requests.ts";
@@ -235,7 +234,7 @@ const given = ${JSON.stringify(scenario)};
 const workflow = workflows[given.exportName];
 if (typeof workflow !== "function") throw new Error("workflow-test-export-missing");
 using bridge = fakeStepBridge(given);
-const outcome = await workflow(given.input, given.decision);
+const outcome = await workflow(given.input);
 await writeFile(process.argv[2], JSON.stringify({ outcome, requests: bridge.requests,
   ...(given.effectLimit === undefined ? {} : { spent: bridge.spent }) }));`;
 }

@@ -16,6 +16,12 @@ Private files, backups and temporary files have mode 0600. Changes require a ser
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
+  mcp: `Usage: cloving mcp [--repository <directory>]
+
+Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
+The server binds to one repository at startup. It needs an existing Cloving service.
+Standard output contains only JSON-RPC messages. Diagnostics use standard error.
+`,
   "red-green": `Usage: cloving red-green
 
 Reads {"head":"<full commit ID>"} on standard input. Uses CLOVING_RED_GREEN to run
@@ -179,6 +185,7 @@ Commands:
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
+  mcp        Serve the read tools over stdio.
   schedule   List, pause and resume workflow schedules.
   report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.

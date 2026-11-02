@@ -291,18 +291,19 @@ await test("CLV-008 a paused run whose start was in flight at a kill is reconcil
     await once(second.process, "exit");
   }));
 
-await test("CLV-148 the generic service durably records added answer text and the workflow continuation rejects it", () =>
+await test("CLV-148 the generic service durably records added answer text and the same workflow call rejects it", () =>
   withConsumer(questionSource, async (consumer) => {
     const result = await consumer.run(`${questionSetup}
 const response = await answer("earlier with extra text");
-await until(async () => (await tagged()).length === 2);
+await until(async () => (await stateOf(runId)) === "completed");
 await until(async () => (await tagged()).every((run) => run.status === "completed"));
 const gate = Object.values((await ports.state()).gates).find((gate) => gate.runId === runId);
-print({ recorded: response.kind, retained: await ports.document(gate.outcome.answer), runBound: gate.runId === runId, gateBound: gate.gateId === "design-choice" });
+print({ segments: (await tagged()).length, recorded: response.kind, retained: await ports.document(gate.outcome.answer), runBound: gate.runId === runId, gateBound: gate.gateId === "design-choice" });
 await finished(runId);
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
+      segments: 1,
       recorded: "decision-recorded",
       retained: "earlier with extra text",
       runBound: true,
@@ -327,14 +328,15 @@ questionNow = "2026-10-21T09:59:59.999Z";
 const pending = (await asked("questions", { runId })).decisions.length;
 questionNow = deadline;
 const late = await answer("earlier");
-await until(async () => (await tagged()).length === 2);
+await until(async () => (await stateOf(runId)) === "completed");
 await until(async () => (await tagged()).every((run) => run.status === "completed"));
 const settled = await answer("earlier", { commandId: "after-expiry" });
-print({ before: before.state, pending, late: late.code, settled: settled.code, deadline });
+print({ segments: (await tagged()).length, before: before.state, pending, late: late.code, settled: settled.code, deadline });
 await finished(runId);
 `);
     assert.equal(result.status, 0, result.stderr);
     const observed = result.lines[0];
+    assert.equal(field(observed, "segments"), 1);
     assert.equal(field(observed, "before"), "waiting_gate");
     assert.equal(field(observed, "pending"), 1);
     assert.ok(

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
+import * as workflows from "../src/workflows.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { decisionGate } from "../src/steps/decision-gate.ts";
-import { protectedEffect } from "../src/steps/protected-effect.ts";
 import {
   registerStepBridge,
   stepBridge,
@@ -44,7 +44,10 @@ await test("CLV-117 the gate step forwards the stored deadline unchanged on open
   const ports = scene({ opens: [lost, accepted] });
   const remove = registerStepBridge(stepBridge(ports));
   try {
-    assert.deepEqual(await decisionGate({ ...request, expiresAt }), opened);
+    assert.deepEqual(
+      await stepBridge(ports).gate({ ...request, expiresAt }),
+      opened,
+    );
     assert.deepEqual(ports.sent, [
       {
         runId: "run-1",
@@ -265,30 +268,26 @@ await test("CLV-010 after the host stops the bridge, a gate request in work gets
   assert.deepEqual([outcome.settled, late.sent], ["no", []]);
 });
 
-await test("CLV-010 the gate step helper gives its request to the bridge of its process, and each helper reports the absent host for a registry value that is not a complete bridge", async () => {
-  const ports = scene({});
-  const remove = registerStepBridge(stepBridge(ports));
-  assert.deepEqual(await decisionGate(request), opened);
-  assert.equal(ports.sent.length, 2);
-  remove();
-  const unavailable = {
-    kind: "unavailable",
-    reason: "cloving-host-unavailable",
-  };
-  assert.deepEqual(await decisionGate(request), unavailable);
-  const partial = { effect: () => Promise.resolve(opened) };
-  const key = Symbol.for("cloving.step-bridge/v1");
-  Reflect.set(globalThis, key, partial);
-  const effect = {
-    scope: { phase: "work", operation: "effect", round: 1 },
-    capability: "fake-harness",
-    method: "run-turn",
-    target: "workspace/main",
-    payload: "build the package",
-    units: 1,
-  };
-  const answers = [await decisionGate(request), await protectedEffect(effect)];
-  Reflect.deleteProperty(globalThis, key);
-  assert.deepEqual(answers, [unavailable, unavailable]);
-  assert.equal(ports.sent.length, 2);
+await test("CLV-265 the package exposes no decisionGate helper or subpath", async () => {
+  const manifest: unknown = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.ok(manifest && typeof manifest === "object");
+  const exports: unknown = Reflect.get(manifest, "exports");
+  assert.ok(exports && typeof exports === "object");
+  assert.equal(
+    Object.hasOwn(exports, "./workflows/steps/decision-gate"),
+    false,
+  );
+  assert.equal(Object.hasOwn(workflows, "decisionGate"), false);
+});
+
+await test("CLV-265 the README teaches same-call decisions and public testing imports", async () => {
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(readme, /decisionGate|second (?:workflow's? )?argument/);
+  assert.match(readme, /from "cloving\/workflows\/testing"/);
+  assert.doesNotMatch(readme, /from ["'][^"']*src\/testing/);
 });
