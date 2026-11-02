@@ -36,6 +36,7 @@ import {
 import assert from "node:assert/strict";
 import {
   installPacked,
+  packCheckoutCopy,
   packedCommand as command,
 } from "./packed-install-fixture.ts";
 import {
@@ -44,6 +45,7 @@ import {
   lstat,
   realpath,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -76,18 +78,17 @@ function packageMetadata(value: unknown): value is PackageMetadata {
   );
 }
 
-async function installed(root: string): Promise<string> {
-  await rm(join(checkout, "dist"), { recursive: true, force: true });
-  command("npm", { args: ["run", "build"], cwd: checkout });
-  await assert.rejects(lstat(join(checkout, "dist/workflows")), {
-    code: "ENOENT",
-  });
-  const packed: unknown = JSON.parse(
-    command("npm", {
-      args: ["pack", "--ignore-scripts", "--json", "--pack-destination", root],
-      cwd: checkout,
-    }),
+async function checkoutBuild(): Promise<readonly number[]> {
+  const built = await stat(
+    join(checkout, "dist/src/workflow-declaration.d.ts"),
   );
+  return [built.ino, built.mtimeMs];
+}
+
+async function installed(root: string): Promise<string> {
+  const before = await checkoutBuild();
+  const packed = await packCheckoutCopy(checkout, root);
+  assert.deepEqual(await checkoutBuild(), before);
   const archive = items(packed)[0];
   const paths = items(field(archive, "files")).map((file) =>
     String(field(file, "path")),
