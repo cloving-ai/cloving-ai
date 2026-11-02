@@ -114,7 +114,9 @@ async function knownIssue(
 
 export async function createIssue(operation: Operation): Promise<unknown> {
   operatorPrivateTexts(operation.settings);
-  const draft = await draftOf(operation);
+  const draft = Object.hasOwn(operation.payload, "text")
+    ? reportText(operation)
+    : await draftOf(operation);
   checkDraftDigest(operation, draft);
   const [heading = "", ...lines] = draft.split("\n");
   if (!heading.startsWith("# ") || heading.slice(2).trim() === "")
@@ -142,6 +144,17 @@ export async function createIssue(operation: Operation): Promise<unknown> {
   ]);
   const url = printed.trim().split("\n").at(-1) ?? "";
   return issueFromUrl(url);
+}
+
+function reportText(operation: Operation): string {
+  if (
+    Object.hasOwn(operation.payload, "draft") ||
+    Object.hasOwn(operation.payload, "expectedDigests")
+  )
+    throw new Error("invalid-payload");
+  const report = text(operation, "text");
+  if (Buffer.byteLength(report) > 65536) throw new Error("draft-too-large");
+  return report;
 }
 
 export async function discard(operation: Operation): Promise<unknown> {

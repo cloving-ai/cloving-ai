@@ -12,6 +12,30 @@ const payload = {
   remove: ["cloving: ready", "cloving: blocked"],
 };
 
+await test("CLV-200 labels a new improvement in the configured repository without supplied coordinates", () =>
+  withGithub(async (scene) => {
+    scene.plan({
+      scores: [],
+      issues: [{ repository: "acme/demo", number: 42, labels: [] }],
+    });
+    const worker = scene.worker({});
+    const report = await scene.perform(worker, {
+      method: "label",
+      payload: {
+        number: 42,
+        add: ["cloving: improvement"],
+        remove: [],
+      },
+    });
+    assert.equal(report.outcome, "completed", JSON.stringify(report));
+    const edit = scene
+      .state()
+      .calls.find((call) => call[0] === "issue" && call[1] === "edit");
+    assert.ok(edit);
+    assert.equal(edit[edit.indexOf("--repo") + 1], "acme/demo");
+    assert.equal(edit[2], "42");
+  }));
+
 await test("CLV-069 labeling creates added and removed labels in the issue repository and is idempotent", () =>
   withGithub(async (scene) => {
     scene.plan({
