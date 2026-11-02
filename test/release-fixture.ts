@@ -94,7 +94,7 @@ sudo() {
   [[ "$1" == apt-get && "$2" == -o ]] || exit 91
   source_list="\${3#Dir::Etc::sourcelist=}"
   shift 3
-  [[ "$(cat "$source_list")" == 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu noble main universe' ]] || exit 92
+  [[ "$(cat "$source_list")" == "deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $EXPECTED_ARCHIVE noble main universe" ]] || { cat "$source_list" >&2; exit 92; }
   [[ "$*" == '-o Dir::Etc::sourceparts=- -o Acquire::https::Timeout=30 -o Acquire::Retries=2 '* ]] || exit 93
   shift 6
   printf '%s\\n' "$*"

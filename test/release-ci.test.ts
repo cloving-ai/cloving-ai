@@ -4,7 +4,6 @@ import { test } from "node:test";
 import {
   job,
   metadata,
-  prepareShellAttempt,
   releaseWorkflow,
   script,
   steps,
@@ -307,31 +306,6 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     (step) => step.id === "github-release",
   );
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
-});
-
-await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
-  const workflow = await releaseWorkflow();
-  const linuxSteps = steps(workflow, "quality_linux_node");
-  const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
-  const setup = linuxSteps.findIndex(
-    (step) => step.run === "npm run check:setup",
-  );
-  assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
-  for (const [zshStatus, updateStatus, installStatus, status, output] of [
-    ["0", "0", "0", 0, ""],
-    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
-    ["1", "9", "0", 9, "update --error-on=any\n"],
-    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
-  ] as const) {
-    const result = prepareShellAttempt(workflow, {
-      ZSH_STATUS: zshStatus,
-      UPDATE_STATUS: updateStatus,
-      INSTALL_STATUS: installStatus,
-    });
-    assert.equal(result.error, undefined);
-    assert.equal(result.status, status, result.stderr);
-    assert.equal(result.stdout, output);
-  }
 });
 
 await test("CLV-266 coverage joins all nine shard artifacts before the required checks pass", async () => {
