@@ -69,15 +69,20 @@ await test("CLV-250 mcp suppresses a cancelled call and continues with ping", ()
       }),
     );
     const socket = await service.received;
+    harness.cleanup(() => {
+      socket.destroy();
+    });
+    const closed = new Promise<void>((settle) => {
+      socket.once("close", settle);
+    });
     mcp.send({
       jsonrpc: "2.0",
       method: "notifications/cancelled",
       params: { requestId: "call", reason: "test" },
     });
+    await closed;
     mcp.send(request({ id: 2, method: "ping" }));
-    const completed = mcp.end();
-    socket.end(replyLine({ kind: "result", result }));
-    const output = await completed;
+    const output = await mcp.end();
     assert.equal(output.status, 0, output.stderr);
     assert.deepEqual(mcp.messages, [{ jsonrpc: "2.0", id: 2, result: {} }]);
   }));
