@@ -15,6 +15,8 @@ export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "config-help" }
   | { readonly kind: "help" }
   | { readonly kind: "version" }
+  | { readonly kind: "mcp" }
+  | { readonly kind: "mcp-help" }
   | { readonly kind: "init-prompt" }
   | { readonly kind: "init"; readonly harness: string | undefined }
   | { readonly kind: "init-prompt-help" }
@@ -159,8 +161,20 @@ function inspectionInvocation(
       : { kind: "init", harness: values.harness };
   }
   if (command === "doctor") return doctorInvocation(values, remaining);
+  if (command === "mcp") return mcpInvocation(values, remaining);
   if (command === "init-prompt") return promptInvocation(values, remaining);
   return undefined;
+}
+
+function mcpInvocation(
+  values: Parsed["values"],
+  remaining: readonly string[],
+): Invocation {
+  if (unexpected(values, ["help"]))
+    return { kind: "usage-error", code: "unexpected-option", json: false };
+  if (remaining.length > 0)
+    return { kind: "usage-error", code: "unexpected-argument", json: false };
+  return { kind: values.help ? "mcp-help" : "mcp" };
 }
 
 function promptInvocation(
@@ -222,7 +236,7 @@ function knownCommand(positionals: readonly string[]): boolean {
   const [command, subcommand] = positionals;
   if (command === undefined) return true;
   if (command === "workflows") return subcommand === "validate";
-  if (["doctor", "init-prompt", "init"].includes(command)) return true;
+  if (["doctor", "init-prompt", "init", "mcp"].includes(command)) return true;
   return isRuntimeCommand(command);
 }
 
