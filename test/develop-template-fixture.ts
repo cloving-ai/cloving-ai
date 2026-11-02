@@ -17,6 +17,7 @@ export const packedTemplateSources = [
   "templates/develop/develop/partial.ts",
   "templates/develop/develop/pull.ts",
   "templates/develop/develop/queue-partial.ts",
+  "templates/develop/develop/red-green.ts",
   "templates/develop/develop/refusal-tests.ts",
   "templates/develop/develop/report.ts",
   "templates/develop/develop/round.ts",

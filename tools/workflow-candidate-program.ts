@@ -21,18 +21,26 @@ export function resolvedSymbol(
   return checker.getAliasedSymbol(symbol);
 }
 
-export function candidateProgram(
-  text: string,
-  installed: CandidatePackageOptions = {},
-): {
+export interface CandidateProgram {
   readonly program: ts.Program;
   readonly source: ts.SourceFile;
   readonly sources: readonly ts.SourceFile[];
   readonly modules: ReadonlyMap<string, ts.SourceFile>;
-} {
+}
+
+export function candidateProgram(
+  text: string,
+  installed: CandidatePackageOptions = {},
+): CandidateProgram {
+  return candidateCompiler(installed)(text);
+}
+
+export function candidateCompiler(
+  installed: CandidatePackageOptions = {},
+): (text: string) => CandidateProgram {
   const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
   const candidate = join(packageRoot, "candidate.ts");
-  const sources = new Map([[candidate, text]]);
+  const sources = new Map([[candidate, ""]]);
   for (const [name, content] of Object.entries(installed.helpers ?? {})) {
     if (workflowHelperPath("candidate.ts", `./${name}`) !== name)
       throw new Error("invalid-workflow-helper");
@@ -54,15 +62,29 @@ export function candidateProgram(
     noEmit: true,
   };
   const host = trustedHost({ sources, options, entries, packageRoot });
-  const program = ts.createProgram(
-    [...sources.keys(), ...entries.values()],
-    options,
-    host,
-  );
-  const source = program.getSourceFile(candidate);
+  return (text) => {
+    sources.set(candidate, text);
+    const program = ts.createProgram(
+      [...sources.keys(), ...entries.values()],
+      options,
+      host,
+    );
+    return compiledCandidate(program, { candidate, sources, entries });
+  };
+}
+
+function compiledCandidate(
+  program: ts.Program,
+  input: {
+    readonly candidate: string;
+    readonly sources: ReadonlyMap<string, string>;
+    readonly entries: ReadonlyMap<string, string>;
+  },
+): CandidateProgram {
+  const source = program.getSourceFile(input.candidate);
   if (!source) throw new Error("candidate-analysis-unavailable");
   const modules = new Map<string, ts.SourceFile>();
-  for (const [name, file] of entries) {
+  for (const [name, file] of input.entries) {
     const declaration = program.getSourceFile(file);
     if (!declaration) throw new Error("candidate-surface-unavailable");
     modules.set(name, declaration);
@@ -71,11 +93,26 @@ export function candidateProgram(
     program,
     source,
     modules,
-    sources: [...sources.keys()].map((name) => {
+    sources: [...input.sources.keys()].map((name) => {
       const entry = program.getSourceFile(name);
       if (!entry) throw new Error("candidate-analysis-unavailable");
       return entry;
     }),
+  };
+}
+
+function sourceReader(
+  readFile: (file: string) => string | undefined,
+): ts.CompilerHost["getSourceFile"] {
+  const declarations = new Map<string, ts.SourceFile>();
+  return (file, languageVersion) => {
+    const content = readFile(file);
+    if (content === undefined) return undefined;
+    const cached = declarations.get(file);
+    if (cached?.text === content) return cached;
+    const source = ts.createSourceFile(file, content, languageVersion, true);
+    if (file.endsWith(".d.ts")) declarations.set(file, source);
+    return source;
   };
 }
 
@@ -99,12 +136,7 @@ function trustedHost(input: {
   const host = ts.createCompilerHost(options);
   host.readFile = readFile;
   host.fileExists = (file) => readFile(file) !== undefined;
-  host.getSourceFile = (file, languageVersion) => {
-    const content = readFile(file);
-    return content === undefined
-      ? undefined
-      : ts.createSourceFile(file, content, languageVersion, true);
-  };
+  host.getSourceFile = sourceReader(readFile);
   host.resolveModuleNameLiterals = (names, containingFile) =>
     names.map(({ text: name }) => {
       const installed = entries.get(name);

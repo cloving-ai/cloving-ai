@@ -2,6 +2,7 @@ export const commit = "a".repeat(40);
 export const selection = {
   input: "ticket",
   select: "queue",
+  verify: "none",
   accept: "greptile",
   merge: "green",
   partial: "queue",
@@ -49,6 +50,32 @@ export function effects() {
     ],
     "github merge": [completed({ number: 7, commit, merged: "merged" })],
     "github close-issue": [completed({ number: 42 })],
+  };
+}
+
+export const repairVerdicts = [
+  "false-red",
+  "red-not-assertion",
+  "skipped-test",
+  "green-failed",
+];
+
+export function verificationEffects(verdicts: readonly string[]) {
+  const scenario = effects();
+  return {
+    ...scenario,
+    "claude run-turn": verdicts.map(() =>
+      completed({ summary: "Implemented.\nTicket status: complete" }),
+    ),
+    "github open-pr": verdicts.map(() =>
+      completed({ number: 7, url: "pull/7", commit }),
+    ),
+    "command run:red-green": verdicts.map((verdict) =>
+      completed({ verdict, output: `${verdict}\nFull test output.` }),
+    ),
+    "claude run-turn:review": [
+      completed({ summary: "Reviewed.", reviewVerdict: "accept" }),
+    ],
   };
 }
 

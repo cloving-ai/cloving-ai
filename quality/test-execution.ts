@@ -30,9 +30,9 @@ export function parseTestConcurrency(
   cores: number,
 ): number {
   if (value === undefined) return testConcurrency(cores);
-  if (!/^[1-8]$/.test(value))
+  if (!/^(?:[1-9]|1[0-6])$/.test(value))
     throw new Error(
-      "CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 8",
+      "CLOVING_TEST_CONCURRENCY must be a whole number from 1 to 16",
     );
   return Number(value);
 }

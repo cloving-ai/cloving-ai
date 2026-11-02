@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { record } from "../src/protocol.ts";
 import { candidateProgram as installedProgram } from "../tools/workflow-candidate-program.ts";
-import { analyzeWorkflowCandidate as installedAnalysis } from "../tools/workflow-candidate-source.ts";
+import { createWorkflowCandidateAnalyzer } from "../tools/workflow-candidate-source.ts";
 import { admitWorkflowCandidate as installedAdmission } from "../tools/admit-workflow.ts";
 import { loadWorkflowFolders as installedFolders } from "../tools/workflow-folders.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -47,12 +47,20 @@ execFileSync(
   },
 );
 
+const installedAnalysis = createWorkflowCandidateAnalyzer({
+  packageRoot: directory,
+});
+
 export function candidateProgram(source: string) {
   return installedProgram(source, { packageRoot: directory });
 }
 
 export function analyzeWorkflowCandidate(source: string) {
-  return installedAnalysis(source, { packageRoot: directory });
+  return installedAnalysis(source);
+}
+
+export function candidateAnalyzer() {
+  return createWorkflowCandidateAnalyzer({ packageRoot: directory });
 }
 
 export function admitWorkflowCandidate(

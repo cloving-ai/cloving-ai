@@ -5,7 +5,9 @@ import {
 import ts from "typescript";
 import { dirname, relative, sep } from "node:path";
 import {
+  candidateCompiler,
   candidateProgram,
+  type CandidateProgram,
   resolvedSymbol,
   type CandidatePackageOptions,
 } from "./workflow-candidate-program.ts";
@@ -25,6 +27,14 @@ import type {
   CandidateImport,
   InstalledWorkflowExports,
 } from "../src/workflow-candidate.ts";
+
+export function createWorkflowCandidateAnalyzer(
+  installed: CandidatePackageOptions = {},
+): (text: string) => ReturnType<typeof analyzeWorkflowCandidate> {
+  const compile = candidateCompiler(installed);
+  const localSources = Object.keys(installed.helpers ?? {});
+  return (text) => analyzeProgram(compile(text), localSources);
+}
 
 function exportSnapshot(
   modules: ReadonlyMap<string, ts.SourceFile>,
@@ -144,10 +154,17 @@ export function analyzeWorkflowCandidate(
   readonly analysis: CandidateAnalysis;
   readonly installedExports: InstalledWorkflowExports;
 } {
-  const { program, source, sources, modules } = candidateProgram(
-    text,
-    installed,
+  return analyzeProgram(
+    candidateProgram(text, installed),
+    Object.keys(installed.helpers ?? {}),
   );
+}
+
+function analyzeProgram(
+  compiled: CandidateProgram,
+  localSources: readonly string[],
+): ReturnType<typeof analyzeWorkflowCandidate> {
+  const { program, source, sources, modules } = compiled;
   const checker = program.getTypeChecker();
   const symbols = {
     checker,
@@ -187,7 +204,7 @@ export function analyzeWorkflowCandidate(
   );
   return {
     analysis: combineFacts({
-      localSources: Object.keys(installed.helpers ?? {}),
+      localSources,
       facts,
       expanded: helperEffectTotals({
         symbols: { ...symbols, source },
