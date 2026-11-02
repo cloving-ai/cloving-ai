@@ -16,6 +16,13 @@ Private files, backups and temporary files have mode 0600. Changes require a ser
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
+  "red-green": `Usage: cloving red-green
+
+Reads {"head":"<full commit ID>"} on standard input. Uses CLOVING_RED_GREEN to run
+the changed tests on the merge base with origin/HEAD and then on the head.
+Prints one JSON verdict. Verdicts exit with 0; invalid input and git errors exit with 1.
+Uses temporary detached worktrees. CLOVING_COMMAND_SECONDS bounds each prepare or test command.
+`,
   init: `Usage: cloving init [--harness <name or path>] [--repository <directory>]
 
 Starts the setup agent in the repository with the message "run \`cloving init-prompt\`".
@@ -141,6 +148,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
   CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, used by workflows for pull requests and issues. The watch board also uses it to read pull request status. The default is gh.
   CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that a workflow runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.
+  CLOVING_RED_GREEN                A JSON object with test and testFiles, optional prepare, assertionPattern and skipPattern for cloving red-green. The project setting is checks.redGreen.
   CLOVING_REQUIRED_CHECKS          A JSON list of required check run names before a workflow merge. Unset requires all GitHub Actions checks; a repository with no CI can merge after 60 seconds. The latest run of each name decides. The CI wait limit is 90 minutes.
   CLOVING_PRIVATE_TEXTS            A JSON list of texts that workflows do not push in a file or in a commit message. An issue-posting workflow can require the list. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
 `,
@@ -155,6 +163,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving templates list [--json]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
+       cloving red-green
        cloving <command> [--help]
 
 Commands:
@@ -164,6 +173,7 @@ Commands:
   templates list      List the workflow templates of the package.
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
+  red-green  Check assertion failure on the base and success on the head.
   init             Start the setup agent
   init-prompt Print setup instructions for an agent.
   doctor     Check repository requirements before starting or submitting work.

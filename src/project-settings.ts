@@ -1,15 +1,25 @@
-import { configuration, type Configuration } from "./configuration-schema.ts";
+import {
+  configuration,
+  type Configuration,
+  type RedGreenSettings,
+} from "./configuration-schema.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
 export type SettingValue =
-  string | number | readonly string[] | TurnProfiles | TokenPrices;
+  | string
+  | number
+  | readonly string[]
+  | TurnProfiles
+  | TokenPrices
+  | RedGreenSettings;
 
 export const settingVariables: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
   "checks.required": "CLOVING_REQUIRED_CHECKS",
+  "checks.redGreen": "CLOVING_RED_GREEN",
   "tickets.command": "CLOVING_TICKET_COMMAND",
   "tickets.nextCommand": "CLOVING_NEXT_COMMAND",
   "queue.everySeconds": "CLOVING_QUEUE_SECONDS",
