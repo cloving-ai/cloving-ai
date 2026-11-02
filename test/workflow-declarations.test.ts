@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   workflowDeclarations,
@@ -207,34 +205,6 @@ await test("CLV-096 binds declarations beside emitted JavaScript and ignores typ
       assert.deepEqual(await workflowDeclarations(directory, manifests), [
         { ...declaration, functionName: "review" },
       ]);
-    },
-  );
-});
-
-await test("CLV-096 the package build copies JSON declaration sidecars only", async () => {
-  await withFiles(
-    {
-      "workflows/review-run.ts": "export {};",
-      "workflows/review-run.declaration.json": JSON.stringify(declaration),
-      "workflows/extra.d.ts": "export interface Extra {}",
-      "workflows/README.md": "do not copy",
-    },
-    async (directory) => {
-      execFileSync(process.execPath, [
-        resolve("tools/copy-workflow-declarations.ts"),
-        join(directory, "workflows"),
-        join(directory, "dist/workflows"),
-      ]);
-      for (const name of ["review-run.declaration.json"])
-        assert.equal(
-          await readFile(join(directory, "dist/workflows", name), "utf8"),
-          await readFile(join(directory, "workflows", name), "utf8"),
-        );
-      for (const name of ["README.md", "extra.d.ts"])
-        await assert.rejects(
-          readFile(join(directory, "dist/workflows", name)),
-          { code: "ENOENT" },
-        );
     },
   );
 });

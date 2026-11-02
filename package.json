@@ -91,7 +91,6 @@
   "files": [
     "dist/src",
     "dist/tools",
-    "dist/workflows",
     "templates",
     "assets/watch-fonts/fira-code-latin-400-normal.woff2",
     "assets/watch-fonts/fira-code-latin-500-normal.woff2",
@@ -120,7 +119,7 @@
     "x64"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json && node tools/copy-workflow-declarations.ts workflows dist/workflows",
+    "build": "tsc --project tsconfig.build.json",
     "build:workflows": "node tools/compile-workflows.ts",
     "check:setup": "node tools/check-shells.ts && tsc --project tsconfig.json --noEmit",
     "check:quality": "node tools/check-quality.ts",

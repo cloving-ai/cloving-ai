@@ -79,6 +79,9 @@ function packageMetadata(value: unknown): value is PackageMetadata {
 async function installed(root: string): Promise<string> {
   await rm(join(checkout, "dist"), { recursive: true, force: true });
   command("npm", { args: ["run", "build"], cwd: checkout });
+  await assert.rejects(lstat(join(checkout, "dist/workflows")), {
+    code: "ENOENT",
+  });
   const packed: unknown = JSON.parse(
     command("npm", {
       args: ["pack", "--ignore-scripts", "--json", "--pack-destination", root],
@@ -90,6 +93,10 @@ async function installed(root: string): Promise<string> {
     String(field(file, "path")),
   );
   assert.ok(paths.length > 100);
+  assert.deepEqual(
+    paths.filter((path) => path.startsWith("dist/workflows/")),
+    [],
+  );
   assert.deepEqual(
     paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
     packedTemplateSources.concat(packedIdeaSources, packedReviewSources),
@@ -192,10 +199,9 @@ async function inventory(root: string): Promise<void> {
     assert.ok(
       (await readFile(join(product, "dist/tools", `${name}.js`))).length > 0,
     );
-  assert.ok(
-    (await readFile(join(product, "dist/workflows/develop-ticket.js"))).length >
-      0,
-  );
+  await assert.rejects(lstat(join(product, "dist/workflows")), {
+    code: "ENOENT",
+  });
   const parsed: unknown = JSON.parse(
     await readFile(join(product, "package.json"), "utf8"),
   );

@@ -28,7 +28,7 @@ process.once("exit", () => {
 });
 for (const name of ["package.json", "tsconfig.json", "tsconfig.build.json"])
   copyFileSync(join(product, name), join(directory, name));
-for (const name of ["src", "tools", "workflows", "templates"])
+for (const name of ["src", "tools", "templates"])
   cpSync(join(product, name), join(directory, name), { recursive: true });
 symlinkSync(join(product, "node_modules"), join(directory, "node_modules"));
 execFileSync(

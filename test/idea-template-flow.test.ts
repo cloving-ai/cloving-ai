@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runScenario } from "../src/testing.ts";
+import { runScenario, type ScenarioRequest } from "../src/testing.ts";
 import { effects } from "../templates/idea-to-issue/idea-to-issue/scenarios.ts";
 
 const completed = (result: string | null = null) => ({
@@ -99,4 +99,41 @@ await test("CLV-222 the default researches, corrects, posts and hands off to the
   assert.deepEqual(JSON.parse(post[1].payload), {
     draft: "cloving-prd-draft.md",
   });
+  checkPrompts(result.requests);
 });
+
+function checkPrompts(requests: readonly ScenarioRequest[]): void {
+  const research = requests[1];
+  assert.ok(research && research[0] === "effect");
+  for (const text of [
+    "Show run costs.",
+    "code",
+    "web",
+    "# <title>",
+    "Problem",
+    "Desired outcome",
+    "Concrete scenario",
+    "Scope",
+    "Non-goals",
+    "Acceptance criteria",
+    "TDD entry points",
+    "Dependencies",
+    "Sources",
+    "Do not commit",
+    "cloving-prd-draft.md",
+  ])
+    assert.ok(research[1].payload.includes(text), text);
+  const review = requests[2];
+  assert.ok(review && review[0] === "effect");
+  for (const text of [
+    "every claim",
+    "cloving-prd-draft.md",
+    "code",
+    "local paths",
+    "private names",
+    "secrets",
+    "GitHub logins",
+    "other repositories",
+  ])
+    assert.ok(review[1].payload.includes(text), text);
+}

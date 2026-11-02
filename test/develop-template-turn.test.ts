@@ -5,6 +5,7 @@ import { runScenario } from "../src/testing.ts";
 import {
   workflow,
   input,
+  effects,
   partialEffects,
 } from "./develop-template-flow-fixture.ts";
 import { withGithub, statusBody } from "./github-worker-fixture.ts";
@@ -20,6 +21,44 @@ import { withFiles } from "./quality/files-fixture.ts";
 const template = fileURLToPath(
   new URL("../templates/develop", import.meta.url),
 );
+
+await test("CLV-123 the template and fake GitHub worker close complete work after merge", () =>
+  withGithub(async (scene) => {
+    const body = "Preserve the ticket requirements.\n";
+    scene.plan({
+      scores: [],
+      issues: [
+        {
+          repository: "acme/demo",
+          number: 42,
+          state: "open",
+          body,
+          labels: ["keep", "cloving: in progress"],
+        },
+      ],
+    });
+    const scenario = await runScenario({
+      workflow,
+      exportName: "develop",
+      input,
+      effects: effects(),
+    });
+    const request = scenario.requests.at(-1);
+    assert.ok(request && request[0] === "effect");
+    assert.equal(request[1].method, "close-issue");
+    const report = await scene.perform(scene.worker(), {
+      method: request[1].method,
+      payload: JSON.parse(request[1].payload) as unknown,
+    });
+    assert.equal(report.outcome, "completed", JSON.stringify(report));
+    assert.equal(scene.state().issues[0]?.["state"], "closed");
+    assert.equal(scene.state().issues[0]?.["state_reason"], "completed");
+    assert.equal(
+      scene.state().issues[0]?.["body"],
+      statusBody(body, { partialRuns: [], completedPullRequest: 7 }),
+    );
+    assert.deepEqual(scene.state().issues[0]?.["labels"], ["keep"]);
+  }));
 
 await test("CLV-221 the default workflow requeues twice and blocks the third partial run", () =>
   withGithub(async (scene) => {
@@ -39,7 +78,11 @@ await test("CLV-221 the default workflow requeues twice and blocks the third par
     const worker = scene.worker({ privateTexts: ["private-project"] });
     const history = [];
     for (const pullRequest of [7, 8, 9]) {
-      const remaining = [`Finish after pull request ${String(pullRequest)}.`];
+      const remaining = [
+        pullRequest === 9
+          ? "Fix /private/project/file."
+          : `Finish after pull request ${String(pullRequest)}.`,
+      ];
       const scenario = await runScenario({
         workflow,
         exportName: "develop",
@@ -56,7 +99,13 @@ await test("CLV-221 the default workflow requeues twice and blocks the third par
         payload,
       });
       assert.equal(report.outcome, "completed", JSON.stringify(report));
-      history.push({ pullRequest, remaining });
+      history.push({
+        pullRequest,
+        remaining:
+          pullRequest === 9
+            ? ["Remaining work is in the private run report."]
+            : remaining,
+      });
       assert.equal(
         scene.state().issues[0]?.["body"],
         statusBody(body, { partialRuns: history }),
