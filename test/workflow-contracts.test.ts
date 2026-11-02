@@ -5,6 +5,24 @@ import {
   validateDevelopmentInput,
 } from "../src/workflow-contracts.ts";
 
+await test("CLV-200 review outcomes retain a bounded report in the run result", () => {
+  const base = {
+    kind: "handoff_requested",
+    cycleId: "review-1",
+    promotionId: "review-day",
+  };
+  const outcome = { ...base, report: "# Daily review\n\n## Facts\nAvailable." };
+  assert.deepEqual(validateCycleOutcome(outcome, base), {
+    kind: "valid",
+    value: outcome,
+  });
+  for (const report of [null, 7, "", "x".repeat(65537)])
+    assert.equal(
+      validateCycleOutcome({ ...base, report }, base).kind,
+      "invalid",
+    );
+});
+
 await test("CLV-005 development input admits only one bounded cycle identity", () => {
   assert.deepEqual(validateDevelopmentInput({ cycleId: "cycle-1" }), {
     kind: "valid",

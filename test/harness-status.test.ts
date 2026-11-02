@@ -56,7 +56,7 @@ await test("CLV-210 watch shows the harness for active, completed and restored t
     key: "key",
     started: { harness: "codex" },
     result: null,
-    lines: [],
+    activity: [],
   });
   assert.equal(Reflect.get(active, "harness"), "codex");
   assert.match(
@@ -67,7 +67,7 @@ await test("CLV-210 watch shows the harness for active, completed and restored t
     key: "key",
     started: {},
     result: { outcome: "completed", result: '{"harness":"claude"}' },
-    lines: [],
+    activity: [],
   });
   assert.equal(Reflect.get(completed, "harness"), "claude");
   const restored = statusTurns([], {

@@ -126,6 +126,10 @@ export function activityOf(line: string): WatchItem[] {
   return value["type"] === "result" ? ended(value) : [];
 }
 
+export function turnActivity(lines: readonly string[]): WatchItem[] {
+  return lines.flatMap(activityOf).slice(-activityLimit - 1);
+}
+
 function concise(items: readonly WatchItem[]): WatchItem[] {
   return items.map((item, index) => {
     const before = items[index - 1];
@@ -158,7 +162,7 @@ export interface TurnRecords {
   readonly key: string;
   readonly started: unknown;
   readonly result: unknown;
-  readonly lines: readonly string[];
+  readonly activity: readonly WatchItem[];
   readonly activeAt?: string | null;
 }
 
@@ -183,8 +187,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     outcome: records.result === null ? "in work" : outcome,
     costUsd: priceOf(report["costUsd"]),
     estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
-    activity: records.lines
-      .flatMap(activityOf)
+    activity: records.activity
       .map((item) =>
         item.kind === "result"
           ? {
@@ -283,11 +286,15 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
   const budget = record(status["budget"]);
+  const pull = pullOf(
+    { records: inputs.githubRecords, repository: inputs.repository ?? null },
+    runId,
+  );
   const ticketId = text(status["ticketId"]);
-  const issue =
-    workflowId === "develop-issue"
-      ? establishedIssue(inputs.repository ?? null, status["issueIdentity"])
-      : null;
+  const issue = establishedIssue(
+    inputs.repository ?? null,
+    status["issueIdentity"],
+  );
   return {
     runId,
     workflowId,
@@ -303,7 +310,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
     usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), {
-      workflowId,
+      pullRequest: pull.pullRequest,
       stages: stagesFor(inputs.workflowStages, workflowId),
     }),
     round: roundOf(list(record(value)["events"])),
@@ -325,16 +332,13 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ...(status["commandEffects"] === undefined
       ? {}
       : { commandEffects: shownCommands(status["commandEffects"]) }),
-    phases: phasesOf(list(record(value)["events"]), workflowId),
+    phases: phasesOf(list(record(value)["events"]), {
+      pullRequest: pull.pullRequest,
+      stages: stagesFor(inputs.workflowStages, workflowId),
+    }),
     decision: decisionOf(list(record(value)["events"])),
     feedback: list(status["feedback"]).map(feedbackOf),
-    ...pullOf(
-      {
-        records: inputs.githubRecords,
-        repository: inputs.repository ?? null,
-      },
-      runId,
-    ),
+    ...pull,
   };
 }
 

@@ -245,7 +245,7 @@ await test("CLV-128 unmatched, untyped and malformed relevant events select Othe
   assert.equal(model.runs[0]?.currentStep.name, "Ask");
 });
 
-await test("CLV-128 unstaged boards preserve their legacy columns and placement", () => {
+await test("CLV-128 unstaged workflows without pull requests share generic columns and placement", () => {
   const events = [
     boardEvent("github-prepare"),
     boardEvent("github-merge", { at: "2026-10-14T11:00:00Z" }),
@@ -255,10 +255,10 @@ await test("CLV-128 unstaged boards preserve their legacy columns and placement"
     boardRun("issue", { events }),
     boardRun("ticket", { workflowId: "develop-ticket", events }),
   ];
-  const supplied = boardModel(runs);
+  const supplied = boardModel(runs, { workflowStages: {} });
   assert.equal(
     supplied.runs.find((run) => run.runId === "issue")?.currentStep.name,
-    "Work tree",
+    "Your review",
   );
   assert.equal(
     supplied.runs.find((run) => run.runId === "ticket")?.currentStep.name,

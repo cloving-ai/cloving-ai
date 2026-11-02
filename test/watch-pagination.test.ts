@@ -76,7 +76,7 @@ await test("CLV-091 older completion candidates are not read without a visible b
   for (const shown of [
     [],
     [{ ...stopped, outcome: { kind: "handoff_requested" } }],
-    [{ ...stopped, workflowId: "develop-ticket" }],
+    [{ ...stopped, issueIdentity: null }],
     [{ ...stopped, latestAt: "2020-01-01T00:00:00Z" }],
     [
       ...hidden,

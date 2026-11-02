@@ -47,7 +47,7 @@ await test("CLV-093 observations decorate retained unresolved cards without chan
   assert.equal(JSON.stringify(model), before);
 });
 
-await test("CLV-093 excluded workflows, outcomes, terminal states, missing PRs and retention limits cause no read", () => {
+await test("CLV-093 excluded outcomes, terminal states, missing PRs and retention limits cause no read", () => {
   const options = { state: "completed", outcome: "blocked" };
   const runs = [
     boardRun("failed", { ...options, state: "failed" }),

@@ -5,7 +5,12 @@ import { once } from "node:events";
 import { test } from "node:test";
 import { boardLayout } from "../src/cli/watch-board-view.ts";
 import { pageDocument } from "../src/cli/watch-page.ts";
-import { boardEvent, boardModel, boardRun } from "./watch-board-fixture.ts";
+import {
+  boardEvent,
+  boardModel,
+  boardRun,
+  pullStages,
+} from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 import { scrollScenario } from "./watch-scroll-scenario.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -22,7 +27,9 @@ function overflowingBoard() {
       outcome: "handoff_requested",
     }),
   );
-  return boardModel([...active, ...done]);
+  return boardModel([...active, ...done], {
+    workflowStages: { "develop-issue": pullStages.slice(0, 4) },
+  });
 }
 
 async function watchFixture(shown = overflowingBoard()) {
