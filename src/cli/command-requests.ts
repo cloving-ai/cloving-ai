@@ -4,7 +4,7 @@ import {
   type ServiceError,
   type ServiceRequest,
 } from "../protocol.ts";
-import { send } from "./client.ts";
+import { send, type ClientRequest } from "./client.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
 import { statusJson } from "./render.ts";
 
@@ -34,7 +34,7 @@ export function readCommandRequest(command: ReadCommand): ServiceRequest {
 
 export async function readCommandReply(
   runtimeDirectory: string,
-  request: ServiceRequest,
+  request: ClientRequest,
 ): Promise<Reply> {
   const reply = await send(runtimeDirectory, request);
   return request.operation === "status"

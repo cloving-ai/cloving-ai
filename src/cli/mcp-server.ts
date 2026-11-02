@@ -43,7 +43,7 @@ async function* messages(): AsyncGenerator<string | undefined> {
 }
 
 function error(
-  id: unknown,
+  id: string | number | null,
   error: { readonly code: number; readonly message: string },
 ): Fields {
   return { jsonrpc: "2.0", id, error };
@@ -55,10 +55,14 @@ function identifier(value: unknown): string | number | null {
 
 type Message =
   | { readonly kind: "error"; readonly reply: Fields }
-  | { readonly kind: "request"; readonly request: Fields };
+  | {
+      readonly kind: "request";
+      readonly request: Fields;
+      readonly id: string | number | null;
+    };
 
 function invalidMessage(
-  id: unknown,
+  id: string | number | null,
   failure: { readonly code: number; readonly message: string },
 ): Message {
   return { kind: "error", reply: error(id, failure) };
@@ -85,7 +89,7 @@ function parse(line: string | undefined): Message {
       code: -32600,
       message: "Invalid request ID.",
     });
-  return { kind: "request", request };
+  return { kind: "request", request, id };
 }
 
 function initialize(parameters: Fields): Fields {
@@ -102,10 +106,13 @@ function initialize(parameters: Fields): Fields {
 
 async function response(
   request: Fields,
-  runtimeDirectory: string,
-): Promise<Fields | undefined> {
-  if (!Object.hasOwn(request, "id")) return undefined;
-  const id = request["id"];
+  context: {
+    readonly id: string | number;
+    readonly runtimeDirectory: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<Fields> {
+  const { id, runtimeDirectory, signal } = context;
   const parameters =
     request["params"] === undefined ? {} : record(request["params"]);
   if (parameters === undefined)
@@ -122,18 +129,14 @@ async function response(
         code: -32602,
         message: "Unknown tool or invalid arguments.",
       });
-    result = await callMcpTool(runtimeDirectory, command);
+    result = await callMcpTool(runtimeDirectory, { ...command, signal });
   } else return error(id, { code: -32601, message: "Method not found." });
   return { jsonrpc: "2.0", id, result };
 }
 
-interface Call {
-  cancelled: boolean;
-}
-
 interface Session {
   readonly runtimeDirectory: string;
-  readonly calls: Map<unknown, Call>;
+  readonly calls: Map<string | number, AbortController>;
   readonly pending: Set<Promise<void>>;
 }
 
@@ -146,20 +149,25 @@ function dispatch(message: Message, session: Session): void {
     write(message.reply);
     return;
   }
-  const { request } = message;
-  if (!Object.hasOwn(request, "id")) {
-    if (request["method"] === "notifications/cancelled") {
-      const call = session.calls.get(record(request["params"])?.["requestId"]);
-      if (call !== undefined) call.cancelled = true;
-    }
+  const { request, id } = message;
+  if (id === null) {
+    if (request["method"] !== "notifications/cancelled") return;
+    const requestId = identifier(record(request["params"])?.["requestId"]);
+    if (requestId === null) return;
+    const call = session.calls.get(requestId);
+    if (call === undefined) return;
+    call.abort();
     return;
   }
-  const id = request["id"];
-  const call: Call = { cancelled: false };
+  const call = new AbortController();
   session.calls.set(id, call);
-  const pending = response(request, session.runtimeDirectory)
+  const pending = response(request, {
+    id,
+    runtimeDirectory: session.runtimeDirectory,
+    signal: call.signal,
+  })
     .then((reply) => {
-      if (!call.cancelled && reply !== undefined) write(reply);
+      if (!call.signal.aborted) write(reply);
     })
     .finally(() => {
       session.calls.delete(id);

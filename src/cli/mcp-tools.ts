@@ -1,5 +1,6 @@
 import { isRecordKey } from "../authority/commands.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
+import type { ClientRequest } from "./client.ts";
 import {
   commandJson,
   readCommandReply,
@@ -89,7 +90,7 @@ export function mcpToolRequest(parameters: Fields): ServiceRequest | undefined {
 
 export async function callMcpTool(
   runtimeDirectory: string,
-  request: ServiceRequest,
+  request: ClientRequest,
 ): Promise<Fields> {
   const reply = await readCommandReply(runtimeDirectory, request);
   const structuredContent = commandJson(reply);
