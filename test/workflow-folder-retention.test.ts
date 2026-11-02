@@ -10,13 +10,12 @@ import { withConsumer } from "./world-host-fixture.ts";
 import { workflowBundleLoader } from "../tools/self-host-workflows.ts";
 
 const workflow = `
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { prompt } from "./develop/prompts.ts";
-export async function localDevelop(input, continuation) {
+export async function localDevelop() {
   "use workflow";
-  if (continuation !== undefined) return prompt();
-  await decisionGate({ gateId: "bundle-question", kind: "question", prompt: "Continue this bundle?" });
-  return { kind: "waiting_for_decision" };
+  await waitForDecision({ gateId: "bundle-question", kind: "question", prompt: "Continue this bundle?" });
+  return prompt();
 }`;
 
 const prelude = `${queuePrelude}${workflowBundleLoader()}
@@ -30,7 +29,7 @@ const admitted = await submitted("earlier", { workflowId: "local-helper", source
 assert.equal(admitted.kind, "run-admitted", JSON.stringify(admitted));
 writeFileSync("waiting-run", admitted.runId);
 await until(async () => (await shown(admitted.runId)).state === "waiting_gate");
-await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+await until(async () => { const world = await getWorld(); const runs = (await world.runs.list({})).data; return (await Promise.all(runs.map(async run => (await world.events.list({ runId: run.runId, resolveData: "none" })).data.some(event => event.eventType === "hook_created")))).every(Boolean); });
 await halt("waiting-helper");
 `;
 

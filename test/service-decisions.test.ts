@@ -319,7 +319,7 @@ await test("CLV-008 an answered gate does not expire later", () =>
     await service.close();
   }));
 
-await test("CLV-148 compiled questions reject stale bindings, preserve duplicate receipts and admit one continuation", () =>
+await test("CLV-148 compiled questions reject stale bindings, preserve duplicate receipts and resume the same call", () =>
   withConsumer(questionSource, async (consumer) => {
     const result = await consumer.run(`${questionSetup}
 const codes = [];
@@ -329,7 +329,7 @@ for (const change of [{ expectedRevision: 2 }, { generation: 2 }, { subjectDiges
 const first = await answer("earlier");
 const repeated = await answer("earlier");
 codes.push((await answer("later")).code);
-await until(async () => (await tagged()).length === 2);
+await until(async () => (await stateOf(runId)) === "completed");
 await until(async () => (await tagged()).every((run) => run.status === "completed"));
 codes.push((await answer("earlier", { commandId: "new-answer" })).code);
 const state = await ports.state();
@@ -351,7 +351,7 @@ await finished(runId);
       recorded: "decision-recorded",
       sameReceipt: true,
       replayed: true,
-      continuations: 1,
+      continuations: 0,
       answerBound: true,
       promptBound: true,
     });

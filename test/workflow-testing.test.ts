@@ -5,7 +5,7 @@ import { resolve, join } from "node:path";
 import { fakeStepBridge, runScenario } from "../src/testing.ts";
 import {
   protectedEffect,
-  decisionGate,
+  waitForDecision,
   handoff,
   waitForRun,
 } from "../src/workflows.ts";
@@ -119,13 +119,13 @@ await test("CLV-224 fake bridges restore prior descriptors and refuse an active 
       assert.throws(() => fakeStepBridge({}), {
         message: "workflow-testing-host-active",
       });
-      assert.deepEqual(
-        await decisionGate({
+      await assert.rejects(
+        waitForDecision({
           gateId: "gate",
           kind: "question",
           prompt: "test",
         }),
-        { kind: "unavailable", reason: "no-scenario-result" },
+        { message: "no-scenario-result" },
       );
       assert.equal(
         await handoff({ workflowId: "other", input: {} }),
@@ -243,15 +243,15 @@ export async function logged() {
     },
   ));
 
-await test("CLV-224 scenarios support decisions, gates, handoffs and run waits", () => {
+await test("CLV-224 scenarios support decisions, handoffs and run waits with one argument", () => {
   const helpers = pathToFileURL(resolve("src/workflows.ts")).href;
   return withFiles(
     {
-      "steps.mjs": `import { decisionGate, handoff, waitForRun } from ${JSON.stringify(helpers)};
-export async function sample(input, decision) {
-  const gate = await decisionGate({ gateId: input, kind: "approval", prompt: "review" });
+      "steps.mjs": `import { waitForDecision, handoff, waitForRun } from ${JSON.stringify(helpers)};
+export async function sample(input) {
+  const decision = await waitForDecision({ gateId: input, kind: "approval", prompt: "review" });
   const run = await handoff({ workflowId: "other", input: {} });
-  return { gate, run, waited: await waitForRun({ runId: run, maximumWaitSeconds: 10 }), decision };
+  return { run, waited: await waitForRun({ runId: run, maximumWaitSeconds: 10 }), decision, argumentCount: arguments.length };
 }`,
     },
     async (root) => {
@@ -259,20 +259,19 @@ export async function sample(input, decision) {
         workflow: pathToFileURL(join(root, "steps.mjs")).href,
         exportName: "sample",
         input: "gate",
-        decision: "approved",
-        gate: { kind: "opened", decisionId: "decision" },
+        decisions: [{ decision: "approved", answer: null }],
         effects: { handoff: [{ ...completed, result: "run" }] },
         waits: [{ kind: "completed", reason: null, promotionId: null }],
       });
       assert.deepEqual(result.outcome, {
-        gate: { kind: "opened", decisionId: "decision" },
         run: "run",
         waited: { kind: "completed", reason: null, promotionId: null },
-        decision: "approved",
+        decision: { decision: "approved", answer: null },
+        argumentCount: 1,
       });
       assert.deepEqual(
         result.requests.map(([kind]) => kind),
-        ["gate", "handoff", "waitForRun"],
+        ["waitForDecision", "handoff", "waitForRun"],
       );
     },
   );

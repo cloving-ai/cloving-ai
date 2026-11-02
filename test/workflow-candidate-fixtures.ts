@@ -18,13 +18,13 @@ export const installedWorkflowExports: InstalledWorkflowExports = {
   "cloving/workflows": [
     "loadCycle",
     "protectedEffect",
-    "decisionGate",
+    "waitForDecision",
     "ProtectedRequest",
     "ProtectedResult",
   ],
   "cloving/workflows/steps/load-cycle": ["loadCycle", "CycleLoad"],
   "cloving/workflows/steps/protected-effect": ["protectedEffect"],
-  "cloving/workflows/steps/decision-gate": ["decisionGate"],
+  "cloving/workflows/steps/wait-for-decision": ["waitForDecision"],
 };
 
 export const combinedCandidateSource = `

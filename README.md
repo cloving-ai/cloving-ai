@@ -584,43 +584,25 @@ The private setting `workflows.folder` replaces the user folder with an absolute
 A workflow is a TypeScript file in the form of `templates/develop/develop.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
-- The first argument is the input of the run. The declared resolver provides `cycleId`, `repository` and the submitted fields under `input`; a ticket field becomes `{ id, text }`. With `decisionGate`, the host calls the function again with the decision (`gateId`, `decision` and `answer`) as the second argument. The function must examine that argument before it asks for an effect. With `waitForDecision`, the decision returns to the same call.
-- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `decisionGate` from `cloving/workflows/steps/decision-gate`, `waitForDecision` from `cloving/workflows/steps/wait-for-decision`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
-- `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `decisionGate` opens a decision for a person.
+- The only argument is the input of the run. The declared resolver provides `cycleId`, `repository` and the submitted fields under `input`; a ticket field becomes `{ id, text }`. With `waitForDecision`, the decision returns to the same call.
+- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `waitForDecision` from `cloving/workflows/steps/wait-for-decision`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
+- `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `waitForDecision` opens a decision for a person and waits for the result.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
 For `handoff_requested`, the daemon retains the workflow's `promotionId` in the completion event. An optional bounded `reason` records a handoff refusal while preserving the promotion. `cloving status <runId>` shows the promotion as `Promotion:` and the reason beside the outcome; JSON status includes `run.outcome.promotionId` and `run.outcome.reason`. Watch retains the promotion in the run model and completed-run details. This identifier is an opaque reference and grants no authority.
 
 ```ts
 import type { CycleOutcome } from "cloving/workflows";
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
-export async function developTicket(
-  input: {
-    readonly cycleId: string;
-    readonly input: { readonly ticket: { readonly id: string; readonly text: string } };
-  },
-  decision?: {
-    readonly gateId: string;
-    readonly decision: string;
-    readonly answer: string | null;
-  },
-): Promise<CycleOutcome> {
+export async function developTicket(input: {
+  readonly cycleId: string;
+  readonly input: {
+    readonly ticket: { readonly id: string; readonly text: string };
+  };
+}): Promise<CycleOutcome> {
   "use workflow";
-  if (decision?.decision === "approved")
-    return {
-      kind: "handoff_requested",
-      cycleId: input.cycleId,
-      promotionId: `cloving-${input.cycleId}`,
-    };
-  if (decision !== undefined)
-    return {
-      kind: "blocked",
-      cycleId: input.cycleId,
-      reason: "The operator denied the work.",
-      evidenceId: decision.gateId,
-    };
   const turn = await protectedEffect({
     scope: { phase: "implement", operation: "claude-turn", round: 1 },
     capability: "claude",
@@ -636,29 +618,29 @@ export async function developTicket(
       reason: "The Claude turn did not complete.",
       evidenceId: "claude-turn",
     };
-  const gate = await decisionGate({
+  const decision = await waitForDecision({
     gateId: "review-1",
     kind: "approval",
     prompt: "Review the work of the Claude worker.",
   });
-  if (gate.kind !== "opened")
+  if (decision.decision !== "approved")
     return {
       kind: "blocked",
       cycleId: input.cycleId,
-      reason: "The review gate did not open.",
+      reason: "The operator did not approve the work.",
       evidenceId: "review-1",
     };
   return {
-    kind: "waiting_for_decision",
+    kind: "handoff_requested",
     cycleId: input.cycleId,
-    decisionId: gate.decisionId,
+    promotionId: `cloving-${input.cycleId}`,
   };
 }
 ```
 
 In this example, an approval completes the run and a denial ends it. A copy of `templates/develop/develop.ts` configured for person review and local-branch delivery also supports repair rounds after a denial with feedback.
 
-New workflows can await a decision in the same call:
+A workflow can also wait for a decision without requesting an effect:
 
 ```ts
 import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
@@ -678,7 +660,7 @@ export async function review(input: { cycleId: string }) {
 }
 ```
 
-`waitForDecision` accepts the same request as `decisionGate` and returns `{ decision, answer }`. The decision is `approved`, `denied`, `answered` or `expired`. An optional `expiresAt` resumes the wait with `expired` and `answer: null`. The SDK hook survives daemon restarts and replay. Gate IDs belong to a run, so different runs can use the same gate ID. The existing questions, decision commands and binding values apply; dropping the run cancels the wait. `waitForDecision` is also exported by `cloving/workflows`.
+`waitForDecision` accepts `{ gateId, kind, prompt, expiresAt? }` and returns `{ decision, answer }`. The decision is `approved`, `denied`, `answered` or `expired`. An optional `expiresAt` resumes the wait with `expired` and `answer: null`. The SDK hook survives daemon restarts and replay. Gate IDs belong to a run, so different runs can use the same gate ID. The existing questions, decision commands and binding values apply; dropping the run cancels the wait. `waitForDecision` is also exported by `cloving/workflows`.
 
 Use `sleep({ seconds })` inside a workflow to pause between short outside-state checks. Whole seconds from 1 through 86400 are accepted; other requests reject with `invalid-sleep-seconds` before any wait. Import it from `cloving/workflows` or `cloving/workflows/steps/sleep`. It uses the SDK workflow timer and consumes no protected effect units or slots.
 
@@ -860,7 +842,7 @@ await test("develop uses the fake worker result", async () => {
 });
 ```
 
-Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `gate` supplies a decision-gate result, `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order, and `decision` supplies the workflow's second argument. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect or gate results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
+Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `effects.handoff` supplies handoff results, `waits` supplies run-wait outcomes, and `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
 
 There are no built-in registrations. Workflow IDs are available to project and user declarations.
 
@@ -1098,7 +1080,7 @@ npm pack --ignore-scripts
 
 After a merge or branch update changes `package.json` or `package-lock.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks. Copied `node_modules` can still contain the previous versions; the developer gate rejects a mismatch with the lockfile.
 
-`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and workflow templates; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `decisionGate`, `waitForDecision`, `handoff`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
+`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and workflow templates; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `waitForDecision`, `handoff`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 
