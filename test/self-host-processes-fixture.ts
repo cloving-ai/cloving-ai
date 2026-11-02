@@ -5,6 +5,7 @@ import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
+import type { HostProcesses } from "../tools/self-host-processes.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 
@@ -78,6 +79,49 @@ interface StalledCheck {
   readonly signal: string;
 }
 
+export const networkDeadlineMilliseconds = 1000;
+
+function shortNetworkDeadline(): string {
+  return `import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import { promisify } from "node:util";
+const execute = promisify(childProcess.execFile);
+function controlled() { throw new Error("unexpected-unpromisified-git"); }
+Object.defineProperty(controlled, promisify.custom, {
+  value: (file, argumentsList, options) => {
+    const command = argumentsList[2];
+    if (command === "fetch" || command === "remote") {
+      assert.equal(options.timeout, 30000);
+      return execute(file, argumentsList, { ...options, timeout: ${String(testMilliseconds(networkDeadlineMilliseconds))} });
+    }
+    if (command === "merge") assert.equal(options.timeout, undefined);
+    return execute(file, argumentsList, options);
+  },
+});
+childProcess.execFile = controlled;
+syncBuiltinESMExports();
+`;
+}
+
+export async function hostedWithDeadline(
+  root: string,
+  settings: HostProcesses,
+) {
+  const entry = join(root, "deadline-host.mjs");
+  await writeFile(
+    entry,
+    `${shortNetworkDeadline()}
+import { hostedPrograms } from ${JSON.stringify(pathToFileURL(resolve("tools/self-host-processes.ts")).href)};
+process.exitCode = await hostedPrograms(${JSON.stringify(settings)});`,
+  );
+  return spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    timeout: testMilliseconds(10_000),
+    killSignal: "SIGKILL",
+  });
+}
+
 export async function stalledCheck(root: string, options: StalledCheck) {
   const timeFactor = parseCheckTimeFactor(
     process.env["CLOVING_CHECK_TIME_FACTOR"],
@@ -96,7 +140,8 @@ export async function stalledCheck(root: string, options: StalledCheck) {
   const entry = join(root, "host.mjs");
   await writeFile(
     entry,
-    `import { hostedPrograms } from ${JSON.stringify(pathToFileURL(resolve("tools/self-host-processes.ts")).href)};
+    `${options.signal === "deadline" ? shortNetworkDeadline() : ""}
+import { hostedPrograms } from ${JSON.stringify(pathToFileURL(resolve("tools/self-host-processes.ts")).href)};
 const running = hostedPrograms(${JSON.stringify({ ...paths, repository: options.repository, runtime: join(root, "host/run"), directory: join(root, "host"), watchPort: "3663", phoneRelay: "on", updateMilliseconds: 10 })});
 ${
   options.command === "merge"

@@ -36,6 +36,7 @@ import {
 import assert from "node:assert/strict";
 import {
   installPacked,
+  packCheckoutCopy,
   packedCommand as command,
 } from "./packed-install-fixture.ts";
 import {
@@ -46,11 +47,12 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { field, items } from "./self-host-fixture.ts";
+import { field } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { reviewStages } from "./watch-board-fixture.ts";
 import { record } from "../src/protocol.ts";
@@ -76,22 +78,18 @@ function packageMetadata(value: unknown): value is PackageMetadata {
   );
 }
 
-async function installed(root: string): Promise<string> {
-  await rm(join(checkout, "dist"), { recursive: true, force: true });
-  command("npm", { args: ["run", "build"], cwd: checkout });
-  await assert.rejects(lstat(join(checkout, "dist/workflows")), {
-    code: "ENOENT",
+function checkoutBuild(): readonly number[] {
+  const built = statSync(join(checkout, "dist/src/workflow-declaration.d.ts"), {
+    throwIfNoEntry: false,
   });
-  const packed: unknown = JSON.parse(
-    command("npm", {
-      args: ["pack", "--ignore-scripts", "--json", "--pack-destination", root],
-      cwd: checkout,
-    }),
-  );
-  const archive = items(packed)[0];
-  const paths = items(field(archive, "files")).map((file) =>
-    String(field(file, "path")),
-  );
+  return built === undefined ? [] : [built.ino, built.mtimeMs];
+}
+
+async function installed(root: string): Promise<string> {
+  const before = checkoutBuild();
+  const archive = await packCheckoutCopy(checkout, root);
+  assert.deepEqual(checkoutBuild(), before);
+  const { paths } = archive;
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.startsWith("dist/workflows/")),
@@ -108,7 +106,7 @@ async function installed(root: string): Promise<string> {
     [],
   );
   await installPacked(root, {
-    archive: join(root, String(field(archive, "filename"))),
+    archive: join(root, archive.filename),
     checkout,
   });
   command(process.execPath, {

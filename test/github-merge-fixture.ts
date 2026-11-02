@@ -1,5 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
+import timers from "node:timers/promises";
 import { git, journalKey } from "./claude-worker-fixture.ts";
 import {
   committed,
@@ -116,4 +118,52 @@ export function matchesCall(parts: readonly string[], call: string): boolean {
     (call === "api GET check-runs" &&
       parts.some((part) => part.includes("/check-runs")))
   );
+}
+
+export async function withRetryClock(
+  scene: GithubScene,
+  options: {
+    readonly pollMilliseconds: number;
+    readonly exercise: (clock: {
+      readonly gh: readonly string[];
+      readonly waits: readonly number[];
+    }) => Promise<void>;
+  },
+): Promise<void> {
+  const clock = join(scene.directory, "retry-clock");
+  const script = join(scene.directory, "clocked-gh.mjs");
+  let now = 0;
+  const waits: number[] = [];
+  writeFileSync(clock, String(now));
+  writeFileSync(
+    script,
+    `import { readFileSync as readClock } from "node:fs";
+Date.now = () => Number(readClock(${JSON.stringify(clock)}, "utf8"));
+${fakeGh}`,
+  );
+  const sleep = timers.setTimeout;
+  Object.defineProperty(timers, "setTimeout", {
+    configurable: true,
+    value: (milliseconds = 1) => {
+      if (
+        milliseconds !== options.pollMilliseconds &&
+        milliseconds !== options.pollMilliseconds * 2
+      )
+        return sleep(milliseconds);
+      waits.push(milliseconds);
+      now += milliseconds;
+      writeFileSync(clock, String(now));
+      return Promise.resolve();
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    await options.exercise({
+      gh: ["env", "-u", "NODE_V8_COVERAGE", process.execPath, script],
+      waits,
+    });
+  } finally {
+    timers.setTimeout = sleep;
+    syncBuiltinESMExports();
+  }
 }
