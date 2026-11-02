@@ -4,16 +4,12 @@ import { test } from "node:test";
 import {
   job,
   metadata,
+  prepareShellAttempt,
   releaseWorkflow,
   script,
   steps,
 } from "./release-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
-
-const localPullRequest =
-  "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository";
-const macosRunner = `\${{ ${localPullRequest} && fromJSON('["self-hosted","macOS","ARM64","cloving-ci"]') || 'macos-15' }}`;
-const linuxRunner = `\${{ ${localPullRequest} && fromJSON('["self-hosted","Linux","ARM64","cloving-ci"]') || 'ubuntu-24.04' }}`;
 
 const nodeVersions = {
   quality_macos: "26.9.0",
@@ -30,27 +26,9 @@ await test("CI cancels the older runs of a branch or a pull request, and keeps e
   });
 });
 
-await test("CLV-175 CI uses 12 local workers and keeps hosted worker counts", async () => {
+await test("CI runs every job of every event on hosted runners", async () => {
   const workflow = await releaseWorkflow();
-  for (const [name, hostedWorkers] of [
-    ["quality_macos", "3"],
-    ["quality_linux_node", "4"],
-  ] as const)
-    assert.equal(
-      job(workflow, name).env?.["CLOVING_TEST_CONCURRENCY"],
-      `\${{ ${localPullRequest} && '12' || '${hostedWorkers}' }}`,
-    );
-});
-
-await test("CI keeps coverage, required checks and release on hosted runners", async () => {
-  const workflow = await releaseWorkflow();
-  for (const name of [
-    "coverage",
-    "quality",
-    "quality_linux",
-    "publish",
-  ] as const) {
-    const definition = job(workflow, name);
+  for (const [name, definition] of Object.entries(workflow.jobs)) {
     assert.doesNotMatch(
       JSON.stringify(definition),
       /self-hosted|cloving-ci|head\.repo/,
@@ -80,8 +58,12 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
   assert.equal(job(workflow, "quality_macos").if, undefined);
   assert.equal(job(workflow, "quality_macos").permissions, undefined);
   for (const [name, runner, architecture] of [
-    ["quality_macos", macosRunner, "arm64"],
-    ["quality_linux_node", linuxRunner, "${{ env.CLOVING_CI_ARCHITECTURE }}"],
+    ["quality_macos", "macos-15", "arm64"],
+    [
+      "quality_linux_node",
+      "ubuntu-24.04",
+      "${{ env.CLOVING_CI_ARCHITECTURE }}",
+    ],
     ["publish", "macos-15", "arm64"],
   ] as const) {
     assert.equal(job(workflow, name)["runs-on"], runner);
@@ -146,17 +128,17 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 30);
   assert.deepEqual(job(workflow, "quality_linux_node").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: `\${{ ${localPullRequest} && '12' || '4' }}`,
+    CLOVING_TEST_CONCURRENCY: "4",
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
-    CLOVING_CI_ARCHITECTURE: `\${{ ${localPullRequest} && 'arm64' || 'x64' }}`,
+    CLOVING_CI_ARCHITECTURE: "x64",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
   assert.equal(job(workflow, "quality_macos")["timeout-minutes"], 30);
   assert.deepEqual(job(workflow, "quality_macos").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: `\${{ ${localPullRequest} && '12' || '3' }}`,
+    CLOVING_TEST_CONCURRENCY: "3",
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
-    CLOVING_CI_MACOS_VERSION: `\${{ ${localPullRequest} && '*' || '15.*' }}`,
+    CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
   const commands = steps(workflow, "quality_macos")
@@ -306,6 +288,31 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     (step) => step.id === "github-release",
   );
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
+});
+
+await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
+  const workflow = await releaseWorkflow();
+  const linuxSteps = steps(workflow, "quality_linux_node");
+  const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
+  const setup = linuxSteps.findIndex(
+    (step) => step.run === "npm run check:setup",
+  );
+  assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
+  for (const [zshStatus, updateStatus, installStatus, status, output] of [
+    ["0", "0", "0", 0, ""],
+    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
+    ["1", "9", "0", 9, "update --error-on=any\n"],
+    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
+  ] as const) {
+    const result = prepareShellAttempt(workflow, {
+      ZSH_STATUS: zshStatus,
+      UPDATE_STATUS: updateStatus,
+      INSTALL_STATUS: installStatus,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(result.stdout, output);
+  }
 });
 
 await test("CLV-266 coverage joins all nine shard artifacts before the required checks pass", async () => {

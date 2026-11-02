@@ -1223,7 +1223,6 @@
     "test/release-ci.test.ts": "test",
     "test/release-fixture.ts": "test",
     "test/release-schema-fixture.ts": "test",
-    "test/release-shells.test.ts": "test",
     "test/release.test.ts": "test",
     "test/report-ci-edge.test.ts": "test",
     "test/report-ci-fixture.ts": "test",
