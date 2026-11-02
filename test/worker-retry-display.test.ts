@@ -82,7 +82,7 @@ await test("CLV-229 watch journal reads completed attempts but shows no kinds du
       phase: "waiting",
     },
     result: { outcome: "completed", result: JSON.stringify({ attempts }) },
-    lines: [],
+    activity: [],
   };
   assert.deepEqual(turnOf(records).attempts, attempts);
   const waiting = turnOf({ ...records, result: null });

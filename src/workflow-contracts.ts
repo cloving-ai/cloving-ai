@@ -23,6 +23,7 @@ export type CycleOutcome =
       readonly ticketStatus?: "complete" | "partial";
       readonly issueUpdate?: "failed";
       readonly reason?: string;
+      readonly report?: string;
     };
 
 export type Validation<Value> =
@@ -86,7 +87,7 @@ const outcomes: Readonly<
   },
   handoff_requested: {
     keys: ["cycleId", "kind", "promotionId"],
-    optional: ["ticketStatus", "issueUpdate", "reason"],
+    optional: ["ticketStatus", "issueUpdate", "reason", "report"],
     parse: (fields) => {
       const cycleId = textField(fields, {
         key: "cycleId",
@@ -100,6 +101,8 @@ const outcomes: Readonly<
       const ticketStatus = fields["ticketStatus"];
       const issueUpdate = fields["issueUpdate"];
       const reason = fields["reason"];
+      const report = fields["report"];
+      if (!validReport(report)) return null;
       if (issueUpdate !== undefined && issueUpdate !== "failed") return null;
       if (ticketStatus !== undefined && !isTicketStatus(ticketStatus))
         return null;
@@ -109,7 +112,7 @@ const outcomes: Readonly<
         cycleId,
         promotionId,
         ...Object.fromEntries(
-          Object.entries({ issueUpdate, ticketStatus, reason }).filter(
+          Object.entries({ issueUpdate, ticketStatus, reason, report }).filter(
             ([, value]) => value !== undefined,
           ),
         ),
@@ -117,6 +120,13 @@ const outcomes: Readonly<
     },
   },
 };
+
+function validReport(report: unknown): report is string | undefined {
+  return (
+    report === undefined ||
+    (typeof report === "string" && report.length > 0 && report.length <= 65536)
+  );
+}
 
 export function validateDevelopmentInput(
   value: unknown,

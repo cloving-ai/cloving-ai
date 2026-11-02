@@ -19,9 +19,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { watchReader, type WatchReader } from "./watch-reads.ts";
 import { ciRerunNotices } from "./github-ci-progress.ts";
-import { turnOf, watchModel, type GithubRecords } from "./watch-model.ts";
+import {
+  turnActivity,
+  turnOf,
+  watchModel,
+  type GithubRecords,
+} from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
-import type { WatchModel, WatchTurn } from "./watch-render.ts";
+import type { WatchItem, WatchModel, WatchTurn } from "./watch-render.ts";
 import { watchStream, type WatchStream } from "./watch-stream.ts";
 
 export const defaultWatchPort = 3663;
@@ -49,7 +54,10 @@ interface Watch {
   readonly settings: WatchSettings;
   readonly observer: PrObserver;
   readonly reader: WatchReader;
-  readonly streams: Map<string, { size: number; lines: readonly string[] }>;
+  readonly streams: Map<
+    string,
+    { size: number; activity: readonly WatchItem[] }
+  >;
   readonly github: Map<string, GithubRecords>;
 }
 
@@ -83,11 +91,11 @@ function parsed(text: string): unknown {
 
 interface Stream {
   readonly size: number;
-  readonly lines: readonly string[];
+  readonly activity: readonly WatchItem[];
   readonly activeAt: string | null;
 }
 
-const noStream: Stream = { size: 0, lines: [], activeAt: null };
+const noStream: Stream = { size: 0, activity: [], activeAt: null };
 
 async function streamed(watch: Watch, file: string): Promise<Stream> {
   const found = await stat(file).catch(() => null);
@@ -95,9 +103,11 @@ async function streamed(watch: Watch, file: string): Promise<Stream> {
   const known = watch.streams.get(file);
   const activeAt = found.mtime.toISOString();
   if (known?.size === found.size) return { ...known, activeAt };
-  const lines = (await readFile(file, "utf8").catch(() => "")).split("\n");
-  watch.streams.set(file, { size: found.size, lines });
-  return { size: found.size, lines, activeAt };
+  const activity = turnActivity(
+    (await readFile(file, "utf8").catch(() => "")).split("\n"),
+  );
+  watch.streams.set(file, { size: found.size, activity });
+  return { size: found.size, activity, activeAt };
 }
 
 async function stored(file: string): Promise<unknown> {
@@ -116,7 +126,7 @@ async function turns(watch: Watch): Promise<WatchTurn[]> {
         key,
         started,
         result: await stored(join(journal, key, "result.json")),
-        lines: stream.lines,
+        activity: stream.activity,
         activeAt: stream.activeAt,
       }),
     );

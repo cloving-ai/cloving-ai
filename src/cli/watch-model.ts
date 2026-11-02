@@ -126,6 +126,10 @@ export function activityOf(line: string): WatchItem[] {
   return value["type"] === "result" ? ended(value) : [];
 }
 
+export function turnActivity(lines: readonly string[]): WatchItem[] {
+  return lines.flatMap(activityOf).slice(-activityLimit - 1);
+}
+
 function concise(items: readonly WatchItem[]): WatchItem[] {
   return items.map((item, index) => {
     const before = items[index - 1];
@@ -158,7 +162,7 @@ export interface TurnRecords {
   readonly key: string;
   readonly started: unknown;
   readonly result: unknown;
-  readonly lines: readonly string[];
+  readonly activity: readonly WatchItem[];
   readonly activeAt?: string | null;
 }
 
@@ -183,8 +187,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
     outcome: records.result === null ? "in work" : outcome,
     costUsd: priceOf(report["costUsd"]),
     estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
-    activity: records.lines
-      .flatMap(activityOf)
+    activity: records.activity
       .map((item) =>
         item.kind === "result"
           ? {
