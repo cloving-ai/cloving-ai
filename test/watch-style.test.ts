@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import { contrast, over, palette, rgb } from "./watch-style-fixture.ts";
-import { fields } from "./service-fixture.ts";
 
 const css = pageDocument().split("<style>")[1]?.split("</style>")[0] ?? "";
 const rules = css.replaceAll(/\n[ \t]+/g, "\n");
@@ -31,12 +29,7 @@ await test("CLV-140 tabs scroll in one row above a full-width board with flexibl
   assert.match(rule(".columns"), /gap: 12px/);
 });
 
-await test("the watch page shows the running Cloving version at the bottom left", () => {
-  assert.ok(
-    pageDocument().includes(
-      `<div class="version">cloving ${String(fields(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")))["version"])}</div>`,
-    ),
-  );
+await test("the version label of the watch page stays at the bottom left", () => {
   assert.match(rule(".version"), /position: fixed/);
   assert.match(rule(".version"), /left: 12px/);
   assert.match(rule(".version"), /bottom: 8px/);

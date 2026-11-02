@@ -3,7 +3,6 @@ import {
   scheduledText,
   shownScheduled,
 } from "./schedule-render.ts";
-import packageMetadata from "#package" with { type: "json" };
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -100,6 +99,7 @@ import {
   Queue,
   queueLanes,
   skippedText,
+  Version,
 } from "./watch-header-view.ts";
 
 const functions = [
@@ -118,6 +118,7 @@ const functions = [
   Brand,
   HeaderStatus,
   HeaderActions,
+  Version,
   cardReply,
   cardSubmitKey,
   cardKey,
@@ -393,7 +394,6 @@ export function pageDocument(actionToken: string | null = null): string {
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
     `<style>${style}</style></head><body>`,
     '<div id="app"></div>',
-    `<div class="version">cloving ${packageMetadata.version}</div>`,
     `<script type="module">${script}</script></body></html>`,
     "",
   ].join("\n");

@@ -175,6 +175,14 @@ function unique(values: readonly string[]): boolean {
   return new Set(values).size === values.length;
 }
 
+export function workflowStagesOf(value: unknown): WorkflowStages {
+  return Object.fromEntries(
+    Object.entries(record(value) ?? {}).flatMap(([workflowId, stages]) =>
+      isWorkflowStages(stages) ? [[workflowId, stages]] : [],
+    ),
+  );
+}
+
 export function isWorkflowStages(
   value: unknown,
 ): value is readonly WorkflowStage[] {
