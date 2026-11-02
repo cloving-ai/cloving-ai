@@ -27,6 +27,7 @@ await test("CLV-207 doctor predicts legacy adoption without publishing a record"
         });
         const path = join(scene.root, "state/cloving/run");
         await mkdir(path, { mode: 0o755 });
+        await chmod(path, 0o755);
         const item = check(await scene.report(), "runtime-directory");
         assert.equal(item["result"], "fail");
         assert.match(String(item["detail"]), /755/);

@@ -1,6 +1,20 @@
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { withFiles } from "./files-fixture.ts";
+import { fixtureCompiler } from "../compiler-host-fixture.ts";
+
+const options: ts.CompilerOptions = {
+  strict: true,
+  noEmit: true,
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  verbatimModuleSyntax: true,
+  typeRoots: [resolve("node_modules/@types")],
+  types: ["node"],
+  skipLibCheck: true,
+};
+const host = fixtureCompiler(options);
 
 export async function withProgram<Result>(
   sources: Readonly<Record<string, string>>,
@@ -13,17 +27,8 @@ export async function withProgram<Result>(
         Object.keys(sources)
           .filter((name) => !name.endsWith(".json"))
           .map((name) => join(directory, name)),
-        {
-          strict: true,
-          noEmit: true,
-          target: ts.ScriptTarget.ESNext,
-          module: ts.ModuleKind.NodeNext,
-          moduleResolution: ts.ModuleResolutionKind.NodeNext,
-          verbatimModuleSyntax: true,
-          typeRoots: [resolve("node_modules/@types")],
-          types: ["node"],
-          skipLibCheck: true,
-        },
+        options,
+        host,
       );
       const diagnostics = ts.getPreEmitDiagnostics(program);
       if (diagnostics.length > 0)
