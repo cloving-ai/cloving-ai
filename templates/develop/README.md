@@ -1,6 +1,6 @@
 # Develop template decisions
 
-`template.json` describes the five decisions used by the develop template.
+`template.json` describes the six decisions used by the develop template.
 The default workflow in `develop.ts` accepts the declared ticket input, selects
 from the queue, opens a pull request, waits for Greptile at 5/5, and calls
 `mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
@@ -32,7 +32,7 @@ point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
 `flowTests` and `refusalTests` imports in `develop.test.ts` with
 `optionTests as flowTests`, then run every `flowTests` scenario. Keep the shared
 turn and partial-helper tests. Package tests apply each source edit, validate
-its requirements, and test seven complete configurations through the folder
+its requirements, and test ten complete configurations through the folder
 loader and the installed package, covering every option.
 
 `develop/turn.ts` implements the development turn for either a resolved
@@ -68,9 +68,69 @@ Task text keeps its full contents, including any issue-looking lines, without
 selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
-Greptile at 5/5, merge after checks, and return partial work to the queue.
+no additional verification, Greptile at 5/5, merge after checks, and return
+partial work to the queue.
 Selecting `person` at selection, acceptance and partial work, with `local` at
 merge, describes the existing reviewed local-branch process.
+
+The `verify` point defaults to `none`, preserving the current round and
+declaration. Select `red-green` with either `green` or `person` at `merge`.
+Import `verifyRedGreen` from `develop/red-green.ts` in `develop/round.ts`.
+Immediately after `openPull`, before constructing the review subject or
+calling `acceptWork`, add:
+
+```typescript
+const verification = await verifyRedGreen({
+  cycleId: input.cycleId,
+  head: pull.commit,
+  round,
+});
+if (verification !== null && "kind" in verification) return verification;
+if (verification !== null)
+  return repair({ cycleId: input.cycleId, round, report, result: verification });
+```
+
+Add `"command"` to `workflow.capabilities`, `"commands": ["red-green"]` to
+`workflow`, and `"command": ["run:red-green"]` to `methods` in
+`develop.declaration.json`. Increase `workflow.effectLimit` by 4, from 27 to
+31, allowing one verification command in each of the four development rounds.
+Set `selection.verify` to `"red-green"` in `develop/scenarios.ts` and run the
+option tests. The local merge option does not support this verification.
+
+The helper calls the operator command on the pull request's immutable head with
+scope `{ phase: "verify", operation: "red-green", round }`.
+`accepted` and `no-test-change` proceed to review. `false-red`,
+`red-not-assertion`, `skipped-test` and `green-failed` pass the verdict and full
+tool output through `repair` to the next fix turn. These fixes share the
+existing four-round limit with review and merge fixes. `prepare-failed`, a
+failed command or an invalid result blocks immediately with
+`red-green-unavailable`, without a fix turn.
+
+Register `red-green` in `CLOVING_COMMANDS` as an argument array containing the
+absolute path of the installed `cloving` executable followed by `"red-green"`.
+Configure the project file `.cloving/config.json`, for example:
+
+```json
+{
+  "version": 1,
+  "checks": {
+    "redGreen": {
+      "test": ["node", "--test"],
+      "testFiles": ["test/"],
+      "prepare": ["npm", "ci", "--ignore-scripts"]
+    }
+  }
+}
+```
+
+The tool appends changed test paths to `test`; optional `prepare` runs in each
+temporary worktree. The daemon passes this configuration as
+`CLOVING_RED_GREEN`. For direct tool use, set that variable to the `redGreen`
+object. The repository needs `refs/remotes/origin/HEAD` to identify the base.
+Increase `CLOVING_COMMAND_SECONDS`, for example to `600`, to cover both
+preparation and test runs. Optional `assertionPattern` and `skipPattern`
+override the defaults for non-terminal `node --test` output. See the package
+README's `cloving red-green` documentation for the tool's complete contract.
 
 Each option has an `id`, `label`, `summary`, `change`, `requires` and `needs`.
 `change` describes the step call or declaration edit for the setup agent.

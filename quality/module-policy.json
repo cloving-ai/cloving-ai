@@ -530,6 +530,7 @@
     "templates/develop/develop/partial.ts": "workflow",
     "templates/develop/develop/pull.ts": "workflow",
     "templates/develop/develop/queue-partial.ts": "workflow",
+    "templates/develop/develop/red-green.ts": "workflow",
     "templates/develop/develop/refusal-tests.ts": "test",
     "templates/develop/develop/report.ts": "workflow",
     "templates/develop/develop/round.ts": "workflow",

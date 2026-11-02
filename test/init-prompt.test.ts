@@ -15,9 +15,16 @@ const facts: InitPromptFacts = {
   runtime: "<runtime>",
   chatStores: [],
   files: [".cloving/config.json"],
-  templates: ["develop: 5 decision points"],
+  templates: ["develop: 6 decision points"],
   workflows: [],
 };
+
+await test("CLV-249 setup walks through the verify decision with the other develop points", () => {
+  assert.match(
+    initPrompt(facts),
+    /all six points: input, select, verify, accept, merge and partial/,
+  );
+});
 
 await test("CLV-228 first-workflow setup defers no-workflow to the template step and checks it after copying", () => {
   const output = initPrompt(facts);
