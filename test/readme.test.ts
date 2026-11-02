@@ -260,7 +260,7 @@ await test("CLV-175 the README recognizes and documents test concurrency", () =>
   );
   assert.match(
     readme,
-    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 16.*one fewer worker.*minimum of 2 and a maximum of 4.*macOS CI sets it to 3 and Ubuntu CI sets it to 4/,
+    /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 16.*one fewer worker.*minimum of 2 and a maximum of 4.*local CI uses 12 workers for pull requests from branches of this repository.*GitHub-hosted macOS CI uses 3 workers and Ubuntu CI uses 4/,
   );
 });
 

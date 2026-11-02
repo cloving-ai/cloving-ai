@@ -11,6 +11,11 @@ import {
 } from "./release-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
+const localPullRequest =
+  "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository";
+const macosRunner = `\${{ ${localPullRequest} && fromJSON('["self-hosted","macOS","ARM64","cloving-ci"]') || 'macos-15' }}`;
+const linuxRunner = `\${{ ${localPullRequest} && fromJSON('["self-hosted","Linux","ARM64","cloving-ci"]') || 'ubuntu-24.04' }}`;
+
 const nodeVersions = {
   quality_macos: "26.9.0",
   quality_linux_node: "${{ matrix.node }}",
@@ -26,9 +31,27 @@ await test("CI cancels the older runs of a branch or a pull request, and keeps e
   });
 });
 
-await test("CI runs every job of every event on hosted runners", async () => {
+await test("CLV-175 CI uses 12 local workers and keeps hosted worker counts", async () => {
   const workflow = await releaseWorkflow();
-  for (const [name, definition] of Object.entries(workflow.jobs)) {
+  for (const [name, hostedWorkers] of [
+    ["quality_macos", "3"],
+    ["quality_linux_node", "4"],
+  ] as const)
+    assert.equal(
+      job(workflow, name).env?.["CLOVING_TEST_CONCURRENCY"],
+      `\${{ ${localPullRequest} && '12' || '${hostedWorkers}' }}`,
+    );
+});
+
+await test("CI keeps coverage, required checks and release on hosted runners", async () => {
+  const workflow = await releaseWorkflow();
+  for (const name of [
+    "coverage",
+    "quality",
+    "quality_linux",
+    "publish",
+  ] as const) {
+    const definition = job(workflow, name);
     assert.doesNotMatch(
       JSON.stringify(definition),
       /self-hosted|cloving-ci|head\.repo/,
@@ -58,12 +81,8 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
   assert.equal(job(workflow, "quality_macos").if, undefined);
   assert.equal(job(workflow, "quality_macos").permissions, undefined);
   for (const [name, runner, architecture] of [
-    ["quality_macos", "macos-15", "arm64"],
-    [
-      "quality_linux_node",
-      "ubuntu-24.04",
-      "${{ env.CLOVING_CI_ARCHITECTURE }}",
-    ],
+    ["quality_macos", macosRunner, "arm64"],
+    ["quality_linux_node", linuxRunner, "${{ env.CLOVING_CI_ARCHITECTURE }}"],
     ["publish", "macos-15", "arm64"],
   ] as const) {
     assert.equal(job(workflow, name)["runs-on"], runner);
@@ -128,17 +147,17 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 30);
   assert.deepEqual(job(workflow, "quality_linux_node").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: "4",
+    CLOVING_TEST_CONCURRENCY: `\${{ ${localPullRequest} && '12' || '4' }}`,
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
-    CLOVING_CI_ARCHITECTURE: "x64",
+    CLOVING_CI_ARCHITECTURE: `\${{ ${localPullRequest} && 'arm64' || 'x64' }}`,
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
   assert.equal(job(workflow, "quality_macos")["timeout-minutes"], 30);
   assert.deepEqual(job(workflow, "quality_macos").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
-    CLOVING_TEST_CONCURRENCY: "3",
+    CLOVING_TEST_CONCURRENCY: `\${{ ${localPullRequest} && '12' || '3' }}`,
     CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
-    CLOVING_CI_MACOS_VERSION: "15.*",
+    CLOVING_CI_MACOS_VERSION: `\${{ ${localPullRequest} && '*' || '15.*' }}`,
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
   const commands = steps(workflow, "quality_macos")

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
-import { access, chmod, mkdir } from "node:fs/promises";
+import { access, chmod, mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { adoptionRecordPath } from "../src/cli/runtime-directory.ts";
@@ -26,7 +26,9 @@ await test("CLV-207 doctor predicts legacy adoption without publishing a record"
           directory: join(scene.root, "state/cloving/workflow-bundles"),
         });
         const path = join(scene.root, "state/cloving/run");
-        await mkdir(path, { mode: 0o755 });
+        await mkdir(path);
+        await chmod(path, 0o755);
+        assert.equal((await stat(path)).mode & 0o777, 0o755);
         const item = check(await scene.report(), "runtime-directory");
         assert.equal(item["result"], "fail");
         assert.match(String(item["detail"]), /755/);
