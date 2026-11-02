@@ -43,6 +43,42 @@ export function turnIntent(intent: DeliveryIntent): intent is ProtectedIntent {
   );
 }
 
+export function resumableHarness(harness: unknown): boolean {
+  return harness === "claude" || harness === "codex";
+}
+
+export function resumedCommand(request: {
+  readonly worker: string | undefined;
+  readonly command: readonly string[];
+  readonly sessionId: string;
+}): readonly string[] | undefined {
+  const { worker = "claude", command, sessionId } = request;
+  if (worker === "codex") return codexResume(command, sessionId);
+  if (worker !== "claude") return undefined;
+  const separator = command.indexOf("--");
+  const boundary = separator < 0 ? command.length : separator;
+  return [
+    ...command.slice(0, boundary),
+    "--resume",
+    sessionId,
+    ...command.slice(boundary),
+  ];
+}
+
+function codexResume(
+  command: readonly string[],
+  sessionId: string,
+): readonly string[] | undefined {
+  const exec = command.indexOf("exec");
+  if (exec < 0) return undefined;
+  return [
+    ...command.slice(0, exec + 1),
+    "resume",
+    sessionId,
+    ...command.slice(exec + 1),
+  ];
+}
+
 export function recordedField(value: unknown, name: string): unknown {
   if (typeof value !== "object" || value === null) return undefined;
   return Reflect.get(value, name);
@@ -62,7 +98,7 @@ export async function uncertainProcess(started: unknown): Promise<boolean> {
   const processId = recordedField(started, "processId");
   if (typeof processId !== "number" || !processAlive(processId)) return false;
   return (
-    recordedField(started, "harness") !== "claude" ||
+    !resumableHarness(recordedField(started, "harness")) ||
     (await recordedProcessDirectory(processId)) === undefined
   );
 }
@@ -96,8 +132,12 @@ export async function resumePlan(
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
   if (
-    harness.worker !== "claude" ||
-    recordedField(started, "harness") !== "claude"
+    recordedField(started, "harness") !== harness.worker ||
+    resumedCommand({
+      worker: harness.worker,
+      command: harness.command,
+      sessionId: resume.sessionId,
+    }) === undefined
   )
     return "claude-turn-interrupted";
   const locked = await resumeWorktree({
@@ -221,7 +261,8 @@ export async function recoverTurn(
   reconcile: () => Promise<AdapterOutcome>,
 ): Promise<void> {
   const { intent, journal, report } = operation;
-  if ((await recordedHarness(journal, intent.operationId)) !== "claude") return;
+  if (!resumableHarness(await recordedHarness(journal, intent.operationId)))
+    return;
   const result = await reconcile();
   if (operation.signal.aborted) return;
   if (
