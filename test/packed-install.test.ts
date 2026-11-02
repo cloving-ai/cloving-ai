@@ -45,14 +45,14 @@ import {
   lstat,
   realpath,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { field, items } from "./self-host-fixture.ts";
+import { field } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { reviewStages } from "./watch-board-fixture.ts";
 import { record } from "../src/protocol.ts";
@@ -78,21 +78,18 @@ function packageMetadata(value: unknown): value is PackageMetadata {
   );
 }
 
-async function checkoutBuild(): Promise<readonly number[]> {
-  const built = await stat(
-    join(checkout, "dist/src/workflow-declaration.d.ts"),
-  );
-  return [built.ino, built.mtimeMs];
+function checkoutBuild(): readonly number[] {
+  const built = statSync(join(checkout, "dist/src/workflow-declaration.d.ts"), {
+    throwIfNoEntry: false,
+  });
+  return built === undefined ? [] : [built.ino, built.mtimeMs];
 }
 
 async function installed(root: string): Promise<string> {
-  const before = await checkoutBuild();
-  const packed = await packCheckoutCopy(checkout, root);
-  assert.deepEqual(await checkoutBuild(), before);
-  const archive = items(packed)[0];
-  const paths = items(field(archive, "files")).map((file) =>
-    String(field(file, "path")),
-  );
+  const before = checkoutBuild();
+  const archive = await packCheckoutCopy(checkout, root);
+  assert.deepEqual(checkoutBuild(), before);
+  const { paths } = archive;
   assert.ok(paths.length > 100);
   assert.deepEqual(
     paths.filter((path) => path.startsWith("dist/workflows/")),
@@ -109,7 +106,7 @@ async function installed(root: string): Promise<string> {
     [],
   );
   await installPacked(root, {
-    archive: join(root, String(field(archive, "filename"))),
+    archive: join(root, archive.filename),
     checkout,
   });
   command(process.execPath, {

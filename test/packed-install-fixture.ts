@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { cp, lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { withFiles } from "./quality/files-fixture.ts";
-import { field } from "./self-host-fixture.ts";
+import { field, items } from "./self-host-fixture.ts";
 
 const checkoutOnly = new Set([
   ".claude",
@@ -37,10 +37,20 @@ export function packedCommand(
   return result.stdout;
 }
 
+export interface PackedArchive {
+  readonly filename: string;
+  readonly paths: readonly string[];
+}
+
+function packedText(value: unknown): string {
+  assert.ok(typeof value === "string");
+  return value;
+}
+
 export async function packCheckoutCopy(
   checkout: string,
   destination: string,
-): Promise<unknown> {
+): Promise<PackedArchive> {
   return await withFiles({}, async (directory) => {
     const source = join(directory, "package");
     await cp(checkout, source, {
@@ -64,7 +74,13 @@ export async function packCheckoutCopy(
         cwd: source,
       }),
     );
-    return packed;
+    const archive = items(packed)[0];
+    return {
+      filename: packedText(field(archive, "filename")),
+      paths: items(field(archive, "files")).map((file) =>
+        packedText(field(file, "path")),
+      ),
+    };
   });
 }
 
