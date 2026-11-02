@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { journalKey, resultOf } from "./claude-worker-fixture.ts";
-import { matchesCall } from "./github-merge-fixture.ts";
+import { matchesCall, withRetryClock } from "./github-merge-fixture.ts";
 import {
   fastTiming,
   opened,
@@ -14,29 +14,36 @@ import {
 await test("CLV-194 grows the wait between transient merge attempts", () =>
   withGithub(async (scene) => {
     const pollMilliseconds = 120;
-    const worker = scene.worker({
-      timing: { ...fastTiming, pollMilliseconds },
+    await withRetryClock(scene, {
+      pollMilliseconds,
+      exercise: async ({ gh, waits }) => {
+        const worker = scene.worker({
+          gh,
+          timing: { ...fastTiming, pollMilliseconds },
+        });
+        const commit = await opened(scene, worker);
+        scene.plan({
+          scores: [],
+          failures: ["connection reset", "i/o timeout"].map((detail) => ({
+            call: "api PUT merge",
+            detail,
+          })),
+        });
+        const report = await scene.perform(worker, {
+          method: "merge",
+          payload: { number: 1, commit },
+        });
+        assert.equal(report.outcome, "completed", report.reason ?? "");
+        const state = scene.state();
+        const times = state.callTimes.filter((_, index) =>
+          state.calls[index]?.includes("PUT"),
+        );
+        assert.equal(times.length, 3);
+        assert.ok(Number(times[1]) - Number(times[0]) >= pollMilliseconds);
+        assert.ok(Number(times[2]) - Number(times[1]) >= pollMilliseconds * 2);
+        assert.deepEqual(waits, [pollMilliseconds, pollMilliseconds * 2]);
+      },
     });
-    const commit = await opened(scene, worker);
-    scene.plan({
-      scores: [],
-      failures: ["connection reset", "i/o timeout"].map((detail) => ({
-        call: "api PUT merge",
-        detail,
-      })),
-    });
-    const report = await scene.perform(worker, {
-      method: "merge",
-      payload: { number: 1, commit },
-    });
-    assert.equal(report.outcome, "completed", report.reason ?? "");
-    const state = scene.state();
-    const times = state.callTimes.filter((_, index) =>
-      state.calls[index]?.includes("PUT"),
-    );
-    assert.equal(times.length, 3);
-    assert.ok(Number(times[1]) - Number(times[0]) >= pollMilliseconds);
-    assert.ok(Number(times[2]) - Number(times[1]) >= pollMilliseconds * 2);
   }));
 
 for (const call of ["api PUT merge", "api GET pull", "api GET check-runs"]) {
