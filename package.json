@@ -31,10 +31,6 @@
       "types": "./dist/src/steps/protected-effect.d.ts",
       "import": "./dist/src/steps/protected-effect.js"
     },
-    "./workflows/steps/decision-gate": {
-      "types": "./dist/src/steps/decision-gate.d.ts",
-      "import": "./dist/src/steps/decision-gate.js"
-    },
     "./workflows/steps/review-subject": {
       "types": "./dist/src/steps/review-subject.d.ts",
       "import": "./dist/src/steps/review-subject.js"
@@ -54,6 +50,10 @@
     "./workflows/steps/merge-when-green": {
       "types": "./dist/src/steps/merge-when-green.d.ts",
       "import": "./dist/src/steps/merge-when-green.js"
+    },
+    "./workflows/steps/open-decision-wait": {
+      "types": "./dist/src/steps/open-decision-wait.d.ts",
+      "import": "./dist/src/steps/open-decision-wait.js"
     },
     "./workflows/steps/wait-for-decision": {
       "types": "./dist/src/steps/wait-for-decision.d.ts",

@@ -8,7 +8,7 @@ import {
   type ScenarioResult,
 } from "../src/testing.ts";
 import {
-  decisionGate,
+  waitForDecision,
   handoff,
   protectedEffect,
   waitForRun,
@@ -35,8 +35,13 @@ const requests = [
     },
   ],
   [
-    "gate",
-    { gateId: "gate", kind: "approval", prompt: "review", expiresAt: "later" },
+    "waitForDecision",
+    {
+      gateId: "gate",
+      kind: "approval",
+      prompt: "review",
+      expiresAt: "later",
+    },
   ],
   [
     "handoff",
@@ -75,9 +80,11 @@ function inspectRequests(requests: ScenarioResult["requests"]): void {
 }
 
 await test("CLV-224 recorded requests narrow to each concrete step request type", async () => {
-  using bridge = fakeStepBridge({});
+  using bridge = fakeStepBridge({
+    decisions: [{ decision: "approved", answer: null }],
+  });
   await protectedEffect(requests[0][1]);
-  await decisionGate(requests[1][1]);
+  await waitForDecision(requests[1][1]);
   await handoff(requests[2][1]);
   await waitForRun(requests[3][1]);
   inspectRequests(bridge.requests);
@@ -94,11 +101,46 @@ await test("CLV-224 recorded requests narrow to each concrete step request type"
         workflow: join(root, "requests.mjs"),
         exportName: "sample",
         input: requests,
+        decisions: [{ decision: "approved", answer: null }],
       });
       inspectRequests(result.requests);
     },
   );
 });
+
+const malformedRequests = [
+  ["effect", null],
+  ["effect", {}],
+  [
+    "effect",
+    {
+      scope: { phase: "work", operation: "turn", round: "one" },
+      capability: "claude",
+      method: "turn",
+      target: "target",
+      payload: "",
+      units: 1,
+    },
+  ],
+  ["waitForDecision", null],
+  ["waitForDecision", {}],
+  ["waitForDecision", { gateId: "gate", kind: "other", prompt: "review" }],
+  ["waitForDecision", { gateId: "gate", kind: ["approval"], prompt: "review" }],
+  [
+    "waitForDecision",
+    {
+      gateId: "gate",
+      kind: "approval",
+      prompt: "review",
+      expiresAt: 1,
+    },
+  ],
+  ["handoff", null],
+  ["handoff", { workflowId: "other", input: [] }],
+  ["handoff", { workflowId: 1, input: {} }],
+  ["waitForRun", null],
+  ["waitForRun", { runId: "run", maximumWaitSeconds: "one" }],
+] as const;
 
 await test("CLV-224 scenarios reject malformed recorded request payloads", () =>
   withFiles(
@@ -111,39 +153,13 @@ await test("CLV-224 scenarios reject malformed recorded request payloads", () =>
     },
     async (root) => {
       const workflow = join(root, "malformed.mjs");
-      for (const [kind, request] of [
-        ["effect", null],
-        ["effect", {}],
-        [
-          "effect",
-          {
-            scope: { phase: "work", operation: "turn", round: "one" },
-            capability: "claude",
-            method: "turn",
-            target: "target",
-            payload: "",
-            units: 1,
-          },
-        ],
-        ["gate", null],
-        ["gate", {}],
-        ["gate", { gateId: "gate", kind: "other", prompt: "review" }],
-        ["gate", { gateId: "gate", kind: ["approval"], prompt: "review" }],
-        [
-          "gate",
-          { gateId: "gate", kind: "approval", prompt: "review", expiresAt: 1 },
-        ],
-        ["handoff", null],
-        ["handoff", { workflowId: "other", input: [] }],
-        ["handoff", { workflowId: 1, input: {} }],
-        ["waitForRun", null],
-        ["waitForRun", { runId: "run", maximumWaitSeconds: "one" }],
-      ] as const) {
+      for (const [kind, request] of malformedRequests) {
         await assert.rejects(
           runScenario({
             workflow,
             exportName: "sample",
             input: { kind, request },
+            decisions: [{ decision: "approved", answer: null }],
           }),
           { message: "invalid-workflow-scenario-result" },
         );

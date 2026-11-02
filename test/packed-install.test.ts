@@ -182,6 +182,28 @@ async function artifacts(root: string): Promise<void> {
   });
 }
 
+function checkWorkflowExports(root: string, metadata: PackageMetadata): void {
+  assert.equal(
+    Object.hasOwn(metadata.exports, "./workflows/steps/decision-gate"),
+    false,
+  );
+  command(process.execPath, {
+    args: [
+      "--input-type=module",
+      "-e",
+      `
+import assert from "node:assert/strict";
+for (const subpath of ${JSON.stringify(Object.keys(metadata.exports))}) {
+  const exports = await import("cloving" + subpath.slice(1));
+  assert.equal(Object.hasOwn(exports, "decisionGate"), false, subpath);
+}
+await assert.rejects(import("cloving/workflows/steps/decision-gate"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+`,
+    ],
+    cwd: root,
+  });
+}
+
 async function inventory(root: string): Promise<void> {
   const product = join(root, "node_modules/cloving");
   for (const name of [
@@ -207,6 +229,7 @@ async function inventory(root: string): Promise<void> {
   );
   assert.ok(packageMetadata(parsed));
   const metadata: PackageMetadata = parsed;
+  checkWorkflowExports(root, metadata);
   for (const entry of Object.values(metadata.exports)) {
     for (const target of Object.values(entry)) {
       assert.ok((await readFile(join(product, target))).length > 0);
