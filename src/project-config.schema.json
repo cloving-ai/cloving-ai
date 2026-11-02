@@ -19,6 +19,42 @@
             "type": "string",
             "pattern": "\\S"
           }
+        },
+        "redGreen": {
+          "type": "object",
+          "properties": {
+            "test": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "testFiles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "prepare": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "assertionPattern": {
+              "type": "string"
+            },
+            "skipPattern": {
+              "type": "string"
+            }
+          },
+          "required": ["test", "testFiles"],
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
