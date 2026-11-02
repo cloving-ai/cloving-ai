@@ -20,7 +20,7 @@ try {
   pin = admitted.binding.workflowPin;
   const runId = admitted.runId;
   await until(async () => (await shown(runId)).state === "waiting_gate");
-  await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+  await hooksReady();
   const damage = ${JSON.stringify(damage)};
   if (damage === "missing") rmSync(bundlePath, { recursive: true });
   if (damage === "damaged") writeFileSync(bundlePath + "/artifacts/flow.mjs", "damaged");
@@ -29,7 +29,7 @@ try {
   await until(async () => { const run = await shown(runId); return run.state === "completed" || run.reason.code === "pinned-workflow-unavailable"; });
   const shownRun = await shown(runId);
   const worlds = await (await getWorld()).runs.list({});
-  assert.equal(worlds.data.length, damage === "present" ? 2 : 1);
+  assert.equal(worlds.data.length, 1);
   if (damage === "present") assert.equal(shownRun.state, "completed");
   else assert.equal(shownRun.reason.code, "pinned-workflow-unavailable");
 } finally { await daemon.close(); }
@@ -55,7 +55,7 @@ const first = await launched({ bundleDigest, queueMilliseconds: undefined });
 const admitted = await submitted("original");
 const runId = admitted.runId;
 await until(async () => (await shown(runId)).state === "waiting_gate");
-await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+await hooksReady();
 await first.close();
 ${currentGeneration}
 const manifests = { developTicket: directory + "/current-project/develop.workflow.json", developPrd: directory + "/current-project/develop.workflow.json", develop: directory + "/current-project/develop.workflow.json" };

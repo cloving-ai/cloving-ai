@@ -10,6 +10,7 @@ import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
+import { mcpServer } from "./mcp-server.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
   commandUsage,
@@ -29,6 +30,7 @@ const helpTexts = {
   "init-prompt-help": String(commandUsage["init-prompt"]),
   "doctor-help": String(commandUsage["doctor"]),
   "config-help": configUsage,
+  "mcp-help": String(commandUsage["mcp"]),
 };
 
 function helpInvocation(
@@ -75,6 +77,10 @@ export async function main(
       runtimeDirectory: runtimeDirectory(process.env, repository),
       terminal,
     });
+  } else if (invocation.kind === "mcp") {
+    process.exitCode = await mcpServer(
+      runtimeDirectory(process.env, repository),
+    );
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),

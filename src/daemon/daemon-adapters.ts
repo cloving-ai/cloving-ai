@@ -23,6 +23,7 @@ import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { HarnessSettings } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
+import { resumableHarness } from "./claude-recovery.ts";
 
 export interface DaemonSettings extends HarnessSettings {
   readonly commands?: LocalCommands;
@@ -177,7 +178,7 @@ export async function recoverClaude(
   ports: Pick<HostPorts, "state" | "operations">,
 ): Promise<void> {
   for (const intent of await recoveryCalls(ports, "claude")) {
-    if ((await worker.harness(intent.operationId)) !== "claude") continue;
+    if (!resumableHarness(await worker.harness(intent.operationId))) continue;
     if (!(await stillRecoverable(ports, intent))) continue;
     await worker.recover(intent);
   }

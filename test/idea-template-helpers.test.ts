@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runScenario } from "../src/testing.ts";
+import { runScenario, fakeStepBridge } from "../src/testing.ts";
+import { failureReason } from "../templates/idea-to-issue/idea-to-issue/effects.ts";
+import { reviewDraftByPerson } from "../templates/idea-to-issue/idea-to-issue/review.ts";
+import { postByPerson } from "../templates/idea-to-issue/idea-to-issue/post-person.ts";
+import { leaveIssue } from "../templates/idea-to-issue/idea-to-issue/leave.ts";
 import {
   completed,
   digest,
@@ -15,7 +19,7 @@ const helper = (name: string) =>
     import.meta.url,
   ).href;
 
-await test("CLV-222 serialized failures preserve safe broker reasons and refuse unstructured text", async () => {
+await test("CLV-222 serialized failures preserve safe broker reasons and refuse unstructured text", () => {
   for (const [failure, expected] of [
     [null, "fallback"],
     ["private detail", "fallback"],
@@ -26,13 +30,7 @@ await test("CLV-222 serialized failures preserve safe broker reasons and refuse 
     [{ cause: null }, "fallback"],
     [{ cause: { message: "handoff-start-timeout" } }, "handoff-start-timeout"],
   ] as const) {
-    const result = await runScenario({
-      workflow: helper("effects"),
-      exportName: "failureReason",
-      input: failure,
-      decision: "fallback",
-    });
-    assert.equal(result.outcome, expected);
+    assert.equal(failureReason(failure, "fallback"), expected);
   }
 });
 
@@ -76,39 +74,31 @@ await test("CLV-222 a person review returns the protected digest and shows its e
 
 for (const decision of ["denied", "expired"] as const)
   await test(`CLV-222 the original person helpers refuse ${decision} decisions`, async () => {
-    for (const [module, exportName, reason] of [
-      ["review", "reviewDraftByPerson", "draft-review-denied"],
-      ["post-person", "postByPerson", "post-not-approved"],
-    ])
-      await assert.rejects(
-        runScenario({
-          workflow: helper(String(module)),
-          exportName: String(exportName),
-          input,
-          decision: [],
-          effects: effects(),
-          decisions: [{ decision, answer: null }],
-        }),
-        new RegExp(String(reason)),
-      );
+    for (const [run, reason] of [
+      [() => reviewDraftByPerson(input), "draft-review-denied"],
+      [() => postByPerson(input, []), "post-not-approved"],
+    ] as const) {
+      using bridge = fakeStepBridge({
+        effects: effects(),
+        decisions: [{ decision, answer: null }],
+      });
+      await assert.rejects(run(), new RegExp(reason));
+      assert.equal(bridge.requests[1]?.[0], "waitForDecision");
+    }
   });
 
 await test("CLV-222 a post approval preserves both the earlier review and latest capture digests", async () => {
   const earlier = `sha256:${"b".repeat(64)}`;
-  const result = await runScenario({
-    workflow: helper("post-person"),
-    exportName: "postByPerson",
-    input,
-    decision: [earlier],
+  using bridge = fakeStepBridge({
     effects: effects(),
     decisions: [{ decision: "approved", answer: null }],
   });
-  assert.deepEqual(result.outcome, {
+  assert.deepEqual(await postByPerson(input, [earlier]), {
     number: 42,
     owner: "acme",
     repository: "demo",
   });
-  const post = result.requests[2];
+  const post = bridge.requests[2];
   assert.ok(post && post[0] === "effect");
   assert.deepEqual(JSON.parse(post[1].payload), {
     draft: "cloving-prd-draft.md",
@@ -117,18 +107,16 @@ await test("CLV-222 a post approval preserves both the earlier review and latest
 });
 
 await test("CLV-222 leaving an issue alone uses no effect or handoff", async () => {
-  const result = await runScenario({
-    workflow: helper("leave"),
-    exportName: "leaveIssue",
-    input,
-    decision: { number: 42, owner: "acme", repository: "demo" },
-  });
-  assert.deepEqual(result.outcome, {
-    kind: "handoff_requested",
-    cycleId: input.cycleId,
-    promotionId: "issue-42",
-  });
-  assert.deepEqual(result.requests, []);
+  using bridge = fakeStepBridge({});
+  assert.deepEqual(
+    await leaveIssue(input, { number: 42, owner: "acme", repository: "demo" }),
+    {
+      kind: "handoff_requested",
+      cycleId: input.cycleId,
+      promotionId: "issue-42",
+    },
+  );
+  assert.deepEqual(bridge.requests, []);
 });
 
 await test("CLV-222 invalid protected captures never open a human gate", async () => {

@@ -4,12 +4,11 @@ import { queuePrelude } from "./daemon-queue-fixture.ts";
 import { productRoot } from "./world-host-fixture.ts";
 
 export const workflow = `
-import { decisionGate } from "cloving/workflows/steps/decision-gate";
-export async function develop(input, continuation) {
+import { waitForDecision } from "cloving/workflows/steps/wait-for-decision";
+export async function develop() {
   "use workflow";
-  if (continuation !== undefined) return { kind: "completed" };
-  await decisionGate({ gateId: "bundle-question", kind: "question", prompt: "Continue this bundle?" });
-  return { kind: "waiting_for_decision" };
+  await waitForDecision({ gateId: "bundle-question", kind: "question", prompt: "Continue this bundle?" });
+  return { kind: "completed" };
 }
 `;
 
@@ -31,6 +30,11 @@ for (const [name, contents] of Object.entries({ "package.json": '{"type":"module
   writeFileSync("bundle-project/" + name, contents);
 const bundleDigest = await retainWorkflowBundle({ project: directory + "/bundle-project", repository: directory, directory: directory + "/workflow-bundles" });
 const bundlePath = "workflow-bundles/" + bundleDigest;
+const hooksReady = async () => until(async () => {
+  const world = await getWorld();
+  const runs = (await world.runs.list({})).data;
+  return (await Promise.all(runs.map(async run => (await world.events.list({ runId: run.runId, resolveData: "none" })).data.some(event => event.eventType === "hook_created")))).every(Boolean);
+});
 `;
 
 export const versionedWorkflow =
@@ -49,15 +53,22 @@ export async function finish() {
   );
 
 export const chargedWorkflow = versionedWorkflow
+  .replace("develop()", "develop(input)")
   .replace(
-    "  if (continuation !== undefined)",
-    `  const effect = await protectedEffect({ scope: { phase: "bundle", operation: continuation === undefined ? "before" : "after", round: 1 }, capability: "claude", method: "run-turn", target: input.cycleId, payload: "original-effect", units: 1 });
-  if (effect.kind !== "completed") return { kind: "blocked", reason: JSON.stringify(effect) };
-  if (continuation !== undefined)`,
+    "  await waitForDecision",
+    `  const before = await protectedEffect({ scope: { phase: "bundle", operation: "before", round: 1 }, capability: "claude", method: "run-turn", target: input.cycleId, payload: "original-effect", units: 1 });
+  if (before.kind !== "completed") return { kind: "blocked", reason: JSON.stringify(before) };
+  await waitForDecision`,
   )
   .replace(
-    "import { decisionGate }",
-    'import { protectedEffect } from "cloving/workflows/steps/protected-effect";\nimport { decisionGate }',
+    "  return { ...await finish()",
+    `  const after = await protectedEffect({ scope: { phase: "bundle", operation: "after", round: 1 }, capability: "claude", method: "run-turn", target: input.cycleId, payload: "original-effect", units: 1 });
+  if (after.kind !== "completed") return { kind: "blocked", reason: JSON.stringify(after) };
+  return { ...await finish()`,
+  )
+  .replace(
+    "import { waitForDecision }",
+    'import { protectedEffect } from "cloving/workflows/steps/protected-effect";\nimport { waitForDecision }',
   );
 
 export const generationSettings = `
@@ -86,7 +97,7 @@ try {
   assert.equal(admitted.kind, "run-admitted", JSON.stringify(admitted));
   const runId = admitted.runId;
   await until(async () => (await shown(runId)).state === "waiting_gate");
-  await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "completed"));
+  await hooksReady();
   assert.deepEqual((await shown(runId)).budget, { limit: 3, spent: 1 });
   writeFileSync("retained-run.json", JSON.stringify({ runId, bundleDigest }));
 } finally { await daemon.close(); }
@@ -157,11 +168,11 @@ try {
   assert.deepEqual((await shown(runId)).budget, { limit: 3, spent: 2 });
   assert.equal(readFileSync("effects", "utf8"), "original-effect\\noriginal-effect\\n");
   assert.equal(readFileSync("executions", "utf8"), "original-step\\n");
-  assert.equal((await world.runs.list({})).data.length, 2);
+  assert.equal((await world.runs.list({})).data.length, 1);
   const admitted = await projectRun("fresh-project");
   if (removed) {
     assert.equal(admitted.code, "unknown-workflow", JSON.stringify(admitted));
-    assert.equal((await world.runs.list({})).data.length, 2);
+    assert.equal((await world.runs.list({})).data.length, 1);
   } else {
     assert.equal(admitted.kind, "run-admitted", JSON.stringify(admitted));
     await until(async () => (await shown(admitted.runId)).state === "waiting_gate");

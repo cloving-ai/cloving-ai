@@ -138,7 +138,7 @@ await test("CLV-013 stop ends a process that does not end at the first signal", 
 
 await test("CLV-239 shutdown preserves the stop and report behavior of other harnesses", () =>
   withScene(async (scene) => {
-    const worker = scene.worker("hold", { worker: "codex" });
+    const worker = scene.worker("hold", { worker: "gemini" });
     await worker.deliver(intent(), signal);
     await until(() => scene.turns().length === 1);
     await worker.close();
@@ -150,7 +150,7 @@ await test("CLV-239 shutdown preserves the stop and report behavior of other har
     assert.equal(
       (
         await scene
-          .worker("hold", { worker: "codex" })
+          .worker("hold", { worker: "gemini" })
           .reconcile(intent(), signal)
       ).kind,
       "stopped",

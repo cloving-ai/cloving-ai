@@ -1,6 +1,5 @@
 export { loadCycle, type CycleLoad } from "./steps/load-cycle.ts";
 export { protectedEffect } from "./steps/protected-effect.ts";
-export { decisionGate } from "./steps/decision-gate.ts";
 export { waitForDecision } from "./steps/wait-for-decision.ts";
 export { reviewByPerson } from "./steps/review-by-person.ts";
 export { reviewByAgent } from "./steps/review-by-agent.ts";
