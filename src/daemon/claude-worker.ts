@@ -37,6 +37,7 @@ import {
   uncertainProcess,
   resumePlan,
   recordedField,
+  resumableHarness,
   type TurnResume,
   recoverTurn,
   turnIntent,
@@ -314,7 +315,7 @@ async function stopped(
     return replied({ receipt: key, worker }, result);
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (recordedField(started, "harness") !== "claude")
+  if (!resumableHarness(recordedField(started, "harness")))
     return reconcileOperation(parts, { intent, signal: parts.stopping.signal });
   if (processAlive(recordedField(started, "processId")))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
@@ -388,7 +389,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       parts.stopping.abort();
       await Promise.all(
         [...parts.active.values()].map((active) => {
-          if (active.worker === "claude" && !active.stopping.requested)
+          if (resumableHarness(active.worker) && !active.stopping.requested)
             active.stopping.stoppedBy = "daemon-shutdown";
           return halted(parts, active);
         }),

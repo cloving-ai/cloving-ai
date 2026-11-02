@@ -8,7 +8,7 @@ import {
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
-import { readResume, resumePrompt } from "./claude-recovery.ts";
+import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
   combined,
@@ -62,6 +62,24 @@ async function promptOf(attempts: Attempts): Promise<string> {
   return `${networkContinuation}\n\nCommits since the start of this turn:\n${evidence}\n\n${start.prompt}`;
 }
 
+function launchCommand(
+  attempts: Attempts,
+  prepared: {
+    readonly entry: { readonly resumedAfter?: string };
+    readonly selected: { readonly command: readonly string[] };
+  },
+): readonly string[] {
+  const { entry, selected } = prepared;
+  if (entry.resumedAfter === undefined) return selected.command;
+  return (
+    resumedCommand({
+      worker: attempts.start.worker,
+      command: selected.command,
+      sessionId: attempts.options.resume?.sessionId ?? "",
+    }) ?? selected.command
+  );
+}
+
 async function launched(
   attempts: Attempts,
   prompt = attempts.start.prompt,
@@ -69,15 +87,12 @@ async function launched(
   const prepared = await prepareAttempt(attempts);
   if (prepared === undefined || attempts.stopping.signal.aborted)
     return undefined;
-  const { start, options } = attempts;
-  const { entry, selected, folder } = prepared;
+  const { start } = attempts;
+  const { entry, folder } = prepared;
   const journal = attemptJournal(attempts, entry);
   const turn = controlled(attempts, {
     ...start,
-    command:
-      entry.resumedAfter === undefined
-        ? selected.command
-        : resumeCommand(selected.command, options.resume?.sessionId ?? ""),
+    command: launchCommand(attempts, prepared),
     progress: journal.progress,
     folder,
     ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
@@ -99,20 +114,6 @@ async function launched(
     await turn.ended;
     throw error;
   }
-}
-
-function resumeCommand(
-  command: readonly string[],
-  sessionId: string,
-): readonly string[] {
-  const separator = command.indexOf("--");
-  const boundary = separator < 0 ? command.length : separator;
-  return [
-    ...command.slice(0, boundary),
-    "--resume",
-    sessionId,
-    ...command.slice(boundary),
-  ];
 }
 
 async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
