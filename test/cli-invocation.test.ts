@@ -21,7 +21,11 @@ await test("CLV-008 help lists only the implemented commands", async () => {
         result.stdout,
         /^ {2}init-prompt\s+Print setup instructions/m,
       );
-      assert.doesNotMatch(result.stdout, /\battach\b|\bmcp\b|develop-ticket/);
+      assert.match(
+        result.stdout,
+        /^ {2}mcp {2,}Serve the read tools over stdio/m,
+      );
+      assert.doesNotMatch(result.stdout, /\battach\b|develop-ticket/);
       assert.equal(result.stderr, "");
     }
     const help = cli(["workflows", "validate", "--help"]);
