@@ -25,7 +25,22 @@ export async function packedDevelopFlow(packageRoot: string): Promise<void> {
   for (const selected of completeConfigurations)
     await packedConfiguration(packageRoot, {
       files: await configuredDevelopFiles(template, selected),
-      expected: [/selected complete configuration/, /selected partial policy/],
+      expected: [
+        /selected complete configuration/,
+        /selected partial policy/,
+        ...(selected.verify === "red-green"
+          ? [
+              /false-red starts a fix turn/,
+              /red-not-assertion starts a fix turn/,
+              /skipped-test starts a fix turn/,
+              /green-failed starts a fix turn/,
+              /accepted continues to review/,
+              /no-test-change continues to review/,
+              /unavailable verification 0 blocks/,
+              /verification repairs stop after four/,
+            ]
+          : []),
+      ],
     });
 }
 

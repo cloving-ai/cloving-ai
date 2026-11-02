@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "develop",
-  "summary": "Develop a ticket or task with explicit choices for selection, acceptance, merge and partial work. The first option at each point is the hands-off default.",
+  "summary": "Develop a ticket or task with explicit choices for selection, verification, acceptance, merge and partial work. The first option at each point is the hands-off default.",
   "points": [
     {
       "id": "input",
@@ -48,6 +48,33 @@
           "summary": "A person submits the ticket or task when starting a run.",
           "change": "In develop.declaration.json, remove the workflow.queue field.",
           "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "question": "How should the tests be verified before review?",
+      "options": [
+        {
+          "id": "none",
+          "label": "No additional verification",
+          "summary": "Keep the current development, review and merge checks.",
+          "change": "Leave develop/round.ts and the declaration unchanged for verification.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "red-green",
+          "label": "Red and green test check",
+          "summary": "Verify an assertion failure on the base and passing tests on the pull request head before review.",
+          "change": "In develop/round.ts import verifyRedGreen from develop/red-green.ts. After openPull and before acceptWork, call verifyRedGreen({ cycleId: input.cycleId, head: pull.commit, round }). Return a blocked outcome immediately; pass non-null feedback to repair({ cycleId: input.cycleId, round, report, result: verification }). In develop.declaration.json add the command capability to workflow.capabilities and \"commands\": [\"red-green\"] to workflow, and command: [\"run:red-green\"] to methods. Add 4 to workflow.effectLimit. Configure the operator red-green command and checks.redGreen.",
+          "requires": {
+            "merge": [
+              "green",
+              "person"
+            ]
+          },
           "needs": []
         }
       ]
