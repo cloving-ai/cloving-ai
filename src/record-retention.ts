@@ -24,6 +24,26 @@ export interface RetentionSettings {
   readonly archiveFolder: string | null;
 }
 
+export interface RunTurns {
+  readonly runId: string;
+  readonly operationIds: readonly string[];
+}
+
+export type TurnDetails =
+  | { readonly state: "archived"; readonly folder: string }
+  | { readonly state: "deleted" };
+
+export interface TurnFolders {
+  readonly turns: number;
+  readonly kept: number;
+  readonly archived: string | undefined;
+}
+
+export const sharedRecordFolders: readonly string[] = [
+  "journal/runs",
+  "journal/targets",
+];
+
 export const defaultRetention: RetentionSettings = {
   days: 30,
   action: "archive",
@@ -56,8 +76,30 @@ export function retentionVerdict(
   if (run === undefined) return "unreadable";
   if (!finished.includes(run.status)) return "skipped";
   const limit = context.now - context.days * dayMilliseconds;
-  const endedAt = run.endedAt ?? Number.NaN;
-  return endedAt < limit && folder.changedAt < limit ? "due" : "kept";
+  return endedBefore(run, limit) && folder.changedAt < limit ? "due" : "kept";
+}
+
+function endedBefore(run: StoredRun, limit: number): boolean {
+  return finished.includes(run.status) && (run.endedAt ?? Number.NaN) < limit;
+}
+
+export function turnDetails(
+  found: TurnFolders,
+  context: {
+    readonly run: StoredRun | undefined;
+    readonly retention: RetentionSettings;
+    readonly now: number;
+  },
+): TurnDetails | undefined {
+  if (found.archived !== undefined)
+    return { state: "archived", folder: found.archived };
+  const { run, retention } = context;
+  if (found.turns === 0 || found.kept > 0 || run === undefined)
+    return undefined;
+  if (retention.action !== "delete" || retention.days === null)
+    return undefined;
+  const limit = context.now - retention.days * dayMilliseconds;
+  return endedBefore(run, limit) ? { state: "deleted" } : undefined;
 }
 
 function refused(variable: string, expected: string): never {
