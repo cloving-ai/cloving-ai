@@ -56,17 +56,17 @@ async function shardSources(): Promise<string[]> {
 async function checkQuality(): Promise<void> {
   if (!selected || selected.index === 1)
     await checkNpmInputs(process.cwd(), commandOptions);
+  runCommand(
+    {
+      check: "test-build",
+      executable: "npm",
+      arguments: ["run", "build"],
+      directory: process.cwd(),
+      timeoutMilliseconds: 60000 * timeFactor,
+    },
+    commandOptions,
+  );
   if (selected && shard) {
-    runCommand(
-      {
-        check: "test-build",
-        executable: "npm",
-        arguments: ["run", "build"],
-        directory: process.cwd(),
-        timeoutMilliseconds: 60000 * timeFactor,
-      },
-      commandOptions,
-    );
     const sources = selected.index === 1 ? await shardSources() : [];
     const generated = await inspectGenerated(process.cwd());
     const result = await checkProjectTestShard(process.cwd(), {
