@@ -9,6 +9,10 @@ import type { SubmissionContract } from "../submission.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
 import type { AvailableManifest } from "../broker/actor/delivery-intents.ts";
 import { readRetainedWorkflowBundle } from "../../tools/workflow-bundles.ts";
+import {
+  workflowRefusals,
+  type WorkflowRefusal,
+} from "../workflow-refusals.ts";
 
 export interface WorkflowBundleStore {
   readonly directory: string;
@@ -84,13 +88,47 @@ function availableVersions(workflow: Registered): readonly Registered[] {
   return [workflow, { ...workflow, manifest, pin: workflowPin(manifest) }];
 }
 
+export interface RegistryOptions {
+  readonly retainedWorkflows?: readonly WorkflowRegistration[];
+  readonly workflowBundles?: WorkflowBundleStore;
+  readonly retainedWorkflow?: AvailableManifest;
+}
+
+export interface ReplaceableRegistry extends Registry {
+  readonly replace: (workflows: readonly WorkflowRegistration[]) => void;
+}
+
+export function replaceableRegistry(
+  workflows: readonly WorkflowRegistration[],
+  options: RegistryOptions = {},
+): ReplaceableRegistry {
+  let earlier = [...workflows, ...(options.retainedWorkflows ?? [])];
+  let current = workflowRegistry(workflows, options);
+  return {
+    get workflowIds() {
+      return current.workflowIds;
+    },
+    get workflowStages() {
+      return current.workflowStages;
+    },
+    byId: (workflowId) => current.byId(workflowId),
+    byPin: (pin) => current.byPin(pin),
+    bundle: (pinned) => current.bundle(pinned),
+    available: (pinned) => current.available(pinned),
+    replace: (next) => {
+      const replacement = workflowRegistry(next, {
+        ...options,
+        retainedWorkflows: earlier,
+      });
+      earlier = [...next, ...earlier];
+      current = replacement;
+    },
+  };
+}
+
 export function workflowRegistry(
   workflows: readonly WorkflowRegistration[],
-  options: {
-    readonly retainedWorkflows?: readonly WorkflowRegistration[];
-    readonly workflowBundles?: WorkflowBundleStore;
-    readonly retainedWorkflow?: AvailableManifest;
-  } = {},
+  options: RegistryOptions = {},
 ): Registry {
   const current = workflows.map(registered);
   const available = [
@@ -132,6 +170,48 @@ export function workflowRegistry(
           ? (manifest ?? options.retainedWorkflow?.(pinned))
           : undefined,
       );
+    },
+  };
+}
+
+interface WorkflowInventory {
+  readonly bundleDigest?: string;
+  readonly workflowRefusals: readonly WorkflowRefusal[];
+}
+
+export interface WorkflowCatalog {
+  readonly registry: Registry;
+  readonly inventory: () => WorkflowInventory;
+  readonly replace: (next: {
+    readonly bundleDigest: string;
+    readonly workflows: readonly WorkflowRegistration[];
+    readonly workflowRefusals: readonly WorkflowRefusal[];
+  }) => void;
+}
+
+export function workflowCatalog(
+  options: RegistryOptions & {
+    readonly workflows: readonly WorkflowRegistration[];
+    readonly bundleDigest?: string;
+    readonly workflowRefusals?: readonly WorkflowRefusal[];
+  },
+): WorkflowCatalog {
+  const registry = replaceableRegistry(options.workflows, options);
+  let inventory: WorkflowInventory = {
+    ...(options.bundleDigest === undefined
+      ? {}
+      : { bundleDigest: options.bundleDigest }),
+    workflowRefusals: workflowRefusals(options.workflowRefusals),
+  };
+  return {
+    registry,
+    inventory: () => inventory,
+    replace: (next) => {
+      registry.replace(next.workflows);
+      inventory = {
+        bundleDigest: next.bundleDigest,
+        workflowRefusals: next.workflowRefusals,
+      };
     },
   };
 }

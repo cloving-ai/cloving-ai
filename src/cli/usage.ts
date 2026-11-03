@@ -118,6 +118,14 @@ Cancels the run and its pending dispatch. It keeps the workspace and the evidenc
 
 Prints the committed events after a sequence. With --json, each line is one event.
 `,
+  reload: `Usage: cloving reload [--json]
+
+Checks and compiles the workflow files again while the service runs.
+New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
+A failed check keeps the current workflows and shows the reason.
+A change of the queue workflow or of the scheduled workflows needs a restart.
+Profiles and settings files do not reload.
+`,
   watch: `Usage: cloving watch [--port <n>]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
@@ -216,6 +224,7 @@ Commands:
   drop       Cancel a run and keep its files.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
+  reload     Check and compile the workflow files again.
   phone      Show, list, remove and reset the connected phones.
   config     Read and change repository settings.
   start      Start the service for a repository.

@@ -18,38 +18,49 @@ export type WorkflowBundleLoader = (
   directory: string,
 ) => Promise<WorkflowGeneration>;
 
-export function workflowGenerations(settings: {
-  readonly directory: string;
-  readonly repository: string;
+export interface CurrentGeneration {
   readonly registrations: readonly WorkflowRegistration[];
   readonly table: readonly {
     readonly workflowId: string;
     readonly functionName: string;
   }[];
-  readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
+  readonly workflows: Readonly<Record<string, unknown>>;
   readonly handler: WorkflowHandler;
-  readonly loadBundle?: WorkflowBundleLoader;
-}) {
-  const functions = Object.fromEntries(
-    settings.table.map((row) => [
-      row.workflowId,
-      settings.workflows[row.functionName],
-    ]),
-  );
-  const registry = workflowRegistry(settings.registrations, {
-    workflowBundles: {
-      directory: join(settings.directory, "workflow-bundles"),
-      repository: settings.repository,
-    },
+}
+
+function isWorkflowFunction(value: unknown): value is WorkflowFunction {
+  return typeof value === "function";
+}
+
+export function workflowGenerations(
+  settings: CurrentGeneration & {
+    readonly directory: string;
+    readonly repository: string;
+    readonly loadBundle?: WorkflowBundleLoader;
+  },
+) {
+  const workflowBundles = {
+    directory: join(settings.directory, "workflow-bundles"),
+    repository: settings.repository,
+  };
+  const generation = (source: CurrentGeneration) => ({
+    functions: new Map(
+      source.table.map((row) => [
+        row.workflowId,
+        source.workflows[row.functionName],
+      ]),
+    ),
+    registry: workflowRegistry(source.registrations, { workflowBundles }),
+    handler: source.handler,
   });
+  let current = generation(settings);
   const resolve = async (manifest: ExecutionManifest | undefined) => {
     if (manifest === undefined) return undefined;
+    const { functions, registry, handler } = current;
     const registered = registry.byPin(workflowPin(manifest));
     if (registered !== undefined) {
-      const workflow = functions[registered.workflowId];
-      return workflow === undefined
-        ? undefined
-        : { workflow, handler: settings.handler };
+      const workflow = functions.get(registered.workflowId);
+      return isWorkflowFunction(workflow) ? { workflow, handler } : undefined;
     }
     if (
       manifest.bundleDigest === undefined ||
@@ -62,7 +73,7 @@ export function workflowGenerations(settings: {
       const generation = await settings.loadBundle(directory);
       const workflow = Object.values(generation.workflows).find(
         (candidate): candidate is WorkflowFunction =>
-          typeof candidate === "function" &&
+          isWorkflowFunction(candidate) &&
           Reflect.get(candidate, "workflowId") === manifest.workflowId,
       );
       return workflow === undefined
@@ -76,6 +87,9 @@ export function workflowGenerations(settings: {
     resolve,
     available: async (manifest: ExecutionManifest) =>
       (await resolve(manifest)) === undefined ? undefined : manifest,
+    replace: (source: CurrentGeneration) => {
+      current = generation(source);
+    },
   };
 }
 

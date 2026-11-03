@@ -30,6 +30,7 @@ interface ProjectSettings {
   readonly home: string;
   readonly xdgConfigHome?: string | undefined;
   readonly userFolder?: string | undefined;
+  readonly recordedProject?: string;
 }
 
 export interface RegisteredWorkflows {
@@ -194,6 +195,22 @@ function operatorDeclaration(
   };
 }
 
+async function recordProject(settings: ProjectSettings): Promise<void> {
+  const { project, recordedProject } = settings;
+  if (recordedProject === undefined) return;
+  for (const name of [
+    "flow.mjs.__wf_tmp.js.debug.json",
+    "steps.mjs.debug.json",
+  ]) {
+    const path = join(project, "artifacts", name);
+    const text = await readFile(path, "utf8");
+    await writeFile(
+      path,
+      text.replaceAll(`${project}/`, `${recordedProject}/`),
+    );
+  }
+}
+
 async function writeManifests(
   project: string,
   compiled: ReturnType<typeof workflowManifests>,
@@ -213,6 +230,19 @@ async function writeManifests(
 export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
+  const prepared = await preparedBundle(settings);
+  const modules = join(
+    dirname(settings.project),
+    "workflow-bundles/node_modules",
+  );
+  await rm(modules, { force: true });
+  await symlink(join(settings.project, "node_modules"), modules);
+  return prepared;
+}
+
+export async function preparedBundle(
+  settings: ProjectSettings,
+): Promise<RegisteredWorkflows> {
   const { product, project } = settings;
   await initializeProject(settings);
   const folders = await loadWorkflowFolders(settings, {
@@ -220,6 +250,7 @@ export async function preparedProject(
   });
   const staged = await stageCandidates(project, folders.candidates);
   const compiled = await compile(settings);
+  await recordProject(settings);
   const combined = staged.map((candidate) =>
     operatorDeclaration({ ...candidate, project }, compiled),
   );
@@ -240,9 +271,6 @@ export async function preparedProject(
     repository: folders.repository,
     directory: join(dirname(project), "workflow-bundles"),
   });
-  const modules = join(dirname(project), "workflow-bundles/node_modules");
-  await rm(modules, { force: true });
-  await symlink(join(project, "node_modules"), modules);
   return {
     workflows: folders.workflows,
     repository: folders.repository,

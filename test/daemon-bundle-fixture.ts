@@ -118,13 +118,16 @@ try {
 process.exit(0);
 `;
 
-export const currentGeneration = `
+export const retainedGeneration = `
 cpSync(process.env.CURRENT_PROJECT, "current-project", { recursive: true, dereference: true, filter: (source) => !source.includes("node_modules") });
 for (const name of ["package.json", "declarations.json", "dependencies.json"])
   cpSync("bundle-project/" + name, "current-project/" + name);
 cpSync("develop.workflow.json", "current-project/develop.workflow.json");
 const currentDigest = await retainWorkflowBundle({ project: directory + "/current-project", repository: directory, directory: directory + "/workflow-bundles" });
 assert.notEqual(currentDigest, bundleDigest);
+`;
+
+export const currentGeneration = `${retainedGeneration}
 const currentClient = await import("./current-project/artifacts/client.mjs");
 const currentHandler = await import("./current-project/artifacts/flow.mjs");
 `;

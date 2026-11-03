@@ -275,6 +275,8 @@ Operator values combine GitHub merges and repository issue-label events with dae
 
 `cloving start` compiles and registers only project and user workflows. The start guide lists each registered workflow with a run command that matches its input contract. With no workflow, the service still starts and prints "No workflow. Run: cloving init". Status continues to show stored runs after their workflows have been removed.
 
+To add, change or remove a workflow file while the service runs, run `cloving reload`. The service checks and compiles the workflow files again in a child process. New runs use the new bundle. A run that started before the reload stays on the bundle of its pin, and its agent turn continues. A failed compile or check keeps the current workflows, and the command shows the reason. A change of the queue workflow or of the set of scheduled workflows needs a restart. `cloving status --json` shows the current `bundleDigest`. Profiles and settings files do not reload.
+
 Use `cloving init` to choose and configure a template. The `develop` template supports ticket input, queue selection, review and merge choices. The `idea-to-issue` template researches an idea and hands the resulting issue to a declared development workflow. The commands below assume those templates have been copied and configured:
 
 ```sh
