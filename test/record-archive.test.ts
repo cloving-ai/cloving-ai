@@ -94,6 +94,14 @@ for (const [name, copy, reason] of [
     () => Promise.reject(new Error("disk-full")),
     "disk-full",
   ],
+  [
+    "a copy that fails with an error code",
+    () =>
+      Promise.reject(
+        Object.assign(new Error("no space left"), { code: "ENOSPC" }),
+      ),
+    "ENOSPC",
+  ],
 ] as const)
   await test(`CLV-270 ${name} on another volume keeps the source and logs the reason`, () =>
     withSweep(async (scene) => {

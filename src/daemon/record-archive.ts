@@ -34,8 +34,13 @@ export const nodeFiles: RecordFiles = {
 };
 
 export function failureReason(error: unknown): string {
-  const code: unknown = Reflect.get(Object(error), "code");
-  if (typeof code === "string") return code;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  )
+    return error.code;
   return error instanceof Error ? error.message : String(error);
 }
 

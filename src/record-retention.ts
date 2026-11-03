@@ -36,11 +36,12 @@ const dayMilliseconds = 86_400_000;
 const finished: readonly string[] = ["completed", "failed", "cancelled"];
 
 export function folderRunId(started: unknown): string | undefined {
-  const runId: unknown = Reflect.get(Object(started), "runId");
-  if (typeof runId === "string") return runId;
-  const operationId: unknown = Reflect.get(Object(started), "operationId");
-  if (typeof operationId !== "string") return undefined;
-  return operationScope(operationId)?.run;
+  if (typeof started !== "object" || started === null) return undefined;
+  if ("runId" in started && typeof started.runId === "string")
+    return started.runId;
+  if (!("operationId" in started) || typeof started.operationId !== "string")
+    return undefined;
+  return operationScope(started.operationId)?.run;
 }
 
 export function retentionVerdict(

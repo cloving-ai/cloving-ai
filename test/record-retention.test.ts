@@ -6,6 +6,16 @@ import { retentionVerdict, type StoredRun } from "../src/record-retention.ts";
 const day = 86_400_000;
 const now = Date.parse("2026-11-02T00:00:00.000Z");
 
+const operationId = JSON.stringify([
+  "cloving-operation",
+  0,
+  "run-1",
+  "develop",
+  "turn",
+  null,
+  null,
+]);
+
 function ago(days: number): number {
   return now - days * day;
 }
@@ -97,29 +107,24 @@ await test("CLV-270 a folder exactly at the end of the period stays", () => {
   );
 });
 
-await test("CLV-270 the run ID comes from the third element of the operation ID", () => {
-  assert.equal(
-    verdict({
-      started: {
-        operationId: JSON.stringify([
-          "cloving-operation",
-          0,
-          "run-1",
-          "develop",
-          "turn",
-          null,
-          null,
-        ]),
-      },
-      run: finished("completed", 40),
-      changedDaysAgo: 40,
-    }),
-    "due",
-  );
-});
+for (const [name, started] of [
+  ["the third element of the operation ID", { operationId }],
+  [
+    "the operation ID when the run ID is not a string",
+    { runId: 7, operationId },
+  ],
+] as const)
+  await test(`CLV-270 the run ID comes from ${name}`, () => {
+    assert.equal(
+      verdict({ started, run: finished("completed", 40), changedDaysAgo: 40 }),
+      "due",
+    );
+  });
 
 for (const [name, started] of [
   ["a started record that cannot be read", undefined],
+  ["a started record that is null", null],
+  ["a started record that is a string", "run-1"],
   ["a started record with no run ID", { operationId: "not-an-operation" }],
   ["a started record of an unknown run", { runId: "run-2" }],
   ["a started record that names a member of Object", { runId: "toString" }],
