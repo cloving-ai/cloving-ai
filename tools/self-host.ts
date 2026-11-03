@@ -7,6 +7,10 @@ import {
 } from "../src/harness-defaults.ts";
 import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import {
+  retentionSettings,
+  type RetentionSettings,
+} from "../src/record-retention.ts";
+import {
   projectConfiguration,
   projectRoot,
   topLevel,
@@ -128,6 +132,7 @@ interface Commands extends HarnessSettings {
   readonly queueLanes: number;
   readonly queueDailySpendLimitUsd: number | undefined;
   readonly resetQueue: boolean;
+  readonly retention: RetentionSettings;
 }
 
 function queueLanes(): number {
@@ -219,6 +224,8 @@ if (opening.kind !== "started") {
   process.exit(1);
 }
 process.stdout.write(${JSON.stringify(guide(workflows))});
+process.send?.("started");
+process.channel?.unref();
 const stop = async () => { await opening.daemon.close(); process.exit(0); };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);
@@ -304,6 +311,7 @@ const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueDailySpendLimitUsd = queueSpendLimit();
 const lanes = queueLanes();
 const queueMilliseconds = queueInterval();
+const retention = retentionSettings(environment);
 const manifests = await preparedProject({
   product,
   project,
@@ -331,6 +339,7 @@ await launchers(
     queueLanes: lanes,
     queueDailySpendLimitUsd,
     resetQueue: flags.includes("--reset-queue"),
+    retention,
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,

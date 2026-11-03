@@ -294,6 +294,37 @@
         }
       },
       "additionalProperties": false
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "action": {
+          "enum": ["archive", "delete"]
+        },
+        "archiveFolder": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/"
+            },
+            {
+              "const": null
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

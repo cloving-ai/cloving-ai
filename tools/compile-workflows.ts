@@ -13,6 +13,10 @@ if (!sourceDirectory || !outputDirectory) {
 const output = resolve(outputDirectory);
 
 class WorkflowBuilder extends BaseBuilder {
+  override async getInputFiles(): Promise<string[]> {
+    return (await super.getInputFiles()).toSorted();
+  }
+
   override async build(): Promise<void> {
     const inputFiles = await this.getInputFiles();
     await mkdir(output, { recursive: true });

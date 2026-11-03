@@ -9,6 +9,7 @@ import type { TokenPrices } from "./token-prices.ts";
 export type SettingSource = "environment" | "private" | "project";
 
 export type SettingValue =
+  | null
   | string
   | number
   | readonly string[]
@@ -35,6 +36,9 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "selfUpdate.everySeconds": "CLOVING_SELF_UPDATE_SECONDS",
   "github.command": "CLOVING_GH_COMMAND",
   "workflows.folder": "CLOVING_WORKFLOW_FOLDER",
+  "retention.days": "CLOVING_RETENTION_DAYS",
+  "retention.action": "CLOVING_RETENTION_ACTION",
+  "retention.archiveFolder": "CLOVING_RETENTION_ARCHIVE_FOLDER",
 };
 
 const environmentOnly = [
@@ -98,6 +102,7 @@ export function configurationValues(
     selfUpdate: values.selfUpdate,
     github: values.github,
     workflows: values.workflows,
+    retention: values.retention,
   };
   for (const [name, group] of Object.entries(groups)) {
     if (group === undefined) continue;

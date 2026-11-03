@@ -14,6 +14,21 @@ interface ProgramOptions {
   readonly watchStartupMilliseconds?: number;
   readonly readyPrograms?: readonly string[];
   readonly stuckPrograms?: readonly string[];
+  readonly announcedMilliseconds?: number | "never";
+}
+
+function watchStartup(root: string, options: ProgramOptions): string {
+  return `writeFileSync(${JSON.stringify(join(root, "watch-saw-daemon"))}, String(existsSync(${JSON.stringify(join(root, "daemon-announced"))})));
+await new Promise(resolve => setTimeout(resolve, ${String(options.watchStartupMilliseconds ?? 0)}));`;
+}
+
+function announcement(root: string, options: ProgramOptions): string {
+  if (options.announcedMilliseconds === "never") return "";
+  return `setTimeout(() => {
+  writeFileSync(${JSON.stringify(join(root, "daemon-announced"))}, "announced");
+  process.send?.("started");
+  process.channel?.unref();
+}, ${String(options.announcedMilliseconds ?? 0)});`;
 }
 
 export async function programs(
@@ -32,13 +47,14 @@ writeFileSync(${JSON.stringify(join(root, `${name}-started`))}, String(process.p
 setInterval(() => {
   if (process.ppid !== parent) process.exit(0);
 }, 200).unref();
-${name === "watch" ? `await new Promise(resolve => setTimeout(resolve, ${String(options.watchStartupMilliseconds ?? 0)}));` : ""}
+${name === "watch" ? watchStartup(root, options) : ""}
 ${
   name === "daemon"
     ? `import { createServer } from "node:net";
 import { mkdirSync } from "node:fs";
 mkdirSync(${JSON.stringify(join(root, "host/run"))}, { recursive: true, mode: 0o700 });
-createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok: true, result: { runs: [], next: null } }) + "\\n"))).listen(${JSON.stringify(join(root, "host/run/control.sock"))}).unref();`
+createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok: true, result: { runs: [], next: null } }) + "\\n"))).listen(${JSON.stringify(join(root, "host/run/control.sock"))}).unref();
+${announcement(root, options)}`
     : ""
 }
 const timer = setInterval(() => {}, 1000);

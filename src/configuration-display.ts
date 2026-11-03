@@ -32,6 +32,8 @@ const defaults: Readonly<Record<string, SettingValue>> = {
   "watch.port": 3663,
   "watch.actions": "on",
   "github.command": ["gh"],
+  "retention.days": 30,
+  "retention.action": "archive",
 };
 
 function effectiveValue(setting: {
