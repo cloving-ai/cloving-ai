@@ -80,10 +80,10 @@ export function pinnedWorkflowHandler(
       (await located(ports, receipt));
     if (run === undefined)
       return new Response("unknown-world-run", { status: 503 });
+    const available = await ports.available(run.runId, run.workflowId);
     const state = await ports.state();
     if (state.runs[run.runId]?.status === "cancelled")
       return Response.json({ ok: true });
-    const available = await ports.available(run.runId, run.workflowId);
     const replay = { state, runId: run.runId, receipt, available };
     if (!(await observedReplay(ports, replay)))
       return new Response("workflow-observation-unavailable", { status: 503 });
