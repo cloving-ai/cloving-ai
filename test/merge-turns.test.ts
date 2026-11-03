@@ -87,3 +87,28 @@ await test("CLV-280 an abort without an Error reason gives merge-turn-aborted", 
   held.resolve(undefined);
   await first;
 });
+
+await test("CLV-280 a step that arrives after an aborted step still waits for the running turn", async () => {
+  const order: string[] = [];
+  const held = Promise.withResolvers<undefined>();
+  const first = inMergeTurn(turn("/repositories/late"), async () => {
+    await held.promise;
+    order.push("first ends");
+  });
+  const controller = new AbortController();
+  const aborted = inMergeTurn(
+    turn("/repositories/late", controller.signal),
+    () => Promise.resolve(),
+  );
+  controller.abort(new Error("lease-lost"));
+  await assert.rejects(aborted, /lease-lost/);
+  const late = inMergeTurn(turn("/repositories/late"), () => {
+    order.push("late starts");
+    return Promise.resolve();
+  });
+  await settled();
+  assert.deepEqual(order, []);
+  held.resolve(undefined);
+  await Promise.all([first, late]);
+  assert.deepEqual(order, ["first ends", "late starts"]);
+});
