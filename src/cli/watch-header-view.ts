@@ -113,12 +113,19 @@ export function HeaderActions(props: HeaderProps): Shown {
   });
 }
 
+export function Version(props: HeaderProps): Shown {
+  const version = props.model?.serviceVersion;
+  if (version === undefined) return null;
+  return element("div", { class: "version", children: `cloving ${version}` });
+}
+
 export function Header(props: HeaderProps): Shown {
   return element("header", {
     children: [
       component(Brand, {}),
       component(HeaderStatus, props),
       component(HeaderActions, props),
+      component(Version, props),
     ],
   });
 }

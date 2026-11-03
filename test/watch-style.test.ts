@@ -29,6 +29,14 @@ await test("CLV-140 tabs scroll in one row above a full-width board with flexibl
   assert.match(rule(".columns"), /gap: 12px/);
 });
 
+await test("the version label of the watch page stays at the bottom left", () => {
+  assert.match(rule(".version"), /position: fixed/);
+  assert.match(rule(".version"), /left: 12px/);
+  assert.match(rule(".version"), /bottom: 8px/);
+  assert.match(rule(".version"), /color: var\(--muted\)/);
+  assert.match(rule(".version"), /pointer-events: none/);
+});
+
 await test("CLV-134 the board fills the viewport with independent column scrolling", () => {
   assert.match(rule(".board-page"), /height: 100dvh/);
   assert.match(rule(".board-page"), /overflow: hidden/);

@@ -109,6 +109,7 @@ export interface HostPorts {
 }
 
 export interface ServiceOptions {
+  readonly version?: string;
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
