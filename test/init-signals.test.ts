@@ -6,7 +6,9 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { withDoctor } from "./doctor-fixture.ts";
+import { spawnStall } from "./spawn-stall-fixture.ts";
 import { stopChildGroup } from "./stop-child.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   await test(`CLV-209 init waits for a harness that handles ${signal}`, () =>
@@ -21,12 +23,16 @@ else {
   console.log("ready");
 }`,
       );
+      const stalled = await spawnStall(scene.root, {
+        command: "init",
+        milliseconds: testMilliseconds(1500),
+      });
       const child = spawn(
         process.execPath,
         [resolve("src/cli.ts"), "init", "--harness", file],
         {
           cwd: scene.repository,
-          env: scene.environment,
+          env: { ...scene.environment, NODE_OPTIONS: stalled },
           detached: true,
         },
       );
@@ -37,7 +43,7 @@ else {
         });
         assert.match(String(ready[0]), /ready/);
         const interrupted = once(child.stdout, "data", {
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(testMilliseconds(3000)),
         });
         assert.ok(child.pid);
         if (signal === "SIGINT") process.kill(-child.pid, signal);

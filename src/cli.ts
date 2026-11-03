@@ -5,7 +5,12 @@ import { settingsEnvironment } from "./cli/project-settings.ts";
 import { constants as systemConstants } from "node:os";
 import type { HarnessStartRequest } from "./harness-start.ts";
 import { addAbortListener } from "node:events";
-import { execFile, execFileSync, spawn } from "node:child_process";
+import {
+  execFile,
+  execFileSync,
+  spawn,
+  type ChildProcess,
+} from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { delimiter, dirname, extname, join, resolve } from "node:path";
@@ -85,45 +90,55 @@ const watchCommand: WatchCommandRunner = async (request) => {
   }
 };
 
+function spawnedHarness(
+  request: HarnessStartRequest,
+): ChildProcess | undefined {
+  try {
+    return spawn(request.executable, request.arguments, {
+      cwd: request.directory,
+      env: request.environment,
+      stdio: "inherit",
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 function startHarness(request: HarnessStartRequest): Promise<number | null> {
   return new Promise((settle) => {
-    try {
-      const child = spawn(request.executable, request.arguments, {
-        cwd: request.directory,
-        env: request.environment,
-        stdio: "inherit",
+    const interrupt = (): void => undefined;
+    const terminate = (): void => {
+      terminateHarness(child?.pid, {
+        snapshot: () =>
+          execFileSync("/bin/ps", ["-axo", "pid=,ppid="], {
+            encoding: "utf8",
+            timeout: 1000,
+          }),
+        kill: (identifier, signal) => process.kill(identifier, signal),
       });
-      const interrupt = (): void => undefined;
-      const terminate = (): void => {
-        terminateHarness(child.pid, {
-          snapshot: () =>
-            execFileSync("/bin/ps", ["-axo", "pid=,ppid="], {
-              encoding: "utf8",
-              timeout: 1000,
-            }),
-          kill: (identifier, signal) => process.kill(identifier, signal),
-        });
-      };
-      const cleanup = (): void => {
-        process.off("SIGINT", interrupt);
-        process.off("SIGTERM", terminate);
-      };
-      process.on("SIGINT", interrupt);
-      process.on("SIGTERM", terminate);
-      child.once("error", () => {
-        cleanup();
-        settle(null);
-      });
-      child.once("close", (status, signal) => {
-        cleanup();
-        settle(
-          status ??
-            (signal === null ? 1 : 128 + systemConstants.signals[signal]),
-        );
-      });
-    } catch {
+    };
+    const cleanup = (): void => {
+      process.off("SIGINT", interrupt);
+      process.off("SIGTERM", terminate);
+    };
+    process.on("SIGINT", interrupt);
+    process.on("SIGTERM", terminate);
+    const child = spawnedHarness(request);
+    if (child === undefined) {
+      cleanup();
       settle(null);
+      return;
     }
+    child.once("error", () => {
+      cleanup();
+      settle(null);
+    });
+    child.once("close", (status, signal) => {
+      cleanup();
+      settle(
+        status ?? (signal === null ? 1 : 128 + systemConstants.signals[signal]),
+      );
+    });
   });
 }
 
@@ -173,17 +188,6 @@ function toolProcess(input: {
     "tools",
     `${input.tool}${extname(import.meta.filename)}`,
   );
-  const child = spawn(process.execPath, [program, ...input.argumentsList], {
-    detached: input.tool === "red-green-command",
-    stdio:
-      input.tool === "red-green-command"
-        ? ["inherit", "inherit", "inherit", "ipc"]
-        : "inherit",
-    env: {
-      ...process.env,
-      PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
-    },
-  });
   let stopping = false;
   const interrupt = (): void => {
     stopping = true;
@@ -195,6 +199,17 @@ function toolProcess(input: {
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
+  const child = spawn(process.execPath, [program, ...input.argumentsList], {
+    detached: input.tool === "red-green-command",
+    stdio:
+      input.tool === "red-green-command"
+        ? ["inherit", "inherit", "inherit", "ipc"]
+        : "inherit",
+    env: {
+      ...process.env,
+      PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
+    },
+  });
   return new Promise((settle) => {
     child.once("close", (status) => {
       setImmediate(() => {

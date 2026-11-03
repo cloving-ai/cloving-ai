@@ -103,7 +103,7 @@ async function assertStopped(
   assert.ok(typeof directory === "string");
   assert.ok(typeof pid === "number");
   assert.ok(typeof descendantPid === "number");
-  await until(() => !existsSync(directory));
+  await until(() => !existsSync(dirname(directory)));
   assert.equal(alive(pid), false);
   assert.equal(alive(descendantPid), false);
   assert.equal(

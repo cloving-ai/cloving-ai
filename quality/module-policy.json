@@ -1399,6 +1399,7 @@
     "test/sleep-sdk.test.ts": "test",
     "test/sleep-testing.test.ts": "test",
     "test/sleep.test.ts": "test",
+    "test/spawn-stall-fixture.ts": "test",
     "test/step-bridge.test.ts": "test",
     "test/step-claims.test.ts": "test",
     "test/step-gate.test.ts": "test",
