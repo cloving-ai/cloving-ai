@@ -74,10 +74,10 @@ await test("CLV-254 the contract helper refuses another schema keyword, a $ref o
   const document = watchApiDocument;
   assert.deepEqual(
     schemaFailures(document, {
-      at: "limit",
-      schema: { type: "integer", minimum: 1 },
+      at: "cursor",
+      schema: { type: "string", pattern: "^[A-Za-z0-9_-]+$" },
     }),
-    ["limit: unsupported keyword minimum"],
+    ["cursor: unsupported keyword pattern"],
   );
   assert.deepEqual(
     schemaFailures(document, {
@@ -111,6 +111,41 @@ await test("CLV-254 the contract helper refuses another schema keyword, a $ref o
       value: fields({ up: "yes" }),
     }),
     ["body: missing property updatedAt", "body.up: expected type boolean"],
+  );
+});
+
+await test("CLV-254 the contract helper checks minimum, maximum and default, and refuses a range that is not a number or a default outside the schema", () => {
+  const document = watchApiDocument;
+  const limit = { type: "integer", minimum: 1, maximum: 200, default: 50 };
+  assert.deepEqual(
+    schemaFailures(document, { at: "limit", schema: limit }),
+    [],
+  );
+  assert.deepEqual(
+    [0, 1, 200, 201].map((value) =>
+      valueFailures(document, { at: "limit", schema: limit, value }),
+    ),
+    [["limit: below the minimum 1"], [], [], ["limit: above the maximum 200"]],
+  );
+  assert.deepEqual(
+    schemaFailures(document, {
+      at: "limit",
+      schema: { type: "integer", minimum: "1", maximum: null, default: "50" },
+    }),
+    [
+      "limit: invalid minimum",
+      "limit: invalid maximum",
+      "limit: default outside the schema",
+    ],
+  );
+  assert.deepEqual(
+    [1.5, 0, 201].map((fallback) =>
+      schemaFailures(document, {
+        at: "limit",
+        schema: { ...limit, default: fallback },
+      }),
+    ),
+    [1.5, 0, 201].map(() => ["limit: default outside the schema"]),
   );
 });
 

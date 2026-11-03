@@ -227,3 +227,34 @@ await test("CLV-254 GET api/v1/runs with workflowId and state gives only the mat
     );
   });
 });
+
+await test("CLV-254 the limit schema of the document gives the range 1 to 200 and the default 50, and a page with no limit has 50 runs", async () => {
+  const limit = watchApiDocument.paths["/runs"].get.parameters.find(
+    (parameter) => parameter.name === "limit",
+  );
+  assert.deepEqual(fields(limit?.schema), {
+    type: "integer",
+    minimum: 1,
+    maximum: 200,
+    default: 50,
+  });
+  const replies = watchReplies({
+    workflows: ["develop"],
+    runs: Array.from({ length: 51 }, (_, index) =>
+      pageRun(`run-${String(index).padStart(2, "0")}`, minutesAgo(index + 1)),
+    ),
+  });
+  await withWatchService(replies.answer, async (watch) => {
+    const first = await runPage(watch.address, "");
+    assert.equal(first.runs.length, 50);
+    const second = await runPage(
+      watch.address,
+      `?cursor=${String(first.next)}`,
+    );
+    assert.deepEqual(
+      second.runs.map((run) => run["runId"]),
+      ["run-50"],
+    );
+    assert.equal(second.next, null);
+  });
+});

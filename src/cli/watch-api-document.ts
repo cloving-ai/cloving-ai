@@ -10,6 +10,13 @@ export const runStates = [
   "cancelled",
 ] as const satisfies readonly RunStatus[];
 
+export const runLimit = {
+  type: "integer",
+  minimum: 1,
+  maximum: 200,
+  default: 50,
+} as const;
+
 const text = { type: "string" };
 const nullableText = { type: ["string", "null"] };
 const integer = { type: "integer" };
@@ -81,9 +88,8 @@ const runParameters = [
   {
     name: "limit",
     in: "query",
-    description:
-      "The maximum number of runs on the page, from 1 to 200. The default is 50.",
-    schema: integer,
+    description: "The maximum number of runs on the page.",
+    schema: runLimit,
   },
   {
     name: "cursor",

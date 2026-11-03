@@ -22,6 +22,9 @@ const keywords = new Set([
   "const",
   "oneOf",
   "$ref",
+  "minimum",
+  "maximum",
+  "default",
 ]);
 const componentPrefix = "#/components/schemas/";
 
@@ -87,8 +90,14 @@ function children(found: FoundSchema): readonly FoundSchema[] {
   ];
 }
 
+type Checks = readonly (readonly [boolean, string])[];
+
+function failuresOf(checks: Checks): readonly string[] {
+  return checks.filter(([failed]) => failed).map(([, failure]) => failure);
+}
+
 function keywordFailures(document: unknown, schema: Fields): readonly string[] {
-  const checks: readonly (readonly [boolean, string])[] = [
+  return failuresOf([
     ["type" in schema && !validType(schema["type"]), "invalid type"],
     [
       "required" in schema &&
@@ -110,8 +119,30 @@ function keywordFailures(document: unknown, schema: Fields): readonly string[] {
       "$ref" in schema && resolved(document, schema["$ref"]) === undefined,
       `unresolved $ref ${String(schema["$ref"])}`,
     ],
-  ];
-  return checks.filter(([failed]) => failed).map(([, failure]) => failure);
+  ]);
+}
+
+function rangeFailures(document: unknown, schema: Fields): readonly string[] {
+  const { default: fallback, ...rest } = schema;
+  return failuresOf([
+    [
+      "minimum" in schema && !Number.isFinite(schema["minimum"]),
+      "invalid minimum",
+    ],
+    [
+      "maximum" in schema && !Number.isFinite(schema["maximum"]),
+      "invalid maximum",
+    ],
+    [
+      "default" in schema &&
+        valueFailures(document, {
+          at: "default",
+          schema: rest,
+          value: fallback,
+        }).length > 0,
+      "default outside the schema",
+    ],
+  ]);
 }
 
 export function schemaFailures(
@@ -124,9 +155,10 @@ export function schemaFailures(
     ...Object.keys(schema)
       .filter((key) => !keywords.has(key))
       .map((key) => `${found.at}: unsupported keyword ${key}`),
-    ...keywordFailures(document, schema).map(
-      (failure) => `${found.at}: ${failure}`,
-    ),
+    ...[
+      ...keywordFailures(document, schema),
+      ...rangeFailures(document, schema),
+    ].map((failure) => `${found.at}: ${failure}`),
     ...children(found).flatMap((child) => schemaFailures(document, child)),
   ];
 }
@@ -165,6 +197,22 @@ function choiceFailures(checked: CheckedValue): readonly string[] {
       ? [`${checked.at}: expected ${JSON.stringify(schema["const"])}`]
       : []),
   ];
+}
+
+function boundFailures(checked: CheckedValue): readonly string[] {
+  const { minimum, maximum } = fieldsOf(checked.schema);
+  const { value } = checked;
+  if (typeof value !== "number") return [];
+  return failuresOf([
+    [
+      typeof minimum === "number" && value < minimum,
+      `${checked.at}: below the minimum ${String(minimum)}`,
+    ],
+    [
+      typeof maximum === "number" && value > maximum,
+      `${checked.at}: above the maximum ${String(maximum)}`,
+    ],
+  ]);
 }
 
 function referenceFailures(
@@ -245,6 +293,7 @@ export function valueFailures(
     ...referenceFailures(document, checked),
     ...typeFailures(checked),
     ...choiceFailures(checked),
+    ...boundFailures(checked),
     ...oneOfFailures(document, checked),
     ...objectFailures(document, checked),
     ...arrayFailures(document, checked),

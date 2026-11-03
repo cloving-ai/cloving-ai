@@ -1,5 +1,5 @@
 import { STATUS_CODES } from "node:http";
-import { runStates, watchApiDocument } from "./watch-api-document.ts";
+import { runLimit, runStates, watchApiDocument } from "./watch-api-document.ts";
 import type { WatchModel, WatchRun, WatchWorkflow } from "./watch-render.ts";
 import type { CardField } from "./watch-run-input.ts";
 
@@ -16,11 +16,59 @@ export interface ApiRequest {
   readonly model: () => Promise<WatchModel>;
 }
 
-const base = "/api/v1";
-const defaultLimit = 50;
+interface ApiIndex {
+  readonly version: 1;
+  readonly openapi: string;
+  readonly endpoints: readonly {
+    readonly method: "GET";
+    readonly path: string;
+    readonly operationId: string;
+  }[];
+}
 
-function found(value: unknown): ApiReply {
-  return { status: 200, type: "application/json", body: JSON.stringify(value) };
+interface ApiService {
+  readonly up: boolean;
+  readonly updatedAt: string;
+}
+
+interface ApiWorkflow {
+  readonly workflowId: string;
+  readonly activeCount: number;
+  readonly waitingCount: number;
+  readonly latestAt: string | null;
+  readonly inputs: readonly CardField[];
+}
+
+interface ApiRun {
+  readonly runId: string;
+  readonly workflowId: string;
+  readonly ticketId: string | null;
+  readonly title: string | null;
+  readonly state: string;
+  readonly outcome: string | null;
+  readonly currentStep: {
+    readonly name: string;
+    readonly startedAt: string | null;
+  };
+  readonly latestAt: string | null;
+  readonly pullRequest: {
+    readonly number: number;
+    readonly url: string;
+  } | null;
+  readonly estimatedCostUsd: number | null;
+}
+
+type ApiBody =
+  | typeof watchApiDocument
+  | ApiIndex
+  | ApiService
+  | { readonly workflows: readonly ApiWorkflow[] }
+  | { readonly runs: readonly ApiRun[]; readonly nextCursor: string | null };
+
+const base = "/api/v1";
+
+function found(body: ApiBody): ApiReply {
+  return { status: 200, type: "application/json", body: JSON.stringify(body) };
 }
 
 function problem(
@@ -74,7 +122,7 @@ function inputOf(field: CardField): CardField {
 function workflowOf(
   workflow: WatchWorkflow,
   forms: WatchModel["cardForms"],
-): unknown {
+): ApiWorkflow {
   const form = forms?.find((item) => item.workflowId === workflow.workflowId);
   return {
     workflowId: workflow.workflowId,
@@ -95,7 +143,7 @@ async function workflows(request: ApiRequest): Promise<ApiReply> {
   });
 }
 
-function runOf(run: WatchRun): unknown {
+function runOf(run: WatchRun): ApiRun {
   const { pullRequest, currentStep } = run;
   return {
     runId: run.runId,
@@ -176,7 +224,7 @@ function runQuery(url: URL): RunQuery {
   return {
     workflowId: searchParams.get("workflowId"),
     state: searchParams.get("state"),
-    limit: Number(searchParams.get("limit") ?? defaultLimit),
+    limit: Number(searchParams.get("limit") ?? runLimit.default),
     after: cursor === null ? null : keyOf(cursor),
   };
 }
@@ -207,6 +255,15 @@ async function runs(request: ApiRequest): Promise<ApiReply> {
   });
 }
 
+function withinLimit(value: string): boolean {
+  const limit = Number(value);
+  return (
+    /^(0|[1-9]\d*)$/.test(value) &&
+    limit >= runLimit.minimum &&
+    limit <= runLimit.maximum
+  );
+}
+
 type Parameters = ReadonlyMap<string, (value: string) => boolean>;
 
 interface Route {
@@ -217,10 +274,7 @@ interface Route {
 const runParameters: Parameters = new Map([
   ["workflowId", (value: string) => value !== ""],
   ["state", (value: string) => runStates.some((state) => state === value)],
-  [
-    "limit",
-    (value: string) => /^[1-9]\d*$/.test(value) && Number(value) <= 200,
-  ],
+  ["limit", withinLimit],
   ["cursor", (value: string) => keyOf(value) !== null],
 ]);
 
