@@ -7,7 +7,10 @@ import {
 } from "node:timers/promises";
 import type { Database, Logger } from "solid-objects";
 import { trackedDelivery } from "../src/broker/actor/authority-release.ts";
-import { authoritySession } from "../src/broker/actor/authority-session.ts";
+import {
+  authoritySession,
+  type Authority,
+} from "../src/broker/actor/authority-session.ts";
 
 function rejecting(message: string): () => Promise<never> {
   return () => Promise.reject(new Error(message));
@@ -160,10 +163,10 @@ function refusal(detail: string): unknown {
   return { kind: "failed", reason: "authority-unavailable", detail };
 }
 
-await test("CLV-279 a session refuses commands and reads while the watchdog reports a condition, and accepts them again when the condition clears, with no restart", async () => {
-  const health: { condition: string | undefined } = {
-    condition: "stranded message m-1",
-  };
+function recordingSession(condition: () => Promise<string | undefined>): {
+  readonly authority: Authority;
+  readonly calls: readonly string[];
+} {
   const calls: string[] = [];
   const authority = authoritySession({
     ...parts,
@@ -175,8 +178,29 @@ await test("CLV-279 a session refuses commands and reads while the watchdog repo
       calls.push("stop");
       return Promise.resolve();
     },
-    condition: () => Promise.resolve(health.condition),
+    condition,
   });
+  return { authority, calls };
+}
+
+function lookups(
+  results: (Error | undefined)[],
+): () => Promise<string | undefined> {
+  return () => {
+    const failure = results.shift();
+    return failure === undefined
+      ? Promise.resolve(undefined)
+      : Promise.reject(failure);
+  };
+}
+
+await test("CLV-279 a session refuses commands and reads while the watchdog reports a condition, and accepts them again when the condition clears, with no restart", async () => {
+  const health: { condition: string | undefined } = {
+    condition: "stranded message m-1",
+  };
+  const { authority, calls } = recordingSession(() =>
+    Promise.resolve(health.condition),
+  );
   assert.deepEqual(
     await authority.execute(pause("c-1"), context),
     refusal("stranded message m-1"),
@@ -276,4 +300,24 @@ await test("CLV-279 a command whose call times out gets a failed receipt and lea
   );
   assert.deepEqual(await authority.execute(pause("c-2"), context), accepted);
   assert.deepEqual(stops, []);
+});
+
+await test("CLV-279 a command gets a failed receipt and no call when the health lookup fails before the call, and the session stays open", async () => {
+  const { authority, calls } = recordingSession(
+    lookups([new Error("lookup failed")]),
+  );
+  assert.deepEqual(
+    await authority.execute(pause("c-1"), context),
+    refusal("Error: lookup failed"),
+  );
+  assert.deepEqual(await authority.execute(pause("c-2"), context), accepted);
+  assert.deepEqual(calls, ["execute"]);
+});
+
+await test("CLV-279 a command keeps its committed receipt when the health lookup fails after the call, and the session stays open", async () => {
+  const { authority, calls } = recordingSession(
+    lookups([undefined, new Error("lookup failed")]),
+  );
+  assert.deepEqual(await authority.execute(pause("c-1"), context), accepted);
+  assert.deepEqual(calls, ["execute"]);
 });

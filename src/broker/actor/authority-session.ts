@@ -304,8 +304,7 @@ async function executeCommand(
   input: { readonly command: unknown; readonly context: CommandContext },
 ): Promise<StoreReceipt> {
   const { command, context } = input;
-  await refreshed(session);
-  const unavailable = unavailableReceipt(session);
+  const unavailable = await refusal(session);
   if (unavailable !== undefined) return unavailable;
   const given = serializable({
     command,
@@ -319,10 +318,19 @@ async function executeCommand(
   if (request === undefined) return invalidCommand;
   if (oversized(request)) return tooLarge;
   try {
-    return await healthyReceipt(session, await invoked(session, request));
+    return storeReceipt(await invoked(session, request));
   } catch (error) {
     return failedReceipt(session, error);
   }
+}
+
+async function refusal(session: Session): Promise<StoreReceipt | undefined> {
+  try {
+    await refreshed(session);
+  } catch (error) {
+    return failed(error);
+  }
+  return unavailableReceipt(session);
 }
 
 function failedReceipt(session: Session, error: unknown): StoreReceipt {
@@ -338,7 +346,7 @@ function failedReceipt(session: Session, error: unknown): StoreReceipt {
 }
 
 function timedOut(error: unknown): boolean {
-  return Reflect.get(Object(error), "name") === "SyncTimeout";
+  return error instanceof Error && error.name === "SyncTimeout";
 }
 
 async function invoked(
@@ -352,15 +360,6 @@ async function invoked(
   } finally {
     session.invocations.delete(invocation);
   }
-}
-
-async function healthyReceipt(
-  session: Session,
-  value: unknown,
-): Promise<StoreReceipt> {
-  const receipt = storeReceipt(value);
-  await refreshed(session);
-  return receipt;
 }
 
 export function operationRecords(
