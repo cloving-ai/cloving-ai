@@ -50,6 +50,10 @@ export interface Scene {
     environment?: Readonly<NodeJS.ProcessEnv>,
     argumentsList?: readonly string[],
   ) => Promise<ChildProcess>;
+  readonly startUntil: (
+    expected: string,
+    environment: Readonly<NodeJS.ProcessEnv>,
+  ) => Promise<ChildProcess>;
   readonly refused: (
     bound?: string,
     environment?: Readonly<NodeJS.ProcessEnv>,
@@ -113,6 +117,8 @@ export async function scene(
           "Cloving runs",
         )
       ).child,
+    startUntil: async (expected, environment) =>
+      (await launched({ ...settings, environment }, expected)).child,
     refused: (bound = "8", environment = {}) =>
       refused({ ...settings, bound, environment }),
   };
