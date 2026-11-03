@@ -15,6 +15,7 @@ export interface ProjectOptions extends SourceOptions {
   readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly shard?: string;
+  readonly coverage?: "on" | "off";
   readonly coverageDirectory?: string;
   readonly trustedCompilerConfiguration?: string;
   readonly architecture: DependencyPolicy;
@@ -182,7 +183,9 @@ async function checkProjectTests(
     ...(options.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: options.coverageDirectory }),
-    ...(production.length > 0 ? { coverageFiles: production } : {}),
+    ...(production.length > 0 && options.coverage !== "off"
+      ? { coverageFiles: production }
+      : {}),
     ...(options.requiredTests ? { requiredTests: options.requiredTests } : {}),
   });
 }

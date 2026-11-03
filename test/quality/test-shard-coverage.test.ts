@@ -47,6 +47,33 @@ await test("CLV-266 each shard exports portable raw coverage without checking pa
   });
 });
 
+await test("a shard with no coverage files runs its tests without a coverage folder", async () => {
+  await withFiles(files, async (directory) => {
+    const tests = ["a.test.ts", "b.test.ts"].map((file) =>
+      join(directory, file),
+    );
+    await checkTests(directory, {
+      files: [join(directory, "main.ts"), ...tests],
+      shard: "1/2",
+    });
+    assert.equal(existsSync(join(directory, "coverage")), false);
+  });
+});
+
+await test("a shard with coverage files still needs a coverage folder", async () => {
+  await withFiles(files, async (directory) => {
+    const production = join(directory, "main.ts");
+    await assert.rejects(
+      checkTests(directory, {
+        files: [production, join(directory, "a.test.ts")],
+        coverageFiles: [production],
+        shard: "1/2",
+      }),
+      /missing-shard-coverage-directory/,
+    );
+  });
+});
+
 await test("CLV-266 joined coverage from separate checkouts equals a complete run", async () => {
   assert.equal(typeof shardCoverage.joinShardCoverage, "function");
   await withFiles(files, async (directory) => {

@@ -171,6 +171,8 @@ async function runtimeGate(
         return { program: {}, files: [], completed: requiredChecks.slice(0, -1) };
       }
       export async function checkProjectTestShard(directory, options) {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync("coverage-options.json", JSON.stringify([options.coverage ?? null, options.coverageDirectory ?? null]));
         return { files: [], completed: ["tests"], timings: options.commandOptions.timings, warnings: [] };
       }
       export async function checkProject(directory, options) {
@@ -179,6 +181,55 @@ async function runtimeGate(
     `,
   };
 }
+
+function recordedOptions(text: string): readonly (string | null)[] {
+  const value: unknown = JSON.parse(text);
+  assert.ok(Array.isArray(value));
+  return value.map((item: unknown) => (typeof item === "string" ? item : null));
+}
+
+async function coverageGate(
+  shard: string | undefined,
+  setting: string | undefined,
+) {
+  return await withFiles(await runtimeGate(shard), async (directory) => {
+    const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        CLOVING_TEST_SHARD: shard,
+        CLOVING_TEST_COVERAGE: setting,
+      },
+      encoding: "utf8",
+      timeout: testMilliseconds(10_000),
+    });
+    const recorded = await readFile(
+      resolve(directory, "coverage-options.json"),
+      "utf8",
+    ).then(recordedOptions, () => null);
+    return { status: result.status, stderr: result.stderr, recorded };
+  });
+}
+
+for (const [setting, options] of [
+  [undefined, ["on", "coverage/shard"]],
+  ["on", ["on", "coverage/shard"]],
+  ["off", ["off", null]],
+] as const)
+  await test(`a shard takes its coverage from CLOVING_TEST_COVERAGE=${String(setting)}`, async () => {
+    const result = await coverageGate("2/2", setting);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.recorded, options);
+  });
+
+await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value, and the local gate ignores it", async () => {
+  const shard = await coverageGate("2/2", "no");
+  assert.equal(shard.status, 1);
+  assert.match(shard.stderr, /CLOVING_TEST_COVERAGE must be on or off/);
+  assert.equal(shard.recorded, null);
+  const local = await coverageGate(undefined, "no");
+  assert.equal(local.status, 0, local.stderr);
+});
 
 for (const shard of [undefined, "1/2", "2/2"]) {
   await test(`CLV-266 prepares runtime declarations before shard ${String(shard)} tests`, async () => {

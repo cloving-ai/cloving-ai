@@ -221,6 +221,7 @@ function readmeFindings(text: string): readonly string[] {
             "CLOVING_OPERATION_ID",
             "CLOVING_CHECK_TIME_FACTOR",
             "CLOVING_TEST_CONCURRENCY",
+            "CLOVING_TEST_COVERAGE",
           ].includes(name),
       )
       .map((name) => `unknown-setting: ${name}`),
