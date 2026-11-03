@@ -42,6 +42,8 @@ returns the broker result unchanged. Its `feedback` takes the previous
 result's `reason`, full `output`, and `remaining` items. Rounds 1 through 4
 allow the initial turn and three fix turns; the workflow must stop after that.
 `develop.test.ts` exercises this helper with `cloving/workflows/testing`.
+The package tests also load small compositions of this helper through folder
+admission for both input forms and test both forms in complete workflows.
 
 `developReport` in `develop/report.ts` runs the turn again once when its result
 has the reason `claude-turn-interrupted`. This occurs when the daemon cannot
@@ -52,13 +54,11 @@ The worker checks the work tree, the commits since the start of the round, and
 the ticket before it continues.
 
 After a second interruption of the same turn, `developReport` returns a blocked
-outcome with the reason `turn-interrupted`, and the run labels the ticket
-`cloving: blocked`. `develop/round.ts` and `develop/local.ts` return this
-outcome before they use the report. Other results that are not `completed` fail
-the run. The effect limit of 31 includes one more turn in each of the four
-rounds.
-The package tests also load small compositions of this helper through folder
-admission for both input forms and test both forms in complete workflows.
+outcome with the reason `turn-interrupted`. `develop/round.ts` and
+`develop/local.ts` return this outcome before they use the report. A
+pull-request workflow then adds `cloving: blocked` to the GitHub issue of the
+ticket. Other results that are not `completed` fail the run. The default effect
+limit of 31 includes one more turn in each of the four rounds.
 
 `develop/partial.ts` implements the person's partial-work question.
 `develop/partial-choice.ts` connects its answer to a development report and the

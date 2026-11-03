@@ -46,6 +46,12 @@ export const interruptionTests = [
       assert.deepEqual(bridge.requests.map(callName), expected);
       const [first, second] = turns(bridge.requests);
       assert.ok(first && second);
+      assert.deepEqual(first.scope, {
+        phase: "implement",
+        operation: "claude-turn",
+        round: 1,
+      });
+      assert.ok(!first.payload.includes("stopped before its report"));
       assert.deepEqual(second.scope, {
         phase: "implement",
         operation: "claude-turn",
