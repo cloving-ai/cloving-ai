@@ -47,7 +47,8 @@ admission for both input forms and test both forms in complete workflows.
 
 `developReport` in `develop/report.ts` runs the turn again once when its result
 has the reason `claude-turn-interrupted`. This occurs when the daemon cannot
-resume an open turn after a restart. The new turn has the same target, so the
+resume an open turn after a restart. Before the daemon reports this reason, it
+stops the processes of the earlier turn in the work tree. The new turn has the same target, so the
 daemon gives it the same work tree. Its scope adds the key `continuation`, and
 its prompt tells the worker that the earlier turn stopped before its report.
 The worker checks the work tree, the commits since the start of the round, and

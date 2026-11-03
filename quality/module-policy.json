@@ -1053,6 +1053,7 @@
     "test/init-signals.test.ts": "test",
     "test/init-terminal-fixture.ts": "test",
     "test/init-terminal.test.ts": "test",
+    "test/interrupted-turn-processes.test.ts": "test",
     "test/issue-queue-fixture.ts": "test",
     "test/issue-queue-lanes.test.ts": "test",
     "test/load-cycle.test.ts": "test",
