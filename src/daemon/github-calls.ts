@@ -73,7 +73,7 @@ function failureDetail(
   const text = typeof stderr === "string" ? stderr : "";
   return {
     detail: githubText(text, place).slice(-2_000),
-    status: Number(/\(HTTP (\d{3})\)/.exec(text)?.[1]),
+    status: Number(/\bHTTP (\d{3})\b/.exec(text)?.[1]),
   };
 }
 

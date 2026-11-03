@@ -84,3 +84,18 @@ for (const call of ["api PUT merge", "api GET pull", "api GET check-runs"]) {
       }));
   }
 }
+
+for (const call of ["api PUT merge", "api GET pull", "api GET check-runs"]) {
+  await test(`CLV-194 retries a bare HTTP 503 reply from ${call}`, () =>
+    withGithub(async (scene) => {
+      const worker = scene.worker();
+      const commit = await opened(scene, worker);
+      scene.plan({ scores: [], failures: [{ call, detail: "gh: HTTP 503" }] });
+      const report = await scene.perform(worker, {
+        method: "merge",
+        payload: { number: 1, commit },
+      });
+      assert.equal(report.outcome, "completed", report.reason ?? "");
+      assert.equal(scene.state().prs[0]?.["state"], "MERGED");
+    }));
+}
