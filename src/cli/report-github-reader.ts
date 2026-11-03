@@ -175,7 +175,7 @@ async function readEndpoint(
       });
       if (output.status !== 0 || output.errorCode !== null)
         throw Object.assign(new Error("github-call-failed"), {
-          status: Number(/\(HTTP (\d{3})\)/.exec(output.stderr)?.[1]),
+          status: Number(/\bHTTP (\d{3})\b/.exec(output.stderr)?.[1]),
           detail: output.stderr,
         });
       return output.stdout;

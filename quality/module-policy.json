@@ -1266,6 +1266,7 @@
     "test/report-flow-sources.test.ts": "test",
     "test/report-flow.test.ts": "test",
     "test/report-github-fixture.ts": "test",
+    "test/report-github-status.test.ts": "test",
     "test/report-github.test.ts": "test",
     "test/report-lead-time.test.ts": "test",
     "test/report-metrics.test.ts": "test",
