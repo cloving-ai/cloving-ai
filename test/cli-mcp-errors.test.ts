@@ -21,7 +21,11 @@ const cases = [
   [
     "unknown tool",
     JSON.stringify(
-      request({ id: 1, method: "tools/call", params: { name: "cloving_run" } }),
+      request({
+        id: 1,
+        method: "tools/call",
+        params: { name: "cloving_watch" },
+      }),
     ),
     -32602,
     1,
@@ -143,28 +147,131 @@ for (const [name, line, code, id] of cases)
     assert.deepEqual(server.messages[1], { jsonrpc: "2.0", id: 2, result: {} });
   });
 
+const decided = {
+  reference: "run-1/design-1",
+  expectedRevision: 1,
+  generation: 1,
+  subjectDigest: `sha256:${"0".repeat(64)}`,
+  commandId: "c",
+};
+const commanded = { runId: "run-1", expectedRevision: 1, commandId: "c" };
+const decisionTools = [
+  ["cloving_answer", { ...decided, text: "yes" }],
+  ["cloving_approve", decided],
+  ["cloving_deny", { ...decided, text: "no" }],
+] as const;
+const runCommandTools = ["pause", "resume", "drop"].map(
+  (command) => [`cloving_${command}`, commanded] as const,
+);
+
+function without(values: Readonly<Record<string, unknown>>, name: string) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => key !== name),
+  );
+}
+
+const mutationArguments = [
+  ...[...decisionTools, ...runCommandTools].map(([name, values]) => ({
+    name,
+    arguments: without(values, "commandId"),
+  })),
+  { name: "cloving_answer", arguments: decided },
+  { name: "cloving_approve", arguments: { ...decided, text: "yes" } },
+  ...decisionTools.flatMap(([name, values]) =>
+    [
+      { expectedRevision: 0 },
+      { expectedRevision: 1.5 },
+      { expectedRevision: "1" },
+      { expectedRevision: Number.MAX_SAFE_INTEGER + 1 },
+      { generation: 0 },
+      { generation: -1 },
+      { subjectDigest: "sha256:abc" },
+      { subjectDigest: `sha256:${"A".repeat(64)}` },
+      { reference: "" },
+      { reference: "a b" },
+      { reference: "r".repeat(257) },
+      ...(name === "cloving_approve" ? [] : [{ text: " " }, { text: 1 }]),
+    ].map((change) => ({ name, arguments: { ...values, ...change } })),
+  ),
+  ...runCommandTools.flatMap(([name, values]) =>
+    [
+      { runId: "constructor" },
+      { runId: "" },
+      { expectedRevision: 0 },
+      { expectedRevision: "2" },
+      { reference: "run-1/design-1" },
+    ].map((change) => ({ name, arguments: { ...values, ...change } })),
+  ),
+];
+
+const invalid = [
+  { name: "cloving_status", arguments: [] },
+  { name: "cloving_status", arguments: null },
+  { name: "cloving_questions", arguments: { runId: "" } },
+  { name: "cloving_questions", arguments: { runId: 1 } },
+  { name: "cloving_questions", arguments: { runId: "constructor" } },
+  { name: "cloving_status", arguments: { after: 2 } },
+  { name: "cloving_status", arguments: { limit: "1" } },
+  { name: "cloving_status", arguments: { limit: 0 } },
+  { name: "cloving_status", arguments: { limit: 501 } },
+  { name: "cloving_events", arguments: { limit: 1001 } },
+  { name: "cloving_events", arguments: { after: -1 } },
+  { name: "cloving_events", arguments: { after: 0.1 } },
+  {
+    name: "cloving_events",
+    arguments: { after: Number.MAX_SAFE_INTEGER + 1 },
+  },
+  { name: "cloving_events", arguments: { after: "0" } },
+  { arguments: {} },
+  { name: "cloving_run", arguments: { workflowId: "develop", prompt: "x" } },
+  { name: "cloving_run", arguments: { prompt: "x", commandId: "c" } },
+  {
+    name: "cloving_run",
+    arguments: { workflowId: "develop", commandId: "c" },
+  },
+  {
+    name: "cloving_run",
+    arguments: {
+      workflowId: "develop",
+      prompt: "x",
+      ticket: "42",
+      commandId: "c",
+    },
+  },
+  {
+    name: "cloving_run",
+    arguments: {
+      workflowId: "develop",
+      ticket: "42",
+      input: { ticket: "42" },
+      commandId: "c",
+    },
+  },
+  ...[[], "input.json", null, 1].map((input) => ({
+    name: "cloving_run",
+    arguments: { workflowId: "develop", input, commandId: "c" },
+  })),
+  ...[" \n", 1].map((prompt) => ({
+    name: "cloving_run",
+    arguments: { workflowId: "develop", prompt, commandId: "c" },
+  })),
+  ...["constructor", "bad!id", 42].map((ticket) => ({
+    name: "cloving_run",
+    arguments: { workflowId: "develop", ticket, commandId: "c" },
+  })),
+  ...["", "bad id", 7].map((workflowId) => ({
+    name: "cloving_run",
+    arguments: { workflowId, prompt: "x", commandId: "c" },
+  })),
+  ...["", "__proto__", "c".repeat(129), 7].map((commandId) => ({
+    name: "cloving_run",
+    arguments: { workflowId: "develop", prompt: "x", commandId },
+  })),
+  ...mutationArguments,
+];
+
 await test("CLV-250 mcp rejects invalid argument types and bounds without calling the service", async () => {
   const server = startMcp();
-  const invalid = [
-    { name: "cloving_status", arguments: [] },
-    { name: "cloving_status", arguments: null },
-    { name: "cloving_questions", arguments: { runId: "" } },
-    { name: "cloving_questions", arguments: { runId: 1 } },
-    { name: "cloving_questions", arguments: { runId: "constructor" } },
-    { name: "cloving_status", arguments: { after: 2 } },
-    { name: "cloving_status", arguments: { limit: "1" } },
-    { name: "cloving_status", arguments: { limit: 0 } },
-    { name: "cloving_status", arguments: { limit: 501 } },
-    { name: "cloving_events", arguments: { limit: 1001 } },
-    { name: "cloving_events", arguments: { after: -1 } },
-    { name: "cloving_events", arguments: { after: 0.1 } },
-    {
-      name: "cloving_events",
-      arguments: { after: Number.MAX_SAFE_INTEGER + 1 },
-    },
-    { name: "cloving_events", arguments: { after: "0" } },
-    { arguments: {} },
-  ];
   for (const [index, params] of invalid.entries())
     server.send(request({ id: index, method: "tools/call", params: params }));
   server.send(request({ id: "next", method: "ping" }));
@@ -196,4 +303,34 @@ await test("CLV-250 mcp accepts a one MiB line and ignores requestless notificat
   const output = await server.end();
   assert.equal(output.status, 0, output.stderr);
   assert.deepEqual(server.messages, [{ jsonrpc: "2.0", id: 1, result: {} }]);
+});
+
+await test("CLV-251 the valid mutation arguments of the rejection cases reach the service", async () => {
+  const server = startMcp();
+  const valid = [
+    ...decisionTools,
+    ...runCommandTools,
+    ["cloving_run", { workflowId: "develop", ticket: "next", commandId: "c" }],
+  ] as const;
+  for (const [index, [name, values]] of valid.entries())
+    server.send(
+      request({
+        id: index,
+        method: "tools/call",
+        params: { name, arguments: values },
+      }),
+    );
+  const output = await server.end();
+  assert.equal(output.status, 0, output.stderr);
+  assert.deepEqual(
+    server.messages.map((message) => {
+      const result = fields(message["result"]);
+      return [
+        result["isError"],
+        fields(result["structuredContent"])["code"],
+        fields(result["structuredContent"])["commandId"],
+      ];
+    }),
+    valid.map(() => [true, "service-unavailable", "c"]),
+  );
 });

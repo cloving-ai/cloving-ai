@@ -1,8 +1,12 @@
 import {
   commandJson,
+  decisionRequest,
   errorObject,
   readCommandReply,
   readCommandRequest,
+  runCommandRequest,
+  runRequest,
+  type SubmittedSource,
 } from "./command-requests.ts";
 import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
@@ -128,7 +132,7 @@ function identified(
 }
 
 type Submission =
-  | { readonly kind: "read"; readonly submission: unknown }
+  | { readonly kind: "read"; readonly source: SubmittedSource }
   | { readonly kind: "error"; readonly error: ServiceError };
 
 async function inputFile(
@@ -148,7 +152,10 @@ async function inputFile(
     };
   }
   try {
-    return { kind: "read", submission: JSON.parse(text) };
+    return {
+      kind: "read",
+      source: { kind: "input", submission: JSON.parse(text) },
+    };
   } catch {
     return {
       kind: "error",
@@ -160,45 +167,26 @@ async function inputFile(
   }
 }
 
-function typed(
-  source: Exclude<Invoked<"run">["source"], { readonly kind: "input" }>,
-): Readonly<Record<string, string>> {
-  return source.kind === "prompt"
-    ? { prompt: source.text }
-    : { ticket: source.id };
-}
-
 async function run(
   environment: Located,
   invocation: Invoked<"run">,
 ): Promise<number> {
   const format = identified(environment, invocation);
-  const { commandId } = format;
   const { source } = invocation;
   const read: Submission =
     source.kind === "input"
       ? await inputFile(environment, source.file)
-      : { kind: "read", submission: typed(source) };
+      : { kind: "read", source };
   if (read.kind === "error")
     return failed(environment, { error: read.error, format });
   return mutated(environment, {
     format,
-    request: {
-      operation: "run",
-      parameters: {
-        workflowId: invocation.workflowId,
-        source: source.kind,
-        submission: read.submission,
-        commandId,
-      },
-    },
+    request: runRequest({
+      workflowId: invocation.workflowId,
+      source: read.source,
+      commandId: format.commandId,
+    }),
   });
-}
-
-function present(values: Fields): Fields {
-  return Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== null),
-  );
 }
 
 async function summarized(environment: Located): Promise<void> {
@@ -240,21 +228,17 @@ function decision(
   invocation: Invoked<"decision">,
 ): Promise<number> {
   const format = identified(environment, invocation);
-  const { commandId } = format;
   return mutated(environment, {
     format,
-    request: {
-      operation: "decision",
-      parameters: present({
-        command: invocation.command,
-        reference: invocation.reference,
-        text: invocation.text,
-        expectedRevision: invocation.expectedRevision,
-        generation: invocation.generation,
-        subjectDigest: invocation.subjectDigest,
-        commandId,
-      }),
-    },
+    request: decisionRequest({
+      command: invocation.command,
+      reference: invocation.reference,
+      text: invocation.text,
+      expectedRevision: invocation.expectedRevision,
+      generation: invocation.generation,
+      subjectDigest: invocation.subjectDigest,
+      commandId: format.commandId,
+    }),
   });
 }
 
@@ -263,18 +247,14 @@ function runCommand(
   invocation: Invoked<"run-command">,
 ): Promise<number> {
   const format = identified(environment, invocation);
-  const { commandId } = format;
   return mutated(environment, {
     format,
-    request: {
-      operation: "run-command",
-      parameters: {
-        command: invocation.command,
-        runId: invocation.runId,
-        expectedRevision: invocation.expectedRevision,
-        commandId,
-      },
-    },
+    request: runCommandRequest({
+      command: invocation.command,
+      runId: invocation.runId,
+      expectedRevision: invocation.expectedRevision,
+      commandId: format.commandId,
+    }),
   });
 }
 

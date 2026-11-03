@@ -188,6 +188,35 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+### Use Cloving from an MCP client
+
+`cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
+
+Register the server in Claude Code:
+
+```sh
+claude mcp add cloving -- cloving mcp --repository <directory>
+```
+
+Register the server in Codex with this table in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.cloving]
+command = "cloving"
+args = ["mcp", "--repository", "<directory>"]
+```
+
+The server has ten tools:
+
+- `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
+- `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
+- `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
+- `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
+
+Each of the seven tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+
+A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
+
 ### Answer decisions from a phone
 
 Cloving can send its pending decisions to the Cloving app on your phone, and the phone can answer them. `cloving start` runs the phone relay as a child process. `CLOVING_PHONE_RELAY` with the value `off` starts no relay. `CLOVING_RELAY_ORIGIN` selects the relay server; the default is `https://cloving.ai`.
