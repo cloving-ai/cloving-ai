@@ -226,3 +226,42 @@ await test("CLV-251 cloving_run with a ticket ID, next or an input object sends 
       [{ ticket: "42" }, { ticket: "next" }, { ticket: "43" }],
     );
   }));
+
+await test("CLV-251 the CLI refuses an input file that is not a JSON object with the refusal of the service, also when the service is stopped", () =>
+  withHarness(async (harness) => {
+    await writeFile(join(harness.projectDirectory, "list.json"), "[1]");
+    const command = [
+      "run",
+      "develop",
+      "--input",
+      "list.json",
+      "--command-id",
+      "c-list",
+    ];
+    const refusal = `${JSON.stringify({
+      schemaVersion: 1,
+      kind: "error",
+      commandId: "c-list",
+      detail: "The submission is not an object.",
+      code: "invalid-submission",
+      runId: null,
+      currentRevision: null,
+    })}\n`;
+    const human =
+      "invalid-submission: The submission is not an object.\nCommand ID: c-list\n";
+    const shown = async (): Promise<readonly unknown[]> => {
+      const json = await harness.cli([...command, "--json"]);
+      const text = await harness.cli(command);
+      return [json.status, json.stdout, text.status, text.stderr];
+    };
+    const stopped = await shown();
+    await harness.start();
+    assert.deepEqual(
+      [stopped, await shown()],
+      [
+        [1, refusal, 1, human],
+        [1, refusal, 1, human],
+      ],
+    );
+    assert.deepEqual(await runIds(harness), []);
+  }));

@@ -137,8 +137,9 @@ type Submission =
 
 async function inputFile(
   environment: CommandEnvironment,
-  file: string,
+  input: { readonly file: string; readonly commandId: string },
 ): Promise<Submission> {
+  const { file, commandId } = input;
   let text: string;
   try {
     text = await readFile(resolve(environment.workingDirectory, file), "utf8");
@@ -151,11 +152,9 @@ async function inputFile(
       },
     };
   }
+  let submission: Fields | undefined;
   try {
-    return {
-      kind: "read",
-      source: { kind: "input", submission: JSON.parse(text) },
-    };
+    submission = record(JSON.parse(text));
   } catch {
     return {
       kind: "error",
@@ -165,6 +164,16 @@ async function inputFile(
       },
     };
   }
+  if (submission === undefined)
+    return {
+      kind: "error",
+      error: {
+        commandId,
+        detail: "The submission is not an object.",
+        code: "invalid-submission",
+      },
+    };
+  return { kind: "read", source: { kind: "input", submission } };
 }
 
 async function run(
@@ -175,7 +184,10 @@ async function run(
   const { source } = invocation;
   const read: Submission =
     source.kind === "input"
-      ? await inputFile(environment, source.file)
+      ? await inputFile(environment, {
+          file: source.file,
+          commandId: format.commandId,
+        })
       : { kind: "read", source };
   if (read.kind === "error")
     return failed(environment, { error: read.error, format });

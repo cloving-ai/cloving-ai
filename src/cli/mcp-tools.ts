@@ -205,7 +205,8 @@ function runSource(values: Fields): SubmittedSource | undefined {
   if (given.length !== 1) return undefined;
   if (typeof prompt === "string") return { kind: "prompt", text: prompt };
   if (typeof ticket === "string") return { kind: "ticket", id: ticket };
-  return { kind: "input", submission: input };
+  const submission = record(input);
+  return submission === undefined ? undefined : { kind: "input", submission };
 }
 
 function runCall(values: Fields): McpCall | undefined {

@@ -24,9 +24,9 @@ export interface ReadCommand {
 
 export type SubmittedSource =
   | Exclude<RunSource, { readonly kind: "input" }>
-  | { readonly kind: "input"; readonly submission: unknown };
+  | { readonly kind: "input"; readonly submission: Fields };
 
-function submission(source: SubmittedSource): unknown {
+function submission(source: SubmittedSource): Fields {
   if (source.kind === "input") return source.submission;
   return source.kind === "prompt"
     ? { prompt: source.text }
