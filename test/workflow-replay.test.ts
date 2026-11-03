@@ -11,6 +11,7 @@ import {
   withHarness,
   call,
   field,
+  type Harness,
 } from "./service-fixture.ts";
 import { bundled, reason } from "./service-bundle-fixture.ts";
 
@@ -172,6 +173,177 @@ for (const state of ["queued", "running"]) {
       await service.close();
     }));
 }
+
+async function hosted(harness: Harness) {
+  const settings = await bundled(harness);
+  const given = Promise.withResolvers<HostPorts>();
+  const service = await harness.start({
+    ...settings,
+    host: (ports) => {
+      given.resolve(ports);
+      return Promise.resolve({ close: () => Promise.resolve() });
+    },
+  });
+  return { settings, service, ports: given.promise };
+}
+
+async function dropped(
+  harness: Harness,
+  target: { readonly ports: HostPorts; readonly runId: string },
+) {
+  const { ports, runId } = target;
+  const result = await call(harness, {
+    operation: "run-command",
+    parameters: {
+      command: "drop",
+      runId,
+      expectedRevision: (await ports.state()).runs[runId]?.revision,
+      commandId: "drop",
+    },
+  });
+  assert.equal(field(field(result, "committed"), "state"), "cancelled");
+}
+
+async function droppedRun(harness: Harness, pin: string) {
+  const { settings, service, ports: given } = await hosted(harness);
+  const { runId } = await waitingGate(harness, {
+    service,
+    commandId: "dropped",
+    kind: "question",
+  });
+  const ports = await given;
+  await dropped(harness, { ports, runId });
+  if (pin === "missing")
+    await rm(join(settings.workflowBundles.directory, settings.bundleDigest), {
+      recursive: true,
+    });
+  assert.equal(await ports.workflow.available(runId), pin === "present");
+  return { service, ports, runId };
+}
+
+for (const pin of ["missing", "present"]) {
+  await test(`CLV-278 a message of a dropped run with a ${pin} pin is done without workflow code or a new observation`, () =>
+    withHarness(async (harness) => {
+      const { service, ports, runId } = await droppedRun(harness, pin);
+      let invoked = 0;
+      const replay = pinnedWorkflowHandler(
+        () => {
+          invoked += 1;
+          return Promise.resolve(new Response("ran"));
+        },
+        {
+          state: ports.state,
+          run: () => Promise.resolve({ runId }),
+          available: ports.workflow.available,
+          submit: ports.submit,
+        },
+      );
+      const sequence = (await ports.state()).sequence;
+      const response = await replay(
+        new Request("http://localhost/workflow", {
+          method: "POST",
+          body: JSON.stringify({ runId: "wrun-dropped" }),
+        }),
+      );
+      assert.equal(invoked, 0);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ok: true });
+      assert.equal((await ports.state()).sequence, sequence);
+      assert.notEqual(
+        await reason(harness, runId),
+        "pinned-workflow-unavailable",
+      );
+      await service.close();
+    }));
+}
+
+await test("CLV-278 a run dropped during the bundle check gets a done answer", () =>
+  withHarness(async (harness) => {
+    const { service, ports: given } = await hosted(harness);
+    const { runId } = await waitingGate(harness, {
+      service,
+      commandId: "dropped-during-check",
+      kind: "question",
+    });
+    const ports = await given;
+    let invoked = 0;
+    const replay = pinnedWorkflowHandler(
+      () => {
+        invoked += 1;
+        return Promise.resolve(new Response("ran"));
+      },
+      {
+        state: ports.state,
+        run: () => Promise.resolve({ runId }),
+        available: async () => {
+          await dropped(harness, { ports, runId });
+          return false;
+        },
+        submit: ports.submit,
+      },
+    );
+    const response = await replay(
+      new Request("http://localhost/workflow", {
+        method: "POST",
+        body: JSON.stringify({ runId: "wrun-dropped-during-check" }),
+      }),
+    );
+    assert.equal(invoked, 0);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.notEqual(
+      await reason(harness, runId),
+      "pinned-workflow-unavailable",
+    );
+    await service.close();
+  }));
+
+await test("CLV-278 a replay reads the observation after the bundle check", () =>
+  withHarness(async (harness) => {
+    const { service, ports: given } = await hosted(harness);
+    const runId = await startedRun(harness, { service, commandId: "raced" });
+    const ports = await given;
+    const restoredElsewhere = async () => {
+      const sequence =
+        (await ports.state()).details[runId]?.observation?.sequence ?? 0;
+      const outcome = await ports.submit({
+        kind: "report-observation",
+        runId,
+        commandId: "restored-by-another-message",
+        condition: "working",
+        reason: "in-progress",
+        expectedObservation: sequence,
+      });
+      assert.equal(outcome.kind, "accepted");
+      return true;
+    };
+    const checks = [() => Promise.resolve(false), restoredElsewhere];
+    let invoked = 0;
+    const replay = pinnedWorkflowHandler(
+      () => {
+        invoked += 1;
+        return Promise.resolve(new Response("ran"));
+      },
+      {
+        state: ports.state,
+        run: () => Promise.resolve({ runId }),
+        available: () => checks.shift()?.() ?? Promise.resolve(true),
+        submit: ports.submit,
+      },
+    );
+    const message = () =>
+      new Request("http://localhost/workflow", {
+        method: "POST",
+        body: JSON.stringify({ runId: "wrun-raced" }),
+      });
+    const unavailable = await replay(message());
+    assert.equal(await unavailable.text(), "pinned-workflow-unavailable");
+    assert.equal(await reason(harness, runId), "pinned-workflow-unavailable");
+    const restored = await replay(message());
+    assert.equal(await restored.text(), "ran");
+    assert.equal(invoked, 1);
+    await service.close();
+  }));
 
 await test("CLV-161 malformed and uncorrelated SDK messages cannot invoke workflow code", async () => {
   const unreachable = () => Promise.reject(new Error("uncorrelated message"));
