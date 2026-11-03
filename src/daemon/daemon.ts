@@ -34,6 +34,8 @@ import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
+import { authorityRuns, recordRetention } from "./record-sweep.ts";
+import { defaultRetention } from "../record-retention.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -232,12 +234,14 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     await closeWorkers(resources);
     return opening;
   }
-  const running = { ...resources, service: opening.service, schedules };
-  await recoverWorkers(running, given.promise);
-  return {
-    kind: "started",
-    daemon: await runningDaemon(settings, running),
+  const running = {
+    ...resources,
+    service: opening.service,
+    schedules,
+    ports: given.promise,
   };
+  await recoverWorkers(running, given.promise);
+  return { kind: "started", daemon: await runningDaemon(settings, running) };
 }
 
 type Workers = Pick<Adapters, "worker" | "github" | "commands">;
@@ -272,9 +276,17 @@ async function runningDaemon(
   resources: {
     readonly service: Service;
     readonly schedules: ReturnType<typeof scheduleConnection>;
+    readonly ports: Promise<HostPorts>;
   } & Workers,
 ): Promise<Daemon> {
   const { service, github } = resources;
+  const retention = await recordRetention({
+    directory: settings.directory,
+    retention: settings.retention ?? defaultRetention,
+    runs: authorityRuns(await resources.ports),
+    now: settings.retentionClock ?? Date.now,
+    log: (line) => process.stderr.write(line),
+  });
   await github.scan();
   const loops = await daemonLoops({
     ...settings,
@@ -282,6 +294,7 @@ async function runningDaemon(
     submit: service.worker.submit,
     queueWorkflowId: queueWorkflowId(settings),
   }).catch(async (error: unknown) => {
+    await retention.stop();
     await closeWorkers(resources);
     await service.close();
     throw error;
@@ -289,6 +302,7 @@ async function runningDaemon(
   return {
     socket: service.socket,
     close: async () => {
+      await retention.stop();
       await loops.stop();
       await closeWorkers(resources);
       await service.close();

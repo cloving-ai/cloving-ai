@@ -49,6 +49,11 @@ export interface Configuration {
   readonly selfUpdate?: { readonly everySeconds?: number };
   readonly github?: { readonly command?: readonly string[] };
   readonly workflows?: { readonly folder?: string };
+  readonly retention?: {
+    readonly days?: number | null;
+    readonly action?: "archive" | "delete";
+    readonly archiveFolder?: string | null;
+  };
 }
 
 interface Schema {

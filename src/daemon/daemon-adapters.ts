@@ -24,6 +24,7 @@ import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { HarnessSettings } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
+import type { RetentionSettings } from "../record-retention.ts";
 
 export interface DaemonSettings extends HarnessSettings {
   readonly commands?: LocalCommands;
@@ -48,6 +49,8 @@ export interface DaemonSettings extends HarnessSettings {
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
   readonly scheduleClock?: () => number;
+  readonly retention?: RetentionSettings;
+  readonly retentionClock?: () => number;
   readonly schedules?: unknown;
   readonly queueLanes?: number;
   readonly queueDailySpendLimitUsd?: number;

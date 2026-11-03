@@ -1,4 +1,9 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type StdioOptions,
+} from "node:child_process";
 import { addAbortListener } from "node:events";
 import { rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -32,12 +37,13 @@ function launched(
     readonly name: string;
     readonly directory: string;
     readonly environment: NodeJS.ProcessEnv;
+    readonly stdio?: StdioOptions;
   },
 ): Program {
   const child = spawn(process.execPath, argumentsList, {
     cwd: settings.directory,
     env: settings.environment,
-    stdio: "inherit",
+    stdio: settings.stdio ?? "inherit",
   });
   const ended = new Promise<number>((settle, reject) => {
     child.once("error", reject);
@@ -172,7 +178,7 @@ function productChild(
 
 interface Hosted {
   readonly daemon: Program;
-  readonly programs: readonly Program[];
+  readonly programs: Program[];
 }
 
 function hostedChildren(settings: HostProcesses): Hosted {
@@ -180,21 +186,44 @@ function hostedChildren(settings: HostProcesses): Hosted {
     name: "daemon",
     directory: settings.project,
     environment: settings.environment ?? process.env,
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
-  const watch =
-    settings.watchPort === "off"
-      ? []
-      : [
-          productChild(settings, [
-            "cli",
-            "watch",
-            "--port",
-            settings.watchPort,
-          ]),
-        ];
   const relay =
     settings.phoneRelay === "off" ? [] : [productChild(settings, ["relay"])];
-  return { daemon, programs: [daemon, ...watch, ...relay] };
+  return { daemon, programs: [daemon, ...relay] };
+}
+
+function daemonStart(daemon: Program): Promise<"started" | "ended"> {
+  return new Promise((settle) => {
+    daemon.child.once("message", () => {
+      settle("started");
+    });
+    daemon.ended.then(
+      () => {
+        settle("ended");
+      },
+      () => {
+        settle("ended");
+      },
+    );
+  });
+}
+
+function watchAfterStart(
+  settings: HostProcesses,
+  hosting: Hosted & { readonly stopped: () => boolean },
+): Promise<void> {
+  if (settings.watchPort === "off") return Promise.resolve();
+  return daemonStart(hosting.daemon).then((start) => {
+    if (start === "ended" || hosting.stopped()) return;
+    const watch = productChild(settings, [
+      "cli",
+      "watch",
+      "--port",
+      settings.watchPort,
+    ]);
+    hosting.programs.splice(1, 0, watch);
+  });
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
@@ -202,6 +231,11 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   const stopping = new AbortController();
   let updating = false;
   let shutdown: Promise<void> | undefined;
+  const watching = watchAfterStart(settings, {
+    daemon,
+    programs,
+    stopped: () => shutdown !== undefined,
+  });
   const stop = (): Promise<void> =>
     (shutdown ??= stopped(programs, settings.stopMilliseconds ?? 60000));
   const signal = (signal: NodeJS.Signals): void => {
@@ -235,6 +269,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     return updateStatus ?? status;
   } finally {
     stopping.abort();
+    await watching;
     await stop();
     await polling;
     process.off("SIGINT", interrupt);
