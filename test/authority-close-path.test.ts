@@ -11,6 +11,7 @@ import {
   authoritySession,
   type Authority,
 } from "../src/broker/actor/authority-session.ts";
+import { projectionMemory } from "../src/broker/actor/projection-memory.ts";
 
 function rejecting(message: string): () => Promise<never> {
   return () => Promise.reject(new Error(message));
@@ -69,6 +70,7 @@ function recorder(): Recorded {
 const parts = {
   database: unusable,
   reader: unusable,
+  memory: projectionMemory({ logger: recorder().logger }),
   execute: (): Promise<unknown> => Promise.resolve({}),
   run: (): Promise<void> => Promise.resolve(),
   stop: (): Promise<void> => Promise.resolve(),

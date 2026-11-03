@@ -88,12 +88,13 @@ export interface DomainChange extends EffectRows {
 export async function persistChange(
   value: unknown,
   connection: SqlConnection,
-): Promise<void> {
+): Promise<DomainChange> {
   const change = parseChange(value);
   if ((await latestSequence(connection)) !== change.previous)
     throw new Error("stale-authority-sequence");
   for (const statement of statements(change))
     await connection.run(statement.sql, statement.parameters);
+  return change;
 }
 
 function statements(change: DomainChange): readonly Statement[] {

@@ -121,6 +121,7 @@ async function begun(opening: {
       reason: "unresolved-delivery",
       detail: condition,
     };
+  await parts.memory.load(owned.database);
   return integer(opened, "epoch");
 }
 
@@ -148,6 +149,7 @@ async function start(opening: {
     authority: authoritySession({
       database,
       reader: parts.reader,
+      memory: parts.memory,
       execute: (request: JsonObject) => authority.execute(json(request)),
       run: (signal) => parts.runtime.run(signal),
       stop: parts.stop,

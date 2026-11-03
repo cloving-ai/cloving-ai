@@ -9,7 +9,6 @@ import {
   latestSequence,
   loadAttempts,
   loadSnapshot,
-  outboxRow,
   projectionRows,
   text,
   type AttemptRow,
@@ -23,7 +22,7 @@ export interface ProjectionSnapshot extends ProjectionRows, DecisionRows {
   readonly deliveries: readonly AttemptRow[];
   readonly pending: readonly string[];
   readonly sequence: number;
-  readonly waits?: readonly CommandWaitRow[];
+  readonly waits: readonly CommandWaitRow[];
 }
 
 export interface DecidedSnapshot extends DomainSnapshot, DecisionRows {
@@ -36,19 +35,6 @@ export interface EffectedSnapshot extends DecidedSnapshot {
 
 export interface CurrentSnapshot extends EffectedSnapshot {
   readonly waits: readonly CommandWaitRow[];
-}
-
-export async function loadOperationSnapshot(
-  connection: SqlConnection,
-): Promise<Pick<ProjectionSnapshot, "outbox" | "deliveries">> {
-  return {
-    outbox: (
-      await connection.all(
-        "SELECT operation_id, kind, run_id, created_sequence, released_sequence FROM outbox ORDER BY created_sequence, rowid",
-      )
-    ).map(outboxRow),
-    deliveries: await loadAttempts(connection),
-  };
 }
 
 export async function loadProjections(
