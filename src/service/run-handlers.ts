@@ -245,6 +245,9 @@ async function listed(
     views.push(await viewOf(context, { snapshot: page.snapshot, runId }));
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
+    ...(context.version === undefined
+      ? {}
+      : { serviceVersion: context.version }),
     ...(await queueOverview(context)),
     ...(await scheduleMetadata(context)),
     workflows: context.registry.workflowIds,

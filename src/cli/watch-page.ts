@@ -99,6 +99,7 @@ import {
   Queue,
   queueLanes,
   skippedText,
+  Version,
 } from "./watch-header-view.ts";
 
 const functions = [
@@ -117,6 +118,7 @@ const functions = [
   Brand,
   HeaderStatus,
   HeaderActions,
+  Version,
   cardReply,
   cardSubmitKey,
   cardKey,
@@ -371,6 +373,7 @@ button:hover { background: var(--code-head); }
 .events { margin-top: 18px; padding-bottom: 10px; }
 .events > summary { color: var(--code-fg); }
 .down { font-weight: 600; }
+.version { position: fixed; left: 12px; bottom: 8px; font: 12px/1.4 var(--code-font); color: var(--muted); pointer-events: none; }
 @media (max-width: 700px) { body { padding-inline: 12px; } }
 `;
 

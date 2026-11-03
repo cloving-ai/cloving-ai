@@ -34,6 +34,7 @@ import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
+import { clovingVersion } from "../cli/toolchain.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -203,6 +204,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const schedules = scheduleConnection();
   const opening = await startService({
+    version: clovingVersion,
     schedule: schedules.request,
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
