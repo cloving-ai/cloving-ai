@@ -170,7 +170,7 @@
           "id": "person",
           "label": "A person decides",
           "summary": "Ask what to do with partial work. Use the answer as feedback for a bounded continuation, or stop and leave it for the person.",
-          "change": "For a pull-request workflow, in develop/round.ts import partialChoice from develop/partial-choice.ts. Immediately after developReport, call partialChoice({ input, round, report }) and return any non-null result. develop/local.ts already does this. The helper calls waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }); an explicit answer feeds the next bounded turn and an empty answer stops.",
+          "change": "For a pull-request workflow, in develop/round.ts import partialChoice from develop/partial-choice.ts. Immediately after the line that returns a blocked outcome of developReport, call partialChoice({ input, round, report }) and return any non-null result. develop/local.ts already does this. The helper calls waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }); an explicit answer feeds the next bounded turn and an empty answer stops.",
           "requires": {},
           "needs": []
         }

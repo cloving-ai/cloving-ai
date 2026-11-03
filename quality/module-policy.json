@@ -527,6 +527,7 @@
     "templates/develop/develop.ts": "workflow",
     "templates/develop/develop/accept.ts": "workflow",
     "templates/develop/develop/flow-tests.ts": "test",
+    "templates/develop/develop/interruption-tests.ts": "test",
     "templates/develop/develop/local.ts": "workflow",
     "templates/develop/develop/option-tests.ts": "test",
     "templates/develop/develop/partial-choice.ts": "workflow",
