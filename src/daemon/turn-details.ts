@@ -13,18 +13,23 @@ export type TurnDetailsSettings = Pick<
   "directory" | "retention" | "runs" | "now"
 >;
 
+function absent(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 async function present(
   journal: string,
   operationIds: readonly string[],
-): Promise<number> {
+): Promise<number | undefined> {
   const found = await Promise.all(
     operationIds.map((operationId) =>
       stat(located(journal, operationId).folder).then(
         () => true,
-        () => false,
+        (error: unknown) => (absent(error) ? false : undefined),
       ),
     ),
   );
+  if (found.includes(undefined)) return undefined;
   return found.filter(Boolean).length;
 }
 
@@ -35,10 +40,15 @@ export function turnDetailsPlace(
     const archive = join(archiveFolder(settings), "journal");
     const runs = await settings.runs([runId]);
     const archived = await present(archive, operationIds);
+    const kept = await present(
+      join(settings.directory, "journal"),
+      operationIds,
+    );
+    if (archived === undefined || kept === undefined) return undefined;
     return turnDetails(
       {
         turns: operationIds.length,
-        kept: await present(join(settings.directory, "journal"), operationIds),
+        kept,
         archived: archived === 0 ? undefined : archive,
       },
       {

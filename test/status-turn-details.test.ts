@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TurnDetails } from "../src/record-retention.ts";
+import type { Fields } from "../src/protocol.ts";
+import type { RunTurns, TurnDetails } from "../src/record-retention.ts";
 import { operationOf } from "./effect-fixture.ts";
-import { field, parsed, withHarness } from "./service-fixture.ts";
+import { field, fields, parsed, withHarness } from "./service-fixture.ts";
 import {
   reportTurn,
   scenarioUsage,
@@ -11,8 +12,12 @@ import {
 } from "./worker-report-fixture.ts";
 
 async function shownStatus(found: TurnDetails | undefined) {
-  const asked: unknown[] = [];
-  let shown = { text: "", run: undefined as unknown, runId: "" };
+  const asked: RunTurns[] = [];
+  let shown: { text: string; run: Fields; runId: string } = {
+    text: "",
+    run: {},
+    runId: "",
+  };
   await withHarness(async (harness) => {
     const scene = await workerScene(harness);
     await reportTurn(scene, {
@@ -33,7 +38,7 @@ async function shownStatus(found: TurnDetails | undefined) {
     assert.equal(json.status, 0, json.stderr);
     shown = {
       text: text.stdout,
-      run: field(parsed(json), "run"),
+      run: fields(field(parsed(json), "run")),
       runId: scene.runId,
     };
     await reopened.close();

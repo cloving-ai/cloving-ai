@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
@@ -71,3 +72,19 @@ await test("CLV-271 turn details are deleted only for a due run with the delete 
       undefined,
     );
   }));
+
+await test("CLV-271 turn details stay unknown when a read of a journal folder fails for a reason other than absence", async () => {
+  for (const blocked of ["journal", "archive"])
+    await withSweep(async (scene) => {
+      await writeFile(join(scene.root, blocked), "");
+      assert.equal(
+        await turnDetailsPlace(
+          scene.settings({
+            retention: { days: 30, action: "delete", archiveFolder: null },
+          }),
+        )({ runId: "done", operationIds: ["op-1"] }),
+        undefined,
+        blocked,
+      );
+    });
+});
