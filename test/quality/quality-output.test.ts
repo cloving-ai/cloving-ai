@@ -15,9 +15,21 @@ async function failingGate(stage: string): Promise<Record<string, string>> {
   const command = moduleUrl("quality/command.ts");
   const project = moduleUrl("quality/project.ts");
   return {
-    "package.json": '{"type":"module"}',
+    "package.json": JSON.stringify({
+      type: "module",
+      scripts: { build: "node -e 0" },
+    }),
     "tools/check-quality.ts": await readFile("tools/check-quality.ts", "utf8"),
-    "quality/command.ts": `export * from ${command};`,
+    "quality/command.ts": `
+      export * from ${command};
+      import { runCommand as execute } from ${command};
+      export function runCommand(command, options) {
+        let tick = 0;
+        return execute(command, command.check === "test-build"
+          ? { ...options, clock: () => { tick += 100; return tick; } }
+          : options);
+      }
+    `,
     "quality/test-execution.ts": `export { parseCheckTimeFactor } from ${moduleUrl("quality/test-execution.ts")};`,
     "quality/generated-output.ts":
       "export async function inspectGenerated() { return { outputs: {} }; }",
@@ -57,25 +69,22 @@ async function failingGate(stage: string): Promise<Record<string, string>> {
   };
 }
 
+function shortCheck(check: string) {
+  return { check, elapsedMilliseconds: 100, timeoutMilliseconds: 60000 };
+}
+
 for (const scenario of [
   {
     stage: "coverage",
     timings: [
-      {
-        check: "npm-inputs",
-        elapsedMilliseconds: 100,
-        timeoutMilliseconds: 60000,
-      },
+      shortCheck("npm-inputs"),
+      shortCheck("test-build"),
       {
         check: "tests",
         elapsedMilliseconds: 520000,
         timeoutMilliseconds: 600000,
       },
-      {
-        check: "coverage",
-        elapsedMilliseconds: 100,
-        timeoutMilliseconds: 60000,
-      },
+      shortCheck("coverage"),
     ],
     warnings: ["tests used 520 s of 600 s (87 percent)"],
     error: /Check exit 7/,
@@ -83,11 +92,8 @@ for (const scenario of [
   {
     stage: "tests",
     timings: [
-      {
-        check: "npm-inputs",
-        elapsedMilliseconds: 100,
-        timeoutMilliseconds: 60000,
-      },
+      shortCheck("npm-inputs"),
+      shortCheck("test-build"),
       { check: "tests", elapsedMilliseconds: 70, timeoutMilliseconds: 50 },
     ],
     warnings: ["tests used 0.07 s of 0.05 s (140 percent)"],
@@ -95,13 +101,7 @@ for (const scenario of [
   },
   {
     stage: "npm-inputs",
-    timings: [
-      {
-        check: "npm-inputs",
-        elapsedMilliseconds: 100,
-        timeoutMilliseconds: 60000,
-      },
-    ],
+    timings: [shortCheck("npm-inputs")],
     warnings: [],
     error: /Check exit 7/,
   },
@@ -136,9 +136,7 @@ for (const scenario of [
   });
 }
 
-async function runtimeGate(
-  shard: string | undefined,
-): Promise<Record<string, string>> {
+async function runtimeGate(): Promise<Record<string, string>> {
   return {
     ...(await failingGate("coverage")),
     "tools/check-quality-sources.ts": await readFile(
@@ -160,7 +158,7 @@ async function runtimeGate(
       import assert from "node:assert/strict";
       import { existsSync } from "node:fs";
       export async function inspectGenerated() {
-        assert.equal(existsSync("dist/src/main.d.ts"), ${String(shard !== undefined)});
+        assert.equal(existsSync("dist/src/main.d.ts"), true);
         return { outputs: {} };
       }
     `,
@@ -192,7 +190,7 @@ async function coverageGate(
   shard: string | undefined,
   setting: string | undefined,
 ) {
-  return await withFiles(await runtimeGate(shard), async (directory) => {
+  return await withFiles(await runtimeGate(), async (directory) => {
     const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
       cwd: directory,
       env: {
@@ -233,7 +231,7 @@ await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value, and the loca
 
 for (const shard of [undefined, "1/2", "2/2"]) {
   await test(`CLV-266 prepares runtime declarations before shard ${String(shard)} tests`, async () => {
-    await withFiles(await runtimeGate(shard), (directory) => {
+    await withFiles(await runtimeGate(), (directory) => {
       const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
         cwd: directory,
         env: {
@@ -250,7 +248,7 @@ for (const shard of [undefined, "1/2", "2/2"]) {
       assert.ok(report && typeof report === "object" && "timings" in report);
       assert.ok(Array.isArray(report.timings));
       const expected = shard === "2/2" ? [] : ["npm-inputs"];
-      if (shard !== undefined) expected.push("test-build");
+      expected.push("test-build");
       if (shard === "1/2") expected.push("static-checks");
       assert.deepEqual(
         report.timings.map((timing: unknown) => {
@@ -265,7 +263,7 @@ for (const shard of [undefined, "1/2", "2/2"]) {
 
 for (const stage of ["success", "static-failure"]) {
   await test(`CLV-266 releases the static analysis process before shard tests: ${stage}`, async () => {
-    const files = await runtimeGate("1/2");
+    const files = await runtimeGate();
     for (const name of await readdir("tools")) {
       if (name.startsWith("check-quality") && name.endsWith(".ts"))
         files[`tools/${name}`] = await readFile(`tools/${name}`, "utf8");
@@ -317,7 +315,7 @@ for (const stage of ["success", "static-failure"]) {
 }
 
 await test("CLV-266 keeps a bounded analysis heap without inheriting Node options", async () => {
-  const files = await runtimeGate("1/2");
+  const files = await runtimeGate();
   const command = moduleUrl("quality/command.ts");
   files["quality/command.ts"] = `
     export * from ${command};
@@ -344,7 +342,7 @@ await test("CLV-266 keeps a bounded analysis heap without inheriting Node option
 });
 
 async function stalledAnalysis(): Promise<Record<string, string>> {
-  const files = await runtimeGate("1/2");
+  const files = await runtimeGate();
   const command = moduleUrl("quality/command.ts");
   files["quality/command.ts"] = `
     export * from ${command};
