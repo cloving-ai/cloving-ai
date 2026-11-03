@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { withSweep } from "./record-sweep-fixture.ts";
@@ -75,5 +75,47 @@ await test("CLV-270 a pass handles at most 200 folders and the next pass continu
       "retention: archived 0, kept 200, skipped 0 (active runs), unreadable 0\n",
       "retention: archived 1, kept 5, skipped 0 (active runs), unreadable 0\n",
       "retention: archived 0, kept 200, skipped 0 (active runs), unreadable 0\n",
+    ]);
+  }));
+
+await test("CLV-270 a folder that cannot be read counts as unreadable and the pass handles the other folders", () =>
+  withSweep(async (scene) => {
+    await scene.folder("journal/a", { runId: "done" });
+    const blocked = join(
+      await scene.folder("journal/b", { runId: "done" }),
+      "gh-config-x",
+    );
+    await mkdir(blocked);
+    await chmod(blocked, 0);
+    try {
+      await scene.sweep().pass();
+    } finally {
+      await chmod(blocked, 0o700);
+    }
+    assert.equal(
+      existsSync(join(scene.root, "archive/journal/a/result.json")),
+      true,
+    );
+    assert.equal(existsSync(join(scene.root, "journal/b/started.json")), true);
+    assert.deepEqual(scene.lines, [
+      "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 1\n",
+    ]);
+  }));
+
+await test("CLV-270 a pass leaves the shared target records of the journal out of the sweep", () =>
+  withSweep(async (scene) => {
+    await scene.folder("journal/a", { runId: "done" });
+    const targets = [
+      "journal/targets/t.json",
+      "journal/runs/r/targets/t.json",
+    ].map((path) => join(scene.root, path));
+    for (const target of targets) {
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "{}");
+    }
+    await scene.sweep().pass();
+    for (const target of targets) assert.equal(existsSync(target), true);
+    assert.deepEqual(scene.lines, [
+      "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 0\n",
     ]);
   }));

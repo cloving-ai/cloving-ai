@@ -55,6 +55,7 @@ interface Tally {
 }
 
 const kinds = ["github", "journal"] as const;
+const shared: readonly string[] = ["journal/runs", "journal/targets"];
 const batchSize = 200;
 
 async function folders(directory: string): Promise<string[]> {
@@ -64,7 +65,7 @@ async function folders(directory: string): Promise<string[]> {
       withFileTypes: true,
     }).catch(() => []))
       if (entry.isDirectory()) found.push(`${kind}/${entry.name}`);
-  return found.sort();
+  return found.filter((path) => !shared.includes(path)).sort();
 }
 
 async function newestChange(folder: string): Promise<number> {
@@ -87,11 +88,15 @@ async function startedRecord(folder: string): Promise<unknown> {
 
 async function examined(directory: string, path: string): Promise<Examined> {
   const folder = join(directory, path);
-  return {
-    path,
-    started: await startedRecord(folder),
-    changedAt: await newestChange(folder),
-  };
+  try {
+    return {
+      path,
+      started: await startedRecord(folder),
+      changedAt: await newestChange(folder),
+    };
+  } catch {
+    return { path, started: undefined, changedAt: Number.NaN };
+  }
 }
 
 function archiveFolder(settings: SweepSettings): string {
