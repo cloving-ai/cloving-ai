@@ -86,6 +86,11 @@ await test("CLV-252 reload prints the reload reply, and status shows the new wor
         "",
       ].join("\n"),
     );
+    const after = await call(harness, { operation: "status", parameters: {} });
+    assert.deepEqual(after["workflowRefusals"], [
+      { scope: "project", label: "broken.ts", codes: ["compile-failed"] },
+    ]);
+    assert.equal(after["bundleDigest"], reloadDigest);
   }));
 
 await test("CLV-252 a service with no reload port replies reload-unavailable", () =>

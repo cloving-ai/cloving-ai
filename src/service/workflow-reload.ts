@@ -47,6 +47,7 @@ function applied(catalog: WorkflowCatalog, reload: WorkflowReload): Reply {
     return failed(reload.code, { detail: reload.detail });
   const previousBundleDigest = catalog.inventory().bundleDigest ?? null;
   if (reload.kind === "reloaded") catalog.replace(reload);
+  else catalog.replaceRefusals(reload.workflowRefusals);
   return result("reload", {
     status: reload.kind,
     previousBundleDigest,

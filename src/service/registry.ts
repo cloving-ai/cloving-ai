@@ -187,6 +187,7 @@ export interface WorkflowCatalog {
     readonly workflows: readonly WorkflowRegistration[];
     readonly workflowRefusals: readonly WorkflowRefusal[];
   }) => void;
+  readonly replaceRefusals: (refusals: readonly WorkflowRefusal[]) => void;
 }
 
 export function workflowCatalog(
@@ -212,6 +213,9 @@ export function workflowCatalog(
         bundleDigest: next.bundleDigest,
         workflowRefusals: next.workflowRefusals,
       };
+    },
+    replaceRefusals: (refusals) => {
+      inventory = { ...inventory, workflowRefusals: refusals };
     },
   };
 }

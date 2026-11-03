@@ -122,8 +122,8 @@ Prints the committed events after a sequence. With --json, each line is one even
 
 Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
-A failed check keeps the current workflows and shows the reason.
-A change of the queue workflow or of the scheduled workflows needs a restart.
+A new refusal of a workflow file keeps the current workflows and shows the reason.
+A change of the queue workflow or of a schedule needs a restart.
 Profiles and settings files do not reload.
 `,
   watch: `Usage: cloving watch [--port <n>]

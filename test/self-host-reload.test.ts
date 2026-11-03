@@ -279,12 +279,37 @@ async function keptAfterFailure(started: Started, bundleDigest: unknown) {
   const { fixture, folder } = started;
   await writeFile(join(folder, "broken.ts"), brokenSource);
   await writeFile(join(folder, "broken.declaration.json"), brokenDeclaration);
-  const { stdout } = await reloadReply(fixture, []);
-  assert.match(stdout, /^Reload: unchanged$/m);
-  assert.match(stdout, /^ {2}project broken\.ts: compile-failed$/m);
+  await writeFile(
+    join(folder, "triage.ts"),
+    brokenSource.replace("broken()", "triageOperator()"),
+  );
+  const result = await runCli(["reload", "--json"], {
+    directory: fixture.repository,
+    runtime: fixture.runtimeDirectory,
+  });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  const reply = record(JSON.parse(result.stdout)) ?? {};
+  assert.equal(reply["code"], "reload-failed");
+  assert.equal(
+    reply["detail"],
+    "The reload gives new workflow refusals: project broken.ts: compile-failed; project triage.ts: compile-failed",
+  );
   const status = await asked(fixture, { operation: "status", parameters: {} });
   assert.deepEqual(status["workflows"], ["develop", "triage"]);
   assert.equal(status["bundleDigest"], bundleDigest);
+  assert.deepEqual(status["workflowRefusals"], []);
+}
+
+async function lastRemoved(started: Started) {
+  const { fixture, folder } = started;
+  for (const file of ["develop.ts", "develop.declaration.json"])
+    await rm(join(folder, file));
+  const { stdout } = await reloadReply(fixture, []);
+  assert.match(stdout, /^Reload: reloaded$/m);
+  const status = await asked(fixture, { operation: "status", parameters: {} });
+  assert.deepEqual(status["workflows"], []);
+  const removed = await submitted(fixture, "develop");
+  assert.equal(removed["code"], "unknown-workflow", JSON.stringify(removed));
 }
 
 async function removedWhileWaiting(started: Started, triageRun: string) {
@@ -324,6 +349,7 @@ await test("CLV-252 cloving reload admits a new workflow while a run is in a sta
     const added = await addedDuringTurn(started, startDigest);
     await keptAfterFailure(started, added.bundleDigest);
     await removedWhileWaiting(started, added.triageRun);
+    await lastRemoved(started);
     assert.deepEqual(await tree(project), before);
     assert.match(
       output,

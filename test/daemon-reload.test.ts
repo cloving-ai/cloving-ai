@@ -70,7 +70,8 @@ await test("CLV-252 a refused reload keeps the workflows and the bundle digest a
     const result =
       await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
 const startDigest = "0".repeat(64);
-const daemon = await launched({ bundleDigest: startDigest, queueMilliseconds: undefined, reloadCommand, loadBundle: loadWorkflowBundle });
+const kept = { scope: "project", label: "kept.ts", codes: ["compile-failed"] };
+const daemon = await launched({ bundleDigest: startDigest, queueMilliseconds: undefined, workflowRefusals: [kept], reloadCommand, loadBundle: loadWorkflowBundle });
 try {
   const refusals = [];
   const refusal = async (fields) => {
@@ -86,7 +87,14 @@ try {
   await refusal({ bundleDigest: "e".repeat(64) });
   await refusal({ bundleDigest, manifests: {} });
   await refusal({ bundleDigest, manifests: { develop: 1 }, declarations: [1] });
-  assert.deepEqual(refusals.map(([code]) => code), ["reload-needs-restart", "reload-no-workflow", "reload-failed", "reload-failed", "reload-failed", "reload-failed", "reload-failed"]);
+  await refusal({ bundleDigest, workflowRefusals: [kept, { scope: "project", label: "develop.ts", codes: ["compile-failed"] }] });
+  prepared({ bundleDigest: startDigest, workflowRefusals: [] });
+  assert.equal((await asked("reload")).status, "unchanged");
+  assert.deepEqual((await asked("status")).workflowRefusals, []);
+  await refusal({ bundleDigest: startDigest, workflowRefusals: [kept] });
+  assert.deepEqual(refusals.map(([code]) => code), ["reload-needs-restart", "reload-needs-restart", "reload-failed", "reload-failed", "reload-failed", "reload-failed", "reload-failed", "reload-failed", "reload-failed"]);
+  assert.equal(refusals[7][1], "The reload gives new workflow refusals: project develop.ts: compile-failed");
+  assert.equal(refusals[8][1], "The reload gives new workflow refusals: project kept.ts: compile-failed");
   assert.equal(refusals[6][1], "The reload command printed no workflow bundle.");
   assert.equal(refusals[2][1], "The workflows did not compile.");
   assert.equal(refusals[3][1], "The reload command printed no workflow bundle.");
@@ -95,7 +103,59 @@ try {
   const status = await asked("status");
   assert.deepEqual(status.workflows, ["develop"]);
   assert.equal(status.bundleDigest, startDigest);
-  assert.equal(reloadLines.filter(line => line.startsWith("Workflow reload: refused ")).length, 7);
+  assert.deepEqual(status.workflowRefusals, []);
+  assert.equal(reloadLines.filter(line => line.startsWith("Workflow reload: refused ")).length, 9);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-252 a reload that changes the interval or the input of a schedule needs a restart", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result =
+      await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+const review = { workflowId: "review-queue", functionName: "review", effectLimit: 1, capabilities: ["claude", "github"], input: { maximumBytes: 1000, fields: { reason: { type: "string" } } }, schedule: { everySeconds: 300, input: { reason: "scheduled scan" } } };
+const manifests = { ...settings.manifests, review: settings.manifests.developTicket };
+const daemon = await launched({ bundleDigest: "0".repeat(64), queueMilliseconds: undefined, scheduleClock: () => 0, declarations: [review], manifests, workflows: { ...settings.workflows, review: workflows.develop }, reloadCommand, loadBundle: loadWorkflowBundle });
+try {
+  const codes = [];
+  for (const schedule of [{ everySeconds: 600, input: { reason: "scheduled scan" } }, { everySeconds: 300, input: { reason: "changed" } }]) {
+    prepared({ bundleDigest, manifests, declarations: [{ ...review, schedule }] });
+    codes.push((await asked("reload")).code);
+  }
+  assert.deepEqual(codes, ["reload-needs-restart", "reload-needs-restart"]);
+  prepared({ bundleDigest, manifests, declarations: [review] });
+  const reloaded = await asked("reload");
+  assert.equal(reloaded.status, "reloaded", JSON.stringify(reloaded));
+  assert.deepEqual(reloaded.workflows, ["review-queue"]);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-252 a reload without workflow files removes the last workflow, and its waiting run continues on its kept code", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result =
+      await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+cpSync("bundle-project", "empty-project", { recursive: true });
+writeFileSync("empty-project/empty.json", "{}");
+const emptyDigest = await retainWorkflowBundle({ project: directory + "/empty-project", repository: directory, directory: directory + "/workflow-bundles" });
+const declarations = settings.declarations.map((declaration) => ({ ...declaration, queue: false }));
+const daemon = await launched({ bundleDigest, queueMilliseconds: undefined, declarations, reloadCommand, loadBundle: loadWorkflowBundle });
+try {
+  const runId = (await submitted("before-reload")).runId;
+  await until(async () => (await shown(runId)).state === "waiting_gate");
+  await hooksReady();
+  prepared({ bundleDigest: emptyDigest, manifests: {}, declarations: [] });
+  const reloaded = await asked("reload");
+  assert.deepEqual(reloaded, { schemaVersion: 1, kind: "reload", status: "reloaded", previousBundleDigest: bundleDigest, bundleDigest: emptyDigest, workflows: [], workflowRefusals: [] });
+  assert.deepEqual((await asked("status")).workflows, []);
+  const removed = await submitted("after-reload");
+  assert.equal(removed.code, "unknown-workflow", JSON.stringify(removed));
+  assert.equal((await answer(runId, "answer")).kind, "decision-recorded");
+  await until(async () => (await shown(runId)).state === "completed");
 } finally { await daemon.close(); }
 process.exit(0);
 `);

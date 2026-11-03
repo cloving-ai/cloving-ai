@@ -176,13 +176,40 @@ async function prepared(
 }
 
 function restartFacts(declarations: readonly DeclaredWorkflow[]): string {
+  const schedules = new Map(
+    declarations
+      .filter((declaration) => declaration.schedule !== undefined)
+      .map(
+        (declaration) =>
+          [declaration.workflowId, declaration.schedule] as const,
+      ),
+  );
   return JSON.stringify({
     queue: queueWorkflowId({ declarations }) ?? null,
-    schedules: declarations
-      .filter((declaration) => declaration.schedule !== undefined)
-      .map((declaration) => declaration.workflowId)
-      .sort(),
+    schedules: [...schedules.keys()]
+      .sort()
+      .map((workflowId) => [workflowId, schedules.get(workflowId)]),
   });
+}
+
+function refusalName(refusal: WorkflowRefusal): string {
+  return `${refusal.scope} ${refusal.label}`;
+}
+
+function addedRefusals(
+  current: readonly WorkflowRefusal[],
+  next: readonly WorkflowRefusal[],
+): Refused | undefined {
+  const known = new Set(current.map(refusalName));
+  const added = next.filter((refusal) => !known.has(refusalName(refusal)));
+  if (added.length === 0) return undefined;
+  const reasons = added.map(
+    (refusal) => `${refusalName(refusal)}: ${refusal.codes.join(", ")}`,
+  );
+  return refused(
+    "reload-failed",
+    `The reload gives new workflow refusals: ${reasons.join("; ")}`,
+  );
 }
 
 type ReloadSettings = DaemonSettings & {
@@ -205,18 +232,13 @@ async function reloaded(
   );
   if (scheduled.kind === "refused")
     return refused("reload-failed", `${scheduled.reason}: ${scheduled.detail}`);
-  if (scheduled.declarations.length === 0)
-    return refused(
-      "reload-no-workflow",
-      "The new workflow files admit no workflow.",
-    );
   if (
     restartFacts(scheduled.declarations) !==
     restartFacts(settings.declarations ?? [])
   )
     return refused(
       "reload-needs-restart",
-      "The queue workflow or the set of scheduled workflows changed. Restart the service.",
+      "The queue workflow or a schedule changed. Restart the service.",
     );
   let generation: WorkflowGeneration;
   try {
@@ -264,27 +286,46 @@ function reloadLine(
   return `Workflow reload: ${outcome.kind} ${String(digests.previous)} -> ${String(digests.current)}\n`;
 }
 
+interface ReloadState {
+  readonly bundleDigest: string | undefined;
+  readonly workflowRefusals: readonly WorkflowRefusal[];
+}
+
 async function reloadOutcome(
   settings: ReloadSettings & { readonly generations: Generations },
-  previous: string | undefined,
+  state: ReloadState,
 ): Promise<WorkflowReload> {
   const bundle = await prepared(settings.reloadCommand);
   if (bundle.kind === "refused") return bundle;
-  if (bundle.bundleDigest === previous)
+  const added = addedRefusals(state.workflowRefusals, bundle.workflowRefusals);
+  if (added !== undefined) return added;
+  if (bundle.bundleDigest === state.bundleDigest)
     return { kind: "unchanged", workflowRefusals: bundle.workflowRefusals };
   return reloaded(settings, bundle);
+}
+
+function nextState(state: ReloadState, outcome: WorkflowReload): ReloadState {
+  if (outcome.kind === "refused") return state;
+  return {
+    bundleDigest:
+      outcome.kind === "reloaded" ? outcome.bundleDigest : state.bundleDigest,
+    workflowRefusals: outcome.workflowRefusals,
+  };
 }
 
 export function workflowReload(
   settings: ReloadSettings & { readonly generations: Generations },
 ): WorkflowReloadPort {
-  let { bundleDigest } = settings;
+  let state: ReloadState = {
+    bundleDigest: settings.bundleDigest,
+    workflowRefusals: workflowRefusals(settings.workflowRefusals),
+  };
   return async () => {
-    const previous = bundleDigest;
-    const outcome = await reloadOutcome(settings, previous);
-    if (outcome.kind === "reloaded") bundleDigest = outcome.bundleDigest;
+    const previous = state.bundleDigest;
+    const outcome = await reloadOutcome(settings, state);
+    state = nextState(state, outcome);
     process.stdout.write(
-      reloadLine(outcome, { previous, current: bundleDigest }),
+      reloadLine(outcome, { previous, current: state.bundleDigest }),
     );
     return outcome;
   };
