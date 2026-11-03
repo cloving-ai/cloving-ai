@@ -3,6 +3,7 @@ import type { AuthorityState } from "../authority/reducer.ts";
 import {
   currentVersion,
   effectedVersion,
+  eventIndexVersion,
   spendingVersion,
   upgradeSchema,
 } from "../storage/domain-schema.ts";
@@ -28,6 +29,12 @@ export async function upgradeSpendingIndexes(
 }
 
 export async function upgradeEventIndexes(database: Database): Promise<void> {
+  await database.transaction((connection) =>
+    upgradeSchema(connection, eventIndexVersion),
+  );
+}
+
+export async function upgradeRunIndexes(database: Database): Promise<void> {
   await database.transaction((connection) =>
     upgradeSchema(connection, currentVersion),
   );

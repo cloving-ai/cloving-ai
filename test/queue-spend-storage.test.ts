@@ -71,6 +71,8 @@ await test("CLV-241 version 6 gains spending indexes without resetting spend or 
     alterDatabase(
       directory,
       `
+      DROP INDEX IF EXISTS effect_evidence_run_sequence;
+      DROP INDEX IF EXISTS stopped_operations_run;
       DROP INDEX IF EXISTS events_run_type_sequence;
       DROP INDEX IF EXISTS events_spend_window;
       DROP INDEX IF EXISTS operations_worker_settled;
@@ -83,7 +85,7 @@ await test("CLV-241 version 6 gains spending indexes without resetting spend or 
     const opening = await openAuthority(directory);
     assert.equal(opening.kind, "opened");
     try {
-      assert.equal((await opening.authority.settings()).schemaVersion, 8);
+      assert.equal((await opening.authority.settings()).schemaVersion, 9);
       const spending = await queueSpend({
         authority: opening.authority,
         clock: () => scene.clock.now,

@@ -63,3 +63,8 @@ CREATE INDEX events_spend_window ON events (julianday(recorded_at));
 CREATE INDEX operations_worker_settled ON operations (settled_sequence) WHERE capability = 'claude';
 CREATE INDEX operations_worker_open ON operations (requested_sequence) WHERE capability = 'claude' AND settled_sequence IS NULL AND status NOT IN ('refused', 'completed', 'failed', 'stopped', 'cancelled');
 `;
+
+export const runIndexes = `
+CREATE INDEX effect_evidence_run_sequence ON effect_evidence (run_id, sequence);
+CREATE INDEX stopped_operations_run ON stopped_operations (run_id);
+`;

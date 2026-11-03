@@ -61,7 +61,9 @@ async function versionSeven() {
   await authority.close();
   alterDatabase(
     directory,
-    `DROP INDEX IF EXISTS events_run_type_sequence;
+    `DROP INDEX IF EXISTS effect_evidence_run_sequence;
+     DROP INDEX IF EXISTS stopped_operations_run;
+     DROP INDEX IF EXISTS events_run_type_sequence;
      DELETE FROM schema_migrations WHERE version > 7;
      PRAGMA user_version = 7;`,
   );
@@ -80,7 +82,7 @@ await test("CLV-247 version 7 gains the admission index without changing history
   );
   const authority = await openedAuthority(directory);
   try {
-    assert.equal((await authority.settings()).schemaVersion, 8);
+    assert.equal((await authority.settings()).schemaVersion, 9);
     assert.deepEqual(await authority.state(), before);
     assert.partialDeepStrictEqual(await authority.queries.run("run-1"), {
       admissionCommandId: "c-1",
@@ -131,7 +133,7 @@ await test("CLV-247 an interrupted admission index migration rolls back and can 
   alterDatabase(directory, "DROP TRIGGER fail_event_index;");
   const authority = await openedAuthority(directory);
   try {
-    assert.equal((await authority.settings()).schemaVersion, 8);
+    assert.equal((await authority.settings()).schemaVersion, 9);
     assert.deepEqual(await authority.state(), before);
   } finally {
     await authority.close();
