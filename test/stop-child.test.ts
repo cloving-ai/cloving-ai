@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { withFiles } from "./quality/files-fixture.ts";
 import { stopChild, stopChildGroup } from "./stop-child.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import { ended as endedDaemon } from "./self-host-fixture.ts";
 import { killVerificationGroup } from "../quality/verification-process-group.ts";
 
@@ -156,8 +157,8 @@ await test("CLV-145 stopping a detached group also stops a descendant after its 
       "-e",
       `
 const { spawn } = require("node:child_process");
-const descendant = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); console.log("ready");'], { stdio: ["ignore", "inherit", "inherit"] });
 process.on("SIGTERM", () => process.exit(0));
+const descendant = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); console.log("ready");'], { stdio: ["ignore", "inherit", "inherit"] });
 setInterval(() => {}, 1000);
 `,
     ],
@@ -171,12 +172,12 @@ setInterval(() => {}, 1000);
   const closed = once(child, "close");
   try {
     await once(child.stdout, "data");
-    await stopChildGroup(child, { graceMilliseconds: 50 });
+    await stopChildGroup(child, { graceMilliseconds: testMilliseconds(1000) });
     assert.deepEqual(await exited, [0, null]);
     assert.equal(
       await Promise.race([
         closed.then(() => "closed"),
-        delay(1000, "open", { ref: false }),
+        delay(testMilliseconds(1000), "open", { ref: false }),
       ]),
       "closed",
     );
