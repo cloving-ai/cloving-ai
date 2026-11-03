@@ -2,8 +2,9 @@ import { stopChildGroup } from "./stop-child.ts";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { ended, field, reached } from "./self-host-fixture.ts";
 import { call, parsed, runCli } from "./service-fixture.ts";
 import { watchReader } from "../src/cli/watch-reads.ts";
@@ -29,7 +30,7 @@ function launch(root: string): ChildProcess {
   const child = spawn(
     process.execPath,
     [
-      resolve("tools/self-host.ts"),
+      join(candidatePackageRoot, "tools/self-host.ts"),
       "--runtime",
       join(root, "host/run"),
       "--repository",

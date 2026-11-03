@@ -830,6 +830,7 @@
     "test/cursor-start.test.ts": "test",
     "test/cursor-stream.test.ts": "test",
     "test/cursor-worker.test.ts": "test",
+    "test/daemon-adapters.test.ts": "test",
     "test/daemon-bundle-fixture.ts": "test",
     "test/daemon-bundles.test.ts": "test",
     "test/daemon-command.test.ts": "test",
