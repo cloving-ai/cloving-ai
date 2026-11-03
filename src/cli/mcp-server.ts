@@ -1,6 +1,6 @@
 import packageMetadata from "#package" with { type: "json" };
 import { maximumFrameBytes, record, type Fields } from "../protocol.ts";
-import { mcpTools, mcpToolRequest, callMcpTool } from "./mcp-tools.ts";
+import { mcpTools, mcpToolCall, callMcpTool } from "./mcp-tools.ts";
 
 const versions = ["2025-11-25", "2025-06-18", "2025-03-26"];
 
@@ -123,13 +123,13 @@ async function response(
   else if (method === "ping") result = {};
   else if (method === "tools/list") result = { tools: mcpTools };
   else if (method === "tools/call") {
-    const command = mcpToolRequest(parameters);
-    if (command === undefined)
+    const call = mcpToolCall(parameters);
+    if (call === undefined)
       return error(id, {
         code: -32602,
         message: "Unknown tool or invalid arguments.",
       });
-    result = await callMcpTool(runtimeDirectory, { ...command, signal });
+    result = await callMcpTool(runtimeDirectory, { call, signal });
   } else return error(id, { code: -32601, message: "Method not found." });
   return { jsonrpc: "2.0", id, result };
 }

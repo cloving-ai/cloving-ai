@@ -19,6 +19,9 @@ export const commandUsage: Readonly<Record<string, string>> = {
   mcp: `Usage: cloving mcp [--repository <directory>]
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
+Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
+cloving_resume and cloving_drop to submit runs and decisions. Each of these tools
+needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 `,
@@ -203,7 +206,7 @@ Commands:
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
-  mcp        Serve the read tools over stdio.
+  mcp        Serve the Cloving tools over stdio.
   schedule   List, pause and resume workflow schedules.
   queue      Show, resume and drain the queue.
   report     Report loop facts and seven-day baselines.
