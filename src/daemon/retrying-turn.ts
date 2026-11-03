@@ -200,10 +200,6 @@ function interruptedChild(
 }
 
 async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
-  const started = await readRecord(attempts.start.folder, "started.json");
-  const resume = await readResume(attempts.start.folder, started);
-  if (resume === undefined)
-    return { ...combined(attempts), reason: "claude-turn-interrupted" };
   const locked = await resumeWorktree({
     directory: attempts.start.directory,
     folder: attempts.start.folder,
@@ -211,6 +207,10 @@ async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
     stopMilliseconds: attempts.grace.milliseconds,
   });
   if (locked !== null) return { ...combined(attempts), reason: locked.reason };
+  const started = await readRecord(attempts.start.folder, "started.json");
+  const resume = await readResume(attempts.start.folder, started);
+  if (resume === undefined)
+    return { ...combined(attempts), reason: "claude-turn-interrupted" };
   const prepared = await preparedRetry(attempts);
   if (typeof prepared !== "string") return prepared;
   const recovered: Attempts = {

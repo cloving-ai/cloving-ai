@@ -1,7 +1,7 @@
 {
   "workflow": {
     "workflowId": "develop",
-    "effectLimit": 27,
+    "effectLimit": 31,
     "capabilities": ["claude", "github"],
     "queue": true,
     "input": {

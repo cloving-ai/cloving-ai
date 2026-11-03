@@ -31,7 +31,8 @@ step bridge. The alternative configurations use `develop/option-tests.ts`, with 
 point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
 `flowTests` and `refusalTests` imports in `develop.test.ts` with
 `optionTests as flowTests`, then run every `flowTests` scenario. Keep the shared
-turn and partial-helper tests. Package tests apply each source edit, validate
+turn, partial-helper and interruption tests. `develop/interruption-tests.ts`
+follows the selected point IDs, so it tests each configuration. Package tests apply each source edit, validate
 its requirements, and test ten complete configurations through the folder
 loader and the installed package, covering every option.
 
@@ -43,6 +44,22 @@ allow the initial turn and three fix turns; the workflow must stop after that.
 `develop.test.ts` exercises this helper with `cloving/workflows/testing`.
 The package tests also load small compositions of this helper through folder
 admission for both input forms and test both forms in complete workflows.
+
+`developReport` in `develop/report.ts` runs the turn again once when its result
+has the reason `claude-turn-interrupted`. This occurs when the daemon cannot
+resume an open turn after a restart. Before the daemon reports this reason, it
+stops the processes of the earlier turn in the work tree. The new turn has the same target, so the
+daemon gives it the same work tree. Its scope adds the key `continuation`, and
+its prompt tells the worker that the earlier turn stopped before its report.
+The worker checks the work tree, the commits since the start of the round, and
+the ticket before it continues.
+
+After a second interruption of the same turn, `developReport` returns a blocked
+outcome with the reason `turn-interrupted`. `develop/round.ts` and
+`develop/local.ts` return this outcome before they use the report. A
+pull-request workflow then adds `cloving: blocked` to the GitHub issue of the
+ticket. Other results that are not `completed` fail the run. The default effect
+limit of 31 includes one more turn in each of the four rounds.
 
 `develop/partial.ts` implements the person's partial-work question.
 `develop/partial-choice.ts` connects its answer to a development report and the
@@ -92,8 +109,8 @@ if (verification !== null)
 
 Add `"command"` to `workflow.capabilities`, `"commands": ["red-green"]` to
 `workflow`, and `"command": ["run:red-green"]` to `methods` in
-`develop.declaration.json`. Increase `workflow.effectLimit` by 4, from 27 to
-31, allowing one verification command in each of the four development rounds.
+`develop.declaration.json`. Increase `workflow.effectLimit` by 4, from 31 to
+35, allowing one verification command in each of the four development rounds.
 Set `selection.verify` to `"red-green"` in `develop/scenarios.ts` and run the
 option tests. The local merge option does not support this verification.
 

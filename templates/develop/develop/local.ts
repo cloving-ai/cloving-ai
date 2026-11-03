@@ -13,6 +13,7 @@ export async function localRound(
 ): Promise<CycleOutcome | DevelopFeedback> {
   const { input, round } = state;
   const report = await developReport(state);
+  if ("kind" in report) return report;
   const partial = await partialChoice({ input, round, report });
   if (partial !== null) return partial;
   if (
