@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { SubmissionContract } from "../src/submission.ts";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { scene, reached } from "./self-host-fixture.ts";
 import {
   candidateDeclaration,
@@ -11,6 +12,8 @@ import {
 } from "./workflow-candidate-fixtures.ts";
 import { record } from "../src/protocol.ts";
 import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
+
+const packagedEntry = join(candidatePackageRoot, "src/cli.ts");
 
 async function workflowFile(
   folder: string,
@@ -45,9 +48,11 @@ async function startOutput(
   options: {
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly inspect?: () => void;
+    readonly entry?: string;
   } = {},
 ) {
-  const child = spawn(process.execPath, [resolve("src/cli.ts"), "start"], {
+  const entry = options.entry ?? resolve("src/cli.ts");
+  const child = spawn(process.execPath, [entry, "start"], {
     cwd: fixture.repository,
     env: {
       ...process.env,
@@ -129,6 +134,7 @@ await test("CLV-262 start registers a template under a formerly bundled ID and g
     }),
   );
   const output = await startOutput(fixture, {
+    entry: packagedEntry,
     inspect: () => {
       assert.deepEqual(registered(fixture), ["develop-issue"]);
     },
@@ -152,6 +158,7 @@ await test("CLV-262 start guides project and user workflows with their declared 
     queue: false,
   });
   const output = await startOutput(fixture, {
+    entry: packagedEntry,
     inspect: () => {
       assert.deepEqual(registered(fixture), ["report", "notes"]);
     },
