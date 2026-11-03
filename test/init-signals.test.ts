@@ -39,7 +39,7 @@ else {
       const closed = once(child, "close");
       try {
         const ready = await once(child.stdout, "data", {
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(testMilliseconds(10000)),
         });
         assert.match(String(ready[0]), /ready/);
         const interrupted = once(child.stdout, "data", {
