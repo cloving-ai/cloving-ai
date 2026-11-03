@@ -622,6 +622,7 @@
     "test/authority-recovery.test.ts": "test",
     "test/authority-replay.test.ts": "test",
     "test/authority-rows.test.ts": "test",
+    "test/authority-run-index.test.ts": "test",
     "test/authority-schema.test.ts": "test",
     "test/authority-status-effects.test.ts": "test",
     "test/authority-status-fixture.ts": "test",

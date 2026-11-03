@@ -13,6 +13,7 @@ import { upgradeDecisions } from "../decision-upgrade.ts";
 import {
   upgradeEffects,
   upgradeEventIndexes,
+  upgradeRunIndexes,
   upgradeSpendingIndexes,
 } from "../effect-upgrade.ts";
 
@@ -23,6 +24,7 @@ const upgrades = [
   { from: "waiting", load: loadWaiting, apply: upgradeCommandWaitChecks },
   { from: "checked", load: loadCurrent, apply: upgradeSpendingIndexes },
   { from: "indexed", load: loadCurrent, apply: upgradeEventIndexes },
+  { from: "event-indexed", load: loadCurrent, apply: upgradeRunIndexes },
 ] as const;
 
 export type UpgradeStep = (typeof upgrades)[number];
