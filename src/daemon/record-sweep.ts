@@ -11,6 +11,7 @@ import {
 import {
   folderRunId,
   retentionVerdict,
+  sharedRecordFolders,
   type RetentionSettings,
   type RetentionVerdict,
   type StoredRun,
@@ -55,7 +56,6 @@ interface Tally {
 }
 
 const kinds = ["github", "journal"] as const;
-const shared: readonly string[] = ["journal/runs", "journal/targets"];
 const batchSize = 200;
 
 async function folders(directory: string): Promise<string[]> {
@@ -65,7 +65,7 @@ async function folders(directory: string): Promise<string[]> {
       withFileTypes: true,
     }).catch(() => []))
       if (entry.isDirectory()) found.push(`${kind}/${entry.name}`);
-  return found.filter((path) => !shared.includes(path)).sort();
+  return found.filter((path) => !sharedRecordFolders.includes(path)).sort();
 }
 
 async function newestChange(folder: string): Promise<number> {
@@ -99,7 +99,9 @@ async function examined(directory: string, path: string): Promise<Examined> {
   }
 }
 
-function archiveFolder(settings: SweepSettings): string {
+export function archiveFolder(
+  settings: Pick<SweepSettings, "directory" | "retention">,
+): string {
   return (
     settings.retention.archiveFolder ?? join(settings.directory, "archive")
   );

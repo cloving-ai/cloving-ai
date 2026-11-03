@@ -1,11 +1,14 @@
 import { testMilliseconds } from "./test-timing.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import type { Authority, Delivery } from "../src/broker/actor/authority.ts";
+import type { Authority } from "../src/broker/actor/authority.ts";
 import {
   executePinned,
   fastTiming,
+  gatedDelivery,
   openedAuthority,
+  refusalWhileDelivering,
+  type GatedRun,
 } from "./authority-actor-fixture.ts";
 import {
   alterDatabase,
@@ -19,40 +22,6 @@ import {
 const admission = storedGate[0] ?? {};
 const deadLetter =
   /^Error: authority-unavailable: dead-lettered message [0-9a-f-]{36}: injected-callback-failure$/;
-
-interface GatedRun {
-  readonly delivery: Delivery;
-  readonly entered: Promise<void>;
-  readonly release: () => void;
-}
-
-interface DeliveryCall {
-  readonly runId: string;
-  readonly count: number;
-}
-
-function gatedDelivery(stuck: (call: DeliveryCall) => boolean): GatedRun {
-  const sent: string[] = [];
-  const entry = Promise.withResolvers<undefined>();
-  const gate = Promise.withResolvers<undefined>();
-  return {
-    entered: entry.promise,
-    release: () => {
-      gate.resolve(undefined);
-    },
-    delivery: {
-      deliver: async (intent) => {
-        sent.push(intent.operationId);
-        if (stuck({ runId: intent.runId, count: sent.length })) {
-          entry.resolve(undefined);
-          await gate.promise;
-        }
-        return { receipt: `receipt-${String(sent.length)}` };
-      },
-      reconcile: () => Promise.resolve({ kind: "absent" }),
-    },
-  };
-}
 
 async function admittedRuns(
   directory: string,
@@ -117,7 +86,7 @@ await test("CLV-042 a storage failure while a delivery handler outlasts the shut
   await authority.close();
 });
 
-await test("CLV-042 a dead-lettered callback found while another delivery handler outlasts the shutdown bound is reported by the delivery run with its cause", async () => {
+await test("CLV-042 a dead-lettered callback found while another delivery handler outlasts the shutdown bound is reported by reads and by the stopped delivery run with its cause", async () => {
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1", "run-2"]);
   alterDatabase(
@@ -129,10 +98,12 @@ await test("CLV-042 a dead-lettered callback found while another delivery handle
     delivery: run.delivery,
     timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) },
   });
-  const delivering = outcome(authority.deliver(new AbortController().signal));
+  const reported = refusalWhileDelivering(authority);
   await run.entered;
   try {
-    assert.match(await delivering, deadLetter);
+    const { read, stopped } = await reported;
+    assert.match(read, deadLetter);
+    assert.match(stopped, deadLetter);
   } finally {
     run.release();
   }
@@ -141,12 +112,12 @@ await test("CLV-042 a dead-lettered callback found while another delivery handle
 
 const callbackFailure =
   "CREATE TRIGGER inject BEFORE UPDATE ON deliveries BEGIN SELECT RAISE(ABORT, 'injected-callback-failure'); END;";
-const closedAfterDeadLetter =
-  /^closed after dead-lettered message [0-9a-f-]{36}: injected-callback-failure$/;
+const deadLetterDetail =
+  /^dead-lettered message [0-9a-f-]{36}: injected-callback-failure$/;
 
 function refusedReceipt(receipt: unknown, detail: RegExp): void {
   assert.equal(Reflect.get(Object(receipt), "kind"), "failed");
-  assert.equal(Reflect.get(Object(receipt), "reason"), "storage-unavailable");
+  assert.equal(Reflect.get(Object(receipt), "reason"), "authority-unavailable");
   assert.match(String(Reflect.get(Object(receipt), "detail")), detail);
 }
 
@@ -157,7 +128,7 @@ function storedCommands(directory: string): unknown {
   ).map((row): unknown => Reflect.get(Object(row), "command_id"));
 }
 
-await test("CLV-042 a dead-lettered callback found by the watchdog stops admission before the next command, and later commands, reads and the delivery run report its cause", async () => {
+await test("CLV-042 a dead-lettered callback found by the watchdog stops admission before the next command, and later commands, reads and the stopped delivery run report its cause", async () => {
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1"]);
   alterDatabase(directory, callbackFailure);
@@ -171,7 +142,8 @@ await test("CLV-042 a dead-lettered callback found by the watchdog stops admissi
         dead.resolve(undefined);
     },
   });
-  const delivering = outcome(authority.deliver(new AbortController().signal));
+  const controller = new AbortController();
+  const delivering = outcome(authority.deliver(controller.signal));
   await dead.promise;
   const receipts = await Promise.all(
     ["run-2", "run-3"].map((runId) =>
@@ -182,10 +154,10 @@ await test("CLV-042 a dead-lettered callback found by the watchdog stops admissi
       }),
     ),
   );
-  for (const receipt of receipts)
-    refusedReceipt(receipt, closedAfterDeadLetter);
-  assert.match(await delivering, deadLetter);
+  for (const receipt of receipts) refusedReceipt(receipt, deadLetterDetail);
   await assert.rejects(authority.state(), deadLetter);
+  controller.abort();
+  assert.match(await delivering, deadLetter);
   await authority.close();
   assert.deepEqual(storedCommands(directory), ["admit-run-1"]);
 });
@@ -223,13 +195,13 @@ await test("CLV-042 a queued callback that a command applies and dead-letters ke
       commandId: "admit-run-3",
       runId: "run-3",
     }),
-    closedAfterDeadLetter,
+    deadLetterDetail,
   );
   await authority.close();
   assert.deepEqual(storedCommands(directory), ["admit-run-1", "admit-run-2"]);
 });
 
-await test("CLV-042 a failed read of the dead-letter cause still fails the authority closed and reports the condition", async () => {
+await test("CLV-042 a failed read of the dead-letter cause still makes the authority refuse commands and reports the condition", async () => {
   const directory = await temporaryDirectory();
   await admittedRuns(directory, ["run-1"]);
   alterDatabase(directory, callbackFailure);
@@ -244,17 +216,16 @@ await test("CLV-042 a failed read of the dead-letter cause still fails the autho
   });
   const unreadable =
     /^Error: authority-unavailable: dead-lettered message [0-9a-f-]{36}: unreadable cause$/;
-  assert.match(
-    await outcome(authority.deliver(new AbortController().signal)),
-    unreadable,
-  );
+  const { read, stopped } = await refusalWhileDelivering(authority);
+  assert.match(read, unreadable);
+  assert.match(stopped, unreadable);
   refusedReceipt(
     await executePinned(authority, {
       ...admission,
       commandId: "admit-run-2",
       runId: "run-2",
     }),
-    /^closed after dead-lettered message [0-9a-f-]{36}: unreadable cause$/,
+    /^dead-lettered message [0-9a-f-]{36}: unreadable cause$/,
   );
   await assert.rejects(authority.state(), unreadable);
   await authority.close();
@@ -291,7 +262,7 @@ await test("CLV-042 a command that is in flight when another command fails the a
 async function deadLetteredWhileStuck(directory: string): Promise<{
   readonly authority: Authority;
   readonly run: GatedRun;
-  readonly delivering: Promise<string>;
+  readonly stopped: () => Promise<string>;
 }> {
   await admittedRuns(directory, ["run-1", "run-2"]);
   alterDatabase(directory, callbackFailure);
@@ -308,15 +279,22 @@ async function deadLetteredWhileStuck(directory: string): Promise<{
         dead.resolve(undefined);
     },
   });
-  const delivering = outcome(authority.deliver(new AbortController().signal));
+  const controller = new AbortController();
+  const delivering = outcome(authority.deliver(controller.signal));
   await Promise.all([run.entered, dead.promise]);
-  return { authority, run, delivering };
+  return {
+    authority,
+    run,
+    stopped: () => {
+      controller.abort();
+      return delivering;
+    },
+  };
 }
 
 await test("CLV-042 commands after a detected condition are refused at once, without a wait for the delivery run to stop", async () => {
   const directory = await temporaryDirectory();
-  const { authority, run, delivering } =
-    await deadLetteredWhileStuck(directory);
+  const { authority, run, stopped } = await deadLetteredWhileStuck(directory);
   try {
     const started = performance.now();
     for (const runId of ["run-3", "run-4"])
@@ -326,20 +304,19 @@ await test("CLV-042 commands after a detected condition are refused at once, wit
           commandId: `admit-${runId}`,
           runId,
         }),
-        closedAfterDeadLetter,
+        deadLetterDetail,
       );
     assert.ok(performance.now() - started < testMilliseconds(400));
   } finally {
     run.release();
   }
-  assert.match(await delivering, deadLetter);
+  assert.match(await stopped(), deadLetter);
   await authority.close();
 });
 
 await test("CLV-042 a read in the same step as the command that finds a condition reports the condition, and settings reject instead of throwing", async () => {
   const directory = await temporaryDirectory();
-  const { authority, run, delivering } =
-    await deadLetteredWhileStuck(directory);
+  const { authority, run, stopped } = await deadLetteredWhileStuck(directory);
   try {
     const command = executePinned(authority, {
       ...admission,
@@ -347,7 +324,7 @@ await test("CLV-042 a read in the same step as the command that finds a conditio
       runId: "run-3",
     });
     const read = outcome(authority.state());
-    refusedReceipt(await command, closedAfterDeadLetter);
+    refusedReceipt(await command, deadLetterDetail);
     assert.match(
       await read,
       /^Error: authority-unavailable: dead-lettered message [0-9a-f-]{36}(: injected-callback-failure)?$/,
@@ -356,7 +333,7 @@ await test("CLV-042 a read in the same step as the command that finds a conditio
   } finally {
     run.release();
   }
-  assert.match(await delivering, deadLetter);
+  assert.match(await stopped(), deadLetter);
   await authority.close();
 });
 

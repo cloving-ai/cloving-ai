@@ -1,10 +1,12 @@
 import type { scheduleConnection } from "./schedule-control.ts";
+import type { queueConnection } from "./queue-control.ts";
 import { workflowSchedules } from "./workflow-schedules.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
 
 interface LoopSettings extends ParametersOfSchedules {
   readonly scheduleConnection?: ReturnType<typeof scheduleConnection>;
+  readonly queueConnection?: ReturnType<typeof queueConnection>;
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
@@ -14,6 +16,26 @@ interface LoopSettings extends ParametersOfSchedules {
 }
 
 type ParametersOfSchedules = Parameters<typeof workflowSchedules>[0];
+
+function startedQueue(
+  settings: LoopSettings,
+): ReturnType<typeof issueQueue> | undefined {
+  if (
+    settings.queueMilliseconds === undefined ||
+    settings.queueWorkflowId === undefined
+  )
+    return undefined;
+  const queue = issueQueue({
+    directory: settings.directory,
+    runtimeDirectory: settings.runtimeDirectory,
+    intervalMilliseconds: settings.queueMilliseconds,
+    lanes: settings.queueLanes ?? 1,
+    resetQueue: settings.resetQueue ?? false,
+    workflowId: settings.queueWorkflowId,
+  });
+  settings.queueConnection?.connect(queue.port);
+  return queue;
+}
 
 export async function daemonLoops(
   settings: LoopSettings,
@@ -32,18 +54,7 @@ export async function daemonLoops(
               ? {}
               : { intervalMilliseconds: settings.notifyMilliseconds }),
           });
-    const queue =
-      settings.queueMilliseconds === undefined ||
-      settings.queueWorkflowId === undefined
-        ? undefined
-        : issueQueue({
-            directory: settings.directory,
-            runtimeDirectory: settings.runtimeDirectory,
-            intervalMilliseconds: settings.queueMilliseconds,
-            lanes: settings.queueLanes ?? 1,
-            resetQueue: settings.resetQueue ?? false,
-            workflowId: settings.queueWorkflowId,
-          });
+    const queue = startedQueue(settings);
     return {
       stop: async () => {
         await schedules.stop();

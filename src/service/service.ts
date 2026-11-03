@@ -10,11 +10,8 @@ import {
   type Refusal,
 } from "../broker/actor/authority.ts";
 import { socketAddress } from "../broker/socket-address.ts";
-import type { Reply, ServiceRequest } from "../protocol.ts";
 import { type WorkflowRefusal } from "../workflow-refusals.ts";
 import { changeSignal } from "./changes.ts";
-import { decision, questions } from "./decision-handler.ts";
-import { events, type Connection } from "./event-handler.ts";
 import { expiryScan } from "./expiry.ts";
 import { commandGateway, workerCommandBound, type Gateway } from "./gateway.ts";
 import {
@@ -25,13 +22,11 @@ import {
 } from "./registry.ts";
 import {
   errorMessage,
-  failed,
   queryMetadata,
-  scheduleRequest,
   type ServiceContext,
+  type ServiceReads,
 } from "./replies.ts";
-import { runCommand, status } from "./run-handlers.ts";
-import { submissionHandler } from "./submission-handler.ts";
+import { dispatcher } from "./dispatcher.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
 import { runWaitTarget } from "./run-waits.ts";
@@ -108,11 +103,11 @@ export interface HostPorts {
   readonly registerWait: WorkerPort["registerWait"];
 }
 
-export interface ServiceOptions {
+export interface ServiceOptions extends ServiceReads {
   readonly version?: string;
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
+  readonly queue?: NonNullable<ServiceContext["queue"]>;
   readonly queueDailySpendLimitUsd?: number;
-  readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
@@ -170,44 +165,6 @@ async function endpoint(directory: string): Promise<string | Refusal> {
 
 function wallClock(): string {
   return new Date().toISOString();
-}
-
-function dispatcher(
-  context: ServiceContext,
-): (
-  request: ServiceRequest,
-  connection: Connection,
-) => Promise<Reply | undefined> {
-  const run = submissionHandler(context);
-  const operations = new Map<
-    string,
-    (
-      request: ServiceRequest,
-      connection: Connection,
-    ) => Promise<Reply | undefined>
-  >([
-    ["run", (request) => run(request.parameters)],
-    ["schedule", (request) => scheduleRequest(context, request.parameters)],
-    ["status", (request) => status(context, request.parameters)],
-    ["questions", (request) => questions(context, request.parameters)],
-    ["decision", (request) => decision(context, request.parameters)],
-    ["run-command", (request) => runCommand(context, request.parameters)],
-    [
-      "events",
-      (request, connection) =>
-        events(context, { parameters: request.parameters, connection }),
-    ],
-  ]);
-  return (request, connection) => {
-    const operation = operations.get(request.operation);
-    if (operation === undefined)
-      return Promise.resolve(
-        failed("unknown-operation", {
-          detail: `The service has no operation ${request.operation}.`,
-        }),
-      );
-    return operation(request, connection);
-  };
 }
 
 async function started(

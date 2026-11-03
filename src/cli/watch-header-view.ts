@@ -25,7 +25,8 @@ export const clove = {
 export function queueLanes(model: WatchModel): string | null {
   const queue = model.queue;
   if (queue === undefined) return null;
-  return `Queue: ${String(queue["busy"])} of ${String(queue["lanes"])} lanes busy`;
+  const state = typeof queue["state"] === "string" ? `${queue["state"]}, ` : "";
+  return `Queue: ${state}${String(queue["busy"])} of ${String(queue["lanes"])} lanes busy`;
 }
 
 export function skippedText(value: unknown): string {

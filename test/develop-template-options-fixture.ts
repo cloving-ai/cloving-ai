@@ -160,8 +160,8 @@ function deliveryFiles(
     });
     edit(files, {
       file: "develop/round.ts",
-      from: "const report = await developReport(state);",
-      to: "const report = await developReport(state);\n    const partial = await partialChoice({ input, round, report });\n    if (partial !== null) return partial;",
+      from: 'if ("kind" in report) return report;',
+      to: 'if ("kind" in report) return report;\n    const partial = await partialChoice({ input, round, report });\n    if (partial !== null) return partial;',
     });
   }
 }
@@ -222,12 +222,12 @@ function declaration(selected: DevelopSelection): string {
   const verification =
     selected.verify === "red-green"
       ? {
-          effectLimit: 31,
+          effectLimit: 35,
           capabilities: ["command"],
           workflow: { commands: ["red-green"] },
           methods: { command: ["run:red-green"] },
         }
-      : { effectLimit: 27, capabilities: [], workflow: {}, methods: {} };
+      : { effectLimit: 31, capabilities: [], workflow: {}, methods: {} };
   const claude =
     selected.accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"];
   const github = [

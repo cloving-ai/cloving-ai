@@ -87,6 +87,8 @@ process.stdout.write(JSON.stringify({ candidates: loaded.candidates.length, refu
     assert.match(output, /fix turn receives the full check-failed output/);
     assert.match(output, /partial questions use distinct rounds/);
     assert.match(output, /queued partial work records the merged pull request/);
+    assert.match(output, /an interrupted turn runs again once/);
+    assert.match(output, /second interruption of the same turn blocks/);
     assert.doesNotMatch(output, /not ok|✖/);
   });
 }

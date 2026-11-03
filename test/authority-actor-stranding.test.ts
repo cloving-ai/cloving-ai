@@ -9,6 +9,7 @@ import {
   externalService,
   openedAuthority,
   quickCleanupTiming,
+  readUntil,
 } from "./authority-actor-fixture.ts";
 import {
   removeTemporaryDirectories,
@@ -175,8 +176,8 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
   await delay(timing.callTimeoutMilliseconds);
   const after = await executePinned(authority, admission);
   assert.equal(after.kind, "failed");
-  assert.equal(after.reason, "storage-unavailable");
-  assert.match(after.detail, /^closed after stranded message [0-9a-f-]{36}$/);
+  assert.equal(after.reason, "authority-unavailable");
+  assert.match(after.detail, /^stranded message [0-9a-f-]{36}$/);
   await assert.rejects(
     authority.state(),
     /^Error: authority-unavailable: stranded message [0-9a-f-]{36}$/,
@@ -195,43 +196,70 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
   await restarted.close();
 });
 
-await test("CLV-052 a delivery callback whose turn is longer than the lease in each attempt fails the authority closed within the bound, and a restart applies it exactly once", async () => {
-  const directory = await temporaryDirectory();
+const committed = /^sequence [12]$/;
+const strandedRead =
+  /^Error: authority-unavailable: stranded message [0-9a-f-]{36}$/;
+
+function healthLines(lines: readonly string[]): readonly unknown[] {
+  return lines
+    .map((line): unknown => JSON.parse(line))
+    .filter((entry) =>
+      String(Reflect.get(Object(entry), "event")).startsWith("authority-"),
+    )
+    .map((entry): readonly unknown[] => [
+      Reflect.get(Object(entry), "level"),
+      Reflect.get(Object(entry), "event"),
+    ]);
+}
+
+await test("CLV-279 a delivery callback whose turn is longer than the lease in each attempt makes the authority refuse commands while it stays stranded, and the next command succeeds after the callback finishes, with no restart", async () => {
   const service = externalService();
-  const authority = await openedAuthority(directory, {
+  const lines: string[] = [];
+  const authority = await openedAuthority(await temporaryDirectory(), {
     ...service.options,
     timing,
+    log: (line) => lines.push(line),
     ...eachTurnStalled("deliveryCompleted"),
   });
   assert.equal((await executePinned(authority, admission)).kind, "accepted");
   const started = performance.now();
   const controller = new AbortController();
-  const outcome = await Promise.race([
-    authority.deliver(controller.signal).then(
-      () => "stopped",
-      (error: unknown) => String(error),
-    ),
-    delay(testMilliseconds(5_000), "not detected", { ref: false }),
-  ]);
-  controller.abort();
-  assert.match(outcome, /authority-unavailable: stranded message /);
-  assert.ok(performance.now() - started < testMilliseconds(2_500));
-  await assert.rejects(authority.state(), /authority-unavailable/);
-  await authority.close();
-  const restarted = await openedAuthority(directory, service.options);
-  await deliverUntil(
-    restarted,
-    async () => (await restarted.eligibleIntents()).length === 0,
+  const delivering = authority.deliver(controller.signal).then(
+    () => "stopped",
+    (error: unknown) => String(error),
   );
-  assert.equal(service.sent.length, 1);
+  try {
+    assert.match(
+      await readUntil(authority, (outcome) => outcome !== "sequence 1"),
+      strandedRead,
+    );
+    assert.ok(performance.now() - started < testMilliseconds(2_500));
+    const later = { ...admission, runId: "run-2", commandId: "c-2" };
+    const refusal = await executePinned(authority, later);
+    assert.equal(refusal.kind, "failed");
+    assert.equal(refusal.reason, "authority-unavailable");
+    assert.match(refusal.detail, /^stranded message [0-9a-f-]{36}$/);
+    assert.equal(
+      await readUntil(authority, (outcome) => !strandedRead.test(outcome)),
+      "sequence 2",
+    );
+    assert.equal((await executePinned(authority, later)).kind, "accepted");
+  } finally {
+    controller.abort();
+  }
+  assert.equal(await delivering, "stopped");
   assert.deepEqual(
-    (await restarted.events()).map((event) => event.type),
-    ["run.created", "step.dispatched"],
+    service.sent.map((intent) => intent.runId),
+    ["run-1", "run-2"],
   );
-  await restarted.close();
+  assert.deepEqual(healthLines(lines), [
+    ["warn", "authority-unhealthy"],
+    ["info", "authority-recovered"],
+  ]);
+  await authority.close();
 });
 
-await test("CLV-052 a command whose turn is longer than the lease in each attempt, while the delivery waits for work, gets a failed receipt, and the delivery run fails closed within the bound", async () => {
+await test("CLV-279 a command whose turn is longer than the lease in each attempt, while the delivery waits for work, gets a failed receipt, the delivery run keeps running, and the command commits once when its turn finishes, with no restart", async () => {
   const service = externalService();
   const authority = await openedAuthority(await temporaryDirectory(), {
     ...service.options,
@@ -239,32 +267,84 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
     ...eachTurnStalled("execute"),
   });
   const controller = new AbortController();
-  const started = performance.now();
   const running = authority.deliver(controller.signal).then(
     () => "stopped",
     (error: unknown) => String(error),
   );
-  await delay(testMilliseconds(400));
-  const receipt = await executePinned(authority, admission);
-  const answered = performance.now();
-  const outcome = await Promise.race([
-    running,
-    delay(testMilliseconds(5_000), "not detected", { ref: false }),
-  ]);
-  const stopped = performance.now();
-  controller.abort();
-  assert.equal(receipt.kind, "failed");
-  assert.equal(receipt.reason, "authority-unavailable");
-  assert.match(
-    outcome,
-    /^Error: authority-unavailable: (authority failure|stranded message [0-9a-f-]{36})$/,
+  try {
+    await delay(testMilliseconds(400));
+    const receipt = await executePinned(authority, admission);
+    assert.equal(receipt.kind, "failed");
+    assert.equal(receipt.reason, "authority-unavailable");
+    assert.match(receipt.detail, /^SyncTimeout: /);
+    assert.match(
+      await readUntil(authority, (outcome) => committed.test(outcome)),
+      committed,
+    );
+    assert.deepEqual(await executePinned(authority, admission), {
+      kind: "duplicate",
+      sequence: 1,
+      intents: [start],
+    });
+  } finally {
+    controller.abort();
+  }
+  assert.equal(await running, "stopped");
+  assert.deepEqual(
+    (await authority.events())
+      .map((event) => event.commandId)
+      .filter((commandId) => commandId === "c-1"),
+    ["c-1"],
   );
+  await authority.close();
+});
+
+await test("CLV-279 a delivery callback of a cancelled run that stays lost longer than the bound never makes the authority refuse reads", async () => {
+  const service = externalService();
+  const lines: string[] = [];
+  const losses: number[] = [];
+  const stalled = eachTurnStalled("deliveryCompleted");
+  const authority = await openedAuthority(await temporaryDirectory(), {
+    ...service.options,
+    timing,
+    log: (line) => lines.push(line),
+    instrumentation: (event) => {
+      if (event.name === lost) losses.push(performance.now());
+      stalled.instrumentation?.(event);
+    },
+  });
+  assert.equal((await executePinned(authority, admission)).kind, "accepted");
+  const drop = {
+    kind: "cancel-run",
+    commandId: "c-drop",
+    runId: "run-1",
+    expectedRevision: 1,
+  };
+  assert.equal((await executePinned(authority, drop)).kind, "accepted");
+  const controller = new AbortController();
+  const delivering = authority.deliver(controller.signal);
+  const outcomes = new Set<string>();
+  try {
+    const watched = performance.now() + testMilliseconds(2_500);
+    while (performance.now() < watched) {
+      outcomes.add(await readUntil(authority, () => true));
+      await delay(testMilliseconds(50));
+    }
+  } finally {
+    controller.abort();
+  }
+  await delivering;
+  const [firstLoss] = losses;
+  assert.ok(firstLoss !== undefined);
   assert.ok(
-    stopped - answered < testMilliseconds(250),
-    String(stopped - answered),
+    performance.now() - firstLoss > timing.callTimeoutMilliseconds,
+    String(losses),
   );
-  assert.ok(stopped - started < testMilliseconds(2_900));
-  await assert.rejects(authority.state(), /authority-unavailable/);
+  assert.deepEqual(
+    [...outcomes].filter((outcome) => !outcome.startsWith("sequence ")),
+    [],
+  );
+  assert.deepEqual(healthLines(lines), []);
   await authority.close();
 });
 

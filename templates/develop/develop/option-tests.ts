@@ -17,7 +17,7 @@ import {
 const taskText =
   "Develop the submitted task text.\n\nGitHub issue: acme/demo#42 (open)";
 
-function requestInput() {
+export function requestInput() {
   return selection.input === "ticket"
     ? input
     : {
@@ -27,7 +27,7 @@ function requestInput() {
       };
 }
 
-function scenarioEffects() {
+export function scenarioEffects() {
   return {
     ...effects(),
     "claude run-turn": [
@@ -47,7 +47,7 @@ function scenarioEffects() {
   };
 }
 
-function completeCalls(): string[] {
+export function completeCalls(): string[] {
   const review: Readonly<Record<string, string>> = {
     greptile: "wait-review",
     person: "approval",
@@ -65,9 +65,9 @@ function completeCalls(): string[] {
   );
 }
 
-const approved = { decision: "approved" as const, answer: null };
+export const approved = { decision: "approved" as const, answer: null };
 
-function callName(request: ScenarioRequest): string {
+export function callName(request: ScenarioRequest): string {
   if (request[0] === "effect") return request[1].method;
   if (request[0] === "waitForDecision") return request[1].kind;
   return request[0];
@@ -80,7 +80,7 @@ export const optionTests = [
       using bridge = fakeStepBridge({
         effects: scenarioEffects(),
         decisions: [approved, approved],
-        effectLimit: selection.verify === "red-green" ? 31 : 27,
+        effectLimit: selection.verify === "red-green" ? 35 : 31,
       });
       assert.deepEqual(await develop(requestInput()), {
         kind: "handoff_requested",
@@ -197,7 +197,7 @@ function repairTests() {
       using bridge = fakeStepBridge({
         effects: verificationEffects([verdict, "accepted"]),
         decisions: [approved, approved],
-        effectLimit: 31,
+        effectLimit: 35,
       });
       assert.equal((await develop(requestInput())).kind, "handoff_requested");
       const expected = completeCalls();
@@ -243,7 +243,7 @@ function limitTests() {
       run: async () => {
         using bridge = fakeStepBridge({
           effects: verificationEffects(Array(4).fill("false-red")),
-          effectLimit: 31,
+          effectLimit: 35,
         });
         assert.deepEqual(await develop(requestInput()), {
           kind: "blocked",

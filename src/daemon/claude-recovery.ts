@@ -124,10 +124,17 @@ export async function resumePlan(
   },
 ) {
   const { folder, started, intent, signal } = request;
-  const resume = await readResume(folder, started);
   const tree = recordedTree(started);
-  if (resume === undefined || tree === undefined)
-    return "claude-turn-interrupted";
+  if (tree === undefined) return "claude-turn-interrupted";
+  const locked = await resumeWorktree({
+    ...settings,
+    directory: tree.path,
+    folder,
+    signal,
+  });
+  if (locked !== null) return locked.reason;
+  const resume = await readResume(folder, started);
+  if (resume === undefined) return "claude-turn-interrupted";
   const profile = await selectedProfile(settings, intent);
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
@@ -140,13 +147,7 @@ export async function resumePlan(
     }) === undefined
   )
     return "claude-turn-interrupted";
-  const locked = await resumeWorktree({
-    ...settings,
-    directory: tree.path,
-    folder,
-    signal,
-  });
-  return locked === null ? { resume, tree, profile, harness } : locked.reason;
+  return { resume, tree, profile, harness };
 }
 
 function priorEnd(record: unknown): TurnEnd {

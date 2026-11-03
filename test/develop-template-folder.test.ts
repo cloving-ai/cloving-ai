@@ -56,7 +56,7 @@ for (const selected of completeConfigurations)
         );
         assert.equal(
           declaration.workflow.effectLimit,
-          selected.verify === "red-green" ? 31 : 27,
+          selected.verify === "red-green" ? 35 : 31,
         );
         assert.deepEqual(
           declaration.workflow.commands,

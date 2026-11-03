@@ -36,6 +36,7 @@ const codes = [
   "check-command",
   "queue-interval",
   "private-texts",
+  "retention",
 ];
 
 await test("CLV-207 doctor emits the ordered versioned report and local successes", () =>

@@ -127,7 +127,7 @@ flowTests.push({
 flowTests.push({
   name: "CLV-221 the default workflow merges only a reviewed pull after the checks",
   run: async () => {
-    using bridge = fakeStepBridge({ effects: effects(), effectLimit: 27 });
+    using bridge = fakeStepBridge({ effects: effects(), effectLimit: 31 });
     assert.deepEqual(await develop(input), {
       kind: "handoff_requested",
       cycleId: input.cycleId,

@@ -16,6 +16,7 @@ import {
 } from "./schedule-render.ts";
 
 import { show, oneLine, visible } from "./terminal-text.ts";
+import { queueHeadline, queueStateLines } from "./queue-render.ts";
 export { oneLine } from "./terminal-text.ts";
 
 export function errorText(error: Fields): string {
@@ -139,7 +140,8 @@ export function queueLines(value: unknown): readonly string[] {
   if (queue === undefined) return [];
   const skipped = queue["skipped"];
   return [
-    `Queue: ${visible(queue["busy"])} of ${visible(queue["lanes"])} lanes busy`,
+    queueHeadline(queue),
+    ...queueStateLines(queue),
     ...queueSpendLines(queue["spend"]),
     ...(Array.isArray(skipped)
       ? skipped.map((item: unknown) => {
@@ -213,6 +215,16 @@ function modelLines(attempts: unknown): readonly string[] {
 
 export { statusJson } from "./usage-render.ts";
 
+function turnDetailsLines(value: unknown): readonly string[] {
+  const state = part(value, "state");
+  if (state === "deleted")
+    return ["Turn details were deleted by the retention rule"];
+  if (state !== "archived") return [];
+  return [
+    `Turn details are archived in the journal folder of the archive: ${visible(part(value, "folder"))}`,
+  ];
+}
+
 function inputText(value: unknown): string {
   const text = visible(record(value) ?? null);
   const characters = Array.from(text);
@@ -246,6 +258,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
+    ...turnDetailsLines(part(run, "turnDetails")),
     ...shownCommandWaits(part(run, "commandWaits")).map((wait) =>
       visible(commandWaitText(wait)),
     ),
@@ -349,6 +362,8 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["decision-list", decisionList],
   ["decision-recorded", decisionRecorded],
   ["run-command", runCommand],
+  ["queue", (result) => queueLines(result["queue"])],
+  ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
 ]);
 

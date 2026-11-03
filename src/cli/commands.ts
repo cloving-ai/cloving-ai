@@ -6,6 +6,7 @@ import {
 } from "./command-requests.ts";
 import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
+import { queueServiceRequest } from "./queue-arguments.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
 import { readFile } from "node:fs/promises";
@@ -338,6 +339,7 @@ function located(
       format: { json: invocation.json },
       request: scheduleServiceRequest(invocation),
     });
+  if (invocation.kind === "queue") return queue(environment, invocation);
   if (invocation.kind === "report")
     return reportCommand(invocation, environment);
   if (invocation.kind === "run") return run(environment, invocation);
@@ -350,6 +352,22 @@ function located(
   return requested(environment, {
     format: { json: invocation.json },
     request: readCommandRequest(invocation),
+  });
+}
+
+function queue(
+  environment: Located,
+  invocation: Invoked<"queue">,
+): Promise<number> {
+  if (invocation.action === "show")
+    return requested(environment, {
+      format: { json: invocation.json },
+      request: { operation: "queue", parameters: {} },
+    });
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: queueServiceRequest(invocation, format.commandId),
   });
 }
 

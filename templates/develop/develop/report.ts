@@ -4,7 +4,7 @@ import {
   type ProtectedResult,
   type TicketStatus,
 } from "cloving/workflows";
-import { developTurn } from "./turn.ts";
+import { developTurn, type DevelopTurnInput } from "./turn.ts";
 
 export interface DevelopInput {
   readonly cycleId: string;
@@ -72,16 +72,36 @@ export interface DevelopState {
 
 export async function developReport(
   state: DevelopState,
-): Promise<DevelopReport> {
-  const { input, round, feedback } = state;
-  return reportOf(
-    await developTurn({
-      cycleId: input.cycleId,
-      repository: input.repository,
-      ticket: input.ticket,
-      round,
-      feedback,
-    }),
+): Promise<DevelopReport | CycleOutcome> {
+  const first = await developTurn(turnRequest(state, "initial"));
+  if (!interrupted(first)) return reportOf(first);
+  const second = await developTurn(turnRequest(state, "continuation"));
+  if (!interrupted(second)) return reportOf(second);
+  return {
+    kind: "blocked",
+    cycleId: state.input.cycleId,
+    reason: "turn-interrupted",
+    evidenceId: "implement",
+  };
+}
+
+function turnRequest(
+  state: DevelopState,
+  attempt: "initial" | "continuation",
+): DevelopTurnInput {
+  return {
+    cycleId: state.input.cycleId,
+    repository: state.input.repository,
+    ticket: state.input.ticket,
+    round: state.round,
+    attempt,
+    feedback: state.feedback,
+  };
+}
+
+function interrupted(result: ProtectedResult): boolean {
+  return (
+    result.kind !== "completed" && result.reason === "claude-turn-interrupted"
   );
 }
 

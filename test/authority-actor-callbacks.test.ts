@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   openAuthority,
   type Authority,
@@ -13,6 +12,7 @@ import {
   externalService,
   fastTiming,
   openedAuthority,
+  refusalWhileDelivering,
   type ExternalService,
 } from "./authority-actor-fixture.ts";
 import { fileService, sentRecords } from "./authority-actor-service.ts";
@@ -58,24 +58,15 @@ async function deadLetteredCallback(failure: {
     ...service.options,
     timing: fastTiming,
   });
-  const controller = new AbortController();
-  const outcome = await Promise.race([
-    failing.deliver(controller.signal).then(
-      () => "stopped",
-      (error: unknown) => String(error),
-    ),
-    delay(5_000, "not detected", { ref: false }),
-  ]);
-  controller.abort();
-  assert.match(
-    outcome,
-    /^Error: authority-unavailable: dead-lettered message [0-9a-f-]{36}: injected-callback-failure$/,
-  );
-  await assert.rejects(failing.state(), /authority-unavailable/);
+  const deadLetter =
+    /^Error: authority-unavailable: dead-lettered message [0-9a-f-]{36}: injected-callback-failure$/;
+  const { read, stopped } = await refusalWhileDelivering(failing);
+  assert.match(read, deadLetter);
+  assert.match(stopped, deadLetter);
   await failing.close();
 }
 
-await test("CLV-042 a delivery callback whose commit fails is dead-lettered, fails the authority closed, and a later opening retries it once as a stale-epoch result and records the dispatch through reconciliation without a second send", async () => {
+await test("CLV-042 a delivery callback whose commit fails is dead-lettered, makes the authority refuse reads, and a later opening retries it once as a stale-epoch result and records the dispatch through reconciliation without a second send", async () => {
   const directory = await temporaryDirectory();
   const service = externalService();
   await deadLetteredCallback({ directory, service });
