@@ -10,9 +10,9 @@ export type RunSource =
   | { readonly kind: "ticket"; readonly id: string }
   | { readonly kind: "input"; readonly file: string };
 
-type DecisionCommand = "answer" | "approve" | "deny";
+export type DecisionCommand = "answer" | "approve" | "deny";
 
-type RunCommand = "pause" | "resume" | "drop";
+export type RunCommand = "pause" | "resume" | "drop";
 
 export type RuntimeInvocation =
   | ScheduleInvocation
@@ -107,6 +107,13 @@ const revisions = { minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
 const sequences = { minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const bindingOptions = ["expected-revision", "generation", "subject-digest"];
 const mutationOptions = ["command-id", "json"];
+
+export const argumentRules = {
+  identifier,
+  decisionReference,
+  sha256Digest,
+  revisions,
+};
 
 const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
   [

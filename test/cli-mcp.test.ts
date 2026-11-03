@@ -40,7 +40,41 @@ await test("CLV-250 mcp initializes over stdio", async () => {
   ]);
 });
 
-await test("CLV-250 mcp handshake lists only the three read tools and answers ping", async () => {
+const binding = [
+  "expectedRevision",
+  "generation",
+  "subjectDigest",
+  "commandId",
+];
+const mutation = { readOnlyHint: false, idempotentHint: true };
+const listed = [
+  ["cloving_status", ["runId", "limit", "after"], undefined],
+  ["cloving_questions", ["runId"], undefined],
+  ["cloving_events", ["runId", "after", "limit"], undefined],
+  [
+    "cloving_run",
+    ["workflowId", "prompt", "ticket", "input", "commandId"],
+    ["workflowId", "commandId"],
+  ],
+  [
+    "cloving_answer",
+    ["reference", "text", ...binding],
+    ["reference", "text", ...binding],
+  ],
+  ["cloving_approve", ["reference", ...binding], ["reference", ...binding]],
+  [
+    "cloving_deny",
+    ["reference", "text", ...binding],
+    ["reference", ...binding],
+  ],
+  ...["pause", "resume", "drop"].map((command) => [
+    `cloving_${command}`,
+    ["runId", "expectedRevision", "commandId"],
+    ["runId", "expectedRevision", "commandId"],
+  ]),
+] as const;
+
+await test("CLV-251 mcp handshake lists the three read tools and the seven mutation tools and answers ping", async () => {
   const output = await mcpExchange([
     request({
       id: 1,
@@ -66,20 +100,33 @@ await test("CLV-250 mcp handshake lists only the three read tools and answers pi
     fields,
   );
   assert.deepEqual(
-    tools.map((tool) => tool["name"]),
-    ["cloving_status", "cloving_questions", "cloving_events"],
+    tools.map((tool) => [
+      tool["name"],
+      Object.keys(fields(fields(tool["inputSchema"])["properties"])),
+      fields(tool["inputSchema"])["required"],
+    ]),
+    listed,
   );
   for (const tool of tools) {
-    assert.deepEqual(tool["annotations"], { readOnlyHint: true });
+    const reading = listed.slice(0, 3).some(([name]) => name === tool["name"]);
+    assert.deepEqual(
+      tool["annotations"],
+      reading
+        ? { readOnlyHint: true }
+        : {
+            ...mutation,
+            ...(tool["name"] === "cloving_drop"
+              ? { destructiveHint: true }
+              : {}),
+          },
+    );
+    assert.equal(typeof tool["description"], reading ? "undefined" : "string");
     assert.equal(fields(tool["inputSchema"])["type"], "object");
     assert.equal(fields(tool["inputSchema"])["additionalProperties"], false);
-    assert.equal(fields(tool["inputSchema"])["required"], undefined);
   }
-  assert.deepEqual(
-    tools.map((tool) =>
-      Object.keys(fields(fields(tool["inputSchema"])["properties"])),
-    ),
-    [["runId", "limit", "after"], ["runId"], ["runId", "after", "limit"]],
+  assert.match(
+    String(tools[3]?.["description"]),
+    /exactly one of prompt, ticket and input.*same commandId/s,
   );
 });
 
