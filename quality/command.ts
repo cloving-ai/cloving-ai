@@ -3,6 +3,12 @@ export interface TestShard {
   readonly count: number;
 }
 
+export function parseTestCoverage(value: string | undefined): "on" | "off" {
+  if (value === undefined || value === "on") return "on";
+  if (value === "off") return "off";
+  throw new Error("CLOVING_TEST_COVERAGE must be on or off");
+}
+
 export function parseTestShard(
   value: string | undefined,
 ): TestShard | undefined {

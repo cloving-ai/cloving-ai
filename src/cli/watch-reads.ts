@@ -1,7 +1,7 @@
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 import { shownSchedules, type ShownSchedules } from "./schedule-render.ts";
 import {
-  isWorkflowStages,
+  workflowStagesOf,
   type WorkflowStages,
 } from "../workflow-declaration.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
@@ -32,6 +32,7 @@ export interface WatchRead {
   readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly service: string;
+  readonly serviceVersion?: string;
   readonly workflows: readonly string[];
   readonly workflowRefusals: readonly WorkflowRefusal[];
   readonly workflowStages?: WorkflowStages;
@@ -305,12 +306,8 @@ function stoppedIssues(
   );
 }
 
-function stageMetadata(value: unknown): WorkflowStages {
-  return Object.fromEntries(
-    Object.entries(record(value) ?? {}).flatMap(([workflowId, stages]) =>
-      isWorkflowStages(stages) ? [[workflowId, stages]] : [],
-    ),
-  );
+function versionOf(value: unknown): { readonly serviceVersion?: string } {
+  return typeof value === "string" ? { serviceVersion: value } : {};
 }
 
 async function service(reader: Reader, now: string): Promise<WatchRead> {
@@ -349,7 +346,8 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     workflows: list(status["workflows"]).filter(
       (value) => typeof value === "string",
     ),
-    workflowStages: stageMetadata(status["workflowStages"]),
+    workflowStages: workflowStagesOf(status["workflowStages"]),
+    ...versionOf(status["serviceVersion"]),
     workflowRefusals: workflowRefusals(status["workflowRefusals"]),
     summaries,
     runs,
@@ -376,7 +374,7 @@ async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
   return {
     ...unavailable,
     service: "up",
-    workflowStages: stageMetadata(metadata["workflowStages"]),
+    workflowStages: workflowStagesOf(metadata["workflowStages"]),
     runs: [value],
     decisions: await decisionsOf(reader),
   };

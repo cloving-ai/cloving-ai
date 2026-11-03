@@ -16,6 +16,7 @@ import {
 import type { CommandEffects } from "../command-settings.ts";
 
 export interface ServiceContext {
+  readonly version?: string;
   readonly schedule?: SchedulePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
@@ -35,6 +36,7 @@ export interface ServiceContext {
 }
 
 export function queryMetadata(options: {
+  readonly version?: string;
   readonly schedule?: SchedulePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
@@ -47,8 +49,10 @@ export function queryMetadata(options: {
   | "commandEffects"
   | "workflowRefusals"
   | "queueDailySpendLimitUsd"
+  | "version"
 > {
   return {
+    ...(options.version === undefined ? {} : { version: options.version }),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queueDailySpendLimitUsd === undefined
       ? {}

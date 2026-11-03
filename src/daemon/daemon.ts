@@ -36,6 +36,7 @@ import { scheduleConnection } from "./schedule-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import { defaultRetention } from "../record-retention.ts";
+import { clovingVersion } from "../cli/toolchain.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -205,6 +206,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const schedules = scheduleConnection();
   const opening = await startService({
+    version: clovingVersion,
     schedule: schedules.request,
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
@@ -234,14 +236,12 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     await closeWorkers(resources);
     return opening;
   }
-  const running = {
-    ...resources,
-    service: opening.service,
-    schedules,
-    ports: given.promise,
-  };
+  const running = { ...resources, service: opening.service, schedules };
   await recoverWorkers(running, given.promise);
-  return { kind: "started", daemon: await runningDaemon(settings, running) };
+  return {
+    kind: "started",
+    daemon: await runningDaemon(settings, { ...running, ports: given.promise }),
+  };
 }
 
 type Workers = Pick<Adapters, "worker" | "github" | "commands">;

@@ -55,7 +55,8 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
     workflow_dispatch: {},
   });
   assert.deepEqual(workflow.permissions, { contents: "read" });
-  assert.equal(job(workflow, "quality_macos").if, undefined);
+  for (const name of ["quality_macos", "quality_linux_node"] as const)
+    assert.equal(job(workflow, name).if, "${{ github.ref_type != 'tag' }}");
   assert.equal(job(workflow, "quality_macos").permissions, undefined);
   for (const [name, runner, architecture] of [
     ["quality_macos", "macos-15", "arm64"],
@@ -110,20 +111,27 @@ await test("CLV-266 only shard 1 runs setup checks and the gate prepares test bu
         step["timeout-minutes"],
         step.id === "prepare-shells" ? 3 : undefined,
       );
-      const conditional = step.run === "npm run check:setup";
-      assert.equal(
-        step.if,
-        conditional && name !== "publish"
-          ? "${{ matrix.shard == '1' }}"
-          : undefined,
-      );
+      const conditions = [
+        [
+          step.run === "npm run check:setup" && name !== "publish",
+          "${{ matrix.shard == '1' }}",
+        ],
+        [
+          step.uses?.startsWith("actions/upload-artifact@") === true,
+          "${{ github.event_name == 'pull_request' }}",
+        ],
+      ] as const;
+      assert.equal(step.if, conditions.find(([applies]) => applies)?.[1]);
     }
   }
 });
 
 await test("CLV-097 quality qualifies the exact toolchain and completes the developer gate", async () => {
   const workflow = await releaseWorkflow();
-  assert.equal(job(workflow, "quality_linux_node").if, undefined);
+  assert.equal(
+    job(workflow, "quality_linux_node").if,
+    "${{ github.ref_type != 'tag' }}",
+  );
   assert.equal(job(workflow, "quality_linux_node").permissions, undefined);
   assert.equal(job(workflow, "quality_linux_node")["timeout-minutes"], 30);
   assert.deepEqual(job(workflow, "quality_linux_node").env, {
@@ -213,45 +221,53 @@ await test("CLV-097 the quality_linux check passes only when every Linux Node ve
   assert.equal(aggregate["runs-on"], "ubuntu-24.04");
   assert.equal(aggregate["timeout-minutes"], 5);
   assert.deepEqual(aggregate.needs, ["quality_linux_node", "coverage"]);
-  assert.equal(aggregate.if, "${{ always() }}");
+  assert.equal(aggregate.if, "${{ always() && github.ref_type != 'tag' }}");
   assert.equal(aggregate.permissions, undefined);
   assert.equal(aggregate.steps.length, 1);
   const [check] = aggregate.steps;
   assert.deepEqual(check?.env, {
     SHARD_RESULT: "${{ needs.quality_linux_node.result }}",
     COVERAGE_RESULT: "${{ needs.coverage.result }}",
+    EVENT_NAME: "${{ github.event_name }}",
   });
   const run = check.run;
   assert.ok(typeof run === "string");
-  for (const [result, status] of [
-    ["success", 0],
-    ["failure", 1],
-    ["cancelled", 1],
-    ["skipped", 1],
-    ["", 1],
+  assert.equal(job(workflow, "quality").steps[0]?.run, run);
+  for (const [shard, coverage, event, status] of [
+    ["success", "success", "pull_request", 0],
+    ["failure", "success", "pull_request", 1],
+    ["cancelled", "success", "pull_request", 1],
+    ["skipped", "success", "pull_request", 1],
+    ["", "success", "pull_request", 1],
+    ["success", "skipped", "pull_request", 1],
+    ["success", "failure", "pull_request", 1],
+    ["success", "skipped", "push", 0],
+    ["success", "failure", "push", 1],
+    ["failure", "skipped", "push", 1],
   ] as const) {
     const outcome: SpawnSyncReturns<string> = spawnSync(
       "/bin/bash",
       ["-e", "-o", "pipefail", "-c", run],
       {
-        env: { SHARD_RESULT: result, COVERAGE_RESULT: "success" },
+        env: {
+          SHARD_RESULT: shard,
+          COVERAGE_RESULT: coverage,
+          EVENT_NAME: event,
+        },
         encoding: "utf8",
         timeout: testMilliseconds(10000),
       },
     );
-    assert.equal(outcome.status, status, result);
+    assert.equal(outcome.status, status, `${shard} ${coverage} ${event}`);
   }
 });
 
 await test("CLV-097 publish uses same-revision successful quality and only version-tag pushes", async () => {
   const workflow = await releaseWorkflow();
-  assert.deepEqual(job(workflow, "publish").needs, [
-    "quality",
-    "quality_linux",
-  ]);
+  assert.deepEqual(job(workflow, "publish").needs, ["release_check"]);
   assert.equal(
     job(workflow, "publish").if,
-    "${{ success() && needs.quality.result == 'success' && needs.quality_linux.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}",
+    "${{ success() && needs.release_check.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}",
   );
   assert.deepEqual(job(workflow, "publish").permissions, {
     contents: "write",
@@ -321,7 +337,7 @@ await test("CLV-266 coverage joins all nine shard artifacts before the required 
   assert.deepEqual(coverage.needs, ["quality_macos", "quality_linux_node"]);
   assert.equal(coverage["runs-on"], "ubuntu-24.04");
   assert.equal(coverage["timeout-minutes"], 10);
-  assert.equal(coverage.if, undefined);
+  assert.equal(coverage.if, "${{ github.event_name == 'pull_request' }}");
   const download = coverage.steps.find((step) =>
     step.uses?.startsWith("actions/download-artifact@"),
   );
@@ -349,18 +365,23 @@ await test("CLV-266 every shard exports coverage and both required checks need t
       (step) => step.run === "npm run check:quality",
     );
     const directory = "${{ runner.temp }}/cloving-coverage/shard";
-    assert.deepEqual(gate?.env, { CLOVING_COVERAGE_DIRECTORY: directory });
+    assert.deepEqual(gate?.env, {
+      CLOVING_COVERAGE_DIRECTORY: directory,
+      CLOVING_TEST_COVERAGE:
+        "${{ github.event_name == 'pull_request' && 'on' || 'off' }}",
+    });
     const upload = steps(workflow, name).find((step) =>
       step.uses?.startsWith("actions/upload-artifact@"),
     );
-    assert.equal(upload?.with?.["path"], directory);
+    assert.equal(upload?.if, "${{ github.event_name == 'pull_request' }}");
+    assert.equal(upload.with?.["path"], directory);
     assert.equal(upload.with["if-no-files-found"], "error");
     assert.equal(upload.with["overwrite"], true);
     assert.match(String(upload.with["name"]), /\$\{\{ matrix.shard \}\}/);
   }
   const aggregate = job(workflow, "quality");
   assert.deepEqual(aggregate.needs, ["quality_macos", "coverage"]);
-  assert.equal(aggregate.if, "${{ always() }}");
+  assert.equal(aggregate.if, "${{ always() && github.ref_type != 'tag' }}");
   assert.equal(
     aggregate.steps[0]?.env?.["SHARD_RESULT"],
     "${{ needs.quality_macos.result }}",

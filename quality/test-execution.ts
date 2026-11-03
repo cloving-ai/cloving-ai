@@ -96,7 +96,11 @@ export async function checkTests(
   execution: TestExecution,
 ): Promise<void> {
   const { files, ...options } = execution;
-  if (parseTestShard(options.shard) && !options.coverageDirectory)
+  if (
+    parseTestShard(options.shard) &&
+    options.coverageFiles &&
+    !options.coverageDirectory
+  )
     throw new Error("missing-shard-coverage-directory");
   const inventory = files
     .filter((file) => /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/.test(file))
