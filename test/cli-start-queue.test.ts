@@ -56,6 +56,26 @@ await test("CLV-184 queue lanes require a queue and a whole number from one to f
   );
 });
 
+await test("CLV-277 valid queue lanes and a daily spend limit start the daemon with a queue interval", () =>
+  withoutChildren(async () => {
+    const fixture = await scene();
+    const daemon = await fixture.start({
+      CLOVING_QUEUE_SECONDS: "10",
+      CLOVING_QUEUE_LANES: "2",
+      CLOVING_QUEUE_DAILY_SPEND_USD: "20",
+      CLOVING_SELF_UPDATE_SECONDS: undefined,
+    });
+    try {
+      const status = await call(fixture, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.deepEqual(status["runs"], []);
+    } finally {
+      assert.equal(await ended(daemon), 0);
+    }
+  }));
+
 await test("CLV-084 start refuses a queue interval outside its whole second bounds", async () => {
   for (const value of ["5", "3601", "10.5", "", "NaN", "1e2"])
     assert.match(

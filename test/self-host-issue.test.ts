@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { fakeGh, ghState, statusBody } from "./github-worker-fixture.ts";
 import {
@@ -108,6 +109,7 @@ async function issueRun(): Promise<void> {
       "I added the file ticket-work.txt.",
       "I added the file ticket-work.txt.\\nTicket status: complete",
     ),
+    join(candidatePackageRoot, "src/cli.ts"),
   );
   const { root, repository, origin, runtimeDirectory } = work;
   await writeDeclaredWorkflow(repository);
@@ -168,6 +170,7 @@ async function restartedReview(): Promise<void> {
       "I added the file ticket-work.txt.",
       "I added the file ticket-work.txt.\\nTicket status: complete",
     ),
+    join(candidatePackageRoot, "src/cli.ts"),
   );
   await writeDeclaredWorkflow(work.repository);
   const stateFile = join(work.root, "gh-state.json");

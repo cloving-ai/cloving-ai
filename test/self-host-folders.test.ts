@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { ended, scene, withoutChildren } from "./self-host-fixture.ts";
 import {
@@ -12,7 +13,10 @@ import {
 
 await test("CLV-124 real daemon startup registers admitted operator snapshots and reports refused neighbors", () =>
   withoutChildren(async () => {
-    const fixture = await scene();
+    const fixture = await scene(
+      undefined,
+      join(candidatePackageRoot, "src/cli.ts"),
+    );
     const files = await operatorFiles(fixture);
     const alias = join(fixture.root, "repository-alias");
     await symlink(fixture.repository, alias);
