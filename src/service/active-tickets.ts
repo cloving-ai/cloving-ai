@@ -1,4 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
+import { queueStateFields } from "../queue-state.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
 import type { ServiceContext } from "./replies.ts";
 
@@ -36,6 +37,7 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     .find((workflow) => workflow?.admission !== undefined);
   if (workflow?.admission === undefined) return {};
   const active = await activeWorkflow(context, workflow.workflowId);
+  const control = context.queue?.control();
   return {
     queue: {
       workflowId: workflow.workflowId,
@@ -50,6 +52,9 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
         ),
         ...(workflow.resolver.skippedTickets?.() ?? []),
       ],
+      ...(control === undefined
+        ? {}
+        : queueStateFields(control, active.length)),
     },
   };
 }

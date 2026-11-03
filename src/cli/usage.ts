@@ -45,6 +45,18 @@ Prints facts, rules and setup steps for an agent. Does not change settings, call
 Checks repository requirements without repairs, model turns or GitHub writes.
 Required failures or skipped prerequisites exit with status 1.
 `,
+  queue: `Usage: cloving queue [--json]
+       cloving queue resume [--command-id <id>] [--json]
+       cloving queue drain [--command-id <id>] [--json]
+
+Shows the state of the queue: running, stopped, draining or drained, with the busy lanes.
+A stopped queue shows the reason and the failed runs in a row.
+resume sets the failure count to 0 and ends a stop or a drain. The next queue check can start a run.
+drain starts no new queue run. The runs in work continue to their end.
+When no lane is busy, the state is drained and the service writes "Queue drained" one time.
+A drained queue is a safe point for a restart. A drain stays in place after a restart.
+A repeated command ID gives the first result again. A different command with that ID is refused.
+`,
   report: `Usage: cloving report [--since <hours>] [--json]
 
 Reads loop facts without writing state. Hours are a whole number from 1 to 168; default 24.
@@ -120,7 +132,8 @@ Stop it with Control-C.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.
-Stop the service, inspect the failures and reconcile affected issues, then start with --reset-queue and the same queue settings to clear the failure streak once. Tracked commands are preserved.
+Inspect the failures and reconcile affected issues. To clear the failure streak with no restart, run cloving queue resume.
+Stop the service and start with --reset-queue and the same queue settings to clear the failure streak once at a restart; --reset-queue also ends a drain. Tracked commands are preserved.
 
 The command reads these settings from the environment:
 Settings files: .cloving/config.json in the repository and <config>/cloving/projects/<name>-<id>.json for private settings. Both require version 1. Precedence: environment, private, project, defaults. <config> is an absolute XDG_CONFIG_HOME or ~/.config. The start guide shows each configured field's source. See the packaged project-config.schema.json and private-config.schema.json in dist/src.
@@ -191,6 +204,7 @@ Commands:
   status     List the runs or show one run.
   mcp        Serve the read tools over stdio.
   schedule   List, pause and resume workflow schedules.
+  queue      Show, resume and drain the queue.
   report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.
   answer     Answer one design question.

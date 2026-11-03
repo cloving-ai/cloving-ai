@@ -16,6 +16,7 @@ import {
 } from "./schedule-render.ts";
 
 import { show, oneLine, visible } from "./terminal-text.ts";
+import { queueHeadline, queueStateLines } from "./queue-render.ts";
 export { oneLine } from "./terminal-text.ts";
 
 export function errorText(error: Fields): string {
@@ -139,7 +140,8 @@ export function queueLines(value: unknown): readonly string[] {
   if (queue === undefined) return [];
   const skipped = queue["skipped"];
   return [
-    `Queue: ${visible(queue["busy"])} of ${visible(queue["lanes"])} lanes busy`,
+    queueHeadline(queue),
+    ...queueStateLines(queue),
     ...queueSpendLines(queue["spend"]),
     ...(Array.isArray(skipped)
       ? skipped.map((item: unknown) => {
@@ -349,6 +351,8 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["decision-list", decisionList],
   ["decision-recorded", decisionRecorded],
   ["run-command", runCommand],
+  ["queue", (result) => queueLines(result["queue"])],
+  ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
 ]);
 

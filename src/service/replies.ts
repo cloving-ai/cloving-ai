@@ -1,4 +1,5 @@
 import type { SchedulePort } from "../schedule-progress.ts";
+import type { QueuePort } from "../queue-state.ts";
 import type {
   Authority,
   CommandRecord,
@@ -18,6 +19,7 @@ import type { CommandEffects } from "../command-settings.ts";
 export interface ServiceContext {
   readonly version?: string;
   readonly schedule?: SchedulePort;
+  readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly commandEffects?: CommandEffects;
@@ -38,6 +40,7 @@ export interface ServiceContext {
 export function queryMetadata(options: {
   readonly version?: string;
   readonly schedule?: SchedulePort;
+  readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
@@ -45,6 +48,7 @@ export function queryMetadata(options: {
 }): Pick<
   ServiceContext,
   | "schedule"
+  | "queue"
   | "workerHarness"
   | "commandEffects"
   | "workflowRefusals"
@@ -54,6 +58,7 @@ export function queryMetadata(options: {
   return {
     ...(options.version === undefined ? {} : { version: options.version }),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
+    ...(options.queue === undefined ? {} : { queue: options.queue }),
     ...(options.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: options.queueDailySpendLimitUsd }),

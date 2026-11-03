@@ -33,6 +33,7 @@ import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
+import { queueConnection } from "./queue-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import { defaultRetention } from "../record-retention.ts";
@@ -184,6 +185,13 @@ export async function startDaemon(
   });
 }
 
+function controlConnections(): {
+  readonly schedules: ReturnType<typeof scheduleConnection>;
+  readonly queues: ReturnType<typeof queueConnection>;
+} {
+  return { schedules: scheduleConnection(), queues: queueConnection() };
+}
+
 async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected")
@@ -204,10 +212,11 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { worker, github, runs, handoff, commands } = resources;
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
-  const schedules = scheduleConnection();
+  const controls = controlConnections();
   const opening = await startService({
     version: clovingVersion,
-    schedule: schedules.request,
+    schedule: controls.schedules.request,
+    queue: controls.queues.port,
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
@@ -236,7 +245,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     await closeWorkers(resources);
     return opening;
   }
-  const running = { ...resources, service: opening.service, schedules };
+  const running = { ...resources, ...controls, service: opening.service };
   await recoverWorkers(running, given.promise);
   return {
     kind: "started",
@@ -276,6 +285,7 @@ async function runningDaemon(
   resources: {
     readonly service: Service;
     readonly schedules: ReturnType<typeof scheduleConnection>;
+    readonly queues: ReturnType<typeof queueConnection>;
     readonly ports: Promise<HostPorts>;
   } & Workers,
 ): Promise<Daemon> {
@@ -291,6 +301,7 @@ async function runningDaemon(
   const loops = await daemonLoops({
     ...settings,
     scheduleConnection: resources.schedules,
+    queueConnection: resources.queues,
     submit: service.worker.submit,
     queueWorkflowId: queueWorkflowId(settings),
   }).catch(async (error: unknown) => {
