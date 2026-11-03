@@ -13,15 +13,22 @@ export interface ReadCommand {
   readonly runId?: string | null;
   readonly limit?: number | null;
   readonly after?: string | number | null;
+  readonly active?: boolean;
   readonly follow?: boolean;
 }
 
 export function readCommandRequest(command: ReadCommand): ServiceRequest {
-  const { kind, runId, limit, after, follow } = command;
+  const { kind, runId, limit, after, active, follow } = command;
   const parameters =
     kind === "questions"
       ? { runId }
-      : { runId, limit, after, ...(follow === undefined ? {} : { follow }) };
+      : {
+          runId,
+          limit,
+          after,
+          ...(active === true ? { active } : {}),
+          ...(follow === undefined ? {} : { follow }),
+        };
   return {
     operation: kind,
     parameters: Object.fromEntries(

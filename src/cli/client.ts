@@ -139,10 +139,13 @@ function listedRuns(result: Fields): Fields[] {
     : [];
 }
 
-export async function listRuns(runtimeDirectory: string): Promise<Reply> {
+export async function listRuns(
+  runtimeDirectory: string,
+  selection: { readonly active?: true } = {},
+): Promise<Reply> {
   const first = await send(runtimeDirectory, {
     operation: "status",
-    parameters: { limit: 500 },
+    parameters: { ...selection, limit: 500 },
   });
   if (first.kind === "error") return first;
   const runs = listedRuns(first.result);
@@ -160,7 +163,7 @@ export async function listRuns(runtimeDirectory: string): Promise<Reply> {
     after = next;
     const page = await send(runtimeDirectory, {
       operation: "status",
-      parameters: { limit: 500, after },
+      parameters: { ...selection, limit: 500, after },
     });
     if (page.kind === "error") return page;
     runs.push(...listedRuns(page.result));
