@@ -133,6 +133,7 @@ interface Commands extends HarnessSettings {
   readonly queueDailySpendLimitUsd: number | undefined;
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
+  readonly reloadCommand: readonly string[];
 }
 
 function queueLanes(): number {
@@ -312,14 +313,13 @@ const queueDailySpendLimitUsd = queueSpendLimit();
 const lanes = queueLanes();
 const queueMilliseconds = queueInterval();
 const retention = retentionSettings(environment);
-const manifests = await preparedProject({
-  product,
-  project,
+const folders = {
   repository,
   home: homedir(),
   xdgConfigHome: environment["XDG_CONFIG_HOME"],
   userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
-});
+};
+const manifests = await preparedProject({ product, project, ...folders });
 await launchers(
   {
     commands,
@@ -345,6 +345,11 @@ await launchers(
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
+    reloadCommand: [
+      process.execPath,
+      join(product, `tools/self-host-reload${extname(import.meta.filename)}`),
+      JSON.stringify({ directory, ...folders }),
+    ],
   },
   manifests,
 );

@@ -107,24 +107,35 @@ export function runOverview(result: Fields): Fields {
   };
 }
 
+function refusalLines(value: unknown): readonly string[] {
+  const refusals = workflowRefusals(value);
+  if (refusals.length === 0) return [];
+  return [
+    "Refused workflows:",
+    ...refusals.map(
+      (entry) => `  ${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
+    ),
+  ];
+}
+
+function reloadLines(result: Fields): readonly string[] {
+  return [
+    `Reload: ${show(result["status"])}`,
+    `Bundle digest: ${show(result["previousBundleDigest"])} -> ${show(result["bundleDigest"])}`,
+    `Workflows: ${visible(listing(result["workflows"]))}`,
+    ...refusalLines(result["workflowRefusals"]),
+  ];
+}
+
 function runList(result: Fields): readonly string[] {
   const runs = result["runs"];
   const lines = Array.isArray(runs) ? runs.map(runLine) : [];
   const hiddenRuns = result["hiddenRuns"];
-  const refusals = workflowRefusals(result["workflowRefusals"]);
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
     ...queueLines(result["queue"]),
     ...statusScheduleLines(result["schedules"]).map(oneLine),
-    ...(refusals.length === 0
-      ? []
-      : [
-          "Refused workflows:",
-          ...refusals.map(
-            (entry) =>
-              `  ${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
-          ),
-        ]),
+    ...refusalLines(result["workflowRefusals"]),
     "Runs:",
     ...(lines.length === 0 ? ["  none"] : lines),
     ...(typeof hiddenRuns === "number" && hiddenRuns > 0
@@ -365,6 +376,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
+  ["reload", reloadLines],
 ]);
 
 export function rendered(result: Fields): string {

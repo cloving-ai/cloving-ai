@@ -18,6 +18,7 @@ export type RuntimeInvocation =
   | ScheduleInvocation
   | QueueInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
+  | { readonly kind: "reload"; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }
   | {
       readonly kind: "run";
@@ -157,25 +158,23 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       build: events,
     },
   ],
+  ["report", noSubjectShape(["since", "json"], report)],
   [
-    "report",
-    {
-      subject: "none",
-      required: [],
-      allowed: () => ["since", "json"],
-      build: report,
-    },
+    "reload",
+    noSubjectShape(["json"], (request) => ({
+      kind: "reload",
+      json: given(request, "json"),
+    })),
   ],
-  [
-    "watch",
-    {
-      subject: "none",
-      required: [],
-      allowed: () => ["port"],
-      build: watch,
-    },
-  ],
+  ["watch", noSubjectShape(["port"], watch)],
 ]);
+
+function noSubjectShape(
+  allowed: readonly string[],
+  build: Shape["build"],
+): Shape {
+  return { subject: "none", required: [], allowed: () => allowed, build };
+}
 
 export function isRuntimeCommand(command: string): boolean {
   return command === "schedule" || command === "queue" || shapes.has(command);

@@ -40,9 +40,10 @@ import { turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import {
-  ticketRegistrations,
-  ticketRegistrationTable,
-} from "./ticket-registration.ts";
+  daemonRegistrations,
+  queueWorkflowId,
+  workflowReload,
+} from "./workflow-reload.ts";
 
 export interface Daemon {
   readonly socket: string;
@@ -123,53 +124,6 @@ async function hosted(
   };
 }
 
-async function daemonRegistrations(settings: DaemonSettings) {
-  const conflict = settings.workflowRefusals?.find((refusal) =>
-    refusal.codes.includes("queue-workflow-conflict"),
-  );
-  if (conflict !== undefined)
-    return {
-      table: [],
-      admitted: {
-        kind: "rejected" as const,
-        detail: `queue-workflow-conflict: ${conflict.scope} ${conflict.label}`,
-      },
-    };
-
-  const table = ticketRegistrationTable(
-    {
-      repository: settings.repository,
-      command: settings.ticketCommand,
-      nextCommand: settings.nextCommand,
-      githubCommand: settings.githubCommand,
-    },
-    settings.declarations,
-  );
-  const admitted = await ticketRegistrations(settings.manifests, {
-    table,
-    commands: settings.commands ?? {},
-    ...(settings.bundleDigest === undefined
-      ? {}
-      : { bundleDigest: settings.bundleDigest }),
-  });
-  return {
-    table,
-    admitted:
-      admitted.kind === "rejected"
-        ? admitted
-        : {
-            ...admitted,
-            registrations: admitted.registrations.map((registration) => ({
-              ...registration,
-              ...(settings.queueMilliseconds !== undefined &&
-              registration.workflowId === queueWorkflowId(settings)
-                ? { admission: settings.queueLanes ?? 1, queue: true }
-                : {}),
-            })),
-          },
-  };
-}
-
 export async function startDaemon(
   givenSettings: DaemonSettings,
 ): Promise<DaemonOpening> {
@@ -212,6 +166,34 @@ function rejectedOpening(detail: string): DaemonOpening {
   };
 }
 
+function workflowOptions(
+  settings: DaemonSettings,
+  generations: ReturnType<typeof workflowGenerations>,
+) {
+  const { reloadCommand, loadBundle } = settings;
+  return {
+    workflowBundles: {
+      directory: join(settings.directory, "workflow-bundles"),
+      repository: settings.repository,
+    },
+    workflowRefusals: settings.workflowRefusals ?? [],
+    retainedWorkflow: generations.available,
+    ...(settings.bundleDigest === undefined
+      ? {}
+      : { bundleDigest: settings.bundleDigest }),
+    ...(reloadCommand === undefined || loadBundle === undefined
+      ? {}
+      : {
+          reload: workflowReload({
+            ...settings,
+            reloadCommand,
+            loadBundle,
+            generations,
+          }),
+        }),
+  };
+}
+
 async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected") return rejectedOpening(admitted.detail);
@@ -238,13 +220,8 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
-    workflowBundles: {
-      directory: join(settings.directory, "workflow-bundles"),
-      repository: settings.repository,
-    },
-    workflowRefusals: settings.workflowRefusals ?? [],
+    ...workflowOptions(settings, generations),
     workflows: admitted.registrations,
-    retainedWorkflow: generations.available,
     delivery: deliveryRouter({
       runs,
       effects: { claude: worker, github, handoff, command: commands },
@@ -333,10 +310,4 @@ async function runningDaemon(
       await service.close();
     },
   };
-}
-
-function queueWorkflowId(settings: DaemonSettings): string | undefined {
-  return settings.declarations?.find(
-    (declaration) => declaration.queue === true,
-  )?.workflowId;
 }

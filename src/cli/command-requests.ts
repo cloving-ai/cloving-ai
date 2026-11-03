@@ -14,7 +14,7 @@ import type {
 } from "./runtime-arguments.ts";
 
 export interface ReadCommand {
-  readonly kind: "status" | "questions" | "events";
+  readonly kind: "status" | "questions" | "events" | "reload";
   readonly runId?: string | null;
   readonly limit?: number | null;
   readonly after?: string | number | null;
