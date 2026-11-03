@@ -4,6 +4,12 @@ import { queueControlLimit, type QueueJournal } from "./queue-journal.ts";
 export interface QueueRuntime {
   pending: QueueJournal | undefined;
   error: string | undefined;
+  readonly stopping: AbortController;
+}
+
+interface QueueRequest {
+  readonly command: QueueCommand;
+  readonly commandId: string;
 }
 
 const unavailable: QueueChange = {
@@ -28,9 +34,24 @@ export function queueConnection(): {
   };
 }
 
+export function queueStopped(runtime: QueueRuntime, error: unknown): string {
+  const reason = error instanceof Error ? error.message : String(error);
+  runtime.error = reason;
+  runtime.stopping.abort();
+  process.stderr.write(`Queue stopped: ${JSON.stringify(reason)}\n`);
+  return reason;
+}
+
+function stoppedChange(error: string): QueueChange {
+  return {
+    kind: "unavailable",
+    detail: `The queue stopped: ${error}. Restart the service.`,
+  };
+}
+
 function recorded(
   pending: QueueJournal,
-  request: { readonly command: QueueCommand; readonly commandId: string },
+  request: QueueRequest,
 ): QueueChange | undefined {
   const prior = pending.controls.find(
     (control) => control.commandId === request.commandId,
@@ -51,7 +72,28 @@ function applied(pending: QueueJournal, command: QueueCommand): void {
   pending.drain = undefined;
 }
 
+async function changed(
+  runtime: QueueRuntime,
+  request: QueueRequest,
+): Promise<QueueChange> {
+  const { pending, error } = runtime;
+  if (error !== undefined) return stoppedChange(error);
+  if (pending === undefined) return unavailable;
+  const prior = recorded(pending, request);
+  if (prior !== undefined) return prior;
+  applied(pending, request.command);
+  pending.controls.push(request);
+  pending.controls.splice(0, pending.controls.length - queueControlLimit);
+  try {
+    await pending.save();
+    return { kind: "changed" };
+  } catch (failure) {
+    return stoppedChange(queueStopped(runtime, failure));
+  }
+}
+
 export function queueControlPort(runtime: QueueRuntime): QueuePort {
+  let changing: Promise<unknown> = Promise.resolve();
   return {
     control: () => {
       const { pending, error } = runtime;
@@ -62,21 +104,10 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
         error,
       };
     },
-    change: async (request) => {
-      const { pending, error } = runtime;
-      if (error !== undefined)
-        return {
-          kind: "unavailable",
-          detail: `The queue stopped: ${error}. Restart the service.`,
-        };
-      if (pending === undefined) return unavailable;
-      const prior = recorded(pending, request);
-      if (prior !== undefined) return prior;
-      applied(pending, request.command);
-      pending.controls.push(request);
-      pending.controls.splice(0, pending.controls.length - queueControlLimit);
-      await pending.save();
-      return { kind: "changed" };
+    change: (request) => {
+      const next = changing.then(() => changed(runtime, request));
+      changing = next;
+      return next;
     },
   };
 }

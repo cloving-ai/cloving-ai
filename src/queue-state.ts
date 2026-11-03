@@ -33,9 +33,13 @@ function stopReason(control: QueueControl): string | undefined {
   return undefined;
 }
 
+function drainState(drain: QueueDrain, busy: number): string {
+  return drain.drainedAt === null || busy > 0 ? "draining" : "drained";
+}
+
 function stateName(control: QueueControl, busy: number): string {
   if (control.error !== undefined) return "stopped";
-  if (control.drain !== undefined) return busy > 0 ? "draining" : "drained";
+  if (control.drain !== undefined) return drainState(control.drain, busy);
   if (stopReason(control) !== undefined) return "stopped";
   return "running";
 }

@@ -89,9 +89,13 @@ await test("CLV-273 a drain stays in place after a restart and a reset of the qu
     const first = await consumer.run(`${control}
 const daemon = await launched();
 try {
-  const drained = await command("drain", "drain-before-restart");
-  assert.equal(drained.queue.state, "drained");
+  const draining = await command("drain", "drain-before-restart");
+  assert.equal(
+    draining.queue.state,
+    draining.queue.drain.drainedAt === null ? "draining" : "drained",
+  );
   await until(() => typeof saved().drain?.drainedAt === "number");
+  await until(async () => (await queue()).state === "drained");
 } finally { await daemon.close(); }
 process.exit(0);
 `);

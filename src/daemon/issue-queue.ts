@@ -8,7 +8,11 @@ import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
-import { queueControlPort, type QueueRuntime } from "./queue-control.ts";
+import {
+  queueControlPort,
+  queueStopped,
+  type QueueRuntime,
+} from "./queue-control.ts";
 
 interface QueueSettings {
   readonly directory: string;
@@ -338,21 +342,22 @@ export function issueQueue(settings: QueueSettings): {
   readonly stop: () => Promise<void>;
   readonly port: QueuePort;
 } {
-  const stopping = new AbortController();
-  const runtime: QueueRuntime = { pending: undefined, error: undefined };
+  const runtime: QueueRuntime = {
+    pending: undefined,
+    error: undefined,
+    stopping: new AbortController(),
+  };
   const running = queueJournal(settings.directory)
     .then((pending) => {
       runtime.pending = pending;
-      return cycle(settings, { signal: stopping.signal, pending });
+      return cycle(settings, { signal: runtime.stopping.signal, pending });
     })
     .catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : String(error);
-      runtime.error = reason;
-      process.stderr.write(`Queue stopped: ${JSON.stringify(reason)}\n`);
+      queueStopped(runtime, error);
     });
   return {
     stop: async () => {
-      stopping.abort();
+      runtime.stopping.abort();
       await running;
     },
     port: queueControlPort(runtime),

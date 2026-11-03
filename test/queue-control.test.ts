@@ -27,6 +27,7 @@ async function loaded(
   return queueControlPort({
     pending: await queueJournal(directory),
     error: undefined,
+    stopping: new AbortController(),
   });
 }
 
@@ -117,7 +118,11 @@ await test("CLV-273 a queue that is not loaded or not connected refuses queue co
     await connection.port.change({ command: "drain", commandId: "early" }),
     refusal,
   );
-  const unloaded = queueControlPort({ pending: undefined, error: undefined });
+  const unloaded = queueControlPort({
+    pending: undefined,
+    error: undefined,
+    stopping: new AbortController(),
+  });
   connection.connect(unloaded);
   assert.equal(connection.port.control(), undefined);
   assert.deepEqual(
@@ -130,6 +135,7 @@ await test("CLV-273 a queue that stopped on an error shows the reason and refuse
   const port = queueControlPort({
     pending: undefined,
     error: "invalid-queue-commands",
+    stopping: new AbortController(),
   });
   assert.deepEqual(port.control(), {
     failedRunIds: [],
@@ -168,3 +174,46 @@ await test("CLV-273 an error stop takes precedence over a drain and a drain over
     "running",
   );
 });
+
+await test("CLV-273 a drain stays draining until the queue records the drain time and while a manual run is busy", () => {
+  const control = (drainedAt: number | null) => ({
+    failedRunIds: [],
+    drain: { startedAt: 1, drainedAt },
+    error: undefined,
+  });
+  assert.equal(queueStateFields(control(null), 0)["state"], "draining");
+  assert.equal(queueStateFields(control(2), 0)["state"], "drained");
+  assert.equal(queueStateFields(control(2), 1)["state"], "draining");
+});
+
+await test("CLV-273 a queue command that the journal cannot save stops the queue and its command ID does not replay", () =>
+  withDirectory(async (directory) => {
+    const stopping = new AbortController();
+    const port = queueControlPort({
+      pending: await queueJournal(directory),
+      error: undefined,
+      stopping,
+    });
+    await rm(directory, { recursive: true, force: true });
+    const settled = await Promise.allSettled([
+      port.change({ command: "drain", commandId: "one" }),
+      port.change({ command: "drain", commandId: "one" }),
+    ]);
+    const changes = settled.map((outcome) =>
+      outcome.status === "fulfilled" ? outcome.value : { kind: "rejected" },
+    );
+    assert.deepEqual(
+      changes.map((change) => change.kind),
+      ["unavailable", "unavailable"],
+    );
+    for (const change of changes)
+      assert.match(
+        "detail" in change ? change.detail : "",
+        /^The queue stopped: ENOENT.*\. Restart the service\.$/,
+      );
+    assert.equal(stopping.signal.aborted, true);
+    const control = port.control();
+    assert.ok(control !== undefined);
+    assert.match(String(control.error), /^ENOENT/);
+    assert.equal(queueStateFields(control, 0)["state"], "stopped");
+  }));
