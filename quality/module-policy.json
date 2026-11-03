@@ -161,6 +161,7 @@
     "src/broker/actor/authority-connection.ts": "broker",
     "src/broker/actor/authority-conversion.ts": "broker",
     "src/broker/actor/authority-delivery.ts": "broker",
+    "src/broker/actor/authority-health.ts": "broker",
     "src/broker/actor/authority-logger.ts": "broker",
     "src/broker/actor/authority-policy.ts": "broker",
     "src/broker/actor/authority-queries.ts": "broker",

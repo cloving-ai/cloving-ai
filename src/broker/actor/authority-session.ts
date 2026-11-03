@@ -1,4 +1,4 @@
-import type { Database, JsonObject } from "solid-objects";
+import type { Database, JsonObject, Logger } from "solid-objects";
 import {
   eligibleIntents,
   type AuthorityEvent,
@@ -39,6 +39,7 @@ import {
   observeSettings,
   type ConnectionSettings,
 } from "./authority-connection.ts";
+import { authorityHealth, type AuthorityHealth } from "./authority-health.ts";
 import {
   failed,
   serializable,
@@ -110,8 +111,8 @@ export interface SessionParts {
   readonly epoch: number;
   readonly stopLimit: number;
   readonly recoveryLimit: number;
-  readonly unhealthy: () => string | undefined;
   readonly condition: () => Promise<string | undefined>;
+  readonly logger: Logger;
   readonly watchMilliseconds: number;
   readonly subscribe: (listener: SequenceListener) => () => void;
 }
@@ -121,8 +122,7 @@ interface Session {
   readonly stopping: AbortController;
   delivering: boolean;
   failure: string | null;
-  condition: string | null;
-  describing: Promise<void> | null;
+  readonly health: AuthorityHealth;
   closed: boolean;
   running: Promise<void>;
   readonly invocations: Set<Promise<unknown>>;
@@ -136,8 +136,7 @@ export function authoritySession(parts: SessionParts): Authority {
     stopping: new AbortController(),
     delivering: false,
     failure: null,
-    condition: null,
-    describing: null,
+    health: authorityHealth(parts),
     closed: false,
     running: Promise.resolve(),
     invocations: new Set(),
@@ -205,29 +204,17 @@ async function stopped(session: Session): Promise<void> {
 }
 
 async function refreshed(session: Session): Promise<void> {
-  if (session.parts.unhealthy() === undefined) return;
-  await failClosed(session, "authority failure");
+  if (session.failure !== null || session.closed) return;
+  await session.health.refresh();
 }
 
-async function failClosed(session: Session, failure: string): Promise<void> {
+function failClosed(session: Session, failure: string): void {
   session.failure ??= failure;
-  await conditionRead(session);
-  close(session).catch(() => undefined);
+  close(session).catch(ignored);
 }
 
-async function conditionRead(session: Session): Promise<void> {
-  if (session.condition !== null && session.describing === null) return;
-  session.describing ??= described(session).finally(() => {
-    session.describing = null;
-  });
-  await session.describing;
-}
-
-async function described(session: Session): Promise<void> {
-  const detected = session.parts.unhealthy();
-  if (detected === undefined) return;
-  session.condition = detected;
-  session.condition = (await session.parts.condition()) ?? detected;
+function ignored(): undefined {
+  return undefined;
 }
 
 async function backup(session: Session, target: string): Promise<void> {
@@ -245,23 +232,32 @@ async function backup(session: Session, target: string): Promise<void> {
   }
 }
 
-function available(session: Session): void {
-  const failure = session.condition ?? session.failure;
-  if (failure !== null) throw new Error(`authority-unavailable: ${failure}`);
+function opened(session: Session): void {
+  if (session.failure !== null)
+    throw new Error(`authority-unavailable: ${session.failure}`);
   if (session.closed) throw new Error("authority-unavailable: closed");
 }
 
+function available(session: Session): void {
+  opened(session);
+  const condition = session.health.condition();
+  if (condition !== null)
+    throw new Error(`authority-unavailable: ${condition}`);
+}
+
 function unavailableReceipt(session: Session): StoreReceipt | undefined {
-  const failure = session.condition ?? session.failure;
-  if (failure !== null)
+  if (session.failure !== null)
     return {
       kind: "failed",
       reason: "storage-unavailable",
-      detail: `closed after ${failure}`,
+      detail: `closed after ${session.failure}`,
     };
   if (session.closed)
     return { kind: "failed", reason: "storage-unavailable", detail: "closed" };
-  return undefined;
+  const condition = session.health.condition();
+  return condition === null
+    ? undefined
+    : { kind: "failed", reason: "authority-unavailable", detail: condition };
 }
 
 async function projected(session: Session): Promise<ProjectionSnapshot> {
@@ -274,7 +270,7 @@ async function deliver(session: Session, signal: AbortSignal): Promise<void> {
   if (!session.parts.deliveryConfigured)
     throw new Error("delivery-unconfigured");
   if (session.delivering) throw new Error("delivery-already-running");
-  available(session);
+  opened(session);
   session.delivering = true;
   try {
     await delivered(session, signal);
@@ -282,21 +278,20 @@ async function deliver(session: Session, signal: AbortSignal): Promise<void> {
     session.delivering = false;
   }
   await refreshed(session);
-  const failure = session.condition ?? session.failure;
+  const failure = session.failure ?? session.health.condition();
   if (failure !== null) throw new Error(`authority-unavailable: ${failure}`);
 }
 
 async function delivered(session: Session, signal: AbortSignal): Promise<void> {
   if (!(await session.parts.handlersSettled()))
     throw new Error("delivery-handler-in-flight");
-  available(session);
-  const watch = new AbortController();
+  opened(session);
   const timer = setInterval(() => {
-    if (session.parts.unhealthy() !== undefined) watch.abort();
+    refreshed(session).catch(ignored);
   }, session.parts.watchMilliseconds);
   try {
     session.running = session.parts.run(
-      AbortSignal.any([signal, session.stopping.signal, watch.signal]),
+      AbortSignal.any([signal, session.stopping.signal]),
     );
     await session.running;
   } finally {
@@ -326,15 +321,24 @@ async function executeCommand(
   try {
     return await healthyReceipt(session, await invoked(session, request));
   } catch (error) {
-    const receipt = failed(error);
-    await failClosed(
-      session,
-      receipt.reason === "storage-failure"
-        ? "storage failure"
-        : "authority failure",
-    );
-    return receipt;
+    return failedReceipt(session, error);
   }
+}
+
+function failedReceipt(session: Session, error: unknown): StoreReceipt {
+  const receipt = failed(error);
+  if (timedOut(error)) return receipt;
+  failClosed(
+    session,
+    receipt.reason === "storage-failure"
+      ? "storage failure"
+      : "authority failure",
+  );
+  return receipt;
+}
+
+function timedOut(error: unknown): boolean {
+  return Reflect.get(Object(error), "name") === "SyncTimeout";
 }
 
 async function invoked(
