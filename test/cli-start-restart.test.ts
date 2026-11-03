@@ -12,11 +12,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { spawnStall } from "./spawn-stall-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 async function startTree(
   root: string,
-  statuses: readonly number[],
-): Promise<void> {
+  launch: {
+    readonly statuses: readonly number[];
+    readonly stallMilliseconds: number;
+  },
+): Promise<string> {
   await mkdir(join(root, "tools"));
   await writeFile(
     join(root, "hook.mjs"),
@@ -48,7 +53,7 @@ try { launches = JSON.parse(readFileSync("launches.json", "utf8")); }
 catch (error) { if (error.code !== "ENOENT") throw error; }
 launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER });
 writeFileSync("launches.json", JSON.stringify(launches));
-const status = ${JSON.stringify(statuses)}[launches.length - 1] ?? 2;
+const status = ${JSON.stringify(launch.statuses)}[launches.length - 1] ?? 2;
 if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
   process.on(process.env.CLOVING_TEST_SIGNAL, () => {});
   process.kill(process.ppid, process.env.CLOVING_TEST_SIGNAL);
@@ -56,12 +61,18 @@ if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
 } else process.exit(status);
 `,
   );
+  const stalled = await spawnStall(root, {
+    command: "start",
+    milliseconds: launch.stallMilliseconds,
+  });
+  return `--import=${pathToFileURL(join(root, "hook.mjs")).href} ${stalled}`;
 }
 
 interface StartOptions {
   readonly signal?: string;
   readonly signalOnClose?: string;
   readonly arguments?: readonly string[];
+  readonly stallMilliseconds?: number;
 }
 
 interface StartObservation {
@@ -79,7 +90,10 @@ async function started(
 ): Promise<StartObservation> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "cloving-start-")));
   try {
-    await startTree(root, statuses);
+    const nodeOptions = await startTree(root, {
+      statuses,
+      stallMilliseconds: options.stallMilliseconds ?? 0,
+    });
     const result = spawnSync(
       process.execPath,
       [
@@ -97,10 +111,10 @@ async function started(
           CLOVING_TEST_MARKER: "preserved",
           CLOVING_TEST_SIGNAL: options.signal,
           CLOVING_TEST_SIGNAL_ON_CLOSE: options.signalOnClose,
-          NODE_OPTIONS: `--import=${pathToFileURL(join(root, "hook.mjs")).href}`,
+          NODE_OPTIONS: nodeOptions,
         },
         encoding: "utf8",
-        timeout: 10000,
+        timeout: testMilliseconds(10000),
       },
     );
     assert.equal(result.error, undefined, result.stderr);
@@ -154,7 +168,10 @@ await test("CLV-131 start forwards an explicit queue reset only to the first lau
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   await test(`CLV-085 ${signal} during an update prevents restart on exit 75`, async () => {
-    const result = await started([75, 0], { signal });
+    const result = await started([75, 0], {
+      signal,
+      stallMilliseconds: testMilliseconds(1500),
+    });
     assert.equal(result.status, 0);
     assert.equal(result.launches.length, 1);
   });

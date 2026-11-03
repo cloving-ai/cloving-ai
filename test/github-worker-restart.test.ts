@@ -149,6 +149,7 @@ await test("CLV-067 the GitHub worker ends an active wait at close with no resul
         payloadText: JSON.stringify({ number: 1, commit }),
       },
     );
+    scene.plan({ scores: [5] });
     const second = scene.worker({
       timing: slow,
       document: () => Promise.resolve(undefined),
@@ -158,7 +159,6 @@ await test("CLV-067 the GitHub worker ends an active wait at close with no resul
       await second.reconcile(given, signal),
       accepted("operation-wait"),
     );
-    scene.plan({ scores: [5] });
     await until(() =>
       scene.reports.some((item) => item.operationId === "operation-wait"),
     );

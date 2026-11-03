@@ -4,6 +4,7 @@ import {
   watchHost,
   type WatchActions,
 } from "./watch-actions.ts";
+import { watchApiReply } from "./watch-api.ts";
 import { observedBoard } from "./watch-pr-board.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
@@ -47,6 +48,7 @@ interface Reply {
   readonly type: string;
   readonly body: string | Uint8Array;
   readonly cache?: string;
+  readonly allow?: string;
 }
 
 interface Watch {
@@ -214,6 +216,12 @@ async function answered(
   const font = await fontReply(request);
   if (font !== null) return font;
   const url = new URL(String(request.url), "http://localhost");
+  const api = await watchApiReply({
+    method: request.method ?? "",
+    url,
+    model: () => snapshot(watch, null),
+  });
+  if (api !== null) return api;
   if (request.method === "GET") return readReply(watch, url);
   if (request.method !== "POST" || watch.actions === null) return notFound;
   const act = routedAction(url.pathname);
@@ -259,6 +267,7 @@ function replied(response: ServerResponse, reply: Reply): void {
   response.writeHead(reply.status, {
     "content-type": reply.type,
     "cache-control": reply.cache ?? "no-store",
+    ...(reply.allow === undefined ? {} : { allow: reply.allow }),
   });
   response.end(reply.body);
 }
