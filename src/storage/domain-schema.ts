@@ -11,7 +11,7 @@ import {
   commandWaitSchema,
   commandWaitCheckSchema,
 } from "./command-wait-rows.ts";
-import { effectSchema, spendingIndexes } from "./effect-schema.ts";
+import { effectSchema, runIndexes, spendingIndexes } from "./effect-schema.ts";
 
 export const baselineVersion = 1;
 export const adoptedVersion = 2;
@@ -20,7 +20,8 @@ export const effectedVersion = 4;
 export const waitingVersion = 5;
 export const checkedVersion = 6;
 export const spendingVersion = 7;
-export const currentVersion = 8;
+export const eventIndexVersion = 8;
+export const currentVersion = 9;
 
 export const baselineSchema = `
 CREATE TABLE schema_migrations (
@@ -130,6 +131,7 @@ const schemas = [
   commandWaitCheckSchema,
   spendingIndexes,
   "CREATE INDEX events_run_type_sequence ON events (run_id, type, sequence);",
+  runIndexes,
 ];
 
 const checksums = schemas.map((schema) =>
@@ -152,6 +154,7 @@ export type SchemaState =
   | { readonly kind: "waiting" }
   | { readonly kind: "checked" }
   | { readonly kind: "indexed" }
+  | { readonly kind: "event-indexed" }
   | { readonly kind: "current" }
   | SchemaRefusal;
 
@@ -163,6 +166,7 @@ const versionKinds = [
   "waiting",
   "checked",
   "indexed",
+  "event-indexed",
   "current",
 ] as const;
 
@@ -209,6 +213,7 @@ export async function createSchema(connection: SqlConnection): Promise<void> {
   await upgradeSchema(connection, waitingVersion);
   await upgradeSchema(connection, checkedVersion);
   await upgradeSchema(connection, spendingVersion);
+  await upgradeSchema(connection, eventIndexVersion);
   await upgradeSchema(connection, currentVersion);
 }
 
