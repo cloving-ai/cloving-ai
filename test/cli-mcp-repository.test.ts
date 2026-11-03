@@ -42,10 +42,10 @@ await test("CLV-250 mcp parses repository selection, rejects options and documen
     );
     assert.match(
       help.stdout,
-      /cloving_status.*cloving_questions.*cloving_events/s,
+      /cloving_status.*cloving_questions.*cloving_events.*cloving_run.*cloving_answer.*cloving_approve.*cloving_deny.*cloving_pause.*cloving_resume.*cloving_drop.*commandId/s,
     );
     const top = await harness.cli(["--help"]);
-    assert.match(top.stdout, /mcp.*read.*stdio/);
+    assert.match(top.stdout, /mcp.*Cloving tools.*stdio/);
   }));
 
 await test("CLV-250 mcp exits with repository-unknown when no runtime resolves", () =>

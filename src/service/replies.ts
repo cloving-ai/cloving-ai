@@ -9,11 +9,7 @@ import { isRecordKey } from "../authority/commands.ts";
 import type { Fields, Reply } from "../protocol.ts";
 import type { ChangeSignal } from "./changes.ts";
 import type { Gateway } from "./gateway.ts";
-import type { Registry } from "./registry.ts";
-import {
-  workflowRefusals,
-  type WorkflowRefusal,
-} from "../workflow-refusals.ts";
+import type { Registry, WorkflowCatalog } from "./registry.ts";
 import type { CommandEffects } from "../command-settings.ts";
 import type { RunTurns, TurnDetails } from "../record-retention.ts";
 
@@ -30,7 +26,8 @@ export interface ServiceContext extends ServiceReads {
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
-  readonly workflowRefusals?: readonly WorkflowRefusal[];
+  readonly workflowCatalog?: WorkflowCatalog;
+  readonly reload?: () => Promise<Reply>;
   readonly gateway: Gateway;
   readonly clock: () => string;
   readonly livenessMilliseconds: number;
@@ -49,7 +46,6 @@ export function queryMetadata(
     readonly queue?: QueuePort;
     readonly queueDailySpendLimitUsd?: number;
     readonly commandEffects?: CommandEffects;
-    readonly workflowRefusals?: readonly WorkflowRefusal[];
   },
 ): Pick<
   ServiceContext,
@@ -58,7 +54,6 @@ export function queryMetadata(
   | "workerHarness"
   | "turnDetails"
   | "commandEffects"
-  | "workflowRefusals"
   | "queueDailySpendLimitUsd"
   | "version"
 > {
@@ -78,7 +73,6 @@ export function queryMetadata(
     ...(options.commandEffects === undefined
       ? {}
       : { commandEffects: options.commandEffects }),
-    workflowRefusals: workflowRefusals(options.workflowRefusals),
   };
 }
 

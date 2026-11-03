@@ -42,6 +42,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly workflows: Readonly<Record<string, WorkflowFunction | undefined>>;
   readonly handler: WorkflowHandler;
   readonly loadBundle?: WorkflowBundleLoader;
+  readonly reloadCommand?: readonly string[];
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];

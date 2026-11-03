@@ -19,6 +19,9 @@ export const commandUsage: Readonly<Record<string, string>> = {
   mcp: `Usage: cloving mcp [--repository <directory>]
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
+Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
+cloving_resume and cloving_drop to submit runs and decisions. Each of these tools
+needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 `,
@@ -118,6 +121,14 @@ Cancels the run and its pending dispatch. It keeps the workspace and the evidenc
 
 Prints the committed events after a sequence. With --json, each line is one event.
 `,
+  reload: `Usage: cloving reload [--json]
+
+Checks and compiles the workflow files again while the service runs.
+New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
+A new refusal of a workflow file keeps the current workflows and shows the reason.
+A change of the queue workflow or of a schedule needs a restart.
+Profiles and settings files do not reload.
+`,
   watch: `Usage: cloving watch [--port <n>]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
@@ -203,7 +214,7 @@ Commands:
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.
   status     List the runs or show one run.
-  mcp        Serve the read tools over stdio.
+  mcp        Serve the Cloving tools over stdio.
   schedule   List, pause and resume workflow schedules.
   queue      Show, resume and drain the queue.
   report     Report loop facts and seven-day baselines.
@@ -216,6 +227,7 @@ Commands:
   drop       Cancel a run and keep its files.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
+  reload     Check and compile the workflow files again.
   phone      Show, list, remove and reset the connected phones.
   config     Read and change repository settings.
   start      Start the service for a repository.
