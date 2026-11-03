@@ -15,11 +15,13 @@ import { changeSignal } from "./changes.ts";
 import { expiryScan } from "./expiry.ts";
 import { commandGateway, workerCommandBound, type Gateway } from "./gateway.ts";
 import {
-  workflowRegistry,
+  workflowCatalog,
   type Registry,
+  type WorkflowCatalog,
   type WorkflowRegistration,
   type WorkflowBundleStore,
 } from "./registry.ts";
+import { reloadOperation, type WorkflowReloadPort } from "./workflow-reload.ts";
 import {
   errorMessage,
   queryMetadata,
@@ -116,6 +118,8 @@ export interface ServiceOptions extends ServiceReads {
   readonly workflowBundles?: WorkflowBundleStore;
   readonly retainedWorkflow?: Registry["available"];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
+  readonly bundleDigest?: string;
+  readonly reload?: WorkflowReloadPort;
   readonly delivery: Delivery;
   readonly host?: (ports: HostPorts) => Promise<ServiceHost>;
   readonly timing?: ServiceTiming;
@@ -167,19 +171,29 @@ function wallClock(): string {
   return new Date().toISOString();
 }
 
+function catalogContext(options: ServiceOptions, catalog: WorkflowCatalog) {
+  return {
+    registry: catalog.registry,
+    workflowCatalog: catalog,
+    ...(options.reload === undefined
+      ? {}
+      : { reload: reloadOperation({ port: options.reload, catalog }) }),
+  };
+}
+
 async function started(
   authority: Authority,
   setup: {
     readonly options: ServiceOptions;
     readonly path: string;
     readonly timing: ServiceTiming;
-    readonly registry: Registry;
+    readonly catalog: WorkflowCatalog;
     readonly gateway: Gateway;
     readonly worker: WorkerPort;
     readonly host: ServiceHost | undefined;
   },
 ): Promise<Service> {
-  const { options, path, timing, registry, gateway, host } = setup;
+  const { options, path, timing, catalog, gateway, host } = setup;
   const clock = options.clock ?? wallClock;
   const { textBytes, documentBytes } = options.limits ?? serviceLimits;
   await rm(path, { force: true });
@@ -189,7 +203,7 @@ async function started(
     limits: { idleMilliseconds: timing.idleMilliseconds },
     handle: dispatcher({
       authority,
-      registry,
+      ...catalogContext(options, catalog),
       ...queryMetadata(options),
       gateway,
       clock,
@@ -242,7 +256,8 @@ export async function startService(
   const path = await endpoint(options.runtimeDirectory);
   if (typeof path !== "string") return path;
   const timing = options.timing ?? serviceTiming;
-  const registry = workflowRegistry(options.workflows, options);
+  const catalog = workflowCatalog(options);
+  const { registry } = catalog;
   const opening = await openAuthority(options.stateDirectory, {
     delivery: options.delivery,
     timing: timing.authority,
@@ -269,7 +284,7 @@ export async function startService(
         options,
         path,
         timing,
-        registry,
+        catalog,
         gateway,
         worker,
         host: host.host,

@@ -7,14 +7,82 @@ import {
 import { send, type ClientRequest } from "./client.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
 import { statusJson } from "./render.ts";
+import type {
+  DecisionCommand,
+  RunCommand,
+  RunSource,
+} from "./runtime-arguments.ts";
 
 export interface ReadCommand {
-  readonly kind: "status" | "questions" | "events";
+  readonly kind: "status" | "questions" | "events" | "reload";
   readonly runId?: string | null;
   readonly limit?: number | null;
   readonly after?: string | number | null;
   readonly active?: boolean;
   readonly follow?: boolean;
+}
+
+export type SubmittedSource =
+  | Exclude<RunSource, { readonly kind: "input" }>
+  | { readonly kind: "input"; readonly submission: Fields };
+
+function submission(source: SubmittedSource): Fields {
+  if (source.kind === "input") return source.submission;
+  return source.kind === "prompt"
+    ? { prompt: source.text }
+    : { ticket: source.id };
+}
+
+export function runRequest(run: {
+  readonly workflowId: string;
+  readonly source: SubmittedSource;
+  readonly commandId: string;
+}): ServiceRequest {
+  return {
+    operation: "run",
+    parameters: {
+      workflowId: run.workflowId,
+      source: run.source.kind,
+      submission: submission(run.source),
+      commandId: run.commandId,
+    },
+  };
+}
+
+export interface DecisionRequest {
+  readonly command: DecisionCommand;
+  readonly reference: string;
+  readonly text: string | null;
+  readonly expectedRevision: number;
+  readonly generation: number;
+  readonly subjectDigest: string;
+  readonly commandId: string;
+}
+
+export function decisionRequest(decision: DecisionRequest): ServiceRequest {
+  return {
+    operation: "decision",
+    parameters: Object.fromEntries(
+      Object.entries(decision).filter(([, value]) => value !== null),
+    ),
+  };
+}
+
+export function runCommandRequest(request: {
+  readonly command: RunCommand;
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly commandId: string;
+}): ServiceRequest {
+  return {
+    operation: "run-command",
+    parameters: {
+      command: request.command,
+      runId: request.runId,
+      expectedRevision: request.expectedRevision,
+      commandId: request.commandId,
+    },
+  };
 }
 
 export function readCommandRequest(command: ReadCommand): ServiceRequest {

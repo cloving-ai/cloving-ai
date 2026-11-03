@@ -328,3 +328,29 @@ await test("CLV-255 the README section of the read API names the document, gives
   assert.match(section, /active runs and the runs of the last 7 days/);
   assert.match(section, /run detail reads each run/);
 });
+
+await test("CLV-251 the README section after the service settings explains cloving mcp, a Claude Code and a Codex registration, the ten tools and the limits of a tool call", () => {
+  const following = readme
+    .split("### The service and its settings\n")[1]
+    ?.split(/^#{2,3} /m)[1];
+  assert.match(String(following), /^Use Cloving from an MCP client\n/);
+  const section = String(following);
+  assert.match(section, /cloving mcp --repository <directory>/);
+  assert.match(section, /claude mcp add .*-- cloving mcp --repository/);
+  assert.match(section, /\[mcp_servers\.cloving\]/);
+  for (const tool of [
+    "status",
+    "questions",
+    "events",
+    "run",
+    "answer",
+    "approve",
+    "deny",
+    "pause",
+    "resume",
+    "drop",
+  ])
+    assert.match(section, new RegExp("`cloving_" + tool + "`"));
+  assert.match(section, /tool call cannot start the service/);
+  assert.match(section, /cannot select a different repository/);
+});

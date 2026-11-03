@@ -23,7 +23,7 @@ await test("CLV-008 help lists only the implemented commands", async () => {
       );
       assert.match(
         result.stdout,
-        /^ {2}mcp {2,}Serve the read tools over stdio/m,
+        /^ {2}mcp {2,}Serve the Cloving tools over stdio/m,
       );
       assert.doesNotMatch(result.stdout, /\battach\b|develop-ticket/);
       assert.equal(result.stderr, "");

@@ -39,6 +39,7 @@ import { commandFields } from "./command-effects.ts";
 import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
+import { workflowFields } from "./workflow-reload.ts";
 
 interface ListPage {
   readonly after: string;
@@ -255,13 +256,7 @@ async function listed(
       : { serviceVersion: context.version }),
     ...(await queueOverview(context)),
     ...(await scheduleMetadata(context)),
-    workflows: context.registry.workflowIds,
-    workflowRefusals: context.workflowRefusals ?? [],
-    ...(Object.keys(context.registry.workflowStages).length === 0
-      ? {}
-      : {
-          workflowStages: context.registry.workflowStages,
-        }),
+    ...workflowFields(context),
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
     worldReports: context.worldReports?.() ?? [],

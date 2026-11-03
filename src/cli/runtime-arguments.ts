@@ -10,14 +10,15 @@ export type RunSource =
   | { readonly kind: "ticket"; readonly id: string }
   | { readonly kind: "input"; readonly file: string };
 
-type DecisionCommand = "answer" | "approve" | "deny";
+export type DecisionCommand = "answer" | "approve" | "deny";
 
-type RunCommand = "pause" | "resume" | "drop";
+export type RunCommand = "pause" | "resume" | "drop";
 
 export type RuntimeInvocation =
   | ScheduleInvocation
   | QueueInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
+  | { readonly kind: "reload"; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }
   | {
       readonly kind: "run";
@@ -107,6 +108,13 @@ const sequences = { minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const bindingOptions = ["expected-revision", "generation", "subject-digest"];
 const mutationOptions = ["command-id", "json"];
 
+export const argumentRules = {
+  identifier,
+  decisionReference,
+  sha256Digest,
+  revisions,
+};
+
 const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
   [
     "run",
@@ -150,25 +158,23 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       build: events,
     },
   ],
+  ["report", noSubjectShape(["since", "json"], report)],
   [
-    "report",
-    {
-      subject: "none",
-      required: [],
-      allowed: () => ["since", "json"],
-      build: report,
-    },
+    "reload",
+    noSubjectShape(["json"], (request) => ({
+      kind: "reload",
+      json: given(request, "json"),
+    })),
   ],
-  [
-    "watch",
-    {
-      subject: "none",
-      required: [],
-      allowed: () => ["port"],
-      build: watch,
-    },
-  ],
+  ["watch", noSubjectShape(["port"], watch)],
 ]);
+
+function noSubjectShape(
+  allowed: readonly string[],
+  build: Shape["build"],
+): Shape {
+  return { subject: "none", required: [], allowed: () => allowed, build };
+}
 
 export function isRuntimeCommand(command: string): boolean {
   return command === "schedule" || command === "queue" || shapes.has(command);

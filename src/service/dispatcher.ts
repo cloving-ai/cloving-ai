@@ -5,6 +5,7 @@ import { queueCommand, queueRead } from "./queue-handlers.ts";
 import { failed, scheduleRequest, type ServiceContext } from "./replies.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
+import { reloadUnavailable } from "./workflow-reload.ts";
 
 export function dispatcher(
   context: ServiceContext,
@@ -28,6 +29,7 @@ export function dispatcher(
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],
     ["run-command", (request) => runCommand(context, request.parameters)],
+    ["reload", () => context.reload?.() ?? reloadUnavailable()],
     [
       "events",
       (request, connection) =>
