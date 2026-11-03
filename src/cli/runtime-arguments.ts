@@ -3,6 +3,7 @@ import {
   scheduleInvocation,
   type ScheduleInvocation,
 } from "./schedule-arguments.ts";
+import { queueInvocation, type QueueInvocation } from "./queue-arguments.ts";
 
 export type RunSource =
   | { readonly kind: "prompt"; readonly text: string }
@@ -15,6 +16,7 @@ type RunCommand = "pause" | "resume" | "drop";
 
 export type RuntimeInvocation =
   | ScheduleInvocation
+  | QueueInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }
   | {
@@ -169,7 +171,7 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
 ]);
 
 export function isRuntimeCommand(command: string): boolean {
-  return command === "schedule" || shapes.has(command);
+  return command === "schedule" || command === "queue" || shapes.has(command);
 }
 
 export function runtimeInvocation(request: RuntimeRequest): Outcome {
@@ -180,6 +182,7 @@ export function runtimeInvocation(request: RuntimeRequest): Outcome {
   if (names.includes("help"))
     return { kind: "command-help", command: request.command };
   if (request.command === "schedule") return scheduleInvocation(request);
+  if (request.command === "queue") return queueInvocation(request);
   if (shape === undefined) return "unknown-command";
   return shapeFailure(shape, request) ?? shape.build(request);
 }
