@@ -1,4 +1,4 @@
-import type { SolidObjectsConfiguration } from "solid-objects";
+import type { Logger, SolidObjectsConfiguration } from "solid-objects";
 import { recoveryBound } from "../../authority/commands.ts";
 import { lineLogger } from "./authority-logger.ts";
 import { commandLimits } from "../../command-settings.ts";
@@ -83,6 +83,12 @@ function standardError(line: string): void {
   process.stderr.write(line);
 }
 
+export function authorityLogger(
+  log: ((line: string) => void) | undefined,
+): Logger {
+  return lineLogger(log ?? standardError);
+}
+
 export function librarySettings(
   timing: AuthorityTiming,
   log: ((line: string) => void) | undefined,
@@ -93,7 +99,7 @@ export function librarySettings(
     maxActivationDurationMilliseconds: 50,
     maxPayloadBytes: 900_000 + commandLimits.stdoutBytes * 12,
     maxResultBytes: 900_000 + commandLimits.stdoutBytes * 12,
-    logger: lineLogger(log ?? standardError),
+    logger: authorityLogger(log),
     leaseDurationMilliseconds: timing.leaseMilliseconds,
     leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,
     processHeartbeatIntervalMilliseconds: timing.heartbeatMilliseconds,

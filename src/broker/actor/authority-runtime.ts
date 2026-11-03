@@ -7,6 +7,7 @@ import {
   type Database,
   type InstrumentationEvent,
   type JsonObject,
+  type Logger,
   type SolidObjectsRuntime,
 } from "solid-objects";
 import { sqlite } from "solid-objects/database/sqlite";
@@ -36,6 +37,7 @@ import {
   type Delivery,
 } from "./authority-delivery.ts";
 import {
+  authorityLogger,
   authorityTiming,
   effectConfiguration,
   type AuthorityTiming,
@@ -174,7 +176,7 @@ export interface AuthorityRuntime {
   readonly stop: () => Promise<void>;
   readonly handlersSettled: () => Promise<boolean>;
   readonly setEpoch: (epoch: number) => void;
-  readonly unhealthy: () => string | undefined;
+  readonly logger: Logger;
   readonly watchMilliseconds: number;
   readonly limits: SessionLimits;
   readonly releaseEarlierOwners: () => Promise<void>;
@@ -187,13 +189,6 @@ export interface AuthorityRuntime {
     actorId: string,
     listener: SequenceListener,
   ) => () => void;
-}
-
-function unhealthy(watchdog: StrandingWatchdog): string | undefined {
-  const dead = watchdog.deadLettered();
-  if (dead !== undefined) return `dead-lettered message ${dead}`;
-  const stranded = watchdog.stranded();
-  return stranded === undefined ? undefined : `stranded message ${stranded}`;
 }
 
 const deliveryCallbacks = ["deliveryCompleted", "deliveryFailed"];
@@ -271,12 +266,32 @@ async function storedActorRefusal(check: {
 async function condition(watch: {
   readonly runtime: SolidObjectsRuntime;
   readonly broker: object;
+  readonly database: Database;
   readonly watchdog: StrandingWatchdog;
 }): Promise<string | undefined> {
-  const { runtime, broker, watchdog } = watch;
-  const dead = watchdog.deadLettered();
-  if (dead === undefined) return unhealthy(watchdog);
-  return `dead-lettered message ${dead}: ${await deadLetterCause({ runtime, broker, messageId: dead })}`;
+  const { runtime, broker, database, watchdog } = watch;
+  const report = await watchdog.report((messageIds) =>
+    messageRuns(database, messageIds),
+  );
+  if (report === undefined) return undefined;
+  const { kind, messageId } = report;
+  if (kind === "stranded") return `stranded message ${messageId}`;
+  return `dead-lettered message ${messageId}: ${await deadLetterCause({ runtime, broker, messageId })}`;
+}
+
+async function messageRuns(
+  database: Database,
+  messageIds: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const rows = await database.connection((connection) =>
+    connection.all(
+      `SELECT messages.id AS message_id, runs.status AS status FROM solid_messages AS messages JOIN runs ON runs.run_id = coalesce(json_extract(messages.arguments, '$.command.runId'), json_extract(messages.arguments, '$.arguments.runId')) WHERE messages.id IN (${messageIds.map(() => "?").join(", ")})`,
+      messageIds,
+    ),
+  );
+  return new Map(
+    rows.map((row) => [text(row, "message_id"), text(row, "status")]),
+  );
 }
 
 async function deadLetterCause(lookup: {
@@ -342,7 +357,7 @@ export function authorityRuntime(
     setEpoch: (value) => {
       epoch = value;
     },
-    unhealthy: () => unhealthy(watchdog),
+    logger: authorityLogger(options.log),
     watchMilliseconds: timing.leaseMilliseconds,
     limits: effects,
     releaseEarlierOwners: () =>
@@ -350,7 +365,7 @@ export function authorityRuntime(
     retryDeliveryCallbacks: () => retryDeliveryCallbacks({ runtime, broker }),
     storedActorRefusal: (actorId) =>
       storedActorRefusal({ database, actor: ClovingAuthority, actorId }),
-    condition: () => condition({ runtime, broker, watchdog }),
+    condition: () => condition({ runtime, broker, database, watchdog }),
     subscribe: sequenceSubscriber({ realtime: runtime.realtime, broker }),
   };
 }

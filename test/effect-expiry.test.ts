@@ -12,6 +12,7 @@ import {
   deliverUntil,
   fastTiming,
   openedAuthority,
+  refusalWhileDelivering,
 } from "./authority-actor-fixture.ts";
 import {
   alterDatabase,
@@ -296,16 +297,9 @@ await test("CLV-049 a callback of an earlier epoch for a protected effect is rec
     "CREATE TRIGGER inject BEFORE UPDATE ON deliveries WHEN NEW.outcome = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected-callback-failure'); END;",
   );
   const failing = await openedAuthority(directory, options);
-  const controller = new AbortController();
-  const failure = await Promise.race([
-    failing.deliver(controller.signal).then(
-      () => "stopped",
-      (error: unknown) => String(error),
-    ),
-    delay(5_000, "not detected", { ref: false }),
-  ]);
-  controller.abort();
-  assert.match(failure, /dead-lettered message .*injected-callback-failure/);
+  const { read, stopped } = await refusalWhileDelivering(failing);
+  for (const failure of [read, stopped])
+    assert.match(failure, /dead-lettered message .*injected-callback-failure/);
   await failing.close();
   const refused = await openAuthority(directory, options);
   assert.equal(refused.kind, "refused");
