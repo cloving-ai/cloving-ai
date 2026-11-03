@@ -188,6 +188,34 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+#### Read API of the watch page
+
+The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1 document is at `http://127.0.0.1:3663/api/v1/openapi.json`. OpenAPI client generators can read the document and make a typed client. The API accepts only `GET` and needs no authentication. An error reply is `application/problem+json` with a `code` member, for example `not-found` or `invalid-query`.
+
+- `GET /api/v1/` gives the version of the API and its endpoints.
+- `GET /api/v1/openapi.json` gives the OpenAPI document.
+- `GET /api/v1/service` tells if the Cloving service answers.
+- `GET /api/v1/workflows` gives the workflows with their counts and card fields.
+- `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
+- `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
+- `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.
+- `GET /api/v1/stream` sends Server-Sent Events. Each message has the event `change` and the data `{"updatedAt":"<time>"}`. Read the runs again when a message arrives.
+
+Replace `<run-id>` with the ID of a run of `develop`, for example from the run list:
+
+```sh
+curl http://127.0.0.1:3663/api/v1/
+curl http://127.0.0.1:3663/api/v1/openapi.json
+curl http://127.0.0.1:3663/api/v1/service
+curl http://127.0.0.1:3663/api/v1/workflows
+curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
+curl -N http://127.0.0.1:3663/api/v1/stream
+```
+
+The run list has the active runs and the runs of the last 7 days. The run detail reads each run, also a run older than 7 days. The events endpoint gives no event payloads, and the API has no write endpoint.
+
 ### Answer decisions from a phone
 
 Cloving can send its pending decisions to the Cloving app on your phone, and the phone can answer them. `cloving start` runs the phone relay as a child process. `CLOVING_PHONE_RELAY` with the value `off` starts no relay. `CLOVING_RELAY_ORIGIN` selects the relay server; the default is `https://cloving.ai`.

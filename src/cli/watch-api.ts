@@ -1,7 +1,23 @@
 import { STATUS_CODES } from "node:http";
 import { runLimit, runStates, watchApiDocument } from "./watch-api-document.ts";
-import type { WatchModel, WatchRun, WatchWorkflow } from "./watch-render.ts";
+import type {
+  WatchEvent,
+  WatchModel,
+  WatchRun,
+  WatchWorkflow,
+} from "./watch-render.ts";
 import type { CardField } from "./watch-run-input.ts";
+import {
+  cursorOf,
+  eventsAfter,
+  keyOf,
+  runDetailOf,
+  runOf,
+  runOrder,
+  type ApiRun,
+  type ApiRunDetail,
+  type RunKey,
+} from "./watch-api-run.ts";
 
 export interface ApiReply {
   readonly status: number;
@@ -14,7 +30,10 @@ export interface ApiRequest {
   readonly method: string;
   readonly url: URL;
   readonly model: () => Promise<WatchModel>;
+  readonly run: (runId: string) => Promise<WatchModel>;
 }
+
+export type ApiAnswer = ApiReply | "stream";
 
 interface ApiIndex {
   readonly version: 1;
@@ -39,31 +58,14 @@ interface ApiWorkflow {
   readonly inputs: readonly CardField[];
 }
 
-interface ApiRun {
-  readonly runId: string;
-  readonly workflowId: string;
-  readonly ticketId: string | null;
-  readonly title: string | null;
-  readonly state: string;
-  readonly outcome: string | null;
-  readonly currentStep: {
-    readonly name: string;
-    readonly startedAt: string | null;
-  };
-  readonly latestAt: string | null;
-  readonly pullRequest: {
-    readonly number: number;
-    readonly url: string;
-  } | null;
-  readonly estimatedCostUsd: number | null;
-}
-
 type ApiBody =
   | typeof watchApiDocument
   | ApiIndex
   | ApiService
   | { readonly workflows: readonly ApiWorkflow[] }
-  | { readonly runs: readonly ApiRun[]; readonly nextCursor: string | null };
+  | { readonly runs: readonly ApiRun[]; readonly nextCursor: string | null }
+  | { readonly run: ApiRunDetail }
+  | { readonly events: readonly WatchEvent[] };
 
 const base = "/api/v1";
 
@@ -91,6 +93,11 @@ function problem(
 const serviceUnavailable = problem(503, {
   code: "service-unavailable",
   detail: "The Cloving service does not answer.",
+});
+
+const unknownRun = problem(404, {
+  code: "not-found",
+  detail: "The service has no run with this ID.",
 });
 
 function apiIndex(): ApiReply {
@@ -143,74 +150,6 @@ async function workflows(request: ApiRequest): Promise<ApiReply> {
   });
 }
 
-function runOf(run: WatchRun): ApiRun {
-  const { pullRequest, currentStep } = run;
-  return {
-    runId: run.runId,
-    workflowId: run.workflowId,
-    ticketId: run.ticketId,
-    title: run.title,
-    state: run.state,
-    outcome: run.outcome,
-    currentStep: { name: currentStep.name, startedAt: currentStep.startedAt },
-    latestAt: run.latestAt,
-    pullRequest:
-      pullRequest === null
-        ? null
-        : { number: pullRequest.number, url: pullRequest.url },
-    estimatedCostUsd: run.estimatedCostUsd,
-  };
-}
-
-function instant(latestAt: string | null): number {
-  const time = Date.parse(latestAt ?? "");
-  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-}
-
-function codeOrder(first: string, second: string): number {
-  if (first === second) return 0;
-  return first < second ? -1 : 1;
-}
-
-interface RunKey {
-  readonly latestAt: string | null;
-  readonly runId: string;
-}
-
-function runOrder(first: RunKey, second: RunKey): number {
-  const earlier = instant(first.latestAt);
-  const later = instant(second.latestAt);
-  if (earlier !== later) return earlier > later ? -1 : 1;
-  return codeOrder(first.runId, second.runId);
-}
-
-function cursorOf(run: RunKey): string {
-  return Buffer.from(JSON.stringify([run.latestAt, run.runId])).toString(
-    "base64url",
-  );
-}
-
-function parsedJson(text: string): unknown {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value;
-  } catch {
-    return null;
-  }
-}
-
-function keyOf(cursor: string): RunKey | null {
-  const value = parsedJson(Buffer.from(cursor, "base64url").toString("utf8"));
-  const entries = Array.isArray(value)
-    ? value.map((item: unknown) => item)
-    : [];
-  const [latestAt, runId] = entries;
-  if (entries.length !== 2 || typeof runId !== "string") return null;
-  if (latestAt !== null && typeof latestAt !== "string") return null;
-  const key = { latestAt, runId };
-  return cursorOf(key) === cursor ? key : null;
-}
-
 interface RunQuery {
   readonly workflowId: string | null;
   readonly state: string | null;
@@ -255,20 +194,59 @@ async function runs(request: ApiRequest): Promise<ApiReply> {
   });
 }
 
+function wholeNumber(value: string): boolean {
+  return /^(0|[1-9]\d*)$/.test(value);
+}
+
 function withinLimit(value: string): boolean {
   const limit = Number(value);
   return (
-    /^(0|[1-9]\d*)$/.test(value) &&
-    limit >= runLimit.minimum &&
-    limit <= runLimit.maximum
+    wholeNumber(value) && limit >= runLimit.minimum && limit <= runLimit.maximum
   );
+}
+
+function unanswered(error: unknown): null {
+  if (error instanceof Error && error.message === "service-unavailable")
+    return null;
+  throw error;
+}
+
+type PathValues = ReadonlyMap<string, string>;
+
+interface RunRead {
+  readonly path: PathValues;
+  readonly body: (run: WatchRun) => ApiBody;
+}
+
+async function runReply(request: ApiRequest, read: RunRead): Promise<ApiReply> {
+  const model = await request
+    .run(read.path.get("runId") ?? "")
+    .catch(unanswered);
+  if (model === null) return serviceUnavailable;
+  const [run] = model.runs;
+  return run === undefined ? unknownRun : found(read.body(run));
+}
+
+function runDetail(request: ApiRequest, path: PathValues): Promise<ApiReply> {
+  return runReply(request, {
+    path,
+    body: (run) => ({ run: runDetailOf(run) }),
+  });
+}
+
+function runEvents(request: ApiRequest, path: PathValues): Promise<ApiReply> {
+  const after = Number(request.url.searchParams.get("after") ?? 0);
+  return runReply(request, {
+    path,
+    body: (run) => ({ events: eventsAfter(run, after) }),
+  });
 }
 
 type Parameters = ReadonlyMap<string, (value: string) => boolean>;
 
 interface Route {
   readonly parameters: Parameters;
-  readonly reply: (request: ApiRequest) => Promise<ApiReply>;
+  readonly reply: (request: ApiRequest, path: PathValues) => Promise<ApiAnswer>;
 }
 
 const runParameters: Parameters = new Map([
@@ -288,9 +266,62 @@ const routes = new Map<string, Route>([
   ["/service", { parameters: new Map(), reply: service }],
   ["/workflows", { parameters: new Map(), reply: workflows }],
   ["/runs", { parameters: runParameters, reply: runs }],
+  ["/runs/{runId}", { parameters: new Map(), reply: runDetail }],
+  [
+    "/runs/{runId}/events",
+    { parameters: new Map([["after", wholeNumber]]), reply: runEvents },
+  ],
+  [
+    "/stream",
+    { parameters: new Map(), reply: () => Promise.resolve("stream") },
+  ],
 ]);
 
 export const watchApiPaths: readonly string[] = [...routes.keys()];
+
+export function watchApiChange(): string {
+  const change = { updatedAt: new Date().toISOString() };
+  return `event: change\ndata: ${JSON.stringify(change)}\n\n`;
+}
+
+const placeholder = /^\{(\w+)\}$/;
+
+function decoded(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return "";
+  }
+}
+
+function matchedPath(template: string, path: string): PathValues | null {
+  const parts = template.split("/");
+  const segments = path.split("/");
+  if (parts.length !== segments.length) return null;
+  const pairs = parts.map(
+    (part, index) => [part, segments[index] ?? ""] as const,
+  );
+  if (
+    pairs.some(([part, segment]) => !placeholder.test(part) && part !== segment)
+  )
+    return null;
+  const values = pairs.flatMap(([part, segment]) => {
+    const name = placeholder.exec(part)?.[1];
+    return name === undefined ? [] : [[name, decoded(segment)] as const];
+  });
+  if (values.some(([, value]) => value === "")) return null;
+  return new Map(values);
+}
+
+function routeOf(
+  path: string,
+): { readonly route: Route; readonly values: PathValues } | null {
+  for (const [template, route] of routes) {
+    const values = matchedPath(template, path);
+    if (values !== null) return { route, values };
+  }
+  return null;
+}
 
 function refusedParameter(url: URL, parameters: Parameters): string | null {
   const names = [...url.searchParams.keys()];
@@ -304,7 +335,7 @@ function refusedParameter(url: URL, parameters: Parameters): string | null {
 
 export async function watchApiReply(
   request: ApiRequest,
-): Promise<ApiReply | null> {
+): Promise<ApiAnswer | null> {
   const { pathname } = request.url;
   if (pathname !== base && !pathname.startsWith(`${base}/`)) return null;
   if (request.method !== "GET")
@@ -315,17 +346,17 @@ export async function watchApiReply(
       }),
       allow: "GET",
     };
-  const route = routes.get(pathname.slice(base.length) || "/");
-  if (route === undefined)
+  const matched = routeOf(pathname.slice(base.length) || "/");
+  if (matched === null)
     return problem(404, {
       code: "not-found",
       detail: "The API has no resource at this path.",
     });
-  const refused = refusedParameter(request.url, route.parameters);
+  const refused = refusedParameter(request.url, matched.route.parameters);
   if (refused !== null)
     return problem(400, {
       code: "invalid-query",
       detail: `The query parameter ${refused} is unknown, repeated or has an invalid value.`,
     });
-  return route.reply(request);
+  return matched.route.reply(request, matched.values);
 }
