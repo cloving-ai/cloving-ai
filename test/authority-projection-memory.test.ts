@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { externalService, openedAuthority } from "./authority-actor-fixture.ts";
 import {
+  admittedBatch,
   fullReads,
   memoryReads,
   preparedDuring,
@@ -45,6 +46,27 @@ await test("CLV-276 after a scripted series of runs, decisions, effects, deliver
     await restored.close();
   }
   assert.deepEqual(restoredReads, await rebuiltReads(directory));
+});
+
+await test("CLV-276 the first read after a batch of 200 admissions with no read between them equals a rebuild from the tables, and prepares the statements of a read after one admission", async () => {
+  const directory = await temporaryDirectory();
+  const options = externalService().options;
+  const authority = await openedAuthority(directory, options);
+  const batch = Array.from(
+    { length: 200 },
+    (_, index) => `run-${String(index + 2)}`,
+  );
+  let remembered: unknown;
+  try {
+    await admittedBatch(authority, ["run-1"]);
+    const single = await preparedDuring(() => authority.state());
+    await admittedBatch(authority, batch);
+    assert.deepEqual(await preparedDuring(() => authority.state()), single);
+    remembered = await memoryReads(authority);
+  } finally {
+    await authority.close();
+  }
+  assert.deepEqual(remembered, await rebuiltReads(directory));
 });
 
 after(removeTemporaryDirectories);

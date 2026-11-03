@@ -5,13 +5,21 @@ import {
   type ProjectionSnapshot,
 } from "../../storage/decision-snapshots.ts";
 import type { DomainChange } from "../../storage/domain-changes.ts";
+import type { SqlConnection } from "../../storage/domain-rows.ts";
 import {
-  integer,
-  optionalText,
-  text,
-  type SqlConnection,
-} from "../../storage/domain-rows.ts";
-import { changedProjection } from "../../storage/projection-changes.ts";
+  messageOutcomes,
+  recordedTimes,
+  runTimes,
+  storedWorkflows,
+  submittedWorkflows,
+  type MessageOutcome,
+} from "../../storage/projection-lookups.ts";
+import {
+  changedProjection,
+  followingSequence,
+  projectedChange,
+  type ProjectedChange,
+} from "../../storage/projection-changes.ts";
 import {
   currentState,
   intentKind,
@@ -68,14 +76,11 @@ interface Held {
 interface Memory {
   held: Held | undefined;
   stale: string | null;
-  readonly recorded: Map<string, DomainChange>;
+  readonly recorded: Map<string, ProjectedChange>;
   readonly logger: Logger;
 }
 
-const workflowColumn =
-  "json_extract(s.body, '$.workflowId') AS workflow_id FROM documents s";
-const workflowFilter =
-  "json_valid(s.body) AND json_type(s.body, '$.workflowId') = 'text'";
+const pendingLimit = 1_000;
 
 export function projectionMemory(options: {
   readonly logger: Logger;
@@ -89,7 +94,10 @@ export function projectionMemory(options: {
   return {
     record: ({ messageId, change }) => {
       memory.recorded.delete(messageId);
-      memory.recorded.set(messageId, change);
+      memory.recorded.set(messageId, projectedChange(change));
+      if (memory.recorded.size <= pendingLimit) return;
+      memory.recorded.clear();
+      memory.held = undefined;
     },
     load: (database) =>
       database.connection(async (connection) => {
@@ -123,23 +131,31 @@ async function advanced(
 async function updated(
   memory: Memory,
   update: {
-    readonly recorded: readonly (readonly [string, DomainChange])[];
+    readonly recorded: readonly (readonly [string, ProjectedChange])[];
     readonly connection: SqlConnection;
   },
 ): Promise<Held> {
   const { recorded, connection } = update;
-  let held = memory.held ?? (await rebuiltAfter(memory, connection));
+  if (memory.held === undefined) return rebuiltAfter(memory, connection);
+  if (recorded.length === 0) return memory.held;
+  const outcomes = await messageOutcomes(
+    connection,
+    recorded.map(([messageId]) => messageId),
+  );
+  const committed: ProjectedChange[] = [];
+  let sequence = memory.held.snapshot.sequence;
   for (const [messageId, change] of recorded) {
-    const outcome = await messageOutcome(connection, messageId);
+    const outcome = outcomes.get(messageId) ?? "missing";
     if (outcome === "rolled-back") continue;
-    const reason = mismatch(held, { messageId, change, outcome });
+    const reason = mismatch({ messageId, change, outcome, sequence });
     if (reason !== null) {
       memory.stale = reason;
       return rebuiltAfter(memory, connection);
     }
-    held = await applied(held, { change, connection });
+    committed.push(change);
+    sequence = followingSequence(sequence, change);
   }
-  return held;
+  return applied(memory.held, { changes: committed, connection });
 }
 
 async function rebuiltAfter(
@@ -156,101 +172,102 @@ async function rebuiltAfter(
   return held;
 }
 
-type MessageOutcome = "committed" | "rolled-back" | "missing";
-
-async function messageOutcome(
-  connection: SqlConnection,
-  messageId: string,
-): Promise<MessageOutcome> {
-  const row = await connection.get(
-    "SELECT completed_at_ms IS NOT NULL AND rejection IS NULL AND error IS NULL AS committed FROM solid_messages WHERE id = ?",
-    [messageId],
-  );
-  if (row === undefined) return "missing";
-  return integer(row, "committed") === 1 ? "committed" : "rolled-back";
-}
-
-function mismatch(
-  held: Held,
-  recorded: {
-    readonly messageId: string;
-    readonly change: DomainChange;
-    readonly outcome: MessageOutcome;
-  },
-): string | null {
-  const { messageId, change, outcome } = recorded;
+function mismatch(recorded: {
+  readonly messageId: string;
+  readonly change: ProjectedChange;
+  readonly outcome: MessageOutcome;
+  readonly sequence: number;
+}): string | null {
+  const { messageId, change, outcome, sequence } = recorded;
   if (outcome === "missing") return `message ${messageId} is not stored`;
-  if (change.previous === held.snapshot.sequence) return null;
-  return `sequence ${String(change.previous)} does not follow ${String(held.snapshot.sequence)}`;
+  if (change.previous === sequence) return null;
+  return `sequence ${String(change.previous)} does not follow ${String(sequence)}`;
 }
 
 async function rebuilt(connection: SqlConnection): Promise<Held> {
   const snapshot = await loadProjections(connection);
-  const times = await connection.all(
-    "SELECT r.run_id, e.recorded_at FROM runs r JOIN events e ON e.sequence = r.sequence",
-  );
-  const workflows = new Map<string, string | null>(
-    snapshot.details.flatMap((row) =>
-      row.submission === null ? [] : [[row.submission, null]],
-    ),
-  );
-  for (const row of await connection.all(
-    `SELECT DISTINCT s.digest, ${workflowColumn} JOIN run_details d ON d.submission = s.digest WHERE ${workflowFilter}`,
-  ))
-    workflows.set(text(row, "digest"), text(row, "workflow_id"));
   return withProjection({
     snapshot,
-    times: new Map(
-      times.map((row) => [text(row, "run_id"), text(row, "recorded_at")]),
-    ),
-    workflows,
+    times: await runTimes(connection),
+    workflows: new Map([
+      ...snapshot.details.flatMap((row) =>
+        row.submission === null ? [] : [[row.submission, null] as const],
+      ),
+      ...(await submittedWorkflows(connection)),
+    ]),
   });
 }
 
 async function applied(
   previous: Held,
-  input: { readonly change: DomainChange; readonly connection: SqlConnection },
+  input: {
+    readonly changes: readonly ProjectedChange[];
+    readonly connection: SqlConnection;
+  },
 ): Promise<Held> {
-  const { change, connection } = input;
-  const snapshot = changedProjection(previous.snapshot, change);
-  const times = new Map(previous.times);
-  for (const row of change.runs) {
-    const time =
-      change.events.find((event) => event.sequence === row.sequence)
-        ?.recordedAt ?? (await recordedAt(connection, row.sequence));
-    if (time === null) times.delete(row.runId);
-    else times.set(row.runId, time);
+  const { changes } = input;
+  if (changes.length === 0) return previous;
+  return withProjection({
+    snapshot: changedProjection(previous.snapshot, changes),
+    times: await changedTimes(previous.times, input),
+    workflows: await changedWorkflows(previous.workflows, input),
+  });
+}
+
+async function changedTimes(
+  previous: ReadonlyMap<string, string>,
+  input: {
+    readonly changes: readonly ProjectedChange[];
+    readonly connection: SqlConnection;
+  },
+): Promise<ReadonlyMap<string, string>> {
+  const runs = new Map(
+    input.changes.flatMap((change) =>
+      change.runs.map((row) => [row.runId, row.sequence] as const),
+    ),
+  );
+  const carried = new Map(
+    input.changes.flatMap((change) =>
+      change.events.map((event) => [event.sequence, event.recordedAt] as const),
+    ),
+  );
+  const stored = await recordedTimes(input.connection, [
+    ...new Set([...runs.values()].filter((sequence) => !carried.has(sequence))),
+  ]);
+  const times = new Map(previous);
+  for (const [runId, sequence] of runs) {
+    const time = carried.get(sequence) ?? stored.get(sequence);
+    if (time === undefined) times.delete(runId);
+    else times.set(runId, time);
   }
-  const workflows = new Map(previous.workflows);
-  for (const row of change.details)
-    if (row.submission !== null && !workflows.has(row.submission))
-      workflows.set(
-        row.submission,
-        await workflowOf(connection, row.submission),
-      );
-  return withProjection({ snapshot, times, workflows });
+  return times;
 }
 
-async function recordedAt(
-  connection: SqlConnection,
-  sequence: number,
-): Promise<string | null> {
-  const row = await connection.get(
-    "SELECT recorded_at FROM events WHERE sequence = ?",
-    [sequence],
-  );
-  return row === undefined ? null : text(row, "recorded_at");
-}
-
-async function workflowOf(
-  connection: SqlConnection,
-  digest: string,
-): Promise<string | null> {
-  const row = await connection.get(
-    `SELECT ${workflowColumn} WHERE s.digest = ? AND ${workflowFilter}`,
-    [digest],
-  );
-  return row === undefined ? null : optionalText(row, "workflow_id");
+async function changedWorkflows(
+  previous: ReadonlyMap<string, string | null>,
+  input: {
+    readonly changes: readonly ProjectedChange[];
+    readonly connection: SqlConnection;
+  },
+): Promise<ReadonlyMap<string, string | null>> {
+  const submissions = [
+    ...new Set(
+      input.changes.flatMap((change) =>
+        change.details.flatMap((row) =>
+          row.submission === null || previous.has(row.submission)
+            ? []
+            : [row.submission],
+        ),
+      ),
+    ),
+  ];
+  const stored = await storedWorkflows(input.connection, submissions);
+  return new Map([
+    ...previous,
+    ...submissions.map(
+      (submission) => [submission, stored.get(submission) ?? null] as const,
+    ),
+  ]);
 }
 
 function withProjection(parts: Omit<Held, "projection">): Held {

@@ -89,22 +89,26 @@ function gate(fields: {
 }
 
 await test("CLV-276 a change upserts command waits and gates in the order of the table reads", () => {
-  const first = changedProjection(empty, {
-    ...unchanged,
-    waits: [
-      wait({ runId: "run-1", name: "b" }),
-      wait({ runId: "run-1", name: "a" }),
-      wait({ runId: "run-0", name: "z" }),
-    ],
-    gates: [
-      gate({ runId: "run-2", gateId: "gate-2" }),
-      gate({ runId: "run-1", gateId: "gate-1" }),
-    ],
-  });
-  const second = changedProjection(first, {
-    ...unchanged,
-    waits: [wait({ runId: "run-1", name: "a", state: "passed" })],
-  });
+  const first = changedProjection(empty, [
+    {
+      ...unchanged,
+      waits: [
+        wait({ runId: "run-1", name: "b" }),
+        wait({ runId: "run-1", name: "a" }),
+        wait({ runId: "run-0", name: "z" }),
+      ],
+      gates: [
+        gate({ runId: "run-2", gateId: "gate-2" }),
+        gate({ runId: "run-1", gateId: "gate-1" }),
+      ],
+    },
+  ]);
+  const second = changedProjection(first, [
+    {
+      ...unchanged,
+      waits: [wait({ runId: "run-1", name: "a", state: "passed" })],
+    },
+  ]);
   assert.deepEqual(
     second.waits.map((row) => [row.runId, row.name, row.state]),
     [
@@ -119,43 +123,74 @@ await test("CLV-276 a change upserts command waits and gates in the order of the
   );
 });
 
+function operation(fields: {
+  readonly operationId: string;
+  readonly status: string;
+}): DomainChange["operations"][number] {
+  return {
+    runId: "run-1",
+    capability: "github",
+    method: "comment",
+    target: "issue-1",
+    payload: "{}",
+    inputDigest: "digest-1",
+    units: 1,
+    leaseKey: "lease-1",
+    recoveryLimit: 1,
+    reason: null,
+    attempts: 0,
+    receipt: null,
+    worker: null,
+    result: null,
+    requestedSequence: 5,
+    waitSequence: null,
+    settledSequence: null,
+    ...fields,
+  };
+}
+
+const staging: DomainChange = {
+  ...unchanged,
+  previous: 4,
+  sequence: 5,
+  added: [
+    {
+      operationId: "op-1",
+      kind: "start-run",
+      runId: "run-1",
+      createdSequence: 5,
+    },
+  ],
+  staged: [
+    {
+      effectId: "effect-1",
+      operationId: "op-1",
+      inputDigest: "digest-1",
+      purpose: "dispatch",
+      leaseGeneration: null,
+      authorityEpoch: 1,
+    },
+  ],
+  operations: [operation({ operationId: "op-1", status: "dispatch-pending" })],
+};
+
+const settling: DomainChange = {
+  ...unchanged,
+  previous: 5,
+  sequence: 5,
+  released: [
+    { operationId: "op-1", releasedSequence: 5 },
+    { operationId: "op-1", releasedSequence: 9 },
+  ],
+  closed: [
+    { effectId: "effect-1", outcome: "sent", receipt: "receipt-1" },
+    { effectId: "effect-1", outcome: "failed", receipt: null },
+  ],
+};
+
 await test("CLV-276 a change keeps the first release and the first outcome of a row, as the guarded table updates do", () => {
-  const staged = changedProjection(empty, {
-    ...unchanged,
-    previous: 4,
-    sequence: 5,
-    added: [
-      {
-        operationId: "op-1",
-        kind: "start-run",
-        runId: "run-1",
-        createdSequence: 5,
-      },
-    ],
-    staged: [
-      {
-        effectId: "effect-1",
-        operationId: "op-1",
-        inputDigest: "digest-1",
-        purpose: "dispatch",
-        leaseGeneration: null,
-        authorityEpoch: 1,
-      },
-    ],
-  });
-  const settled = changedProjection(staged, {
-    ...unchanged,
-    previous: 5,
-    sequence: 5,
-    released: [
-      { operationId: "op-1", releasedSequence: 5 },
-      { operationId: "op-1", releasedSequence: 9 },
-    ],
-    closed: [
-      { effectId: "effect-1", outcome: "sent", receipt: "receipt-1" },
-      { effectId: "effect-1", outcome: "failed", receipt: null },
-    ],
-  });
+  const staged = changedProjection(empty, [staging]);
+  const settled = changedProjection(staged, [settling]);
   assert.deepEqual(
     settled.outbox.map((row) => row.releasedSequence),
     [5],
@@ -163,5 +198,100 @@ await test("CLV-276 a change keeps the first release and the first outcome of a 
   assert.deepEqual(
     settled.deliveries.map((row) => [row.stagedSequence, row.outcome]),
     [[5, "sent"]],
+  );
+});
+
+function run(fields: {
+  readonly runId: string;
+  readonly status: string;
+  readonly sequence: number;
+}): DomainChange["runs"][number] {
+  return {
+    revision: fields.sequence,
+    workflow: "pin-1",
+    pausedFrom: null,
+    gates: "[]",
+    ...fields,
+  };
+}
+
+function event(sequence: number): DomainChange["events"][number] {
+  return {
+    sequence,
+    type: "run-changed",
+    runId: "run-1",
+    commandId: `c-${String(sequence)}`,
+    recordedAt: "2026-10-10T12:00:00.000Z",
+    request: "{}",
+    payload: "{}",
+  };
+}
+
+const series: readonly DomainChange[] = [
+  {
+    ...staging,
+    events: [event(5)],
+    definitions: [{ pin: "pin-1", manifest: "first" }],
+    runs: [run({ runId: "run-2", status: "queued", sequence: 5 })],
+    commands: [{ commandId: "c-5", request: "{}", sequence: 5 }],
+    waits: [wait({ runId: "run-2", name: "a" })],
+    gates: [gate({ runId: "run-2", gateId: "gate-1" })],
+  },
+  {
+    ...settling,
+    sequence: 6,
+    events: [event(6)],
+    definitions: [
+      { pin: "pin-1", manifest: "second" },
+      { pin: "pin-0", manifest: "other" },
+    ],
+    runs: [
+      run({ runId: "run-2", status: "running", sequence: 6 }),
+      run({ runId: "run-1", status: "queued", sequence: 6 }),
+    ],
+    commands: [{ commandId: "c-6", request: "{}", sequence: 6 }],
+    staged: [
+      {
+        effectId: "effect-2",
+        operationId: "op-1",
+        inputDigest: "digest-2",
+        purpose: "reconcile",
+        leaseGeneration: 1,
+        authorityEpoch: 1,
+      },
+    ],
+    waits: [wait({ runId: "run-2", name: "a", state: "passed" })],
+    operations: [
+      operation({ operationId: "op-1", status: "dispatched" }),
+      operation({ operationId: "op-2", status: "dispatch-pending" }),
+    ],
+  },
+  {
+    ...unchanged,
+    previous: 6,
+    sequence: 6,
+    released: [{ operationId: "op-1", releasedSequence: 11 }],
+    closed: [
+      { effectId: "effect-1", outcome: "failed", receipt: null },
+      { effectId: "effect-2", outcome: "sent", receipt: "receipt-2" },
+    ],
+    gates: [{ ...gate({ runId: "run-2", gateId: "gate-1" }), revision: 2 }],
+  },
+];
+
+await test("CLV-276 a batch of changes gives the projection of the same changes one by one", () => {
+  const oneByOne = series.reduce(
+    (snapshot, change) => changedProjection(snapshot, [change]),
+    empty,
+  );
+  assert.deepEqual(changedProjection(empty, series), oneByOne);
+  assert.equal(oneByOne.sequence, 6);
+  assert.deepEqual(oneByOne.pending, ["op-2"]);
+  assert.deepEqual(
+    oneByOne.deliveries.map((row) => [row.effectId, row.outcome]),
+    [
+      ["effect-1", "sent"],
+      ["effect-2", "sent"],
+    ],
   );
 });

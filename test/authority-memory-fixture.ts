@@ -186,6 +186,14 @@ export async function scriptedSeries(authority: Authority): Promise<void> {
   await settled(authority);
 }
 
+export async function admittedBatch(
+  authority: Authority,
+  runIds: readonly string[],
+): Promise<void> {
+  const send = sender(authority, { now: "2026-10-10T12:00:00.000Z" });
+  for (const runId of runIds) await admitted(send, runId);
+}
+
 export async function memoryReads(authority: Authority): Promise<unknown> {
   return {
     state: await authority.state(),

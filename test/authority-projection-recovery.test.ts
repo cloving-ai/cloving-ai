@@ -80,10 +80,9 @@ function failingOnce(database: Database): Pick<Database, "connection"> {
       database.connection((connection) => {
         if (failed) return callback(connection);
         failed = true;
-        return callback({
-          ...connection,
-          get: () => Promise.reject(new Error("disk I/O error")),
-        });
+        const failure = (): Promise<never> =>
+          Promise.reject(new Error("disk I/O error"));
+        return callback({ ...connection, get: failure, all: failure });
       }),
   };
 }
@@ -174,6 +173,62 @@ await test("CLV-276 a failure of the update fails the read, and the next read re
         reason: "update failed: disk I/O error",
       },
     ]);
+  } finally {
+    await database.close();
+  }
+});
+
+await test("CLV-276 after a failed update, the next read rebuilds the memory and does not apply again the recorded changes that the tables already hold", async () => {
+  const { directory, messageId, latest } = await admittedDirectory();
+  const database = sqlite({ path: join(directory, "authority.sqlite") });
+  const entries: unknown[] = [];
+  const memory = projectionMemory({ logger: recordingLogger(entries) });
+  try {
+    await memory.load(database);
+    memory.record({ messageId, change: { ...unchanged, previous: latest } });
+    await assert.rejects(memory.read(failingOnce(database)), /disk I\/O error/);
+    memory.record({
+      messageId,
+      change: {
+        ...unchanged,
+        previous: latest,
+        sequence: latest,
+        runs: [storedRun({ runId: "run-9", sequence: latest })],
+      },
+    });
+    const projection = await memory.read(database);
+    assert.deepEqual(
+      projection.state(),
+      currentState(await database.connection(loadProjections)),
+    );
+    assert.equal(projection.state().runs["run-9"], undefined);
+    assert.deepEqual(entries, [
+      {
+        event: "authority-projection-rebuilt",
+        reason: "update failed: disk I/O error",
+      },
+    ]);
+  } finally {
+    await database.close();
+  }
+});
+
+await test("CLV-276 more than 1000 recorded changes with no read make the memory drop them, and the next read rebuilds from the tables with no warning", async () => {
+  const { directory, latest } = await admittedDirectory();
+  const database = sqlite({ path: join(directory, "authority.sqlite") });
+  const entries: unknown[] = [];
+  const memory = projectionMemory({ logger: recordingLogger(entries) });
+  try {
+    await memory.load(database);
+    alterDatabase(directory, paused);
+    for (let index = 0; index <= 1000; index += 1)
+      memory.record({
+        messageId: `message-${String(index)}`,
+        change: { ...unchanged, previous: latest, sequence: latest },
+      });
+    const projection = await memory.read(database);
+    assert.equal(projection.state().runs["run-1"]?.status, "paused");
+    assert.deepEqual(entries, []);
   } finally {
     await database.close();
   }

@@ -517,6 +517,7 @@
     "src/storage/effect-rows.ts": "storage",
     "src/storage/effect-schema.ts": "storage",
     "src/storage/projection-changes.ts": "storage",
+    "src/storage/projection-lookups.ts": "storage",
     "src/storage/statements.ts": "storage",
     "src/submission.ts": "pure",
     "src/testing-requests.ts": "pure",
