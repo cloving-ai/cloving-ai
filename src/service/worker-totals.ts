@@ -55,3 +55,14 @@ export async function usageTotals(
   }
   return workerTotals(turns);
 }
+
+export async function turnDetailsOf(
+  context: ServiceContext,
+  run: { readonly runId: string; readonly totals: WorkerTotals },
+): Promise<Fields> {
+  const details = await context.turnDetails?.({
+    runId: run.runId,
+    operationIds: run.totals.workerTurns.map((turn) => turn.operationId),
+  });
+  return details === undefined ? {} : { turnDetails: details };
+}

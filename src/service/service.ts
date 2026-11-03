@@ -29,6 +29,7 @@ import {
   queryMetadata,
   scheduleRequest,
   type ServiceContext,
+  type ServiceReads,
 } from "./replies.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
@@ -108,11 +109,10 @@ export interface HostPorts {
   readonly registerWait: WorkerPort["registerWait"];
 }
 
-export interface ServiceOptions {
+export interface ServiceOptions extends ServiceReads {
   readonly version?: string;
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queueDailySpendLimitUsd?: number;
-  readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;
