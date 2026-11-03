@@ -36,6 +36,7 @@ import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
+import { turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import {
@@ -192,16 +193,28 @@ function controlConnections(): {
   return { schedules: scheduleConnection(), queues: queueConnection() };
 }
 
+function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
+  return turnDetailsPlace({
+    directory: settings.directory,
+    retention: settings.retention ?? defaultRetention,
+    runs: async (runIds) => authorityRuns(await ports)(runIds),
+    now: settings.retentionClock ?? Date.now,
+  });
+}
+
+function rejectedOpening(detail: string): DaemonOpening {
+  return {
+    kind: "refused",
+    reason: detail.startsWith("queue-workflow-conflict")
+      ? "queue-workflow-conflict"
+      : "workflow-rejected",
+    detail,
+  };
+}
+
 async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { table, admitted } = await daemonRegistrations(settings);
-  if (admitted.kind === "rejected")
-    return {
-      kind: "refused",
-      reason: admitted.detail.startsWith("queue-workflow-conflict")
-        ? "queue-workflow-conflict"
-        : "workflow-rejected",
-      detail: admitted.detail,
-    };
+  if (admitted.kind === "rejected") return rejectedOpening(admitted.detail);
   const given = Promise.withResolvers<HostPorts>();
   const generations = workflowGenerations({
     ...settings,
@@ -221,6 +234,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
     workerHarness: worker.harness,
+    turnDetails: retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,

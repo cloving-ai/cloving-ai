@@ -20,7 +20,12 @@ import {
   type WorkflowRegistration,
   type WorkflowBundleStore,
 } from "./registry.ts";
-import { errorMessage, queryMetadata, type ServiceContext } from "./replies.ts";
+import {
+  errorMessage,
+  queryMetadata,
+  type ServiceContext,
+  type ServiceReads,
+} from "./replies.ts";
 import { dispatcher } from "./dispatcher.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
@@ -98,12 +103,11 @@ export interface HostPorts {
   readonly registerWait: WorkerPort["registerWait"];
 }
 
-export interface ServiceOptions {
+export interface ServiceOptions extends ServiceReads {
   readonly version?: string;
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queue?: NonNullable<ServiceContext["queue"]>;
   readonly queueDailySpendLimitUsd?: number;
-  readonly workerHarness?: ServiceContext["workerHarness"];
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;

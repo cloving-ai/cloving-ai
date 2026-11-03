@@ -215,6 +215,16 @@ function modelLines(attempts: unknown): readonly string[] {
 
 export { statusJson } from "./usage-render.ts";
 
+function turnDetailsLines(value: unknown): readonly string[] {
+  const state = part(value, "state");
+  if (state === "deleted")
+    return ["Turn details were deleted by the retention rule"];
+  if (state !== "archived") return [];
+  return [
+    `Turn details are archived in the journal folder of the archive: ${visible(part(value, "folder"))}`,
+  ];
+}
+
 function inputText(value: unknown): string {
   const text = visible(record(value) ?? null);
   const characters = Array.from(text);
@@ -248,6 +258,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
+    ...turnDetailsLines(part(run, "turnDetails")),
     ...shownCommandWaits(part(run, "commandWaits")).map((wait) =>
       visible(commandWaitText(wait)),
     ),

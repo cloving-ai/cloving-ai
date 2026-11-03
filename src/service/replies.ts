@@ -15,13 +15,18 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import type { CommandEffects } from "../command-settings.ts";
+import type { RunTurns, TurnDetails } from "../record-retention.ts";
 
-export interface ServiceContext {
+export interface ServiceReads {
+  readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
+  readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
+}
+
+export interface ServiceContext extends ServiceReads {
   readonly version?: string;
   readonly schedule?: SchedulePort;
   readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
-  readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
@@ -37,19 +42,21 @@ export interface ServiceContext {
   readonly changed?: ChangeSignal["next"];
 }
 
-export function queryMetadata(options: {
-  readonly version?: string;
-  readonly schedule?: SchedulePort;
-  readonly queue?: QueuePort;
-  readonly queueDailySpendLimitUsd?: number;
-  readonly workerHarness?: ServiceContext["workerHarness"];
-  readonly commandEffects?: CommandEffects;
-  readonly workflowRefusals?: readonly WorkflowRefusal[];
-}): Pick<
+export function queryMetadata(
+  options: ServiceReads & {
+    readonly version?: string;
+    readonly schedule?: SchedulePort;
+    readonly queue?: QueuePort;
+    readonly queueDailySpendLimitUsd?: number;
+    readonly commandEffects?: CommandEffects;
+    readonly workflowRefusals?: readonly WorkflowRefusal[];
+  },
+): Pick<
   ServiceContext,
   | "schedule"
   | "queue"
   | "workerHarness"
+  | "turnDetails"
   | "commandEffects"
   | "workflowRefusals"
   | "queueDailySpendLimitUsd"
@@ -65,6 +72,9 @@ export function queryMetadata(options: {
     ...(options.workerHarness === undefined
       ? {}
       : { workerHarness: options.workerHarness }),
+    ...(options.turnDetails === undefined
+      ? {}
+      : { turnDetails: options.turnDetails }),
     ...(options.commandEffects === undefined
       ? {}
       : { commandEffects: options.commandEffects }),
