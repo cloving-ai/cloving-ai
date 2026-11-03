@@ -213,12 +213,12 @@ async function status(
   environment: Located,
   invocation: Invoked<"status">,
 ): Promise<number> {
-  const { runId, limit, after, json } = invocation;
+  const { runId, limit, after, active, json } = invocation;
   if (!json && runId === null) await summarized(environment);
   if (!json && runId === null && limit === null && after === null) {
     const reply = await withCiReruns(
       environment.runtimeDirectory,
-      await listRuns(environment.runtimeDirectory),
+      await listRuns(environment.runtimeDirectory, active ? { active } : {}),
     );
     return presented(environment, {
       format: { json },

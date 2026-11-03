@@ -1,5 +1,26 @@
+import type { Authority } from "../src/broker/actor/authority.ts";
+import type { ServiceContext } from "../src/service/replies.ts";
+import { workflowRegistry } from "../src/service/registry.ts";
+import { recorded } from "./authority-fixture.ts";
 import { manifest, queryDatabase } from "./authority-store-fixture.ts";
 import { call, field, type Harness } from "./service-fixture.ts";
+
+export function statusContext(authority: Authority): ServiceContext {
+  return {
+    authority,
+    registry: workflowRegistry([]),
+    gateway: {
+      execute: () =>
+        Promise.reject(new Error("Status must not execute commands")),
+    },
+    clock: () => recorded.recordedAt,
+    livenessMilliseconds: 5000,
+    followMilliseconds: 20,
+    resolverMilliseconds: 1000,
+    textBytes: 4096,
+    documentBytes: 65536,
+  };
+}
 
 export function command(
   harness: Harness,

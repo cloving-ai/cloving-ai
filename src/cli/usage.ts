@@ -58,9 +58,10 @@ With --ticket, the daemon reads the ticket at admission. A declared ticket field
 With --next (the same as --ticket next), ticket workflows select a ready ticket through CLOVING_NEXT_COMMAND.
 Success means a committed receipt. It does not mean completed work.
 `,
-  status: `Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]
+  status: `Usage: cloving status [<run-id>] [--active] [--limit <n>] [--after <cursor>] [--json]
 
 Lists the runs, or shows one run with its reason, evidence and next action.
+With --active, lists only the runs that are not completed, failed or cancelled.
 `,
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
