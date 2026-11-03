@@ -1,4 +1,5 @@
 import type { SchedulePort } from "../schedule-progress.ts";
+import type { QueuePort } from "../queue-state.ts";
 import type {
   Authority,
   CommandRecord,
@@ -24,6 +25,7 @@ export interface ServiceReads {
 export interface ServiceContext extends ServiceReads {
   readonly version?: string;
   readonly schedule?: SchedulePort;
+  readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
@@ -44,6 +46,7 @@ export function queryMetadata(
   options: ServiceReads & {
     readonly version?: string;
     readonly schedule?: SchedulePort;
+    readonly queue?: QueuePort;
     readonly queueDailySpendLimitUsd?: number;
     readonly commandEffects?: CommandEffects;
     readonly workflowRefusals?: readonly WorkflowRefusal[];
@@ -51,6 +54,7 @@ export function queryMetadata(
 ): Pick<
   ServiceContext,
   | "schedule"
+  | "queue"
   | "workerHarness"
   | "turnDetails"
   | "commandEffects"
@@ -61,6 +65,7 @@ export function queryMetadata(
   return {
     ...(options.version === undefined ? {} : { version: options.version }),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
+    ...(options.queue === undefined ? {} : { queue: options.queue }),
     ...(options.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: options.queueDailySpendLimitUsd }),

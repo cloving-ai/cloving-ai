@@ -1,11 +1,18 @@
 import { queueStatus, spendNotice } from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
 import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
+import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
+import { queueJournal, type QueueJournal } from "./queue-journal.ts";
+import {
+  queueControlPort,
+  queueStopped,
+  type QueueRuntime,
+} from "./queue-control.ts";
 
 interface QueueSettings {
   readonly directory: string;
@@ -14,76 +21,6 @@ interface QueueSettings {
   readonly lanes?: number;
   readonly resetQueue?: boolean;
   readonly workflowId: string;
-}
-
-interface QueueJournal {
-  readonly commands: Set<string>;
-  readonly failures: string[];
-  readonly save: () => Promise<void>;
-  retryCommandId: string | undefined;
-  selfUpdateHold: SelfUpdateHold | undefined;
-}
-
-interface SelfUpdateHold {
-  readonly mark: string;
-  readonly startedAt: number;
-}
-
-function savedHold(value: unknown): SelfUpdateHold | undefined {
-  if (value === undefined) return undefined;
-  const held = record(value);
-  if (
-    typeof held?.["mark"] !== "string" ||
-    typeof held["startedAt"] !== "number" ||
-    !Number.isFinite(held["startedAt"]) ||
-    held["startedAt"] <= 0
-  )
-    throw new Error("invalid-queue-commands");
-  return { mark: held["mark"], startedAt: held["startedAt"] };
-}
-
-function identifiers(value: unknown): string[] {
-  if (
-    !Array.isArray(value) ||
-    !value.every((id) => typeof id === "string" && id.length > 0)
-  )
-    throw new Error("invalid-queue-commands");
-  return value.map(String);
-}
-
-async function journal(directory: string): Promise<QueueJournal> {
-  const file = join(directory, "queue-commands.json");
-  const text = await readFile(file, "utf8").catch((error: unknown) => {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return "[]";
-    throw error;
-  });
-  const value: unknown = JSON.parse(text);
-  const saved = record(value);
-  const commands = new Set(
-    identifiers(Array.isArray(value) ? value : saved?.["commands"]),
-  );
-  const failures = Array.isArray(value) ? [] : identifiers(saved?.["failures"]);
-  if (failures.length > 3) throw new Error("invalid-queue-commands");
-  const pending: QueueJournal = {
-    commands,
-    failures,
-    retryCommandId: undefined,
-    selfUpdateHold: savedHold(saved?.["selfUpdateHold"]),
-    save: async () => {
-      await writeFile(
-        `${file}.tmp`,
-        JSON.stringify({
-          commands: [...commands],
-          failures,
-          selfUpdateHold: pending.selfUpdateHold,
-        }) + "\n",
-        { mode: 0o600, flush: true },
-      );
-      await rename(`${file}.tmp`, file);
-    },
-  };
-  return pending;
 }
 
 function terminal(run: Fields): boolean {
@@ -153,13 +90,21 @@ function handedOff(run: Fields): boolean {
   );
 }
 
-class QueueFailureLimit extends Error {}
+function limited(pending: QueueJournal): boolean {
+  return pending.failures.length >= queueFailureLimit;
+}
 
-function checkFailureLimit(pending: QueueJournal): void {
-  if (pending.failures.length >= 3)
-    throw new QueueFailureLimit(
-      `3 runs in a row ended without handoff: ${pending.failures.join(", ")}`,
-    );
+function stopNotice(): (pending: QueueJournal) => boolean {
+  let noticed = false;
+  return (pending) => {
+    const stopped = limited(pending);
+    if (stopped && !noticed)
+      process.stderr.write(
+        `Queue stopped: 3 runs in a row ended without handoff: ${pending.failures.join(", ")}\n`,
+      );
+    noticed = stopped;
+    return stopped;
+  };
 }
 
 async function retired(
@@ -171,8 +116,7 @@ async function retired(
   if (handedOff(run)) pending.failures.length = 0;
   else pending.failures.push(runIdentity(commandId));
   await pending.save();
-  checkFailureLimit(pending);
-  if (handedOff(run)) return;
+  if (handedOff(run) || limited(pending)) return;
   const outcome = record(run["outcome"]);
   process.stderr.write(
     `Queue run ended ${String(outcome?.["kind"] ?? run["state"])}${outcome?.["issueUpdate"] === "failed" ? "; issueUpdate: failed" : ""}: ${runIdentity(commandId)}; continuing\n`,
@@ -183,7 +127,6 @@ async function completed(
   settings: QueueSettings,
   pending: QueueJournal,
 ): Promise<number> {
-  checkFailureLimit(pending);
   let pendingRuns = 0;
   const endings: { readonly commandId: string; readonly run: Fields }[] = [];
   const tracked = [...pending.commands].filter(
@@ -205,7 +148,8 @@ async function completed(
         second.run["terminalSequence"] ?? second.run["latestSequence"] ?? 0,
       ),
   );
-  for (const ending of endings) await retired(pending, ending);
+  for (const ending of endings)
+    if (!limited(pending)) await retired(pending, ending);
   return pendingRuns;
 }
 
@@ -317,24 +261,63 @@ async function admission(
   const file = join(settings.directory, "queue-submission");
   await writeFile(file, "", { mode: 0o600 });
   try {
-    if (!(await attempt.holding()) && !attempt.signal.aborted)
+    if (
+      !(await attempt.holding()) &&
+      !attempt.signal.aborted &&
+      attempt.pending.drain === undefined
+    )
       await submit(settings, attempt.pending);
   } finally {
     await rm(file, { force: true });
   }
 }
 
+async function drained(pending: QueueJournal, busy: number): Promise<void> {
+  const { drain } = pending;
+  if (drain === undefined || drain.drainedAt !== null || busy > 0) return;
+  pending.drain = { ...drain, drainedAt: Date.now() };
+  await pending.save();
+  process.stderr.write("Queue drained\n");
+}
+
+interface CycleChecks {
+  readonly pending: QueueJournal;
+  readonly stop: (pending: QueueJournal) => boolean;
+  readonly notice: (status: { readonly holding: boolean }) => boolean;
+  readonly update: (activeRuns?: number) => Promise<boolean>;
+}
+
+async function admissible(
+  settings: QueueSettings,
+  checks: CycleChecks,
+): Promise<boolean> {
+  const { pending, stop } = checks;
+  const pendingRuns = stop(pending) ? 0 : await completed(settings, pending);
+  if (stop(pending) && pending.drain === undefined) return false;
+  const status = await queueStatus(settings);
+  await drained(pending, status.busy);
+  if (stop(pending) || pending.drain !== undefined) return false;
+  const spend = checks.notice(status);
+  const updating = await checks.update(status.busy);
+  const lanes = settings.lanes ?? 1;
+  if (Math.max(pendingRuns, status.busy) >= lanes || status.busy < pendingRuns)
+    return false;
+  return !updating && !spend;
+}
+
 async function cycle(
   settings: QueueSettings,
-  signal: AbortSignal,
+  run: { readonly signal: AbortSignal; readonly pending: QueueJournal },
 ): Promise<void> {
-  const pending = await journal(settings.directory);
+  const { signal, pending } = run;
   if (settings.resetQueue === true) {
     pending.failures.length = 0;
+    pending.drain = undefined;
     await pending.save();
   }
   const update = updateHold(settings.directory, pending);
   const notice = spendNotice();
+  const stop = stopNotice();
   const holding = async (activeRuns = 0) => {
     const updating = await update(activeRuns);
     const spend = notice(await queueStatus(settings));
@@ -348,17 +331,8 @@ async function cycle(
       () => undefined,
     );
     if (stopped()) return;
-    const pendingRuns = await completed(settings, pending);
-    const lanes = settings.lanes ?? 1;
-    const status = await queueStatus(settings);
-    const spend = notice(status);
-    const updating = await update(status.busy);
-    if (
-      Math.max(pendingRuns, status.busy) >= lanes ||
-      status.busy < pendingRuns
-    )
+    if (!(await admissible(settings, { pending, stop, notice, update })))
       continue;
-    if (updating || spend) continue;
     if (stopped()) return;
     await admission(settings, { pending, holding, signal });
   }
@@ -366,18 +340,26 @@ async function cycle(
 
 export function issueQueue(settings: QueueSettings): {
   readonly stop: () => Promise<void>;
+  readonly port: QueuePort;
 } {
-  const stopping = new AbortController();
-  const running = cycle(settings, stopping.signal).catch((error: unknown) => {
-    const reason = error instanceof Error ? error.message : String(error);
-    const diagnostic =
-      error instanceof QueueFailureLimit ? reason : JSON.stringify(reason);
-    process.stderr.write(`Queue stopped: ${diagnostic}\n`);
-  });
+  const runtime: QueueRuntime = {
+    pending: undefined,
+    error: undefined,
+    stopping: new AbortController(),
+  };
+  const running = queueJournal(settings.directory)
+    .then((pending) => {
+      runtime.pending = pending;
+      return cycle(settings, { signal: runtime.stopping.signal, pending });
+    })
+    .catch((error: unknown) => {
+      queueStopped(runtime, error);
+    });
   return {
     stop: async () => {
-      stopping.abort();
+      runtime.stopping.abort();
       await running;
     },
+    port: queueControlPort(runtime),
   };
 }
