@@ -1,5 +1,6 @@
 import { flowTests } from "./develop/flow-tests.ts";
 import { refusalTests } from "./develop/refusal-tests.ts";
+import { interruptionTests } from "./develop/interruption-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
@@ -8,6 +9,9 @@ import { reviewPartial } from "./develop/partial.ts";
 import { queuePartial } from "./develop/queue-partial.ts";
 
 for (const scenario of flowTests.concat(refusalTests))
+  await test(scenario.name, scenario.run);
+
+for (const scenario of interruptionTests)
   await test(scenario.name, scenario.run);
 
 await test("CLV-221 invalid partial rounds never dispatch an effect or open a question", async () => {

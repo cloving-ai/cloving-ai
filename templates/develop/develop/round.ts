@@ -13,6 +13,7 @@ export async function developRound(state: {
   const { input, round } = state;
   try {
     const report = await developReport(state);
+    if ("kind" in report) return report;
     const pull = await openPull({ input, round });
     const subject = {
       target: pull.target,

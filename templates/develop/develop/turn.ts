@@ -7,6 +7,7 @@ export interface DevelopTurnInput {
   readonly ticket?: string;
   readonly prompt?: string;
   readonly round: number;
+  readonly attempt?: "initial" | "continuation";
   readonly feedback: {
     readonly reason: string;
     readonly output: string;
@@ -50,19 +51,38 @@ function turnPrompt(input: DevelopTurnInput): string {
   ].join("\n");
 }
 
+function attemptPrompt(input: DevelopTurnInput): string {
+  const prompt = turnPrompt(input);
+  if (input.attempt !== "continuation") return prompt;
+  return [
+    `The earlier turn of round ${String(input.round)} stopped before its report.`,
+    "The work tree holds the work of that turn.",
+    "Before you continue, check the work tree, the commits since the start of the round, and the ticket.",
+    "",
+    prompt,
+  ].join("\n");
+}
+
+function turnScope(input: DevelopTurnInput) {
+  if (input.attempt !== "continuation")
+    return { phase: "implement", operation: "claude-turn", round: input.round };
+  return {
+    phase: "implement",
+    operation: "claude-turn",
+    round: input.round,
+    key: "continuation",
+  };
+}
+
 export async function developTurn(
   input: DevelopTurnInput,
 ): Promise<ProtectedResult> {
   return await protectedEffect({
-    scope: {
-      phase: "implement",
-      operation: "claude-turn",
-      round: input.round,
-    },
+    scope: turnScope(input),
     capability: "claude",
     method: "run-turn",
     target: input.cycleId,
-    payload: turnPrompt(input),
+    payload: attemptPrompt(input),
     units: 1,
   });
 }
