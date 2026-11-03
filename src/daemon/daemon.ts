@@ -35,6 +35,7 @@ import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
+import { turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import {
@@ -184,6 +185,15 @@ export async function startDaemon(
   });
 }
 
+function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
+  return turnDetailsPlace({
+    directory: settings.directory,
+    retention: settings.retention ?? defaultRetention,
+    runs: async (runIds) => authorityRuns(await ports)(runIds),
+    now: settings.retentionClock ?? Date.now,
+  });
+}
+
 async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { table, admitted } = await daemonRegistrations(settings);
   if (admitted.kind === "rejected")
@@ -212,6 +222,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
     workerHarness: worker.harness,
+    turnDetails: retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,

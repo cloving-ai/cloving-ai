@@ -20,7 +20,7 @@ export function packedDoctor(root: string): Promise<void> {
     const report = fields(JSON.parse(result.stdout));
     assert.equal(report["version"], 1);
     const checks = items(report["checks"]).map(fields);
-    assert.equal(checks.length, 16);
+    assert.equal(checks.length, 17);
     assert.ok(
       checks
         .filter((check) => check["required"])
@@ -32,6 +32,10 @@ export function packedDoctor(root: string): Promise<void> {
     );
     assert.equal(
       checks.find((check) => check["code"] === "no-workflow")?.["result"],
+      "ok",
+    );
+    assert.equal(
+      checks.find((check) => check["code"] === "retention")?.["result"],
       "ok",
     );
   });

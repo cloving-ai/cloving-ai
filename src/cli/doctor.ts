@@ -15,6 +15,7 @@ import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { harnessObservations } from "./doctor-harness.ts";
+import { retentionObservation } from "./doctor-retention.ts";
 import {
   commandObservation,
   nodeObservation,
@@ -111,6 +112,10 @@ async function repositoryObservations(
     environment,
     probe,
   });
+  observations["retention"] =
+    location.runtime === undefined || location.observation.result !== "ok"
+      ? { result: "skip", detail: "Runtime prerequisite unavailable" }
+      : await retentionObservation(dirname(location.runtime), environment);
   const project = location.project;
   const serviceEnvironment = {
     ...environment,

@@ -17,11 +17,12 @@ export const doctorCodes = [
   "check-command",
   "queue-interval",
   "private-texts",
+  "retention",
 ] as const;
 
 export type DoctorCode = (typeof doctorCodes)[number];
 export interface DoctorObservation {
-  readonly result: "ok" | "fail" | "skip";
+  readonly result: "ok" | "warn" | "fail" | "skip";
   readonly detail: string;
 }
 export interface DoctorCheck extends DoctorObservation {
@@ -57,6 +58,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "queue-interval":
     "Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 cloving doctor",
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
+  retention:
+    "Set a retention period: cloving config set retention.days 30 --private",
 };
 
 export function doctorExitCode(checks: readonly DoctorCheck[]): number {
