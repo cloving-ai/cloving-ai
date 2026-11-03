@@ -48,6 +48,7 @@ const options = {
   version: { type: "boolean", short: "v" },
   input: { type: "string" },
   json: { type: "boolean" },
+  active: { type: "boolean" },
   prompt: { type: "string" },
   ticket: { type: "string" },
   next: { type: "boolean" },

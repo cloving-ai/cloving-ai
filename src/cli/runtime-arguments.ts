@@ -29,6 +29,7 @@ export type RuntimeInvocation =
       readonly runId: string | null;
       readonly limit: number | null;
       readonly after: string | null;
+      readonly active: boolean;
       readonly json: boolean;
     }
   | {
@@ -221,7 +222,7 @@ function runCommandShape(command: RunCommand): Shape {
 
 function statusOptions(request: RuntimeRequest): readonly string[] {
   return request.positionals.length === 0
-    ? ["limit", "after", "json"]
+    ? ["active", "limit", "after", "json"]
     : ["json"];
 }
 
@@ -302,8 +303,9 @@ function status(request: RuntimeRequest): Outcome {
   const after = matching(valueOf(request, "after"), identifier);
   if (runId === invalid || limit === invalid || after === invalid)
     return "invalid-option-value";
+  const active = given(request, "active");
   const json = given(request, "json");
-  return { kind: "status", runId, limit, after, json };
+  return { kind: "status", runId, limit, after, active, json };
 }
 
 function watch(request: RuntimeRequest): Outcome {

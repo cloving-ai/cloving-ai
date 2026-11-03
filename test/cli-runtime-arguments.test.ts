@@ -55,7 +55,7 @@ const answer = {
 };
 const shapes: readonly (readonly [string, Shape])[] = [
   ["run", run],
-  ["status", { ...query, taken: ["limit", "after", "json"] }],
+  ["status", { ...query, taken: ["active", "limit", "after", "json"] }],
   ["questions", { ...query, taken: ["json"] }],
   ["answer", answer],
   ["approve", decision],
@@ -77,7 +77,7 @@ const samples: Readonly<Record<string, string>> = {
   limit: "5",
   after: "1",
 };
-const flags = ["version", "json", "follow", ...Object.keys(samples)];
+const flags = ["version", "json", "follow", "active", ...Object.keys(samples)];
 const notWhole = ["1e3", "1.0", "+1", "01", "00", "0x1", "x", "１", "1,0"];
 const notPositive = [...notWhole, "0", "9007199254740992"];
 const notIdentifier = ["bad!id", "run+1", "a,b", "ü"];
@@ -124,7 +124,7 @@ function ran(source: Fields, changes: Fields = {}): Fields {
 
 function status(changes: Fields = {}): Fields {
   const list = { kind: "status", runId: null, limit: null, after: null };
-  return { ...list, json: false, ...changes };
+  return { ...list, active: false, json: false, ...changes };
 }
 
 function decided(name: string, changes: Fields = {}): Fields {
