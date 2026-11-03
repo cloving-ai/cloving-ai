@@ -11,6 +11,7 @@ import {
   withHarness,
   call,
   field,
+  type Harness,
 } from "./service-fixture.ts";
 import { bundled, reason } from "./service-bundle-fixture.ts";
 
@@ -169,6 +170,76 @@ for (const state of ["queued", "running"]) {
       );
       assert.equal(field(shown, "nextAction"), "restore-pinned-workflow");
       assert.equal(field(shown, "humanInputCanHelp"), true);
+      await service.close();
+    }));
+}
+
+async function droppedRun(harness: Harness, pin: string) {
+  const settings = await bundled(harness);
+  const given = Promise.withResolvers<HostPorts>();
+  const service = await harness.start({
+    ...settings,
+    host: (ports) => {
+      given.resolve(ports);
+      return Promise.resolve({ close: () => Promise.resolve() });
+    },
+  });
+  const { runId } = await waitingGate(harness, {
+    service,
+    commandId: "dropped",
+    kind: "question",
+  });
+  const ports = await given.promise;
+  const dropped = await call(harness, {
+    operation: "run-command",
+    parameters: {
+      command: "drop",
+      runId,
+      expectedRevision: (await ports.state()).runs[runId]?.revision,
+      commandId: "drop",
+    },
+  });
+  assert.equal(field(field(dropped, "committed"), "state"), "cancelled");
+  if (pin === "missing")
+    await rm(join(settings.workflowBundles.directory, settings.bundleDigest), {
+      recursive: true,
+    });
+  assert.equal(await ports.workflow.available(runId), pin === "present");
+  return { service, ports, runId };
+}
+
+for (const pin of ["missing", "present"]) {
+  await test(`CLV-278 a message of a dropped run with a ${pin} pin is done without workflow code or a new observation`, () =>
+    withHarness(async (harness) => {
+      const { service, ports, runId } = await droppedRun(harness, pin);
+      let invoked = 0;
+      const replay = pinnedWorkflowHandler(
+        () => {
+          invoked += 1;
+          return Promise.resolve(new Response("ran"));
+        },
+        {
+          state: ports.state,
+          run: () => Promise.resolve({ runId }),
+          available: ports.workflow.available,
+          submit: ports.submit,
+        },
+      );
+      const sequence = (await ports.state()).sequence;
+      const response = await replay(
+        new Request("http://localhost/workflow", {
+          method: "POST",
+          body: JSON.stringify({ runId: "wrun-dropped" }),
+        }),
+      );
+      assert.equal(invoked, 0);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ok: true });
+      assert.equal((await ports.state()).sequence, sequence);
+      assert.notEqual(
+        await reason(harness, runId),
+        "pinned-workflow-unavailable",
+      );
       await service.close();
     }));
 }

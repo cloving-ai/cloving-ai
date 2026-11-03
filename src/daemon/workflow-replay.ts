@@ -8,8 +8,10 @@ interface ReplayRun {
   readonly workflowId?: string;
 }
 
+type ReplayState = Pick<AuthorityState, "details" | "runs">;
+
 interface ReplayPorts {
-  readonly state: () => Promise<Pick<AuthorityState, "details">>;
+  readonly state: () => Promise<ReplayState>;
   readonly run: (receipt: string) => Promise<ReplayRun | undefined>;
   readonly available: (runId: string, workflowId?: string) => Promise<boolean>;
   readonly submit: (command: Readonly<Record<string, unknown>>) => Promise<{
@@ -38,13 +40,14 @@ async function located(ports: ReplayPorts, receipt: string) {
 async function observedReplay(
   ports: ReplayPorts,
   replay: {
+    readonly state: ReplayState;
     readonly runId: string;
     readonly receipt: string;
     readonly available: boolean;
   },
 ): Promise<boolean> {
-  const { runId, receipt, available } = replay;
-  const observation = (await ports.state()).details[runId]?.observation;
+  const { state, runId, receipt, available } = replay;
+  const observation = state.details[runId]?.observation;
   const unavailable = observation?.reason === "pinned-workflow-unavailable";
   if (available !== unavailable) return true;
   const expectedObservation = observation?.sequence ?? 0;
@@ -77,10 +80,12 @@ export function pinnedWorkflowHandler(
       (await located(ports, receipt));
     if (run === undefined)
       return new Response("unknown-world-run", { status: 503 });
+    const state = await ports.state();
+    if (state.runs[run.runId]?.status === "cancelled")
+      return Response.json({ ok: true });
     const available = await ports.available(run.runId, run.workflowId);
-    if (
-      !(await observedReplay(ports, { runId: run.runId, receipt, available }))
-    )
+    const replay = { state, runId: run.runId, receipt, available };
+    if (!(await observedReplay(ports, replay)))
       return new Response("workflow-observation-unavailable", { status: 503 });
     if (available) return handler(request, run.runId);
     return new Response("pinned-workflow-unavailable", { status: 503 });

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { withConsumer } from "./world-host-fixture.ts";
+import { queuePrelude } from "./daemon-queue-fixture.ts";
+import { text } from "./service-fixture.ts";
 import { workflowBundleLoader } from "../tools/self-host-workflows.ts";
 import {
   bundlePrelude,
@@ -43,6 +45,51 @@ process.exit(0);
       assert.equal(result.status, 0, result.stderr);
     }));
 }
+
+await test("CLV-278 a drop settles the retried workflow messages of a run whose pin is missing", () =>
+  withConsumer(workflow, async (consumer) => {
+    const stranded = await consumer.run(`${bundlePrelude}
+const first = await launched({ bundleDigest, queueMilliseconds: undefined });
+const runId = (await submitted("stranded")).runId;
+await until(async () => (await shown(runId)).state === "waiting_gate");
+await hooksReady();
+await first.close();
+rmSync(bundlePath, { recursive: true });
+print({ runId, bundleDigest });
+process.exit(0);
+`);
+    assert.equal(stranded.status, 0, stranded.stderr);
+    const [line] = stranded.lines;
+    const runId = text(line, "runId");
+    const bundleDigest = text(line, "bundleDigest");
+    const result = await consumer.run(
+      `${queuePrelude}
+const failed = [];
+const report = console.error;
+console.error = (...values) => {
+  if (String(values[0]).includes("Queue message failed")) failed.push(values[1]?.handlerError);
+  else report(...values);
+};
+const runId = process.env.STRANDED_RUN;
+const daemon = await launched({ bundleDigest: process.env.STRANDED_BUNDLE, queueMilliseconds: undefined });
+try {
+  await until(async () => failed.length > 0 && (await shown(runId)).reason.code === "pinned-workflow-unavailable");
+  assert.deepEqual([...new Set(failed)], ["pinned-workflow-unavailable"]);
+  const dropped = await asked("run-command", { command: "drop", runId, expectedRevision: (await shown(runId)).revision, commandId: "drop" });
+  assert.equal(dropped.committed.state, "cancelled", JSON.stringify(dropped));
+  await until(async () => (await (await getWorld()).runs.list({})).data.every(run => run.status === "cancelled"));
+  await delay(5500);
+  const settled = failed.length;
+  await delay(5500);
+  assert.equal(failed.length, settled, JSON.stringify(failed));
+  assert.equal((await shown(runId)).reason.code, "run-cancelled");
+} finally { await daemon.close(); }
+process.exit(0);
+`,
+      { STRANDED_RUN: runId, STRANDED_BUNDLE: bundleDigest },
+    );
+    assert.equal(result.status, 0, result.stderr);
+  }));
 
 await test("CLV-162 startup loads an unfinished run's retained code before continuing it beside edited code", () =>
   withConsumer(versionedWorkflow, async (original) =>
