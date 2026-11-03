@@ -8,6 +8,7 @@ import {
   workflowMetadata,
 } from "./run-metadata.ts";
 import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
+import { terminal } from "../authority/transitions.ts";
 import {
   runView,
   unresolvedEffects,
@@ -38,6 +39,12 @@ import { commandFields } from "./command-effects.ts";
 import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
+
+interface ListPage {
+  readonly after: string;
+  readonly limit: number;
+  readonly active: boolean;
+}
 
 interface Snapshot {
   readonly now: string;
@@ -230,13 +237,11 @@ async function submittedInput(
 
 async function listed(
   context: ServiceContext,
-  page: {
-    readonly snapshot: Snapshot;
-    readonly after: string;
-    readonly limit: number;
-  },
+  page: ListPage & { readonly snapshot: Snapshot },
 ): Promise<Reply> {
-  const identifiers = Object.keys(page.snapshot.state.runs)
+  const identifiers = Object.entries(page.snapshot.state.runs)
+    .filter(([, run]) => !page.active || !terminal.includes(run.status))
+    .map(([runId]) => runId)
     .sort()
     .filter((runId) => runId > page.after);
   const shown = identifiers.slice(0, page.limit);
@@ -263,14 +268,14 @@ async function listed(
   });
 }
 
-function listParameters(
-  parameters: Fields,
-): { readonly after: string; readonly limit: number } | undefined {
+function listParameters(parameters: Fields): ListPage | undefined {
   const after: unknown = parameters["after"] ?? "";
   const limit: unknown = parameters["limit"] ?? 50;
+  const active: unknown = parameters["active"] ?? false;
   if (typeof after !== "string" || !wholeNumber(limit, 1) || limit > 500)
     return undefined;
-  return { after, limit };
+  if (typeof active !== "boolean") return undefined;
+  return { after, limit, active };
 }
 
 export async function status(

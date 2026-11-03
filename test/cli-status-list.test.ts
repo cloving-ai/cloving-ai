@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { RunStatus } from "../src/authority/transitions.ts";
 import { socketAddress } from "../src/broker/socket-address.ts";
+import { parseInvocation } from "../src/cli/arguments.ts";
 import { listRuns } from "../src/cli/client.ts";
 import { runOverview } from "../src/cli/render.ts";
 import {
@@ -21,7 +22,12 @@ function statusReply(request: ServiceRequest, runs: readonly Fields[]): Reply {
     return { kind: "result", result: { kind: "decision-list", decisions: [] } };
   const after = request.parameters["after"];
   const cursor = typeof after === "string" ? after : "";
-  const remaining = runs.filter((run) => String(run["runId"]) > cursor);
+  const remaining = runs.filter(
+    (run) =>
+      String(run["runId"]) > cursor &&
+      (request.parameters["active"] !== true ||
+        !["completed", "failed", "cancelled"].includes(String(run["state"]))),
+  );
   const page = remaining.slice(
     0,
     Math.min(Number(request.parameters["limit"] ?? 50), 50),
@@ -322,4 +328,73 @@ await test("CLV-124 default status preserves refusal metadata across run pages",
       runLine(active),
   );
   assert.equal(output.requests.length, 3);
+});
+
+const actives = ["run-997", "run-998", "run-999"].map((runId, index) => ({
+  ...active,
+  runId,
+  latestAt: new Date(Date.UTC(2026, 9, 18, index % 2, index)).toISOString(),
+}));
+
+await test("CLV-275 status --active --json reads one service page of active runs", async () => {
+  const output = await statusList([...endedRuns(54), ...actives], {
+    argumentsList: ["--active", "--json"],
+  });
+  assert.equal(output.status, 0, output.stderr);
+  assert.equal(
+    output.stdout,
+    JSON.stringify({
+      kind: "run-list",
+      workflows: ["develop", "unused"],
+      runs: actives,
+      next: null,
+    }) + "\n",
+  );
+  assert.deepEqual(output.requests, [
+    { operation: "status", parameters: { active: true } },
+  ]);
+});
+
+for (const [options, parameters, shown] of [
+  [
+    ["--active"],
+    { limit: 500, active: true },
+    [actives[1], actives[2], actives[0]],
+  ],
+  [
+    ["--active", "--limit", "1", "--after", "run-997"],
+    { limit: 1, after: "run-997", active: true },
+    [actives[1]],
+  ],
+] as const)
+  await test(`CLV-275 status ${options.join(" ")} lists only active runs in the present order`, async () => {
+    const output = await statusList([...endedRuns(54), ...actives], {
+      argumentsList: options,
+    });
+    assert.equal(output.status, 0, output.stderr);
+    assert.equal(
+      output.stdout,
+      "Pending decisions:\n  none\nWorkflows: develop, unused\nRuns:\n" +
+        shown.map((run) => runLine(run ?? {})).join(""),
+    );
+    assert.deepEqual(output.requests, [
+      { operation: "questions", parameters: {} },
+      { operation: "status", parameters },
+    ]);
+  });
+
+await test("CLV-275 the parser takes --active only for the run list", () => {
+  assert.deepEqual(parseInvocation(["status", "--active"]), {
+    kind: "status",
+    runId: null,
+    limit: null,
+    after: null,
+    active: true,
+    json: false,
+  });
+  assert.deepEqual(parseInvocation(["status", "run-1", "--active"]), {
+    kind: "usage-error",
+    code: "unexpected-option",
+    json: false,
+  });
 });

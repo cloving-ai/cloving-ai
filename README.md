@@ -293,6 +293,8 @@ The rule: read the diff before you approve.
 
 Claude turns have web research tools by default, an empty GitHub CLI configuration folder, and no GitHub token environment variables. This is not a sandbox: a turn can still find other credentials. The PRD refusal rules catch the listed private text and common sensitive forms; unlisted private names can pass. A `post-uncertain` result requires checking GitHub before trying another run.
 
+`cloving status --active` lists only the runs that are not `completed`, `failed` or `cancelled`. It uses the same order and format as `cloving status`. The service selects the active runs before it builds a run view. Thus it makes no view query for a finished run. The number of queries does not change with the number of finished runs, but the service still reads the stored state of each run. `--active` works with `--json`, `--limit` and `--after`. With `--json`, one request returns one page of active runs and its `next` cursor.
+
 `cloving status RUN_ID --json` includes `run.input`, and `cloving status --json` includes `input` on each listed run. It is the normalized submission admitted with the run, such as `{"ticket":"297"}` for a ticket workflow or the submitted fields of another declared workflow. It survives service restarts and excludes resolver-added ticket text and repository paths. Older runs without a stored submission show `null`. The text status of one run shows `Input:` as compact JSON, limited to the first 200 characters with `…` appended when longer. Terminal control and hidden format characters are escaped.
 
 ### The ticket command

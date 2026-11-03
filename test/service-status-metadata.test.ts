@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { after, test } from "node:test";
-import type { Authority } from "../src/broker/actor/authority.ts";
-import type { ServiceContext } from "../src/service/replies.ts";
 import { status } from "../src/service/run-handlers.ts";
-import { workflowRegistry } from "../src/service/registry.ts";
 import { recorded } from "./authority-fixture.ts";
 import {
   executeStored,
@@ -25,7 +22,7 @@ import {
   text,
   withHarness,
 } from "./service-fixture.ts";
-import { view } from "./service-views.ts";
+import { statusContext, view } from "./service-views.ts";
 
 const storedTicketIds = ["DEMO-1", " demo-1 ", " ", "", null, 42, {}];
 
@@ -47,23 +44,6 @@ const titleCases = [
 
 function parsedTicket(value: unknown): unknown {
   return JSON.parse(String(value));
-}
-
-function statusContext(authority: Authority): ServiceContext {
-  return {
-    authority,
-    registry: workflowRegistry([]),
-    gateway: {
-      execute: () =>
-        Promise.reject(new Error("Status must not execute commands")),
-    },
-    clock: () => recorded.recordedAt,
-    livenessMilliseconds: 5000,
-    followMilliseconds: 20,
-    resolverMilliseconds: 1000,
-    textBytes: 4096,
-    documentBytes: 65536,
-  };
 }
 
 function identityInput(request: {

@@ -269,7 +269,7 @@ await test("CLV-008 a runtime command with no known runtime directory fails with
     output.map((line) => line.split("\n")[0]),
     [
       "error repository-unknown: Change to the service repository, use --repository <directory>, or set CLOVING_RUNTIME_DIR.",
-      "out Usage: cloving status [<run-id>] [--limit <n>] [--after <cursor>] [--json]",
+      "out Usage: cloving status [<run-id>] [--active] [--limit <n>] [--after <cursor>] [--json]",
     ],
   );
 });
