@@ -199,6 +199,8 @@ for (const selected of completeConfigurations)
         );
         assert.match(output, /selected complete configuration/);
         assert.match(output, /selected partial policy/);
+        assert.match(output, /an interrupted turn runs again once/);
+        assert.match(output, /second interruption of the same turn blocks/);
         assert.doesNotMatch(output, /not ok|✖/);
       },
     );
