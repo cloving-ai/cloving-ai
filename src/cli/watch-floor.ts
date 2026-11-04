@@ -5,6 +5,7 @@ import type {
   WatchReady,
   WatchRun,
   WatchStation,
+  WatchTile,
   WatchToken,
 } from "./watch-render.ts";
 
@@ -104,4 +105,43 @@ export function readyOf(
   if (queue?.["workflowId"] !== workflowId) return {};
   const ready = shownReady(queue["ready"]);
   return ready === undefined ? {} : { ready };
+}
+
+function eventAt(run: WatchRun, type: string): string | undefined {
+  return run.events.find((event) => event.type === type)?.recordedAt;
+}
+
+function tilesOf(run: WatchRun): WatchTile[] {
+  const startedAt = eventAt(run, "run.created");
+  const completedAt = eventAt(run, "run.completed");
+  if (
+    run.state !== "completed" ||
+    run.outcome === "blocked" ||
+    startedAt === undefined ||
+    completedAt === undefined
+  )
+    return [];
+  return [
+    {
+      runId: run.runId,
+      workflowId: run.workflowId,
+      ticket: ticketOf(run),
+      pullRequestNumber: run.pullRequest?.number ?? null,
+      title: run.title ?? run.runId,
+      startedAt,
+      completedAt,
+      claudeCostUsd: run.claudeCostUsd,
+      estimatedCostUsd: run.estimatedCostUsd,
+      demo: run.demo ?? null,
+    },
+  ];
+}
+
+export function completedOf(runs: readonly WatchRun[]): WatchTile[] {
+  return runs
+    .flatMap(tilesOf)
+    .toSorted(
+      (first, second) =>
+        Date.parse(second.completedAt) - Date.parse(first.completedAt),
+    );
 }

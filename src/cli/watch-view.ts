@@ -26,7 +26,7 @@ import {
   type ColumnControls,
 } from "./watch-board-view.ts";
 import { watchHash, watchLocation } from "./watch-navigation.ts";
-import { Floor } from "./watch-floor-view.ts";
+import { Floor, Shelf } from "./watch-floor-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
@@ -283,6 +283,7 @@ export function FloorPage(
           }),
         ],
       }),
+      component(Shelf, { model, now }),
     ],
   });
 }
