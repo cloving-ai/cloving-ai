@@ -44,6 +44,16 @@ The selection is saved in private settings. The command returns the agent's exit
 
 Prints facts, rules and setup steps for an agent. Does not change settings, call a model or control the service.
 `,
+  themes: `Usage: cloving themes list [--json] [--repository <directory>]
+
+Lists the themes of the watch page. Cloving finds themes in three places:
+the built-in themes of the package, <config>/cloving/themes/<name> and .cloving/themes/<name> in the repository.
+A project theme replaces a user theme of the same name. A user theme replaces a built-in theme.
+Each line shows the name, the place, usable or the refusal codes, the replaced places and the name in theme.json.
+A theme with a refusal code is not usable. --json prints the same data as one JSON list.
+The private setting watch.theme selects a theme by its name, or auto. The default is auto.
+cloving doctor reports a selected theme that is missing or refused.
+`,
   doctor: `Usage: cloving doctor [--json] [--repository <directory>]
 
 Checks repository requirements without repairs, model turns or GitHub writes.
@@ -203,6 +213,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving templates list [--json]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
+       cloving themes list [--json] [--repository <directory>]
        cloving red-green
        cloving <command> [--help]
 
@@ -213,6 +224,7 @@ Commands:
   templates list      List the workflow templates of the package.
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
+  themes list         List the themes of the watch page and their refusal codes.
   red-green  Check assertion failure on the base and success on the head.
   init             Start the setup agent
   init-prompt Print setup instructions for an agent.

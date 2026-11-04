@@ -362,3 +362,21 @@ await test("CLV-286 stations have a fixed width on a rail, and narrow screens mo
     /\.line \{ grid-template-columns: minmax\(0, 1fr\); \}/,
   );
 });
+
+await test("CLV-289 the Today panel is a surface like the floor, the bar of today stands out and the lane marks are angled", () => {
+  assert.match(rule(".today"), /background: var\(--surface\)/);
+  assert.match(rule(".today"), /box-shadow: inset 0 0 0 1px var\(--line\)/);
+  assert.match(
+    rule(".today-numbers"),
+    /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(rule(".today-chart text"), /text-anchor: middle/);
+  assert.match(
+    rule(".today-bar rect"),
+    /fill: color-mix\(in srgb, var\(--running\) 40%, var\(--surface\)\)/,
+  );
+  assert.match(rule(".today-bar.current rect"), /fill: var\(--line-1\)/);
+  assert.match(rule(".lane"), /clip-path: var\(--angled\)/);
+  assert.match(rule(".lane.busy"), /background: var\(--running\)/);
+  assert.match(rule(".lane.free"), /background: var\(--line\)/);
+});

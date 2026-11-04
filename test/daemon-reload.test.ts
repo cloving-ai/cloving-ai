@@ -196,3 +196,25 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-294 a failed reload command with no bundle names its exit code or its signal and the end of its standard error", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result = await consumer.run(`${bundlePrelude}${workflowBundleLoader()}
+const failing = [process.execPath, "-e", "process.stderr.write('x'.repeat(4096) + 'boom\\\\n'); process.exit(3)"];
+const daemon = await launched({ bundleDigest, queueMilliseconds: undefined, reloadCommand: failing, loadBundle: loadWorkflowBundle });
+try {
+  const reply = await asked("reload");
+  assert.equal(reply.code, "reload-failed");
+  assert.equal(reply.detail, "The reload command printed no workflow bundle. It exited with code 3: " + "x".repeat(2044) + "boom");
+} finally { await daemon.close(); }
+const stopped = [process.execPath, "-e", "process.kill(process.pid, 'SIGTERM')"];
+const second = await launched({ bundleDigest, queueMilliseconds: undefined, reloadCommand: stopped, loadBundle: loadWorkflowBundle });
+try {
+  const reply = await asked("reload");
+  assert.equal(reply.code, "reload-failed");
+  assert.equal(reply.detail, "The reload command printed no workflow bundle. It stopped on signal SIGTERM.");
+} finally { await second.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

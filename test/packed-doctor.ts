@@ -11,7 +11,7 @@ export function packedDoctor(root: string): Promise<void> {
       [join(root, "node_modules/cloving/dist/src/cli.js"), "doctor", "--json"],
       {
         cwd: scene.repository,
-        env: scene.environment,
+        env: { ...scene.environment, CLOVING_WATCH_THEME: "dark" },
         encoding: "utf8",
         timeout: 20000,
       },
@@ -20,7 +20,7 @@ export function packedDoctor(root: string): Promise<void> {
     const report = fields(JSON.parse(result.stdout));
     assert.equal(report["version"], 1);
     const checks = items(report["checks"]).map(fields);
-    assert.equal(checks.length, 17);
+    assert.equal(checks.length, 18);
     assert.ok(
       checks
         .filter((check) => check["required"])
@@ -37,6 +37,10 @@ export function packedDoctor(root: string): Promise<void> {
     assert.equal(
       checks.find((check) => check["code"] === "retention")?.["result"],
       "ok",
+    );
+    assert.equal(
+      checks.find((check) => check["code"] === "theme")?.["detail"],
+      'watch.theme dark: the built-in theme "Cloving dark"',
     );
   });
 }

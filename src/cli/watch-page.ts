@@ -52,6 +52,15 @@ import {
   stepAge,
 } from "./watch-floor-view.ts";
 import {
+  DayChart,
+  LaneLine,
+  Today,
+  TodayNumber,
+  TodayNumbers,
+  WorkflowTable,
+  dollars,
+} from "./watch-today-view.ts";
+import {
   Board,
   Card,
   HandoffLinks,
@@ -182,6 +191,13 @@ const functions = [
   Demo,
   Tile,
   Shelf,
+  dollars,
+  TodayNumber,
+  TodayNumbers,
+  DayChart,
+  WorkflowTable,
+  LaneLine,
+  Today,
   counted,
   elapsed,
   clockTime,

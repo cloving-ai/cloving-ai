@@ -8,6 +8,7 @@
   "include": [
     "src/**/*.ts",
     "tools/self-host.ts",
+    "tools/self-host-reload.ts",
     "tools/compile-workflows.ts",
     "tools/admit-workflow.ts",
     "tools/workflow-folders.ts",
