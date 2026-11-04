@@ -169,7 +169,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_RETENTION_ARCHIVE_FOLDER An absolute folder path, or null for <state>/archive. The folder can be on another volume. When the folder is not available, the sweep moves nothing, logs the reason and tries again in the next hour.
   CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
-  CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read once at start. The setting has no default.
+  CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read at start and at each cloving reload. A relative path starts at the folder of cloving start. The setting has no default.
   CLOVING_COMMANDS                A JSON object mapping names to argument arrays with an absolute executable path. Invalid values refuse startup with invalid-commands. Unset means no commands. Command execution is not available yet.
   CLOVING_COMMAND_SECONDS         A whole number from 1 to 3600 seconds; the default is 60. Invalid values refuse startup with invalid-command-seconds. Reserved for command execution.
   CLOVING_TOKEN_PRICES             A JSON object from model names to input, cachedInput and output USD prices per million tokens for estimates; entries override matching built-in prices.

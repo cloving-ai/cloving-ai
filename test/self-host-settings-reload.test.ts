@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { test } from "node:test";
 import { record, type Fields } from "../src/protocol.ts";
 import { operatorQuestion } from "./operator-restart-fixture.ts";
@@ -291,7 +291,7 @@ async function nextModel(fixture: Scene): Promise<string | undefined> {
   return (await turnModels(fixture)).at(-1);
 }
 
-await test("CLV-253 with CLOVING_PROFILES the reload reads that file again, ignores the private profiles, and applies a new workflow folder", () =>
+await test("CLV-253 with a relative CLOVING_PROFILES path the reload reads that file again, ignores the private profiles, and applies a new workflow folder", () =>
   withoutChildren(async () => {
     const fixture = await scene(standInTurn);
     await writeFile(join(fixture.root, "release-turn"), "");
@@ -307,7 +307,10 @@ await test("CLV-253 with CLOVING_PROFILES the reload reads that file again, igno
     await fixture.start({
       ...startEnvironment,
       XDG_CONFIG_HOME: join(fixture.root, "config"),
-      CLOVING_PROFILES: join(fixture.root, "profiles.json"),
+      CLOVING_PROFILES: relative(
+        fixture.repository,
+        join(fixture.root, "profiles.json"),
+      ),
     });
     await privateSettings(
       fixture,

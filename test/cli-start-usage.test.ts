@@ -69,7 +69,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
     "CLOVING_GROK_COMMAND",
     /JSON list.*streaming-messages-json.*--always-approve.*-p/,
   ],
-  ["CLOVING_PROFILES", /JSON file.*profile.*no default/],
+  ["CLOVING_PROFILES", /JSON file.*profile.*cloving reload.*no default/],
   ["CLOVING_COMMANDS", /JSON object.*absolute.*invalid-commands.*no commands/],
   [
     "CLOVING_COMMAND_SECONDS",

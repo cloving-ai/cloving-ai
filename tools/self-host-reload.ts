@@ -25,10 +25,17 @@ function required(name: string): string {
 
 function startEnvironment(): NodeJS.ProcessEnv {
   const fileVariables = settings["fileVariables"];
-  const names = new Set(Array.isArray(fileVariables) ? fileVariables : []);
-  return Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => !names.has(name)),
-  );
+  const listed: readonly unknown[] = Array.isArray(fileVariables)
+    ? fileVariables
+    : [];
+  const names = new Set([...listed, "CLOVING_PROFILES"]);
+  const profilesFile = optional("profilesFile");
+  return {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !names.has(name)),
+    ),
+    ...(profilesFile === undefined ? {} : { CLOVING_PROFILES: profilesFile }),
+  };
 }
 
 async function reloadedSettings(repository: string) {

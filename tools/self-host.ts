@@ -314,6 +314,7 @@ const folders = {
   ...places,
   userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
 };
+const profilesPath = environment["CLOVING_PROFILES"];
 const manifests = await preparedProject({ product, project, ...folders });
 await launchers(
   {
@@ -347,6 +348,9 @@ await launchers(
       JSON.stringify({
         directory,
         ...places,
+        ...(profilesPath === undefined
+          ? {}
+          : { profilesFile: resolve(profilesPath) }),
         fileVariables: Object.keys(environment).filter(
           (name) => process.env[name] === undefined,
         ),
