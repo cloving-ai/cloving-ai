@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pageDocument } from "../src/cli/watch-page.ts";
-import { contrast, over, palette, rgb } from "./watch-style-fixture.ts";
-
-const css = pageDocument().split("<style>")[1]?.split("</style>")[0] ?? "";
-const rules = css.replaceAll(/\n[ \t]+/g, "\n");
-function rule(selector: string): string {
-  const start = rules.indexOf(`\n${selector} {`);
-  assert.ok(start >= 0, selector);
-  return rules.slice(start, rules.indexOf("}", start));
-}
+import {
+  contrast,
+  css,
+  over,
+  palette,
+  rgb,
+  rule,
+  rules,
+} from "./watch-style-fixture.ts";
 
 await test("CLV-140 a full-width board has flexible columns", () => {
   assert.match(rule(".workspace"), /display: flex/);
@@ -361,4 +360,22 @@ await test("CLV-286 stations have a fixed width on a rail, and narrow screens mo
     media(720),
     /\.line \{ grid-template-columns: minmax\(0, 1fr\); \}/,
   );
+});
+
+await test("CLV-289 the Today panel is a surface like the floor, the bar of today stands out and the lane marks are angled", () => {
+  assert.match(rule(".today"), /background: var\(--surface\)/);
+  assert.match(rule(".today"), /box-shadow: inset 0 0 0 1px var\(--line\)/);
+  assert.match(
+    rule(".today-numbers"),
+    /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(rule(".today-chart text"), /text-anchor: middle/);
+  assert.match(
+    rule(".today-bar rect"),
+    /fill: color-mix\(in srgb, var\(--running\) 40%, var\(--surface\)\)/,
+  );
+  assert.match(rule(".today-bar.current rect"), /fill: var\(--line-1\)/);
+  assert.match(rule(".lane"), /clip-path: var\(--angled\)/);
+  assert.match(rule(".lane.busy"), /background: var\(--running\)/);
+  assert.match(rule(".lane.free"), /background: var\(--line\)/);
 });

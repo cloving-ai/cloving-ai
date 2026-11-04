@@ -1,7 +1,13 @@
 import { execFile } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
+import { readyList, type ReadyList } from "../queue-state.ts";
 
-export const ticketLimits = { textBytes: 48_000, detailCharacters: 300 };
+export const ticketLimits = {
+  textBytes: 48_000,
+  detailCharacters: 300,
+  readyMilliseconds: 30_000,
+};
 
 export type TicketRead =
   | { readonly kind: "read"; readonly text: string }
@@ -26,17 +32,37 @@ function printed(output: string): TicketRead {
   return { kind: "read", text };
 }
 
-function ended(error: unknown): TicketRead {
+function ended(error: unknown, name: string): TicketRead {
   const code: unknown = Reflect.get(Object(error), "code");
   const cause = String(Reflect.get(Object(error), "stderr"))
     .trim()
     .slice(0, ticketLimits.detailCharacters);
   return typeof code === "number"
-    ? failed(`The ticket command ended with the code ${String(code)}: ${cause}`)
-    : failed(`The ticket command did not complete: ${String(code)}`);
+    ? failed(`The ${name} ended with the code ${String(code)}: ${cause}`)
+    : failed(`The ${name} did not complete: ${String(code)}`);
 }
 
 const executed = promisify(execFile);
+
+function commandOutput(
+  command: readonly string[],
+  run: {
+    readonly name: string;
+    readonly signal: AbortSignal;
+    readonly environment: NodeJS.ProcessEnv;
+  },
+): Promise<TicketRead> {
+  const [executable = "", ...fixed] = command;
+  return executed(executable, fixed, {
+    signal: run.signal,
+    env: run.environment,
+    maxBuffer: 4 * ticketLimits.textBytes,
+    encoding: "utf8",
+  }).then(
+    (output) => ({ kind: "read", text: output.stdout.trim() }),
+    (error: unknown) => ended(error, run.name),
+  );
+}
 
 export function ticketText(
   command: readonly string[],
@@ -57,17 +83,48 @@ export function ticketCommandText(
     | AbortSignal
     | { readonly signal: AbortSignal; readonly skipTickets: readonly string[] },
 ): Promise<TicketRead> {
-  const [executable = "", ...fixed] = command;
-  return executed(executable, fixed, {
+  return commandOutput(command, {
+    name: "ticket command",
     signal: request instanceof AbortSignal ? request : request.signal,
-    env:
+    environment:
       request instanceof AbortSignal
         ? process.env
         : {
             ...process.env,
             CLOVING_SKIP_TICKETS: request.skipTickets.join(" "),
           },
-    maxBuffer: 4 * ticketLimits.textBytes,
-    encoding: "utf8",
-  }).then((output) => ({ kind: "read", text: output.stdout.trim() }), ended);
+  });
+}
+
+export function readyTickets(
+  command: readonly string[],
+  signal: AbortSignal,
+): Promise<ReadyList> {
+  return commandOutput(command, {
+    name: "ready-ticket command",
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(ticketLimits.readyMilliseconds),
+    ]),
+    environment: process.env,
+  }).then((result) =>
+    result.kind === "failed" ? result : readyList(result.text),
+  );
+}
+
+export async function readyRefreshes(
+  command: readonly string[] | undefined,
+  run: {
+    readonly signal: AbortSignal;
+    readonly intervalMilliseconds: number;
+    readonly listed: (ready: ReadyList) => void;
+  },
+): Promise<void> {
+  if (command === undefined) return;
+  while (!run.signal.aborted) {
+    run.listed(await readyTickets(command, run.signal));
+    await delay(run.intervalMilliseconds, undefined, {
+      signal: run.signal,
+    }).catch(() => undefined);
+  }
 }

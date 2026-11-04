@@ -44,6 +44,16 @@ The selection is saved in private settings. The command returns the agent's exit
 
 Prints facts, rules and setup steps for an agent. Does not change settings, call a model or control the service.
 `,
+  themes: `Usage: cloving themes list [--json] [--repository <directory>]
+
+Lists the themes of the watch page. Cloving finds themes in three places:
+the built-in themes of the package, <config>/cloving/themes/<name> and .cloving/themes/<name> in the repository.
+A project theme replaces a user theme of the same name. A user theme replaces a built-in theme.
+Each line shows the name, the place, usable or the refusal codes, the replaced places and the name in theme.json.
+A theme with a refusal code is not usable. --json prints the same data as one JSON list.
+The private setting watch.theme selects a theme by its name, or auto. The default is auto.
+cloving doctor reports a selected theme that is missing or refused.
+`,
   doctor: `Usage: cloving doctor [--json] [--repository <directory>]
 
 Checks repository requirements without repairs, model turns or GitHub writes.
@@ -158,6 +168,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs, failed runs and stopped schedules send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
+  CLOVING_READY_COMMAND            A JSON list of a command and its arguments. Requires CLOVING_QUEUE_SECONDS. When the queue starts, and one queue interval after each run ends, the command runs with no added argument and prints a JSON list of the ready tickets. Queue checks do not wait for it. Each item is an object with an id and a readyAt UTC time, such as 2026-11-03T07:30:00Z. The watch page shows the count of ready tickets that are not in work and do not wait for a dependency, and the oldest wait. The setting has no default.
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND when that workflow exists. Unset or no queue workflow means no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
   CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
   CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.
@@ -202,6 +213,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving templates list [--json]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
+       cloving themes list [--json] [--repository <directory>]
        cloving red-green
        cloving <command> [--help]
 
@@ -212,6 +224,7 @@ Commands:
   templates list      List the workflow templates of the package.
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
+  themes list         List the themes of the watch page and their refusal codes.
   red-green  Check assertion failure on the base and success on the head.
   init             Start the setup agent
   init-prompt Print setup instructions for an agent.

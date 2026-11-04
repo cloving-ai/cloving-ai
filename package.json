@@ -1,6 +1,6 @@
 {
   "name": "cloving",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Local durable development workflow service",
   "license": "MIT",
   "repository": {
@@ -96,6 +96,7 @@
     "dist/src",
     "dist/tools",
     "templates",
+    "themes",
     "assets/watch-fonts/fira-code-latin-400-normal.woff2",
     "assets/watch-fonts/fira-code-latin-500-normal.woff2",
     "assets/watch-fonts/fira-code-OFL.md",

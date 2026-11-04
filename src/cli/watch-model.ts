@@ -29,6 +29,7 @@ import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 
 import { displayRun } from "./watch-paths.ts";
 import { shownCommands } from "./command-effects.ts";
+import type { DailyNumbers } from "../report-days.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -212,6 +213,7 @@ export function decisionCommands(
     decisionId,
     type: text(fields["type"]),
     prompt: text(fields["prompt"]),
+    openedAt: stamp(fields["openedAt"]),
     approve: `${client} approve ${decisionId} ${binding}`,
     deny: `${client} deny ${decisionId} --text "<feedback>" ${binding}`,
   };
@@ -235,6 +237,7 @@ export interface WatchInputs {
   readonly decisions: readonly unknown[];
   readonly turns: readonly WatchTurn[];
   readonly githubRecords: readonly GithubRecords[];
+  readonly today?: DailyNumbers;
 }
 
 function feedbackOf(value: unknown): WatchFeedback {
@@ -357,6 +360,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
     workflows,
     ...(inputs.schedules === undefined ? {} : { schedules: inputs.schedules }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
+    ...(inputs.today === undefined ? {} : { today: inputs.today }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     updatedAt: inputs.updatedAt,
     service: inputs.service,

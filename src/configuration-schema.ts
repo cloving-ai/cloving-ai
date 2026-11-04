@@ -23,6 +23,7 @@ export interface Configuration {
   readonly tickets?: {
     readonly command?: readonly string[];
     readonly nextCommand?: readonly string[];
+    readonly readyCommand?: readonly string[];
   };
   readonly queue?: {
     readonly everySeconds?: number;
@@ -45,6 +46,7 @@ export interface Configuration {
   readonly watch?: {
     readonly port?: number | "off";
     readonly actions?: "on" | "off";
+    readonly theme?: string;
   };
   readonly selfUpdate?: { readonly everySeconds?: number };
   readonly github?: { readonly command?: readonly string[] };

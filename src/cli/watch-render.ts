@@ -8,6 +8,7 @@ import { priceText } from "./usage-render.ts";
 import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Fields } from "../protocol.ts";
+import type { DailyNumbers } from "../report-days.ts";
 
 export interface WatchItem {
   readonly kind: string;
@@ -42,6 +43,7 @@ export interface WatchDecision {
   readonly decisionId: string;
   readonly type: string;
   readonly prompt: string;
+  readonly openedAt: string | null;
   readonly approve: string;
   readonly deny: string;
 }
@@ -131,8 +133,13 @@ export interface WatchStation {
   readonly tokens: readonly WatchToken[];
 }
 
+export type WatchReady =
+  | { readonly count: number; readonly oldestAt: string | null }
+  | { readonly failure: string };
+
 export interface WatchWorkflow {
   readonly schedule?: ShownSchedule;
+  readonly ready?: WatchReady;
   readonly workflowId: string;
   readonly activeCount: number;
   readonly waitingCount: number;
@@ -192,6 +199,7 @@ export interface WatchModel {
   readonly updatedAt: string;
   readonly service: string;
   readonly runs: readonly WatchRun[];
+  readonly today?: DailyNumbers;
 }
 
 export interface WatchTone {
