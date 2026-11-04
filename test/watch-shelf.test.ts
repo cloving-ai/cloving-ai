@@ -196,6 +196,23 @@ await test("CLV-288 of the runs of today, only a completed run that is not block
   assert.match(shown[0] ?? "", /href="#run=done"/);
 });
 
+await test("CLV-288 a partial run shows no tile, so the shelf count agrees with the Today panel", () => {
+  const today = {
+    createdAt: localTime(0, "08:00"),
+    completedAt: localTime(0, "09:00"),
+  };
+  const model = floorModel(
+    [
+      completedRun("done", { ...today, ticketStatus: "complete" }),
+      completedRun("partial", { ...today, ticketStatus: "partial" }),
+    ],
+    { updatedAt: localTime(0, "12:00") },
+  );
+  const shown = tiles(page(model));
+  assert.equal(shown.length, 1);
+  assert.match(shown[0] ?? "", /href="#run=done"/);
+});
+
 await test("CLV-288 with no completed run the shelf says No run completed today", () => {
   const html = page(floorModel([], { updatedAt: localTime(0, "12:00") }));
   assert.equal(

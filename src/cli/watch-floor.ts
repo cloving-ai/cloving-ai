@@ -117,6 +117,7 @@ function tilesOf(run: WatchRun): WatchTile[] {
   if (
     run.state !== "completed" ||
     run.outcome === "blocked" ||
+    run.ticketStatus === "partial" ||
     startedAt === undefined ||
     completedAt === undefined
   )

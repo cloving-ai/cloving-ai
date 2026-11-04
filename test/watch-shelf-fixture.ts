@@ -18,12 +18,16 @@ export function completedRun(
     readonly workflowId?: string;
     readonly ticketId?: string;
     readonly outcome?: string;
+    readonly ticketStatus?: string;
     readonly state?: string;
   },
 ): Record<string, unknown> {
   return boardRun(runId, {
     state: options.state ?? "completed",
     outcome: options.outcome ?? "handoff_requested",
+    ...(options.ticketStatus === undefined
+      ? {}
+      : { ticketStatus: options.ticketStatus }),
     ticketId: options.ticketId,
     latestAt: options.completedAt,
     ...(options.workflowId === undefined
