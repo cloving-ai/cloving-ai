@@ -127,6 +127,8 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .token-ticket { padding: 6px 0 6px 10px; }
 .token-time { padding: 6px 12px 6px 8px; color: var(--muted); }
 .line-end { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; min-width: 0; padding: 16px 20px; border-left: 1px dashed var(--line); color: var(--muted); font-size: 13px; text-align: right; }
+.line-ready { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.line-wait { font-variant-numeric: tabular-nums; }
 .board { width: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .columns { display: flex; align-items: flex-start; gap: ${String(boardSizing.gap)}px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
 @supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }

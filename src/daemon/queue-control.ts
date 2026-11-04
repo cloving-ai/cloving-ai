@@ -1,9 +1,15 @@
-import type { QueueChange, QueueCommand, QueuePort } from "../queue-state.ts";
+import type {
+  QueueChange,
+  QueueCommand,
+  QueuePort,
+  ReadyList,
+} from "../queue-state.ts";
 import { queueControlLimit, type QueueJournal } from "./queue-journal.ts";
 
 export interface QueueRuntime {
   pending: QueueJournal | undefined;
   error: string | undefined;
+  ready?: ReadyList | undefined;
   readonly stopping: AbortController;
 }
 
@@ -96,12 +102,13 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
   let changing: Promise<unknown> = Promise.resolve();
   return {
     control: () => {
-      const { pending, error } = runtime;
+      const { pending, error, ready } = runtime;
       if (pending === undefined && error === undefined) return undefined;
       return {
         failedRunIds: [...(pending?.failures ?? [])],
         drain: pending?.drain,
         error,
+        ...(ready === undefined ? {} : { ready }),
       };
     },
     change: (request) => {

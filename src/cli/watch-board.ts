@@ -2,7 +2,7 @@ import type { ShownSchedules } from "./schedule-render.ts";
 import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
-import { record } from "../protocol.ts";
+import { record, type Fields } from "../protocol.ts";
 import { isInstant } from "../authority/instants.ts";
 import {
   pullRequestSteps,
@@ -10,7 +10,7 @@ import {
   stageOf,
 } from "./watch-phases.ts";
 import { sameIssue } from "./watch-pr-identity.ts";
-import { stationsOf } from "./watch-floor.ts";
+import { readyOf, stationsOf } from "./watch-floor.ts";
 import type {
   WatchCard,
   WatchCompletionMark,
@@ -236,6 +236,7 @@ function stepOrder(first: WatchCard, second: WatchCard): number {
 
 interface BoardInputs {
   readonly schedules?: ShownSchedules;
+  readonly queue?: Fields;
   readonly workflows: readonly string[];
   readonly workflowStages?: WorkflowStages;
   readonly updatedAt: string;
@@ -281,17 +282,27 @@ function runSummaryOf(run: WatchRun): ReturnType<typeof summaryOf> {
   };
 }
 
+function lineEndOf(
+  inputs: BoardInputs,
+  workflowId: string,
+): Pick<WatchWorkflow, "schedule" | "ready"> {
+  const schedules = inputs.schedules ?? [];
+  const schedule =
+    "status" in schedules
+      ? undefined
+      : schedules.find((entry) => entry.workflowId === workflowId);
+  return {
+    ...(schedule === undefined ? {} : { schedule }),
+    ...readyOf(inputs.queue, workflowId),
+  };
+}
+
 export function boardsOf(
   inputs: BoardInputs,
   runs: readonly WatchRun[],
 ): WatchWorkflow[] {
-  const schedules = inputs.schedules ?? [];
   return inputs.workflows.map((workflowId) => {
     const own = runs.filter((run) => run.workflowId === workflowId);
-    const schedule =
-      "status" in schedules
-        ? undefined
-        : schedules.find((entry) => entry.workflowId === workflowId);
     const summaries =
       inputs.summaries === undefined
         ? own.map(runSummaryOf)
@@ -329,7 +340,7 @@ export function boardsOf(
     });
     return {
       workflowId,
-      ...(schedule === undefined ? {} : { schedule }),
+      ...lineEndOf(inputs, workflowId),
       activeCount: summaries.filter((run) => activeRun(run.state)).length,
       waitingCount: summaries.filter((run) => run.waiting).length,
       latestAt: latestTime(summaries.map((run) => run.latestAt)),

@@ -1,6 +1,8 @@
 import { activeCommandWait } from "./command-waits.ts";
+import { record, type Fields } from "../protocol.ts";
 import type {
   WatchLamp,
+  WatchReady,
   WatchRun,
   WatchStation,
   WatchToken,
@@ -83,4 +85,23 @@ export function stationsOf(line: {
       tokens,
     };
   });
+}
+
+function shownReady(value: unknown): WatchReady | undefined {
+  const ready = record(value);
+  const { count, oldestAt, failure } = ready ?? {};
+  if (typeof failure === "string") return { failure };
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0)
+    return undefined;
+  if (oldestAt !== null && typeof oldestAt !== "string") return undefined;
+  return { count, oldestAt };
+}
+
+export function readyOf(
+  queue: Fields | undefined,
+  workflowId: string,
+): { readonly ready?: WatchReady } {
+  if (queue?.["workflowId"] !== workflowId) return {};
+  const ready = shownReady(queue["ready"]);
+  return ready === undefined ? {} : { ready };
 }

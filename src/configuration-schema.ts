@@ -23,6 +23,7 @@ export interface Configuration {
   readonly tickets?: {
     readonly command?: readonly string[];
     readonly nextCommand?: readonly string[];
+    readonly readyCommand?: readonly string[];
   };
   readonly queue?: {
     readonly everySeconds?: number;

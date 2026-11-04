@@ -7,7 +7,12 @@ import { stepAge } from "../src/cli/watch-floor-view.ts";
 import { played } from "./watch-browser.ts";
 import { rendered } from "./watch-dom.ts";
 import type { ShownSchedule } from "../src/cli/schedule-render.ts";
-import { floorModel, floorRun, twoLineModel } from "./watch-floor-fixture.ts";
+import {
+  floorModel,
+  floorRun,
+  minutesBefore,
+  twoLineModel,
+} from "./watch-floor-fixture.ts";
 import { activeSchedule, scheduleModel } from "./watch-schedule-fixture.ts";
 import { noCopy } from "./watch-sample.ts";
 
@@ -135,6 +140,51 @@ await test("CLV-286 the line end of a scheduled workflow shows its next run time
     '<span class="line-next">schedule paused</span>',
   );
   assert.equal(end({ ...activeSchedule, nextAt: null }), "");
+});
+
+function queuedModel(ready: unknown): WatchModel {
+  return floorModel([], {
+    queue: { workflowId: "develop-issue", lanes: 1, busy: 0, ready },
+  });
+}
+
+await test("CLV-286 the line end of a queued workflow shows the count of ready tickets and the oldest wait", () => {
+  const end = (ready: unknown) => {
+    const [queued = "", other = ""] = lines(page(queuedModel(ready)));
+    assert.match(other, /<div class="line-end"><\/div>/);
+    return /<div class="line-end">([\s\S]*?)<\/div>/.exec(queued)?.[1];
+  };
+  assert.equal(
+    end({ count: 3, oldestAt: minutesBefore(125) }),
+    '<span class="line-ready">3 ready</span><span class="line-wait">oldest 2h 5m</span>',
+  );
+  assert.equal(
+    end({ count: 1, oldestAt: minutesBefore(4) }),
+    '<span class="line-ready">1 ready</span><span class="line-wait">oldest 4m</span>',
+  );
+  assert.equal(
+    end({ count: 0, oldestAt: null }),
+    '<span class="line-ready">0 ready</span>',
+  );
+  assert.equal(
+    end({ failure: "The command failed." }),
+    '<span class="line-ready" title="The command failed.">Ready list failed</span>',
+  );
+  assert.equal(end(undefined), "");
+  const served = played(
+    queuedModel({ count: 3, oldestAt: minutesBefore(125) }),
+    `
+const model = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "";
+replies.push(model);
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  assert.match(
+    JSON.stringify(served["html"]),
+    /<span class=\\"line-ready\\">3 ready<\/span><span class=\\"line-wait\\">oldest 2h 5m<\/span>/,
+  );
 });
 
 await test("CLV-286 the header shows the count of active runs and of runs that need a person", () => {

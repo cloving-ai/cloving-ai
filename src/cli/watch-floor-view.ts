@@ -4,6 +4,7 @@ import { watchHash } from "./watch-navigation.ts";
 import type {
   WatchLamp,
   WatchModel,
+  WatchReady,
   WatchStation,
   WatchToken,
   WatchWorkflow,
@@ -102,17 +103,47 @@ export function nextRunText(
   return `next run ${next.toLocaleString()}`;
 }
 
+export function ReadyCount(props: {
+  readonly ready: WatchReady;
+  readonly now: string;
+}): Shown {
+  const { ready, now } = props;
+  if ("failure" in ready)
+    return element("span", {
+      class: "line-ready",
+      title: ready.failure,
+      children: "Ready list failed",
+    });
+  return [
+    element("span", {
+      class: "line-ready",
+      children: `${String(ready.count)} ready`,
+    }),
+    ready.oldestAt === null
+      ? null
+      : element("span", {
+          class: "line-wait",
+          children: `oldest ${stepAge(ready.oldestAt, now)}`,
+        }),
+  ];
+}
+
 export function LineEnd(props: {
   readonly workflow: WatchWorkflow;
   readonly now: string;
 }): Shown {
-  const next = nextRunText(props.workflow.schedule, props.now);
+  const { ready, schedule } = props.workflow;
+  const next = nextRunText(schedule, props.now);
   return element("div", {
     class: "line-end",
-    children:
+    children: [
+      ready === undefined
+        ? null
+        : component(ReadyCount, { ready, now: props.now }),
       next === ""
         ? null
         : element("span", { class: "line-next", children: next }),
+    ],
   });
 }
 

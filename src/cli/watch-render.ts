@@ -131,8 +131,13 @@ export interface WatchStation {
   readonly tokens: readonly WatchToken[];
 }
 
+export type WatchReady =
+  | { readonly count: number; readonly oldestAt: string | null }
+  | { readonly failure: string };
+
 export interface WatchWorkflow {
   readonly schedule?: ShownSchedule;
+  readonly ready?: WatchReady;
   readonly workflowId: string;
   readonly activeCount: number;
   readonly waitingCount: number;
