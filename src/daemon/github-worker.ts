@@ -8,7 +8,7 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
 import { retriedOperation } from "./git-retry.ts";
-import { observer } from "./github-operation.ts";
+import { payloadOf } from "./github-operation.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
@@ -128,7 +128,13 @@ async function outcome(
         target: intent.target,
         payload,
         signal,
-        observe: observer(settings.observe, { ...intent, key: run.key }),
+        observe: async ({ notice, ...observation }) =>
+          settings.observe?.({
+            ...observation,
+            runId: intent.runId,
+            operationId: intent.operationId,
+            commandId: `github:${run.key}:${notice}`,
+          }),
       }),
     );
     return {
@@ -192,19 +198,6 @@ function ownIntent(intent: DeliveryIntent): intent is ProtectedIntent {
     intent.payload !== undefined &&
     intent.leaseGeneration !== undefined
   );
-}
-
-function payloadOf(
-  text: string,
-): Readonly<Record<string, unknown>> | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? { ...value }
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function failure(reason: string): AdapterOutcome {

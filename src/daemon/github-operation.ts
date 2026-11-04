@@ -43,23 +43,15 @@ export interface Operation {
   ) => Promise<{ readonly kind: string } | undefined>;
 }
 
-export function observer(
-  observe:
-    | ((report: ObservationReport) => Promise<{ readonly kind: string }>)
-    | undefined,
-  identity: {
-    readonly runId: string;
-    readonly operationId: string;
-    readonly key: string;
-  },
-): NonNullable<Operation["observe"]> {
-  return async ({ notice, ...observation }) =>
-    observe?.({
-      ...observation,
-      runId: identity.runId,
-      operationId: identity.operationId,
-      commandId: `github:${identity.key}:${notice}`,
-    });
+export function payloadOf(text: string): Operation["payload"] | undefined {
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? { ...value }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Place {
