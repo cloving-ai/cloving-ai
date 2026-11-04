@@ -986,6 +986,7 @@
     "test/generic-settings.test.ts": "test",
     "test/generic-worker.test.ts": "test",
     "test/github-api-fixture.ts": "test",
+    "test/github-attach-description.test.ts": "test",
     "test/github-attach-files.test.ts": "test",
     "test/github-attach-fixture.ts": "test",
     "test/github-attach.test.ts": "test",
