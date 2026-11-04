@@ -96,6 +96,7 @@
     "dist/src",
     "dist/tools",
     "templates",
+    "themes",
     "assets/watch-fonts/fira-code-latin-400-normal.woff2",
     "assets/watch-fonts/fira-code-latin-500-normal.woff2",
     "assets/watch-fonts/fira-code-OFL.md",

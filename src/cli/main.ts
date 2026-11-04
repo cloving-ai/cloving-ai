@@ -10,6 +10,7 @@ import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
 import { runtimeCommand } from "./commands.ts";
+import { themesCommand } from "./themes-command.ts";
 import { mcpServer } from "./mcp-server.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
@@ -31,6 +32,7 @@ const helpTexts = {
   "doctor-help": String(commandUsage["doctor"]),
   "config-help": configUsage,
   "mcp-help": String(commandUsage["mcp"]),
+  "themes-help": String(commandUsage["themes"]),
 };
 
 function helpInvocation(
@@ -104,15 +106,15 @@ function isInspection(
   invocation: Invocation,
 ): invocation is Extract<
   Invocation,
-  { readonly kind: "doctor" | "init-prompt" | "init" }
+  { readonly kind: "doctor" | "init-prompt" | "init" | "themes" }
 > {
-  return ["doctor", "init-prompt", "init"].includes(invocation.kind);
+  return ["doctor", "init-prompt", "init", "themes"].includes(invocation.kind);
 }
 
 async function inspectionCommand(
   invocation: Extract<
     Invocation,
-    { readonly kind: "doctor" | "init-prompt" | "init" }
+    { readonly kind: "doctor" | "init-prompt" | "init" | "themes" }
   >,
   context: {
     readonly doctorProbe?: ProbeRunner;
@@ -123,6 +125,8 @@ async function inspectionCommand(
     readonly environment: Readonly<NodeJS.ProcessEnv>;
   },
 ): Promise<number> {
+  if (invocation.kind === "themes")
+    return await themesCommand({ ...context, json: invocation.json });
   const probe = context.doctorProbe;
   if (probe === undefined)
     throw new Error(`${invocation.kind}-probe-unavailable`);

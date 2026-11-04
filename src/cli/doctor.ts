@@ -16,6 +16,7 @@ import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
+import { themeObservation } from "./doctor-theme.ts";
 import {
   commandObservation,
   nodeObservation,
@@ -106,6 +107,9 @@ async function repositoryObservations(
     "settings-files": configured.observation,
   };
   const settingsValid = configured.observation.result === "ok";
+  observations["theme"] = settingsValid
+    ? await themeObservation({ repository, environment })
+    : { result: "skip", detail: "Settings files are invalid" };
   const location = await runtimeObservation(repository, { environment, probe });
   observations["runtime-directory"] = location.observation;
   observations["service"] = await serviceObservation(location, {
