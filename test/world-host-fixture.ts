@@ -179,6 +179,10 @@ export interface Consumer {
     environment?: Readonly<Record<string, string | undefined>>,
   ) => Promise<ChildResult>;
   readonly runUntil: (boundary: string, script: string) => Promise<ChildResult>;
+  readonly runWithin: (
+    script: string,
+    milliseconds: number,
+  ) => Promise<ChildResult>;
 }
 
 function child(
@@ -187,6 +191,7 @@ function child(
     readonly directory: string;
     readonly environment: Readonly<Record<string, string | undefined>>;
     readonly boundary?: string;
+    readonly milliseconds?: number;
   },
 ): Promise<ChildResult> {
   return new Promise((resolve, reject) => {
@@ -201,7 +206,7 @@ function child(
           : { NODE_V8_COVERAGE: undefined }),
       },
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: testMilliseconds(45_000),
+      timeout: options.milliseconds ?? testMilliseconds(45_000),
     });
     const output = { stdout: "", stderr: "" };
     started.stdout.on("data", (chunk: Buffer) => {
@@ -287,6 +292,7 @@ async function linkedPackages(directory: string): Promise<void> {
         "./workflows/steps/review-subject": "./src/steps/review-subject.ts",
         "./workflows/steps/handoff": "./src/steps/handoff.ts",
         "./workflows/steps/wait-for-run": "./src/steps/wait-for-run.ts",
+        "./workflows/steps/run-wait": "./src/steps/run-wait.ts",
         "./workflows/steps/run-command": "./src/steps/run-command.ts",
         "./workflows/steps/sleep": "./src/steps/sleep.ts",
         "./workflows/steps/wait-for-command": "./src/steps/wait-for-command.ts",
@@ -364,27 +370,22 @@ export async function withConsumer<Result>(
       WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "1",
       WORKFLOW_INLINE_OWNERSHIP_LEASE_SECONDS: "2",
     };
-    const scenario = async (script: string): Promise<void> => {
+    const scenario = async (
+      script: string,
+      options: Omit<Parameters<typeof child>[1], "directory">,
+    ): Promise<ChildResult> => {
       await writeFile(join(directory, "scenario.mjs"), prelude + script);
+      return await child(["scenario.mjs"], { directory, ...options });
     };
     return await use({
       directory,
       world,
-      run: async (script, overrides = {}) => {
-        await scenario(script);
-        return await child(["scenario.mjs"], {
-          directory,
-          environment: { ...environment, ...overrides },
-        });
-      },
-      runUntil: async (boundary, script) => {
-        await scenario(script);
-        return await child(["scenario.mjs"], {
-          directory,
-          environment,
-          boundary,
-        });
-      },
+      run: (script, overrides = {}) =>
+        scenario(script, { environment: { ...environment, ...overrides } }),
+      runUntil: (boundary, script) =>
+        scenario(script, { environment, boundary }),
+      runWithin: (script, milliseconds) =>
+        scenario(script, { environment, milliseconds }),
     });
   } finally {
     await rm(directory, { recursive: true, force: true });

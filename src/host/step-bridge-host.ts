@@ -14,7 +14,8 @@ export type {
   GateReceipt,
   WaitRegistration,
 } from "./gate-bridge.ts";
-import { runWait, type RunWaitPorts } from "./run-wait.ts";
+import { retriedOutcome, runWait, type RunWaitPorts } from "./run-wait.ts";
+import type { RunWaitChecks } from "../run-wait.ts";
 import { reconciledDecision } from "./decision-resume.ts";
 import { taggedRuns } from "./world-runs.ts";
 import {
@@ -23,6 +24,8 @@ import {
   type GateResult,
   type ProtectedRequest,
   type ProtectedResult,
+  type RunWaitCheck,
+  type RunWaitProgress,
   type StepBridge,
 } from "../step-bridge.ts";
 
@@ -73,6 +76,7 @@ export interface BridgeTiming {
   readonly lookupTries: number;
   readonly pollMilliseconds: number;
   readonly retryMilliseconds: number;
+  readonly runWaitChecks?: RunWaitChecks | undefined;
 }
 
 export const bridgeTiming: BridgeTiming = {
@@ -285,6 +289,27 @@ async function gate(hold: Hold, request: GateRequest): Promise<GateResult> {
   return await openBridgeGate(hold.ports, subject);
 }
 
+async function checkRunWait(
+  hold: Hold,
+  request: RunWaitCheck,
+): Promise<RunWaitProgress> {
+  const call = hold.ports.call();
+  const world = await located(hold, call.worldRunId);
+  const ports = hold.ports.runWait;
+  if (
+    world === undefined ||
+    ports === undefined ||
+    call.startedAt === undefined
+  )
+    throw new Error("cloving-host-unavailable");
+  await inWork(hold, world.runId);
+  return await runWait(ports, {
+    caller: { ...world, stepId: call.stepId, stepStartedAt: call.startedAt },
+    request,
+    checks: hold.timing.runWaitChecks,
+  });
+}
+
 function hostCommandWait(hold: Hold) {
   return commandWaitBridge({
     ...(hold.ports.commandWait === undefined
@@ -329,21 +354,9 @@ export function stepBridge(ports: BridgePorts): StepBridge {
         subject,
       );
     },
-    waitForRun: async (request) => {
-      const call = ports.call();
-      const world = await located(hold, call.worldRunId);
-      if (
-        world === undefined ||
-        ports.runWait === undefined ||
-        call.startedAt === undefined
-      )
-        throw new Error("cloving-host-unavailable");
-      await inWork(hold, world.runId);
-      return await runWait(ports.runWait, {
-        caller: { ...world, stepId: call.stepId, startedAt: call.startedAt },
-        request,
-      });
-    },
+    checkRunWait: (request) => checkRunWait(hold, request),
+    waitForRun: async ({ runId, maximumWaitSeconds }) =>
+      retriedOutcome(await checkRunWait(hold, { runId, maximumWaitSeconds })),
     handoff: (request) =>
       effect(hold, {
         scope: {

@@ -222,7 +222,7 @@ for (const work of ["start", "effect"])
           { runId: "run-1", maximumWaitSeconds: 1 },
           {
             callerRunId: "parent",
-            startedAt: Date.parse(noon),
+            stepStartedAt: Date.parse(noon),
             now: Date.parse(noon) + 9000,
             target: { ...target, parentRunId: "parent" },
           },

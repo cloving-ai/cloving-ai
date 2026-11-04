@@ -1,85 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { withConsumer } from "./world-host-fixture.ts";
-import { queuePrelude } from "./daemon-queue-fixture.ts";
+import {
+  runWaitPrelude as prelude,
+  runWaitWorkflow as workflow,
+} from "./run-wait-sdk-fixture.ts";
 
-const workflow = `
-import { appendFileSync, existsSync } from "node:fs";
-import { RetryableError } from "workflow";
-import { handoff } from "cloving/workflows/steps/handoff";
-import { waitForRun } from "cloving/workflows/steps/wait-for-run";
-export async function finish(input) {
-  "use step";
-  if (existsSync("hold-target")) throw new RetryableError("held", { retryAfter: 1000 });
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "size-small", reason: "small ticket" };
-}
-finish.maxRetries = 100;
-export async function received(outcome) {
-  "use step";
-  appendFileSync("outcomes", JSON.stringify(outcome) + "\\n");
-}
-export async function queue(input) {
-  "use workflow";
-  const target = input.input.target ?? await handoff({ workflowId: "size-ticket", input: {} });
-  let outcome;
-  try {
-    outcome = await waitForRun({ runId: target, maximumWaitSeconds: input.input.seconds ?? 60 });
-  } catch (error) {
-    return { kind: "blocked", cycleId: input.cycleId, evidenceId: "fixture", reason: error.message };
-  }
-  await received(outcome);
-  const next = await handoff({ workflowId: "take-ticket", input: { verdict: outcome.promotionId } });
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: next };
-}
-export async function size(input) {
-  "use workflow";
-  return await finish(input);
-}
-export async function take(input) {
-  "use workflow";
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: input.input.verdict };
-}
-export async function fanout(input) {
-  "use workflow";
-  const targets = [];
-  for (let index = 0; index < 3; index += 1) targets.push(await handoff({ workflowId: "size-ticket", input: {} }));
-  const outcomes = [];
-  for (const runId of targets) outcomes.push({ runId, ...await waitForRun({ runId, maximumWaitSeconds: 60 }) });
-  await received(outcomes);
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "all-small" };
-}
-`;
+const everySecond =
+  "{ runWaitChecks: { firstMilliseconds: 1000, maximumMilliseconds: 1000 } }";
 
-const prelude = `${queuePrelude}
-settings.queueMilliseconds = undefined;
-for (const name of ["queue", "size", "take", "fanout"]) {
-  const definition = Object.values(compiled.workflows).flatMap(Object.values).find((entry) => entry.workflowId.endsWith("//" + name));
-  writeFileSync(name + ".workflow.json", JSON.stringify({ schemaVersion: 1, name, workflowId: definition.workflowId, steps: [], capabilities: [], resources: [], artifacts: "artifacts" }));
-  settings.manifests[name] = directory + "/" + name + ".workflow.json";
-  settings.workflows[name] = workflows[name];
-}
-settings.declarations = [
-  { workflowId: "queue", functionName: "queue", effectLimit: 2, capabilities: [], handoffs: ["size-ticket", "take-ticket"], input: { maximumBytes: 4096, fields: { target: { type: "string", optional: true }, seconds: { type: "integer", optional: true } } } },
-  { workflowId: "size-ticket", functionName: "size", effectLimit: 0, capabilities: [], input: { maximumBytes: 4096, fields: {} } },
-  { workflowId: "take-ticket", functionName: "take", effectLimit: 0, capabilities: [], input: { maximumBytes: 4096, fields: { verdict: { type: "string" } } } },
-];
-const source = () => submitted("queue-root", { workflowId: "queue", source: "input", submission: {} });
-const ended = (runId) => until(async () => { const run = await shown(runId); return ["completed", "failed", "cancelled"].includes(run?.state) ? run : undefined; }).catch(async (error) => { print({ diagnostic: await shown(runId), sdk: await (await getWorld()).runs.list({ resolveData: "none" }), events: (await asked("events", { after: 0, limit: 1000, runId })).events }); throw error; });
-`;
-
-await test("CLV-180 compiled wait survives a host crash and continues with the child's outcome", () =>
+await test("CLV-285 compiled wait survives a host crash, resumes its checks and continues with the child's outcome", () =>
   withConsumer(workflow, async (consumer) => {
     const first = await consumer.runUntil(
       "waiting-for-child",
       `${prelude}
-writeFileSync("hold-target", "");
-await launched();
+writeFileSync("hold-retry", "");
+await launched(${everySecond});
 const root = await source();
 const waiting = await until(async () => { const run = await shown(root.runId); return run.condition === "waiting-run" ? run : undefined; });
-const world = await getWorld();
-const sdkRunId = (await world.runs.list({ resolveData: "none" })).data.find((run) => run.attributes["cloving.run"] === root.runId).runId;
-await until(async () => (await world.steps.list({ runId: sdkRunId, resolveData: "none" })).data.some((step) => step.stepName.endsWith("//waitForRun") && step.attempt >= 5 && step.status === "pending"));
-await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.awaitedRunId });
+await until(async () => (await checkSteps(root.runId)).filter((step) => step.status === "completed").length >= 2 && (await sleeping(root.runId)));
+await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.awaitedRunId, checks: (await checkSteps(root.runId)).length });
 `,
     );
     const boundary = first.lines[0];
@@ -92,15 +32,21 @@ await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.await
     );
     assert.equal(boundary.boundary, "waiting-for-child", first.stderr);
     assert.ok(
-      typeof boundary.runId === "string" &&
-        typeof boundary.awaitedRunId === "string",
+      "checks" in boundary &&
+        typeof boundary.runId === "string" &&
+        typeof boundary.awaitedRunId === "string" &&
+        typeof boundary.checks === "number",
       first.stderr,
     );
     const restarted = await consumer.run(`${prelude}
-rmSync("hold-target");
-const daemon = await launched();
+const daemon = await launched(${everySecond});
 try {
   const root = await source();
+  await until(async () => (await checkSteps(root.runId)).filter((step) => step.status === "completed").length > ${String(boundary.checks)});
+  const resumed = await shown(root.runId);
+  assert.equal(resumed.condition, "waiting-run");
+  assert.equal(resumed.awaitedRunId, ${JSON.stringify(boundary.awaitedRunId)});
+  rmSync("hold-retry");
   const completed = await ended(root.runId);
   assert.equal(completed.outcome?.kind, "handoff_requested", JSON.stringify(completed));
   assert.equal(completed.awaitedRunId, null);
@@ -122,6 +68,66 @@ try {
     ]);
   }));
 
+const earlier = `
+settings.workflows.queue = workflows.earlier;
+settings.manifests.queue = settings.manifests.earlier;
+settings.declarations[0].functionName = "earlier";
+const earlierStep = async (runId) => (await (await getWorld()).steps.list({ runId: await sdkRun(runId), resolveData: "none", pagination: { limit: 1000 } })).data.find((step) => step.stepName.endsWith("//earlierWaitForRun"));
+`;
+
+await test("CLV-285 a wait step compiled before the check step resumes after a host crash and returns the child's outcome", () =>
+  withConsumer(workflow, async (consumer) => {
+    const first = await consumer.runUntil(
+      "earlier-wait-retrying",
+      `${prelude}${earlier}
+writeFileSync("hold-retry", "");
+await launched(${everySecond});
+const root = await source();
+const waiting = await until(async () => { const run = await shown(root.runId); return run.condition === "waiting-run" ? run : undefined; });
+await until(async () => (await earlierStep(root.runId))?.attempt >= 2 && (await worldEvents(root.runId)).at(-1)?.eventType === "step_retrying");
+await halt("earlier-wait-retrying", { awaitedRunId: waiting.awaitedRunId, attempts: (await earlierStep(root.runId)).attempt });
+`,
+    );
+    const boundary = first.lines[0];
+    assert.ok(typeof boundary === "object" && boundary !== null, first.stderr);
+    assert.ok(
+      "boundary" in boundary &&
+        "awaitedRunId" in boundary &&
+        "attempts" in boundary,
+      first.stderr,
+    );
+    assert.equal(boundary.boundary, "earlier-wait-retrying", first.stderr);
+    assert.ok(
+      typeof boundary.awaitedRunId === "string" &&
+        typeof boundary.attempts === "number",
+      first.stderr,
+    );
+    const restarted = await consumer.run(`${prelude}${earlier}
+const daemon = await launched(${everySecond});
+try {
+  const root = await source();
+  rmSync("hold-retry");
+  const completed = await ended(root.runId);
+  assert.equal(completed.outcome?.kind, "handoff_requested", JSON.stringify(completed));
+  assert.equal(completed.outcome.promotionId, "size-small");
+  assert.equal(completed.awaitedRunId, null);
+  const step = await earlierStep(root.runId);
+  assert.equal(step.status, "completed");
+  assert.ok(step.attempt > ${String(boundary.attempts)}, String(step.attempt));
+  assert.deepEqual(readFileSync("outcomes", "utf8").trim().split("\\n").map(JSON.parse), [{ kind: "handoff_requested", reason: "small ticket", promotionId: "size-small" }]);
+  print({ awaitedRunId: (await runs()).find((run) => run.workflowId === "size-ticket").runId });
+} finally { await daemon.close(); }
+`);
+    assert.equal(
+      restarted.status,
+      0,
+      restarted.stderr + JSON.stringify(restarted.lines),
+    );
+    assert.deepEqual(restarted.lines, [
+      { awaitedRunId: boundary.awaitedRunId },
+    ]);
+  }));
+
 await test("CLV-180 a replay before the wait checkpoint returns the same outcome", () =>
   withConsumer(workflow, async (consumer) => {
     const first = await consumer.runUntil(
@@ -132,7 +138,7 @@ const create = world.events.create.bind(world.events);
 world.events.create = async (...given) => {
   if (given[1]?.eventType !== "step_completed") return await create(...given);
   const step = await world.steps.get(given[0], given[1].correlationId, { resolveData: "none" });
-  if (step.stepName.endsWith("//waitForRun")) return await halt("before-wait-checkpoint");
+  if (step.stepName.endsWith("//checkRunWait")) return await halt("before-wait-checkpoint");
   return await create(...given);
 };
 await launched();
