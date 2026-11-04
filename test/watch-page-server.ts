@@ -3,8 +3,9 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import assert from "node:assert/strict";
 import { pageDocument } from "../src/cli/watch-page.ts";
+import type { WatchModel } from "../src/cli/watch-render.ts";
 
-export async function watchPageServer(shown: unknown, hash: string) {
+export async function watchPageServer(shown: WatchModel, hash: string) {
   const preact = await readFile(new URL(import.meta.resolve("preact")));
   const page = pageDocument().replace(/<link rel="stylesheet"[^>]*>/, "");
   const model = JSON.stringify(shown);

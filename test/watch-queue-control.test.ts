@@ -5,7 +5,7 @@ import type { WatchModel } from "../src/cli/watch-render.ts";
 import { Page, type QueueControls } from "../src/cli/watch-view.ts";
 import { played } from "./watch-browser.ts";
 import { found, rendered } from "./watch-dom.ts";
-import { floorModel } from "./watch-floor-fixture.ts";
+import { floorModel, floorRun } from "./watch-floor-fixture.ts";
 import { noCopy } from "./watch-sample.ts";
 
 const controls: QueueControls = {
@@ -25,8 +25,11 @@ function shown(model: WatchModel, queue?: QueueControls) {
   });
 }
 
-function queued(state?: string): WatchModel {
-  return floorModel([], {
+function queued(
+  state?: string,
+  runs: readonly Record<string, unknown>[] = [],
+): WatchModel {
+  return floorModel(runs, {
     queue: {
       busy: 0,
       lanes: 2,
@@ -65,6 +68,27 @@ await test("CLV-286 the header shows a queue control that drains a running queue
   );
   assert.equal(control(queued("running")), undefined);
   assert.equal(control(queued(), controls), undefined);
+});
+
+await test("CLV-286 the run detail of a token keeps the queue control and its message in the header", () => {
+  const model = queued("running", [
+    floorRun("pr-583", { operation: "github-merge", ticketId: "583" }),
+  ]);
+  const html = rendered(
+    component(Page, {
+      model,
+      selected: "run=pr-583",
+      now: model.updatedAt,
+      stale: false,
+      copying: noCopy,
+      queue: { ...controls, message: "Refresh the page." },
+    }),
+  );
+  assert.match(html, /<section class="banner working">[\s\S]*pr-583/);
+  assert.match(
+    html,
+    /<div class="header-actions"><button type="button" class="queue-control">Drain queue<\/button><span class="queue-message">Refresh the page\.<\/span><\/div><\/header>/,
+  );
 });
 
 await test("CLV-286 the queue control posts its command with the page token and loads the page data again", () => {

@@ -225,7 +225,7 @@ export function Page(props: PageProps): Shown {
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
     return [
-      head,
+      component(Header, { model, stale, queue: props.queue }),
       down,
       component(Queue, { model }),
       component(RefusedWorkflows, { model }),

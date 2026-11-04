@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { boardLayout } from "../src/cli/watch-board-view.ts";
+import type { WatchModel } from "../src/cli/watch-render.ts";
 import {
   boardEvent,
   boardModel,
@@ -29,7 +30,7 @@ function overflowingBoard() {
   });
 }
 
-function watchFixture(shown: unknown = overflowingBoard()) {
+function watchFixture(shown: WatchModel = overflowingBoard()) {
   return watchPageServer(shown, "#workflow=develop-issue");
 }
 
