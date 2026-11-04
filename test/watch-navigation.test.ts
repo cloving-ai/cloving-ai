@@ -9,7 +9,7 @@ import { pageTitle } from "../src/cli/watch-render.ts";
 import { activeBoardModel, completionScenario } from "./watch-board-fixture.ts";
 import { played } from "./watch-browser.ts";
 
-const model = { ...activeBoardModel(), startWorkflowId: "develop-ticket" };
+const model = activeBoardModel();
 
 await test("CLV-091 the original and later card links each navigate to their own run", () => {
   const model = completionScenario({ stopped: "A /&", later: "B /&" });
@@ -44,7 +44,7 @@ console.log(JSON.stringify({ pages }));
   assert.doesNotMatch(pages, /Ticket completed by later run|Needs attention/);
 });
 
-await test("CLV-079 absent and unknown workflows show the starting board without changing the hash", () => {
+await test("CLV-286 absent and unknown workflows show the floor without changing the hash", () => {
   const result = played(
     model,
     `
@@ -69,8 +69,12 @@ console.log(JSON.stringify({ pages, requests, scrolled }));
     }),
     ["", "#workflow=missing", "#workflow=develop-issue"],
   );
-  assert.match(JSON.stringify(pages.slice(0, 2)), /develop-ticket · Cloving/);
+  for (const page of pages.slice(0, 2)) {
+    assert.match(JSON.stringify(page), /Floor · Cloving/);
+    assert.match(JSON.stringify(page), /class=\\"floor\\"/);
+  }
   assert.match(JSON.stringify(pages[2]), /develop-issue · Cloving/);
+  assert.doesNotMatch(JSON.stringify(pages[2]), /class=\\"floor\\"/);
   assert.deepEqual(result["requests"], ["data.json", "data.json", "data.json"]);
   assert.deepEqual(result["scrolled"], []);
 });
@@ -109,7 +113,7 @@ console.log(JSON.stringify({ board, run, back }));
   assert.deepEqual(result["back"], result["board"]);
 });
 
-await test("CLV-079 unavailable saved runs show a full page with the requested or starting board back link", () => {
+await test("CLV-079 unavailable saved runs show a full page with the requested board or floor back link", () => {
   const result = played(
     model,
     `
@@ -126,10 +130,7 @@ console.log(JSON.stringify({ pages, requests }));
   );
   const pages = result["pages"];
   assert.ok(Array.isArray(pages));
-  assert.match(
-    String(pages[0]),
-    /href="#workflow=develop-ticket">← Back to develop-ticket/,
-  );
+  assert.match(String(pages[0]), /href="#">← Back to the floor/);
   assert.match(
     String(pages[1]),
     /href="#workflow=develop-issue">← Back to develop-issue/,
@@ -190,8 +191,5 @@ await test("CLV-079 titles keep run status on full pages and handle an empty wor
     watchTitle(model, "workflow=develop-issue&run=round-2"),
     pageTitle(model, "round-2"),
   );
-  assert.equal(
-    watchTitle({ ...model, workflows: [], startWorkflowId: null }, ""),
-    "Cloving",
-  );
+  assert.equal(watchTitle({ ...model, workflows: [] }, ""), "Floor · Cloving");
 });

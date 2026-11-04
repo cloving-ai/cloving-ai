@@ -230,46 +230,6 @@ await test("CLV-077 step cards put pending decisions first and then order each g
   assert.equal(ticket.latestAt, null);
 });
 
-await test("CLV-077 start workflow prefers pending decisions and breaks ties by the newest event among all workflow runs", () => {
-  const issue = boardRun("issue", {
-    state: "waiting_gate",
-    latestAt: "2026-10-14T09:00:00Z",
-  });
-  const ticket = boardRun("ticket", {
-    workflowId: "develop-ticket",
-    state: "waiting_gate",
-    latestAt: "2026-10-14T10:00:00Z",
-  });
-  const prompt = boardRun("prompt", { workflowId: "develop-prompt" });
-  assert.equal(
-    boardModel([issue, ticket, prompt], {
-      decisions: [{ runId: "issue" }, { runId: "ticket" }],
-    }).startWorkflowId,
-    "develop-ticket",
-  );
-  assert.equal(
-    boardModel([issue, ticket, prompt], { decisions: [{ runId: "issue" }] })
-      .startWorkflowId,
-    "develop-issue",
-  );
-  assert.equal(
-    boardModel([issue, ticket, prompt]).startWorkflowId,
-    "develop-prompt",
-  );
-  assert.equal(boardModel([]).startWorkflowId, "develop-issue");
-  assert.equal(boardModel([], { workflows: [] }).startWorkflowId, null);
-  const summaries = [
-    {
-      runId: "old",
-      workflowId: "develop-ticket",
-      state: "completed",
-      latestAt: "2020-01-01T00:00:00Z",
-      pendingDecisions: [],
-    },
-  ];
-  assert.equal(boardModel([], { summaries }).startWorkflowId, "develop-ticket");
-});
-
 await test("CLV-077 issue cards retain the last Claude round, Greptile score and pull request number", () => {
   const githubRecords = (
     [
