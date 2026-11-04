@@ -11,6 +11,7 @@ import {
   type Operation,
 } from "./github-operation.ts";
 import { githubRead } from "./github-retry.ts";
+import { inTurn } from "./merge-turns.ts";
 
 type Place = "comment" | "description";
 
@@ -212,19 +213,13 @@ async function pullBody(operation: Operation, number: number): Promise<string> {
 
 function attachedUrl(
   body: string,
-  marks: {
-    readonly start: string;
-    readonly end: string;
-    readonly reference: string;
-  },
+  marks: { readonly start: string; readonly end: string },
 ): string {
   const from = body.indexOf(marks.start);
   const to = from < 0 ? -1 : body.indexOf(marks.end, from);
-  const section = to < 0 ? "" : body.slice(from, to);
-  const url = /https:\/\/github\.com\/user-attachments\/assets\/[\w-]+/.exec(
-    section,
-  )?.[0];
-  if (url === undefined || section.includes(marks.reference))
+  const url =
+    to < 0 ? "" : (body.slice(from, to).trimEnd().split("\n").at(-1) ?? "");
+  if (!/^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/.test(url))
     throw new Error("github-call-failed");
   return url;
 }
@@ -236,26 +231,32 @@ async function described(
   const { number, name } = attachment;
   const start = `<!-- cloving-attachment:${String(number)}:${name} -->`;
   const end = `<!-- /cloving-attachment:${String(number)}:${name} -->`;
-  const reference = `![${name}](./${name})`;
-  const body = withSection(await pullBody(operation, number), {
-    start,
-    end,
-    section: `${start}\n${attachment.comment}\n\n${reference}\n${end}`,
-  });
+  const section = `${start}\n${attachment.comment}\n\n![${name}](./${name})\n${end}`;
   const copy = join(operation.folder, name);
   const text = join(operation.folder, "body.md");
+  const turn = {
+    key: `${operation.settings.repository}#pull-${String(number)}`,
+    signal: operation.signal,
+  };
   try {
     await copiedAttachment(attachment.file, copy);
-    await writeFile(text, body, "utf8");
-    await operation.calls.gh([
-      "pr",
-      "edit",
-      String(number),
-      "--body-file",
-      text,
-      "--attach",
-      copy,
-    ]);
+    await inTurn(turn, async () => {
+      const current = await pullBody(operation, number);
+      await writeFile(
+        text,
+        withSection(current, { start, end, section }),
+        "utf8",
+      );
+      await operation.calls.gh([
+        "pr",
+        "edit",
+        String(number),
+        "--body-file",
+        text,
+        "--attach",
+        copy,
+      ]);
+    });
   } finally {
     await rm(copy, { force: true });
     await rm(text, { force: true });
@@ -263,7 +264,6 @@ async function described(
   return attachedUrl(await pullBody(operation, number), {
     start,
     end,
-    reference,
   });
 }
 

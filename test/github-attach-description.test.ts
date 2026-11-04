@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { methods } from "../src/daemon/github-methods.ts";
@@ -94,5 +95,43 @@ await test("CLV-282 a body that keeps the local reference after the edit fails",
         operation(scene, { payload: description, gh: fakeGh(scene, state) }),
       ),
       /github-call-failed/,
+    );
+  }));
+
+await test("CLV-282 an attachment link in the text does not replace the new player URL", () =>
+  withScene(async (scene) => {
+    assert.ok(attach);
+    const state: GithubState = { releases: [], comments: [], pullBody: "" };
+    const result = await attach(
+      operation(scene, {
+        payload: {
+          ...description,
+          comment:
+            "Demo of the change. Before: https://github.com/user-attachments/assets/old-demo",
+        },
+        gh: fakeGh(scene, state),
+      }),
+    );
+    assert.deepEqual(result, { number: 12, url: playerUrl });
+  }));
+
+await test("CLV-282 two description attaches on one pull request keep both blocks", () =>
+  withScene(async (scene) => {
+    assert.ok(attach);
+    await writeFile(join(scene.attachments, "other.mp4"), video);
+    const state: GithubState = { releases: [], comments: [], pullBody: "" };
+    const gh = fakeGh(scene, state);
+    await Promise.all([
+      attach(operation(scene, { payload: description, gh })),
+      attach(
+        operation(scene, {
+          payload: { ...description, name: "other.mp4" },
+          gh,
+        }),
+      ),
+    ]);
+    assert.ok(state.pullBody?.includes(start));
+    assert.ok(
+      state.pullBody?.includes("<!-- cloving-attachment:12:other.mp4 -->"),
     );
   }));
