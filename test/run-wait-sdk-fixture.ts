@@ -82,8 +82,9 @@ settings.declarations = [
 ];
 const source = () => submitted("queue-root", { workflowId: "queue", source: "input", submission: {} });
 const ended = (runId) => until(async () => { const run = await shown(runId); return ["completed", "failed", "cancelled"].includes(run?.state) ? run : undefined; }).catch(async (error) => { print({ diagnostic: await shown(runId), sdk: await (await getWorld()).runs.list({ resolveData: "none" }), events: (await asked("events", { after: 0, limit: 1000, runId })).events }); throw error; });
-const sdkRun = async (runId) => (await (await getWorld()).runs.list({ resolveData: "none" })).data.find((run) => run.attributes["cloving.run"] === runId).runId;
-const checkSteps = async (runId) => (await (await getWorld()).steps.list({ runId: await sdkRun(runId), resolveData: "none", pagination: { limit: 1000 } })).data.filter((step) => step.stepName.endsWith("//checkRunWait"));
+const worldRun = async (runId) => (await (await getWorld()).runs.list({ resolveData: "none" })).data.find((run) => run.attributes["cloving.run"] === runId);
+const sdkRun = async (runId) => { const run = await worldRun(runId); assert.ok(run, "world-run-missing " + runId); return run.runId; };
+const checkSteps = async (runId) => { const run = await worldRun(runId); return run === undefined ? [] : (await (await getWorld()).steps.list({ runId: run.runId, resolveData: "none", pagination: { limit: 1000 } })).data.filter((step) => step.stepName.endsWith("//checkRunWait")); };
 const sleeping = async (runId) => (await worldEvents(runId)).at(-1)?.eventType === "wait_created";
 const worldEvents = async (runId) => (await (await getWorld()).events.list({ runId: await sdkRun(runId), pagination: { limit: 10000 } })).data;
 `;
