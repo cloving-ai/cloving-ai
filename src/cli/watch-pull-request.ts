@@ -46,6 +46,7 @@ interface GithubResult {
   readonly round: number;
   readonly startedAt: number;
   readonly method: string;
+  readonly attachment: string;
   readonly completed: boolean;
   readonly attributed: boolean;
   readonly report: Fields;
@@ -92,6 +93,10 @@ function githubOf(records: GithubRecords): GithubResult {
     round: Number(operation[1]),
     startedAt: Date.parse(text(started["startedAt"])) || 0,
     method: text(started["method"]),
+    attachment:
+      started["method"] === "attach-asset"
+        ? text(record(parsed(text(started["payloadText"])))["name"])
+        : "",
     completed,
     attributed:
       attributed(started, operation) && !Object.hasOwn(result, "reason"),
@@ -112,6 +117,20 @@ function pullRequestOf(
   return repository === null || prIdentity(repository, pull) !== null
     ? pull
     : null;
+}
+
+function demoOf(results: readonly GithubResult[]): string | null {
+  return (
+    results
+      .filter(
+        (item) =>
+          item.method === "attach-asset" &&
+          item.completed &&
+          /\.(?:mp4|webm)$/.test(item.attachment),
+      )
+      .map((item) => text(item.report["url"]))
+      .findLast((url) => url.startsWith("https://")) ?? null
+  );
 }
 
 function reviewsOf(results: readonly GithubResult[]): WatchReview[] {
@@ -190,7 +209,7 @@ export function pullOf(
   runId: string,
 ): Pick<
   WatchRun,
-  "pullRequest" | "reviews" | "mergeCommit" | "mergeProof" | "ciReruns"
+  "pullRequest" | "reviews" | "mergeCommit" | "mergeProof" | "ciReruns" | "demo"
 > {
   const results = inputs.records
     .map(githubOf)
@@ -204,6 +223,7 @@ export function pullOf(
     repository: inputs.repository,
     pullRequest,
   });
+  const demo = demoOf(results);
   const ciReruns = inputs.records
     .filter((item) => record(item.started)["runId"] === runId)
     .flatMap((item) => item.ciReruns ?? []);
@@ -213,5 +233,6 @@ export function pullOf(
     mergeCommit: mergeCommitOf(results),
     ...(ciReruns.length === 0 ? {} : { ciReruns }),
     ...(mergeProof === null ? {} : { mergeProof }),
+    ...(demo === null ? {} : { demo }),
   };
 }
