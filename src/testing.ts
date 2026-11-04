@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
 import { authorizeEffect, type EffectRequest } from "./effect-authorization.ts";
+import { runWaitCheckAt } from "./run-wait.ts";
 import {
   scenarioResult,
   type ScenarioRequest,
@@ -22,6 +23,12 @@ import {
   type CommandWaitProgress,
 } from "./step-bridge.ts";
 
+interface RunWaitPending {
+  readonly kind: "waiting";
+}
+
+export type RunWaitAnswer = RunWaitOutcome | RunWaitPending;
+
 export interface StepScenario {
   readonly commandWaits?: Readonly<
     Record<string, readonly CommandWaitProgress[]>
@@ -29,7 +36,7 @@ export interface StepScenario {
   readonly turn?: ProtectedResult;
   readonly effects?: Readonly<Record<string, readonly ProtectedResult[]>>;
   readonly gate?: GateResult;
-  readonly waits?: readonly RunWaitOutcome[];
+  readonly waits?: readonly RunWaitAnswer[];
   readonly decisions?: readonly DecisionResult[];
   readonly effectLimit?: number;
 }
@@ -85,12 +92,12 @@ export function fakeStepBridge(scenario: StepScenario) {
 
 function scenarioBridge(scenario: StepScenario) {
   const requests: ScenarioRequest[] = [];
-  const waits = [...(scenario.waits ?? [])];
   const decisions = [...(scenario.decisions ?? [])];
   const budget = { spent: 0 };
   const bridge: StepBridge = {
     ...scenarioEffects(scenario, { requests, budget }),
     ...scenarioCommandWaits(scenario, requests),
+    ...scenarioRunWaits(scenario, requests),
     gate: (request) => {
       requests.push(["gate", request]);
       return Promise.resolve(
@@ -107,18 +114,45 @@ function scenarioBridge(scenario: StepScenario) {
         return Promise.reject(new Error("no-scenario-result"));
       return Promise.resolve(decision);
     },
-    waitForRun: (request) => {
-      requests.push(["waitForRun", request]);
-      return Promise.resolve(
-        waits.shift() ?? {
-          kind: "unavailable",
-          reason: "no-scenario-result",
-          promotionId: null,
-        },
-      );
-    },
   };
   return { bridge, requests, budget };
+}
+
+function waitingAnswer(answer: RunWaitAnswer): answer is RunWaitPending {
+  return answer.kind === "waiting";
+}
+
+function scenarioRunWaits(
+  scenario: StepScenario,
+  requests: ScenarioRequest[],
+): Pick<StepBridge, "checkRunWait"> {
+  const waits = [...(scenario.waits ?? [])];
+  const clocks = new Map<string, number>();
+  return {
+    checkRunWait: (request) => {
+      const opening = Reflect.get(Object(request), "startedAt") === undefined;
+      if (opening) requests.push(["waitForRun", request]);
+      const answer = waits.shift() ?? {
+        kind: "unavailable",
+        reason: "no-scenario-result",
+        promotionId: null,
+      };
+      if (!waitingAnswer(answer))
+        return Promise.resolve({ kind: "completed", outcome: answer });
+      if (opening) clocks.set(request.runId, 0);
+      const deadline = request.maximumWaitSeconds * 1000;
+      const now = clocks.get(request.runId) ?? 0;
+      if (now >= deadline) return Promise.reject(new Error("run-wait-timeout"));
+      const nextCheckAt = runWaitCheckAt({ startedAt: 0, deadline, now });
+      clocks.set(request.runId, nextCheckAt);
+      return Promise.resolve({
+        kind: "waiting",
+        startedAt: 0,
+        deadline,
+        nextCheckAt,
+      });
+    },
+  };
 }
 
 function scenarioCommandWaits(

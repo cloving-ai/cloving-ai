@@ -1,18 +1,21 @@
-import {
-  isStepBridge,
-  stepBridgeKey,
-  type RunWaitOutcome,
-  type RunWaitRequest,
-} from "../step-bridge.ts";
+import { sleep } from "workflow";
+import type { RunWaitOutcome, RunWaitRequest } from "../step-bridge.ts";
+import { checkRunWait, runWaitDate } from "./run-wait.ts";
 
 export async function waitForRun(
   request: RunWaitRequest,
 ): Promise<RunWaitOutcome> {
-  "use step";
-  const bridge: unknown = Reflect.get(globalThis, Symbol.for(stepBridgeKey));
-  if (!isStepBridge(bridge) || bridge.waitForRun === undefined)
-    throw new Error("cloving-host-unavailable");
-  return await bridge.waitForRun(request);
+  let progress = await checkRunWait({
+    runId: request.runId,
+    maximumWaitSeconds: request.maximumWaitSeconds,
+  });
+  while (progress.kind === "waiting") {
+    await sleep(runWaitDate(progress.nextCheckAt));
+    progress = await checkRunWait({
+      runId: request.runId,
+      maximumWaitSeconds: request.maximumWaitSeconds,
+      startedAt: progress.startedAt,
+    });
+  }
+  return progress.outcome;
 }
-
-waitForRun.maxRetries = 86401;

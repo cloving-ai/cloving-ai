@@ -92,7 +92,7 @@ await test("CLV-224 recorded requests narrow to each concrete step request type"
     {
       "requests.mjs": `export async function sample(input) {
   const bridge = Reflect.get(globalThis, Symbol.for("cloving.step-bridge/v1"));
-  for (const [kind, request] of input) await bridge[kind](request);
+  for (const [kind, request] of input) await bridge[kind === "waitForRun" ? "checkRunWait" : kind](request);
   return null;
 }`,
     },
@@ -147,7 +147,7 @@ await test("CLV-224 scenarios reject malformed recorded request payloads", () =>
     {
       "malformed.mjs": `export async function sample(input) {
   const bridge = Reflect.get(globalThis, Symbol.for("cloving.step-bridge/v1"));
-  await bridge[input.kind](input.request);
+  await bridge[input.kind === "waitForRun" ? "checkRunWait" : input.kind](input.request);
   return null;
 }`,
     },
