@@ -48,6 +48,15 @@ import {
   stepAge,
 } from "./watch-floor-view.ts";
 import {
+  Need,
+  NeedsYou,
+  decisionNeed,
+  decisionText,
+  needMeta,
+  needsOf,
+  stoppedNeed,
+} from "./watch-needs-view.ts";
+import {
   DayChart,
   LaneLine,
   Today,
@@ -183,6 +192,13 @@ const functions = [
   Legend,
   Line,
   Floor,
+  decisionText,
+  decisionNeed,
+  stoppedNeed,
+  needsOf,
+  needMeta,
+  Need,
+  NeedsYou,
   dollars,
   TodayNumber,
   TodayNumbers,

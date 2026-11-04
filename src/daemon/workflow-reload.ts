@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { record } from "../protocol.ts";
 import type {
   WorkflowBundleReload,
@@ -17,6 +15,7 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import type { DaemonSettings } from "./daemon-adapters.ts";
+import { reloadCommandOutput } from "./reload-command.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -46,8 +45,6 @@ interface PreparedBundle extends ReloadedSettings {
 }
 
 type Refused = Extract<WorkflowReload, { readonly kind: "refused" }>;
-
-const executed = promisify(execFile);
 
 function refused(code: string, detail: string): Refused {
   return { kind: "refused", code, detail };
@@ -159,7 +156,10 @@ function outputRefusal(
     : undefined;
 }
 
-function preparedBundle(output: string): PreparedBundle | Refused {
+function preparedBundle(
+  output: string,
+  failure: string,
+): PreparedBundle | Refused {
   const value = parsedOutput(output);
   const refusal = outputRefusal(value);
   if (refusal !== undefined) return refusal;
@@ -175,7 +175,7 @@ function preparedBundle(output: string): PreparedBundle | Refused {
   )
     return refused(
       "reload-failed",
-      "The reload command printed no workflow bundle.",
+      `The reload command printed no workflow bundle.${failure}`,
     );
   return {
     kind: "prepared",
@@ -190,15 +190,8 @@ function preparedBundle(output: string): PreparedBundle | Refused {
 async function prepared(
   command: readonly string[],
 ): Promise<PreparedBundle | Refused> {
-  const [executable = "", ...fixed] = command;
-  const output = await executed(executable, fixed, {
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-  }).then(
-    (result) => result.stdout,
-    (error: unknown) => String(Reflect.get(Object(error), "stdout")),
-  );
-  return preparedBundle(output);
+  const output = await reloadCommandOutput(command);
+  return preparedBundle(output.stdout, output.failure);
 }
 
 function restartFacts(declarations: readonly DeclaredWorkflow[]): string {

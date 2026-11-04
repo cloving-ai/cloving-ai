@@ -164,6 +164,8 @@ The page opens on the **Floor**. Each workflow is one line with its name, its co
 
 The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
 
+The **Needs you** panel under the floor lists each pending decision and each paused run, with the count of items. A decision has a blue mark, a paused run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
+
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
 A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. A cost shows as unknown when the cost of one of its runs is not known.
@@ -709,6 +711,10 @@ Otherwise, the board reads the recorded pull request with `CLOVING_GH_COMMAND` (
 Reads run in the background, one at a time, with a five-second limit. Board loads can refresh unresolved PRs at least 60 seconds after the previous attempt started. Confirmed merges remain cached until the watch process stops. A later normal page load shows each result.
 
 The GitHub worker does not push a change that has the path of the home folder in a file or in a commit message. `CLOVING_PRIVATE_TEXTS` (a JSON list of texts) adds more texts to refuse, with no difference between capital and small letters. `CLOVING_CHECK_COMMAND` (a JSON list of texts) names a check that must pass in the work tree before a merge. `CLOVING_GH_COMMAND` replaces the `gh` command. The worker uses the `gh` login and the git credentials of the current user.
+
+The GitHub worker tries a git call to the remote (`fetch`, `push` or `ls-remote`) again after a short failure. A short failure has one of these texts in the git output: `Could not read from remote repository`, `Permission denied (publickey)`, `Connection reset`, `Connection timed out`, `Could not resolve host`, `The remote end hung up unexpectedly`, `early EOF`, or an HTTP 5xx status. Output with `does not appear to be a git repository` fails at once. The waits before the three retries are 5, 15 and 45 seconds.
+
+During a wait, `cloving status` shows the reason `git-network-retry` with a text such as `git fetch failed, retry 2 of 3.` and the time of the next attempt. If the fourth attempt also fails, the operation fails with `git-network-failed`, and its private journal keeps the last git output. Local git calls, for example `merge`, `status` and `rev-parse`, do not try again.
 
 ## Continuous process
 

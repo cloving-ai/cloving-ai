@@ -285,6 +285,7 @@ await test("CLV-016 the watch model gives each pending decision its approve and 
     decisionId: "run-1/review-1",
     type: "approval",
     prompt: "Review the work.",
+    openedAt: null,
     approve:
       "cloving approve run-1/review-1 --expected-revision 1 --generation 2 --subject-digest sha256:abc",
     deny: 'cloving deny run-1/review-1 --text "<feedback>" --expected-revision 1 --generation 2 --subject-digest sha256:abc',
