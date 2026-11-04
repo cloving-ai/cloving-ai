@@ -110,7 +110,7 @@ async function hosted(
       run: taggedRun,
       call: sdkStepCall,
       stopped: stopping.signal,
-      timing: bridgeTiming,
+      timing: { ...bridgeTiming, runWaitChecks: settings.runWaitChecks },
     }),
   );
   return {

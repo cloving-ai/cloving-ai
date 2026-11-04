@@ -514,10 +514,11 @@
     "src/steps/review-by-person.ts": "workflow",
     "src/steps/review-subject.ts": "step",
     "src/steps/run-command.ts": "step",
+    "src/steps/run-wait.ts": "step",
     "src/steps/sleep.ts": "workflow",
     "src/steps/wait-for-command.ts": "workflow",
     "src/steps/wait-for-decision.ts": "workflow",
-    "src/steps/wait-for-run.ts": "step",
+    "src/steps/wait-for-run.ts": "workflow",
     "src/storage/command-wait-rows.ts": "storage",
     "src/storage/decision-rows.ts": "storage",
     "src/storage/decision-snapshots.ts": "storage",
@@ -1343,8 +1344,11 @@
     "test/run-wait-candidate.test.ts": "test",
     "test/run-wait-display.test.ts": "test",
     "test/run-wait-host.test.ts": "test",
+    "test/run-wait-long.test.ts": "test",
+    "test/run-wait-sdk-fixture.ts": "test",
     "test/run-wait-sdk.test.ts": "test",
     "test/run-wait-storage.test.ts": "test",
+    "test/run-wait-testing.test.ts": "test",
     "test/run-wait.test.ts": "test",
     "test/scaffold.test.ts": "test",
     "test/schedule-events.test.ts": "test",
@@ -1979,7 +1983,8 @@
         "src/host/run-wait.ts",
         "src/steps/wait-for-decision.ts",
         "src/steps/sleep.ts",
-        "src/steps/wait-for-command.ts"
+        "src/steps/wait-for-command.ts",
+        "src/steps/wait-for-run.ts"
       ],
       "src/broker/actor/authority-delivery.ts": [
         "src/broker/actor/authority-runtime.ts"

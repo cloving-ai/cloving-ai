@@ -22,3 +22,15 @@ export async function develop(input: { runId: string }) {
     assert.equal(facts.analysis.knownCallCount, 0);
     assert.equal(facts.analysis.knownUnitTotal, 0);
   });
+
+await test("CLV-285 a declared workflow cannot import the internal run-wait check step", () => {
+  const facts = analyzeWorkflowCandidate(
+    'import { checkRunWait } from "cloving/workflows/steps/run-wait"; export async function develop(input: { runId: string }) { "use workflow"; return await checkRunWait({ runId: input.runId, maximumWaitSeconds: 60 }); }',
+  );
+  assert.ok(
+    checkWorkflowCandidate({
+      declaration: candidateDeclaration,
+      ...facts,
+    }).includes("forbidden-import"),
+  );
+});
