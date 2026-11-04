@@ -159,7 +159,17 @@ function outputRefusal(
     : undefined;
 }
 
-function preparedBundle(output: string): PreparedBundle | Refused {
+function failureText(error: unknown): string {
+  const stderr: unknown = Reflect.get(Object(error), "stderr");
+  const end = typeof stderr === "string" ? stderr.trim().slice(-2048) : "";
+  const code = String(Reflect.get(Object(error), "code"));
+  return ` It exited with code ${code}${end === "" ? "." : `: ${end}`}`;
+}
+
+function preparedBundle(
+  output: string,
+  failure: string,
+): PreparedBundle | Refused {
   const value = parsedOutput(output);
   const refusal = outputRefusal(value);
   if (refusal !== undefined) return refusal;
@@ -175,7 +185,7 @@ function preparedBundle(output: string): PreparedBundle | Refused {
   )
     return refused(
       "reload-failed",
-      "The reload command printed no workflow bundle.",
+      `The reload command printed no workflow bundle.${failure}`,
     );
   return {
     kind: "prepared",
@@ -195,10 +205,13 @@ async function prepared(
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   }).then(
-    (result) => result.stdout,
-    (error: unknown) => String(Reflect.get(Object(error), "stdout")),
+    (result) => ({ stdout: result.stdout, failure: "" }),
+    (error: unknown) => ({
+      stdout: String(Reflect.get(Object(error), "stdout")),
+      failure: failureText(error),
+    }),
   );
-  return preparedBundle(output);
+  return preparedBundle(output.stdout, output.failure);
 }
 
 function restartFacts(declarations: readonly DeclaredWorkflow[]): string {

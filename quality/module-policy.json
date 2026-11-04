@@ -678,6 +678,7 @@
     "test/authority-watchdog.test.ts": "test",
     "test/authority.test.ts": "test",
     "test/branch-worker.test.ts": "test",
+    "test/build-tool-entries.test.ts": "test",
     "test/candidate-package-fixture.ts": "test",
     "test/chats-analysis-data.test.ts": "test",
     "test/chats-analysis-fixture.ts": "test",
