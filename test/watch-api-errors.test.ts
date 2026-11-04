@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { watchApiDocument } from "../src/cli/watch-api-document.ts";
-import { contractBody } from "./watch-api-contract.ts";
-import { watchReplies, withWatchService } from "./watch-service-fixture.ts";
+import { fields, items } from "./service-fixture.ts";
+import { contractBody, problemBody } from "./watch-api-contract.ts";
+import {
+  interruptedReplies,
+  longEvents,
+  longRun,
+  watchReplies,
+  withWatchService,
+} from "./watch-service-fixture.ts";
 
 function encoded(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -84,5 +91,31 @@ await test("CLV-254 the limits 1 and 200, each run state and a cursor of the API
         { runs: [], nextCursor: null },
       );
     }
+  });
+});
+
+await test("CLV-255 a failed run read gives 500 and a retry gives the run, and a run ID with an invalid percent code gives the 404 problem of an unknown path", async () => {
+  const replies = interruptedReplies({
+    operation: "status",
+    runs: [longRun],
+    events: longEvents,
+  });
+  await withWatchService(replies.answer, async (watch) => {
+    const failed = await fetch(`${watch.address}api/v1/runs/long`);
+    assert.equal(failed.status, 500);
+    assert.equal(await failed.text(), "failed");
+    const response = await fetch(`${watch.address}api/v1/runs/long/events`);
+    assert.equal(response.status, 200);
+    const body = await contractBody(watchApiDocument, {
+      response,
+      path: "/runs/{runId}/events",
+    });
+    assert.equal(items(fields(body)["events"]).length, longEvents.length);
+    const malformed = await fetch(`${watch.address}api/v1/runs/%E0`);
+    assert.equal(malformed.status, 404);
+    assert.equal(
+      (await problemBody(watchApiDocument, malformed))["detail"],
+      "The API has no resource at this path.",
+    );
   });
 });
