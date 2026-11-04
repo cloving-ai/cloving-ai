@@ -47,6 +47,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -207,6 +208,7 @@ async function inventory(root: string): Promise<void> {
   for (const name of [
     "self-host",
     "self-host-project",
+    "self-host-reload",
     "compile-workflows",
     "self-host-processes",
     "self-update-host",
@@ -219,6 +221,16 @@ async function inventory(root: string): Promise<void> {
     assert.ok(
       (await readFile(join(product, "dist/tools", `${name}.js`))).length > 0,
     );
+  const reload = spawnSync(
+    process.execPath,
+    [join(product, "dist/tools/self-host-reload.js"), "{}"],
+    { cwd: root, encoding: "utf8", timeout: 120000 },
+  );
+  assert.equal(reload.status, 1, reload.stderr);
+  assert.match(
+    reload.stderr,
+    /The reload program needs the start setting directory\./,
+  );
   await assert.rejects(lstat(join(product, "dist/workflows")), {
     code: "ENOENT",
   });
