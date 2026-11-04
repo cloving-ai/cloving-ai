@@ -128,7 +128,10 @@ async function runCost(runtime: string, runId: string): Promise<ReportCost> {
     parameters: { runId },
   });
   if (reply.kind === "error") return { runId, turns: null };
-  const run = record(reply.result["run"]);
+  return reportCost(runId, record(reply.result["run"]));
+}
+
+export function reportCost(runId: string, run: Fields | undefined): ReportCost {
   if (run?.["runId"] !== runId) return { runId, turns: null };
   const turns = run["workerTurns"];
   const ticket = runTicket(run);

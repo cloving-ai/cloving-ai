@@ -8,6 +8,7 @@ import { priceText } from "./usage-render.ts";
 import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Fields } from "../protocol.ts";
+import type { DailyNumbers } from "../report-days.ts";
 
 export interface WatchItem {
   readonly kind: string;
@@ -198,6 +199,7 @@ export interface WatchModel {
   readonly updatedAt: string;
   readonly service: string;
   readonly runs: readonly WatchRun[];
+  readonly today?: DailyNumbers;
 }
 
 export interface WatchTone {

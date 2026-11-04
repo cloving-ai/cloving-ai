@@ -28,6 +28,7 @@ import {
 import { watchHash, watchLocation } from "./watch-navigation.ts";
 import { Floor } from "./watch-floor-view.ts";
 import { NeedsYou } from "./watch-needs-view.ts";
+import { Today } from "./watch-today-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
@@ -284,6 +285,7 @@ export function FloorPage(
           element("aside", {
             class: "side-panels",
             children: [
+              component(Today, { model }),
               component(Queue, { model }),
               component(RefusedWorkflows, { model }),
             ],

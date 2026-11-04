@@ -57,6 +57,15 @@ import {
   stoppedNeed,
 } from "./watch-needs-view.ts";
 import {
+  DayChart,
+  LaneLine,
+  Today,
+  TodayNumber,
+  TodayNumbers,
+  WorkflowTable,
+  dollars,
+} from "./watch-today-view.ts";
+import {
   Board,
   Card,
   HandoffLinks,
@@ -190,6 +199,13 @@ const functions = [
   needMeta,
   Need,
   NeedsYou,
+  dollars,
+  TodayNumber,
+  TodayNumbers,
+  DayChart,
+  WorkflowTable,
+  LaneLine,
+  Today,
   counted,
   elapsed,
   clockTime,
