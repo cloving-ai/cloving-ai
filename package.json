@@ -1,6 +1,6 @@
 {
   "name": "cloving",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Local durable development workflow service",
   "license": "MIT",
   "repository": {
