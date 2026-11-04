@@ -341,17 +341,21 @@ async function cycle(
 export function issueQueue(settings: QueueSettings): {
   readonly stop: () => Promise<void>;
   readonly port: QueuePort;
+  readonly ready: Promise<void>;
 } {
   const runtime: QueueRuntime = {
     pending: undefined,
     error: undefined,
     stopping: new AbortController(),
   };
-  const running = queueJournal(settings.directory)
-    .then((pending) => {
-      runtime.pending = pending;
-      return cycle(settings, { signal: runtime.stopping.signal, pending });
-    })
+  const loaded = queueJournal(settings.directory).then((pending) => {
+    runtime.pending = pending;
+    return pending;
+  });
+  const running = loaded
+    .then((pending) =>
+      cycle(settings, { signal: runtime.stopping.signal, pending }),
+    )
     .catch((error: unknown) => {
       queueStopped(runtime, error);
     });
@@ -361,5 +365,9 @@ export function issueQueue(settings: QueueSettings): {
       await running;
     },
     port: queueControlPort(runtime),
+    ready: loaded.then(
+      () => undefined,
+      () => undefined,
+    ),
   };
 }

@@ -17,9 +17,9 @@ interface LoopSettings extends ParametersOfSchedules {
 
 type ParametersOfSchedules = Parameters<typeof workflowSchedules>[0];
 
-function startedQueue(
+async function startedQueue(
   settings: LoopSettings,
-): ReturnType<typeof issueQueue> | undefined {
+): Promise<ReturnType<typeof issueQueue> | undefined> {
   if (
     settings.queueMilliseconds === undefined ||
     settings.queueWorkflowId === undefined
@@ -34,6 +34,7 @@ function startedQueue(
     workflowId: settings.queueWorkflowId,
   });
   settings.queueConnection?.connect(queue.port);
+  await queue.ready;
   return queue;
 }
 
@@ -54,7 +55,7 @@ export async function daemonLoops(
               ? {}
               : { intervalMilliseconds: settings.notifyMilliseconds }),
           });
-    const queue = startedQueue(settings);
+    const queue = await startedQueue(settings);
     return {
       stop: async () => {
         await schedules.stop();

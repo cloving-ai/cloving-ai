@@ -123,3 +123,26 @@ process.exit(0);
 `);
     assert.equal(third.status, 0, third.stderr);
   }));
+
+await test("CLV-283 a queue command right after the start gets the queue when the journal loads slowly", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${control}
+const promises = (await import("node:fs/promises")).default;
+const { syncBuiltinESMExports } = await import("node:module");
+const reading = promises.readFile;
+promises.readFile = (path, ...rest) =>
+  String(path).endsWith("queue-commands.json")
+    ? delay(200).then(() => reading(path, ...rest))
+    : reading(path, ...rest);
+syncBuiltinESMExports();
+const daemon = await launched();
+try {
+  const draining = await command("drain", "drain-at-start");
+  assert.equal(draining.kind, "queue-command", JSON.stringify(draining));
+  assert.equal(typeof draining.queue.drain.startedAt, "number");
+  assert.equal(typeof (await asked("status")).queue.state, "string");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
