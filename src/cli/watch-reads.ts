@@ -7,6 +7,7 @@ import {
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { activeRun, recentRun } from "./watch-board.ts";
+import { loadedRun, todayOf } from "./watch-today.ts";
 import {
   workflowRefusals,
   type WorkflowRefusal,
@@ -40,6 +41,7 @@ export interface WatchRead {
   readonly runs: readonly ReadRun[];
   readonly completionCandidates: readonly ReadRun[];
   readonly decisions: readonly unknown[];
+  readonly today?: ReturnType<typeof todayOf>;
 }
 
 export interface WatchReader {
@@ -320,7 +322,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
   const runs: ReadRun[] = [];
   const completionCandidates: ReadRun[] = [];
   const current = summaries.filter(
-    (summary) => activeRun(summary.state) || recentRun(summary.latestAt, now),
+    (summary) => activeRun(summary.state) || loadedRun(summary.latestAt, now),
   );
   for (const summary of current) runs.push(await detailed(reader, summary));
   const issues = stoppedIssues(runs, { now, repository: reader.repository });
@@ -329,13 +331,13 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
       ? []
       : summaries.filter(
           (summary) =>
-            !recentRun(summary.latestAt, now) && summary.state === "completed",
+            !loadedRun(summary.latestAt, now) && summary.state === "completed",
         );
   for (const summary of older) {
     const candidate = await completionOf(reader, { summary, issues });
     if (candidate !== null) completionCandidates.push(candidate);
   }
-  return {
+  const read = {
     service: "up",
     ...("schedules" in status
       ? { schedules: shownSchedules(status["schedules"]) }
@@ -354,6 +356,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     completionCandidates,
     decisions: await decisionsOf(reader),
   };
+  return { ...read, today: todayOf({ now, ...read }) };
 }
 
 async function singleRun(reader: Reader, runId: string): Promise<WatchRead> {
