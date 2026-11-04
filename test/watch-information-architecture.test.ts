@@ -129,7 +129,7 @@ await test("watch design: the header shows the queue in one line and a closed di
     assert.ok(waiting.includes(`<li>${line}</li>`), line);
   assert.doesNotMatch(html, /ticket-dependency-open|ticket-active/);
   assert.doesNotMatch(html, /Skipped ticket/);
-  assert.ok(html.indexOf("queue-waiting") < html.indexOf('class="workflows"'));
+  assert.ok(html.indexOf("queue-waiting") < html.indexOf('class="workspace"'));
 });
 
 await test("watch design: a queue without skipped tickets shows no disclosure", () => {

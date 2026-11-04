@@ -180,3 +180,13 @@ await test("the watch and start help texts say the worker, because the worker ca
   );
   assert.match(String(commandUsage["start"]), /the worker and the watch page/);
 });
+
+await test("CLV-286 start help says that CLOVING_WATCH_ACTIONS=off also removes the queue control of the watch page", () => {
+  const help = String(commandUsage["start"])
+    .split("\n")
+    .find((line) => line.trim().startsWith("CLOVING_WATCH_ACTIONS"));
+  assert.match(
+    help ?? "",
+    /run form, the queue control and their write endpoints/,
+  );
+});

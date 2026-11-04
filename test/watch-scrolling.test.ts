@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import { once } from "node:events";
 import { test } from "node:test";
 import { boardLayout } from "../src/cli/watch-board-view.ts";
-import { pageDocument } from "../src/cli/watch-page.ts";
 import {
   boardEvent,
   boardModel,
@@ -12,6 +8,7 @@ import {
   pullStages,
 } from "./watch-board-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
+import { watchPageServer } from "./watch-page-server.ts";
 import { scrollScenario } from "./watch-scroll-scenario.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -32,46 +29,8 @@ function overflowingBoard() {
   });
 }
 
-async function watchFixture(shown = overflowingBoard()) {
-  const preact = await readFile(new URL(import.meta.resolve("preact")));
-  const page = pageDocument().replace(/<link rel="stylesheet"[^>]*>/, "");
-  const model = JSON.stringify(shown);
-  const server = createServer((request, response) => {
-    if (request.url === "/preact.mjs") {
-      response
-        .writeHead(200, { "content-type": "text/javascript" })
-        .end(preact);
-      return;
-    }
-    if (request.url === "/data.json") {
-      response
-        .writeHead(200, { "content-type": "application/json" })
-        .end(model);
-      return;
-    }
-    if (request.url === "/events") {
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write("data: ready\n\n");
-      return;
-    }
-    response
-      .writeHead(200, {
-        "content-type": "text/html",
-        "content-security-policy": "default-src 'self' 'unsafe-inline' data:",
-      })
-      .end(page);
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const address = server.address();
-  assert.ok(address !== null && typeof address === "object");
-  return {
-    async [Symbol.asyncDispose]() {
-      server.closeAllConnections();
-      await server[Symbol.asyncDispose]();
-    },
-    url: `http://127.0.0.1:${String(address.port)}/#workflow=develop-issue`,
-  };
+function watchFixture(shown: unknown = overflowingBoard()) {
+  return watchPageServer(shown, "#workflow=develop-issue");
 }
 
 for (const width of [390, 1000])
@@ -220,7 +179,7 @@ interface LayoutMeasurement {
   readonly openWidths: readonly number[];
   readonly collapsedWidths: readonly number[];
   readonly fullWidth: boolean;
-  readonly tabsAbove: boolean;
+  readonly backAbove: boolean;
   readonly overflow: boolean;
   readonly allVisible: boolean;
 }
@@ -240,7 +199,7 @@ function isLayout(value: unknown): value is LayoutMeasurement {
     isWidths(layout["openWidths"]) &&
     isWidths(layout["collapsedWidths"]) &&
     typeof layout["fullWidth"] === "boolean" &&
-    typeof layout["tabsAbove"] === "boolean" &&
+    typeof layout["backAbove"] === "boolean" &&
     typeof layout["overflow"] === "boolean" &&
     typeof layout["allVisible"] === "boolean"
   );
@@ -264,7 +223,7 @@ function assertLayout(layout: LayoutMeasurement, width: number) {
     assert.ok(Math.abs(actual - expected.columnWidth) < 0.1);
   assert.deepEqual(layout.collapsedWidths, [44, 44]);
   assert.equal(layout.fullWidth, true);
-  assert.equal(layout.tabsAbove, true);
+  assert.equal(layout.backAbove, true);
   assert.equal(layout.overflow, width < 1385);
   assert.equal(layout.allVisible, width === 1385);
   assert.equal(expected.columnWidth === 200, width < 1385);
@@ -277,7 +236,7 @@ await test("browser layout rejects coercible numeric fields", () => {
     openWidths: Array.from({ length: 5 }, () => 238.6),
     collapsedWidths: [44, 44],
     fullWidth: true,
-    tabsAbove: true,
+    backAbove: true,
     overflow: false,
     allVisible: true,
   };
@@ -288,7 +247,7 @@ await test("browser layout rejects coercible numeric fields", () => {
     { ...layout, openWidths: {} },
     { ...layout, collapsedWidths: ["44", "44"] },
     { ...layout, fullWidth: "true" },
-    { ...layout, tabsAbove: "true" },
+    { ...layout, backAbove: "true" },
     { ...layout, overflow: 0 },
     { ...layout, allVisible: 1 },
     {},
@@ -315,10 +274,6 @@ for (const viewport of [
     assert.deepEqual(initial["viewport"], viewport);
     assert.equal(initial["initiallyCollapsed"], true);
     const contentWidth = assertInitialLayout(initial, viewport.width);
-    const tabs = await page.evaluate("watchScrolling.tabs()");
-    assert.equal(tabs["overflow"], viewport.width === 390);
-    assert.equal(tabs["boardBefore"], tabs["boardAfter"]);
-    assert.equal(Number(tabs["scrollLeft"]) > 0, viewport.width === 390);
     await page.scroll("watchScrolling.activeGesture()");
     const scrolled = await page.evaluate("watchScrolling.scrolled()");
     assertColumnScroll(initial, scrolled);

@@ -128,7 +128,6 @@ export function sampleModel(runs: readonly WatchRun[]): WatchModel {
     updatedAt: at("21:34:41"),
     service: "up",
     workflows: [],
-    startWorkflowId: null,
     runs,
   };
 }

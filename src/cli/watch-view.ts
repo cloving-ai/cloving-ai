@@ -2,8 +2,8 @@ import { scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
-import { Header, Queue } from "./watch-header-view.ts";
-export { clove, Header } from "./watch-header-view.ts";
+import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
+export { clove, Header, type QueueControls } from "./watch-header-view.ts";
 import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
@@ -18,14 +18,15 @@ import {
   type WatchModel,
   type WatchPhase,
   type WatchRun,
+  type WatchWorkflow,
 } from "./watch-render.ts";
 import {
   Board,
   HandoffLinks,
-  WorkflowList,
   type ColumnControls,
 } from "./watch-board-view.ts";
-import { boardWorkflow, watchHash, watchLocation } from "./watch-navigation.ts";
+import { watchHash, watchLocation } from "./watch-navigation.ts";
+import { Floor } from "./watch-floor-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
@@ -189,6 +190,7 @@ export interface PageProps {
   readonly copying: Copying;
   readonly columns?: ColumnControls;
   readonly phone?: PhoneControls | undefined;
+  readonly queue?: QueueControls | undefined;
 }
 
 export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
@@ -220,73 +222,108 @@ export function Page(props: PageProps): Shown {
     "The Cloving service does not answer. The page shows the last known records.";
   const down = model.service === "up" ? null : text("down", lost);
   const location = watchLocation(selected);
-  const workflowId = boardWorkflow(model, location.workflowId);
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
-    const back =
-      run?.workflowId ?? location.workflowId ?? model.startWorkflowId;
     return [
       head,
       down,
       component(Queue, { model }),
       component(RefusedWorkflows, { model }),
-      element("a", {
-        class: "back",
-        href: watchHash({ workflowId: back, runId: null }),
-        children: `← Back to ${back ?? "workflows"}`,
-      }),
+      component(BackLink, { workflowId: location.workflowId }),
       run === undefined
         ? text("meta", "This run is not available.")
         : component(Run, { key: run.runId, run, now, copying }),
     ];
   }
-  return component(BoardPage, { ...props, model, workflowId, down });
+  const workflow = model.workflows.find(
+    (item) => item.workflowId === location.workflowId,
+  );
+  if (workflow === undefined)
+    return component(FloorPage, { ...props, model, down });
+  return component(BoardPage, { ...props, model, workflow, down });
+}
+
+export function BackLink(props: { readonly workflowId: string | null }): Shown {
+  const { workflowId } = props;
+  return element("a", {
+    class: "back",
+    href: watchHash({ workflowId, runId: null }),
+    children: `← Back to ${workflowId ?? "the floor"}`,
+  });
+}
+
+export function FloorPage(
+  props: PageProps & { readonly model: WatchModel; readonly down: Shown },
+): Shown {
+  const { model, down, now, stale } = props;
+  return element("div", {
+    class: "floor-page",
+    children: [
+      component(Header, {
+        model,
+        stale,
+        phone: props.phone,
+        queue: props.queue,
+        now,
+      }),
+      down,
+      model.schedules !== undefined && "status" in model.schedules
+        ? element("p", { class: "meta", children: "Schedules: unavailable" })
+        : null,
+      element("div", {
+        class: "floor-layout",
+        children: [
+          component(Floor, { model, now }),
+          element("aside", {
+            class: "side-panels",
+            children: [
+              component(Queue, { model }),
+              component(RefusedWorkflows, { model }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
 }
 
 export function BoardPage(
   props: PageProps & {
     readonly model: WatchModel;
-    readonly workflowId: string | null;
+    readonly workflow: WatchWorkflow;
     readonly down: Shown;
   },
 ): Shown {
-  const { model, workflowId, down, now, stale } = props;
-  const workflow = model.workflows.find(
-    (item) => item.workflowId === workflowId,
-  );
+  const { model, workflow, down, now, stale } = props;
   return element("div", {
     class: "board-page",
     children: [
-      component(Header, { model, stale, phone: props.phone, now }),
+      component(Header, {
+        model,
+        stale,
+        phone: props.phone,
+        queue: props.queue,
+        now,
+      }),
       component(Queue, { model }),
       down,
       model.schedules !== undefined && "status" in model.schedules
         ? element("p", { class: "meta", children: "Schedules: unavailable" })
         : null,
       component(RefusedWorkflows, { model }),
-      component(WorkflowList, {
-        workflows: model.workflows,
-        selected: workflowId,
-      }),
+      component(BackLink, { workflowId: null }),
       element("div", {
         class: "workspace",
-        children: [
-          workflow === undefined
-            ? element("p", {
-                class: "meta",
-                children: "No workflows registered.",
-              })
-            : component(Board, {
-                workflow,
-                now,
-                observationNow: props.observationNow,
-                controls: props.columns,
-                cardForm: model.cardForms?.find(
-                  (form) => form.workflowId === workflowId,
-                ),
-                cards: props.cards,
-              }),
-        ],
+        children: component(Board, {
+          workflow,
+          now,
+          observationNow: props.observationNow,
+          controls: props.columns,
+          cardForm: model.cardForms?.find(
+            (form) => form.workflowId === workflow.workflowId,
+          ),
+          cards: props.cards,
+        }),
       }),
     ],
   });

@@ -4,10 +4,17 @@ import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { clockTime, counted, type WatchModel } from "./watch-render.ts";
 
+export interface QueueControls {
+  readonly busy: boolean;
+  readonly message: string;
+  readonly onCommand: (command: "drain" | "resume") => void;
+}
+
 export interface HeaderProps {
   readonly model: WatchModel | null;
   readonly stale: boolean;
   readonly phone?: PhoneControls | undefined;
+  readonly queue?: QueueControls | undefined;
   readonly now?: string;
 }
 
@@ -78,6 +85,28 @@ export function Brand(): Shown {
   });
 }
 
+export function HeaderCounts(props: { readonly model: WatchModel }): Shown {
+  const { workflows } = props.model;
+  const active = workflows.reduce(
+    (total, workflow) => total + workflow.activeCount,
+    0,
+  );
+  const needed = workflows
+    .flatMap((workflow) => workflow.stations)
+    .flatMap((station) => station.tokens)
+    .filter((token) => ["needs-you", "stopped"].includes(token.lamp)).length;
+  return [
+    element("span", {
+      class: "header-count",
+      children: [element("strong", { children: String(active) }), " active"],
+    }),
+    element("span", {
+      class: "header-count needs-you",
+      children: [element("strong", { children: String(needed) }), " need you"],
+    }),
+  ];
+}
+
 export function HeaderStatus(props: HeaderProps): Shown {
   const { model, stale } = props;
   const updated = model === null ? "" : `updated ${clockTime(model.updatedAt)}`;
@@ -91,6 +120,7 @@ export function HeaderStatus(props: HeaderProps): Shown {
   return element("div", {
     class: "header-status",
     children: [
+      model === null ? null : component(HeaderCounts, { model }),
       stamp,
       ...queueSpendLines(model?.queue?.["spend"]).map((line) =>
         element("span", { class: "queue-spend", children: line }),
@@ -102,15 +132,46 @@ export function HeaderStatus(props: HeaderProps): Shown {
   });
 }
 
+export function QueueControl(props: {
+  readonly model: WatchModel | null;
+  readonly queue: QueueControls;
+}): Shown {
+  const { queue } = props;
+  const state = props.model?.queue?.["state"];
+  if (typeof state !== "string") return null;
+  const command = state === "running" ? "drain" : "resume";
+  return [
+    element("button", {
+      type: "button",
+      class: "queue-control",
+      ...(queue.busy ? { disabled: true } : {}),
+      onClick: () => {
+        queue.onCommand(command);
+      },
+      children: command === "drain" ? "Drain queue" : "Resume queue",
+    }),
+    queue.message === ""
+      ? null
+      : element("span", { class: "queue-message", children: queue.message }),
+  ];
+}
+
 export function HeaderActions(props: HeaderProps): Shown {
-  const { phone } = props;
-  if (phone === undefined) return null;
+  const { phone, queue } = props;
+  if (phone === undefined && queue === undefined) return null;
   return element("div", {
     class: "header-actions",
-    children: component(PhonePanel, {
-      phone,
-      now: props.now ?? props.model?.updatedAt ?? "",
-    }),
+    children: [
+      queue === undefined
+        ? null
+        : component(QueueControl, { model: props.model, queue }),
+      phone === undefined
+        ? null
+        : component(PhonePanel, {
+            phone,
+            now: props.now ?? props.model?.updatedAt ?? "",
+          }),
+    ],
   });
 }
 

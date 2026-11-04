@@ -11,17 +11,11 @@ function rule(selector: string): string {
   return rules.slice(start, rules.indexOf("}", start));
 }
 
-await test("CLV-140 tabs scroll in one row above a full-width board with flexible columns", () => {
+await test("CLV-140 a full-width board has flexible columns", () => {
   assert.match(rule(".workspace"), /display: flex/);
   assert.match(rule(".workspace"), /width: 100%/);
   assert.doesNotMatch(rule(".workspace"), /grid-template-columns/);
   assert.match(rule(".board"), /width: 100%/);
-  assert.match(rule(".workflows"), /flex-direction: row/);
-  assert.match(rule(".workflows"), /flex-shrink: 0/);
-  assert.match(rule(".workflows"), /overflow-x: auto/);
-  assert.match(rule(".workflows"), /overflow-y: hidden/);
-  assert.match(rule(".workflows a"), /flex-shrink: 0/);
-  assert.match(rule(".workflows a"), /white-space: nowrap/);
   assert.match(rule(".column"), /flex: 1 0 200px/);
   assert.match(rule(".column"), /min-width: 200px/);
   assert.match(rule(".column.collapsed"), /flex: 0 0 44px/);
@@ -120,10 +114,6 @@ await test("CLV-098 font stacks retain system fallbacks, including activity mess
 });
 
 await test("CLV-098 board surfaces, state cues, focus and narrow command wrapping use the design tokens", () => {
-  assert.match(
-    rule('.workflows a[aria-current="page"]'),
-    /border-bottom-color: var\(--accent\)/,
-  );
   for (const selector of [".column", ".card"]) {
     const declarations = rule(selector);
     assert.match(declarations, /border-radius: 14px/);
@@ -152,7 +142,7 @@ await test("CLV-098 board surfaces, state cues, focus and narrow command wrappin
   );
 });
 
-await test("CLV-098 phases are stations and activity, events and commands have always-dark windows and ghost controls", () => {
+await test("CLV-098 phases are stations and activity, events and commands have always-dark windows and filled controls", () => {
   assert.match(rule(".phases"), /background: var\(--surface\)/);
   assert.match(rule(".phase .mark"), /border-radius: 50%/);
   assert.match(rule(".code-window"), /background: var\(--code-bg\)/);
@@ -161,8 +151,8 @@ await test("CLV-098 phases are stations and activity, events and commands have a
     rule(".code-window .bad, .code-window .item.error"),
     /color: #FF7B72/,
   );
-  assert.match(rule("button"), /background: transparent/);
-  assert.match(rule("button"), /inset 0 0 0 2px var\(--code-line\)/);
+  assert.match(rule("button"), /background: var\(--code-line\)/);
+  assert.match(rule("button"), /color: var\(--code-fg\)/);
 });
 
 await test("CLV-098 text and focus colors meet contrast in both themes, with composited tints", () => {
@@ -304,4 +294,71 @@ await test("CLV-135 add-card buttons keep readable text on hover in both themes"
       );
     }
   }
+});
+
+function media(width: number): string {
+  const start = css.indexOf(`@media (max-width: ${String(width)}px) {`);
+  assert.ok(start >= 0, String(width));
+  return css.slice(start, css.indexOf("\n}", start));
+}
+
+await test("CLV-286 the floor states use custom properties with the light theme colors as defaults", () => {
+  const defaults = rule(":root");
+  for (const [state, color] of [
+    ["running", "#1F9D55"],
+    ["waiting", "#D9A400"],
+    ["needs-you", "#0B5FB0"],
+    ["stopped", "#C21F32"],
+  ] as const) {
+    assert.ok(defaults.includes(`--${state}: ${color};`), state);
+    assert.match(
+      rule(`.lamp.${state}`),
+      new RegExp(`background: var\\(--${state}\\)`),
+    );
+    assert.match(
+      rule(`.token.${state}`),
+      new RegExp(`--lamp: var\\(--${state}\\)`),
+    );
+  }
+  assert.match(rule(".lamp"), /transform: rotate\(45deg\)/);
+  assert.match(rule(".token-worker"), /background: var\(--lamp\)/);
+});
+
+await test("CLV-286 buttons and run tokens are filled rectangles with angled corners", () => {
+  assert.match(
+    rule(":root"),
+    /--angled: polygon\(var\(--cut\) 0, 100% 0, 100% calc\(100% - var\(--cut\)\), calc\(100% - var\(--cut\)\) 100%, 0 100%, 0 var\(--cut\)\);/,
+  );
+  for (const selector of ["button", ".token"]) {
+    assert.match(rule(selector), /clip-path: var\(--angled\)/);
+    assert.match(rule(selector), /background: (var|color-mix)\(/);
+    assert.doesNotMatch(
+      rule(selector),
+      /background: transparent|border-radius: [1-9]/,
+    );
+  }
+  assert.match(
+    rule("button:focus-visible, .token:focus-visible"),
+    /clip-path: none/,
+  );
+});
+
+await test("CLV-286 stations have a fixed width on a rail, and narrow screens move the side panels and stack each line", () => {
+  assert.match(rule(".stations"), /display: flex/);
+  assert.match(rule(".stations"), /justify-content: flex-start/);
+  assert.match(rule(".station"), /flex: 0 0 var\(--station-width\)/);
+  assert.match(rule(".station:not(:last-child)::after"), /width: 100%/);
+  assert.match(rule(".line-track"), /overflow-x: auto/);
+  assert.match(
+    rule(".floor-layout"),
+    /grid-template-columns: minmax\(0, 1fr\) minmax\(260px, 340px\)/,
+  );
+  assert.match(
+    media(1100),
+    /\.floor-layout \{ grid-template-columns: minmax\(0, 1fr\); \}/,
+  );
+  assert.match(
+    media(720),
+    /\.line \{ grid-template-columns: minmax\(0, 1fr\); \}/,
+  );
 });
