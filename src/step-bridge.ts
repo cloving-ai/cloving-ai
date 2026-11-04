@@ -75,6 +75,19 @@ export interface RunWaitOutcome {
   readonly promotionId: string | null;
 }
 
+export interface RunWaitCheck extends RunWaitRequest {
+  readonly startedAt?: number;
+}
+
+export type RunWaitProgress =
+  | {
+      readonly kind: "waiting";
+      readonly startedAt: number;
+      readonly deadline: number;
+      readonly nextCheckAt: number;
+    }
+  | { readonly kind: "completed"; readonly outcome: RunWaitOutcome };
+
 export interface CommandWaitRequest {
   readonly name: string;
   readonly input: HandoffValue;
@@ -117,6 +130,7 @@ export interface StepBridge {
   readonly gate: (request: GateRequest) => Promise<GateResult>;
   readonly waitForDecision?: (request: GateRequest) => Promise<DecisionWait>;
   readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
+  readonly checkRunWait?: (request: RunWaitCheck) => Promise<RunWaitProgress>;
   readonly waitForRun?: (request: RunWaitRequest) => Promise<RunWaitOutcome>;
 }
 

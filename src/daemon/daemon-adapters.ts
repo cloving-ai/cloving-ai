@@ -25,6 +25,7 @@ import type { HarnessSettings } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
+import type { RunWaitChecks } from "../run-wait.ts";
 import {
   turnSettingsSource,
   type SettingDigests,
@@ -56,6 +57,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly runWaitChecks?: RunWaitChecks;
   readonly scheduleClock?: () => number;
   readonly retention?: RetentionSettings;
   readonly retentionClock?: () => number;
