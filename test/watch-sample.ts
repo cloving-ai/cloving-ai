@@ -56,6 +56,7 @@ export const sampleDecision: WatchDecision = {
   decisionId: "run-1/review-1",
   type: "approval",
   prompt: "Review <b>this</b> & that.",
+  openedAt: null,
   approve: 'cloving approve run-1/review-1 --text "yes"',
   deny: "cloving deny run-1/review-1",
 };

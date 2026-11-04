@@ -90,6 +90,27 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .floor { min-width: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .floor-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .floor-head h2 { margin: 0; font-size: 18px; }
+.floor-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.needs { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.needs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.needs-head h2 { margin: 0; font-size: 18px; }
+.needs-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.needs-list { list-style: none; margin: 0; padding: 0; }
+.needs-empty { margin: 0; padding: 16px 20px; color: var(--muted); }
+.need { display: flex; align-items: center; gap: 12px 16px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.need:first-child { border-top: 0; }
+.need-decision { --mark: var(--needs-you); }
+.need-stopped { --mark: var(--stopped); }
+.need-mark { align-self: stretch; flex: 0 0 5px; background: var(--mark); }
+.need-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.need-title { margin: 0; font-size: 16px; line-height: 1.3; }
+.need-text { margin: 4px 0 2px; }
+.need-meta { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.need-action { flex-shrink: 0; padding: 8px 18px; background: var(--surface-2); color: var(--ink); font: 600 14px/1.4 var(--body-font); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }
+.need-action:hover { background: var(--line); }
+.need-decision .need-action { background: var(--needs-you); color: var(--on-lamp); }
+.need-decision .need-action:hover { background: color-mix(in srgb, var(--needs-you) 85%, #000000); }
+.need-action:focus-visible { clip-path: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 13px; }
 .legend li { display: inline-flex; align-items: center; gap: 8px; }
 .lines { list-style: none; margin: 0; padding: 0; }

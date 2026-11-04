@@ -42,6 +42,7 @@ export interface WatchDecision {
   readonly decisionId: string;
   readonly type: string;
   readonly prompt: string;
+  readonly openedAt: string | null;
   readonly approve: string;
   readonly deny: string;
 }
