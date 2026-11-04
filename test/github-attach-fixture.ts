@@ -7,6 +7,7 @@ import type { Operation } from "../src/daemon/github-operation.ts";
 export const target = "task-0123456789ab";
 export const download =
   "https://github.com/acme/demo/releases/download/pr-demos/pr-12-demo.mp4";
+export const playerUrl = "https://github.com/user-attachments/assets/0123abcd";
 export const payload = {
   number: 12,
   name: "demo.mp4",
@@ -29,6 +30,9 @@ export interface GithubState {
   releases: unknown[];
   uploaded?: Buffer;
   readonly comments: unknown[];
+  pullBody?: string | null;
+  attached?: Buffer;
+  readonly rewrite?: "none";
   readonly create?: "concurrent" | "refused";
   readonly onReleases?: () => void;
 }
@@ -60,6 +64,24 @@ function releaseCall(
   return Promise.resolve("");
 }
 
+function editCall(
+  parts: readonly string[],
+  state: GithubState,
+): Promise<string> {
+  const body = readFileSync(
+    String(parts[parts.indexOf("--body-file") + 1]),
+    "utf8",
+  );
+  const file = String(parts[parts.indexOf("--attach") + 1]);
+  const name = basename(file);
+  state.attached = readFileSync(file);
+  state.pullBody =
+    state.rewrite === "none"
+      ? body
+      : body.replace(`![${name}](./${name})`, playerUrl);
+  return Promise.resolve("https://github.com/acme/demo/pull/12\n");
+}
+
 function readCall(
   joined: string,
   state: GithubState,
@@ -74,6 +96,8 @@ function readCall(
   }
   if (joined.includes("/issues/12/comments?per_page=100"))
     return Promise.resolve(JSON.stringify([state.comments]));
+  if (joined === "api repos/{owner}/{repo}/pulls/12")
+    return Promise.resolve(JSON.stringify({ body: state.pullBody ?? null }));
   return undefined;
 }
 
@@ -84,6 +108,7 @@ export function fakeGh(
   return (parts) => {
     scene.calls.push(parts);
     if (parts[0] === "release") return releaseCall(parts, state);
+    if (parts[0] === "pr") return editCall(parts, state);
     return (
       readCall(parts.join(" "), state) ??
       Promise.resolve(JSON.stringify({ id: 77 }))
