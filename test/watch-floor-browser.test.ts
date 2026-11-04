@@ -39,7 +39,7 @@ await test("CLV-286 at a width of 390 px every station and every token is reacha
     floorRun("merge", { operation: "github-merge", ticketId: "583" }),
     floorRun("draft", { workflowId: "idea", operation: "write-draft" }),
   ]);
-  await using fixture = await watchPageServer(model, "");
+  await using fixture = await watchPageServer(model);
   await using browser = await realBrowser();
   const page = await browser.page({ width: 390, height: 844 });
   await page.navigate(fixture.url);

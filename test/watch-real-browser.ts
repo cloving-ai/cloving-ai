@@ -167,6 +167,19 @@ async function browserPage(
       assert.equal(result["errorText"], undefined, JSON.stringify(result));
     },
     evaluate: (expression: string) => evaluate(expression),
+    async click(selector: string) {
+      const center = await evaluate(`(() => {
+        const node = document.querySelector(${JSON.stringify(selector)});
+        node.scrollIntoView({ block: "center", inline: "center" });
+        const box = node.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      })()`);
+      for (const type of ["mousePressed", "mouseReleased"])
+        await command("Input.dispatchMouseEvent", {
+          sessionId,
+          params: { type, ...center, button: "left", clickCount: 1 },
+        });
+    },
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {

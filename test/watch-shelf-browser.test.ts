@@ -3,10 +3,12 @@ import { test } from "node:test";
 import { floorModel } from "./watch-floor-fixture.ts";
 import { watchPageServer } from "./watch-page-server.ts";
 import { realBrowser } from "./watch-real-browser.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import {
   attachedRecord,
   completedRun,
   demoUrl,
+  demoVideo,
 } from "./watch-shelf-fixture.ts";
 
 const longRun =
@@ -73,7 +75,7 @@ await test("CLV-288 at a width of 390 px the shelf scrolls sideways, and each ti
   const model = floorModel(shelfRuns(now), {
     updatedAt: new Date(now).toISOString(),
   });
-  await using fixture = await watchPageServer(model, "");
+  await using fixture = await watchPageServer(model);
   await using browser = await realBrowser();
   const page = await browser.page({ width: 390, height: 844 });
   await page.navigate(fixture.url);
@@ -111,7 +113,7 @@ await test("CLV-288 Play demo opens a player of the demo on the page, which play
       attachedRecord("run-1", { number: 581, name: "demo.mp4", url: demoUrl }),
     ],
   });
-  await using fixture = await watchPageServer(model, "");
+  await using fixture = await watchPageServer(model);
   await using browser = await realBrowser();
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
@@ -125,4 +127,81 @@ await test("CLV-288 Play demo opens a player of the demo on the page, which play
   });
   assert.equal(result["open"], false);
   assert.deepEqual(result["calls"], ["play", "pause"]);
+});
+
+const armed = `(() => {
+  const button = document.querySelector(".tile-demo");
+  const player = document.getElementById(button.getAttribute("popovertarget"));
+  const video = player.querySelector("video");
+  const next = (type) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("The video sent no " + type + " event"));
+    }, ${String(testMilliseconds(5000))});
+    video.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error("The video failed with code " + video.error.code));
+    }, { once: true });
+    video.addEventListener(type, () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+  window.demo = { player, video, next, started: next("playing") };
+  return {};
+})()`;
+
+const watched = `(async () => {
+  const { player, video, next, started } = window.demo;
+  await started;
+  const opened = {
+    open: player.matches(":popover-open"),
+    paused: video.paused,
+    width: video.videoWidth,
+    duration: video.duration,
+  };
+  const stopped = next("pause");
+  player.hidePopover();
+  await stopped;
+  return {
+    opened,
+    open: player.matches(":popover-open"),
+    paused: video.paused,
+    ended: video.ended,
+  };
+})()`;
+
+await test("CLV-288 Play demo plays a served video with the native media methods, and a close of the player pauses it", async () => {
+  const now = Date.now();
+  const shown = floorModel(shelfRuns(now), {
+    updatedAt: new Date(now).toISOString(),
+    githubRecords: [
+      attachedRecord("run-1", { number: 581, name: "demo.webm", url: demoUrl }),
+    ],
+  });
+  const model = {
+    ...shown,
+    completed: (shown.completed ?? []).map((tile) =>
+      tile.demo === null ? tile : { ...tile, demo: "/demo.webm" },
+    ),
+  };
+  await using fixture = await watchPageServer(model, {
+    files: { "/demo.webm": { type: "video/webm", body: demoVideo } },
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1280, height: 800 });
+  await page.navigate(fixture.url);
+  await page.evaluate(measure);
+  await page.evaluate(armed);
+  await page.click(".tile-demo");
+  const result = await page.evaluate(watched);
+  assert.deepEqual(result["opened"], {
+    open: true,
+    paused: false,
+    width: 16,
+    duration: 30,
+  });
+  assert.deepEqual(
+    { open: result["open"], paused: result["paused"], ended: result["ended"] },
+    { open: false, paused: true, ended: false },
+  );
 });
