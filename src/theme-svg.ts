@@ -130,6 +130,7 @@ function sticky(pattern: RegExp, scanner: Scanner): RegExpExecArray | null {
 
 function tagAt(scanner: Scanner, name: string): SvgTag | undefined {
   const attributes: SvgAttribute[] = [];
+  const names = new Set<string>();
   for (;;) {
     const spaced = sticky(space, scanner) !== null;
     const end = sticky(tagEnd, scanner);
@@ -141,8 +142,8 @@ function tagAt(scanner: Scanner, name: string): SvgTag | undefined {
       name: match[1] ?? "",
       value: match[2] ?? match[3] ?? "",
     };
-    if (attributes.some((other) => other.name === attribute.name))
-      return undefined;
+    if (names.has(attribute.name)) return undefined;
+    names.add(attribute.name);
     attributes.push(attribute);
   }
 }

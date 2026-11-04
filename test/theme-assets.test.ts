@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assetByteLimit, assetCodes } from "../src/theme-assets.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const webp = new TextEncoder().encode("RIFF\u0004\u0000\u0000\u0000WEBPVP8 ");
@@ -335,3 +336,16 @@ for (const [description, path, bytes, expected] of refused)
   await test(`CLV-290 ${description} gives ${expected.join(" and ")}`, () => {
     assert.deepEqual(assetCodes({ path, bytes }), expected);
   });
+
+await test("CLV-290 an SVG file of 512 KB with distinct attributes is checked in linear time", () => {
+  const head = '<svg xmlns="http://www.w3.org/2000/svg"><rect';
+  const names = Array.from(
+    { length: 52_000 },
+    (_value, index) => ` a${String(index)}=""`,
+  );
+  const bytes = new TextEncoder().encode(`${head}${names.join("")}/></svg>`);
+  assert.ok(bytes.length <= assetByteLimit);
+  const start = performance.now();
+  assert.deepEqual(assetCodes({ path: "assets/a.svg", bytes }), []);
+  assert.ok(performance.now() - start < testMilliseconds(1000));
+});

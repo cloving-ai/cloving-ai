@@ -66,6 +66,16 @@ const refused: readonly (readonly [string, Fields, string])[] = [
   ],
   ["a group type that is not text", { shape: { $type: 5 } }, "invalid-token"],
   [
+    "a token in a group with a type that is not a token type",
+    { color: { $type: "bogus", page: { $value: "#FFFFFF" } } },
+    "invalid-token",
+  ],
+  [
+    "a token type that is not a token type",
+    { color: { page: { $type: "bogus", $value: "#FFFFFF" } } },
+    "invalid-token",
+  ],
+  [
     "an unknown token name",
     { color: { sparkle: color("#FFFFFF") } },
     "unknown-token",

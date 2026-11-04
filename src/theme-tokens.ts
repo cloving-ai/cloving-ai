@@ -48,9 +48,11 @@ export const themeTokens: Readonly<Record<string, TokenRule>> = {
   "font.code": fontFamily,
 };
 
+type TokenType = TokenRule["type"];
+
 interface Walk {
   readonly path: string;
-  readonly type: unknown;
+  readonly type: TokenType | undefined;
 }
 
 const hexColor = /^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/;
@@ -59,11 +61,15 @@ const fontName = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?$/;
 const tokenKeys = ["$value", "$type", "$description"];
 const groupKeys = ["$type", "$description"];
 const colorKeys = ["colorSpace", "components", "alpha", "hex"];
-const tokenTypes: readonly unknown[] = ["color", "dimension", "fontFamily"];
+const tokenTypes: readonly TokenType[] = ["color", "dimension", "fontFamily"];
 const reservedName = /[.{}]/;
 
 export function onlyKeys(fields: Fields, allowed: readonly string[]): boolean {
   return Object.keys(fields).every((key) => allowed.includes(key));
+}
+
+function isTokenType(value: unknown): value is TokenType {
+  return tokenTypes.some((type) => type === value);
 }
 
 function unit(value: unknown): boolean {
@@ -142,7 +148,10 @@ function tokenCodes(
   if (token === undefined || !Object.hasOwn(token, "$value"))
     return ["invalid-token"];
   if (!describedOnly(token, tokenKeys)) return ["invalid-token"];
-  const type = token["$type"] ?? walk.type;
+  const declared = token["$type"];
+  if (declared !== undefined && !isTokenType(declared))
+    return ["invalid-token"];
+  const type = declared ?? walk.type;
   if (type === undefined) return ["invalid-token"];
   if (type !== walk.rule.type) return ["token-type-mismatch"];
   return valueCodes(token["$value"], walk.rule);
@@ -165,13 +174,15 @@ function memberCodes(value: unknown, walk: Walk): readonly string[] {
 }
 
 function groupCodes(group: Fields, walk: Walk): readonly string[] {
+  const declared = group["$type"];
+  if (declared !== undefined && !isTokenType(declared))
+    return ["invalid-token"];
   const properties = Object.fromEntries(
     Object.entries(group).filter(([key]) => key.startsWith("$")),
   );
-  const type = group["$type"] ?? walk.type;
-  const typed = type === undefined || tokenTypes.includes(type);
+  const type = declared ?? walk.type;
   return [
-    ...(describedOnly(properties, groupKeys) && typed ? [] : ["invalid-token"]),
+    ...(describedOnly(properties, groupKeys) ? [] : ["invalid-token"]),
     ...Object.entries(group)
       .filter(([key]) => !key.startsWith("$"))
       .flatMap(([key, value]) =>
