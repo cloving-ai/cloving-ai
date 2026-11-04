@@ -45,6 +45,7 @@ export interface Configuration {
   readonly watch?: {
     readonly port?: number | "off";
     readonly actions?: "on" | "off";
+    readonly theme?: string;
   };
   readonly selfUpdate?: { readonly everySeconds?: number };
   readonly github?: { readonly command?: readonly string[] };

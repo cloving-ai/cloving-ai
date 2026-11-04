@@ -47,6 +47,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "notify.command": "CLOVING_NOTIFY_COMMAND",
   "watch.port": "CLOVING_WATCH_PORT",
   "watch.actions": "CLOVING_WATCH_ACTIONS",
+  "watch.theme": "CLOVING_WATCH_THEME",
   "selfUpdate.everySeconds": "CLOVING_SELF_UPDATE_SECONDS",
   "github.command": "CLOVING_GH_COMMAND",
   "workflows.folder": "CLOVING_WORKFLOW_FOLDER",

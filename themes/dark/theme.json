@@ -1,0 +1,152 @@
+{
+  "color": {
+    "$type": "color",
+    "page": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.078, 0.11, 0.094],
+        "hex": "#141C18"
+      }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.106, 0.145, 0.125],
+        "hex": "#1B2520"
+      }
+    },
+    "panel": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.133, 0.188, 0.165],
+        "hex": "#22302A"
+      }
+    },
+    "ink": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.902, 0.949, 0.922],
+        "hex": "#E6F2EB"
+      }
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.635, 0.729, 0.678],
+        "hex": "#A2BAAD"
+      }
+    },
+    "line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.18, 0.251, 0.216],
+        "hex": "#2E4037"
+      }
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.043, 0.749, 0.392],
+        "hex": "#0BBF64"
+      }
+    },
+    "accent-strong": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.271, 0.867, 0.573],
+        "hex": "#45DD92"
+      }
+    },
+    "on-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.02, 0.133, 0.075],
+        "hex": "#052213"
+      }
+    },
+    "warn": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.941, 0.753, 0.384],
+        "hex": "#F0C062"
+      }
+    },
+    "bad": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [1.0, 0.482, 0.447],
+        "hex": "#FF7B72"
+      }
+    },
+    "code": {
+      "background": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.039, 0.078, 0.063],
+          "hex": "#0A1410"
+        }
+      },
+      "header": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.067, 0.125, 0.098],
+          "hex": "#112019"
+        }
+      },
+      "text": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.835, 0.902, 0.863],
+          "hex": "#D5E6DC"
+        }
+      },
+      "line": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.122, 0.2, 0.161],
+          "hex": "#1F3329"
+        }
+      },
+      "muted": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.525, 0.639, 0.58],
+          "hex": "#86A394"
+        }
+      }
+    }
+  },
+  "size": {
+    "text": {
+      "$type": "dimension",
+      "$value": {
+        "value": 14,
+        "unit": "px"
+      }
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "ui": {
+      "$value": ["Space Grotesk", "system-ui", "sans-serif"]
+    },
+    "heading": {
+      "$value": ["Heebo", "system-ui", "sans-serif"]
+    },
+    "code": {
+      "$value": [
+        "Fira Code",
+        "ui-monospace",
+        "SFMono-Regular",
+        "Menlo",
+        "monospace"
+      ]
+    }
+  },
+  "$extensions": {
+    "ai.cloving.theme": {
+      "name": "Cloving dark",
+      "colorScheme": "dark"
+    }
+  }
+}

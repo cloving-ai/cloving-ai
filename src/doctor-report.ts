@@ -18,6 +18,7 @@ export const doctorCodes = [
   "queue-interval",
   "private-texts",
   "retention",
+  "theme",
 ] as const;
 
 export type DoctorCode = (typeof doctorCodes)[number];
@@ -60,6 +61,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
   retention:
     "Set a retention period: cloving config set retention.days 30 --private",
+  theme:
+    "See the refusal codes: cloving themes list; fix the theme folder, or select another theme: cloving config set watch.theme auto",
 };
 
 export function doctorExitCode(checks: readonly DoctorCheck[]): number {
