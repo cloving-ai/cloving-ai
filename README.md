@@ -160,9 +160,13 @@ On start, Cloving keeps the old default runtime path only when all retained work
 
 `cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
+The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
+
+The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
+
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. The form uses the string and ticket fields of the workflow's registered declaration. Ticket fields are labeled **Ticket ID**; other fields use their declared names, and optional fields can be left out. Unsupported inputs have no control. Select **Add card** or press Enter in a field to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream.
 
-The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. `CLOVING_WATCH_ACTIONS=off` removes both the form control and the endpoint; actions are enabled by default. Decisions and other run actions still use their displayed CLI commands.
+The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control and their endpoints; actions are enabled by default. Decisions and other run actions still use their displayed CLI commands.
 
 `cloving start` reads its settings from the environment. `cloving start --help` gives the form and the default of each setting:
 
@@ -174,7 +178,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_PROFILES`: a JSON file of named turn profiles. The service reads it at the start and at each `cloving reload`.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
-- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board; default `on`.
+- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board and the queue control; default `on`.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.

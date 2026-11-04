@@ -78,23 +78,12 @@ await test("CLV-140 column widths share the available space and overflow only be
   );
 });
 
-await test("CLV-140 workflow tabs sit above the board with names, counts and selection and no sidebar", () => {
+await test("CLV-286 the board of a workflow sits under a back link to the floor, with no workflow tabs and no sidebar", () => {
   const html = page(activeBoardModel(), "workflow=develop-issue");
-  assert.match(html, /<nav class="workflows" aria-label="Workflows">/);
-  assert.match(html, /href="#workflow=develop-issue" aria-current="page"/);
-  for (const [name, count] of [
-    ["develop-issue", 7],
-    ["develop-ticket", 1],
-    ["develop-prompt", 0],
-  ])
-    assert.ok(
-      html.includes(
-        `${String(name)}</strong><span>${String(count)} active · 0 waiting`,
-      ),
-    );
+  assert.doesNotMatch(html, /<nav|class="workflows"/);
   assert.match(
     html,
-    /<\/header>[\s\S]*<nav class="workflows"[\s\S]*<\/nav><div class="workspace"><main class="board">/,
+    /<\/header><a class="back" href="#">← Back to the floor<\/a><div class="workspace"><main class="board">/,
   );
   const workspace = html.slice(html.indexOf('<div class="workspace">'));
   assert.doesNotMatch(workspace, /<nav|<aside/);
@@ -134,14 +123,9 @@ await test("CLV-091 stopped cards show exact marks with separate encoded origina
   );
 });
 
-await test("CLV-079 the workflow navigation shows counts and selection with ordered columns and cards", () => {
+await test("CLV-079 the board of a workflow shows ordered columns and cards", () => {
   const model = activeBoardModel();
   const html = page(model, "workflow=develop-issue");
-  assert.match(html, /<nav class="workflows" aria-label="Workflows">/);
-  assert.match(html, /href="#workflow=develop-issue" aria-current="page"/);
-  assert.match(html, /develop-issue<\/strong><span>7 active · 0 waiting/);
-  assert.match(html, /develop-ticket<\/strong><span>1 active · 0 waiting/);
-  assert.match(html, /develop-prompt<\/strong><span>0 active · 0 waiting/);
   assert.deepEqual(
     [...html.matchAll(/<h3 class="column-name"><span>(.*?)<\/span>/g)].map(
       (match) => match[1],

@@ -38,7 +38,7 @@ export function boardWorkflow(
 ): string | null {
   return model.workflows.some((workflow) => workflow.workflowId === workflowId)
     ? workflowId
-    : model.startWorkflowId;
+    : null;
 }
 
 export function watchTitle(model: WatchModel, selected: string): string {
@@ -50,5 +50,5 @@ export function watchTitle(model: WatchModel, selected: string): string {
     0,
   );
   const prefix = waiting === 0 ? "" : `(${String(waiting)}) `;
-  return workflow === null ? "Cloving" : `${prefix}${workflow} · Cloving`;
+  return `${prefix}${workflow ?? "Floor"} · Cloving`;
 }

@@ -10,6 +10,7 @@ import {
   stageOf,
 } from "./watch-phases.ts";
 import { sameIssue } from "./watch-pr-identity.ts";
+import { stationsOf } from "./watch-floor.ts";
 import type {
   WatchCard,
   WatchCompletionMark,
@@ -85,15 +86,22 @@ export function stagesFor(
     : undefined;
 }
 
+function stationNames(
+  workflow: { readonly pullRequest?: WatchPullRequest | null },
+  stages?: readonly WorkflowStage[],
+): readonly string[] {
+  if (stages !== undefined) return stages.map((stage) => stage.label);
+  return workflow.pullRequest != null
+    ? pullRequestSteps.map((step) => step.name)
+    : ["Agent turn", "Your review"];
+}
+
 function stepNames(
   workflow: { readonly pullRequest?: WatchPullRequest | null },
   stages?: readonly WorkflowStage[],
 ): readonly string[] {
-  if (stages !== undefined)
-    return [...stages.map((stage) => stage.label), "Other"];
-  return workflow.pullRequest != null
-    ? pullRequestSteps.map((step) => step.name)
-    : ["Agent turn", "Your review"];
+  const names = stationNames(workflow, stages);
+  return stages === undefined ? names : [...names, "Other"];
 }
 
 function operationOf(event: unknown): readonly unknown[] {
@@ -290,17 +298,15 @@ export function boardsOf(
         : inputs.summaries
             .filter((value) => record(value)?.["workflowId"] === workflowId)
             .map(summaryOf);
+    const shape = {
+      pullRequest:
+        own.find((run) => run.pullRequest !== null)?.pullRequest ?? null,
+    };
+    const stages = stagesFor(inputs.workflowStages, workflowId);
+    const active = own.filter((run) => activeRun(run.state));
     const names = [
-      ...stepNames(
-        {
-          pullRequest:
-            own.find((run) => run.pullRequest !== null)?.pullRequest ?? null,
-        },
-        stagesFor(inputs.workflowStages, workflowId),
-      ),
-      ...own
-        .filter((run) => activeRun(run.state))
-        .map((run) => run.currentStep.name),
+      ...stepNames(shape, stages),
+      ...active.map((run) => run.currentStep.name),
       "Done",
       "Stopped",
     ];
@@ -328,19 +334,10 @@ export function boardsOf(
       waitingCount: summaries.filter((run) => run.waiting).length,
       latestAt: latestTime(summaries.map((run) => run.latestAt)),
       columns,
+      stations: stationsOf({
+        names: stationNames(shape, stages),
+        runs: active,
+      }),
     };
   });
-}
-
-export function startWorkflowOf(
-  workflows: readonly WatchWorkflow[],
-): string | null {
-  const waiting = workflows.filter((workflow) => workflow.waitingCount > 0);
-  return (
-    (waiting.length > 0 ? waiting : workflows).toSorted(
-      (first, second) =>
-        Date.parse(second.latestAt ?? "1970-01-01") -
-        Date.parse(first.latestAt ?? "1970-01-01"),
-    )[0]?.workflowId ?? null
-  );
 }

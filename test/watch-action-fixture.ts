@@ -25,6 +25,7 @@ export function postCard(
   options: {
     readonly headers: Readonly<Record<string, string>>;
     readonly body?: string;
+    readonly path?: string;
   },
 ): Promise<{
   readonly status: number | undefined;
@@ -33,7 +34,7 @@ export function postCard(
 }> {
   return new Promise((resolve, reject) => {
     const sent = request(
-      new URL("actions/run", watch.address),
+      new URL(options.path ?? "actions/run", watch.address),
       {
         method: "POST",
         headers: options.headers,
