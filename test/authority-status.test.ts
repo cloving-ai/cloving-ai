@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runView, type StatusInput } from "../src/authority/status.ts";
+import { rendered } from "../src/cli/render.ts";
 import {
   gate,
   input,
@@ -225,4 +226,33 @@ await test("CLV-008 a failed evidence or infrastructure operation does not reque
     assert.notEqual(view.nextAction, "repair-code");
     assert.equal(view.condition, "infrastructure-failure");
   }
+});
+
+await test("CLV-293 status shows a git retry and the time of the next attempt", () => {
+  const retryAt = "2026-11-04T12:00:45.000Z";
+  const view = runView(
+    input({
+      status: "running",
+      observed: {
+        reason: "git-network-retry",
+        evidence: "git/fetch",
+        retryAt,
+        attempt: 2,
+        limit: 3,
+      },
+      operations: [sent],
+    }),
+  );
+  assert.equal(view.condition, "working");
+  assert.deepEqual(view.reason, {
+    code: "git-network-retry",
+    detail: "git fetch failed, retry 2 of 3.",
+  });
+  assert.equal(view.nextAction, "retry-git-call");
+  assert.equal(view.nextActionAt, retryAt);
+  assert.equal(view.humanInputCanHelp, false);
+  assert.match(
+    rendered({ kind: "run-status", run: view }),
+    /^Reason: git-network-retry: git fetch failed, retry 2 of 3\.$/m,
+  );
 });

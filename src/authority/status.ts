@@ -213,7 +213,8 @@ function running(input: StatusInput): Assessment {
 
 function observed(input: StatusInput): Assessment {
   const observation = input.details?.observation ?? null;
-  const wait = runWaitAssessment(observation);
+  const wait =
+    runWaitAssessment(observation) ?? gitRetryAssessment(observation);
   if (wait !== undefined) return wait;
   if (
     observation !== null &&
@@ -245,6 +246,20 @@ function runWaitAssessment(
       humanInputCanHelp: false,
     });
   return undefined;
+}
+
+function gitRetryAssessment(
+  observation: Observation | null,
+): Assessment | undefined {
+  if (observation?.reason !== "git-network-retry") return undefined;
+  const command = (observation.evidence ?? "git").replace("/", " ");
+  return assessed("working", {
+    code: observation.reason,
+    detail: `${command} failed, retry ${String(observation.attempt)} of ${String(observation.limit)}.`,
+    nextAction: "retry-git-call",
+    nextActionAt: observation.retryAt,
+    humanInputCanHelp: false,
+  });
 }
 
 function waiting(input: StatusInput): Assessment {

@@ -712,6 +712,10 @@ Reads run in the background, one at a time, with a five-second limit. Board load
 
 The GitHub worker does not push a change that has the path of the home folder in a file or in a commit message. `CLOVING_PRIVATE_TEXTS` (a JSON list of texts) adds more texts to refuse, with no difference between capital and small letters. `CLOVING_CHECK_COMMAND` (a JSON list of texts) names a check that must pass in the work tree before a merge. `CLOVING_GH_COMMAND` replaces the `gh` command. The worker uses the `gh` login and the git credentials of the current user.
 
+The GitHub worker tries a git call to the remote (`fetch`, `push` or `ls-remote`) again after a short failure. A short failure has one of these texts in the git output: `Could not read from remote repository`, `Permission denied (publickey)`, `Connection reset`, `Connection timed out`, `Could not resolve host`, `The remote end hung up unexpectedly`, `early EOF`, or an HTTP 5xx status. Output with `does not appear to be a git repository` fails at once. The waits before the three retries are 5, 15 and 45 seconds.
+
+During a wait, `cloving status` shows the reason `git-network-retry` with a text such as `git fetch failed, retry 2 of 3.` and the time of the next attempt. If the fourth attempt also fails, the operation fails with `git-network-failed`, and its private journal keeps the last git output. Local git calls, for example `merge`, `status` and `rev-parse`, do not try again.
+
 ## Continuous process
 
 In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
