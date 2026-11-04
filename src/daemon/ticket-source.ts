@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { readyList, type ReadyList } from "../queue-state.ts";
 
@@ -111,13 +112,19 @@ export function readyTickets(
   );
 }
 
-export async function readyRefresh(
+export async function readyRefreshes(
   command: readonly string[] | undefined,
   run: {
     readonly signal: AbortSignal;
+    readonly intervalMilliseconds: number;
     readonly listed: (ready: ReadyList) => void;
   },
 ): Promise<void> {
   if (command === undefined) return;
-  run.listed(await readyTickets(command, run.signal));
+  while (!run.signal.aborted) {
+    run.listed(await readyTickets(command, run.signal));
+    await delay(run.intervalMilliseconds, undefined, {
+      signal: run.signal,
+    }).catch(() => undefined);
+  }
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -120,7 +120,7 @@ function idle(state: { admissions: number }): Handle {
   };
 }
 
-await test("CLV-286 the queue runs the ready-ticket command on each check and its control reports the latest list", async () => {
+await test("CLV-286 the queue runs the ready-ticket command again after each queue interval and its control reports the latest list", async () => {
   const plain = { admissions: 0 };
   await withQueue({ handle: idle(plain) }, async (scene) => {
     await eventually(() => (plain.admissions > 1 ? true : undefined));
@@ -165,14 +165,16 @@ await test("CLV-286 the queue lists the ready tickets at its start, before the f
   );
 });
 
-await test("CLV-286 the queue checks for admission while a slow ready-ticket command runs, and a later check replaces the list", async () => {
+await test("CLV-286 the queue checks for admission at each interval while one slow ready-ticket command runs, and a later run of the command replaces the list", async () => {
   const folder = await mkdtemp(join(tmpdir(), "cloving-ready-"));
   const hold = join(folder, "hold");
   const listFile = join(folder, "list.json");
+  const starts = join(folder, "starts");
   await writeFile(hold, "");
   await writeFile(listFile, printed);
-  const body = `import { existsSync, readFileSync } from "node:fs";
+  const body = `import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
+appendFileSync(${JSON.stringify(starts)}, "start\\n");
 while (existsSync(${JSON.stringify(hold)})) await setTimeout(10);
 process.stdout.write(readFileSync(${JSON.stringify(listFile)}, "utf8"));`;
   const state = { admissions: 0 };
@@ -186,8 +188,13 @@ process.stdout.write(readFileSync(${JSON.stringify(listFile)}, "utf8"));`;
         readyCommand: [process.execPath, "--input-type=module", "-e", body],
       },
       async (scene) => {
-        await eventually(() => (state.admissions > 0 ? true : undefined));
+        await eventually(() => readFile(starts, "utf8").catch(() => undefined));
+        const seen = state.admissions;
+        await eventually(() =>
+          state.admissions > seen + 1 ? true : undefined,
+        );
         assert.equal(scene.control()?.ready, undefined);
+        assert.equal(await readFile(starts, "utf8"), "start\n");
         await rm(hold);
         assert.deepEqual(
           await eventually(() => scene.control()?.ready),

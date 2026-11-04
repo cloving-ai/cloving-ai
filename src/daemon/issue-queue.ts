@@ -6,12 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
 import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
-import {
-  queueFailureLimit,
-  type QueuePort,
-  type ReadyList,
-} from "../queue-state.ts";
-import { readyRefresh } from "./ticket-source.ts";
+import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
+import { readyRefreshes } from "./ticket-source.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
 import {
   queueControlPort,
@@ -313,11 +309,7 @@ async function admissible(
 
 async function cycle(
   settings: QueueSettings,
-  run: {
-    readonly signal: AbortSignal;
-    readonly pending: QueueJournal;
-    readonly listed: (ready: ReadyList) => void;
-  },
+  run: { readonly signal: AbortSignal; readonly pending: QueueJournal },
 ): Promise<void> {
   const { signal, pending } = run;
   if (settings.resetQueue === true) {
@@ -337,17 +329,14 @@ async function cycle(
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   while (!stopped()) {
-    const listing = readyRefresh(settings.readyCommand, run);
     await delay(settings.intervalMilliseconds, undefined, { signal }).catch(
       () => undefined,
     );
-    if (
-      !stopped() &&
-      (await admissible(settings, { pending, stop, notice, update })) &&
-      !stopped()
-    )
-      await admission(settings, { pending, holding, signal });
-    await listing;
+    if (stopped()) return;
+    if (!(await admissible(settings, { pending, stop, notice, update })))
+      continue;
+    if (stopped()) return;
+    await admission(settings, { pending, holding, signal });
   }
 }
 
@@ -367,13 +356,16 @@ export function issueQueue(settings: QueueSettings): {
   });
   const running = loaded
     .then((pending) =>
-      cycle(settings, {
-        signal: runtime.stopping.signal,
-        pending,
-        listed: (ready) => {
-          runtime.ready = ready;
-        },
-      }),
+      Promise.all([
+        cycle(settings, { signal: runtime.stopping.signal, pending }),
+        readyRefreshes(settings.readyCommand, {
+          signal: runtime.stopping.signal,
+          intervalMilliseconds: settings.intervalMilliseconds,
+          listed: (ready) => {
+            runtime.ready = ready;
+          },
+        }),
+      ]),
     )
     .catch((error: unknown) => {
       queueStopped(runtime, error);

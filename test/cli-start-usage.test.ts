@@ -66,7 +66,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ],
   [
     "CLOVING_READY_COMMAND",
-    /JSON list .*Requires CLOVING_QUEUE_SECONDS.*each queue check.*no added argument.*JSON list of the ready tickets.*id.*readyAt UTC time.*watch page.*not in work.*dependency.*oldest wait.*no default/,
+    /JSON list .*Requires CLOVING_QUEUE_SECONDS.*queue starts.*one queue interval after each run ends.*no added argument.*JSON list of the ready tickets.*Queue checks do not wait.*id.*readyAt UTC time.*watch page.*not in work.*dependency.*oldest wait.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
   [
