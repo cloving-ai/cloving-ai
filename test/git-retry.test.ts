@@ -7,14 +7,18 @@ import { withGitWaits } from "./github-git-fixture.ts";
 interface Scripted {
   readonly operation: Operation;
   readonly invoked: readonly (readonly string[])[];
+  readonly reasons: readonly string[];
 }
 
-function scripted(
-  failures: readonly string[],
-  signal = new AbortController().signal,
-): Scripted {
+interface Script {
+  readonly signal?: AbortSignal;
+  readonly noticed?: () => void;
+}
+
+function scripted(failures: readonly string[], script: Script = {}): Scripted {
   const remaining = [...failures];
   const invoked: (readonly string[])[] = [];
+  const reasons: string[] = [];
   const refused = (): Promise<string> =>
     Promise.reject(new Error("unexpected-call"));
   const operation: Operation = {
@@ -33,10 +37,15 @@ function scripted(
     },
     target: "ticket/one",
     payload: {},
-    signal,
+    signal: script.signal ?? new AbortController().signal,
     folder: "folder",
+    observe: (report) => {
+      reasons.push(report.reason);
+      script.noticed?.();
+      return Promise.resolve({ kind: "accepted" });
+    },
   };
-  return { operation, invoked };
+  return { operation, invoked, reasons };
 }
 
 const transientOutputs = [
@@ -110,10 +119,9 @@ await test("CLV-293 stops a git retry when the operation stops", () =>
   withGitWaits(async (waits) => {
     const stopping = new AbortController();
     stopping.abort();
-    const git = scripted(
-      ["fatal: The remote end hung up unexpectedly"],
-      stopping.signal,
-    );
+    const git = scripted(["fatal: The remote end hung up unexpectedly"], {
+      signal: stopping.signal,
+    });
     await assert.rejects(
       retriedOperation(git.operation).calls.git("repository", [
         "push",
@@ -124,3 +132,42 @@ await test("CLV-293 stops a git retry when the operation stops", () =>
     assert.equal(git.invoked.length, 1);
     assert.deepEqual(waits, []);
   }));
+
+await test("CLV-293 replaces the retry notice when a later git failure lasts", () =>
+  withGitWaits(async (waits) => {
+    const git = scripted([
+      "fatal: The remote end hung up unexpectedly",
+      " ! [rejected]        main -> main (non-fast-forward)",
+    ]);
+    await assert.rejects(
+      retriedOperation(git.operation).calls.git("repository", [
+        "push",
+        "origin",
+      ]),
+      { message: "git-call-failed" },
+    );
+    assert.equal(git.invoked.length, 2);
+    assert.deepEqual(waits, [5_000]);
+    assert.deepEqual(git.reasons, ["git-network-retry", "in-progress"]);
+  }));
+
+await test("CLV-293 stops a git retry during its wait", async () => {
+  const stopping = new AbortController();
+  const git = scripted(["fatal: The remote end hung up unexpectedly"], {
+    signal: stopping.signal,
+    noticed: () => {
+      setImmediate(() => {
+        stopping.abort();
+      });
+    },
+  });
+  await assert.rejects(
+    retriedOperation(git.operation).calls.git("repository", [
+      "fetch",
+      "origin",
+    ]),
+    { name: "AbortError" },
+  );
+  assert.equal(git.invoked.length, 1);
+  assert.deepEqual(git.reasons, ["git-network-retry"]);
+});

@@ -71,17 +71,29 @@ async function attempted(
   }
 }
 
-async function retried(retry: Retry): Promise<string> {
-  for (let attempt = 0; ; attempt += 1) {
+async function cleared(retry: Retry): Promise<void> {
+  if (retry.operation.signal.aborted) return;
+  await retry.operation.observe?.({
+    notice: `git-retry:${String(retry.started)}:done`,
+    condition: "working",
+    reason: "in-progress",
+  });
+}
+
+async function recovered(retry: Retry): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
     const output = await attempted(retry, attempt);
-    if (output === undefined) continue;
-    if (attempt > 0)
-      await retry.operation.observe?.({
-        notice: `git-retry:${String(retry.started)}:done`,
-        condition: "working",
-        reason: "in-progress",
-      });
-    return output;
+    if (output !== undefined) return output;
+  }
+}
+
+async function retried(retry: Retry): Promise<string> {
+  const output = await attempted(retry, 0);
+  if (output !== undefined) return output;
+  try {
+    return await recovered(retry);
+  } finally {
+    await cleared(retry);
   }
 }
 

@@ -33,6 +33,14 @@ function commands(
   assert.equal(new Set(identifiers).size, identifiers.length);
 }
 
+const recovered: Shown = {
+  condition: "working",
+  reason: "in-progress",
+  evidence: undefined,
+  attempt: undefined,
+  limit: undefined,
+};
+
 function retries(command: string, count: number): readonly Shown[] {
   return Array.from({ length: count }, (_, index) => ({
     condition: "working",
@@ -70,13 +78,7 @@ await test("CLV-293 completes a merge after one SSH fetch refusal", () =>
       assert.ok(remote.invoked("fetch").length - fetches >= 3);
       assert.deepEqual(seen.observations.map(shown), [
         ...retries("fetch", 1),
-        {
-          condition: "working",
-          reason: "in-progress",
-          evidence: undefined,
-          attempt: undefined,
-          limit: undefined,
-        },
+        recovered,
       ]);
       const retryAt = Date.parse(seen.observations[0]?.retryAt ?? "");
       assert.ok(retryAt >= started + 5_000 && retryAt <= Date.now() + 5_000);
@@ -119,7 +121,10 @@ await test("CLV-293 ends a merge with git-network-failed after four push failure
       assert.deepEqual(waits, [5_000, 15_000, 45_000]);
       assert.equal(remote.invoked("push").length - pushes, 4);
       assert.deepEqual(mergeCalls(scene), []);
-      assert.deepEqual(seen.observations.map(shown), retries("push", 3));
+      assert.deepEqual(seen.observations.map(shown), [
+        ...retries("push", 3),
+        recovered,
+      ]);
       commands(seen.observations, report);
     }),
   ));
