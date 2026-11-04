@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { methods } from "../src/daemon/github-methods.ts";
@@ -119,16 +119,19 @@ await test("CLV-282 two description attaches on one pull request keep both block
   withScene(async (scene) => {
     assert.ok(attach);
     await writeFile(join(scene.attachments, "other.mp4"), video);
+    const folder = join(scene.root, "other-operation");
+    await mkdir(folder);
     const state: GithubState = { releases: [], comments: [], pullBody: "" };
     const gh = fakeGh(scene, state);
     await Promise.all([
       attach(operation(scene, { payload: description, gh })),
-      attach(
-        operation(scene, {
+      attach({
+        ...operation(scene, {
           payload: { ...description, name: "other.mp4" },
           gh,
         }),
-      ),
+        folder,
+      }),
     ]);
     assert.ok(state.pullBody?.includes(start));
     assert.ok(

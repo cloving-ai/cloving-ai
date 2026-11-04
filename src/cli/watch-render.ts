@@ -148,7 +148,21 @@ export interface WatchWorkflow {
   readonly stations: readonly WatchStation[];
 }
 
+export interface WatchTile {
+  readonly runId: string;
+  readonly workflowId: string;
+  readonly ticket: string;
+  readonly pullRequestNumber: number | null;
+  readonly title: string;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly claudeCostUsd: number | null;
+  readonly estimatedCostUsd: number | null;
+  readonly demo: string | null;
+}
+
 export interface WatchRun {
+  readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
   readonly commandWaits?: readonly CommandWaitView[];
   readonly awaitedRunId?: string | null;
@@ -195,6 +209,7 @@ export interface WatchModel {
   readonly queue?: Fields;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
+  readonly completed?: readonly WatchTile[];
   readonly workflows: readonly WatchWorkflow[];
   readonly updatedAt: string;
   readonly service: string;
