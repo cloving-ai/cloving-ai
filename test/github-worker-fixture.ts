@@ -43,6 +43,8 @@ export interface Plan {
   readonly mergeRefusals?: number;
   readonly mergeStatus?: number;
   readonly mergePollMilliseconds?: number;
+  readonly queuePolls?: number;
+  readonly queuePosition?: number;
   readonly failureText?: string;
   readonly issuePages?: readonly (readonly unknown[])[];
   readonly issueEditAfterRead?: Readonly<Record<string, unknown>>;

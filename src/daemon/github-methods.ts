@@ -9,8 +9,7 @@ import {
 } from "./github-calls.ts";
 import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
-import { merge } from "./github-merge.ts";
-import { inMergeTurn } from "./merge-turns.ts";
+import { mergeStep } from "./github-merge-queue.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
 import {
   captureDraft,
@@ -384,17 +383,10 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   [
     "merge",
     (operation) =>
-      inMergeTurn(
-        {
-          repository: operation.settings.repository,
-          signal: operation.signal,
-        },
-        () =>
-          merge(operation, {
-            number: integer(operation, "number"),
-            commit: text(operation, "commit"),
-            check: mergeCheck(operation),
-          }),
-      ),
+      mergeStep(operation, {
+        number: integer(operation, "number"),
+        commit: text(operation, "commit"),
+        check: mergeCheck(operation),
+      }),
   ],
 ]);

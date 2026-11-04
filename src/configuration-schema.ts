@@ -20,6 +20,7 @@ export interface Configuration {
     readonly required?: readonly string[];
     readonly redGreen?: RedGreenSettings;
   };
+  readonly merge?: { readonly mode?: "direct" | "queue" };
   readonly tickets?: {
     readonly command?: readonly string[];
     readonly nextCommand?: readonly string[];

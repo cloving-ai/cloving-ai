@@ -249,3 +249,18 @@ refusalTests.push({
     assert.equal(bridge.requests.length, 1);
   },
 });
+
+for (const reason of ["merge-queue-removed", "merge-queue-timeout"])
+  refusalTests.push({
+    name: `CLV-297 ${reason} stops without another worker turn`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: {
+          ...effects(),
+          "github merge": [completed({ reason, output: "Queue output." })],
+        },
+      });
+      assert.equal((await develop(input)).kind, "blocked");
+      assert.equal(bridge.requests.length, 7);
+    },
+  });

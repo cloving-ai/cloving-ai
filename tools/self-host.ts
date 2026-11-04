@@ -10,6 +10,7 @@ import {
   retentionSettings,
   type RetentionSettings,
 } from "../src/record-retention.ts";
+import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
@@ -123,6 +124,7 @@ interface Commands extends HarnessSettings {
   readonly githubCommand: readonly string[] | undefined;
   readonly requiredChecks: readonly string[] | null;
   readonly checkCommand: readonly string[] | undefined;
+  readonly mergeMode: MergeMode;
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
   readonly queueLanes: number;
@@ -317,6 +319,7 @@ const lanes = queueLanes();
 const readyCommand = readyTicketCommand();
 const queueMilliseconds = queueInterval();
 const retention = retentionSettings(environment);
+const merging = mergeMode(environment["CLOVING_MERGE_MODE"]);
 const places = {
   repository,
   home: homedir(),
@@ -354,6 +357,7 @@ await launchers(
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
+    mergeMode: merging,
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
     reloadCommand: [
       process.execPath,

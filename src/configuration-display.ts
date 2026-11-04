@@ -23,6 +23,7 @@ export interface SettingEntry extends ValueSource {
 }
 
 const defaults: Readonly<Record<string, SettingValue>> = {
+  "merge.mode": "direct",
   "queue.lanes": 1,
   "harness.name": "claude",
   "harness.output": "text",

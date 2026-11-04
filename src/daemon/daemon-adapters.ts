@@ -25,6 +25,7 @@ import type { HarnessSettings } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
+import type { MergeMode } from "../merge-mode.ts";
 import type { RunWaitChecks } from "../run-wait.ts";
 import {
   turnSettingsSource,
@@ -68,6 +69,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly githubCommand?: readonly string[];
   readonly requiredChecks?: readonly string[] | null;
   readonly checkCommand?: readonly string[];
+  readonly mergeMode?: MergeMode;
   readonly privateTexts?: readonly string[];
   readonly concurrency: number;
 }
@@ -106,6 +108,9 @@ function githubOf(
       ? {}
       : { privateTexts: settings.privateTexts }),
     ...(checkCommand === undefined ? {} : { check: checkCommand }),
+    ...(settings.mergeMode === undefined
+      ? {}
+      : { mergeMode: settings.mergeMode }),
   });
 }
 

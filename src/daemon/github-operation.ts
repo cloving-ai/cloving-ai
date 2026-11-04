@@ -6,6 +6,7 @@ import { rm } from "node:fs/promises";
 import { attachmentFolder } from "./attachments.ts";
 import { treePlace } from "./work-tree.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
+import type { MergeMode } from "../merge-mode.ts";
 
 export interface GithubTiming {
   readonly pollMilliseconds: number;
@@ -13,6 +14,7 @@ export interface GithubTiming {
   readonly limitMilliseconds: number;
   readonly ciLimitMilliseconds?: number;
   readonly ciGraceMilliseconds?: number;
+  readonly queueLimitMilliseconds?: number;
 }
 
 export const githubTiming: GithubTiming = {
@@ -26,6 +28,7 @@ export interface MethodSettings extends CallSettings {
   readonly timing?: GithubTiming;
   readonly requiredChecks?: readonly string[] | null;
   readonly check?: readonly string[];
+  readonly mergeMode?: MergeMode;
 }
 
 export interface Operation {

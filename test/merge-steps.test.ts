@@ -65,6 +65,8 @@ for (const reason of [
   "merge-conflict",
   "ci-failed",
   "ci-pending",
+  "merge-queue-removed",
+  "merge-queue-timeout",
 ] as const)
   await test(`CLV-220 mergeWhenGreen returns ${reason} with its output and no merge`, async () => {
     using bridge = fakeStepBridge({

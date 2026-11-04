@@ -35,6 +35,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
   "checks.required": "CLOVING_REQUIRED_CHECKS",
   "checks.redGreen": "CLOVING_RED_GREEN",
+  "merge.mode": "CLOVING_MERGE_MODE",
   "tickets.command": "CLOVING_TICKET_COMMAND",
   "tickets.nextCommand": "CLOVING_NEXT_COMMAND",
   "tickets.readyCommand": "CLOVING_READY_COMMAND",
@@ -110,6 +111,7 @@ export function configurationValues(
     Record<string, Readonly<Record<string, SettingValue>> | undefined>
   > = {
     checks: values.checks,
+    merge: values.merge,
     tickets: values.tickets,
     queue: values.queue,
     harness: values.harness,

@@ -20,7 +20,7 @@ import {
   type ReviewedPull,
 } from "./github-merge-call.ts";
 
-interface SuccessfulMerge {
+export interface SuccessfulMerge {
   readonly number: number;
   readonly commit: string;
   readonly updated: string;
@@ -308,39 +308,77 @@ function commandOutput(cause: unknown): string {
     .join("");
 }
 
+export function requireCheck(operation: Operation, pull: ReviewedPull): void {
+  if (pull.check === "beforeMerge" && operation.settings.check === undefined)
+    throw new Error("check-not-configured");
+}
+
+export function mergeRepair(operation: Operation, error: unknown): MergeRepair {
+  operation.signal.throwIfAborted();
+  if (!(error instanceof Error)) throw error;
+  const reason = error.message;
+  if (reason !== "check-failed" && reason !== "merge-conflict") throw error;
+  const detail = field(error, "output");
+  const conflicts = typeof detail === "string" ? detail : "";
+  return {
+    reason,
+    output:
+      reason === "check-failed"
+        ? checkOutput(error.cause)
+        : githubText(conflicts, operation.settings),
+  };
+}
+
 export async function merge(
   operation: Operation,
   pull: ReviewedPull,
 ): Promise<MergeResult> {
-  if (pull.check === "beforeMerge" && operation.settings.check === undefined)
-    throw new Error("check-not-configured");
+  requireCheck(operation, pull);
   try {
     return await completedMerge(operation, pull);
   } catch (error) {
-    operation.signal.throwIfAborted();
-    if (!(error instanceof Error)) throw error;
-    const reason = error.message;
-    if (reason !== "check-failed" && reason !== "merge-conflict") throw error;
-    const detail = field(error, "output");
-    const conflicts = typeof detail === "string" ? detail : "";
-    return {
-      reason,
-      output:
-        reason === "check-failed"
-          ? checkOutput(error.cause)
-          : githubText(conflicts, operation.settings),
-    };
+    return mergeRepair(operation, error);
   }
+}
+
+export async function checkedLocally(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<void> {
+  const tree = existingTree(operation);
+  await refreshed(operation, { ...pull, tree, recorded: undefined });
+  await restored(operation, { tree, commit: pull.commit });
+}
+
+export async function conflictChecked(
+  operation: Operation,
+  commit: string,
+): Promise<void> {
+  const tree = existingTree(operation);
+  await restored(operation, { tree, commit });
+  const base = await fetched(operation, await defaultBranch(operation));
+  await updatedTree(operation, { tree, base });
+  await restored(operation, { tree, commit });
+}
+
+export async function finishedMerge(
+  operation: Operation,
+  result: SuccessfulMerge,
+): Promise<SuccessfulMerge> {
+  await removed(
+    operation,
+    treePlace({
+      worktrees: operation.settings.worktrees,
+      target: operation.target,
+    }),
+  );
+  return result;
 }
 
 async function completedMerge(
   operation: Operation,
   pull: ReviewedPull,
 ): Promise<SuccessfulMerge | CiResult> {
-  const place = treePlace({
-    worktrees: operation.settings.worktrees,
-    target: operation.target,
-  });
   const recorded = await recordedHead(operation, pull.commit);
   const known = await knownMerge(operation, {
     ...pull,
@@ -351,6 +389,9 @@ async function completedMerge(
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
       : { updated: recorded ?? pull.commit, merged: known.merged };
   if ("reason" in result) return result;
-  await removed(operation, place);
-  return { number: pull.number, commit: pull.commit, ...result };
+  return finishedMerge(operation, {
+    number: pull.number,
+    commit: pull.commit,
+    ...result,
+  });
 }

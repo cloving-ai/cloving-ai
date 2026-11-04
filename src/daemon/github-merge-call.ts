@@ -29,6 +29,7 @@ export async function knownMerge(
 ): Promise<{
   readonly head: string;
   readonly open: boolean;
+  readonly node: string | undefined;
   readonly merged: string | undefined;
 }> {
   const pull: unknown = JSON.parse(
@@ -39,10 +40,13 @@ export async function knownMerge(
   );
   const head = commitOf(field(pull, "head"), "sha");
   const open = field(pull, "state") === "open";
-  if (field(pull, "merged") !== true) return { head, open, merged: undefined };
+  const identifier = field(pull, "node_id");
+  const node = typeof identifier === "string" ? identifier : undefined;
+  if (field(pull, "merged") !== true)
+    return { head, open, node, merged: undefined };
   if (head !== expected.commit && head !== expected.updated)
     throw new Error("merged-other-commit");
-  return { head, open, merged: commitOf(pull, "merge_commit_sha") };
+  return { head, open, node, merged: commitOf(pull, "merge_commit_sha") };
 }
 
 async function mergedNow(

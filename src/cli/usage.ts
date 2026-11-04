@@ -200,6 +200,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that a workflow runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.
   CLOVING_RED_GREEN                A JSON object with test and testFiles, optional prepare, assertionPattern and skipPattern for cloving red-green. The project setting is checks.redGreen.
   CLOVING_REQUIRED_CHECKS          A JSON list of required check run names before a workflow merge. Unset requires all GitHub Actions checks; a repository with no CI can merge after 60 seconds. The latest run of each name decides. The CI wait limit is 90 minutes.
+  CLOVING_MERGE_MODE               direct or queue. The default is direct. queue adds a reviewed pull request to the GitHub merge queue and waits for GitHub to merge it; the ruleset of the default branch needs the merge queue rule. The project setting is merge.mode.
   CLOVING_PRIVATE_TEXTS            A JSON list of texts that workflows do not push in a file or in a commit message. An issue-posting workflow can require the list. The list adds to the path of the home folder, and the case of the letters does not matter. The setting has no default.
 `,
 };

@@ -59,6 +59,15 @@
       },
       "additionalProperties": false
     },
+    "merge": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": ["direct", "queue"]
+        }
+      },
+      "additionalProperties": false
+    },
     "tickets": {
       "type": "object",
       "properties": {

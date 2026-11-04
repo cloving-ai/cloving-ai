@@ -19,6 +19,7 @@ import {
   type StatusInput,
 } from "./status-input.ts";
 import type { RunStatus } from "./transitions.ts";
+import { noticeAssessment } from "./status-notices.ts";
 
 export { unresolved, unresolvedEffects } from "./status-closure.ts";
 export type { EffectView } from "./status-effects.ts";
@@ -213,8 +214,7 @@ function running(input: StatusInput): Assessment {
 
 function observed(input: StatusInput): Assessment {
   const observation = input.details?.observation ?? null;
-  const wait =
-    runWaitAssessment(observation) ?? gitRetryAssessment(observation);
+  const wait = noticeAssessment(observation);
   if (wait !== undefined) return wait;
   if (
     observation !== null &&
@@ -230,34 +230,6 @@ function observed(input: StatusInput): Assessment {
   return assessed("working", {
     code: observation?.reason ?? "in-progress",
     nextAction: null,
-    humanInputCanHelp: false,
-  });
-}
-
-function runWaitAssessment(
-  observation: Observation | null,
-): Assessment | undefined {
-  if (observation?.condition === "waiting-run")
-    return assessed("waiting-run", {
-      code: "awaiting-run",
-      detail: `The run waits for run ${observation.evidence ?? "unknown"}.`,
-      nextAction: "await-run",
-      nextActionAt: observation.retryAt,
-      humanInputCanHelp: false,
-    });
-  return undefined;
-}
-
-function gitRetryAssessment(
-  observation: Observation | null,
-): Assessment | undefined {
-  if (observation?.reason !== "git-network-retry") return undefined;
-  const command = (observation.evidence ?? "git").replace("/", " ");
-  return assessed("working", {
-    code: observation.reason,
-    detail: `${command} failed, retry ${String(observation.attempt)} of ${String(observation.limit)}.`,
-    nextAction: "retry-git-call",
-    nextActionAt: observation.retryAt,
     humanInputCanHelp: false,
   });
 }

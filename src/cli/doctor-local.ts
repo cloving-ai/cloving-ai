@@ -1,6 +1,7 @@
 import { access, constants, stat } from "node:fs/promises";
 import { delimiter, resolve } from "node:path";
 import type { DoctorObservation } from "../doctor-report.ts";
+import { mergeMode, mergeModeRefusal } from "../merge-mode.ts";
 import { supportedNode, supportedNodes } from "./toolchain.ts";
 
 export function listedSetting(
@@ -108,4 +109,14 @@ export function privateTextsObservation(
       ? "Nonblank private texts configured"
       : "privateTexts needs at least one nonblank text",
   };
+}
+
+export function mergeModeObservation(
+  text: string | undefined,
+): DoctorObservation {
+  try {
+    return { result: "ok", detail: `merge.mode ${mergeMode(text)}` };
+  } catch {
+    return { result: "fail", detail: mergeModeRefusal };
+  }
 }

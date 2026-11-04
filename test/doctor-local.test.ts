@@ -34,6 +34,7 @@ const codes = [
   "ticket-command",
   "next-command",
   "check-command",
+  "merge-mode",
   "queue-interval",
   "private-texts",
   "retention",

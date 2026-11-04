@@ -14,6 +14,8 @@ const repairReasons: readonly MergeReason[] = [
   "merge-conflict",
   "ci-failed",
   "ci-pending",
+  "merge-queue-removed",
+  "merge-queue-timeout",
 ];
 
 export async function mergeWhenGreen(
