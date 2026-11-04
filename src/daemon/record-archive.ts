@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -82,6 +83,25 @@ async function sameFiles(source: string, copy: string): Promise<boolean> {
       (await storedFiles(folder)).map((file) => [file.path, file.size]).sort(),
     );
   return (await listed(source)) === (await listed(copy));
+}
+
+export async function sameContents(
+  source: string,
+  copy: string,
+): Promise<boolean> {
+  const listed = async (folder: string): Promise<string[]> =>
+    (await storedFiles(folder)).map((file) => file.path).sort();
+  const paths = await listed(source);
+  if (JSON.stringify(paths) !== JSON.stringify(await listed(copy)))
+    return false;
+  for (const path of paths) {
+    const [left, right] = await Promise.all([
+      readFile(join(source, path)),
+      readFile(join(copy, path)),
+    ]);
+    if (!left.equals(right)) return false;
+  }
+  return true;
 }
 
 async function copied(

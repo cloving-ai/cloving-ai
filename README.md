@@ -1290,9 +1290,17 @@ The retention rule removes old workflow bundles. The daemon examines the bundles
 - The bundle is not the current generation of the daemon.
 - The bundle was not current during the last `retention.days` days.
 
-The age of a bundle starts at the last time when the daemon used it as the current generation. The daemon records this time at startup, at each retention pass and at each workflow reload. A bundle that was never current gets the time when the daemon wrote it. With `retention.action` set to `archive`, the bundle moves to `workflow-bundles/<digest>` in the archive folder. With `delete`, the daemon deletes the bundle. With `retention.days` set to `null`, the daemon keeps all bundles.
+The age of a bundle starts at the last time when the daemon used it as the current generation. The daemon records this time at startup, at each retention pass and at each workflow reload. A bundle that was never current gets the time when the daemon wrote it.
+
+Earlier Cloving versions did not record this time. Thus the first pass after an upgrade records the current time for all stored bundles. Then it writes the empty file `workflow-bundles/.current-times`. Each old bundle stays for at least `retention.days` days after the upgrade.
+
+With `retention.action` set to `archive`, the bundle moves to `workflow-bundles/<digest>` in the archive folder. With `delete`, the daemon deletes the bundle. With `retention.days` set to `null`, the daemon keeps all bundles.
 
 The daemon removes a bundle as one unit. It first renames the bundle folder to `.removing-<digest>`, which lookup ignores, and then removes that folder. When a removal stops before its end, the next pass completes it. A removal also deletes the record of the bundle in `.history`, so that a later start can build the bundle again from equal sources. Each removal writes one log line with the digest and the action, for example `retention: archived workflow bundle <digest>`.
+
+Each pass removes no more than five bundles. The next pass continues after the last bundle of the pass before it. Thus a bundle that the daemon cannot remove does not stop the other bundles.
+
+The archive folder can already have a bundle with the same digest. Then the daemon compares all files of the two copies. When the copies are equal, it deletes the `.removing-<digest>` folder. Otherwise it keeps that folder and writes the log line `retention: workflow bundle <digest> not removed (archive-copy-differs)`.
 
 ### Project and user workflows
 

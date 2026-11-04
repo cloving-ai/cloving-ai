@@ -9,6 +9,7 @@ import {
   type RecordFiles,
 } from "./record-archive.ts";
 import {
+  batchAfter,
   folderRunId,
   retentionVerdict,
   sharedRecordFolders,
@@ -153,10 +154,11 @@ async function handled(
   }
 }
 
-async function nextBatch(sweep: Sweep): Promise<string[]> {
-  const found = await folders(sweep.settings.directory);
-  const rest = found.filter((path) => path > sweep.cursor);
-  const batch = (rest.length === 0 ? found : rest).slice(0, batchSize);
+async function nextBatch(sweep: Sweep): Promise<readonly string[]> {
+  const batch = batchAfter(await folders(sweep.settings.directory), {
+    cursor: sweep.cursor,
+    size: batchSize,
+  });
   sweep.cursor = batch.at(-1) ?? "";
   return batch;
 }

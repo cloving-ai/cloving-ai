@@ -114,6 +114,14 @@ export function dueBundles(
     .map((bundle) => bundle.digest);
 }
 
+export function batchAfter(
+  names: readonly string[],
+  context: { readonly cursor: string; readonly size: number },
+): readonly string[] {
+  const rest = names.filter((name) => name > context.cursor);
+  return (rest.length === 0 ? names : rest).slice(0, context.size);
+}
+
 export function turnDetails(
   found: TurnFolders,
   context: {

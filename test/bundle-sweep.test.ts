@@ -4,6 +4,7 @@ import {
   mkdir,
   readdir,
   rename,
+  rm,
   stat,
   symlink,
   writeFile,
@@ -16,7 +17,11 @@ import {
   retainWorkflowBundle,
 } from "../tools/workflow-bundles.ts";
 import { bundleSweep, unfinishedPins } from "../src/daemon/bundle-sweep.ts";
-import { reloadedTo, withBundles } from "./bundle-sweep-fixture.ts";
+import {
+  reloadedTo,
+  timesMarker,
+  withBundles,
+} from "./bundle-sweep-fixture.ts";
 
 await test("CLV-295 the sweep deletes an old free bundle and keeps the pinned, current and recent bundles", () =>
   withBundles(async (scene) => {
@@ -133,7 +138,7 @@ await test("CLV-295 the sweep leaves other entries of the bundle folder in place
     await bundleSweep(scene.settings()).pass();
     assert.deepEqual(
       (await readdir(scene.store)).sort(),
-      [...others, ".history", "b".repeat(64), recent].sort(),
+      [...others, ".history", timesMarker, "b".repeat(64), recent].sort(),
     );
     assert.equal(scene.lines.length, 0);
   }));
@@ -262,6 +267,7 @@ await test("CLV-295 the pinned bundles are the bundle digests of the unfinished 
 
 await test("CLV-295 a stamp that fails logs the digest, keeps the reload outcome and stops the pass", () =>
   withBundles(async (scene) => {
+    await rm(scene.store, { recursive: true });
     await writeFile(scene.store, "");
     const [first, next] = ["a".repeat(64), "b".repeat(64)];
     const current = scene.current(first);

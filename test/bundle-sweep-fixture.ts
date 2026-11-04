@@ -11,6 +11,8 @@ import { withFiles } from "./quality/files-fixture.ts";
 
 export const day = 86_400_000;
 
+export const timesMarker = ".current-times";
+
 interface BundleInput {
   readonly directory: string;
   readonly project: string;
@@ -121,5 +123,8 @@ function scene(root: string): BundleScene {
 export function withBundles(
   body: (scene: BundleScene) => Promise<void>,
 ): Promise<void> {
-  return withFiles({ "repo/marker": "" }, (root) => body(scene(root)));
+  return withFiles(
+    { "repo/marker": "", [`workflow-bundles/${timesMarker}`]: "" },
+    (root) => body(scene(root)),
+  );
 }

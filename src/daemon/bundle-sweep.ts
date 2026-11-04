@@ -1,14 +1,25 @@
-import { lstat, readdir, rename, rm, utimes } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import {
   archivedFolder,
   archiveReady,
   failureReason,
   nodeFiles,
+  sameContents,
   type RecordFiles,
 } from "./record-archive.ts";
 import { archiveFolder, type RecordSweep } from "./record-sweep.ts";
 import {
+  batchAfter,
   bundleDigestPattern,
   dueBundles,
   type RetentionSettings,
@@ -37,7 +48,14 @@ interface StoredEntries {
   readonly interrupted: readonly string[];
 }
 
+interface BundleSweepState {
+  readonly settings: BundleSweepSettings;
+  cursor: string;
+}
+
 const removingPrefix = ".removing-";
+const timesMarker = ".current-times";
+const batchSize = 5;
 
 function bundleStore(directory: string): string {
   return join(directory, "workflow-bundles");
@@ -110,7 +128,7 @@ async function storedEntries(store: string): Promise<StoredEntries> {
       entry.name.startsWith(removingPrefix) &&
       bundleDigestPattern.test(digest)
     )
-      interrupted.push(digest);
+      interrupted.push(entry.name);
     if (!bundleDigestPattern.test(entry.name)) continue;
     const found = await lstat(join(store, entry.name));
     bundles.push({ digest: entry.name, currentAt: found.mtimeMs });
@@ -126,6 +144,8 @@ async function archived(
     await archivedFolder(place, files);
   } catch (error) {
     if (!["EEXIST", "ENOTEMPTY"].includes(failureReason(error))) throw error;
+    if (!(await sameContents(place.source, place.target)))
+      throw new Error("archive-copy-differs", { cause: error });
     await rm(place.source, { recursive: true, force: true });
   }
 }
@@ -162,6 +182,14 @@ async function removed(
   await finished(settings, digest);
 }
 
+function removal(name: string): {
+  readonly digest: string;
+  readonly step: typeof removed;
+} {
+  if (!name.startsWith(removingPrefix)) return { digest: name, step: removed };
+  return { digest: name.slice(removingPrefix.length), step: finished };
+}
+
 async function attempted(
   settings: BundleSweepSettings,
   removal: { readonly digest: string; readonly step: typeof removed },
@@ -183,28 +211,51 @@ async function unavailable(settings: BundleSweepSettings): Promise<boolean> {
   return reason !== undefined;
 }
 
-async function swept(settings: BundleSweepSettings): Promise<void> {
+async function upgraded(
+  settings: BundleSweepSettings,
+  time: number,
+): Promise<void> {
+  const store = bundleStore(settings.directory);
+  const marker = join(store, timesMarker);
+  const marked = await access(marker).then(
+    () => true,
+    () => false,
+  );
+  if (marked) return;
+  for (const bundle of (await storedEntries(store)).bundles)
+    await stamped(settings.directory, { digest: bundle.digest, time });
+  await mkdir(store, { recursive: true, mode: 0o700 });
+  await writeFile(marker, "");
+}
+
+async function swept(sweep: BundleSweepState): Promise<void> {
+  const { settings } = sweep;
   const { current, retention, directory } = settings;
-  await stamped(directory, { digest: current.digest(), time: settings.now() });
+  const time = settings.now();
+  await stamped(directory, { digest: current.digest(), time });
+  await upgraded(settings, time);
   if (retention.days === null || (await unavailable(settings))) return;
   const stored = await storedEntries(bundleStore(directory));
-  for (const digest of stored.interrupted)
-    await attempted(settings, { digest, step: finished });
   const due = dueBundles(stored.bundles, {
     current: current.digest(),
     pinned: await settings.pinned(),
-    now: settings.now(),
+    now: time,
     days: retention.days,
   });
-  for (const digest of due)
-    await attempted(settings, { digest, step: removed });
+  const batch = batchAfter([...stored.interrupted, ...due].sort(), {
+    cursor: sweep.cursor,
+    size: batchSize,
+  });
+  sweep.cursor = batch.at(-1) ?? "";
+  for (const name of batch) await attempted(settings, removal(name));
 }
 
 export function bundleSweep(settings: BundleSweepSettings): RecordSweep {
+  const sweep: BundleSweepState = { settings, cursor: "" };
   return {
     pass: () =>
       settings.current
-        .exclusive(() => swept(settings))
+        .exclusive(() => swept(sweep))
         .catch((error: unknown) => {
           settings.log(
             `retention: workflow bundles failed (${failureReason(error)})\n`,
