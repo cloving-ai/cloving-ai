@@ -34,26 +34,11 @@ interface Retry {
   readonly started: number;
 }
 
-async function noticed(
-  retry: Retry,
-  wait: { readonly attempt: number; readonly milliseconds: number },
-): Promise<void> {
-  await retry.operation.observe?.({
-    notice: `git-retry:${String(retry.started)}:${String(wait.attempt)}`,
-    condition: "working",
-    reason: "git-network-retry",
-    evidence: `git/${String(retry.parts[0])}`,
-    retryAt: new Date(Date.now() + wait.milliseconds).toISOString(),
-    attempt: wait.attempt,
-    limit: waits.length,
-  });
-}
-
 async function attempted(
   retry: Retry,
   attempt: number,
 ): Promise<string | undefined> {
-  const { calls, signal } = retry.operation;
+  const { calls, signal, observe } = retry.operation;
   try {
     return await calls.git(retry.directory, retry.parts);
   } catch (error) {
@@ -65,7 +50,15 @@ async function attempted(
       throw Object.assign(new Error("git-network-failed", { cause: error }), {
         detail,
       });
-    await noticed(retry, { attempt: attempt + 1, milliseconds });
+    await observe?.({
+      notice: `git-retry:${String(retry.started)}:${String(attempt + 1)}`,
+      condition: "working",
+      reason: "git-network-retry",
+      evidence: `git/${String(retry.parts[0])}`,
+      retryAt: new Date(Date.now() + milliseconds).toISOString(),
+      attempt: attempt + 1,
+      limit: waits.length,
+    });
     await delay(milliseconds, undefined, { signal });
     return undefined;
   }
