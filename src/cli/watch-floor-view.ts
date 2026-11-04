@@ -236,17 +236,6 @@ export function Floor(props: {
   });
 }
 
-export function completedToday(
-  tiles: readonly WatchTile[],
-  now: string,
-): readonly WatchTile[] {
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  return tiles.filter(
-    (tile) => Date.parse(tile.completedAt) >= midnight.getTime(),
-  );
-}
-
 export function Tile(props: {
   readonly tile: WatchTile;
   readonly line: number;
@@ -341,12 +330,9 @@ export function Demo(props: {
   ];
 }
 
-export function Shelf(props: {
-  readonly model: WatchModel;
-  readonly now: string;
-}): Shown {
-  const { model, now } = props;
-  const tiles = completedToday(model.completed ?? [], now);
+export function Shelf(props: { readonly model: WatchModel }): Shown {
+  const { model } = props;
+  const tiles = model.completed ?? [];
   const lines = model.workflows.map((workflow) => workflow.workflowId);
   return element("section", {
     class: "shelf",

@@ -285,7 +285,7 @@ export function FloorPage(
           }),
         ],
       }),
-      component(Shelf, { model, now }),
+      component(Shelf, { model }),
     ],
   });
 }

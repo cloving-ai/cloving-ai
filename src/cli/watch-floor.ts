@@ -137,9 +137,13 @@ function tilesOf(run: WatchRun): WatchTile[] {
   ];
 }
 
-export function completedOf(runs: readonly WatchRun[]): WatchTile[] {
+export function completedOf(
+  runs: readonly WatchRun[],
+  since: number,
+): WatchTile[] {
   return runs
     .flatMap(tilesOf)
+    .filter((tile) => Date.parse(tile.completedAt) >= since)
     .toSorted(
       (first, second) =>
         Date.parse(second.completedAt) - Date.parse(first.completedAt),

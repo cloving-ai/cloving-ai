@@ -133,25 +133,48 @@ console.log(JSON.stringify({ html: app.inner, popover: player?.attributes.get("p
 await test("CLV-288 a run that completed before local midnight shows no tile", () => {
   const html = page(shelfModel());
   assert.doesNotMatch(shelf(html), /#470|yesterday|PR #571/);
-  const model = floorModel(
-    [
-      completedRun("midnight", {
-        ticketId: "480",
-        createdAt: localTime(-1, "23:00"),
-        completedAt: localTime(0, "00:00"),
-      }),
-      completedRun("before", {
-        ticketId: "479",
-        createdAt: localTime(-1, "22:00"),
-        completedAt: localTime(-1, "23:59"),
-      }),
-    ],
-    { updatedAt: localTime(0, "12:00") },
+  const runs = [
+    completedRun("midnight", {
+      ticketId: "480",
+      createdAt: localTime(-1, "23:00"),
+      completedAt: localTime(0, "00:00"),
+    }),
+    completedRun("before", {
+      ticketId: "479",
+      createdAt: localTime(-1, "22:00"),
+      completedAt: localTime(-1, "23:59"),
+    }),
+  ];
+  const shown = tiles(
+    page(floorModel(runs, { updatedAt: localTime(0, "12:00") })),
   );
-  const shown = tiles(page(model));
   assert.equal(shown.length, 1);
   assert.match(shown[0] ?? "", /#480/);
-  assert.equal(tiles(page(model, localTime(1, "00:01"))).length, 0);
+  const next = floorModel(runs, { updatedAt: localTime(1, "00:01") });
+  assert.equal(tiles(page(next)).length, 0);
+});
+
+await test("CLV-288 the shelf starts the day at local midnight of the computer that runs the service, not of the browser", () => {
+  process.env["TZ"] = "UTC";
+  const model = floorModel(
+    [
+      completedRun("service-today", {
+        ticketId: "481",
+        createdAt: "2026-10-14T02:00:00.000Z",
+        completedAt: "2026-10-14T03:00:00.000Z",
+      }),
+      completedRun("service-yesterday", {
+        ticketId: "478",
+        createdAt: "2026-10-13T22:00:00.000Z",
+        completedAt: "2026-10-13T23:00:00.000Z",
+      }),
+    ],
+    { updatedAt: "2026-10-14T12:00:00.000Z" },
+  );
+  process.env["TZ"] = "America/Los_Angeles";
+  const shown = tiles(page(model));
+  assert.equal(shown.length, 1);
+  assert.match(shown[0] ?? "", /#481/);
 });
 
 await test("CLV-288 of the runs of today, only a completed run that is not blocked shows a tile", () => {
