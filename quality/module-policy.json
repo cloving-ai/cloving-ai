@@ -382,6 +382,7 @@
     "src/daemon/queue-status.ts": "daemon",
     "src/daemon/record-archive.ts": "daemon",
     "src/daemon/record-sweep.ts": "daemon",
+    "src/daemon/reload-command.ts": "daemon",
     "src/daemon/resume-index-lock.ts": "daemon",
     "src/daemon/resume-worktree.ts": "daemon",
     "src/daemon/retry-worktree.ts": "daemon",

@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { record } from "../protocol.ts";
 import type {
   WorkflowBundleReload,
@@ -17,6 +15,7 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import type { DaemonSettings } from "./daemon-adapters.ts";
+import { reloadCommandOutput } from "./reload-command.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -46,8 +45,6 @@ interface PreparedBundle extends ReloadedSettings {
 }
 
 type Refused = Extract<WorkflowReload, { readonly kind: "refused" }>;
-
-const executed = promisify(execFile);
 
 function refused(code: string, detail: string): Refused {
   return { kind: "refused", code, detail };
@@ -159,13 +156,6 @@ function outputRefusal(
     : undefined;
 }
 
-function failureText(error: unknown): string {
-  const stderr: unknown = Reflect.get(Object(error), "stderr");
-  const end = typeof stderr === "string" ? stderr.trim().slice(-2048) : "";
-  const code = String(Reflect.get(Object(error), "code"));
-  return ` It exited with code ${code}${end === "" ? "." : `: ${end}`}`;
-}
-
 function preparedBundle(
   output: string,
   failure: string,
@@ -200,17 +190,7 @@ function preparedBundle(
 async function prepared(
   command: readonly string[],
 ): Promise<PreparedBundle | Refused> {
-  const [executable = "", ...fixed] = command;
-  const output = await executed(executable, fixed, {
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-  }).then(
-    (result) => ({ stdout: result.stdout, failure: "" }),
-    (error: unknown) => ({
-      stdout: String(Reflect.get(Object(error), "stdout")),
-      failure: failureText(error),
-    }),
-  );
+  const output = await reloadCommandOutput(command);
   return preparedBundle(output.stdout, output.failure);
 }
 
