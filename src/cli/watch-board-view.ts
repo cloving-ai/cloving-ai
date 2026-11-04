@@ -198,30 +198,6 @@ export function HandoffLinks(props: {
   );
 }
 
-export function WorkflowList(props: {
-  readonly workflows: readonly WatchWorkflow[];
-  readonly selected: string | null;
-}): Shown {
-  return element("nav", {
-    class: "workflows",
-    "aria-label": "Workflows",
-    children: props.workflows.map((workflow) =>
-      element("a", {
-        key: workflow.workflowId,
-        href: watchHash({ workflowId: workflow.workflowId, runId: null }),
-        "aria-current":
-          workflow.workflowId === props.selected ? "page" : undefined,
-        children: [
-          element("strong", { children: workflow.workflowId }),
-          element("span", {
-            children: `${String(workflow.activeCount)} active · ${String(workflow.waitingCount)} waiting`,
-          }),
-        ],
-      }),
-    ),
-  });
-}
-
 export interface ColumnControls {
   readonly choices: Readonly<Record<string, boolean>> | null;
   readonly onToggle: (name: string) => void;

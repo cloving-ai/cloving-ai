@@ -60,7 +60,7 @@ function banner(run: Partial<WatchRun>): string {
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the steps of the run, its pending decision, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
     `<span>updated ${shownClock("21:34:41")}</span></div></header>`,
-    '<a class="back" href="#workflow=develop-ticket">← Back to develop-ticket</a>',
+    '<a class="back" href="#">← Back to the floor</a>',
     '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
     '<li class="phase done"><span class="mark">✓</span><span class="name">Agent turn</span><span class="time">7 min 38 s</span></li>',
@@ -169,7 +169,7 @@ await test("CLV-016 the steps of a run that failed show the step that stopped an
 
 await test("CLV-016 the full page shows a selected run and plain words for no turn, for no workflows, for no data and for a service that does not answer", () => {
   positions(page(model), [
-    '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
+    '<a class="back" href="#">← Back to the floor</a>',
     '<p class="meta">No agent turn for this run.</p>',
     '<p class="meta foot">develop-prompt · run-2 · 1 of 8 effect units<br>',
   ]);
@@ -191,7 +191,7 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
   const stale = rendered(component(Page, { ...props, model, stale: true }));
   positions(stale, [
     '<span class="bad">The watch tool does not answer.</span></div></header>',
-    '<a class="back" href="#workflow=develop-prompt">← Back to develop-prompt</a>',
+    '<a class="back" href="#">← Back to the floor</a>',
   ]);
 });
 

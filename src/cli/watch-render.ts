@@ -114,6 +114,23 @@ export interface WatchColumn {
   readonly cards: readonly WatchCard[];
 }
 
+export type WatchLamp = "stopped" | "needs-you" | "waiting" | "running";
+
+export interface WatchToken {
+  readonly runId: string;
+  readonly title: string | null;
+  readonly lamp: WatchLamp;
+  readonly worker: string;
+  readonly ticket: string;
+  readonly startedAt: string | null;
+}
+
+export interface WatchStation {
+  readonly name: string;
+  readonly lamp: WatchLamp | null;
+  readonly tokens: readonly WatchToken[];
+}
+
 export interface WatchWorkflow {
   readonly schedule?: ShownSchedule;
   readonly workflowId: string;
@@ -121,6 +138,7 @@ export interface WatchWorkflow {
   readonly waitingCount: number;
   readonly latestAt: string | null;
   readonly columns: readonly WatchColumn[];
+  readonly stations: readonly WatchStation[];
 }
 
 export interface WatchRun {
@@ -171,7 +189,6 @@ export interface WatchModel {
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
   readonly workflows: readonly WatchWorkflow[];
-  readonly startWorkflowId: string | null;
   readonly updatedAt: string;
   readonly service: string;
   readonly runs: readonly WatchRun[];

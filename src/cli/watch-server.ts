@@ -7,6 +7,7 @@ import {
 import { watchApiChange, watchApiReply } from "./watch-api.ts";
 import { observedBoard } from "./watch-pr-board.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
+import { queueAction } from "./watch-queue.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
 import type { PrObserver } from "./watch-pr-observer.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -204,8 +205,9 @@ async function fontReply(request: IncomingMessage): Promise<Reply | null> {
 
 function routedAction(
   path: string,
-): typeof watchAction | typeof phoneAction | null {
+): typeof watchAction | typeof phoneAction | typeof queueAction | null {
   if (isPhoneAction(path)) return phoneAction;
+  if (path === "/actions/queue") return queueAction;
   return path === "/actions/run" ? watchAction : null;
 }
 

@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0 };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "" };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -26,6 +26,28 @@ function columnControls(model, selected) {
     savePreference(key, changed);
     draw();
   } };
+}
+async function queuePost(command) {
+  state.queueBusy = true;
+  state.queueMessage = "";
+  draw();
+  try {
+    const response = await fetch("actions/queue", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-cloving-token": actionToken },
+      body: JSON.stringify({ command }),
+    });
+    const reply = response.ok ? await response.json() : { error: { detail: "The watch page refused the request. Refresh the page." } };
+    state.queueMessage = reply.error?.detail ?? "";
+  } catch {
+    state.queueMessage = "The watch tool does not answer.";
+  }
+  state.queueBusy = false;
+  await load();
+}
+function queueControls() {
+  if (actionToken === null) return undefined;
+  return { busy: state.queueBusy, message: state.queueMessage, onCommand: queuePost };
 }
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
@@ -54,7 +76,8 @@ function draw() {
   const columns = columnControls(model, selected);
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
   const phone = model === null ? undefined : phoneControls(now);
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone });
+  const queue = queueControls();
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);
