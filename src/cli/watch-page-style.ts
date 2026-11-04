@@ -88,6 +88,30 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .side-panels { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .side-panels:empty { display: none; }
 .floor { min-width: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.today { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.today-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 20px 0; }
+.today-head h2 { margin: 0; font-size: 18px; }
+.today-since, .today-label, .today-yesterday { color: var(--muted); font-size: 13px; }
+.today-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; padding: 12px 20px 16px; border-bottom: 1px solid var(--line); }
+.today-number { display: flex; flex-direction: column; min-width: 0; }
+.today-number strong { font: 700 28px/1.15 var(--heading-font); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.today-yesterday { font-size: 12px; }
+.today-part { padding: 12px 20px 14px; border-bottom: 1px solid var(--line); }
+.today-part h3 { margin: 0 0 8px; font-size: 15px; }
+.today-chart { display: block; width: 100%; height: auto; }
+.today-chart text { text-anchor: middle; font: 11px var(--body-font); fill: var(--muted); }
+.today-bar rect { fill: color-mix(in srgb, var(--running) 40%, var(--surface)); }
+.today-bar.current rect { fill: var(--line-1); }
+.today-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.today-table th, .today-table td { padding: 6px 0 6px 8px; border-bottom: 1px solid var(--line); font-weight: 400; text-align: right; }
+.today-table thead th { color: var(--muted); }
+.today-table th:first-child { padding-left: 0; text-align: left; overflow-wrap: anywhere; }
+.today-table tbody tr:last-child > * { border-bottom: 0; }
+.today-queue { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0; padding: 12px 20px; }
+.lanes { display: inline-flex; gap: 3px; }
+.lane { width: 14px; height: 12px; clip-path: var(--angled); }
+.lane.busy { background: var(--running); }
+.lane.free { background: var(--line); }
 .floor-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .floor-head h2 { margin: 0; font-size: 18px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 13px; }
