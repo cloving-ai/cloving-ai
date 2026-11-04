@@ -8,9 +8,19 @@ interface SvgElement {
   readonly attributes: readonly SvgAttribute[];
 }
 
+interface SvgTag {
+  readonly element: SvgElement;
+  readonly empty: boolean;
+}
+
 interface Scanner {
   readonly text: string;
   position: number;
+}
+
+interface Tree {
+  readonly found: SvgElement[];
+  readonly open: string[];
 }
 
 export const svgElements: readonly string[] = [
@@ -98,11 +108,12 @@ const textChecks: readonly (readonly [string, RegExp])[] = [
   ["svg-external-reference", /@import|<\?xml-stylesheet/i],
 ];
 const declaration = /^<\?xml\s[^>]*\?>/;
-const closing = /<\/[^\s>]+\s*>/;
+const closing = /<\/([^\s>]+)\s*>/;
 const opening = /<([^\s/>!?][^\s/>]*)/;
 const space = /\s+/;
-const tagEnd = /\/?>/;
-const attributePattern = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+const tagEnd = /(\/?)>/;
+const attributePattern = /([^\s=/>]+)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/;
+const blank = /^[\t\n\r ]*$/;
 const plainName = /^[A-Za-z][A-Za-z0-9-]*$/;
 const reference = /^#[A-Za-z_][\w.-]*$/;
 const innerUrl =
@@ -117,42 +128,59 @@ function sticky(pattern: RegExp, scanner: Scanner): RegExpExecArray | null {
   return match;
 }
 
-function attributesAt(scanner: Scanner): readonly SvgAttribute[] | undefined {
+function tagAt(scanner: Scanner, name: string): SvgTag | undefined {
   const attributes: SvgAttribute[] = [];
   for (;;) {
     const spaced = sticky(space, scanner) !== null;
-    if (sticky(tagEnd, scanner) !== null) return attributes;
+    const end = sticky(tagEnd, scanner);
+    if (end !== null)
+      return { element: { name, attributes }, empty: end[1] === "/" };
     const match = spaced ? sticky(attributePattern, scanner) : null;
     if (match === null) return undefined;
-    attributes.push({
+    const attribute = {
       name: match[1] ?? "",
       value: match[2] ?? match[3] ?? "",
-    });
+    };
+    if (attributes.some((other) => other.name === attribute.name))
+      return undefined;
+    attributes.push(attribute);
   }
 }
 
-function openingAt(scanner: Scanner): SvgElement | undefined {
+function openingAt(scanner: Scanner): SvgTag | undefined {
   const name = sticky(opening, scanner)?.[1];
-  if (name === undefined) return undefined;
-  const attributes = attributesAt(scanner);
-  return attributes === undefined ? undefined : { name, attributes };
+  return name === undefined ? undefined : tagAt(scanner, name);
+}
+
+function nodeAt(scanner: Scanner, tree: Tree): boolean {
+  const closed = sticky(closing, scanner)?.[1];
+  if (closed !== undefined) return tree.open.pop() === closed;
+  if (tree.open.length === 0 && tree.found.length > 0) return false;
+  const tag = openingAt(scanner);
+  if (tag === undefined) return false;
+  tree.found.push(tag.element);
+  if (!tag.empty) tree.open.push(tag.element.name);
+  return true;
+}
+
+function outside(tree: Tree, text: string): boolean {
+  return tree.open.length === 0 && !blank.test(text);
 }
 
 function elements(text: string): readonly SvgElement[] | undefined {
-  const found: SvgElement[] = [];
+  const tree: Tree = { found: [], open: [] };
   const scanner = { text, position: declaration.exec(text)?.[0].length ?? 0 };
   for (
     let next = text.indexOf("<", scanner.position);
     next !== -1;
     next = text.indexOf("<", scanner.position)
   ) {
+    if (outside(tree, text.slice(scanner.position, next))) return undefined;
     scanner.position = next;
-    if (sticky(closing, scanner) !== null) continue;
-    const element = openingAt(scanner);
-    if (element === undefined) return undefined;
-    found.push(element);
+    if (!nodeAt(scanner, tree)) return undefined;
   }
-  return found;
+  const rest = text.slice(scanner.position);
+  return tree.open.length > 0 || outside(tree, rest) ? undefined : tree.found;
 }
 
 function localName(name: string): string {

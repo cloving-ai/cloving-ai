@@ -292,6 +292,7 @@ An SVG file is UTF-8 text with the root element `svg`. Cloving checks it with th
 - No event attribute such as `onload`. An attribute name has no prefix, but `xlink:href`, `xml:space`, `xml:lang` and `xmlns:xlink` are permitted. `xmlns` must be `http://www.w3.org/2000/svg`, and `xmlns:xlink` must be `http://www.w3.org/1999/xlink`.
 - No external reference: an `href` or `xlink:href` is `#` and an element ID, and a `url(` refers only to an element in the same file, for example `url(#shade)`. An attribute value can use only the functions `rgb`, `rgba`, `hsl`, `hsla`, `translate`, `scale`, `rotate`, `matrix`, `skewX`, `skewY`, `var` and `calc`.
 - No comment, no CDATA section, no character reference such as `&#117;`, no entity other than `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&apos;`, no backslash, no `DOCTYPE` or `ENTITY`, and no processing instruction other than the XML declaration. Each attribute value is in quotation marks.
+- One complete `svg` root element. Each element closes with a tag of the same name or with `/>`. Outside the root, the file has only spaces, tabs and line breaks. An attribute value has no `<`, and an element has each attribute name one time only.
 
 A theme can set only these words:
 
@@ -345,7 +346,7 @@ A text word is plain text of 1 to 60 characters, with no control characters and 
 | `svg-attribute` | An SVG file has an attribute or a function that is not permitted. |
 | `svg-external-reference` | An SVG file refers to another file or address. |
 | `svg-doctype` | An SVG file has a `DOCTYPE` or an `ENTITY`. |
-| `svg-markup` | An SVG file has a comment, CDATA, a character reference, a backslash, a processing instruction or a tag that is not complete. |
+| `svg-markup` | An SVG file has a comment, CDATA, a character reference, a backslash, a processing instruction, a tag that is not complete, or tags that do not make one complete `svg` element. |
 | `unknown-word` | `words` has a key that is not in the word table. |
 | `invalid-word` | A word is not plain text of 1 to 60 characters, or it does not have its form. |
 
