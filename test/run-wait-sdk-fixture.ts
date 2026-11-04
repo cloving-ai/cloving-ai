@@ -2,13 +2,19 @@ import { queuePrelude } from "./daemon-queue-fixture.ts";
 
 export const runWaitWorkflow = `
 import { appendFileSync, existsSync } from "node:fs";
-import { sleep } from "workflow";
+import { RetryableError, sleep } from "workflow";
 import { handoff } from "cloving/workflows/steps/handoff";
 import { waitForRun } from "cloving/workflows/steps/wait-for-run";
 export async function held() {
   "use step";
   return existsSync("hold-target");
 }
+export async function finish(input) {
+  "use step";
+  if (existsSync("hold-retry")) throw new RetryableError("held", { retryAfter: 1000 });
+  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "size-small", reason: "small ticket" };
+}
+finish.maxRetries = 100;
 export async function received(outcome) {
   "use step";
   appendFileSync("outcomes", JSON.stringify(outcome) + "\\n");
@@ -29,7 +35,7 @@ export async function queue(input) {
 export async function size(input) {
   "use workflow";
   while (await held()) await sleep(1000);
-  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: "size-small", reason: "small ticket" };
+  return await finish(input);
 }
 export async function take(input) {
   "use workflow";
@@ -63,5 +69,6 @@ const source = () => submitted("queue-root", { workflowId: "queue", source: "inp
 const ended = (runId) => until(async () => { const run = await shown(runId); return ["completed", "failed", "cancelled"].includes(run?.state) ? run : undefined; }).catch(async (error) => { print({ diagnostic: await shown(runId), sdk: await (await getWorld()).runs.list({ resolveData: "none" }), events: (await asked("events", { after: 0, limit: 1000, runId })).events }); throw error; });
 const sdkRun = async (runId) => (await (await getWorld()).runs.list({ resolveData: "none" })).data.find((run) => run.attributes["cloving.run"] === runId).runId;
 const checkSteps = async (runId) => (await (await getWorld()).steps.list({ runId: await sdkRun(runId), resolveData: "none", pagination: { limit: 1000 } })).data.filter((step) => step.stepName.endsWith("//checkRunWait"));
+const sleeping = async (runId) => (await worldEvents(runId)).at(-1)?.eventType === "wait_created";
 const worldEvents = async (runId) => (await (await getWorld()).events.list({ runId: await sdkRun(runId), pagination: { limit: 10000 } })).data;
 `;

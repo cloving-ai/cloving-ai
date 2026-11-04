@@ -6,16 +6,19 @@ import {
   runWaitWorkflow as workflow,
 } from "./run-wait-sdk-fixture.ts";
 
+const everySecond =
+  "{ runWaitChecks: { firstMilliseconds: 1000, maximumMilliseconds: 1000 } }";
+
 await test("CLV-285 compiled wait survives a host crash, resumes its checks and continues with the child's outcome", () =>
   withConsumer(workflow, async (consumer) => {
     const first = await consumer.runUntil(
       "waiting-for-child",
       `${prelude}
-writeFileSync("hold-target", "");
-await launched();
+writeFileSync("hold-retry", "");
+await launched(${everySecond});
 const root = await source();
 const waiting = await until(async () => { const run = await shown(root.runId); return run.condition === "waiting-run" ? run : undefined; });
-await until(async () => (await checkSteps(root.runId)).filter((step) => step.status === "completed").length >= 2);
+await until(async () => (await checkSteps(root.runId)).filter((step) => step.status === "completed").length >= 2 && (await sleeping(root.runId)));
 await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.awaitedRunId, checks: (await checkSteps(root.runId)).length });
 `,
     );
@@ -36,14 +39,14 @@ await halt("waiting-for-child", { runId: root.runId, awaitedRunId: waiting.await
       first.stderr,
     );
     const restarted = await consumer.run(`${prelude}
-const daemon = await launched();
+const daemon = await launched(${everySecond});
 try {
   const root = await source();
   await until(async () => (await checkSteps(root.runId)).filter((step) => step.status === "completed").length > ${String(boundary.checks)});
   const resumed = await shown(root.runId);
   assert.equal(resumed.condition, "waiting-run");
   assert.equal(resumed.awaitedRunId, ${JSON.stringify(boundary.awaitedRunId)});
-  rmSync("hold-target");
+  rmSync("hold-retry");
   const completed = await ended(root.runId);
   assert.equal(completed.outcome?.kind, "handoff_requested", JSON.stringify(completed));
   assert.equal(completed.awaitedRunId, null);
