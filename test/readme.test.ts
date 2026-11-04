@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { commandUsage, usage } from "../src/cli/usage.ts";
+import { watchApiDocument } from "../src/cli/watch-api-document.ts";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
@@ -299,6 +300,33 @@ await test("CLV-073 the README checks reject sections that are missing or in a d
   assert.deepEqual(readmeFindings(valid.replace("# Cloving\n\n", "")), [
     `sections: ${["## Cloving", "## Install", "## First run", ...later].join(", ")}`,
   ]);
+});
+
+await test("CLV-255 the README section of the read API names the document, gives a curl example for each path of the document and states the limits", () => {
+  const service = readme
+    .split("### The service and its settings\n")[1]
+    ?.split(/^#{2,3} /m)[0];
+  assert.ok(service);
+  const section = service
+    .split("#### Read API of the watch page\n")[1]
+    ?.split(/^#{2,4} /m)[0];
+  assert.ok(section);
+  const root = "http://127.0.0.1:3663/api/v1";
+  assert.ok(section.includes(`${root}/openapi.json`));
+  for (const path of Object.keys(watchApiDocument.paths)) {
+    assert.ok(section.includes(`\`GET /api/v1${path}\``), path);
+    const example = `${root}${path.replace("{runId}", "<run-id>")}`;
+    assert.ok(
+      section
+        .split("\n")
+        .some((line) => /^curl /.test(line) && line.includes(example)),
+      example,
+    );
+  }
+  assert.match(section, /curl [^\n]*workflowId=develop/);
+  assert.match(section, /client generators/);
+  assert.match(section, /active runs and the runs of the last 7 days/);
+  assert.match(section, /run detail reads each run/);
 });
 
 await test("CLV-251 the README section after the service settings explains cloving mcp, a Claude Code and a Codex registration, the ten tools and the limits of a tool call", () => {

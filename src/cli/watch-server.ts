@@ -4,7 +4,7 @@ import {
   watchHost,
   type WatchActions,
 } from "./watch-actions.ts";
-import { watchApiReply } from "./watch-api.ts";
+import { watchApiChange, watchApiReply } from "./watch-api.ts";
 import { observedBoard } from "./watch-pr-board.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
@@ -82,6 +82,7 @@ const fontFiles = new Map(
   ]),
 );
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
+const pageChange = (): string => "data: change\n\n";
 function parsed(text: string): unknown {
   try {
     const value: unknown = JSON.parse(text);
@@ -211,7 +212,7 @@ function routedAction(
 async function answered(
   watch: Watch,
   request: IncomingMessage,
-): Promise<Reply> {
+): Promise<Reply | "stream"> {
   if (!watchHost(request)) return forbidden;
   const font = await fontReply(request);
   if (font !== null) return font;
@@ -220,6 +221,7 @@ async function answered(
     method: request.method ?? "",
     url,
     model: () => snapshot(watch, null),
+    run: (runId) => snapshot(watch, runId),
   });
   if (api !== null) return api;
   if (request.method === "GET") return readReply(watch, url);
@@ -277,11 +279,12 @@ function subscribed(
   exchange: {
     readonly request: IncomingMessage;
     readonly response: ServerResponse;
+    readonly message: () => string;
   },
 ): void {
-  const { request, response } = exchange;
+  const { request, response, message } = exchange;
   const changed = (): void => {
-    response.write("data: change\n\n");
+    response.write(message());
   };
   response.writeHead(200, {
     "content-type": "text/event-stream",
@@ -315,12 +318,14 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
       request.method === "GET" &&
       request.url === "/events"
     ) {
-      subscribed(stream, { request, response });
+      subscribed(stream, { request, response, message: pageChange });
       return;
     }
     answered(watch, request).then(
       (reply) => {
-        replied(response, reply);
+        if (reply === "stream")
+          subscribed(stream, { request, response, message: watchApiChange });
+        else replied(response, reply);
       },
       () => {
         replied(response, { ...notFound, status: 500, body: "failed" });
