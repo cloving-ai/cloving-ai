@@ -172,3 +172,27 @@ await test("CLV-286 a run at a step outside the declared stages gets a station a
     ],
   );
 });
+
+await test("CLV-286 the queued workflow line gets the ready count and the oldest ready time of the queue", () => {
+  const ready = (value: unknown) =>
+    floorModel([], {
+      queue: { workflowId: "develop-issue", lanes: 2, busy: 0, ready: value },
+    }).workflows.map((workflow) => [workflow.workflowId, workflow.ready]);
+  assert.deepEqual(ready({ count: 3, oldestAt: minutesBefore(125) }), [
+    ["develop-issue", { count: 3, oldestAt: minutesBefore(125) }],
+    ["idea", undefined],
+  ]);
+  assert.deepEqual(ready({ count: 0, oldestAt: null }), [
+    ["develop-issue", { count: 0, oldestAt: null }],
+    ["idea", undefined],
+  ]);
+  assert.deepEqual(ready({ failure: "The command failed." }), [
+    ["develop-issue", { failure: "The command failed." }],
+    ["idea", undefined],
+  ]);
+  for (const value of [undefined, { count: -1, oldestAt: null }, { count: 2 }])
+    assert.deepEqual(ready(value), [
+      ["develop-issue", undefined],
+      ["idea", undefined],
+    ]);
+});

@@ -20,6 +20,7 @@ interface QueueOptions {
   readonly failures?: readonly string[];
   readonly intervalMilliseconds?: number;
   readonly lanes?: number;
+  readonly readyCommand?: readonly string[];
   readonly selfUpdateHold?: {
     readonly mark: string;
     readonly startedAt: number;
@@ -32,6 +33,7 @@ export async function withQueue(
     readonly commands: () => Promise<readonly string[]>;
     readonly stop: () => Promise<void>;
     readonly directory: string;
+    readonly control: ReturnType<typeof issueQueue>["port"]["control"];
   }) => Promise<void>,
 ): Promise<void> {
   return withHarness(async (harness) => {
@@ -65,12 +67,16 @@ export async function withQueue(
       runtimeDirectory: harness.runtimeDirectory,
       intervalMilliseconds: options.intervalMilliseconds ?? 5,
       lanes: options.lanes ?? 1,
+      ...(options.readyCommand === undefined
+        ? {}
+        : { readyCommand: options.readyCommand }),
     });
     try {
       await body({
         directory,
         commands: () => queueCommands(file),
         stop: queue.stop,
+        control: queue.port.control,
       });
     } finally {
       await queue.stop();

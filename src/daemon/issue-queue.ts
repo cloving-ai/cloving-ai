@@ -6,7 +6,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
 import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
-import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
+import {
+  queueFailureLimit,
+  type QueuePort,
+  type ReadyList,
+} from "../queue-state.ts";
+import { readyRefresh } from "./ticket-source.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
 import {
   queueControlPort,
@@ -20,6 +25,7 @@ interface QueueSettings {
   readonly intervalMilliseconds: number;
   readonly lanes?: number;
   readonly resetQueue?: boolean;
+  readonly readyCommand?: readonly string[];
   readonly workflowId: string;
 }
 
@@ -307,7 +313,11 @@ async function admissible(
 
 async function cycle(
   settings: QueueSettings,
-  run: { readonly signal: AbortSignal; readonly pending: QueueJournal },
+  run: {
+    readonly signal: AbortSignal;
+    readonly pending: QueueJournal;
+    readonly listed: (ready: ReadyList) => void;
+  },
 ): Promise<void> {
   const { signal, pending } = run;
   if (settings.resetQueue === true) {
@@ -327,14 +337,17 @@ async function cycle(
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   while (!stopped()) {
+    const listing = readyRefresh(settings.readyCommand, run);
     await delay(settings.intervalMilliseconds, undefined, { signal }).catch(
       () => undefined,
     );
-    if (stopped()) return;
-    if (!(await admissible(settings, { pending, stop, notice, update })))
-      continue;
-    if (stopped()) return;
-    await admission(settings, { pending, holding, signal });
+    if (
+      !stopped() &&
+      (await admissible(settings, { pending, stop, notice, update })) &&
+      !stopped()
+    )
+      await admission(settings, { pending, holding, signal });
+    await listing;
   }
 }
 
@@ -354,7 +367,13 @@ export function issueQueue(settings: QueueSettings): {
   });
   const running = loaded
     .then((pending) =>
-      cycle(settings, { signal: runtime.stopping.signal, pending }),
+      cycle(settings, {
+        signal: runtime.stopping.signal,
+        pending,
+        listed: (ready) => {
+          runtime.ready = ready;
+        },
+      }),
     )
     .catch((error: unknown) => {
       queueStopped(runtime, error);

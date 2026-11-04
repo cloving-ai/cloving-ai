@@ -52,6 +52,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];
+  readonly readyCommand?: readonly string[];
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;

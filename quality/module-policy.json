@@ -1263,6 +1263,7 @@
     "test/quality/workflow-inputs.test.ts": "test",
     "test/quality/workflow-manifest.test.ts": "test",
     "test/queue-control.test.ts": "test",
+    "test/queue-ready.test.ts": "test",
     "test/queue-spend-fixture.ts": "test",
     "test/queue-spend-storage.test.ts": "test",
     "test/queue-spend.test.ts": "test",

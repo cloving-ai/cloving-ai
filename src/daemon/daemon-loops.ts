@@ -11,6 +11,7 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
   readonly queueLanes?: number;
+  readonly readyCommand?: readonly string[];
   readonly resetQueue?: boolean;
   readonly queueWorkflowId: string | undefined;
 }
@@ -31,6 +32,9 @@ async function startedQueue(
     intervalMilliseconds: settings.queueMilliseconds,
     lanes: settings.queueLanes ?? 1,
     resetQueue: settings.resetQueue ?? false,
+    ...(settings.readyCommand === undefined
+      ? {}
+      : { readyCommand: settings.readyCommand }),
     workflowId: settings.queueWorkflowId,
   });
   settings.queueConnection?.connect(queue.port);
