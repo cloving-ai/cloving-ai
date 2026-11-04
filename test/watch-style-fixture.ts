@@ -1,3 +1,15 @@
+import assert from "node:assert/strict";
+import { pageDocument } from "../src/cli/watch-page.ts";
+
+export const css =
+  pageDocument().split("<style>")[1]?.split("</style>")[0] ?? "";
+export const rules = css.replaceAll(/\n[ \t]+/g, "\n");
+export function rule(selector: string): string {
+  const start = rules.indexOf(`\n${selector} {`);
+  assert.ok(start >= 0, selector);
+  return rules.slice(start, rules.indexOf("}", start));
+}
+
 export const palette = {
   light: {
     bg: "#D6E7DF",

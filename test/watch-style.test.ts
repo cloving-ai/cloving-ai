@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pageDocument } from "../src/cli/watch-page.ts";
-import { contrast, over, palette, rgb } from "./watch-style-fixture.ts";
-
-const css = pageDocument().split("<style>")[1]?.split("</style>")[0] ?? "";
-const rules = css.replaceAll(/\n[ \t]+/g, "\n");
-function rule(selector: string): string {
-  const start = rules.indexOf(`\n${selector} {`);
-  assert.ok(start >= 0, selector);
-  return rules.slice(start, rules.indexOf("}", start));
-}
+import {
+  contrast,
+  css,
+  over,
+  palette,
+  rgb,
+  rule,
+  rules,
+} from "./watch-style-fixture.ts";
 
 await test("CLV-140 a full-width board has flexible columns", () => {
   assert.match(rule(".workspace"), /display: flex/);

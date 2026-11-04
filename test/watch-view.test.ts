@@ -208,6 +208,7 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
             decisionId: "run-1/review-2",
             type: "approval",
             prompt: "Review round 2.",
+            openedAt: null,
             approve: "cloving approve run-1/review-2",
             deny: 'cloving deny run-1/review-2 --text "<feedback>"',
           },

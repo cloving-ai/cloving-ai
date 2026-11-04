@@ -215,6 +215,7 @@ export function decisionCommands(
     decisionId,
     type: text(fields["type"]),
     prompt: text(fields["prompt"]),
+    openedAt: stamp(fields["openedAt"]),
     approve: `${client} approve ${decisionId} ${binding}`,
     deny: `${client} deny ${decisionId} --text "<feedback>" ${binding}`,
   };
