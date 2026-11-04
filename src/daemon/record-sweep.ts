@@ -197,13 +197,20 @@ export function recordSweep(settings: SweepSettings): RecordSweep {
 }
 
 export async function recordRetention(
-  settings: SweepSettings & { readonly intervalMilliseconds?: number },
+  settings: SweepSettings & {
+    readonly intervalMilliseconds?: number;
+    readonly bundles?: RecordSweep;
+  },
 ): Promise<RetentionLoop> {
-  const sweep = recordSweep(settings);
-  await sweep.pass();
+  const records = recordSweep(settings);
+  const pass = async () => {
+    await records.pass();
+    await settings.bundles?.pass();
+  };
+  await pass();
   let running = Promise.resolve();
   const timer = setInterval(() => {
-    running = running.then(sweep.pass);
+    running = running.then(pass);
   }, settings.intervalMilliseconds ?? retentionIntervalMilliseconds);
   timer.unref();
   return {
