@@ -7,6 +7,7 @@ import { send } from "../cli/client.ts";
 import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
+import { readyRefreshes } from "./ticket-source.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
 import {
   queueControlPort,
@@ -20,6 +21,7 @@ interface QueueSettings {
   readonly intervalMilliseconds: number;
   readonly lanes?: number;
   readonly resetQueue?: boolean;
+  readonly readyCommand?: readonly string[];
   readonly workflowId: string;
 }
 
@@ -354,7 +356,16 @@ export function issueQueue(settings: QueueSettings): {
   });
   const running = loaded
     .then((pending) =>
-      cycle(settings, { signal: runtime.stopping.signal, pending }),
+      Promise.all([
+        cycle(settings, { signal: runtime.stopping.signal, pending }),
+        readyRefreshes(settings.readyCommand, {
+          signal: runtime.stopping.signal,
+          intervalMilliseconds: settings.intervalMilliseconds,
+          listed: (ready) => {
+            runtime.ready = ready;
+          },
+        }),
+      ]),
     )
     .catch((error: unknown) => {
       queueStopped(runtime, error);

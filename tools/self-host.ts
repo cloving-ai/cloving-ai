@@ -118,6 +118,7 @@ interface Commands extends HarnessSettings {
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
   readonly nextCommand: readonly string[] | undefined;
+  readonly readyCommand: readonly string[] | undefined;
   readonly notifyCommand: readonly string[] | undefined;
   readonly githubCommand: readonly string[] | undefined;
   readonly requiredChecks: readonly string[] | null;
@@ -150,6 +151,16 @@ function queueSpendLimit(): number | undefined {
   if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
     throw new Error("The daemon did not start: queue-spend-limit-needs-queue");
   return limit;
+}
+
+function readyTicketCommand(): readonly string[] | undefined {
+  const command = listed("CLOVING_READY_COMMAND");
+  if (
+    command !== undefined &&
+    environment["CLOVING_QUEUE_SECONDS"] === undefined
+  )
+    throw new Error("The daemon did not start: ready-command-needs-queue");
+  return command;
 }
 
 function queueInterval(): number | undefined {
@@ -303,6 +314,7 @@ const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueDailySpendLimitUsd = queueSpendLimit();
 const lanes = queueLanes();
+const readyCommand = readyTicketCommand();
 const queueMilliseconds = queueInterval();
 const retention = retentionSettings(environment);
 const places = {
@@ -332,6 +344,7 @@ await launchers(
     command,
     ticketCommand,
     nextCommand,
+    readyCommand,
     queueMilliseconds,
     queueLanes: lanes,
     queueDailySpendLimitUsd,

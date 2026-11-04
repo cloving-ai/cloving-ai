@@ -17,14 +17,13 @@ import { record } from "../protocol.ts";
 import { hasTicketField, type SubmissionContract } from "../submission.ts";
 import type { LocalCommands } from "../command-settings.ts";
 import { issueIdentity } from "../issue-identity.ts";
+import { ticketIdentifier } from "../queue-state.ts";
 import {
   ticketDependencyWaits,
   TicketDependencyReadError,
 } from "./ticket-dependency-waits.ts";
 
 const defaultCapabilities = ["claude", "github"];
-
-const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
 
 export type TicketRegistrations =
   | {

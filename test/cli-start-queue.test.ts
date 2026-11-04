@@ -3,7 +3,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { refusedStart as refused } from "./cli-start-fixture.ts";
-import { ended, reached, scene, withoutChildren } from "./self-host-fixture.ts";
+import {
+  ended,
+  field,
+  reached,
+  scene,
+  withoutChildren,
+} from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { writeQueueWorkflow } from "./workflow-folder-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
@@ -159,5 +165,47 @@ await test("CLV-241 daily spend limit must be positive and finite and needs a qu
       CLOVING_QUEUE_SECONDS: undefined,
     }),
     /queue-spend-limit-needs-queue/,
+  );
+});
+
+await test("CLV-286 start gives the ready-ticket command to the queue, and the status shows the ready count", () =>
+  withoutChildren(async () => {
+    const fixture = await scene(undefined, entry);
+    await writeQueueWorkflow(join(fixture.repository, ".cloving/workflows"));
+    const printed = JSON.stringify([
+      { id: "586", readyAt: "2026-11-03T07:30:00Z" },
+      { id: "590", readyAt: "2026-11-03T09:00:00Z" },
+    ]);
+    const daemon = await fixture.start({
+      CLOVING_QUEUE_SECONDS: "10",
+      CLOVING_NEXT_COMMAND: '["false"]',
+      CLOVING_READY_COMMAND: JSON.stringify([
+        process.execPath,
+        "-e",
+        `process.stdout.write(${JSON.stringify(printed)})`,
+      ]),
+      CLOVING_SELF_UPDATE_SECONDS: undefined,
+    });
+    try {
+      const ready = await reached(async () => {
+        const status = await call(fixture, {
+          operation: "status",
+          parameters: {},
+        });
+        return field(status["queue"], "ready");
+      });
+      assert.deepEqual(ready, { count: 2, oldestAt: "2026-11-03T07:30:00Z" });
+    } finally {
+      assert.equal(await ended(daemon), 0);
+    }
+  }));
+
+await test("CLV-286 start refuses a ready-ticket command without a queue interval", async () => {
+  assert.match(
+    await refused({
+      CLOVING_READY_COMMAND: '["true"]',
+      CLOVING_QUEUE_SECONDS: undefined,
+    }),
+    /The daemon did not start: ready-command-needs-queue/,
   );
 });

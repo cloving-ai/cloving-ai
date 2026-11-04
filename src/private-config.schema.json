@@ -73,6 +73,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "readyCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

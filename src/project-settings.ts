@@ -37,6 +37,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "checks.redGreen": "CLOVING_RED_GREEN",
   "tickets.command": "CLOVING_TICKET_COMMAND",
   "tickets.nextCommand": "CLOVING_NEXT_COMMAND",
+  "tickets.readyCommand": "CLOVING_READY_COMMAND",
   "queue.everySeconds": "CLOVING_QUEUE_SECONDS",
   "queue.lanes": "CLOVING_QUEUE_LANES",
   "queue.dailySpendLimitUsd": "CLOVING_QUEUE_DAILY_SPEND_USD",

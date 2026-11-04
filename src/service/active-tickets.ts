@@ -1,5 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
-import { queueStateFields } from "../queue-state.ts";
+import { queueStateFields, readyFields } from "../queue-state.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
 import type { ServiceContext } from "./replies.ts";
 
@@ -37,6 +37,16 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     .find((workflow) => workflow?.admission !== undefined);
   if (workflow?.admission === undefined) return {};
   const active = await activeWorkflow(context, workflow.workflowId);
+  const activeTicketIds = active.flatMap((input) =>
+    typeof input["ticketId"] === "string" ? [input["ticketId"]] : [],
+  );
+  const skipped = [
+    ...activeTicketIds.map((ticketId) => ({
+      ticketId,
+      reason: "ticket-active",
+    })),
+    ...(workflow.resolver.skippedTickets?.() ?? []),
+  ];
   const control = context.queue?.control();
   return {
     queue: {
@@ -44,17 +54,20 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
       ...(await queueSpend(context)),
       lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
       busy: active.length,
-      skipped: [
-        ...active.flatMap((input) =>
-          typeof input["ticketId"] === "string"
-            ? [{ ticketId: input["ticketId"], reason: "ticket-active" }]
-            : [],
-        ),
-        ...(workflow.resolver.skippedTickets?.() ?? []),
-      ],
+      skipped,
       ...(control === undefined
         ? {}
-        : queueStateFields(control, active.length)),
+        : {
+            ...queueStateFields(control, active.length),
+            ...readyFields(
+              control.ready,
+              skipped.flatMap((ticket) =>
+                typeof ticket["ticketId"] === "string"
+                  ? [ticket["ticketId"]]
+                  : [],
+              ),
+            ),
+          }),
     },
   };
 }
