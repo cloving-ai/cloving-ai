@@ -38,9 +38,28 @@ export interface Operation {
   readonly observe?: (
     report: Pick<
       ObservationReport,
-      "condition" | "reason" | "evidence" | "attempt" | "limit"
-    >,
+      "condition" | "reason" | "evidence" | "retryAt" | "attempt" | "limit"
+    > & { readonly notice: string },
   ) => Promise<{ readonly kind: string } | undefined>;
+}
+
+export function observer(
+  observe:
+    | ((report: ObservationReport) => Promise<{ readonly kind: string }>)
+    | undefined,
+  identity: {
+    readonly runId: string;
+    readonly operationId: string;
+    readonly key: string;
+  },
+): NonNullable<Operation["observe"]> {
+  return async ({ notice, ...observation }) =>
+    observe?.({
+      ...observation,
+      runId: identity.runId,
+      operationId: identity.operationId,
+      commandId: `github:${identity.key}:${notice}`,
+    });
 }
 
 export interface Place {

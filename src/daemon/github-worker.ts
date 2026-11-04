@@ -7,6 +7,8 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
+import { retriedOperation } from "./git-retry.ts";
+import { observer } from "./github-operation.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
@@ -118,21 +120,17 @@ async function outcome(
   if (intent.target.startsWith("branch:"))
     return interrupted("branch-target-not-supported");
   try {
-    const result = await method({
-      settings,
-      folder: run.folder,
-      calls: calls(settings, signal),
-      target: intent.target,
-      payload,
-      signal,
-      observe: async (observation) =>
-        settings.observe?.({
-          ...observation,
-          runId: intent.runId,
-          operationId: intent.operationId,
-          commandId: `github:${run.key}:merge-refused:${String(observation.attempt)}`,
-        }),
-    });
+    const result = await method(
+      retriedOperation({
+        settings,
+        folder: run.folder,
+        calls: calls(settings, signal),
+        target: intent.target,
+        payload,
+        signal,
+        observe: observer(settings.observe, { ...intent, key: run.key }),
+      }),
+    );
     return {
       outcome: "completed",
       result: JSON.stringify(result),
