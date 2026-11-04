@@ -91,3 +91,28 @@ export async function sample(input) { return await waitForRun(input); }`,
       });
     },
   ));
+
+await test("CLV-285 concurrent fake waits for one child keep one clock for each wait, and a later wait starts at 0 again", async () => {
+  using bridge = fakeStepBridge({
+    waits: [
+      ...Array.from({ length: 8 }, () => waiting),
+      outcome,
+      outcome,
+      waiting,
+      outcome,
+    ],
+  });
+  const short = { runId: "child-run", maximumWaitSeconds: 10 };
+  assert.deepEqual(await Promise.all([waitForRun(short), waitForRun(short)]), [
+    outcome,
+    outcome,
+  ]);
+  assert.deepEqual(await waitForRun(short), outcome);
+  assert.deepEqual(bridge.requests, [
+    ["waitForRun", short],
+    ["waitForRun", short],
+    ...sleeps([2000, 2001, 4000, 4001, 8000, 8001, 10000, 10001]),
+    ["waitForRun", short],
+    ...sleeps([2000]),
+  ]);
+});

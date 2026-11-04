@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runWait, type RunWaitPorts } from "../src/host/run-wait.ts";
-import { registerStepBridge } from "../src/host/step-bridge-host.ts";
+import {
+  registerStepBridge,
+  stepBridge,
+  type BridgePorts,
+} from "../src/host/step-bridge-host.ts";
 import { checkRunWait } from "../src/steps/run-wait.ts";
 import type { RunWaitTarget } from "../src/run-wait.ts";
 
@@ -177,4 +181,62 @@ await test("CLV-180 an unrelated run fails without exposing its outcome", async 
     name: "FatalError",
     message: "run-wait-refused",
   });
+});
+
+function hostPorts(
+  clock: { now: number },
+  target: { current: RunWaitTarget },
+): BridgePorts {
+  const unused = () => Promise.reject(new Error("unused"));
+  return {
+    call: () => ({
+      worldRunId: "wrun_1",
+      stepId: "step-one",
+      attempt: 3,
+      startedAt: 1000,
+    }),
+    run: () => Promise.resolve({ runId: "parent" }),
+    state: () =>
+      Promise.resolve({
+        runs: { parent: { status: "running", revision: 1 } },
+        gates: {},
+      }),
+    stopped: new AbortController().signal,
+    runWait: {
+      now: () => clock.now,
+      target: () => Promise.resolve(target.current),
+      observe: () => Promise.resolve({ kind: "accepted" }),
+    },
+    openGate: unused,
+    registerWait: unused,
+    requestEffect: unused,
+    operation: unused,
+    document: unused,
+  };
+}
+
+await test("CLV-285 the host keeps the wait step of earlier versions: it retries at the next check time from the step start and returns the outcome of the ended child", async () => {
+  const clock = { now: 4000 };
+  const target = { current: active };
+  const bridge = stepBridge(hostPorts(clock, target));
+  assert.equal(typeof bridge.waitForRun, "function");
+  const earlier = { runId: "child", maximumWaitSeconds: 60, startedAt: 5 };
+  await assert.rejects(bridge.waitForRun?.(earlier) ?? Promise.resolve(), {
+    name: "RetryableError",
+    message: "awaiting-run",
+    retryAfter: new Date(7000),
+  });
+  clock.now = 60000;
+  await assert.rejects(bridge.waitForRun?.(earlier) ?? Promise.resolve(), {
+    name: "RetryableError",
+    message: "awaiting-run",
+    retryAfter: new Date(61000),
+  });
+  target.current = {
+    parentRunId: "parent",
+    status: "completed",
+    endedAt: 59000,
+    outcome,
+  };
+  assert.deepEqual(await bridge.waitForRun?.(earlier), outcome);
 });

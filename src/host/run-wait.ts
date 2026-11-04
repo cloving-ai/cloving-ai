@@ -5,7 +5,11 @@ import {
   type RunWaitChecks,
   type RunWaitTarget,
 } from "../run-wait.ts";
-import type { RunWaitCheck, RunWaitProgress } from "../step-bridge.ts";
+import type {
+  RunWaitCheck,
+  RunWaitOutcome,
+  RunWaitProgress,
+} from "../step-bridge.ts";
 
 interface RunWaitReport {
   readonly runId: string;
@@ -98,4 +102,11 @@ export async function runWait(
     });
   if (result.kind === "refused") throw new FatalError(result.reason);
   return result;
+}
+
+export function retriedOutcome(progress: RunWaitProgress): RunWaitOutcome {
+  if (progress.kind === "completed") return progress.outcome;
+  throw new RetryableError("awaiting-run", {
+    retryAfter: new Date(progress.nextCheckAt),
+  });
 }

@@ -68,6 +68,66 @@ try {
     ]);
   }));
 
+const earlier = `
+settings.workflows.queue = workflows.earlier;
+settings.manifests.queue = settings.manifests.earlier;
+settings.declarations[0].functionName = "earlier";
+const earlierStep = async (runId) => (await (await getWorld()).steps.list({ runId: await sdkRun(runId), resolveData: "none", pagination: { limit: 1000 } })).data.find((step) => step.stepName.endsWith("//earlierWaitForRun"));
+`;
+
+await test("CLV-285 a wait step compiled before the check step resumes after a host crash and returns the child's outcome", () =>
+  withConsumer(workflow, async (consumer) => {
+    const first = await consumer.runUntil(
+      "earlier-wait-retrying",
+      `${prelude}${earlier}
+writeFileSync("hold-retry", "");
+await launched(${everySecond});
+const root = await source();
+const waiting = await until(async () => { const run = await shown(root.runId); return run.condition === "waiting-run" ? run : undefined; });
+await until(async () => (await earlierStep(root.runId))?.attempt >= 2 && (await worldEvents(root.runId)).at(-1)?.eventType === "step_retrying");
+await halt("earlier-wait-retrying", { awaitedRunId: waiting.awaitedRunId, attempts: (await earlierStep(root.runId)).attempt });
+`,
+    );
+    const boundary = first.lines[0];
+    assert.ok(typeof boundary === "object" && boundary !== null, first.stderr);
+    assert.ok(
+      "boundary" in boundary &&
+        "awaitedRunId" in boundary &&
+        "attempts" in boundary,
+      first.stderr,
+    );
+    assert.equal(boundary.boundary, "earlier-wait-retrying", first.stderr);
+    assert.ok(
+      typeof boundary.awaitedRunId === "string" &&
+        typeof boundary.attempts === "number",
+      first.stderr,
+    );
+    const restarted = await consumer.run(`${prelude}${earlier}
+const daemon = await launched(${everySecond});
+try {
+  const root = await source();
+  rmSync("hold-retry");
+  const completed = await ended(root.runId);
+  assert.equal(completed.outcome?.kind, "handoff_requested", JSON.stringify(completed));
+  assert.equal(completed.outcome.promotionId, "size-small");
+  assert.equal(completed.awaitedRunId, null);
+  const step = await earlierStep(root.runId);
+  assert.equal(step.status, "completed");
+  assert.ok(step.attempt > ${String(boundary.attempts)}, String(step.attempt));
+  assert.deepEqual(readFileSync("outcomes", "utf8").trim().split("\\n").map(JSON.parse), [{ kind: "handoff_requested", reason: "small ticket", promotionId: "size-small" }]);
+  print({ awaitedRunId: (await runs()).find((run) => run.workflowId === "size-ticket").runId });
+} finally { await daemon.close(); }
+`);
+    assert.equal(
+      restarted.status,
+      0,
+      restarted.stderr + JSON.stringify(restarted.lines),
+    );
+    assert.deepEqual(restarted.lines, [
+      { awaitedRunId: boundary.awaitedRunId },
+    ]);
+  }));
+
 await test("CLV-180 a replay before the wait checkpoint returns the same outcome", () =>
   withConsumer(workflow, async (consumer) => {
     const first = await consumer.runUntil(

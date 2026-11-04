@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
 import { authorizeEffect, type EffectRequest } from "./effect-authorization.ts";
+import { record } from "./protocol.ts";
 import { runWaitCheckAt } from "./run-wait.ts";
 import {
   scenarioResult,
@@ -17,7 +18,9 @@ import {
   type ProtectedResult,
   type GateResult,
   type DecisionResult,
+  type RunWaitCheck,
   type RunWaitOutcome,
+  type RunWaitProgress,
   type StepBridge,
   type CommandWaitRequest,
   type CommandWaitProgress,
@@ -122,35 +125,68 @@ function waitingAnswer(answer: RunWaitAnswer): answer is RunWaitPending {
   return answer.kind === "waiting";
 }
 
+interface WaitClock {
+  readonly runId: string;
+  readonly startedAt: number;
+}
+
+const unanswered: RunWaitOutcome = {
+  kind: "unavailable",
+  reason: "no-scenario-result",
+  promotionId: null,
+};
+
+function waitClocks() {
+  const clocks = new Map<string, number>();
+  const key = (wait: WaitClock) => JSON.stringify([wait.runId, wait.startedAt]);
+  return {
+    opened: (runId: string): number => {
+      let startedAt = 0;
+      while (clocks.has(key({ runId, startedAt }))) startedAt += 1;
+      return startedAt;
+    },
+    now: (wait: WaitClock): number => clocks.get(key(wait)) ?? wait.startedAt,
+    advance: (wait: WaitClock, time: number): void => {
+      clocks.set(key(wait), time);
+    },
+    end: (wait: WaitClock): void => {
+      clocks.delete(key(wait));
+    },
+  };
+}
+
+function fakeWaiting(
+  clocks: ReturnType<typeof waitClocks>,
+  request: RunWaitCheck,
+): Promise<RunWaitProgress> {
+  const startedAt = request.startedAt ?? clocks.opened(request.runId);
+  const wait = { runId: request.runId, startedAt };
+  const deadline = startedAt + request.maximumWaitSeconds * 1000;
+  const now = clocks.now(wait);
+  if (now >= deadline) {
+    clocks.end(wait);
+    return Promise.reject(new Error("run-wait-timeout"));
+  }
+  const nextCheckAt = runWaitCheckAt({ startedAt, deadline, now });
+  clocks.advance(wait, nextCheckAt);
+  return Promise.resolve({ kind: "waiting", startedAt, deadline, nextCheckAt });
+}
+
 function scenarioRunWaits(
   scenario: StepScenario,
   requests: ScenarioRequest[],
 ): Pick<StepBridge, "checkRunWait"> {
   const waits = [...(scenario.waits ?? [])];
-  const clocks = new Map<string, number>();
+  const clocks = waitClocks();
   return {
     checkRunWait: (request) => {
-      const opening = Reflect.get(Object(request), "startedAt") === undefined;
-      if (opening) requests.push(["waitForRun", request]);
-      const answer = waits.shift() ?? {
-        kind: "unavailable",
-        reason: "no-scenario-result",
-        promotionId: null,
-      };
-      if (!waitingAnswer(answer))
-        return Promise.resolve({ kind: "completed", outcome: answer });
-      if (opening) clocks.set(request.runId, 0);
-      const deadline = request.maximumWaitSeconds * 1000;
-      const now = clocks.get(request.runId) ?? 0;
-      if (now >= deadline) return Promise.reject(new Error("run-wait-timeout"));
-      const nextCheckAt = runWaitCheckAt({ startedAt: 0, deadline, now });
-      clocks.set(request.runId, nextCheckAt);
-      return Promise.resolve({
-        kind: "waiting",
-        startedAt: 0,
-        deadline,
-        nextCheckAt,
-      });
+      const startedAt = record(request)?.["startedAt"];
+      if (startedAt === undefined) requests.push(["waitForRun", request]);
+      const answer = waits.shift() ?? unanswered;
+      if (waitingAnswer(answer)) return fakeWaiting(clocks, request);
+      if (typeof startedAt === "number")
+        clocks.end({ runId: request.runId, startedAt });
+      return Promise.resolve({ kind: "completed", outcome: answer });
     },
   };
 }

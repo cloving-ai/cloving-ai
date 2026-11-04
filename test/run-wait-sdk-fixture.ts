@@ -41,6 +41,21 @@ export async function take(input) {
   "use workflow";
   return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: input.input.verdict };
 }
+export async function earlierWaitForRun(request) {
+  "use step";
+  const bridge = Reflect.get(globalThis, Symbol.for("cloving.step-bridge/v1"));
+  if (!["effect", "gate"].every((member) => typeof Reflect.get(Object(bridge), member) === "function") || bridge.waitForRun === undefined)
+    throw new Error("cloving-host-unavailable");
+  return await bridge.waitForRun(request);
+}
+earlierWaitForRun.maxRetries = 86401;
+export async function earlier(input) {
+  "use workflow";
+  const target = await handoff({ workflowId: "size-ticket", input: {} });
+  const outcome = await earlierWaitForRun({ runId: target, maximumWaitSeconds: 600 });
+  await received(outcome);
+  return { kind: "handoff_requested", cycleId: input.cycleId, promotionId: outcome.promotionId };
+}
 export async function fanout(input) {
   "use workflow";
   const targets = [];
@@ -54,7 +69,7 @@ export async function fanout(input) {
 
 export const runWaitPrelude = `${queuePrelude}
 settings.queueMilliseconds = undefined;
-for (const name of ["queue", "size", "take", "fanout"]) {
+for (const name of ["queue", "size", "take", "fanout", "earlier"]) {
   const definition = Object.values(compiled.workflows).flatMap(Object.values).find((entry) => entry.workflowId.endsWith("//" + name));
   writeFileSync(name + ".workflow.json", JSON.stringify({ schemaVersion: 1, name, workflowId: definition.workflowId, steps: [], capabilities: [], resources: [], artifacts: "artifacts" }));
   settings.manifests[name] = directory + "/" + name + ".workflow.json";

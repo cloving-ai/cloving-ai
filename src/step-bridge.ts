@@ -131,6 +131,7 @@ export interface StepBridge {
   readonly waitForDecision?: (request: GateRequest) => Promise<DecisionWait>;
   readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
   readonly checkRunWait?: (request: RunWaitCheck) => Promise<RunWaitProgress>;
+  readonly waitForRun?: (request: RunWaitRequest) => Promise<RunWaitOutcome>;
 }
 
 export function isStepBridge(value: unknown): value is StepBridge {

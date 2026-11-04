@@ -14,7 +14,7 @@ export type {
   GateReceipt,
   WaitRegistration,
 } from "./gate-bridge.ts";
-import { runWait, type RunWaitPorts } from "./run-wait.ts";
+import { retriedOutcome, runWait, type RunWaitPorts } from "./run-wait.ts";
 import type { RunWaitChecks } from "../run-wait.ts";
 import { reconciledDecision } from "./decision-resume.ts";
 import { taggedRuns } from "./world-runs.ts";
@@ -355,6 +355,8 @@ export function stepBridge(ports: BridgePorts): StepBridge {
       );
     },
     checkRunWait: (request) => checkRunWait(hold, request),
+    waitForRun: async ({ runId, maximumWaitSeconds }) =>
+      retriedOutcome(await checkRunWait(hold, { runId, maximumWaitSeconds })),
     handoff: (request) =>
       effect(hold, {
         scope: {
