@@ -20,6 +20,7 @@ export const runLimit = {
 const text = { type: "string" };
 const nullableText = { type: ["string", "null"] };
 const integer = { type: "integer" };
+const nullableNumber = { type: ["number", "null"] };
 const flag = { type: "boolean" };
 
 function reference(name: string): { readonly $ref: string } {
@@ -54,6 +55,7 @@ const invalidQuery = problem(
   "A query parameter is unknown, repeated or has an invalid value.",
 );
 const serviceUnavailable = problem("The Cloving service does not answer.");
+const unknownRun = problem("The service has no run with this ID.");
 
 const documentSchema = closed({
   openapi: { const: "3.1.1" },
@@ -99,6 +101,36 @@ const runParameters = [
   },
 ];
 
+const runId = {
+  name: "runId",
+  in: "path",
+  required: true,
+  description: "The ID of the run.",
+  schema: text,
+};
+
+const after = {
+  name: "after",
+  in: "query",
+  description: "Give only the events with a higher sequence.",
+  schema: { type: "integer", minimum: 0, default: 0 },
+};
+
+const runSummary = {
+  runId: text,
+  workflowId: text,
+  ticketId: nullableText,
+  title: nullableText,
+  state: { type: "string", enum: runStates },
+  outcome: nullableText,
+  currentStep: closed({ name: text, startedAt: nullableText }),
+  latestAt: nullableText,
+  pullRequest: {
+    oneOf: [closed({ number: integer, url: text }), { type: "null" }],
+  },
+  estimatedCostUsd: nullableNumber,
+};
+
 export const watchApiDocument = {
   openapi: "3.1.1",
   info: { title: "Cloving watch API", version: "1.0.0" },
@@ -108,6 +140,7 @@ export const watchApiDocument = {
     { name: "service", description: "The state of the Cloving service." },
     { name: "workflows", description: "The workflows of the service." },
     { name: "runs", description: "The runs of the watch page." },
+    { name: "stream", description: "The change signals of the runs." },
   ],
   paths: {
     "/": {
@@ -172,6 +205,54 @@ export const watchApiDocument = {
         },
       },
     },
+    "/runs/{runId}": {
+      get: {
+        operationId: "getRun",
+        tags: ["runs"],
+        summary:
+          "Give one run with its phases, open decisions, reviews and agent turns, also when the run is older than 7 days.",
+        parameters: [runId],
+        responses: {
+          "200": json("The run.", closed({ run: reference("RunDetail") })),
+          "400": invalidQuery,
+          "404": unknownRun,
+          "503": serviceUnavailable,
+        },
+      },
+    },
+    "/runs/{runId}/events": {
+      get: {
+        operationId: "listRunEvents",
+        tags: ["runs"],
+        summary:
+          "Give the events of one run after a sequence, the lowest sequence first.",
+        parameters: [runId, after],
+        responses: {
+          "200": json(
+            "The events of the run.",
+            closed({ events: listOf(reference("Event")) }),
+          ),
+          "400": invalidQuery,
+          "404": unknownRun,
+          "503": serviceUnavailable,
+        },
+      },
+    },
+    "/stream": {
+      get: {
+        operationId: "streamChanges",
+        tags: ["stream"],
+        summary:
+          'Send the event change with the data {"updatedAt":"<time>"} at the connection and at each change of a run.',
+        responses: {
+          "200": {
+            description: "Server-Sent Events.",
+            content: { "text/event-stream": { schema: text } },
+          },
+          "400": invalidQuery,
+        },
+      },
+    },
   },
   components: {
     schemas: {
@@ -189,24 +270,46 @@ export const watchApiDocument = {
         multiline: flag,
         optional: flag,
       }),
-      RunSummary: closed({
-        runId: text,
-        workflowId: text,
-        ticketId: nullableText,
-        title: nullableText,
-        state: { type: "string", enum: runStates },
-        outcome: nullableText,
-        currentStep: closed({ name: text, startedAt: nullableText }),
-        latestAt: nullableText,
-        pullRequest: {
-          oneOf: [closed({ number: integer, url: text }), { type: "null" }],
-        },
-        estimatedCostUsd: { type: ["number", "null"] },
-      }),
+      RunSummary: closed(runSummary),
       RunPage: closed({
         runs: listOf(reference("RunSummary")),
         nextCursor: nullableText,
       }),
+      RunDetail: closed({
+        ...runSummary,
+        code: text,
+        detail: text,
+        round: integer,
+        spent: nullableNumber,
+        limit: nullableNumber,
+        decisions: listOf(reference("Decision")),
+        phases: listOf(reference("Phase")),
+        reviews: listOf(reference("Review")),
+        mergeCommit: nullableText,
+        turns: listOf(reference("Turn")),
+      }),
+      Decision: closed({ decisionId: text, type: text, prompt: text }),
+      Phase: closed({
+        name: text,
+        state: text,
+        startedAt: nullableText,
+        endedAt: nullableText,
+      }),
+      Review: closed({
+        round: integer,
+        commit: text,
+        score: { type: "number" },
+      }),
+      Turn: closed({
+        key: text,
+        harness: nullableText,
+        startedAt: text,
+        endedAt: nullableText,
+        outcome: text,
+        estimatedCostUsd: nullableNumber,
+        summary: text,
+      }),
+      Event: closed({ sequence: integer, type: text, recordedAt: text }),
       Problem: closed({
         type: text,
         title: text,

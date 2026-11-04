@@ -14,7 +14,7 @@ import { sqlite } from "solid-objects/database/sqlite";
 import { recoveryBatch } from "./turn-state.ts";
 import { integer, latestSequence, text } from "../../storage/domain-rows.ts";
 import { trackedDelivery } from "./authority-release.ts";
-import { authorityActor } from "./authority-actor.ts";
+import { authorityActor, type AuthorityActorClass } from "./authority-actor.ts";
 import {
   sequenceSubscriber,
   type SequenceListener,
@@ -53,6 +53,10 @@ import {
   strandingWatchdog,
   type StrandingWatchdog,
 } from "./authority-watchdog.ts";
+import {
+  projectionMemory,
+  type ProjectionMemory,
+} from "./projection-memory.ts";
 
 export interface AuthorityOptions {
   readonly delivery?: Delivery;
@@ -169,6 +173,7 @@ export interface SessionLimits {
 export interface AuthorityRuntime {
   readonly runtime: SolidObjectsRuntime;
   readonly reader: Database;
+  readonly memory: ProjectionMemory;
   readonly invoker: (
     actorId: string,
     idempotencyKey?: string,
@@ -311,6 +316,21 @@ async function deadLetterCause(lookup: {
   }
 }
 
+function invokerOf(parts: {
+  readonly runtime: SolidObjectsRuntime;
+  readonly actor: AuthorityActorClass;
+  readonly broker: object;
+  readonly timing: AuthorityTiming;
+}): AuthorityRuntime["invoker"] {
+  const { runtime, actor, broker, timing } = parts;
+  return (actorId, idempotencyKey) =>
+    runtime.ref(actor, actorId).with({
+      authorizationContext: broker,
+      timeoutMilliseconds: timing.callTimeoutMilliseconds,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    });
+}
+
 export function authorityRuntime(
   database: Database,
   options: AuthorityOptions,
@@ -323,6 +343,8 @@ export function authorityRuntime(
     boundMilliseconds: timing.callTimeoutMilliseconds,
   });
   const effects = effectConfiguration(options);
+  const logger = authorityLogger(options.log);
+  const memory = projectionMemory({ logger });
   const shared = { reader, effects, clock: options.clock ?? wallClock };
   const ClovingAuthority = authorityActor({
     ...shared,
@@ -332,6 +354,7 @@ export function authorityRuntime(
     database,
     actor: ClovingAuthority,
     settings: runtimeSettings({ timing, options, broker, watchdog }),
+    record: memory.record,
   });
   const delivery = trackedDelivery({
     runtime,
@@ -347,17 +370,13 @@ export function authorityRuntime(
   return {
     runtime,
     reader,
-    invoker: (actorId, idempotencyKey) =>
-      runtime.ref(ClovingAuthority, actorId).with({
-        authorizationContext: broker,
-        timeoutMilliseconds: timing.callTimeoutMilliseconds,
-        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-      }),
+    memory,
+    invoker: invokerOf({ runtime, actor: ClovingAuthority, broker, timing }),
     ...delivery,
     setEpoch: (value) => {
       epoch = value;
     },
-    logger: authorityLogger(options.log),
+    logger,
     watchMilliseconds: timing.leaseMilliseconds,
     limits: effects,
     releaseEarlierOwners: () =>

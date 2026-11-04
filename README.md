@@ -188,6 +188,34 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+#### Read API of the watch page
+
+The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1 document is at `http://127.0.0.1:3663/api/v1/openapi.json`. OpenAPI client generators can read the document and make a typed client. The API accepts only `GET` and needs no authentication. An error reply is `application/problem+json` with a `code` member, for example `not-found` or `invalid-query`.
+
+- `GET /api/v1/` gives the version of the API and its endpoints.
+- `GET /api/v1/openapi.json` gives the OpenAPI document.
+- `GET /api/v1/service` tells if the Cloving service answers.
+- `GET /api/v1/workflows` gives the workflows with their counts and card fields.
+- `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
+- `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
+- `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.
+- `GET /api/v1/stream` sends Server-Sent Events. Each message has the event `change` and the data `{"updatedAt":"<time>"}`. Read the runs again when a message arrives.
+
+Replace `<run-id>` with the ID of a run of `develop`, for example from the run list:
+
+```sh
+curl http://127.0.0.1:3663/api/v1/
+curl http://127.0.0.1:3663/api/v1/openapi.json
+curl http://127.0.0.1:3663/api/v1/service
+curl http://127.0.0.1:3663/api/v1/workflows
+curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
+curl -N http://127.0.0.1:3663/api/v1/stream
+```
+
+The run list has the active runs and the runs of the last 7 days. The run detail reads each run, also a run older than 7 days. The events endpoint gives no event payloads, and the API has no write endpoint.
+
 ### Use Cloving from an MCP client
 
 `cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
@@ -1171,7 +1199,7 @@ After a merge or branch update changes `package.json` or `package-lock.json`, re
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 
-Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type.
+Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type. The same command also measures the first status page of a service with 700 runs and 7,000 events, and requires an answer in less than 200 ms. The service keeps the projected authority state in memory, so a status request reads no projected table in full after the start.
 
 `npm run check:quality` checks the npm manifest, lock and installed versions, builds the package with `npm run build`, regenerates TypeScript output in memory, inventories first-party files, and runs strict compilation, the proposed module catalog, workflow/effect boundaries, suppression and test-integrity checks, formatting, typed lint, structural checks, clone detection and the regular local test suite. Production modules require at least 90% line, statement and function coverage and 85% branch coverage per file. Coverage uses native V8 ranges mapped to the syntax tree of the exact Node-stripped source; unimported production files fail. Class and named object types allow at most 24 callable members; interfaces allow 10. Clone checks support ordinary TypeScript and JavaScript; JSX is rejected until separately qualified. `npm run check:lint`, `npm run check:format` and `npm run test:quality` run individual development checks.
 

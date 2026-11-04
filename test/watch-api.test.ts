@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { request } from "node:http";
 import { test } from "node:test";
 import { watchApiPaths } from "../src/cli/watch-api.ts";
 import { runStates, watchApiDocument } from "../src/cli/watch-api-document.ts";
@@ -12,6 +11,7 @@ import {
   schemaFailures,
   valueFailures,
 } from "./watch-api-contract.ts";
+import { foreignRequest, streamReader } from "./watch-api-fixture.ts";
 import { watching } from "./watch-fixture.ts";
 import { watchReplies, withWatchService } from "./watch-service-fixture.ts";
 
@@ -54,10 +54,16 @@ await test("CLV-254 the document has openapi, info and paths, each $ref resolves
     "CardField",
     "RunSummary",
     "RunPage",
+    "RunDetail",
+    "Decision",
+    "Phase",
+    "Review",
+    "Turn",
+    "Event",
     "Problem",
   ]);
   const schemas = documentSchemas(document);
-  assert.equal(schemas.length, 22);
+  assert.equal(schemas.length, 41);
   assert.deepEqual(
     schemas.flatMap((found) => schemaFailures(document, found)),
     [],
@@ -166,6 +172,9 @@ await test("CLV-254 GET api/v1 gives the version, the document path and one endp
             ["/api/v1/service", "getService"],
             ["/api/v1/workflows", "listWorkflows"],
             ["/api/v1/runs", "listRuns"],
+            ["/api/v1/runs/{runId}", "getRun"],
+            ["/api/v1/runs/{runId}/events", "listRunEvents"],
+            ["/api/v1/stream", "streamChanges"],
           ].map(([endpoint, operationId]) => ({
             method: "GET",
             path: endpoint,
@@ -180,7 +189,13 @@ await test("CLV-254 GET api/v1 gives the version, the document path and one endp
 await test("CLV-254 an unknown path under api/v1 gives a 404 problem with the code not-found", async () => {
   const replies = watchReplies({ runs: [] });
   await withWatchService(replies.answer, async (watch) => {
-    for (const path of ["api/v1/missing", "api/v1/runs/run-1", "api/v1//"]) {
+    for (const path of [
+      "api/v1/missing",
+      "api/v1/runs/run-1/missing",
+      "api/v1/runs/",
+      "api/v1/stream/",
+      "api/v1//",
+    ]) {
       const response = await fetch(`${watch.address}${path}`);
       assert.equal(response.status, 404, path);
       assert.deepEqual(await problemBody(watchApiDocument, response), {
@@ -235,7 +250,7 @@ await test("CLV-254 GET api/v1/service gives up true and the time of the read wh
   });
 });
 
-await test("CLV-254 with no service, GET api/v1/service gives up false and GET api/v1/workflows and GET api/v1/runs give a 503 problem with the code service-unavailable", () =>
+await test("CLV-254 with no service, GET api/v1/service gives up false and GET api/v1/workflows, GET api/v1/runs and both run paths give a 503 problem with the code service-unavailable", () =>
   withHarness(async (harness) => {
     const watch = await watching(harness.runtimeDirectory);
     try {
@@ -245,8 +260,13 @@ await test("CLV-254 with no service, GET api/v1/service gives up false and GET a
         await contractBody(watchApiDocument, { response, path: "/service" }),
       );
       assert.equal(service["up"], false);
-      for (const path of ["/workflows", "/runs"]) {
-        const unavailable = await fetch(`${watch.address}api/v1${path}`);
+      for (const [served, path] of [
+        ["/workflows", "/workflows"],
+        ["/runs", "/runs"],
+        ["/runs/run-a", "/runs/{runId}"],
+        ["/runs/run-a/events", "/runs/{runId}/events"],
+      ] as const) {
+        const unavailable = await fetch(`${watch.address}api/v1${served}`);
         assert.equal(unavailable.status, 503, path);
         assert.deepEqual(
           await contractBody(watchApiDocument, { response: unavailable, path }),
@@ -265,37 +285,33 @@ await test("CLV-254 with no service, GET api/v1/service gives up false and GET a
   }));
 
 await test("CLV-254 the server serves each path of the document, and each served path of the API is in the document", async () => {
-  const replies = watchReplies({ runs: [] });
+  const replies = watchReplies({
+    runs: [
+      {
+        runId: "run-a",
+        workflowId: "develop-issue",
+        state: "running",
+        latestSequence: 0,
+      },
+    ],
+  });
   await withWatchService(replies.answer, async (watch) => {
     const documented = Object.keys(watchApiDocument.paths);
     assert.deepEqual(watchApiPaths, documented);
-    for (const path of documented) {
-      const response = await fetch(`${watch.address}api/v1${path}`);
+    for (const path of documented.filter((item) => item !== "/stream")) {
+      const served = path.replace("{runId}", "run-a");
+      const response = await fetch(`${watch.address}api/v1${served}`);
       assert.equal(response.status, 200, path);
       await contractBody(watchApiDocument, { response, path });
     }
+    const stream = streamReader(watchApiDocument, {
+      response: await fetch(`${watch.address}api/v1/stream`),
+      path: "/stream",
+    });
+    assert.match(await stream.next(), /^event: change\ndata: \{/);
+    await stream.cancel();
   });
 });
-
-function foreignRequest(
-  address: string,
-  path: string,
-): Promise<number | undefined> {
-  return new Promise((resolve, reject) => {
-    const sent = request(
-      new URL(path, address),
-      { headers: { host: `rebound.example:${new URL(address).port}` } },
-      (response) => {
-        response.resume();
-        response.on("end", () => {
-          resolve(response.statusCode);
-        });
-      },
-    );
-    sent.on("error", reject);
-    sent.end();
-  });
-}
 
 await test("CLV-254 the API refuses a foreign Host header with 403, sends no CORS header and sends cache-control no-store", async () => {
   const replies = watchReplies({ runs: [] });
@@ -316,7 +332,7 @@ await test("CLV-254 the API refuses a foreign Host header with 403, sends no COR
             "access-control-request-method": "GET",
           },
         });
-        await response.arrayBuffer();
+        await response.body?.cancel();
         assert.equal(response.headers.get("cache-control"), "no-store");
         assert.deepEqual(
           [...response.headers.keys()].filter((name) =>

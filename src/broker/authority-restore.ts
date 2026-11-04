@@ -226,7 +226,7 @@ export function currentState(snapshot: ProjectionSnapshot): StoredState {
   return {
     ...projectedState(snapshot),
     ...decisionState(snapshot),
-    ...commandWaitState(snapshot.waits ?? []),
+    ...commandWaitState(snapshot.waits),
   };
 }
 
