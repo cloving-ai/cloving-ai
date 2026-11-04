@@ -40,6 +40,10 @@ export function localDays(now: string, count: number): ReportDay[] {
   );
 }
 
+export function todayStart(now: string): number {
+  return localDay(new Date(now), 0).start;
+}
+
 export function loadedRun(latestAt: string | null, now: string): boolean {
   const at = Date.parse(latestAt ?? "");
   const first = localDay(new Date(now), -6).start;
