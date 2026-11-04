@@ -168,9 +168,13 @@ function rejectedOpening(detail: string): DaemonOpening {
 
 function workflowOptions(
   settings: DaemonSettings,
-  generations: ReturnType<typeof workflowGenerations>,
+  parts: {
+    readonly generations: ReturnType<typeof workflowGenerations>;
+    readonly turnSettings: Adapters["turnSettings"];
+  },
 ) {
   const { reloadCommand, loadBundle } = settings;
+  const { generations, turnSettings } = parts;
   return {
     workflowBundles: {
       directory: join(settings.directory, "workflow-bundles"),
@@ -189,6 +193,7 @@ function workflowOptions(
             reloadCommand,
             loadBundle,
             generations,
+            turnSettings,
           }),
         }),
   };
@@ -220,7 +225,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
-    ...workflowOptions(settings, generations),
+    ...workflowOptions(settings, { ...resources, generations }),
     workflows: admitted.registrations,
     delivery: deliveryRouter({
       runs,

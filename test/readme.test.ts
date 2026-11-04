@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { commandUsage, usage } from "../src/cli/usage.ts";
+import { commandUsage, configUsage, usage } from "../src/cli/usage.ts";
 import { watchApiDocument } from "../src/cli/watch-api-document.ts";
 import { checkWorkflowCandidate } from "../src/workflow-candidate.ts";
 
@@ -353,4 +353,20 @@ await test("CLV-251 the README section after the service settings explains clovi
     assert.match(section, new RegExp("`cloving_" + tool + "`"));
   assert.match(section, /tool call cannot start the service/);
   assert.match(section, /cannot select a different repository/);
+});
+
+await test("CLV-253 the help of config and reload and the README name the settings that cloving reload applies", () => {
+  const fields =
+    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`? and `?workflows\.folder`?/;
+  for (const text of [configUsage, String(commandUsage["reload"]), readme])
+    assert.match(text, fields);
+  assert.match(configUsage, /cloving reload/);
+  assert.match(configUsage, /Other changes require a service restart\./);
+  assert.doesNotMatch(
+    configUsage,
+    /^.*\. Changes require a service restart\.$/m,
+  );
+  assert.doesNotMatch(String(commandUsage["reload"]), /do not reload/);
+  assert.doesNotMatch(readme, /read once when the service starts/);
+  assert.doesNotMatch(readme, /Profiles and settings files do not reload/);
 });

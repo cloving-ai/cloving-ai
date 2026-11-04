@@ -14,6 +14,7 @@ import {
 
 const startDigest = "a".repeat(64);
 const reloadDigest = "b".repeat(64);
+const noFields = { reloadedFields: [], restartFields: [] };
 
 function registration(workflowId: string): WorkflowRegistration {
   return {
@@ -43,12 +44,14 @@ await test("CLV-252 reload prints the reload reply, and status shows the new wor
         bundleDigest: reloadDigest,
         workflows: [registration("develop"), registration("triage")],
         workflowRefusals: [],
+        ...noFields,
       },
       {
         kind: "unchanged",
         workflowRefusals: [
           { scope: "project", label: "broken.ts", codes: ["compile-failed"] },
         ],
+        ...noFields,
       },
     ];
     await harness.start({
@@ -69,6 +72,7 @@ await test("CLV-252 reload prints the reload reply, and status shows the new wor
       bundleDigest: reloadDigest,
       workflows: ["develop", "triage"],
       workflowRefusals: [],
+      ...noFields,
     });
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.deepEqual(status["workflows"], ["develop", "triage"]);
@@ -91,6 +95,46 @@ await test("CLV-252 reload prints the reload reply, and status shows the new wor
       { scope: "project", label: "broken.ts", codes: ["compile-failed"] },
     ]);
     assert.equal(after["bundleDigest"], reloadDigest);
+  }));
+
+await test("CLV-253 reload shows the reloaded fields and the fields that need a restart", () =>
+  withHarness(async (harness) => {
+    const outcome: WorkflowReload = {
+      kind: "unchanged",
+      workflowRefusals: [],
+      reloadedFields: ["fallbackModels", "profiles"],
+      restartFields: ["notify.command", "queue.lanes"],
+    };
+    await harness.start({
+      bundleDigest: startDigest,
+      reload: () => Promise.resolve(outcome),
+    });
+    const reply = await harness.cli(["reload", "--json"]);
+    assert.equal(reply.status, 0, reply.stdout + reply.stderr);
+    assert.deepEqual(JSON.parse(reply.stdout), {
+      schemaVersion: 1,
+      kind: "reload",
+      status: "unchanged",
+      previousBundleDigest: startDigest,
+      bundleDigest: startDigest,
+      workflows: ["develop"],
+      workflowRefusals: [],
+      reloadedFields: ["fallbackModels", "profiles"],
+      restartFields: ["notify.command", "queue.lanes"],
+    });
+    const text = await harness.cli(["reload"]);
+    assert.equal(text.status, 0, text.stdout + text.stderr);
+    assert.equal(
+      text.stdout,
+      [
+        "Reload: unchanged",
+        `Bundle digest: ${startDigest} -> ${startDigest}`,
+        "Workflows: develop",
+        "Reloaded fields: fallbackModels, profiles",
+        "Fields that need a restart: notify.command, queue.lanes",
+        "",
+      ].join("\n"),
+    );
   }));
 
 await test("CLV-252 a service with no reload port replies reload-unavailable", () =>
@@ -141,6 +185,7 @@ await test("CLV-252 after a reload a removed workflow is unknown, and a run of i
           bundleDigest: reloadDigest,
           workflows: [registration("triage")],
           workflowRefusals: [],
+          ...noFields,
         }),
     });
     const runId = await admitted(harness, "before-reload");

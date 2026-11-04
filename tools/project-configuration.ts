@@ -3,8 +3,17 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { configurationRoot, resolveSettings } from "../src/project-settings.ts";
+import {
+  configurationRoot,
+  resolveSettings,
+  settingDigests,
+  type TurnSettings,
+} from "../src/project-settings.ts";
 import { repositoryFileName } from "../src/repository-identity.ts";
+import { parseFallbackModels, parseTokenPrices } from "../src/token-prices.ts";
+import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
+
+type ProjectConfiguration = ReturnType<typeof resolveSettings>;
 
 async function settingsFile(file: {
   readonly path: string;
@@ -37,7 +46,7 @@ export function projectRoot(given: string): Promise<string> {
 export async function projectConfiguration(
   repository: string,
   environment: Readonly<NodeJS.ProcessEnv>,
-): Promise<ReturnType<typeof resolveSettings>> {
+): Promise<ProjectConfiguration> {
   const projectName = repositoryFileName({
     name: basename(repository),
     sha256: createHash("sha256").update(repository).digest("hex"),
@@ -56,4 +65,42 @@ export async function projectConfiguration(
       scope: "private",
     }),
   });
+}
+
+async function configuredProfiles(
+  configuration: ProjectConfiguration,
+): Promise<TurnProfiles> {
+  const path = configuration.environment["CLOVING_PROFILES"];
+  if (path === undefined) return configuration.profiles;
+  try {
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (isProfilesFile(value)) return value.profiles;
+  } catch {
+    throw new Error("invalid-profiles");
+  }
+  throw new Error("invalid-profiles");
+}
+
+export async function configuredTurnSettings(
+  configuration: ProjectConfiguration,
+): Promise<TurnSettings> {
+  const { environment } = configuration;
+  const tokenPrices = parseTokenPrices(environment["CLOVING_TOKEN_PRICES"]);
+  const fallbackModels = parseFallbackModels(
+    environment["CLOVING_FALLBACK_MODELS"],
+  );
+  return {
+    profiles: await configuredProfiles(configuration),
+    fallbackModels,
+    tokenPrices,
+  };
+}
+
+export function configurationDigests(
+  configuration: ProjectConfiguration,
+  profiles: TurnProfiles,
+): Readonly<Record<string, string>> {
+  return settingDigests({ ...configuration, profiles }, (text) =>
+    createHash("sha256").update(text).digest("hex"),
+  );
 }

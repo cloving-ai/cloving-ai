@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { record } from "../protocol.ts";
 import type {
+  WorkflowBundleReload,
   WorkflowReload,
   WorkflowReloadPort,
 } from "../service/workflow-reload.ts";
@@ -26,8 +27,17 @@ import type {
   workflowGenerations,
 } from "./workflow-generations.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
+import {
+  keptDigests,
+  profileRefusal,
+  reloadedSettings,
+  settingChanges,
+  type ReloadedSettings,
+  type SettingDigests,
+  type TurnSettingsSource,
+} from "./settings-reload.ts";
 
-interface PreparedBundle {
+interface PreparedBundle extends ReloadedSettings {
   readonly kind: "prepared";
   readonly bundleDigest: string;
   readonly manifests: Readonly<Record<string, string>>;
@@ -136,17 +146,32 @@ function parsedOutput(
   }
 }
 
-function preparedBundle(output: string): PreparedBundle | Refused {
-  const value = parsedOutput(output);
+function outputRefusal(
+  value: Readonly<Record<string, unknown>> | undefined,
+): Refused | undefined {
   const error = value?.["error"];
   if (typeof error === "string") return refused("reload-failed", error);
+  const refusal = record(value?.["refusal"]);
+  const code = refusal?.["code"];
+  const detail = refusal?.["detail"];
+  return typeof code === "string" && typeof detail === "string"
+    ? refused(code, detail)
+    : undefined;
+}
+
+function preparedBundle(output: string): PreparedBundle | Refused {
+  const value = parsedOutput(output);
+  const refusal = outputRefusal(value);
+  if (refusal !== undefined) return refusal;
   const bundleDigest = value?.["bundleDigest"];
   const manifests = manifestPaths(value?.["manifests"]);
   const declarations = declaredWorkflows(value?.["declarations"]);
+  const settings = reloadedSettings(value);
   if (
     typeof bundleDigest !== "string" ||
     manifests === undefined ||
-    declarations === undefined
+    declarations === undefined ||
+    settings === undefined
   )
     return refused(
       "reload-failed",
@@ -158,6 +183,7 @@ function preparedBundle(output: string): PreparedBundle | Refused {
     manifests,
     declarations,
     workflowRefusals: workflowRefusals(value?.["workflowRefusals"]),
+    ...settings,
   };
 }
 
@@ -215,6 +241,7 @@ function addedRefusals(
 type ReloadSettings = DaemonSettings & {
   readonly reloadCommand: readonly string[];
   readonly loadBundle: WorkflowBundleLoader;
+  readonly turnSettings: TurnSettingsSource;
 };
 
 type Generations = Pick<ReturnType<typeof workflowGenerations>, "replace">;
@@ -222,7 +249,7 @@ type Generations = Pick<ReturnType<typeof workflowGenerations>, "replace">;
 async function reloaded(
   settings: ReloadSettings & { readonly generations: Generations },
   bundle: PreparedBundle,
-): Promise<WorkflowReload> {
+): Promise<WorkflowBundleReload> {
   const scheduled = scheduledDeclarations(
     { declarations: bundle.declarations, schedules: settings.schedules },
     {
@@ -289,14 +316,19 @@ function reloadLine(
 interface ReloadState {
   readonly bundleDigest: string | undefined;
   readonly workflowRefusals: readonly WorkflowRefusal[];
+  readonly settingDigests: SettingDigests;
 }
 
-async function reloadOutcome(
+interface ReloadStep {
+  readonly outcome: WorkflowReload;
+  readonly state: ReloadState;
+}
+
+async function workflowPart(
   settings: ReloadSettings & { readonly generations: Generations },
-  state: ReloadState,
-): Promise<WorkflowReload> {
-  const bundle = await prepared(settings.reloadCommand);
-  if (bundle.kind === "refused") return bundle;
+  prepared: { readonly state: ReloadState; readonly bundle: PreparedBundle },
+): Promise<WorkflowBundleReload> {
+  const { state, bundle } = prepared;
   const added = addedRefusals(state.workflowRefusals, bundle.workflowRefusals);
   if (added !== undefined) return added;
   if (bundle.bundleDigest === state.bundleDigest)
@@ -304,12 +336,33 @@ async function reloadOutcome(
   return reloaded(settings, bundle);
 }
 
-function nextState(state: ReloadState, outcome: WorkflowReload): ReloadState {
-  if (outcome.kind === "refused") return state;
+async function reloadOutcome(
+  settings: ReloadSettings & { readonly generations: Generations },
+  state: ReloadState,
+): Promise<ReloadStep> {
+  const kept = (outcome: Refused): ReloadStep => ({ outcome, state });
+  const bundle = await prepared(settings.reloadCommand);
+  if (bundle.kind === "refused") return kept(bundle);
+  const profiles = profileRefusal(settings, bundle.turnSettings);
+  if (profiles !== undefined)
+    return kept(refused(profiles.code, profiles.detail));
+  const workflows = await workflowPart(settings, { state, bundle });
+  if (workflows.kind === "refused") return kept(workflows);
+  const changes = settingChanges(state.settingDigests, bundle.settingDigests);
+  settings.turnSettings.replace(bundle.turnSettings);
   return {
-    bundleDigest:
-      outcome.kind === "reloaded" ? outcome.bundleDigest : state.bundleDigest,
-    workflowRefusals: outcome.workflowRefusals,
+    outcome: { ...workflows, ...changes },
+    state: {
+      bundleDigest:
+        workflows.kind === "reloaded"
+          ? workflows.bundleDigest
+          : state.bundleDigest,
+      workflowRefusals: workflows.workflowRefusals,
+      settingDigests: keptDigests(state.settingDigests, {
+        digests: bundle.settingDigests,
+        reloadedFields: changes.reloadedFields,
+      }),
+    },
   };
 }
 
@@ -319,14 +372,15 @@ export function workflowReload(
   let state: ReloadState = {
     bundleDigest: settings.bundleDigest,
     workflowRefusals: workflowRefusals(settings.workflowRefusals),
+    settingDigests: settings.settingDigests ?? {},
   };
   return async () => {
     const previous = state.bundleDigest;
-    const outcome = await reloadOutcome(settings, state);
-    state = nextState(state, outcome);
+    const step = await reloadOutcome(settings, state);
+    state = step.state;
     process.stdout.write(
-      reloadLine(outcome, { previous, current: state.bundleDigest }),
+      reloadLine(step.outcome, { previous, current: state.bundleDigest }),
     );
-    return outcome;
+    return step.outcome;
   };
 }

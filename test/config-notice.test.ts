@@ -25,6 +25,12 @@ await test("CLV-206 changes explain restart behavior and higher-priority sources
   const effective = fixture.run(["set", "queue.lanes", "2", "--json"], env);
   assert.equal(effective.status, 0, effective.stderr);
   assert.match(effective.stdout, /Restart the service to use the new value\./);
+  const reloadable = fixture.run(
+    ["set", "fallbackModels", '["fallback-model"]', "--json"],
+    env,
+  );
+  assert.equal(reloadable.status, 0, reloadable.stderr);
+  assert.match(reloadable.stdout, /Run cloving reload to use the new value\./);
   fixture.write(fixture.privateFile, { version: 1, queue: { lanes: 3 } });
   const hidden = fixture.run(["set", "queue.lanes", "1"], env);
   assert.equal(hidden.status, 0, hidden.stderr);

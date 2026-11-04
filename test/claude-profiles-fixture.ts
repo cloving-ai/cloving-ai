@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ClaudeWorkerSettings } from "../src/daemon/claude-worker.ts";
 import {
   intent,
   journalKey,
   resultOf,
   until,
   type Scene,
+  type WorkerOverrides,
 } from "./claude-worker-fixture.ts";
 
 export const checker = {
@@ -38,7 +38,7 @@ export async function turn(
   scene: Scene,
   options: {
     readonly method?: string;
-    readonly settings: Partial<ClaudeWorkerSettings>;
+    readonly settings: WorkerOverrides;
   },
 ): Promise<Readonly<Record<string, unknown>>> {
   const operationId = `operation-${String(scene.reports.length + 1)}`;

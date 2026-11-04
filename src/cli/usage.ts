@@ -12,7 +12,8 @@ Fields use their default project or private file; --private selects the private 
 list and get show the effective source and hidden file values. Unconfigured values use defaults; null means no value.
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
-Private files, backups and temporary files have mode 0600. Changes require a service restart.
+Private files, backups and temporary files have mode 0600.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices and workflows.folder. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -127,7 +128,10 @@ Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
 A change of the queue workflow or of a schedule needs a restart.
-Profiles and settings files do not reload.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices and workflows.folder.
+New turns use the new values. A turn in work keeps the values of its start.
+The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
+An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
   watch: `Usage: cloving watch [--port <n>]
 
@@ -165,7 +169,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_RETENTION_ARCHIVE_FOLDER An absolute folder path, or null for <state>/archive. The folder can be on another volume. When the folder is not available, the sweep moves nothing, logs the reason and tries again in the next hour.
   CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
-  CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read once at start. The setting has no default.
+  CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read at start and at each cloving reload. A relative path starts at the folder of cloving start. The setting has no default.
   CLOVING_COMMANDS                A JSON object mapping names to argument arrays with an absolute executable path. Invalid values refuse startup with invalid-commands. Unset means no commands. Command execution is not available yet.
   CLOVING_COMMAND_SECONDS         A whole number from 1 to 3600 seconds; the default is 60. Invalid values refuse startup with invalid-command-seconds. Reserved for command execution.
   CLOVING_TOKEN_PRICES             A JSON object from model names to input, cachedInput and output USD prices per million tokens for estimates; entries override matching built-in prices.

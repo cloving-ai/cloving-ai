@@ -7,7 +7,12 @@ import type {
 } from "./registry.ts";
 import { failed, result } from "./replies.ts";
 
-export type WorkflowReload =
+export interface SettingChanges {
+  readonly reloadedFields: readonly string[];
+  readonly restartFields: readonly string[];
+}
+
+export type WorkflowBundleReload =
   | {
       readonly kind: "reloaded";
       readonly bundleDigest: string;
@@ -23,6 +28,11 @@ export type WorkflowReload =
       readonly code: string;
       readonly detail: string;
     };
+
+export type WorkflowReload =
+  | (Exclude<WorkflowBundleReload, { readonly kind: "refused" }> &
+      SettingChanges)
+  | Extract<WorkflowBundleReload, { readonly kind: "refused" }>;
 
 export type WorkflowReloadPort = () => Promise<WorkflowReload>;
 
@@ -55,6 +65,8 @@ function applied(catalog: WorkflowCatalog, reload: WorkflowReload): Reply {
       reload.kind === "reloaded" ? reload.bundleDigest : previousBundleDigest,
     workflows: catalog.registry.workflowIds,
     workflowRefusals: reload.workflowRefusals,
+    reloadedFields: reload.reloadedFields,
+    restartFields: reload.restartFields,
   });
 }
 

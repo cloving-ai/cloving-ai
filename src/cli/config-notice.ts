@@ -2,6 +2,7 @@ import net from "node:net";
 import { join } from "node:path";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { SettingEntry } from "../configuration-display.ts";
+import { reloadedSettingFields } from "../project-settings.ts";
 import { runtimeDirectory } from "./runtime-directory.ts";
 
 function serviceDirectory(repository: string): string | undefined {
@@ -47,7 +48,9 @@ export async function configNotice(
   const hidden =
     source === "environment" ||
     (input.scope === "project" && source === "private");
-  return hidden
-    ? `The ${source} source hides this file value. A restart keeps the value of that source.`
+  if (hidden)
+    return `The ${source} source hides this file value. A restart keeps the value of that source.`;
+  return reloadedSettingFields.includes(String(input.entry?.field))
+    ? "Run cloving reload to use the new value."
     : "Restart the service to use the new value.";
 }

@@ -34,6 +34,13 @@ function unsupportedProfile(
     : undefined;
 }
 
+export function checkedProfiles(
+  settings: HarnessSettings,
+  profiles: TurnProfiles,
+): void {
+  for (const profile of Object.values(profiles)) turnHarness(settings, profile);
+}
+
 export async function selectedProfile(
   settings: WorkerProfiles,
   intent: ProtectedIntent,

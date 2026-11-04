@@ -1,10 +1,6 @@
 import { turnHarness, type HarnessSettings } from "../harness-defaults.ts";
 import { attachmentEnvironment } from "./attachments.ts";
-import {
-  profileCommand,
-  type TurnProfile,
-  type TurnProfiles,
-} from "../turn-profile.ts";
+import { profileCommand, type TurnProfile } from "../turn-profile.ts";
 import type {
   AdapterOutcome,
   Delivery,
@@ -42,10 +38,12 @@ import {
   recoverTurn,
   turnIntent,
 } from "./claude-recovery.ts";
-import { selectedProfile } from "./worker-profile.ts";
+import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
+import type { TurnSettings } from "../project-settings.ts";
 
-export interface ClaudeWorkerSettings extends RetrySettings, HarnessSettings {
-  readonly profiles?: TurnProfiles;
+export interface ClaudeWorkerSettings
+  extends Pick<RetrySettings, "retryDelay">, HarnessSettings {
+  readonly turnSettings: () => TurnSettings;
   readonly workflowId?: (runId: string) => Promise<string | undefined>;
   readonly repository: string;
   readonly worktrees: string;
@@ -93,6 +91,7 @@ interface Started extends Located {
   readonly harness: ReturnType<typeof turnHarness>;
   readonly intent: ProtectedIntent;
   readonly tree: WorkTree;
+  readonly turnSettings: TurnSettings;
 }
 
 function reconciled(
@@ -145,12 +144,11 @@ async function resumed(
   if (!turnIntent(intent))
     return interruptedReply(request, "claude-turn-interrupted");
   if (aborted()) return failure("claude-start-aborted");
-  const plan = await resumePlan(parts.settings, {
-    folder,
-    started,
-    intent,
-    signal,
-  });
+  const current = parts.settings.turnSettings();
+  const plan = await resumePlan(
+    { ...parts.settings, ...current },
+    { folder, started, intent, signal },
+  );
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string") return interruptedReply(request, plan);
   const prompt = await parts.settings.document(intent.payload);
@@ -164,6 +162,7 @@ async function resumed(
     ...plan,
     signal,
     prompt,
+    turnSettings: current,
   });
   return { kind: "accepted", receipt: key, worker };
 }
@@ -217,6 +216,7 @@ async function begun(
     },
     {
       ...parts.settings,
+      ...start.turnSettings,
       ...(start.resume === undefined ? {} : { resume: start.resume }),
       stopping: stopping.controller,
       metadata: {
@@ -262,7 +262,8 @@ async function delivered(
   if (aborted()) return failure("claude-start-aborted");
   const known = await reconciled(parts, call);
   if (known.kind !== "absent") return known;
-  const profile = await selectedProfile(settings, intent);
+  const current = settings.turnSettings();
+  const profile = await selectedProfile({ ...settings, ...current }, intent);
   if (typeof profile === "string") return failure(profile);
   const prompt = await settings.document(intent.payload);
   if (prompt === undefined) return failure("payload-not-available");
@@ -285,6 +286,7 @@ async function delivered(
     profile,
     harness: turnHarness(settings, profile),
     signal,
+    turnSettings: current,
   });
   return { receipt: place.key, worker };
 }
@@ -349,8 +351,7 @@ function stoppingOperation(
 export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   if (settings.command.length === 0) throw new Error("invalid-claude-command");
   turnHarness(settings);
-  for (const profile of Object.values(settings.profiles ?? {}))
-    turnHarness(settings, profile);
+  checkedProfiles(settings, settings.turnSettings().profiles);
   const parts: Parts = {
     settings,
     active: new Map(),

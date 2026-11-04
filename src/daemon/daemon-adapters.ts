@@ -25,6 +25,11 @@ import type { HarnessSettings } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
+import {
+  turnSettingsSource,
+  type SettingDigests,
+  type TurnSettingsSource,
+} from "./settings-reload.ts";
 
 export interface DaemonSettings extends HarnessSettings {
   readonly commands?: LocalCommands;
@@ -32,6 +37,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly fallbackModels?: readonly string[];
   readonly tokenPrices?: TokenPrices;
   readonly profiles?: TurnProfiles;
+  readonly settingDigests?: SettingDigests;
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
@@ -65,6 +71,7 @@ export interface DaemonSettings extends HarnessSettings {
 
 export interface Adapters {
   readonly worker: ClaudeWorker;
+  readonly turnSettings: TurnSettingsSource;
   readonly github: GithubWorker;
   readonly runs: StartDelivery;
   readonly handoff: EffectDelivery;
@@ -123,11 +130,14 @@ export function adapters(
   const report = async (
     effect: Parameters<HostPorts["reportEffect"]>[0],
   ): Promise<unknown> => (await given).reportEffect(effect);
-  const worker = claudeWorker({
+  const turnSettings = turnSettingsSource({
+    profiles: settings.profiles ?? {},
     fallbackModels: settings.fallbackModels ?? [],
     tokenPrices: settings.tokenPrices ?? {},
+  });
+  const worker = claudeWorker({
     ...workerHarness(settings),
-    profiles: settings.profiles ?? {},
+    turnSettings: turnSettings.current,
     workflowId: async (runId) => (await given).workflow.id(runId),
     repository,
     document,
@@ -154,7 +164,7 @@ export function adapters(
     document,
     report,
   });
-  return { worker, github, runs, handoff, commands };
+  return { worker, github, runs, handoff, commands, turnSettings };
 }
 
 function handoffOf(
