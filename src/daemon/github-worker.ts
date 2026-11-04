@@ -7,6 +7,8 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
+import { retriedOperation } from "./git-retry.ts";
+import { payloadOf } from "./github-operation.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
@@ -118,21 +120,23 @@ async function outcome(
   if (intent.target.startsWith("branch:"))
     return interrupted("branch-target-not-supported");
   try {
-    const result = await method({
-      settings,
-      folder: run.folder,
-      calls: calls(settings, signal),
-      target: intent.target,
-      payload,
-      signal,
-      observe: async (observation) =>
-        settings.observe?.({
-          ...observation,
-          runId: intent.runId,
-          operationId: intent.operationId,
-          commandId: `github:${run.key}:merge-refused:${String(observation.attempt)}`,
-        }),
-    });
+    const result = await method(
+      retriedOperation({
+        settings,
+        folder: run.folder,
+        calls: calls(settings, signal),
+        target: intent.target,
+        payload,
+        signal,
+        observe: async ({ notice, ...observation }) =>
+          settings.observe?.({
+            ...observation,
+            runId: intent.runId,
+            operationId: intent.operationId,
+            commandId: `github:${run.key}:${notice}`,
+          }),
+      }),
+    );
     return {
       outcome: "completed",
       result: JSON.stringify(result),
@@ -194,19 +198,6 @@ function ownIntent(intent: DeliveryIntent): intent is ProtectedIntent {
     intent.payload !== undefined &&
     intent.leaseGeneration !== undefined
   );
-}
-
-function payloadOf(
-  text: string,
-): Readonly<Record<string, unknown>> | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? { ...value }
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function failure(reason: string): AdapterOutcome {

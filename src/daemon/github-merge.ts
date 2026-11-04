@@ -241,6 +241,7 @@ async function recordRefusal(
   },
 ): Promise<void> {
   const observation = await operation.observe?.({
+    notice: `merge-refused:${String(refusal.attempt + 1)}`,
     condition: "working",
     reason: "github-merge-refused",
     evidence: `github-merge/HTTP-${String(field(refusal.error, "status"))}/head-${refusal.updated}/merge-main`,

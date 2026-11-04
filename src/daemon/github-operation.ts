@@ -38,9 +38,20 @@ export interface Operation {
   readonly observe?: (
     report: Pick<
       ObservationReport,
-      "condition" | "reason" | "evidence" | "attempt" | "limit"
-    >,
+      "condition" | "reason" | "evidence" | "retryAt" | "attempt" | "limit"
+    > & { readonly notice: string },
   ) => Promise<{ readonly kind: string } | undefined>;
+}
+
+export function payloadOf(text: string): Operation["payload"] | undefined {
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? { ...value }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Place {
