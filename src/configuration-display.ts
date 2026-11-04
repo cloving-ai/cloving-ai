@@ -31,6 +31,7 @@ const defaults: Readonly<Record<string, SettingValue>> = {
   profiles: {},
   "watch.port": 3663,
   "watch.actions": "on",
+  "watch.theme": "auto",
   "github.command": ["gh"],
   "retention.days": 30,
   "retention.action": "archive",

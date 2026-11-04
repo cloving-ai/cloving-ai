@@ -23,6 +23,8 @@ export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "init-help" }
   | { readonly kind: "doctor-help" }
   | { readonly kind: "doctor"; readonly json: boolean }
+  | { readonly kind: "themes-help" }
+  | { readonly kind: "themes"; readonly json: boolean }
   | { readonly kind: "validate-help" }
   | {
       readonly kind: "validate";
@@ -162,6 +164,7 @@ function inspectionInvocation(
       : { kind: "init", harness: values.harness };
   }
   if (command === "doctor") return doctorInvocation(values, remaining);
+  if (command === "themes") return themesInvocation(values, remaining);
   if (command === "mcp") return mcpInvocation(values, remaining);
   if (command === "init-prompt") return promptInvocation(values, remaining);
   return undefined;
@@ -205,6 +208,24 @@ function doctorInvocation(
   return values.help ? { kind: "doctor-help" } : { kind: "doctor", json };
 }
 
+function themesInvocation(
+  values: Parsed["values"],
+  remaining: readonly string[],
+): Invocation {
+  const json = values.json === true;
+  if (unexpected(values, ["help", "json"]))
+    return { kind: "usage-error", code: "unexpected-option", json };
+  if (values.help) return { kind: "themes-help" };
+  const [subcommand, ...extra] = remaining;
+  if (subcommand === undefined)
+    return { kind: "usage-error", code: "missing-argument", json };
+  if (subcommand !== "list")
+    return { kind: "usage-error", code: "unknown-command", json };
+  if (extra.length > 0)
+    return { kind: "usage-error", code: "unexpected-argument", json };
+  return { kind: "themes", json };
+}
+
 function parsedArguments(argumentsList: readonly string[]): Parsed | string {
   try {
     return parseArgs({
@@ -237,7 +258,8 @@ function knownCommand(positionals: readonly string[]): boolean {
   const [command, subcommand] = positionals;
   if (command === undefined) return true;
   if (command === "workflows") return subcommand === "validate";
-  if (["doctor", "init-prompt", "init", "mcp"].includes(command)) return true;
+  if (["doctor", "init-prompt", "init", "mcp", "themes"].includes(command))
+    return true;
   return isRuntimeCommand(command);
 }
 

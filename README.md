@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action` and `retention.archiveFolder`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. The retention days are a whole number of at least 1, or `null` to keep all records; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder.
+The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action` and `retention.archiveFolder`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -224,6 +224,140 @@ curl -N http://127.0.0.1:3663/api/v1/stream
 ```
 
 The run list has the active runs and the runs of the last 7 days. The run detail reads each run, also a run older than 7 days. The events endpoint gives no event payloads, and the API has no write endpoint.
+
+#### Themes of the watch page
+
+A theme gives the watch page other colors, sizes, fonts, art and words. A theme contains only data: it cannot add CSS text, selectors or JavaScript. Cloving checks each theme before use, and a theme with a refusal code is not usable. The page does not apply a theme yet; a later change applies it.
+
+A theme is a folder with a `theme.json` file and an optional `assets` folder. Cloving finds themes in three places:
+
+1. The built-in themes of the package, `light` and `dark`, with the current colors and fonts of the page.
+2. The user folder `<config>/cloving/themes/<name>`. `<config>` is an absolute `XDG_CONFIG_HOME`, or `~/.config` otherwise.
+3. The project folder `.cloving/themes/<name>` in the repository.
+
+A project theme replaces a user theme with the same name, and a user theme replaces a built-in theme. A refused theme also replaces the theme of the same name. The folder name is the name of the theme. It has 1 to 64 lowercase letters, digits and single hyphens, and starts with a letter. The name `auto` is reserved.
+
+`cloving themes list` shows each theme with its name, its place, `usable` or its refusal codes, the places that it replaces and the `name` in `theme.json`. `cloving themes list --json` prints the same data as one JSON list of `{ name, place, title, colorScheme, usable, codes, replaces }`. The places are `project`, `user` and `built-in`. When Cloving cannot read a place folder, the command stops with `unreadable-theme-folder`. The private setting `watch.theme` selects a theme by its name, or `auto`. The default is `auto`. The `theme` check of `cloving doctor` reports a selected theme that is missing or refused.
+
+```sh
+cloving themes list
+cloving config set watch.theme workshop
+cloving doctor
+```
+
+`theme.json` uses the W3C Design Tokens Format Module 2025.10. The tokens are in groups. Each token has a `$value` and a `$type`, or it gets the `$type` of its group. A group `$type` is `color`, `dimension` or `fontFamily`. A token or a group can also have a `$description` text. Cloving refuses all other `$` properties and aliases. A token or group name cannot contain `.`, `{` or `}`. The theme data that is not a token is in `$extensions` under the key `ai.cloving.theme`:
+
+- `name`: the name that people see, plain text of 1 to 60 characters.
+- `colorScheme`: `light` or `dark`.
+- `art`: optional art slots.
+- `words`: optional words.
+
+```json
+{
+  "color": {
+    "page": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.843, 0.855, 0.835], "hex": "#D7DAD5" } },
+    "state": { "running": { "$type": "color", "$value": { "colorSpace": "srgb", "components": [0.122, 0.616, 0.333], "hex": "#1F9D55" } } }
+  },
+  "shape": { "cut": { "$type": "dimension", "$value": { "value": 7, "unit": "px" } } },
+  "$extensions": {
+    "ai.cloving.theme": {
+      "name": "Workshop",
+      "colorScheme": "light",
+      "art": { "station": { "src": "assets/bench.svg", "mode": "image", "pixelated": true } },
+      "words": { "completed.unit": { "one": "shoe", "other": "shoes" } }
+    }
+  }
+}
+```
+
+A theme can set only these token names. All tokens are optional.
+
+| Tokens | `$type` | Values |
+| --- | --- | --- |
+| `color.page`, `color.surface`, `color.panel`, `color.ink`, `color.muted`, `color.line` | `color` | A color |
+| `color.accent`, `color.accent-strong`, `color.on-accent`, `color.warn`, `color.bad` | `color` | A color |
+| `color.code.background`, `color.code.header`, `color.code.text`, `color.code.line`, `color.code.muted` | `color` | A color |
+| `color.state.running`, `color.state.waiting`, `color.state.attention`, `color.state.completed`, `color.state.failed` | `color` | A color |
+| `shape.cut`, `shape.radius` | `dimension` | 0 to 32 px |
+| `shape.border` | `dimension` | 0 to 8 px |
+| `size.text` | `dimension` | 10 to 24 px |
+| `size.gap` | `dimension` | 0 to 48 px |
+| `font.ui`, `font.heading`, `font.code` | `fontFamily` | A list of font names |
+
+A color is a hex value `#RRGGBB` or `#RRGGBBAA`, or a color object. A color object has the `colorSpace` `srgb` and three `components` from 0 to 1. It can also have an `alpha` from 0 to 1 and a `hex` value `#RRGGBB`. A dimension is an object with a `value` in the range of its token and the `unit` `px`. A font family is a list of 1 to 8 font names. A font name has 1 to 64 letters, digits, spaces, `_` and `-`, and starts and ends with a letter or a digit.
+
+A theme can set art in these slots: `floor`, `header`, `line-banner`, `station`, `run-token` and `completed-badge`. Each slot is an object with these fields:
+
+- `src`: the path of a file in the `assets` folder, for example `assets/bench.svg`, with at most 200 characters. Each part of the path has letters, digits, `.`, `_` and `-`, and starts with a letter, a digit, `_` or `-`. A path cannot contain spaces.
+- `mode`: `image` or `mask`.
+- `repeat`: optional, `none`, `x`, `y` or `both`.
+- `pixelated`: optional, `true` or `false`.
+
+An art file is SVG, PNG or WebP, with the extension `.svg`, `.png` or `.webp`. Its content must agree with its extension, and its size is at most 512 KB (524288 bytes). A symbolic link in `assets` must not point out of the `assets` folder.
+
+An SVG file is UTF-8 text with the root element `svg`. Cloving checks it with these rules:
+
+- Only these elements: `svg`, `g`, `defs`, `symbol`, `use`, `title`, `desc`, `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `text`, `tspan`, `linearGradient`, `radialGradient`, `stop`, `pattern`, `clipPath`, `mask`, `marker`, `filter`, and the filter elements `feBlend`, `feColorMatrix`, `feComponentTransfer`, `feComposite`, `feConvolveMatrix`, `feDiffuseLighting`, `feDisplacementMap`, `feDistantLight`, `feDropShadow`, `feFlood`, `feFuncA`, `feFuncB`, `feFuncG`, `feFuncR`, `feGaussianBlur`, `feMerge`, `feMergeNode`, `feMorphology`, `feOffset`, `fePointLight`, `feSpecularLighting`, `feSpotLight`, `feTile` and `feTurbulence`. Thus an SVG file has no `script`, `style`, `foreignObject`, `image`, `a` or animation element, and no element with a prefix.
+- No event attribute such as `onload`. An attribute name has no prefix, but `xlink:href`, `xml:space`, `xml:lang` and `xmlns:xlink` are permitted. `xmlns` must be `http://www.w3.org/2000/svg`, and `xmlns:xlink` must be `http://www.w3.org/1999/xlink`.
+- No external reference: an `href` or `xlink:href` is `#` and an element ID, and a `url(` refers only to an element in the same file, for example `url(#shade)`. An attribute value can use only the functions `rgb`, `rgba`, `hsl`, `hsla`, `translate`, `scale`, `rotate`, `matrix`, `skewX`, `skewY`, `var` and `calc`.
+- No comment, no CDATA section, no character reference such as `&#117;`, no entity other than `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&apos;`, no backslash, no `DOCTYPE` or `ENTITY`, and no processing instruction other than the XML declaration. Each attribute value is in quotation marks.
+- One complete `svg` root element. Each element closes with a tag of the same name or with `/>`. Outside the root, the file has only spaces, tabs and line breaks. An attribute value has no `<`, and an element has each attribute name one time only.
+
+A theme can set only these words:
+
+| Word key | Form | Place on the page |
+| --- | --- | --- |
+| `workflows.title` | text | The heading of the workflow list, now "Workflows" |
+| `column.done` | text | The name of the column "Done" |
+| `column.stopped` | text | The name of the column "Stopped" |
+| `state.attention` | text | The mark of a card that needs attention, now "Needs attention" |
+| `state.decision` | text | The mark of a card with a waiting decision, now "Decision waiting" |
+| `station.agent` | text | The name of an agent step, now "Agent turn" |
+| `station.review` | text | The name of a review step, now "Your review" |
+| `totals.label` | text | The label of the card totals, now "Totals" |
+| `completed.unit` | plural | The unit of a count of completed runs |
+| `run.unit` | plural | The unit of a count of runs |
+| `ticket.unit` | plural | The unit of a count of tickets |
+
+A text word is plain text of 1 to 60 characters, with no control characters and no `<`, `>`, `{` or `}`. A plural word is an object with the forms `one` and `other`. Each form is plain text of 1 to 60 characters and can contain `{count}`.
+
+| Refusal code | Cause |
+| --- | --- |
+| `missing-theme-file` | The folder has no `theme.json` file, or `theme.json` is a symbolic link. |
+| `theme-file-too-large` | `theme.json` is larger than 256 KB. |
+| `invalid-theme-json` | `theme.json` is not valid JSON. |
+| `invalid-folder-name` | The folder name is not a theme name. |
+| `reserved-theme-name` | The folder name is `auto`. |
+| `invalid-theme-folder` | The theme folder is a symbolic link. |
+| `missing-theme-data` | `$extensions` has no `ai.cloving.theme` object. |
+| `unknown-extension` | `$extensions` has a key that is not `ai.cloving.theme`. |
+| `unknown-theme-field` | `ai.cloving.theme` has a field that is not `name`, `colorScheme`, `art` or `words`. |
+| `invalid-name` | `name` is not plain text of 1 to 60 characters. |
+| `invalid-color-scheme` | `colorScheme` is not `light` or `dark`. |
+| `unknown-token` | A token or a group has a name that is not in the token table. |
+| `invalid-token` | A token has no `$value` or no `$type`, or a token or a group has an unknown `$` property. |
+| `token-type-mismatch` | The `$type` of a token is not the type of its name. |
+| `invalid-color` | A color token has a value that is not a color. |
+| `invalid-dimension` | A dimension token is not in `px` or is out of its range. |
+| `invalid-font-family` | A font family token is not a list of font names. |
+| `css-text` | A text contains `url(`, `expression(`, `@import`, `javascript:` or a tag. |
+| `unknown-art-slot` | `art` has a slot that is not in the slot list. |
+| `invalid-art` | An art slot has an unknown field, no `mode`, or a value that is not permitted. |
+| `invalid-asset-path` | An art `src` is not a path in `assets`, or it points out of `assets`. |
+| `invalid-asset-type` | An art file is not SVG, PNG or WebP, or its content does not agree with its extension. |
+| `missing-asset` | An art file is not there, or it is not a file. |
+| `unreadable-file` | Cloving cannot read `theme.json` or an art file. |
+| `asset-too-large` | An art file is larger than 512 KB. |
+| `svg-script` | An SVG file has a `script` element or a `javascript:` text. |
+| `svg-event-attribute` | An SVG file has an event attribute. |
+| `svg-foreign-object` | An SVG file has a `foreignObject` element. |
+| `svg-element` | An SVG file has an element that is not in the element list. |
+| `svg-attribute` | An SVG file has an attribute or a function that is not permitted. |
+| `svg-external-reference` | An SVG file refers to another file or address. |
+| `svg-doctype` | An SVG file has a `DOCTYPE` or an `ENTITY`. |
+| `svg-markup` | An SVG file has a comment, CDATA, a character reference, a backslash, a processing instruction, a tag that is not complete, or tags that do not make one complete `svg` element. |
+| `unknown-word` | `words` has a key that is not in the word table. |
+| `invalid-word` | A word is not plain text of 1 to 60 characters, or it does not have its form. |
 
 ### Use Cloving from an MCP client
 
