@@ -12,7 +12,8 @@ Fields use their default project or private file; --private selects the private 
 list and get show the effective source and hidden file values. Unconfigured values use defaults; null means no value.
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
-Private files, backups and temporary files have mode 0600. Changes require a service restart.
+Private files, backups and temporary files have mode 0600.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices and workflows.folder. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -127,7 +128,10 @@ Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
 A change of the queue workflow or of a schedule needs a restart.
-Profiles and settings files do not reload.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices and workflows.folder.
+New turns use the new values. A turn in work keeps the values of its start.
+The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
+An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
   watch: `Usage: cloving watch [--port <n>]
 

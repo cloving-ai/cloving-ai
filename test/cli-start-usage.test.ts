@@ -31,6 +31,7 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
 
 const program = [
   "../src/harness-defaults.ts",
+  "project-configuration.ts",
   "self-host.ts",
   "self-host-processes.ts",
 ]

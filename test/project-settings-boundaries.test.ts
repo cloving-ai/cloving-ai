@@ -3,7 +3,8 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { configuration } from "../src/configuration-schema.ts";
-import { resolveSettings } from "../src/project-settings.ts";
+import { resolveSettings, settingDigests } from "../src/project-settings.ts";
+import { settingFields } from "../src/configuration-schema.ts";
 import type { TurnProfiles } from "../src/turn-profile.ts";
 import type { TokenPrices } from "../src/token-prices.ts";
 import {
@@ -95,6 +96,45 @@ await test("CLV-211 saved Gemini commands resolve with their own environment sou
   assert.equal(overridden.sources["harness.command"], "environment");
 });
 
+function digestsOf(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  settings: Readonly<Record<string, unknown>>,
+) {
+  const resolved = resolveSettings(environment, {
+    project: undefined,
+    private: JSON.stringify({ version: 1, ...settings }),
+  });
+  return settingDigests(
+    { ...resolved, profiles: { review: { model: "given" } } },
+    (text) => `digest of ${text}`,
+  );
+}
+
+await test("CLV-253 each field digest uses the resolved value, with the environment before the files", () => {
+  const environment = { CLOVING_QUEUE_LANES: "3" };
+  const first = digestsOf(environment, {
+    queue: { lanes: 2 },
+    notify: { command: ["notify-one"] },
+    harness: { name: "agent", turn: ["agent", "{prompt}"], path: "/bin/one" },
+    profiles: { review: { model: "private" } },
+  });
+  assert.deepEqual(Object.keys(first), settingFields());
+  assert.equal(first["queue.lanes"], 'digest of "3"');
+  assert.equal(first["notify.command"], 'digest of "[\\"notify-one\\"]"');
+  assert.equal(first["harness.path"], 'digest of "/bin/one"');
+  assert.equal(first["harness.command"], "digest of null");
+  assert.equal(first["profiles"], 'digest of {"review":{"model":"given"}}');
+  const second = digestsOf(environment, {
+    queue: { lanes: 4 },
+    notify: { command: ["notify-two"] },
+    harness: { name: "agent", turn: ["agent", "{prompt}"], path: "/bin/two" },
+  });
+  const changed = settingFields().filter(
+    (field) => first[field] !== second[field],
+  );
+  assert.deepEqual(changed, ["harness.path", "notify.command"]);
+});
+
 await test("CLV-210 configuration permits named harnesses and profile overrides", () => {
   const harness = { name: "gemini", kind: "shell", path: "gemini" };
   const profiles = { checker: { harness: "claude", model: "small" } };
@@ -176,6 +216,7 @@ await test("CLV-205 no configuration files preserve environment and built-in def
       environment: fixture.environment,
       profiles: {},
       sources: {},
+      values: {},
     });
     const environment = {
       ...fixture.environment,

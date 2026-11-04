@@ -15,7 +15,7 @@ const write = process.stdout.write.bind(process.stdout);
 process.stdout.write = (chunk, ...rest) => { reloadLines.push(String(chunk)); return write(chunk, ...rest); };
 writeFileSync("reload.mjs", 'import { readFileSync } from "node:fs"; const reply = readFileSync(process.argv[2], "utf8"); process.stdout.write(reply); if (reply.includes("error")) process.exit(1);');
 const reloadCommand = [process.execPath, directory + "/reload.mjs", directory + "/reload.json"];
-const prepared = (fields) => writeFileSync("reload.json", JSON.stringify({ workflows: [], repository: directory, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], ...fields }));
+const prepared = (fields) => writeFileSync("reload.json", JSON.stringify({ workflows: [], repository: directory, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {} }, settingDigests: {}, ...fields }));
 const answer = (runId, commandId) => asked("decision", { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId });
 `;
 
@@ -36,7 +36,7 @@ ${retainedGeneration}
   const manifests = Object.fromEntries(Object.keys(settings.manifests).map((name) => [name, directory + "/current-project/develop.workflow.json"]));
   prepared({ bundleDigest: currentDigest, manifests });
   const reloaded = await asked("reload");
-  assert.deepEqual(reloaded, { schemaVersion: 1, kind: "reload", status: "reloaded", previousBundleDigest: bundleDigest, bundleDigest: currentDigest, workflows: ["develop"], workflowRefusals: [] });
+  assert.deepEqual(reloaded, { schemaVersion: 1, kind: "reload", status: "reloaded", previousBundleDigest: bundleDigest, bundleDigest: currentDigest, workflows: ["develop"], workflowRefusals: [], reloadedFields: [], restartFields: [] });
   assert.deepEqual(loaded, [directory + "/workflow-bundles/" + currentDigest]);
   assert.equal((await asked("status")).bundleDigest, currentDigest);
   assert.equal((await answer(runId, "answer")).kind, "decision-recorded");
@@ -150,12 +150,47 @@ try {
   await hooksReady();
   prepared({ bundleDigest: emptyDigest, manifests: {}, declarations: [] });
   const reloaded = await asked("reload");
-  assert.deepEqual(reloaded, { schemaVersion: 1, kind: "reload", status: "reloaded", previousBundleDigest: bundleDigest, bundleDigest: emptyDigest, workflows: [], workflowRefusals: [] });
+  assert.deepEqual(reloaded, { schemaVersion: 1, kind: "reload", status: "reloaded", previousBundleDigest: bundleDigest, bundleDigest: emptyDigest, workflows: [], workflowRefusals: [], reloadedFields: [], restartFields: [] });
   assert.deepEqual((await asked("status")).workflows, []);
   const removed = await submitted("after-reload");
   assert.equal(removed.code, "unknown-workflow", JSON.stringify(removed));
   assert.equal((await answer(runId, "answer")).kind, "decision-recorded");
   await until(async () => (await shown(runId)).state === "completed");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-253 a reload refuses a settings refusal, invalid turn settings and a profile harness with no worker, and keeps a restart field at its start digest", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result =
+      await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+const daemon = await launched({ bundleDigest, queueMilliseconds: undefined, settingDigests: { profiles: "a", "queue.lanes": "b", "watch.port": "c" }, reloadCommand, loadBundle: loadWorkflowBundle });
+try {
+  const turns = (fields) => ({ turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {}, ...fields } });
+  const refusals = [];
+  for (const fields of [
+    { refusal: { code: "invalid-config-json", detail: "invalid-config-json: private" } },
+    { turnSettings: null },
+    turns({ fallbackModels: "one" }),
+    turns({ profiles: "none" }),
+    { settingDigests: { profiles: 1 } },
+    { settingDigests: "none" },
+    turns({ profiles: { review: { harness: "unknown" } } }),
+    turns({ profiles: { review: { harness: "codex" } } }),
+  ]) {
+    prepared({ bundleDigest, ...fields });
+    const reply = await asked("reload");
+    refusals.push([reply.code, reply.detail]);
+  }
+  const printed = ["reload-failed", "The reload command printed no workflow bundle."];
+  assert.deepEqual(refusals, [["invalid-config-json", "invalid-config-json: private"], printed, printed, printed, printed, printed, ["harness-no-worker", "harness-no-worker: unknown"], ["harness-no-worker", "harness-no-worker: codex"]]);
+  prepared({ bundleDigest, ...turns({ profiles: { review: { harness: "claude", model: "new" } } }), settingDigests: { profiles: "d", "queue.lanes": "e", "watch.port": "c" } });
+  const first = await asked("reload");
+  assert.deepEqual([first.status, first.reloadedFields, first.restartFields], ["unchanged", ["profiles"], ["queue.lanes"]]);
+  const second = await asked("reload");
+  assert.deepEqual([second.status, second.reloadedFields, second.restartFields], ["unchanged", [], ["queue.lanes"]]);
 } finally { await daemon.close(); }
 process.exit(0);
 `);

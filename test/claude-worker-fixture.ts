@@ -18,6 +18,7 @@ import {
   type ClaudeWorker,
   type ClaudeWorkerSettings,
 } from "../src/daemon/claude-worker.ts";
+import type { TurnSettings } from "../src/project-settings.ts";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 import { stopChild, stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -133,6 +134,9 @@ export interface TurnRecord {
   readonly environment: Readonly<Record<string, string>>;
 }
 
+export type WorkerOverrides = Partial<ClaudeWorkerSettings> &
+  Partial<TurnSettings>;
+
 export interface Scene {
   readonly directory: string;
   readonly repository: string;
@@ -140,10 +144,7 @@ export interface Scene {
   readonly journal: string;
   readonly reports: WorkerReport[];
   readonly turns: () => readonly TurnRecord[];
-  readonly worker: (
-    mode: string,
-    overrides?: Partial<ClaudeWorkerSettings>,
-  ) => ClaudeWorker;
+  readonly worker: (mode: string, overrides?: WorkerOverrides) => ClaudeWorker;
 }
 
 export function git(directory: string, parts: readonly string[]): string {
@@ -224,6 +225,19 @@ function repository(directory: string): string {
   return path;
 }
 
+function workerSettings(
+  overrides: WorkerOverrides,
+): Partial<ClaudeWorkerSettings> & Pick<ClaudeWorkerSettings, "turnSettings"> {
+  const {
+    profiles = {},
+    fallbackModels = [],
+    tokenPrices = {},
+    ...settings
+  } = overrides;
+  const fixed = { profiles, fallbackModels, tokenPrices };
+  return { turnSettings: () => fixed, ...settings };
+}
+
 export async function withScene<Result>(
   use: (scene: Scene) => Promise<Result>,
 ): Promise<Result> {
@@ -256,7 +270,7 @@ export async function withScene<Result>(
           return Promise.resolve();
         },
         stopMilliseconds: 100,
-        ...overrides,
+        ...workerSettings(overrides),
       });
       workers.push(made);
       return made;

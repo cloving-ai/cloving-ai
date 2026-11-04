@@ -1,11 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ClaudeWorkerSettings } from "../src/daemon/claude-worker.ts";
 import {
   intent,
   resultOf,
   until,
   type Scene,
+  type WorkerOverrides,
 } from "./claude-worker-fixture.ts";
 
 export const grokReport = "Added the worker.\nTicket status: complete";
@@ -69,7 +69,7 @@ export async function grokTurn(
     readonly events?: readonly unknown[];
     readonly stderr?: string;
     readonly exitCode?: number;
-    readonly settings?: Partial<ClaudeWorkerSettings>;
+    readonly settings?: WorkerOverrides;
     readonly prompt?: string;
     readonly environment?: Readonly<Record<string, string>>;
   } = {},

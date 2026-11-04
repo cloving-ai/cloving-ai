@@ -28,7 +28,7 @@ await test("CLV-127 a daemon killed during its capacity wait fails recovery with
     const module = new URL("../src/daemon/claude-worker.ts", import.meta.url)
       .href;
     const source = `import { claudeWorker } from ${JSON.stringify(module)};
-      const worker = claudeWorker({ ...${JSON.stringify(settings)}, document: async () => "original prompt", report: async () => undefined });
+      const worker = claudeWorker({ ...${JSON.stringify(settings)}, turnSettings: () => ({ profiles: {}, fallbackModels: [], tokenPrices: {} }), document: async () => "original prompt", report: async () => undefined });
       await worker.deliver(${JSON.stringify(intent())}, new AbortController().signal);`;
     const child = spawn(
       process.execPath,

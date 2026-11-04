@@ -17,6 +17,7 @@ import {
 
 import { show, oneLine, visible } from "./terminal-text.ts";
 import { queueHeadline, queueStateLines } from "./queue-render.ts";
+import { reloadFieldLines } from "./reload-render.ts";
 export { oneLine } from "./terminal-text.ts";
 
 export function errorText(error: Fields): string {
@@ -123,6 +124,7 @@ function reloadLines(result: Fields): readonly string[] {
     `Reload: ${show(result["status"])}`,
     `Bundle digest: ${show(result["previousBundleDigest"])} -> ${show(result["bundleDigest"])}`,
     `Workflows: ${visible(listing(result["workflows"]))}`,
+    ...reloadFieldLines(result),
     ...refusalLines(result["workflowRefusals"]),
   ];
 }

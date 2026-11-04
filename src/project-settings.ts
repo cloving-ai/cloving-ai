@@ -1,5 +1,6 @@
 import {
   configuration,
+  settingFields,
   type Configuration,
   type RedGreenSettings,
 } from "./configuration-schema.ts";
@@ -7,6 +8,19 @@ import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
+
+export const reloadedSettingFields: readonly string[] = [
+  "fallbackModels",
+  "profiles",
+  "tokenPrices",
+  "workflows.folder",
+];
+
+export interface TurnSettings {
+  readonly profiles: TurnProfiles;
+  readonly fallbackModels: readonly string[];
+  readonly tokenPrices: TokenPrices;
+}
 
 export type SettingValue =
   | null
@@ -148,6 +162,7 @@ export function resolveSettings(
   readonly profiles: TurnProfiles;
   readonly harness?: Configuration["harness"];
   readonly sources: Readonly<Record<string, SettingSource>>;
+  readonly values: Readonly<Record<string, SettingValue>>;
 } {
   const project = configurationValues(
     parseConfiguration(files.project, "project"),
@@ -176,8 +191,47 @@ export function resolveSettings(
     environment: resolved,
     profiles,
     sources,
+    values,
     ...(privateConfiguration.harness === undefined
       ? {}
       : { harness: privateConfiguration.harness }),
   };
+}
+
+interface ResolvedFields {
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly values: Readonly<Record<string, SettingValue>>;
+  readonly profiles: TurnProfiles;
+}
+
+function resolvedValue(
+  resolved: ResolvedFields & {
+    readonly variables: Readonly<Record<string, string>>;
+  },
+  field: string,
+): SettingValue | undefined {
+  if (field === "profiles") return resolved.profiles;
+  const variable = resolved.variables[field];
+  return variable === undefined
+    ? resolved.values[field]
+    : resolved.environment[variable];
+}
+
+export function settingDigests(
+  resolved: ResolvedFields,
+  digest: (text: string) => string,
+): Readonly<Record<string, string>> {
+  const fields = {
+    ...resolved,
+    variables: {
+      ...settingVariables,
+      ...harnessCommandMapping(resolved.values["harness.name"]),
+    },
+  };
+  return Object.fromEntries(
+    settingFields().map((field) => [
+      field,
+      digest(JSON.stringify(resolvedValue(fields, field) ?? null)),
+    ]),
+  );
 }

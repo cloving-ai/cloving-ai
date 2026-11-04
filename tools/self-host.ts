@@ -11,22 +11,20 @@ import {
   type RetentionSettings,
 } from "../src/record-retention.ts";
 import {
+  configurationDigests,
+  configuredTurnSettings,
   projectConfiguration,
   projectRoot,
   topLevel,
 } from "./project-configuration.ts";
-import { isProfilesFile, type TurnProfiles } from "../src/turn-profile.ts";
+import type { TurnProfiles } from "../src/turn-profile.ts";
 import {
   parseCommands,
   parseCommandSeconds,
   type LocalCommands,
 } from "../src/command-settings.ts";
-import {
-  parseFallbackModels,
-  parseTokenPrices,
-  type TokenPrices,
-} from "../src/token-prices.ts";
-import { readFile, writeFile } from "node:fs/promises";
+import type { TokenPrices } from "../src/token-prices.ts";
+import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -100,16 +98,12 @@ function checkedWorker(name: string): string {
   }
 }
 
-async function profilesFile(): Promise<TurnProfiles> {
-  const path = environment["CLOVING_PROFILES"];
-  if (path === undefined) return configuration.profiles;
-  try {
-    const value: unknown = JSON.parse(await readFile(path, "utf8"));
-    if (isProfilesFile(value)) return value.profiles;
-  } catch {
-    throw new Error("The daemon did not start: invalid-profiles");
-  }
-  throw new Error("The daemon did not start: invalid-profiles");
+function startRefusal(error: unknown): never {
+  if (error instanceof Error && error.message === "invalid-profiles")
+    throw new Error("The daemon did not start: invalid-profiles", {
+      cause: error,
+    });
+  throw error;
 }
 
 interface Commands extends HarnessSettings {
@@ -119,6 +113,7 @@ interface Commands extends HarnessSettings {
   readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
+  readonly settingDigests: Readonly<Record<string, string>>;
   readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
@@ -276,15 +271,12 @@ function guide(workflows: RegisteredWorkflows): string {
   ].join("\n");
 }
 
-const tokenPrices = parseTokenPrices(environment["CLOVING_TOKEN_PRICES"]);
+const { tokenPrices, fallbackModels, profiles } =
+  await configuredTurnSettings(configuration).catch(startRefusal);
 const commands = parseCommands(environment["CLOVING_COMMANDS"]);
 const commandSeconds = parseCommandSeconds(
   environment["CLOVING_COMMAND_SECONDS"],
 );
-const fallbackModels = parseFallbackModels(
-  environment["CLOVING_FALLBACK_MODELS"],
-);
-const profiles = await profilesFile();
 const schedules = parseSchedulesSetting(environment["CLOVING_SCHEDULES"]);
 const worker = selectedWorker();
 function nativeCommands(): Readonly<
@@ -313,10 +305,13 @@ const queueDailySpendLimitUsd = queueSpendLimit();
 const lanes = queueLanes();
 const queueMilliseconds = queueInterval();
 const retention = retentionSettings(environment);
-const folders = {
+const places = {
   repository,
   home: homedir(),
   xdgConfigHome: environment["XDG_CONFIG_HOME"],
+};
+const folders = {
+  ...places,
   userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
 };
 const manifests = await preparedProject({ product, project, ...folders });
@@ -332,6 +327,7 @@ await launchers(
     harness,
     shell: environment["SHELL"] ?? "/bin/sh",
     profiles,
+    settingDigests: configurationDigests(configuration, profiles),
     command,
     ticketCommand,
     nextCommand,
@@ -348,7 +344,13 @@ await launchers(
     reloadCommand: [
       process.execPath,
       join(product, `tools/self-host-reload${extname(import.meta.filename)}`),
-      JSON.stringify({ directory, ...folders }),
+      JSON.stringify({
+        directory,
+        ...places,
+        fileVariables: Object.keys(environment).filter(
+          (name) => process.env[name] === undefined,
+        ),
+      }),
     ],
   },
   manifests,
