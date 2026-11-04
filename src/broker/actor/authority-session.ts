@@ -1,14 +1,5 @@
 import type { Database, JsonObject, Logger } from "solid-objects";
-import {
-  eligibleIntents,
-  type AuthorityEvent,
-  type EffectIntent,
-} from "../../authority/reducer.ts";
-import {
-  loadOperationSnapshot,
-  loadProjections,
-  type ProjectionSnapshot,
-} from "../../storage/decision-snapshots.ts";
+import type { AuthorityEvent, EffectIntent } from "../../authority/reducer.ts";
 import { loadEvents } from "../../storage/domain-rows.ts";
 import type {
   AdmissionResult,
@@ -16,8 +7,6 @@ import type {
 } from "../../workflow-admission.ts";
 import { pinnedResumption } from "../authority-admission.ts";
 import {
-  currentState,
-  intentKind,
   storedDefinitions,
   storedEvents,
   type StoredState,
@@ -34,6 +23,11 @@ import {
   type AuthorityQueries,
 } from "./authority-queries.ts";
 import { effectQueries, type EffectQueries } from "./effect-queries.ts";
+import type {
+  OperationRecord,
+  Projection,
+  ProjectionMemory,
+} from "./projection-memory.ts";
 import { backupInto } from "../../storage/domain-schema.ts";
 import {
   observeSettings,
@@ -53,27 +47,13 @@ import {
 
 export type { StoreReceipt } from "./authority-receipts.ts";
 export type { StoredState } from "../authority-restore.ts";
+export { operationRecords, type OperationRecord } from "./projection-memory.ts";
 
 export interface CommandContext {
   readonly recordedAt: string;
   readonly manifest?: ExecutionManifest;
   readonly epoch?: number;
   readonly documents?: readonly string[];
-}
-
-export interface OperationRecord {
-  readonly operationId: string;
-  readonly kind: EffectIntent["kind"];
-  readonly runId: string;
-  readonly createdSequence: number;
-  readonly releasedSequence: number | null;
-  readonly deliveries: readonly {
-    readonly effectId: string;
-    readonly outcome: string | null;
-    readonly receipt: string | null;
-    readonly purpose: string;
-    readonly epoch: number | null;
-  }[];
 }
 
 export interface Authority {
@@ -103,6 +83,7 @@ export interface Authority {
 export interface SessionParts {
   readonly database: Database;
   readonly reader: Database;
+  readonly memory: ProjectionMemory;
   readonly execute: (request: JsonObject) => Promise<unknown>;
   readonly run: (signal: AbortSignal) => Promise<void>;
   readonly stop: () => Promise<void>;
@@ -153,18 +134,18 @@ export function authoritySession(parts: SessionParts): Authority {
   return {
     execute: (command, context) =>
       executeCommand(session, { command, context }),
-    state: async () => currentState(await projected(session)),
+    state: async () => (await projected(session)).state(),
     events: async () => {
       await refreshed(session);
       available(session);
       return storedEvents(await parts.reader.connection(loadEvents));
     },
-    eligibleIntents: async () => eligible(await projected(session)),
-    operations: async () => operationRecords(await read(loadOperationSnapshot)),
+    eligibleIntents: async () => (await projected(session)).eligible(),
+    operations: async () => (await projected(session)).operations(),
     resumePinned: async (runId, manifest) => {
-      const snapshot = await projected(session);
-      return pinnedResumption(currentState(snapshot), {
-        definitions: storedDefinitions(snapshot),
+      const current = await projected(session);
+      return pinnedResumption(current.state(), {
+        definitions: storedDefinitions(current.snapshot),
         runId,
         available: manifest,
       });
@@ -176,7 +157,12 @@ export function authoritySession(parts: SessionParts): Authority {
     },
     epoch: parts.epoch,
     recoveryLimit: parts.recoveryLimit,
-    queries: authorityQueries(read),
+    queries: {
+      ...authorityQueries(read),
+      sequences: async () => (await projected(session)).sequences(),
+      workflowIds: async (runIds) =>
+        (await projected(session)).workflowIds(runIds),
+    },
     effects: effectQueries(read, { stopLimit: parts.stopLimit }),
     deliver: (signal) => deliver(session, signal),
     changes: { subscribe: session.changes.add },
@@ -260,10 +246,10 @@ function unavailableReceipt(session: Session): StoreReceipt | undefined {
     : { kind: "failed", reason: "authority-unavailable", detail: condition };
 }
 
-async function projected(session: Session): Promise<ProjectionSnapshot> {
+async function projected(session: Session): Promise<Projection> {
   await refreshed(session);
   available(session);
-  return session.parts.reader.connection(loadProjections);
+  return session.parts.memory.read(session.parts.database);
 }
 
 async function deliver(session: Session, signal: AbortSignal): Promise<void> {
@@ -360,40 +346,4 @@ async function invoked(
   } finally {
     session.invocations.delete(invocation);
   }
-}
-
-export function operationRecords(
-  snapshot: Pick<ProjectionSnapshot, "outbox" | "deliveries">,
-): readonly OperationRecord[] {
-  const deliveries = Map.groupBy(snapshot.deliveries, (row) => row.operationId);
-  return snapshot.outbox.map((row) => ({
-    operationId: row.operationId,
-    kind: intentKind(row.kind),
-    runId: row.runId,
-    createdSequence: row.createdSequence,
-    releasedSequence: row.releasedSequence,
-    deliveries: (deliveries.get(row.operationId) ?? []).map(
-      ({ effectId, outcome, receipt, purpose, epoch }) => ({
-        effectId,
-        outcome,
-        receipt,
-        purpose,
-        epoch,
-      }),
-    ),
-  }));
-}
-
-function eligible(snapshot: ProjectionSnapshot): readonly EffectIntent[] {
-  return eligibleIntents({
-    ...currentState(snapshot),
-    effects: {
-      operations: Object.fromEntries(
-        snapshot.pending.map((operationId) => [
-          operationId,
-          { status: "dispatch-pending" },
-        ]),
-      ),
-    },
-  });
 }

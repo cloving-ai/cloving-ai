@@ -70,12 +70,12 @@ await test("CLV-162 operation monitoring reads delivery records without unrelate
     assert.deepEqual(await authority.operations(), expected);
     assert.deepEqual(
       statements.filter((sql) =>
-        /\bFROM (?:definitions|runs|commands|gates)\b/i.test(sql),
+        /\bFROM (?:definitions|runs|commands|gates|outbox|deliveries)\b/i.test(
+          sql,
+        ),
       ),
       [],
     );
-    assert.ok(statements.some((sql) => /\bFROM outbox\b/i.test(sql)));
-    assert.ok(statements.some((sql) => /\bFROM deliveries\b/i.test(sql)));
   } finally {
     Object.defineProperty(DatabaseSync.prototype, "prepare", descriptor);
     await authority.close();

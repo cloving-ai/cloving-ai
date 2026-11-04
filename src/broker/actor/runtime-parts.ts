@@ -6,7 +6,10 @@ import {
   type SolidObjectsConfiguration,
   type SolidObjectsRuntime,
 } from "solid-objects";
-import { persistChange } from "../../storage/domain-changes.ts";
+import {
+  persistChange,
+  type DomainChange,
+} from "../../storage/domain-changes.ts";
 import { persistAction } from "./authority-actor.ts";
 import { brokerAuthorization } from "./authority-policy.ts";
 import { librarySettings, type AuthorityTiming } from "./authority-settings.ts";
@@ -54,12 +57,19 @@ export function registeredRuntime(registration: {
   readonly database: Database;
   readonly actor: ActorClass;
   readonly settings: Partial<SolidObjectsConfiguration>;
+  readonly record: (recorded: {
+    readonly messageId: string;
+    readonly change: DomainChange;
+  }) => void;
 }): SolidObjectsRuntime {
-  const { database, actor, settings } = registration;
+  const { database, actor, settings, record } = registration;
   const runtime = createRuntime({ database, ...settings });
   runtime.register(actor);
-  runtime.registerCommitAction(persistAction, (change, context) =>
-    persistChange(change, context.connection),
-  );
+  runtime.registerCommitAction(persistAction, async (change, context) => {
+    record({
+      messageId: context.messageId,
+      change: await persistChange(change, context.connection),
+    });
+  });
   return runtime;
 }
