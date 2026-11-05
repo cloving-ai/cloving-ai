@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-  operationKey,
-  type WorkerReport,
-} from "../src/daemon/operation-journal.ts";
+import { setTimeout as delay } from "node:timers/promises";
+import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 import { resultOf, until } from "./claude-worker-fixture.ts";
 import {
   queueCalls,
   queued,
   queueWorker,
+  settleAfterPolls,
+  settleQueue,
 } from "./github-merge-queue-fixture.ts";
 import {
   fastTiming,
@@ -19,46 +19,36 @@ import {
   withGithub,
   type GithubScene,
 } from "./github-worker-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const operationId = "queue-restart";
-
-interface Stopped {
-  readonly commit: string;
-  readonly record: string;
-  readonly startedAt: number;
-}
 
 function document(commit: string): () => Promise<string> {
   return () => Promise.resolve(JSON.stringify({ number: 1, commit }));
 }
 
-async function stoppedInQueue(scene: GithubScene): Promise<Stopped> {
+async function stopped(
+  scene: GithubScene,
+  reached: () => boolean,
+): Promise<string> {
   const commit = await opened(scene, scene.worker());
   const first = queueWorker(scene, { document: document(commit) });
   await first.deliver(
     githubIntent({ operationId, method: "merge" }),
     new AbortController().signal,
   );
-  await until(() => queued(scene));
+  await until(reached);
   await first.close();
-  const record = join(
-    scene.journal,
-    operationKey(operationId),
-    `queue-${operationKey(commit)}.json`,
-  );
-  const saved = resultOf(readFileSync(record, "utf8"));
-  assert.equal(saved["commit"], commit);
-  assert.equal(typeof saved["startedAt"], "number");
-  return { commit, record, startedAt: Number(saved["startedAt"]) };
+  return commit;
 }
 
 async function resumed(
   scene: GithubScene,
-  commit: string,
+  wait: { readonly commit: string; readonly limit: number },
 ): Promise<WorkerReport> {
   queueWorker(scene, {
-    document: document(commit),
-    timing: { ...fastTiming, queueLimitMilliseconds: 1500 },
+    document: document(wait.commit),
+    timing: { ...fastTiming, queueLimitMilliseconds: wait.limit },
   });
   await until(() =>
     scene.reports.some((report) => report.operationId === operationId),
@@ -68,17 +58,15 @@ async function resumed(
   return report;
 }
 
-await test("CLV-297 a restart keeps the start of the queue wait, so the wait limit does not begin again", () =>
+await test("CLV-297 a restart keeps the start of the queue wait that GitHub reports, so the wait limit does not begin again", () =>
   withGithub(async (scene) => {
-    const stopped = await stoppedInQueue(scene);
-    writeFileSync(
-      stopped.record,
-      JSON.stringify({
-        commit: stopped.commit,
-        startedAt: stopped.startedAt - 7_200_000,
-      }),
-    );
-    const report = await resumed(scene, stopped.commit);
+    scene.plan({
+      scores: [],
+      enqueuedAt: new Date(Date.now() - 7_200_000).toISOString(),
+    });
+    const commit = await stopped(scene, () => queued(scene));
+    settleAfterPolls(scene, { result: "merged", polls: 3 });
+    const report = await resumed(scene, { commit, limit: 3_600_000 });
     assert.equal(report.outcome, "completed", report.reason ?? "");
     const result = resultOf(report.result);
     assert.equal(result["reason"], "merge-queue-timeout");
@@ -87,16 +75,19 @@ await test("CLV-297 a restart keeps the start of the queue wait, so the wait lim
     assert.equal(queueCalls(scene, "dequeuePullRequest").length, 1);
   }));
 
-await test("CLV-297 a malformed start record of the queue wait fails the step and keeps the pull request in the queue", () =>
+await test("CLV-297 a restart after a stop in the enqueue call gives the pull request the full queue wait", () =>
   withGithub(async (scene) => {
-    const stopped = await stoppedInQueue(scene);
-    writeFileSync(
-      stopped.record,
-      JSON.stringify({ commit: stopped.commit, startedAt: "wrong" }),
+    const limit = testMilliseconds(2000);
+    scene.plan({ scores: [], holds: ["api graphql enqueue"] });
+    const commit = await stopped(scene, () =>
+      existsSync(join(scene.directory, "gh-state.json.held")),
     );
-    const report = await resumed(scene, stopped.commit);
-    assert.equal(report.outcome, "failed");
-    assert.equal(report.reason, "github-call-failed");
+    assert.equal(queued(scene), false);
+    scene.plan({ scores: [], holds: [], queuePolls: 2 });
+    await delay(limit + testMilliseconds(500));
+    settleQueue(scene, "merged");
+    const report = await resumed(scene, { commit, limit });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["merged"], "d".repeat(40));
     assert.deepEqual(queueCalls(scene, "dequeuePullRequest"), []);
-    assert.ok(queued(scene));
   }));

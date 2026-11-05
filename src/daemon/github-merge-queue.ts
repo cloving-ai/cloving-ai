@@ -20,29 +20,38 @@ import {
 } from "./github-operation.ts";
 import { githubRead, retryGithub } from "./github-retry.ts";
 import { inMergeTurn } from "./merge-turns.ts";
-import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
 
 const stateQuery =
-  "query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeCommit { oid } mergeQueueEntry { state position } } } }";
+  "query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeCommit { oid } mergeQueueEntry { state position enqueuedAt } } } }";
 const enqueueMutation =
-  "mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $head }) { mergeQueueEntry { state position } } }";
+  "mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $head }) { mergeQueueEntry { state position enqueuedAt } } }";
 const dequeueMutation =
   "mutation($id: ID!) { dequeuePullRequest(input: { id: $id }) { mergeQueueEntry { state } } }";
 
 interface QueueEntry {
   readonly state: string;
   readonly position: number;
+  readonly enqueuedAt: number;
 }
 
-interface QueueState {
-  readonly merged: string | undefined;
+interface MergedState {
+  readonly kind: "merged";
   readonly head: string;
-  readonly entry: QueueEntry | undefined;
+  readonly merged: string;
 }
 
-interface Queued {
+type InQueue =
+  MergedState | { readonly kind: "queued"; readonly entry: QueueEntry };
+
+type QueueState = InQueue | { readonly kind: "left" };
+
+interface Target {
   readonly pull: ReviewedPull;
   readonly id: string;
+}
+
+interface Queued extends Target {
+  readonly started: number;
 }
 
 interface QueueResult {
@@ -67,8 +76,10 @@ function graphql(query: string, variables: readonly string[]): string[] {
 
 function entryOf(value: unknown): QueueEntry {
   const position = field(value, "position");
-  if (typeof position !== "number") throw new Error("github-call-failed");
-  return { state: text(field(value, "state")), position };
+  const enqueuedAt = Date.parse(text(field(value, "enqueuedAt")));
+  if (typeof position !== "number" || Number.isNaN(enqueuedAt))
+    throw new Error("github-call-failed");
+  return { state: text(field(value, "state")), position, enqueuedAt };
 }
 
 async function queueState(
@@ -80,19 +91,16 @@ async function queueState(
   );
   const node = field(field(reply, "data"), "node");
   const state = text(field(node, "state"));
+  const head = text(field(node, "headRefOid"));
   const entry = field(node, "mergeQueueEntry");
-  return {
-    merged:
-      state === "MERGED"
-        ? text(field(field(node, "mergeCommit"), "oid"))
-        : undefined,
-    head: text(field(node, "headRefOid")),
-    entry: entry === null ? undefined : entryOf(entry),
-  };
-}
-
-function inQueue(state: QueueState): boolean {
-  return state.entry !== undefined || state.merged !== undefined;
+  if (state === "MERGED")
+    return {
+      kind: "merged",
+      head,
+      merged: text(field(field(node, "mergeCommit"), "oid")),
+    };
+  if (entry === null) return { kind: "left" };
+  return { kind: "queued", entry: entryOf(entry) };
 }
 
 function mergedResult(pull: ReviewedPull, merged: string): SuccessfulMerge {
@@ -104,38 +112,51 @@ function mergedResult(pull: ReviewedPull, merged: string): SuccessfulMerge {
   };
 }
 
-async function enqueued(operation: Operation, queued: Queued): Promise<void> {
-  await retryGithub(operation, {
+async function enqueued(
+  operation: Operation,
+  target: Target,
+): Promise<InQueue> {
+  return retryGithub<InQueue>(operation, {
     action: async (attempt) => {
-      if (attempt > 0 && inQueue(await queueState(operation, queued.id)))
-        return;
-      await operation.calls.gh(
-        graphql(enqueueMutation, [
-          `id=${queued.id}`,
-          `head=${queued.pull.commit}`,
-        ]),
+      const known =
+        attempt > 0 ? await queueState(operation, target.id) : undefined;
+      if (known !== undefined && known.kind !== "left") return known;
+      const reply: unknown = JSON.parse(
+        await operation.calls.gh(
+          graphql(enqueueMutation, [
+            `id=${target.id}`,
+            `head=${target.pull.commit}`,
+          ]),
+        ),
       );
+      const entry = field(
+        field(field(reply, "data"), "enqueuePullRequest"),
+        "mergeQueueEntry",
+      );
+      return { kind: "queued", entry: entryOf(entry) };
     },
   });
 }
 
-async function queueStart(
+async function queueMerged(
   operation: Operation,
-  commit: string,
-): Promise<number> {
-  const name = `queue-${operationKey(commit)}.json`;
-  const record = await readRecord(operation.folder, name);
-  if (record === undefined) {
-    const startedAt = Date.now();
-    await writeRecord(operation.folder, {
-      name,
-      value: { commit, startedAt },
+  view: { readonly pull: ReviewedPull; readonly state: MergedState },
+): Promise<MergeResult> {
+  if (view.state.head !== view.pull.commit)
+    throw new Error("merged-other-commit");
+  return finishedMerge(operation, mergedResult(view.pull, view.state.merged));
+}
+
+async function queuedOf(
+  operation: Operation,
+  view: { readonly target: Target; readonly state: InQueue },
+): Promise<Queued | MergeResult> {
+  if (view.state.kind === "merged")
+    return queueMerged(operation, {
+      pull: view.target.pull,
+      state: view.state,
     });
-    return startedAt;
-  }
-  const startedAt = field(record, "startedAt");
-  if (typeof startedAt !== "number") throw new Error("github-call-failed");
-  return startedAt;
+  return { ...view.target, started: view.state.entry.enqueuedAt };
 }
 
 async function queueEntry(
@@ -146,14 +167,16 @@ async function queueEntry(
   if (known.merged !== undefined)
     return finishedMerge(operation, mergedResult(pull, known.merged));
   if (known.node === undefined) throw new Error("github-call-failed");
-  const queued = { pull, id: known.node };
-  if (inQueue(await queueState(operation, queued.id))) return queued;
+  const target = { pull, id: known.node };
+  const state = await queueState(operation, target.id);
+  if (state.kind !== "left") return queuedOf(operation, { target, state });
   await checkedLocally(operation, pull);
   const ci = await waitForCi(operation, pull.commit);
   if (ci !== undefined) return ci;
-  await queueStart(operation, pull.commit);
-  await enqueued(operation, queued);
-  return queued;
+  return queuedOf(operation, {
+    target,
+    state: await enqueued(operation, target),
+  });
 }
 
 async function groupHead(
@@ -180,13 +203,13 @@ async function groupHead(
 
 async function removal(
   operation: Operation,
-  wait: { readonly queued: Queued; readonly started: number },
+  queued: Queued,
 ): Promise<CiResult | QueueResult> {
-  const { pull } = wait.queued;
+  const { pull } = queued;
   await conflictChecked(operation, pull.commit);
   const head = await groupHead(operation, {
     number: pull.number,
-    started: wait.started,
+    started: queued.started,
   });
   const failed =
     head === undefined ? undefined : await failedChecks(operation, head);
@@ -201,10 +224,10 @@ async function removal(
 
 async function timedOut(
   operation: Operation,
-  wait: { readonly queued: Queued; readonly started: number },
+  queued: Queued,
 ): Promise<QueueResult> {
-  await operation.calls.gh(graphql(dequeueMutation, [`id=${wait.queued.id}`]));
-  const minutes = Math.round((Date.now() - wait.started) / 60_000);
+  await operation.calls.gh(graphql(dequeueMutation, [`id=${queued.id}`]));
+  const minutes = Math.round((Date.now() - queued.started) / 60_000);
   return {
     reason: "merge-queue-timeout",
     output: `The pull request was in the merge queue for ${String(minutes)} minutes. Cloving removed it from the queue.`,
@@ -239,27 +262,21 @@ async function settled(
     queueLimitMilliseconds: 10_800_000,
     ...operation.settings.timing,
   };
-  const started = await queueStart(operation, queued.pull.commit);
+  const { started } = queued;
   let shown = "";
   try {
     for (;;) {
       const state = await queueState(operation, queued.id);
-      if (state.merged !== undefined && state.head !== queued.pull.commit)
-        throw new Error("merged-other-commit");
-      if (state.merged !== undefined)
-        return await finishedMerge(
-          operation,
-          mergedResult(queued.pull, state.merged),
-        );
-      if (state.entry === undefined)
-        return await removal(operation, { queued, started });
+      if (state.kind === "merged")
+        return await queueMerged(operation, { pull: queued.pull, state });
+      if (state.kind === "left") return await removal(operation, queued);
       shown = await shownEntry(operation, {
         started,
         entry: state.entry,
         shown,
       });
       if (Date.now() - started >= timing.queueLimitMilliseconds)
-        return await timedOut(operation, { queued, started });
+        return await timedOut(operation, queued);
       await delay(timing.pollMilliseconds, undefined, {
         signal: operation.signal,
       });
@@ -287,7 +304,7 @@ export async function mergeStep(
   requireCheck(operation, pull);
   try {
     const entered = await inMergeTurn(turn, () => queueEntry(operation, pull));
-    if (!("id" in entered)) return entered;
+    if (!("started" in entered)) return entered;
     return await settled(operation, entered);
   } catch (error) {
     return mergeRepair(operation, error);

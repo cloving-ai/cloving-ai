@@ -6,6 +6,7 @@ import {
   checkRuns,
   conflictingBase,
   earlierAttempt,
+  enqueuedBefore,
   groupRuns,
   observer,
   queueCalls,
@@ -91,6 +92,41 @@ await test("CLV-297 a pull request that leaves the queue with no merge group run
       output:
         "The pull request left the merge queue without a merge. No failed check of a merge group run was found.",
     });
+  }));
+
+await test("CLV-297 a step that finds the pull request in the queue uses the merge group runs since GitHub added it", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene);
+    const commit = await opened(scene, worker);
+    scene.plan({
+      scores: [],
+      enqueuedAt: earlierAttempt,
+      queuePolls: 2,
+      replies: {
+        "api GET workflow-runs": groupRuns([
+          {
+            id: 77,
+            branch: "gh-readonly-queue/main/pr-1-def",
+            created: "2026-01-01T00:05:00Z",
+          },
+        ]),
+        "api GET check-runs": checkRuns("failure"),
+      },
+    });
+    enqueuedBefore(scene, commit);
+    settleQueue(scene, "removed");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    const result = resultOf(report.result);
+    assert.equal(result["reason"], "ci-failed");
+    assert.match(
+      String(result["output"]),
+      /^Failed check: quality_linux \(failure\)\n/,
+    );
+    assert.equal(queueCalls(scene, "enqueuePullRequest").length, 1);
   }));
 
 await test("CLV-297 a pull request that leaves the queue and now conflicts with main gives the merge-conflict repair", () =>
@@ -222,4 +258,20 @@ await test("CLV-297 a queue state reply without a pull request fails the step", 
     assert.equal(report.outcome, "failed");
     assert.equal(report.reason, "github-call-failed");
     assert.deepEqual(queueCalls(scene, "enqueuePullRequest"), []);
+  }));
+
+await test("CLV-297 a queue entry with a malformed enqueue time fails the step and keeps the pull request in the queue", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene);
+    const commit = await opened(scene, worker);
+    scene.plan({ scores: [], enqueuedAt: "wrong", queuePolls: 2 });
+    settleQueue(scene, "merged");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "failed");
+    assert.equal(report.reason, "github-call-failed");
+    assert.deepEqual(queueCalls(scene, "dequeuePullRequest"), []);
+    assert.ok(queued(scene));
   }));

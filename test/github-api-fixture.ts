@@ -148,7 +148,7 @@ const actions = {
       process.exitCode = 1;
       return;
     }
-    pr.queue = { state: "QUEUED", position: state.queuePosition ?? 1 };
+    pr.queue = { state: "QUEUED", position: state.queuePosition ?? 1, enqueuedAt: state.enqueuedAt ?? new Date().toISOString() };
     pr.queuePolls = 0;
     out({ data: { enqueuePullRequest: { mergeQueueEntry: pr.queue } } });
   },
@@ -186,6 +186,10 @@ const mutation = ["enqueue", "dequeue"].find((word) => query.includes(word + "Pu
 const name = args[1] === "graphql" ? "api graphql " + mutation : args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));
+if (state.holds?.includes(name)) {
+  writeFileSync(file + ".held", name);
+  await new Promise(resolve => setTimeout(resolve, 600_000));
+}
 const index = state.failures?.findIndex((failure) => failure.call === name) ?? -1;
 const failure = index < 0 ? undefined : state.failures.splice(index, 1)[0];
 if (failure?.after) actions[name]();

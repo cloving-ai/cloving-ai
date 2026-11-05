@@ -7,6 +7,7 @@ import { inMergeTurn } from "../src/daemon/merge-turns.ts";
 import { resultOf, until } from "./claude-worker-fixture.ts";
 import { advancedBase, mergeCalls } from "./github-merge-fixture.ts";
 import {
+  enqueuedBefore,
   queueCalls,
   queued,
   queueWorker,
@@ -102,16 +103,7 @@ await test("CLV-297 queue mode waits for a pull request that is already in the q
   withGithub(async (scene) => {
     const worker = queueWorker(scene);
     const commit = await opened(scene, worker);
-    scene.gh([
-      "api",
-      "graphql",
-      "-f",
-      "query=mutation { enqueuePullRequest(input: {}) { clientMutationId } }",
-      "-f",
-      "id=PR_1",
-      "-f",
-      `head=${commit}`,
-    ]);
+    enqueuedBefore(scene, commit);
     scene.plan({ scores: [], queuePolls: 2 });
     settleQueue(scene, "merged");
     const report = await scene.perform(worker, {
@@ -142,4 +134,19 @@ await test("CLV-297 queue mode gives the known merge of a pull request that GitH
     assert.equal(report.outcome, "completed", report.reason ?? "");
     assert.equal(resultOf(report.result)["merged"], "f".repeat(40));
     assert.deepEqual(queueCalls(scene, "enqueuePullRequest"), []);
+  }));
+
+await test("CLV-297 queue mode gives the merge commit of a queued pull request that GitHub merged before the step read the queue", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene);
+    const commit = await opened(scene, worker);
+    enqueuedBefore(scene, commit);
+    settleQueue(scene, "merged");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["merged"], "d".repeat(40));
+    assert.equal(queueCalls(scene, "enqueuePullRequest").length, 1);
   }));

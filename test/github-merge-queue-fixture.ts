@@ -24,8 +24,30 @@ export function settleQueue(
   writeFileSync(join(scene.directory, "gh-state.json.queue"), result);
 }
 
+export function settleAfterPolls(
+  scene: GithubScene,
+  settle: { readonly result: "merged" | "removed"; readonly polls: number },
+): void {
+  const done = Number(scene.state().prs[0]?.["queuePolls"] ?? 0);
+  scene.plan({ scores: [], queuePolls: done + settle.polls });
+  settleQueue(scene, settle.result);
+}
+
 export function queued(scene: GithubScene): boolean {
   return Boolean(scene.state().prs[0]?.["queue"]);
+}
+
+export function enqueuedBefore(scene: GithubScene, commit: string): void {
+  scene.gh([
+    "api",
+    "graphql",
+    "-f",
+    "query=mutation { enqueuePullRequest(input: {}) { clientMutationId } }",
+    "-f",
+    "id=PR_1",
+    "-f",
+    `head=${commit}`,
+  ]);
 }
 
 export function conflictingBase(scene: GithubScene): void {
