@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { fullDeadline, type DeadlineTimer } from "./deadline-timer.ts";
 import {
   threadPoolStallExitCode,
   type StalledCheck,
@@ -40,7 +41,7 @@ export function threadPoolWatch(
   const state: {
     latest?: ThreadPoolCheck;
     pending: boolean;
-    timer?: NodeJS.Timeout;
+    deadline?: DeadlineTimer;
   } = { pending: false };
   const elapsed = (started: number): number =>
     Math.round(performance.now() - started);
@@ -48,18 +49,18 @@ export function threadPoolWatch(
     if (state.pending) return;
     state.pending = true;
     const started = performance.now();
-    state.timer = setTimeout(() => {
+    state.deadline = fullDeadline(deadline, (waited) => {
       const stall: StalledCheck = {
         result: "stalled",
         checkedAt: new Date().toISOString(),
-        milliseconds: elapsed(started),
+        milliseconds: waited,
         resources: resourceCounts(),
       };
       state.latest = stall;
       settings.stalled(stall);
-    }, deadline).unref();
+    });
     const settled = (): void => {
-      clearTimeout(state.timer);
+      state.deadline?.clear();
       state.pending = false;
       state.latest = {
         result: "ok",
@@ -78,7 +79,7 @@ export function threadPoolWatch(
     latest: () => state.latest,
     stop: () => {
       clearInterval(interval);
-      clearTimeout(state.timer);
+      state.deadline?.clear();
     },
   };
 }

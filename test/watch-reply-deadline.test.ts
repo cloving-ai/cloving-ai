@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { withFiles } from "./quality/files-fixture.ts";
 import { directWatch } from "./watch-direct-fixture.ts";
+import { laggingClock } from "./clock-lag-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 const replyMilliseconds = 200;
@@ -30,6 +31,7 @@ await test("CLV-298 a watch reply that never settles gets 503 after the reply de
   withFiles({}, async (root) => {
     const release = await silentService(join(root, "run"));
     const watch = await directWatch(join(root, "run"), settings);
+    const restore = laggingClock(50);
     try {
       const reply = await fetch(`${watch.address}data.json?view=private`, {
         signal: AbortSignal.timeout(testMilliseconds(5000)),
@@ -42,6 +44,7 @@ await test("CLV-298 a watch reply that never settles gets 503 after the reply de
       const elapsed = Number(/ms=(\d+)/.exec(line)?.[1]);
       assert.ok(elapsed >= replyMilliseconds, line);
     } finally {
+      restore();
       await release();
       assert.equal(await watch.stop(), 0);
     }

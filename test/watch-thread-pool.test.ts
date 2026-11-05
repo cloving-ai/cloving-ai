@@ -13,6 +13,7 @@ const timing = { intervalMilliseconds: 20, deadlineMilliseconds: 100 };
 await test("CLV-298 the watch server logs threadpool-stalled with resource counts, closes and ends with the stall exit code", () =>
   withFiles({}, async (root) => {
     const pool = { stalled: false };
+    const held = setTimeout(() => undefined, testMilliseconds(60_000));
     const watch = await directWatch(join(root, "run"), {
       threadPool: {
         ...timing,
@@ -39,6 +40,7 @@ await test("CLV-298 the watch server logs threadpool-stalled with resource count
         /fetch failed/,
       );
     } finally {
+      clearTimeout(held);
       await watch.stop();
     }
   }));

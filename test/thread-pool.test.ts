@@ -7,6 +7,7 @@ import {
   threadPoolStallExitCode,
   type ThreadPoolCheck,
 } from "../src/thread-pool-check.ts";
+import { laggingClock } from "./clock-lag-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 const timing = { intervalMilliseconds: 20, deadlineMilliseconds: 60 };
@@ -21,9 +22,32 @@ async function reached<Value>(read: () => Value | undefined): Promise<Value> {
   throw new Error("thread-pool-condition-not-reached");
 }
 
+await test("CLV-298 a stall reports at least the deadline when the timer fires before the clock reaches it", async () => {
+  const restore = laggingClock(5);
+  const stalls: ThreadPoolCheck[] = [];
+  const watch = threadPoolWatch({
+    ...timing,
+    check: () => new Promise(() => undefined),
+    stalled: (check) => {
+      stalls.push(check);
+    },
+  });
+  try {
+    const stall = await reached(() => stalls[0]);
+    assert.ok(
+      stall.milliseconds >= timing.deadlineMilliseconds,
+      String(stall.milliseconds),
+    );
+  } finally {
+    watch.stop();
+    restore();
+  }
+});
+
 await test("CLV-298 a pool check that never settles reports one stall with the counts of the active resources", async () => {
   const stalls: ThreadPoolCheck[] = [];
   let checks = 0;
+  const held = setTimeout(() => undefined, testMilliseconds(60_000));
   const watch = threadPoolWatch({
     ...timing,
     check: () => {
@@ -45,6 +69,7 @@ await test("CLV-298 a pool check that never settles reports one stall with the c
     assert.equal(stalls.length, 1);
     assert.equal(checks, 1);
   } finally {
+    clearTimeout(held);
     watch.stop();
   }
 });
@@ -86,6 +111,7 @@ await test("CLV-298 a stalled pool check that settles late makes the latest resu
   const late = Promise.withResolvers<undefined>();
   const watch = threadPoolWatch({
     ...timing,
+    intervalMilliseconds: 60_000,
     check: () => late.promise,
     stalled: () => undefined,
   });

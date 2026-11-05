@@ -7,6 +7,7 @@ await test("CLV-298 a stalled pool check in the daemon logs threadpool-stalled, 
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
 settings.queueMilliseconds = undefined;
+const held = setTimeout(() => undefined, 60000);
 const daemon = await launched({
   threadPool: { intervalMilliseconds: 20, deadlineMilliseconds: 50, check: () => new Promise(() => undefined) },
 });
@@ -19,7 +20,7 @@ try {
   const later = await asked("status");
   assert.deepEqual(later.threadPool, stalled);
   assert.deepEqual(later.runs, []);
-} finally { await daemon.close(); }
+} finally { clearTimeout(held); await daemon.close(); }
 process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);

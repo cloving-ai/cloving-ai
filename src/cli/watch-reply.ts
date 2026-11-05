@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { fullDeadline, type DeadlineTimer } from "./deadline-timer.ts";
 import { watchApiTimeout } from "./watch-api.ts";
 import type { WatchStream } from "./watch-stream.ts";
 
@@ -32,20 +33,18 @@ export function deadlined<Answer>(
     readonly complain: (text: string) => void;
   },
 ): Promise<Answer | Reply> {
-  const started = performance.now();
-  let timer: NodeJS.Timeout | undefined;
+  let timer: DeadlineTimer | undefined;
   const expired = new Promise<Reply>((settle) => {
-    timer = setTimeout(() => {
-      const elapsed = Math.round(performance.now() - started);
+    timer = fullDeadline(deadline.milliseconds, (waited) => {
       const path = route(deadline.request);
       deadline.complain(
-        `watch-reply-timeout path=${path} ms=${String(elapsed)}\n`,
+        `watch-reply-timeout path=${path} ms=${String(waited)}\n`,
       );
       settle(watchApiTimeout(path) ?? timeout);
-    }, deadline.milliseconds);
+    });
   });
   return Promise.race([answer, expired]).finally(() => {
-    clearTimeout(timer);
+    timer?.clear();
   });
 }
 
