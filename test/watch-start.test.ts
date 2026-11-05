@@ -54,7 +54,10 @@ console.log(JSON.stringify({ html: app.inner, reads, requests, streams: sources.
 `,
   );
   assert.doesNotMatch(String(result["html"]), /Start a run|Copy the prompt/);
-  assert.deepEqual(result["reads"], ["cloving.watch.columns:develop-issue"]);
+  assert.deepEqual(result["reads"], [
+    "cloving.watch.columns:develop-issue",
+    "cloving.watch.theme",
+  ]);
   assert.deepEqual(result["requests"], ["data.json"]);
   assert.deepEqual(result["streams"], ["events"]);
 });

@@ -12,6 +12,7 @@ import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
 import { queueServiceRequest } from "./queue-arguments.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import type { WatchThemeSettings } from "./watch-themes.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -43,6 +44,7 @@ export interface CommandEnvironment {
   readonly runtimeDirectory: string | undefined;
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
+  readonly watchThemes?: WatchThemeSettings;
   readonly client?: string;
   readonly workingDirectory: string;
   readonly terminal: Terminal;
@@ -372,6 +374,9 @@ function watch(
     ...(environment.watchPr === undefined
       ? {}
       : { pullRequests: environment.watchPr }),
+    ...(environment.watchThemes === undefined
+      ? {}
+      : { themes: environment.watchThemes }),
     runtimeDirectory: environment.runtimeDirectory,
     port: invocation.port ?? defaultWatchPort,
     client: environment.client ?? "cloving",

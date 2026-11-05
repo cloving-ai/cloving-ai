@@ -4,18 +4,20 @@ import { once } from "node:events";
 import assert from "node:assert/strict";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import type { WatchModel } from "../src/cli/watch-render.ts";
+import type { WatchThemes } from "../src/cli/watch-themes.ts";
 
 export async function watchPageServer(
   shown: WatchModel,
   options: {
     readonly hash?: string;
+    readonly themes?: WatchThemes;
     readonly files?: Readonly<
       Record<string, { readonly type: string; readonly body: Uint8Array }>
     >;
   } = {},
 ) {
   const preact = await readFile(new URL(import.meta.resolve("preact")));
-  const page = pageDocument().replace(/<link rel="stylesheet"[^>]*>/, "");
+  const page = pageDocument(null, options.themes);
   const model = JSON.stringify(shown);
   const server = createServer((request, response) => {
     const file = options.files?.[request.url ?? ""];

@@ -231,13 +231,13 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Themes of the watch page
 
-A theme gives the watch page other colors, sizes, fonts, art and words. A theme contains only data: it cannot add CSS text, selectors or JavaScript. Cloving checks each theme before use, and a theme with a refusal code is not usable. The page does not apply a theme yet; a later change applies it.
+A theme gives the watch page other colors, sizes, fonts, art and words. A theme contains only data: it cannot add CSS text, selectors or JavaScript. Cloving checks each theme before use, and a theme with a refusal code is not usable. The Cloving logo and its colors do not change with a theme.
 
 A theme is a folder with a `theme.json` file and an optional `assets` folder. Cloving finds themes in three places:
 
 1. The built-in themes of the package, `light` and `dark`, with the current colors and fonts of the page.
 2. The user folder `<config>/cloving/themes/<name>`. `<config>` is an absolute `XDG_CONFIG_HOME`, or `~/.config` otherwise.
-3. The project folder `.cloving/themes/<name>` in the repository.
+3. The project folder `.cloving/themes/<name>` in the repository. The watch process of `start` uses the service repository in `CLOVING_WATCH_REPOSITORY`.
 
 A project theme replaces a user theme with the same name, and a user theme replaces a built-in theme. A refused theme also replaces the theme of the same name. The folder name is the name of the theme. It has 1 to 64 lowercase letters, digits and single hyphens, and starts with a letter. The name `auto` is reserved.
 
@@ -248,6 +248,21 @@ cloving themes list
 cloving config set watch.theme workshop
 cloving doctor
 ```
+
+The header of the watch page has a theme menu. The menu shows `Auto` and each usable theme. A choice in the menu applies at once, and the browser keeps it for the next visits. With no choice in the browser, the page uses `watch.theme`. `auto` uses the built-in theme `light` when the browser uses a light color scheme, and `dark` when it uses a dark color scheme. When the selected theme is refused or missing, the page uses the default theme and shows a short notice, for example "The page uses the default theme: the theme workshop is refused: invalid-color." When `auto` finds no `light` or `dark` theme, the page uses the default theme with no notice.
+
+The watch server puts each usable theme on the page as CSS custom properties, one for each token. The name of a property is the token name with `-` in place of `.`, for example `--color-state-running` and `--shape-cut`. The page takes its colors, corner cuts, borders, text size, gaps and fonts from these properties. Only the logo, the colors of the workflow lines, the text on state colors and the error text in code windows keep fixed colors. Each art slot that a theme sets becomes the page class `art-<slot>`, for example `art-station`, and the custom properties `--art-<slot>`, `--art-<slot>-repeat` and `--art-<slot>-rendering`, for example `--art-station`, `--art-station-repeat` and `--art-station-rendering`. A slot in `mask` mode also gives the class `art-<slot>-mask`, for example `art-station-mask`. The server serves the art files at `/themes/<name>/assets/<path>`, only for a usable theme and only for the files of its art slots.
+
+| Art slot | Place on the page |
+| --- | --- |
+| `floor` | The background of the floor. |
+| `header` | The background of the header. |
+| `line-banner` | The background of the name of each workflow line. |
+| `station` | Each station, in place of the lamp. A small state mark at the corner keeps the state visible. |
+| `run-token` | Each run token, in place of the worker initial. The token keeps its state color. |
+| `completed-badge` | A badge on each tile of the Completed today shelf. |
+
+An `image` slot shows the file as it is. A `mask` slot uses the file as a shape and fills it with a color of the theme: the state color for a station, the text color on a state for a run token, the completed color for a badge and the line color for a background. The state mark of a station stays outside the shape.
 
 `theme.json` uses the W3C Design Tokens Format Module 2025.10. The tokens are in groups. Each token has a `$value` and a `$type`, or it gets the `$type` of its group. A group `$type` is `color`, `dimension` or `fontFamily`. A token or a group can also have a `$description` text. Cloving refuses all other `$` properties and aliases. A token or group name cannot contain `.`, `{` or `}`. The theme data that is not a token is in `$extensions` under the key `ai.cloving.theme`:
 
@@ -311,19 +326,19 @@ A theme can set only these words:
 
 | Word key | Form | Place on the page |
 | --- | --- | --- |
-| `workflows.title` | text | The heading of the workflow list, now "Workflows" |
-| `column.done` | text | The name of the column "Done" |
-| `column.stopped` | text | The name of the column "Stopped" |
-| `state.attention` | text | The mark of a card that needs attention, now "Needs attention" |
-| `state.decision` | text | The mark of a card with a waiting decision, now "Decision waiting" |
-| `station.agent` | text | The name of an agent step, now "Agent turn" |
-| `station.review` | text | The name of a review step, now "Your review" |
-| `totals.label` | text | The label of the card totals, now "Totals" |
-| `completed.unit` | plural | The unit of a count of completed runs |
-| `run.unit` | plural | The unit of a count of runs |
-| `ticket.unit` | plural | The unit of a count of tickets |
+| `workflows.title` | text | The heading of the floor, now "Floor" |
+| `column.done` | text | The name of the board column "Done" |
+| `column.stopped` | text | The name of the board column "Stopped" |
+| `state.attention` | text | The mark of a board card that needs attention, now "Needs attention" |
+| `state.decision` | text | The mark of a board card with a waiting decision, now "Decision waiting" |
+| `station.agent` | text | The name of an agent step on the floor and on the board, now "Agent turn" |
+| `station.review` | text | The name of a review step on the floor and on the board, now "Your review" |
+| `totals.label` | text | The label of the totals of a board card, now "Totals" |
+| `completed.unit` | plural | The unit of the count on the Completed today shelf |
+| `run.unit` | plural | The unit of the count on the Completed today shelf, when `completed.unit` is not set |
+| `ticket.unit` | plural | The unit of the count of skipped tickets of the queue |
 
-A text word is plain text of 1 to 60 characters, with no control characters and no `<`, `>`, `{` or `}`. A plural word is an object with the forms `one` and `other`. Each form is plain text of 1 to 60 characters and can contain `{count}`.
+A text word is plain text of 1 to 60 characters, with no control characters and no `<`, `>`, `{` or `}`. A plural word is an object with the forms `one` and `other`. Each form is plain text of 1 to 60 characters and can contain `{count}`. The page uses `one` for a count of 1 and `other` for all other counts. A form with `{count}` gets the count in its place; a form with no `{count}` comes after the count, for example "3 shoes".
 
 | Refusal code | Cause |
 | --- | --- |

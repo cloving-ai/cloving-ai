@@ -29,6 +29,7 @@ import { watchHash, watchLocation } from "./watch-navigation.ts";
 import { Floor, Shelf } from "./watch-floor-view.ts";
 import { NeedsYou } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
+import type { ThemeControls } from "./watch-theme-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 export { PullRequest } from "./watch-turn.ts";
@@ -193,6 +194,7 @@ export interface PageProps {
   readonly columns?: ColumnControls;
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
+  readonly theme?: ThemeControls | undefined;
 }
 
 export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
@@ -214,8 +216,9 @@ export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
 }
 
 export function Page(props: PageProps): Shown {
-  const { model, selected, now, stale, copying } = props;
-  const head = component(Header, { model, stale });
+  const { model, selected, now, stale, copying, theme } = props;
+  const words = theme?.shown.theme?.words;
+  const head = component(Header, { model, stale, theme });
   const text = (tone: string, children: Shown): Shown =>
     element("p", { class: tone, children });
   const waits = "The page waits for the first data of the watch tool.";
@@ -227,9 +230,9 @@ export function Page(props: PageProps): Shown {
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
     return [
-      component(Header, { model, stale, queue: props.queue }),
+      component(Header, { model, stale, queue: props.queue, theme }),
       down,
-      component(Queue, { model }),
+      component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
       component(BackLink, { workflowId: location.workflowId }),
       run === undefined
@@ -257,7 +260,8 @@ export function BackLink(props: { readonly workflowId: string | null }): Shown {
 export function FloorPage(
   props: PageProps & { readonly model: WatchModel; readonly down: Shown },
 ): Shown {
-  const { model, down, now, stale } = props;
+  const { model, down, now, stale, theme } = props;
+  const words = theme?.shown.theme?.words;
   return element("div", {
     class: "floor-page",
     children: [
@@ -266,6 +270,7 @@ export function FloorPage(
         stale,
         phone: props.phone,
         queue: props.queue,
+        theme,
         now,
       }),
       down,
@@ -278,7 +283,7 @@ export function FloorPage(
           element("div", {
             class: "floor-main",
             children: [
-              component(Floor, { model, now }),
+              component(Floor, { model, now, words }),
               component(NeedsYou, { runs: model.runs, now }),
             ],
           }),
@@ -286,13 +291,13 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model }),
-              component(Queue, { model }),
+              component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],
           }),
         ],
       }),
-      component(Shelf, { model }),
+      component(Shelf, { model, words }),
     ],
   });
 }
@@ -304,7 +309,8 @@ export function BoardPage(
     readonly down: Shown;
   },
 ): Shown {
-  const { model, workflow, down, now, stale } = props;
+  const { model, workflow, down, now, stale, theme } = props;
+  const words = theme?.shown.theme?.words;
   return element("div", {
     class: "board-page",
     children: [
@@ -313,9 +319,10 @@ export function BoardPage(
         stale,
         phone: props.phone,
         queue: props.queue,
+        theme,
         now,
       }),
-      component(Queue, { model }),
+      component(Queue, { model, words }),
       down,
       model.schedules !== undefined && "status" in model.schedules
         ? element("p", { class: "meta", children: "Schedules: unavailable" })
@@ -333,6 +340,7 @@ export function BoardPage(
             (form) => form.workflowId === workflow.workflowId,
           ),
           cards: props.cards,
+          words,
         }),
       }),
     ],

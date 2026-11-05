@@ -25,3 +25,19 @@ await test("CLV-290 the README names each token, art slot and word key of the th
     [],
   );
 });
+
+await test("CLV-291 the README explains how the watch page applies the selected theme", () => {
+  for (const text of [
+    "`--color-state-running`",
+    "`--shape-cut`",
+    "`art-station`",
+    "`art-station-mask`",
+    "`--art-station`",
+    "`--art-station-repeat`",
+    "`--art-station-rendering`",
+    "theme menu",
+    "The page uses the default theme",
+  ])
+    assert.ok(section.includes(text), text);
+  assert.doesNotMatch(section, /does not apply a theme yet/);
+});
