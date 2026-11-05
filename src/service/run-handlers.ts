@@ -30,6 +30,7 @@ import {
   publicReceipt,
   rejection,
   result,
+  threadPoolField,
   wholeNumber,
   type ServiceContext,
 } from "./replies.ts";
@@ -260,6 +261,7 @@ async function listed(
     runs,
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
     worldReports: context.worldReports?.() ?? [],
+    ...threadPoolField(context),
   });
 }
 

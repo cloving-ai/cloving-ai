@@ -201,6 +201,18 @@ The private `notify-events.json` journal records a notification as `pending` bef
 
 Journal updates use a temporary file and rename. Sent and exhausted failed delivery details expire after seven days; their keys remain to prevent later duplicate delivery. Unfinished deliveries remain until resolved. A crash after command success but before recording that success can repeat delivery. Decisions opened and closed between checks can be missed.
 
+#### Stalls of the thread pool
+
+On macOS, a libuv defect can stop the thread pool of a long-running Node process (libuv issue 5280). Sockets and timers continue to work, but file reads never end. Cloving finds such a stall, logs it and recovers the watch page:
+
+- Each reply of the watch page has a deadline of 10 seconds. A reply that does not end before the deadline gets status 503, and the watch page logs `watch-reply-timeout path=<route> ms=<elapsed>`. For the read API, the 503 reply is `application/problem+json` with the code `timeout`. The event streams `/events` and `/api/v1/stream` stay open.
+- The watch page and the daemon check the thread pool at their start and then every 60 seconds. The check reads the status of `package.json` of the install with `fs.promises.stat`. When the check has no answer after 5 seconds, the process logs `threadpool-stalled ms=<elapsed> resources=<name>:<count>,...` with the counts of `process.getActiveResourcesInfo()`.
+- After a stall, the watch page stops with exit code 70. A normal exit waits for the stalled threads, so the watch page replaces its process with a new Node process that exits with code 70.
+- `cloving start` starts the watch page again when it stops while the daemon runs, and logs `watch-restart code=<exit code> delay=<wait>ms` for each restart. The first wait is 1 second. Each exit less than 60 seconds after the start doubles the wait. After 5 restarts in 10 minutes, the next exit stops the restarts with the line `watch-restart-stopped code=<exit code> reason=restart-limit restarts=5 window=600000ms`. A stop of the daemon also stops the watch page, and the watch page does not start again.
+- The daemon does not stop after a stall. `cloving status` shows `Thread pool: stalled;` with the time of the check, and `cloving status --json` has the latest check in `threadPool`. To recover the daemon, stop the service with Control-C and start it again.
+- `http://127.0.0.1:3663/health.json` gives `{ "threadPool": <latest check or null> }` from memory, with no file read.
+- The `thread-pool` check of `cloving doctor` asks the running daemon and the running watch page for their latest check. It fails when a check is stalled, and it warns when the watch page does not send a full answer in 5 seconds. The check is not required.
+
 #### Read API of the watch page
 
 The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1 document is at `http://127.0.0.1:3663/api/v1/openapi.json`. OpenAPI client generators can read the document and make a typed client. The API accepts only `GET` and needs no authentication. An error reply is `application/problem+json` with a `code` member, for example `not-found` or `invalid-query`.

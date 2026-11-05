@@ -100,6 +100,19 @@ const unknownRun = problem(404, {
   detail: "The service has no run with this ID.",
 });
 
+const timeout = problem(503, {
+  code: "timeout",
+  detail: "The watch page did not complete the reply before the deadline.",
+});
+
+function inApi(pathname: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+export function watchApiTimeout(pathname: string): ApiReply | null {
+  return inApi(pathname) ? timeout : null;
+}
+
 function apiIndex(): ApiReply {
   return found({
     version: 1,
@@ -337,7 +350,7 @@ export async function watchApiReply(
   request: ApiRequest,
 ): Promise<ApiAnswer | null> {
   const { pathname } = request.url;
-  if (pathname !== base && !pathname.startsWith(`${base}/`)) return null;
+  if (!inApi(pathname)) return null;
   if (request.method !== "GET")
     return {
       ...problem(405, {

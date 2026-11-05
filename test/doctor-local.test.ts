@@ -31,6 +31,7 @@ const codes = [
   "no-workflow",
   "runtime-directory",
   "service",
+  "thread-pool",
   "ticket-command",
   "next-command",
   "check-command",

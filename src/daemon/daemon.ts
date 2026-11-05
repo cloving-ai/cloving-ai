@@ -45,6 +45,8 @@ import {
 import { turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
+import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
+import { stalledLine } from "../thread-pool-check.ts";
 import {
   daemonRegistrations,
   queueWorkflowId,
@@ -150,10 +152,17 @@ function controlConnections(settings: DaemonSettings): {
   readonly schedules: ReturnType<typeof scheduleConnection>;
   readonly queues: ReturnType<typeof queueConnection>;
   readonly current: CurrentBundle;
+  readonly pool: ThreadPoolWatch;
 } {
   return {
     schedules: scheduleConnection(),
     queues: queueConnection(),
+    pool: threadPoolWatch({
+      ...settings.threadPool,
+      stalled: (check) => {
+        process.stderr.write(stalledLine(check));
+      },
+    }),
     current: currentBundle({
       directory: settings.directory,
       bundleDigest: settings.bundleDigest,
@@ -234,8 +243,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const controls = controlConnections(settings);
   const opening = await startService({
     version: clovingVersion,
-    schedule: controls.schedules.request,
-    queue: controls.queues.port,
+    ...controlPorts(controls),
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
@@ -257,7 +265,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     },
   });
   if (opening.kind === "refused") {
-    await closeWorkers(resources);
+    await closeWorkers({ ...resources, pool: controls.pool });
     return opening;
   }
   const running = { ...resources, ...controls, service: opening.service };
@@ -268,7 +276,17 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   };
 }
 
-type Workers = Pick<Adapters, "worker" | "github" | "commands">;
+type Workers = Pick<Adapters, "worker" | "github" | "commands"> & {
+  readonly pool: ThreadPoolWatch;
+};
+
+function controlPorts(controls: ReturnType<typeof controlConnections>) {
+  return {
+    schedule: controls.schedules.request,
+    queue: controls.queues.port,
+    threadPool: controls.pool.latest,
+  };
+}
 
 async function recoverWorkers(
   resources: Workers & { readonly service: Service },
@@ -288,6 +306,7 @@ async function recoverWorkers(
 }
 
 async function closeWorkers(resources: Workers): Promise<void> {
+  resources.pool.stop();
   await Promise.all([
     resources.worker.close(),
     resources.github.close(),

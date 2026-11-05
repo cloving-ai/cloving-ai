@@ -12,6 +12,7 @@ export const doctorCodes = [
   "no-workflow",
   "runtime-directory",
   "service",
+  "thread-pool",
   "ticket-command",
   "next-command",
   "check-command",
@@ -51,6 +52,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "runtime-directory":
     'Select a private writable runtime: CLOVING_RUNTIME_DIR="$HOME/.local/state/cloving/doctor/run" cloving doctor',
   service: "Start the service: cloving start",
+  "thread-pool":
+    "Stop the service with Control-C, then start it again: cloving start",
   "ticket-command":
     "Set tickets.command to an executable list: ${EDITOR:-vi} .cloving/config.json",
   "next-command":

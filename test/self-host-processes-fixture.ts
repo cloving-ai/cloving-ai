@@ -15,6 +15,21 @@ interface ProgramOptions {
   readonly readyPrograms?: readonly string[];
   readonly stuckPrograms?: readonly string[];
   readonly announcedMilliseconds?: number | "never";
+  readonly watchExits?: readonly WatchExit[];
+}
+
+export interface WatchExit {
+  readonly code: number;
+  readonly milliseconds: number;
+}
+
+function watchExit(root: string, options: ProgramOptions): string {
+  if (options.watchExits === undefined) return "";
+  return `appendFileSync(${JSON.stringify(join(root, "watch-starts"))}, process.pid + "\\n");
+const start = readFileSync(${JSON.stringify(join(root, "watch-starts"))}, "utf8").trim().split("\\n").length;
+writeFileSync(${JSON.stringify(root)} + "/watch-" + start + "-ready", String(process.pid));
+const exit = ${JSON.stringify(options.watchExits)}[start - 1];
+if (exit !== undefined) setTimeout(() => process.exit(exit.code), exit.milliseconds);`;
 }
 
 function watchStartup(root: string, options: ProgramOptions): string {
@@ -40,13 +55,14 @@ export async function programs(
   await mkdir(join(product, "src"), { recursive: true });
   await mkdir(project);
   const program = (name: string): string => `
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 const parent = process.ppid;
 if (parent === 1) process.exit(0);
 writeFileSync(${JSON.stringify(join(root, `${name}-started`))}, String(process.pid));
 setInterval(() => {
   if (process.ppid !== parent) process.exit(0);
 }, 200).unref();
+${name === "watch" ? watchExit(root, options) : ""}
 ${name === "watch" ? watchStartup(root, options) : ""}
 ${
   name === "daemon"

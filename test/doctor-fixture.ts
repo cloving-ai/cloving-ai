@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import net from "node:net";
 import { promisify } from "node:util";
+import { replyLine } from "../src/protocol.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
@@ -176,4 +178,48 @@ export async function savedHarness(
 
 export async function githubReads(scene: DoctorScene) {
   return readFile(join(scene.root, "github-reads"), "utf8");
+}
+
+export async function withServiceSocket(
+  options: {
+    readonly scene: DoctorScene;
+    readonly answer: "silent" | Readonly<Record<string, unknown>>;
+  },
+  use: (path: string) => Promise<void>,
+) {
+  const { scene, answer } = options;
+  const path = join(scene.root, "long".repeat(30), "run");
+  const project = join(dirname(path), "project");
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  await mkdir(project);
+  const prior = process.cwd();
+  const sockets = new Set<net.Socket>();
+  const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    if (answer !== "silent")
+      socket.once("data", () =>
+        socket.end(replyLine({ kind: "result", result: answer })),
+      );
+  });
+  try {
+    process.chdir(project);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen("../run/control.sock", resolve);
+    });
+  } finally {
+    process.chdir(prior);
+  }
+  try {
+    await use(path);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      }),
+    );
+  }
 }

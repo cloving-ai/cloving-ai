@@ -17,6 +17,7 @@ import type { ProbeRunner } from "./probe-command.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
+import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandObservation,
   mergeModeObservation,
@@ -116,9 +117,10 @@ async function repositoryObservations(
     : { result: "skip", detail: "Settings files are invalid" };
   const location = await runtimeObservation(repository, { environment, probe });
   observations["runtime-directory"] = location.observation;
-  observations["service"] = await serviceObservation(location, {
+  const service = await serviceObservation(location, { environment, probe });
+  observations["service"] = service.observation;
+  observations["thread-pool"] = await threadPoolObservation(service.status, {
     environment,
-    probe,
   });
   observations["retention"] =
     location.runtime === undefined || location.observation.result !== "ok"

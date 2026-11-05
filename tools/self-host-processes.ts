@@ -23,7 +23,22 @@ export interface HostProcesses {
   readonly phoneRelay: string;
   readonly updateMilliseconds: number | undefined;
   readonly stopMilliseconds?: number;
+  readonly watchRestart?: WatchRestartPolicy;
 }
+
+export interface WatchRestartPolicy {
+  readonly delayMilliseconds: number;
+  readonly fastMilliseconds: number;
+  readonly limit: number;
+  readonly windowMilliseconds: number;
+}
+
+const watchRestartPolicy: WatchRestartPolicy = {
+  delayMilliseconds: 1000,
+  fastMilliseconds: 60_000,
+  limit: 5,
+  windowMilliseconds: 600_000,
+};
 
 interface Program {
   readonly name: string;
@@ -209,13 +224,48 @@ function daemonStart(daemon: Program): Promise<"started" | "ended"> {
   });
 }
 
-function watchAfterStart(
+interface WatchRestarts {
+  readonly policy: WatchRestartPolicy;
+  readonly restartedAt: number[];
+  fastExits: number;
+}
+
+function restartDelay(
+  restarts: WatchRestarts,
+  exit: { readonly code: number; readonly lifetime: number },
+): number | undefined {
+  const { policy, restartedAt } = restarts;
+  const now = performance.now();
+  const recent = restartedAt.filter(
+    (time) => now - time < policy.windowMilliseconds,
+  );
+  restartedAt.splice(0, restartedAt.length, ...recent);
+  if (recent.length >= policy.limit) {
+    process.stderr.write(
+      `watch-restart-stopped code=${String(exit.code)} reason=restart-limit restarts=${String(policy.limit)} window=${String(policy.windowMilliseconds)}ms\n`,
+    );
+    return undefined;
+  }
+  restarts.fastExits =
+    exit.lifetime < policy.fastMilliseconds ? restarts.fastExits + 1 : 0;
+  return policy.delayMilliseconds * 2 ** Math.max(restarts.fastExits - 1, 0);
+}
+
+async function watchRuns(
   settings: HostProcesses,
-  hosting: Hosted & { readonly stopped: () => boolean },
+  hosting: Hosted & {
+    readonly stopped: () => boolean;
+    readonly stopping: AbortSignal;
+  },
 ): Promise<void> {
-  if (settings.watchPort === "off") return Promise.resolve();
-  return daemonStart(hosting.daemon).then((start) => {
-    if (start === "ended" || hosting.stopped()) return;
+  const restarts: WatchRestarts = {
+    policy: settings.watchRestart ?? watchRestartPolicy,
+    restartedAt: [],
+    fastExits: 0,
+  };
+  for (;;) {
+    if (hosting.stopped()) return;
+    const startedAt = performance.now();
     const watch = productChild(settings, [
       "cli",
       "watch",
@@ -223,7 +273,40 @@ function watchAfterStart(
       settings.watchPort,
     ]);
     hosting.programs.splice(1, 0, watch);
-  });
+    const code = await watch.ended;
+    hosting.programs.splice(hosting.programs.indexOf(watch), 1);
+    if (hosting.stopped()) return;
+    const wait = restartDelay(restarts, {
+      code,
+      lifetime: performance.now() - startedAt,
+    });
+    if (wait === undefined) return;
+    if (!(await waited(wait, hosting.stopping))) return;
+    restarts.restartedAt.push(performance.now());
+    process.stderr.write(
+      `watch-restart code=${String(code)} delay=${String(wait)}ms\n`,
+    );
+  }
+}
+
+async function waited(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  return delay(milliseconds, true, { signal }).catch(() => false);
+}
+
+async function watchAfterStart(
+  settings: HostProcesses,
+  hosting: Hosted & {
+    readonly stopped: () => boolean;
+    readonly stopping: AbortSignal;
+  },
+): Promise<void> {
+  if (settings.watchPort === "off") return;
+  const start = await daemonStart(hosting.daemon);
+  if (start === "ended") return;
+  await watchRuns(settings, hosting);
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
@@ -234,7 +317,8 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   const watching = watchAfterStart(settings, {
     daemon,
     programs,
-    stopped: () => shutdown !== undefined,
+    stopping: stopping.signal,
+    stopped: () => shutdown !== undefined || stopping.signal.aborted,
   });
   const stop = (): Promise<void> =>
     (shutdown ??= stopped(programs, settings.stopMilliseconds ?? 60000));
@@ -269,8 +353,8 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     return updateStatus ?? status;
   } finally {
     stopping.abort();
-    await watching;
     await stop();
+    await watching;
     await polling;
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", terminate);
