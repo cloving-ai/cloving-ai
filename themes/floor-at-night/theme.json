@@ -133,8 +133,8 @@
       "attention": {
         "$value": {
           "colorSpace": "srgb",
-          "components": [0.29, 0.608, 0.918],
-          "hex": "#4A9BEA"
+          "components": [0.094, 0.463, 0.824],
+          "hex": "#1876D2"
         }
       },
       "completed": {

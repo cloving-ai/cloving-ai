@@ -129,6 +129,40 @@ await test("CLV-292 each text token has a contrast of at least 4.5:1 on each pan
   assert.deepEqual(low, []);
 });
 
+await test("CLV-292 the white answer text has a contrast of at least 4.5:1 on the attention color in each theme", () => {
+  const low = themes
+    .map((theme) => {
+      const attention = luminance(
+        channels(themeDocument(theme.name), "color.state.attention"),
+      );
+      return {
+        theme: theme.name,
+        ratio: Math.round((1.05 / (attention + 0.05)) * 100) / 100,
+      };
+    })
+    .filter((pair) => pair.ratio < 4.5);
+  assert.deepEqual(low, []);
+});
+
+await test("CLV-292 the needs-you count in the attention color has a contrast of at least 3:1 on the page in each theme", () => {
+  const low = themes
+    .map((theme) => {
+      const document = themeDocument(theme.name);
+      return {
+        theme: theme.name,
+        ratio:
+          Math.round(
+            contrast(document, {
+              text: "color.state.attention",
+              panel: "color.page",
+            }) * 100,
+          ) / 100,
+      };
+    })
+    .filter((pair) => pair.ratio < 3);
+  assert.deepEqual(low, []);
+});
+
 await test("CLV-292 the hex value of each color agrees with its components", () => {
   for (const theme of themes) {
     const document = themeDocument(theme.name);
