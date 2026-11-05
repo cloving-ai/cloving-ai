@@ -94,6 +94,7 @@ export function boardRun(
     readonly state?: string;
     readonly latestAt?: string | null;
     readonly outcome?: string;
+    readonly ticketStatus?: string;
     readonly ticketId?: unknown;
     readonly issueIdentity?: unknown;
     readonly events?: readonly unknown[];
@@ -108,7 +109,15 @@ export function boardRun(
       ticketId: options.ticketId,
       issueIdentity: options.issueIdentity,
       latestAt: options.latestAt ?? boardTime,
-      outcome: options.outcome === undefined ? null : { kind: options.outcome },
+      outcome:
+        options.outcome === undefined
+          ? null
+          : {
+              kind: options.outcome,
+              ...(options.ticketStatus === undefined
+                ? {}
+                : { ticketStatus: options.ticketStatus }),
+            },
       claudeCostUsd: 1.25,
     },
     events: options.events ?? [],

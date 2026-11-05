@@ -145,9 +145,15 @@ const { project: oldProject, ...builtins } = originalSettings.manifests;
 const manifests = Object.fromEntries(Object.keys(removed ? builtins : originalSettings.manifests).map(name => [name, directory + "/current-project/develop.workflow.json"]));
 const loaded = [];
 const replays = [];
-const daemon = await launched({ ...originalSettings, bundleDigest: currentDigest, manifests, declarations: removed ? [] : [projectDeclaration], workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop, ...(removed ? {} : { project: currentClient.develop }) }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); const bundle = await loadWorkflowBundle(directory); return { ...bundle, handler: async (request) => { const receipt = (await request.clone().json()).runId; const response = await bundle.handler(request); replays.push({ receipt, status: response.status }); return response; } }; } });
+const sweep = process.env.RETENTION === undefined ? {} : { retention: { days: 30, action: process.env.RETENTION, archiveFolder: null }, retentionClock: () => Date.now() + 40 * 86400000 };
+cpSync("bundle-project", "free-project", { recursive: true });
+writeFileSync("free-project/declarations.json", "[ ]");
+const freeDigest = await retainWorkflowBundle({ project: directory + "/free-project", repository: directory, directory: directory + "/workflow-bundles" });
+const daemon = await launched({ ...originalSettings, ...sweep, bundleDigest: currentDigest, manifests, declarations: removed ? [] : [projectDeclaration], workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop, ...(removed ? {} : { project: currentClient.develop }) }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); const bundle = await loadWorkflowBundle(directory); return { ...bundle, handler: async (request) => { const receipt = (await request.clone().json()).runId; const response = await bundle.handler(request); replays.push({ receipt, status: response.status }); return response; } }; } });
 try {
   assert.deepEqual(loaded, [directory + "/workflow-bundles/" + bundleDigest]);
+  assert.equal(existsSync("workflow-bundles/" + freeDigest), process.env.RETENTION === undefined);
+  for (const kept of [bundleDigest, currentDigest]) assert.equal(existsSync("workflow-bundles/" + kept + "/bundle.json"), true);
   await until(async () => (await shown(runId)).state === "waiting_gate");
   assert.deepEqual((await shown(runId)).budget, { limit: 3, spent: 1 });
   const answer = { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId: "answer" };

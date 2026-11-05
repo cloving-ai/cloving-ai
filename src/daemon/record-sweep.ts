@@ -9,6 +9,7 @@ import {
   type RecordFiles,
 } from "./record-archive.ts";
 import {
+  batchAfter,
   folderRunId,
   retentionVerdict,
   sharedRecordFolders,
@@ -153,10 +154,11 @@ async function handled(
   }
 }
 
-async function nextBatch(sweep: Sweep): Promise<string[]> {
-  const found = await folders(sweep.settings.directory);
-  const rest = found.filter((path) => path > sweep.cursor);
-  const batch = (rest.length === 0 ? found : rest).slice(0, batchSize);
+async function nextBatch(sweep: Sweep): Promise<readonly string[]> {
+  const batch = batchAfter(await folders(sweep.settings.directory), {
+    cursor: sweep.cursor,
+    size: batchSize,
+  });
   sweep.cursor = batch.at(-1) ?? "";
   return batch;
 }
@@ -197,13 +199,20 @@ export function recordSweep(settings: SweepSettings): RecordSweep {
 }
 
 export async function recordRetention(
-  settings: SweepSettings & { readonly intervalMilliseconds?: number },
+  settings: SweepSettings & {
+    readonly intervalMilliseconds?: number;
+    readonly bundles?: RecordSweep;
+  },
 ): Promise<RetentionLoop> {
-  const sweep = recordSweep(settings);
-  await sweep.pass();
+  const records = recordSweep(settings);
+  const pass = async () => {
+    await records.pass();
+    await settings.bundles?.pass();
+  };
+  await pass();
   let running = Promise.resolve();
   const timer = setInterval(() => {
-    running = running.then(sweep.pass);
+    running = running.then(pass);
   }, settings.intervalMilliseconds ?? retentionIntervalMilliseconds);
   timer.unref();
   return {
