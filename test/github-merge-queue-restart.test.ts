@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
 import { resultOf, until } from "./claude-worker-fixture.ts";
 import {
+  groupRuns,
   queueCalls,
   queued,
   queueWorker,
@@ -90,4 +91,18 @@ await test("CLV-297 a restart after a stop in the enqueue call gives the pull re
     assert.equal(report.outcome, "completed", report.reason ?? "");
     assert.equal(resultOf(report.result)["merged"], "d".repeat(40));
     assert.deepEqual(queueCalls(scene, "dequeuePullRequest"), []);
+  }));
+
+await test("CLV-297 a pull request that leaves the queue while the daemon is stopped is reported as removed and not added to the queue again", () =>
+  withGithub(async (scene) => {
+    scene.plan({
+      scores: [],
+      replies: { "api GET workflow-runs": groupRuns([]) },
+    });
+    const commit = await stopped(scene, () => queued(scene));
+    settleQueue(scene, "removed");
+    const report = await resumed(scene, { commit, limit: 3_600_000 });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["reason"], "merge-queue-removed");
+    assert.equal(queueCalls(scene, "enqueuePullRequest").length, 1);
   }));

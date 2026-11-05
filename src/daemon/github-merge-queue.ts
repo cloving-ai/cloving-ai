@@ -19,12 +19,15 @@ import {
   type Operation,
 } from "./github-operation.ts";
 import { githubRead, retryGithub } from "./github-retry.ts";
+import { readRecord, writeRecord } from "./operation-journal.ts";
 import { inMergeTurn } from "./merge-turns.ts";
 
 const stateQuery =
   "query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeCommit { oid } mergeQueueEntry { state position enqueuedAt } } } }";
 const enqueueMutation =
   "mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $head }) { mergeQueueEntry { state position enqueuedAt } } }";
+const queueRecord = "merge-queue.json";
+const groupPageLimit = 10;
 const dequeueMutation =
   "mutation($id: ID!) { dequeuePullRequest(input: { id: $id }) { mergeQueueEntry { state } } }";
 
@@ -156,7 +159,22 @@ async function queuedOf(
       pull: view.target.pull,
       state: view.state,
     });
-  return { ...view.target, started: view.state.entry.enqueuedAt };
+  const started = view.state.entry.enqueuedAt;
+  await writeRecord(operation.folder, {
+    name: queueRecord,
+    value: { commit: view.target.pull.commit, enqueuedAt: started },
+  });
+  return { ...view.target, started };
+}
+
+async function endedAttempt(
+  operation: Operation,
+  target: Target,
+): Promise<Queued | undefined> {
+  const record = await readRecord(operation.folder, queueRecord);
+  const started = field(record, "enqueuedAt");
+  if (field(record, "commit") !== target.pull.commit) return undefined;
+  return typeof started === "number" ? { ...target, started } : undefined;
 }
 
 async function queueEntry(
@@ -170,6 +188,8 @@ async function queueEntry(
   const target = { pull, id: known.node };
   const state = await queueState(operation, target.id);
   if (state.kind !== "left") return queuedOf(operation, { target, state });
+  const ended = await endedAttempt(operation, target);
+  if (ended !== undefined) return ended;
   await checkedLocally(operation, pull);
   const ci = await waitForCi(operation, pull.commit);
   if (ci !== undefined) return ci;
@@ -179,26 +199,43 @@ async function queueEntry(
   });
 }
 
+async function groupPage(
+  operation: Operation,
+  page: number,
+): Promise<readonly unknown[]> {
+  const reply: unknown = JSON.parse(
+    await githubRead(operation, [
+      "api",
+      `${repositoryPath}/actions/runs?event=merge_group&per_page=100&page=${String(page)}`,
+    ]),
+  );
+  return list(field(reply, "workflow_runs"));
+}
+
+function createdAt(run: unknown): number {
+  return Date.parse(String(field(run, "created_at")));
+}
+
 async function groupHead(
   operation: Operation,
   wait: { readonly number: number; readonly started: number },
 ): Promise<string | undefined> {
-  const reply: unknown = JSON.parse(
-    await githubRead(operation, [
-      "api",
-      `${repositoryPath}/actions/runs?event=merge_group&per_page=100`,
-    ]),
-  );
   const branch = new RegExp(
     `^gh-readonly-queue/.+/pr-${String(wait.number)}-[0-9a-f]+$`,
   );
-  const run = list(field(reply, "workflow_runs")).find(
-    (item) =>
-      branch.test(String(field(item, "head_branch"))) &&
-      Date.parse(String(field(item, "created_at"))) >= wait.started,
-  );
-  const head = field(run, "head_sha");
-  return typeof head === "string" ? head : undefined;
+  for (let page = 1; page <= groupPageLimit; page += 1) {
+    const runs = await groupPage(operation, page);
+    const run = runs.find(
+      (item) =>
+        branch.test(String(field(item, "head_branch"))) &&
+        createdAt(item) >= wait.started,
+    );
+    const head = field(run, "head_sha");
+    if (typeof head === "string") return head;
+    const oldest = runs.at(-1);
+    if (runs.length < 100 || createdAt(oldest) < wait.started) return undefined;
+  }
+  return undefined;
 }
 
 async function removal(

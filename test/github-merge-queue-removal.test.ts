@@ -61,6 +61,38 @@ await test("CLV-297 a pull request that leaves the queue after a failed merge gr
     );
   }));
 
+await test("CLV-297 a failed merge group run on a later page of runs still gives ci-failed", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene);
+    const commit = await opened(scene, worker);
+    const others = Array.from({ length: 100 }, (_, index) => ({
+      id: 200 + index,
+      branch: `gh-readonly-queue/main/pr-${String(300 + index)}-abc`,
+    }));
+    scene.plan({
+      scores: [],
+      sequences: {
+        "api GET workflow-runs": [
+          groupRuns(others),
+          groupRuns([{ id: 77, branch: "gh-readonly-queue/main/pr-1-def" }]),
+        ],
+        "api GET check-runs": [checkRuns("success"), checkRuns("failure")],
+      },
+    });
+    settleQueue(scene, "removed");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["reason"], "ci-failed");
+    assert.ok(
+      scene
+        .state()
+        .calls.some((call) => call.some((part) => part.includes("page=2"))),
+    );
+  }));
+
 await test("CLV-297 a pull request that leaves the queue with no merge group run of this queue wait gives merge-queue-removed", () =>
   withGithub(async (scene) => {
     const worker = queueWorker(scene);
