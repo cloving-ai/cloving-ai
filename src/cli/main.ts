@@ -1,4 +1,6 @@
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import type { WatchThemeSettings } from "./watch-themes.ts";
+import { themeFolders } from "./theme-folders.ts";
 import { initPromptCommand } from "./init-prompt-command.ts";
 import type { HarnessStartRequest } from "../harness-start.ts";
 import { initCommand } from "./init-command.ts";
@@ -86,7 +88,7 @@ export async function main(
   } else {
     process.exitCode = await runtimeCommand(invocation, {
       runtimeDirectory: runtimeDirectory(process.env, repository),
-      ...watchSettings(context.watchPr, environment),
+      ...watchSettings({ watchPr: context.watchPr, environment, repository }),
       client: clientCommand(process.env, repository),
       workingDirectory: process.cwd(),
       terminal,
@@ -155,17 +157,27 @@ const terminal = {
   error: (text: string) => process.stderr.write(text),
 };
 
-function watchSettings(
-  watchPr: WatchPrSettings | undefined,
-  environment: Readonly<NodeJS.ProcessEnv>,
-): {
+function watchSettings(input: {
+  readonly watchPr: WatchPrSettings | undefined;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly repository: string | undefined;
+}): {
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
+  readonly watchThemes: WatchThemeSettings;
 } {
+  const { watchPr, environment } = input;
   const watchActions = environment["CLOVING_WATCH_ACTIONS"];
   return {
     ...(watchActions === undefined ? {} : { watchActions }),
     ...(watchPr === undefined ? {} : { watchPr }),
+    watchThemes: {
+      setting: environment["CLOVING_WATCH_THEME"] ?? "auto",
+      folders: themeFolders({
+        repository: input.repository ?? process.cwd(),
+        environment,
+      }),
+    },
   };
 }
 

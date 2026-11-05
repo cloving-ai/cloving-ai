@@ -35,6 +35,18 @@ import {
   totalsSuffix,
 } from "./usage-render.ts";
 import { watchStyle } from "./watch-page-style.ts";
+import { artStyle } from "./watch-art-style.ts";
+import type { WatchThemes } from "./watch-themes.ts";
+import {
+  countText,
+  labelWord,
+  shownTheme,
+  themeName,
+  themeReason,
+  ThemeMenu,
+  ThemeNotice,
+  wordText,
+} from "./watch-theme-view.ts";
 import {
   Floor,
   Legend,
@@ -77,6 +89,7 @@ import {
   CardReview,
   cardReview,
   cardStep,
+  cardTotals,
   completionMark,
   observationText,
   staleObservation,
@@ -148,6 +161,14 @@ const functions = [
   waitDisplay.CommandWaits,
   waitDisplay.commandWaitText,
   waitDisplay.effectBudgetText,
+  themeName,
+  themeReason,
+  shownTheme,
+  wordText,
+  countText,
+  labelWord,
+  ThemeMenu,
+  ThemeNotice,
   queueLanes,
   skippedText,
   Queue,
@@ -176,6 +197,7 @@ const functions = [
   watchTitle,
   cardReview,
   cardStep,
+  cardTotals,
   completionMark,
   observationText,
   staleObservation,
@@ -254,12 +276,27 @@ const functions = [
   Page,
 ];
 
-export function pageDocument(actionToken: string | null = null): string {
+const noThemes: WatchThemes = {
+  setting: "auto",
+  style: "",
+  themes: [],
+  failure: null,
+};
+
+function scriptData(value: unknown): string {
+  return JSON.stringify(value).replaceAll("<", "\\u003c");
+}
+
+export function pageDocument(
+  actionToken: string | null = null,
+  themes: WatchThemes = noThemes,
+): string {
   const icon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${clove.viewBox}">${clove.paths.map((d) => `<path fill="#0BBF64" d="${d}"/>`).join("")}</svg>`;
   const script = [
     'import { h as element, h as component, render } from "./preact.mjs";',
     `const clove = ${JSON.stringify(clove)};`,
     `const actionToken = ${JSON.stringify(actionToken)};`,
+    `const themes = ${scriptData(themes)};`,
     ...functions.map((item) => item.toString()),
     watchCardClient,
     watchPhoneClient,
@@ -269,7 +306,7 @@ export function pageDocument(actionToken: string | null = null): string {
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title>',
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
-    `<style>${watchStyle}</style></head><body>`,
+    `<style>${watchStyle}${artStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,
     "",

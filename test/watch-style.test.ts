@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  colorTokens,
   contrast,
   css,
   over,
@@ -26,7 +27,7 @@ await test("the version label of the watch page stays at the bottom left", () =>
   assert.match(rule(".version"), /position: fixed/);
   assert.match(rule(".version"), /left: 12px/);
   assert.match(rule(".version"), /bottom: 8px/);
-  assert.match(rule(".version"), /color: var\(--muted\)/);
+  assert.match(rule(".version"), /color: var\(--color-muted\)/);
   assert.match(rule(".version"), /pointer-events: none/);
 });
 
@@ -62,68 +63,66 @@ await test("CLV-134 custom scrollbar sizing wins over native styling while theme
   );
   assert.match(
     rule(".columns"),
-    /scrollbar-color: var\(--muted\) var\(--surface-2\)/,
+    /scrollbar-color: var\(--color-muted\) var\(--color-panel\)/,
   );
   assert.match(
     rule(".columns::-webkit-scrollbar-track"),
-    /background: var\(--surface-2\)/,
+    /background: var\(--color-panel\)/,
   );
   assert.match(
     rule(".columns::-webkit-scrollbar-thumb"),
-    /background: var\(--muted\)/,
+    /background: var\(--color-muted\)/,
   );
 });
 
-await test("CLV-098 every palette token belongs to default, system and explicit theme rules", () => {
-  const system = ':root:not([data-theme="light"]):not([data-theme="dark"])';
-  for (const [theme, tokens] of Object.entries(palette)) {
-    const selectors = [
-      theme === "light" ? ":root" : system,
-      `:root[data-theme="${theme}"]`,
-    ];
+await test("CLV-098 every color token belongs to the default, system and explicit dark rules", () => {
+  const system = ':root:not([data-scheme="light"])';
+  for (const [scheme, tokens] of Object.entries(colorTokens)) {
+    const selectors =
+      scheme === "light" ? [":root"] : [system, ':root[data-scheme="dark"]'];
     for (const selector of selectors) {
       const declarations = rule(selector).replaceAll(/\s/g, "").toLowerCase();
-      assert.ok(declarations.includes(`color-scheme:${theme};`));
+      assert.ok(declarations.includes(`color-scheme:${scheme};`));
       for (const [token, value] of Object.entries(tokens))
         assert.ok(
-          declarations.includes(
-            `--${token}:${value.replaceAll(/\s/g, "").toLowerCase()};`,
-          ),
+          declarations.includes(`--${token}:${value.toLowerCase()};`),
           `${selector} ${token}`,
         );
     }
   }
   assert.ok(
     css.indexOf("@media (prefers-color-scheme: dark)") <
-      css.indexOf(':root[data-theme="light"]'),
-  );
-  assert.ok(
-    css.indexOf(':root[data-theme="light"]') <
-      css.indexOf(':root[data-theme="dark"]'),
+      css.indexOf(':root[data-scheme="dark"]'),
   );
 });
 
 await test("CLV-098 font stacks retain system fallbacks, including activity messages", () => {
-  assert.match(css, /--heading-font: "Heebo",[^;]*sans-serif;/);
-  assert.match(css, /--body-font: "Space Grotesk",[^;]*sans-serif;/);
-  assert.match(css, /--code-font: "Fira Code",[^;]*monospace;/);
-  assert.match(rule(".brand"), /font: 800 [^;]*var\(--heading-font\)/);
+  assert.match(css, /--font-heading: "Heebo",[^;]*sans-serif;/);
+  assert.match(css, /--font-ui: "Space Grotesk",[^;]*sans-serif;/);
+  assert.match(css, /--font-code: "Fira Code",[^;]*monospace;/);
+  assert.match(rule(".brand"), /font: 800 [^;]*"Heebo", system-ui, sans-serif/);
   for (const selector of [".item.say", ".item.result"])
-    assert.match(rule(selector), /var\(--body-font\)/);
+    assert.match(rule(selector), /var\(--font-ui\)/);
 });
 
 await test("CLV-098 board surfaces, state cues, focus and narrow command wrapping use the design tokens", () => {
   for (const selector of [".column", ".card"]) {
     const declarations = rule(selector);
-    assert.match(declarations, /border-radius: 14px/);
-    assert.match(declarations, /inset 0 0 0 1px var\(--line\)/);
-    assert.match(declarations, /background: var\(--surface/);
+    assert.match(declarations, /border-radius: var\(--shape-radius\)/);
+    assert.match(
+      declarations,
+      /inset 0 0 0 var\(--shape-border\) var\(--color-line\)/,
+    );
+    assert.match(declarations, /background: var\(--color-(surface|panel)\)/);
   }
-  assert.match(rule(".card-step.active"), /color: var\(--accent-strong\)/);
+  assert.match(
+    rule(".card-step.active"),
+    /color: var\(--color-accent-strong\)/,
+  );
   assert.match(rule(".decision-mark"), /background: [^;]*var\(--warn-tint\)/);
   assert.match(rule(".column.stopped"), /var\(--bad-tint\)/);
   assert.match(rule(".stopped .card"), /var\(--bad-tint\)/);
-  assert.match(rule(".stopped .column-name"), /color: var\(--bad\)/);
+  assert.match(rule(".stopped .column-name"), /color: var\(--color-bad\)/);
   assert.match(rule(".columns"), /overflow-x: scroll/);
   assert.match(rule(".command code"), /overflow-wrap: anywhere/);
   assert.match(rule(".command code"), /white-space: pre-wrap/);
@@ -131,40 +130,47 @@ await test("CLV-098 board surfaces, state cues, focus and narrow command wrappin
     rule(
       "a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible",
     ),
-    /outline: 3px solid var\(--accent\)/,
+    /outline: 3px solid var\(--color-accent\)/,
   );
   assert.match(
     rule(
       "a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible",
     ),
-    /0 0 0 6px var\(--code-bg\)/,
+    /0 0 0 6px var\(--color-code-background\)/,
   );
 });
 
 await test("CLV-098 phases are stations and activity, events and commands have always-dark windows and filled controls", () => {
-  assert.match(rule(".phases"), /background: var\(--surface\)/);
+  assert.match(rule(".phases"), /background: var\(--color-surface\)/);
   assert.match(rule(".phase .mark"), /border-radius: 50%/);
-  assert.match(rule(".code-window"), /background: var\(--code-bg\)/);
-  assert.match(rule(".code-head"), /background: var\(--code-head\)/);
+  assert.match(
+    rule(".code-window"),
+    /background: var\(--color-code-background\)/,
+  );
+  assert.match(rule(".code-head"), /background: var\(--color-code-header\)/);
   assert.match(
     rule(".code-window .bad, .code-window .item.error"),
     /color: #FF7B72/,
   );
-  assert.match(rule("button"), /background: var\(--code-line\)/);
-  assert.match(rule("button"), /color: var\(--code-fg\)/);
+  assert.match(rule("button"), /background: var\(--color-code-line\)/);
+  assert.match(rule("button"), /color: var\(--color-code-text\)/);
 });
 
 await test("CLV-098 text and focus colors meet contrast in both themes, with composited tints", () => {
   assert.equal(contrast(rgb("#000000"), rgb("#FFFFFF")), 21);
   assert.equal(contrast(rgb("#123456"), rgb("#123456")), 1);
   for (const tokens of Object.values(palette)) {
-    for (const background of [tokens.bg, tokens.surface, tokens["surface-2"]]) {
+    for (const background of [
+      tokens["color-page"],
+      tokens["color-surface"],
+      tokens["color-panel"],
+    ]) {
       for (const text of [
-        tokens.ink,
-        tokens.muted,
-        tokens["accent-strong"],
-        tokens.bad,
-        tokens.warn,
+        tokens["color-ink"],
+        tokens["color-muted"],
+        tokens["color-accent-strong"],
+        tokens["color-bad"],
+        tokens["color-warn"],
       ])
         assert.ok(
           contrast(rgb(text), rgb(background)) >= 4.5,
@@ -172,14 +178,18 @@ await test("CLV-098 text and focus colors meet contrast in both themes, with com
         );
     }
     for (const tint of ["accent-tint", "bad-tint"] as const) {
-      const background = over(tokens[tint], rgb(tokens.surface));
-      for (const text of [tokens.ink, tokens.muted, tokens["accent-strong"]])
+      const background = over(tokens[tint], rgb(tokens["color-surface"]));
+      for (const text of [
+        tokens["color-ink"],
+        tokens["color-muted"],
+        tokens["color-accent-strong"],
+      ])
         assert.ok(contrast(rgb(text), background) >= 4.5, `${text} on ${tint}`);
     }
     assert.ok(
       contrast(
-        rgb(tokens.warn),
-        over(tokens["warn-tint"], rgb(tokens.surface)),
+        rgb(tokens["color-warn"]),
+        over(tokens["warn-tint"], rgb(tokens["color-surface"])),
       ) >= 4.5,
     );
   }
@@ -187,19 +197,27 @@ await test("CLV-098 text and focus colors meet contrast in both themes, with com
 
 await test("CLV-098 dark code text and separated accent focus outlines meet contrast in either theme", () => {
   for (const tokens of Object.values(palette)) {
-    for (const background of [tokens["code-bg"], tokens["code-head"]]) {
+    for (const background of [
+      tokens["color-code-background"],
+      tokens["color-code-header"],
+    ]) {
       for (const text of [
-        tokens["code-fg"],
-        tokens["code-muted"],
+        tokens["color-code-text"],
+        tokens["color-code-muted"],
         "#FF7B72",
-        tokens.accent,
+        tokens["color-accent"],
       ])
         assert.ok(
           contrast(rgb(text), rgb(background)) >= 4.5,
           `${text} on ${background}`,
         );
     }
-    assert.ok(contrast(rgb(tokens.accent), rgb(tokens["code-bg"])) >= 3);
+    assert.ok(
+      contrast(
+        rgb(tokens["color-accent"]),
+        rgb(tokens["color-code-background"]),
+      ) >= 3,
+    );
   }
 });
 
@@ -213,7 +231,7 @@ await test("CLV-098 warning tags remain readable over a Stopped card's red tint"
   ];
   for (const tokens of Object.values(palette)) {
     const colors: Readonly<Record<string, string>> = tokens;
-    const stopped = over(tokens["bad-tint"], rgb(tokens.surface));
+    const stopped = over(tokens["bad-tint"], rgb(tokens["color-surface"]));
     const tag = layers.toReversed().reduce((base, token) => {
       assert.ok(token);
       const color = colors[token];
@@ -221,8 +239,8 @@ await test("CLV-098 warning tags remain readable over a Stopped card's red tint"
       return over(color, base);
     }, stopped);
     assert.ok(
-      contrast(rgb(tokens.warn), tag) >= 4.5,
-      `${tokens.warn} over stopped warning tag`,
+      contrast(rgb(tokens["color-warn"]), tag) >= 4.5,
+      `${tokens["color-warn"]} over stopped warning tag`,
     );
   }
 });
@@ -232,36 +250,42 @@ await test("CLV-098 run tones retain green, warning, red and neutral cues and re
     ".working .icon, .phase.active .mark, .banner.working h2",
     ".good .icon, .phase.done .mark, p.good",
   ])
-    assert.match(rule(selector), /color: var\(--accent-strong\)/);
-  assert.match(rule(".attention .icon"), /color: var\(--warn\)/);
+    assert.match(rule(selector), /color: var\(--color-accent-strong\)/);
+  assert.match(rule(".attention .icon"), /color: var\(--color-warn\)/);
   assert.match(
     rule(".bad .icon, .phase.failed .mark, .bad, .down"),
-    /color: var\(--bad\)/,
+    /color: var\(--color-bad\)/,
   );
-  assert.match(rule(".icon"), /color: var\(--muted\)/);
-  assert.match(rule(".banner"), /border-left: 6px solid var\(--muted\)/);
-  assert.match(rule(".code-window"), /color: var\(--code-fg\)/);
+  assert.match(rule(".icon"), /color: var\(--color-muted\)/);
+  assert.match(rule(".banner"), /border-left: 6px solid var\(--color-muted\)/);
+  assert.match(rule(".code-window"), /color: var\(--color-code-text\)/);
   assert.match(
     rule(".code-window summary, .code-window .event, .code-window .item.tool"),
-    /color: var\(--code-muted\)/,
+    /color: var\(--color-code-muted\)/,
   );
-  assert.match(rule(".code-window .item.result"), /color: var\(--accent\)/);
-  assert.match(rule("button"), /color: var\(--code-fg\)/);
+  assert.match(
+    rule(".code-window .item.result"),
+    /color: var\(--color-accent\)/,
+  );
+  assert.match(rule("button"), /color: var\(--color-code-text\)/);
 });
 
 await test("CLV-135 add-card controls use readable theme colors and fields fit narrow columns", () => {
-  assert.match(rule(".add-card, .add-card-form button"), /color: var\(--ink\)/);
+  assert.match(
+    rule(".add-card, .add-card-form button"),
+    /color: var\(--color-ink\)/,
+  );
   assert.match(
     rule(".add-card-form input, .add-card-form textarea"),
     /width: 100%/,
   );
   assert.match(
     rule(".add-card-form input, .add-card-form textarea"),
-    /color: var\(--ink\)/,
+    /color: var\(--color-ink\)/,
   );
   assert.match(
     rule(".add-card-form input, .add-card-form textarea"),
-    /background: var\(--surface\)/,
+    /background: var\(--color-surface\)/,
   );
   assert.match(css, /input:focus-visible, textarea:focus-visible/);
 });
@@ -288,7 +312,7 @@ await test("CLV-135 add-card buttons keep readable text on hover in both themes"
       const background: unknown = Reflect.get(tokens, token);
       assert.ok(typeof background === "string", `${selector} ${token}`);
       assert.ok(
-        contrast(rgb(tokens.ink), rgb(background)) >= 4.5,
+        contrast(rgb(tokens["color-ink"]), rgb(background)) >= 4.5,
         `${selector} in the ${theme} theme: ink on ${token}`,
       );
     }
@@ -301,32 +325,10 @@ function media(width: number): string {
   return css.slice(start, css.indexOf("\n}", start));
 }
 
-await test("CLV-286 the floor states use custom properties with the light theme colors as defaults", () => {
-  const defaults = rule(":root");
-  for (const [state, color] of [
-    ["running", "#1F9D55"],
-    ["waiting", "#D9A400"],
-    ["needs-you", "#0B5FB0"],
-    ["stopped", "#C21F32"],
-  ] as const) {
-    assert.ok(defaults.includes(`--${state}: ${color};`), state);
-    assert.match(
-      rule(`.lamp.${state}`),
-      new RegExp(`background: var\\(--${state}\\)`),
-    );
-    assert.match(
-      rule(`.token.${state}`),
-      new RegExp(`--lamp: var\\(--${state}\\)`),
-    );
-  }
-  assert.match(rule(".lamp"), /transform: rotate\(45deg\)/);
-  assert.match(rule(".token-worker"), /background: var\(--lamp\)/);
-});
-
 await test("CLV-286 buttons and run tokens are filled rectangles with angled corners", () => {
   assert.match(
     rule(":root"),
-    /--angled: polygon\(var\(--cut\) 0, 100% 0, 100% calc\(100% - var\(--cut\)\), calc\(100% - var\(--cut\)\) 100%, 0 100%, 0 var\(--cut\)\);/,
+    /--angled: polygon\(var\(--shape-cut\) 0, 100% 0, 100% calc\(100% - var\(--shape-cut\)\), calc\(100% - var\(--shape-cut\)\) 100%, 0 100%, 0 var\(--shape-cut\)\);/,
   );
   for (const selector of ["button", ".token"]) {
     assert.match(rule(selector), /clip-path: var\(--angled\)/);
@@ -363,8 +365,11 @@ await test("CLV-286 stations have a fixed width on a rail, and narrow screens mo
 });
 
 await test("CLV-289 the Today panel is a surface like the floor, the bar of today stands out and the lane marks are angled", () => {
-  assert.match(rule(".today"), /background: var\(--surface\)/);
-  assert.match(rule(".today"), /box-shadow: inset 0 0 0 1px var\(--line\)/);
+  assert.match(rule(".today"), /background: var\(--color-surface\)/);
+  assert.match(
+    rule(".today"),
+    /box-shadow: inset 0 0 0 var\(--shape-border\) var\(--color-line\)/,
+  );
   assert.match(
     rule(".today-numbers"),
     /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
@@ -372,10 +377,13 @@ await test("CLV-289 the Today panel is a surface like the floor, the bar of toda
   assert.match(rule(".today-chart text"), /text-anchor: middle/);
   assert.match(
     rule(".today-bar rect"),
-    /fill: color-mix\(in srgb, var\(--running\) 40%, var\(--surface\)\)/,
+    /fill: color-mix\(in srgb, var\(--color-state-completed\) 40%, var\(--color-surface\)\)/,
   );
-  assert.match(rule(".today-bar.current rect"), /fill: var\(--line-1\)/);
+  assert.match(
+    rule(".today-bar.current rect"),
+    /fill: var\(--color-state-completed\)/,
+  );
   assert.match(rule(".lane"), /clip-path: var\(--angled\)/);
-  assert.match(rule(".lane.busy"), /background: var\(--running\)/);
-  assert.match(rule(".lane.free"), /background: var\(--line\)/);
+  assert.match(rule(".lane.busy"), /background: var\(--color-state-running\)/);
+  assert.match(rule(".lane.free"), /background: var\(--color-line\)/);
 });

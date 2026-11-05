@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import type { sampleRun } from "./watch-sample.ts";
+import type { WatchThemes } from "../src/cli/watch-themes.ts";
 
 const browser = `
 import { PageNode } from ${JSON.stringify(join(import.meta.dirname, "watch-dom.ts"))};
 const app = new PageNode("div");
+const root = new PageNode("html");
+const schemes = [];
 const listeners = {};
 const timers = [];
 const scrolled = [];
@@ -23,7 +26,8 @@ globalThis.Date = class extends RealDate {
   constructor(...values) { super(...(values.length === 0 ? [fixed] : values)); }
 };
 Object.assign(globalThis, {
-  document: { title: "", querySelector: () => null, body: { scrollHeight: 2000 }, getElementById: () => app },
+  document: { title: "", querySelector: () => null, body: { scrollHeight: 2000 }, documentElement: root, getElementById: () => app },
+  matchMedia: () => ({ matches: process.env.WATCH_DARK === "true", addEventListener: (type, listener) => { schemes.push(listener); } }),
   location: { hash: "#run-1" },
   addEventListener: (type, listener) => { listeners[type] = listener; },
   setInterval: (callback, time) => { timers.push(time); return 0; },
@@ -61,12 +65,17 @@ export function played(
     readonly updatedAt: string;
     readonly cardForms?: unknown;
     readonly archived?: ReturnType<typeof sampleRun>;
+    readonly themes?: WatchThemes;
+    readonly dark?: boolean;
   },
   scriptScenario: string,
 ): Record<string, unknown> {
   const [, script = ""] =
     /<script type="module">([\s\S]*)<\/script>/.exec(
-      pageDocument(model.cardForms === undefined ? null : "a".repeat(64)),
+      pageDocument(
+        model.cardForms === undefined ? null : "a".repeat(64),
+        model.themes,
+      ),
     ) ?? [];
   const library = JSON.stringify(import.meta.resolve("preact"));
   const directory = mkdtempSync(join(tmpdir(), "cloving-watch-page-"));
@@ -80,6 +89,7 @@ export function played(
       ...process.env,
       WATCH_MODEL: JSON.stringify(model),
       WATCH_NOW: model.updatedAt,
+      WATCH_DARK: String(model.dark === true),
     },
     encoding: "utf8",
   });

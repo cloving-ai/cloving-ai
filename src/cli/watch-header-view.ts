@@ -2,7 +2,14 @@ import { queueSpendLines } from "./usage-render.ts";
 import { record } from "../protocol.ts";
 import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
-import { clockTime, counted, type WatchModel } from "./watch-render.ts";
+import { clockTime, type WatchModel } from "./watch-render.ts";
+import {
+  countText,
+  ThemeMenu,
+  ThemeNotice,
+  type ThemeControls,
+  type WatchWords,
+} from "./watch-theme-view.ts";
 
 export interface QueueControls {
   readonly busy: boolean;
@@ -15,6 +22,7 @@ export interface HeaderProps {
   readonly stale: boolean;
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
+  readonly theme?: ThemeControls | undefined;
   readonly now?: string;
 }
 
@@ -49,14 +57,17 @@ export function skippedText(value: unknown): string {
   return `${name}: ${String(ticket["reason"])}`;
 }
 
-export function Queue(props: { readonly model: WatchModel }): Shown {
+export function Queue(props: {
+  readonly model: WatchModel;
+  readonly words?: WatchWords | undefined;
+}): Shown {
   const skipped = props.model.queue?.["skipped"];
   if (!Array.isArray(skipped) || skipped.length === 0) return null;
   return element("details", {
     class: "queue-waiting",
     children: [
       element("summary", {
-        children: `${counted(skipped.length, "ticket")} skipped`,
+        children: `${countText(props.words, { key: "ticket.unit", count: skipped.length, noun: "ticket" })} skipped`,
       }),
       element("ul", {
         children: skipped.map((value) =>
@@ -157,11 +168,13 @@ export function QueueControl(props: {
 }
 
 export function HeaderActions(props: HeaderProps): Shown {
-  const { phone, queue } = props;
-  if (phone === undefined && queue === undefined) return null;
+  const { phone, queue, theme } = props;
+  if (phone === undefined && queue === undefined && theme === undefined)
+    return null;
   return element("div", {
     class: "header-actions",
     children: [
+      theme === undefined ? null : component(ThemeMenu, { theme }),
       queue === undefined
         ? null
         : component(QueueControl, { model: props.model, queue }),
@@ -188,6 +201,9 @@ export function Header(props: HeaderProps): Shown {
       component(HeaderStatus, props),
       component(HeaderActions, props),
       component(Version, props),
+      props.theme === undefined
+        ? null
+        : component(ThemeNotice, { theme: props.theme }),
     ],
   });
 }

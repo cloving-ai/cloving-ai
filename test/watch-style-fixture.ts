@@ -10,52 +10,58 @@ export function rule(selector: string): string {
   return rules.slice(start, rules.indexOf("}", start));
 }
 
-export const palette = {
-  light: {
-    bg: "#D6E7DF",
-    surface: "#F4FAF6",
-    "surface-2": "#E4F0E9",
-    ink: "#0E2310",
-    muted: "#405C4C",
-    line: "#B7D2C4",
-    accent: "#0BBF64",
-    "accent-strong": "#026B3B",
-    "accent-tint": "rgba(11,191,100,0.14)",
-    "on-accent": "#052213",
-    warn: "#8A5A00",
-    "warn-tint": "rgba(214,150,20,0.16)",
-    "code-bg": "#0F1D16",
-    "code-head": "#15271E",
-    "code-fg": "#D5E6DC",
-    "code-line": "#24392E",
-    "code-muted": "#86A394",
-    shadow: "0 18px 50px rgba(14,35,16,0.16)",
-    bad: "#C02B2B",
-    "bad-tint": "rgba(192,43,43,0.14)",
-  },
-  dark: {
-    bg: "#141C18",
-    surface: "#1B2520",
-    "surface-2": "#22302A",
-    ink: "#E6F2EB",
-    muted: "#A2BAAD",
-    line: "#2E4037",
-    accent: "#0BBF64",
-    "accent-strong": "#45DD92",
-    "accent-tint": "rgba(11,191,100,0.18)",
-    "on-accent": "#052213",
-    warn: "#F0C062",
-    "warn-tint": "rgba(240,192,98,0.14)",
-    "code-bg": "#0A1410",
-    "code-head": "#112019",
-    "code-fg": "#D5E6DC",
-    "code-line": "#1F3329",
-    "code-muted": "#86A394",
-    shadow: "0 18px 50px rgba(0,0,0,0.45)",
-    bad: "#FF7B72",
-    "bad-tint": "rgba(255,123,114,0.14)",
-  },
+const light = {
+  "color-page": "#D6E7DF",
+  "color-surface": "#F4FAF6",
+  "color-panel": "#E4F0E9",
+  "color-ink": "#0E2310",
+  "color-muted": "#405C4C",
+  "color-line": "#B7D2C4",
+  "color-accent": "#0BBF64",
+  "color-accent-strong": "#026B3B",
+  "color-on-accent": "#052213",
+  "color-warn": "#8A5A00",
+  "color-bad": "#C02B2B",
+  "color-code-background": "#0F1D16",
+  "color-code-header": "#15271E",
+  "color-code-text": "#D5E6DC",
+  "color-code-line": "#24392E",
+  "color-code-muted": "#86A394",
 };
+const dark = {
+  "color-page": "#141C18",
+  "color-surface": "#1B2520",
+  "color-panel": "#22302A",
+  "color-ink": "#E6F2EB",
+  "color-muted": "#A2BAAD",
+  "color-line": "#2E4037",
+  "color-accent": "#0BBF64",
+  "color-accent-strong": "#45DD92",
+  "color-on-accent": "#052213",
+  "color-warn": "#F0C062",
+  "color-bad": "#FF7B72",
+  "color-code-background": "#0A1410",
+  "color-code-header": "#112019",
+  "color-code-text": "#D5E6DC",
+  "color-code-line": "#1F3329",
+  "color-code-muted": "#86A394",
+};
+
+function tint(color: string, share: number): string {
+  return `rgba(${rgb(color).join(",")},${String(share)})`;
+}
+
+function tinted(tokens: typeof light) {
+  return {
+    ...tokens,
+    "accent-tint": tint(tokens["color-accent"], 0.16),
+    "warn-tint": tint(tokens["color-warn"], 0.12),
+    "bad-tint": tint(tokens["color-bad"], 0.14),
+  };
+}
+
+export const colorTokens = { light, dark };
+export const palette = { light: tinted(light), dark: tinted(dark) };
 
 type Color = readonly number[];
 
