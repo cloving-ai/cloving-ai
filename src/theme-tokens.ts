@@ -121,7 +121,7 @@ function isFontFamily(value: unknown): boolean {
   );
 }
 
-function valueCodes(value: unknown, rule: TokenRule): readonly string[] {
+export function valueCodes(value: unknown, rule: TokenRule): readonly string[] {
   switch (rule.type) {
     case "color":
       return isColor(value) ? [] : ["invalid-color"];

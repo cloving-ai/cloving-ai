@@ -18,7 +18,7 @@ await load();
 const button = app.all("button").find((node) => node.text === "+ Add a card");
 const initial = { button: button?.text, forms: app.all("form").length };
 button?.dispatch("click");
-const opened = { forms: app.all("form").length, label: app.all("label").map((node) => node.text), inputs: app.all("input").length, areas: app.all("textarea").length };
+const opened = { forms: app.all("form").length, label: app.all("label").filter((node) => node.attributes.get("class") !== "theme-menu").map((node) => node.text), inputs: app.all("input").length, areas: app.all("textarea").length };
 app.all("button").find((node) => node.text === "Cancel")?.dispatch("click");
 console.log(JSON.stringify({ initial, opened, closed: app.all("form").length, requests }));
 `,
@@ -175,7 +175,7 @@ location.hash = "#workflow=review-corpus";
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
 app.all("button").find((node) => node.text === "+ Add a card").dispatch("click");
-console.log(JSON.stringify({ labels: app.all("label").map((node) => node.text), inputs: app.all("input").map((node) => node.attributes.get("name")) }));
+console.log(JSON.stringify({ labels: app.all("label").filter((node) => node.attributes.get("class") !== "theme-menu").map((node) => node.text), inputs: app.all("input").map((node) => node.attributes.get("name")) }));
 `,
   );
   assert.deepEqual(result["labels"], ["importId", "topic"]);

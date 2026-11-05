@@ -249,7 +249,17 @@ await test("CLV-016 the script of the watch page reads the data at each message 
     phases: phases(["done", "done", "done", "done", "done"]),
   });
   const model = sampleModel([done, sampleRun()]);
-  const props = { now: model.updatedAt, copying: noCopy, selected: "run-1" };
+  const theme = {
+    shown: { choice: "auto", theme: null, notice: null },
+    themes: [],
+    onChoose: () => undefined,
+  };
+  const props = {
+    now: model.updatedAt,
+    copying: noCopy,
+    selected: "run-1",
+    theme,
+  };
   const page = (shown: Parameters<typeof Page>[0]): string =>
     rendered(component(Page, shown));
   assert.deepEqual(played(model, scenario), {
@@ -271,18 +281,17 @@ await test("CLV-016 the script of the watch page reads the data at each message 
   });
 });
 
-await test("CLV-098 themes default to light, follow system dark only without a valid override, and load fixed fonts", () => {
+await test("CLV-098 themes default to light, follow system dark only without a theme color scheme, and load fixed fonts", () => {
   const page = pageDocument();
   assert.match(page, /:root\s*\{[^}]*color-scheme: light;/);
   assert.match(
     page,
-    /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\):not\(\[data-theme="dark"\]\)/,
+    /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-scheme="light"\]\)/,
   );
-  for (const theme of ["light", "dark"]) {
-    assert.ok(page.includes(`:root[data-theme="${theme}"]`));
-  }
+  assert.ok(page.includes(':root[data-scheme="dark"]'));
   assert.doesNotMatch(page, /<link rel="stylesheet"/);
   assert.equal([...page.matchAll(/<style>/g)].length, 1);
+  assert.equal([...page.matchAll(/<style id="theme-style">/g)].length, 1);
   assert.doesNotMatch(page, /light-dark\(|color-scheme: light dark/);
 });
 

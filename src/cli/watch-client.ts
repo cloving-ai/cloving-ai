@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "" };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", themeChoice: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -12,6 +12,26 @@ function readColumnChoices(key) {
 function savePreference(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch {}
+}
+const darkScheme = matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const wanted = { "data-theme": theme?.name ?? null, "data-scheme": theme?.colorScheme ?? null, class: theme?.classes.join(" ") || null };
+  for (const [name, value] of Object.entries(wanted)) {
+    if (root.getAttribute(name) === value) continue;
+    if (value === null) root.removeAttribute(name);
+    else root.setAttribute(name, value);
+  }
+}
+function themeControls() {
+  const stored = state.themeChoice ?? readPreference("cloving.watch.theme");
+  const shown = shownTheme(themes, { choice: typeof stored === "string" ? stored : null, dark: darkScheme.matches });
+  applyTheme(shown.theme);
+  return { shown, themes: themes.themes, onChoose(name) {
+    state.themeChoice = name;
+    savePreference("cloving.watch.theme", name);
+    draw();
+  } };
 }
 function columnControls(model, selected) {
   const workflowId = model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId);
@@ -77,7 +97,8 @@ function draw() {
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
   const phone = model === null ? undefined : phoneControls(now);
   const queue = queueControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue });
+  const theme = themeControls();
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, theme });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);
@@ -129,6 +150,7 @@ addEventListener("keydown", (event) => {
   event.preventDefault();
   controls.onToggle(target);
 });
+darkScheme.addEventListener("change", draw);
 addEventListener("hashchange", () => { state.run = ""; state.hovered = null; state.focused = null; draw(); load(); });
 draw();
 listen();

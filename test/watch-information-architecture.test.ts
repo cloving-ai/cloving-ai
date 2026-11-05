@@ -202,7 +202,7 @@ await test("watch design: page controls outside code windows use the body font a
     ".add-card",
     ".add-card-form button",
   ])
-    assert.match(declarations(selector), /font: [^;]*var\(--body-font\)/);
+    assert.match(declarations(selector), /font: [^;]*var\(--font-ui\)/);
   for (const selector of [
     "header button:hover",
     ".phone button:hover",
@@ -210,22 +210,22 @@ await test("watch design: page controls outside code windows use the body font a
     ".add-card:hover",
   ]) {
     const token = hoverToken(selector);
-    assert.notEqual(token, "code-head", selector);
+    assert.notEqual(token, "color-code-header", selector);
     for (const [theme, tokens] of Object.entries(palette)) {
       const background: unknown = Reflect.get(tokens, token);
       assert.ok(typeof background === "string", `${selector} ${token}`);
       assert.ok(
-        contrast(rgb(tokens.ink), rgb(background)) >= 4.5,
+        contrast(rgb(tokens["color-ink"]), rgb(background)) >= 4.5,
         `${selector} in the ${theme} theme: ink on ${token}`,
       );
     }
   }
-  assert.match(declarations("button"), /var\(--code-font\)/);
+  assert.match(declarations("button"), /var\(--font-code\)/);
 });
 
 await test("watch design: column names are labels in the body font", () => {
-  assert.match(declarations(".column-name"), /font: [^;]*var\(--body-font\)/);
-  assert.doesNotMatch(declarations(".column-name"), /var\(--code-font\)/);
+  assert.match(declarations(".column-name"), /font: [^;]*var\(--font-ui\)/);
+  assert.doesNotMatch(declarations(".column-name"), /var\(--font-code\)/);
 });
 
 await test("watch design: the add-card button has no side margin, so it fits its column", () => {
@@ -235,10 +235,16 @@ await test("watch design: the add-card button has no side margin, so it fits its
 
 await test("watch design: a collapsed Stopped column keeps red text but no red frame or tint", () => {
   const collapsed = declarations(".column.stopped.collapsed");
-  assert.match(collapsed, /inset 0 0 0 1px var\(--line\)/);
-  assert.match(collapsed, /background: var\(--surface-2\)/);
-  assert.doesNotMatch(collapsed, /--bad/);
-  assert.match(declarations(".stopped .column-name"), /color: var\(--bad\)/);
+  assert.match(
+    collapsed,
+    /inset 0 0 0 var\(--shape-border\) var\(--color-line\)/,
+  );
+  assert.match(collapsed, /background: var\(--color-panel\)/);
+  assert.doesNotMatch(collapsed, /--color-bad/);
+  assert.match(
+    declarations(".stopped .column-name"),
+    /color: var\(--color-bad\)/,
+  );
   assert.match(declarations(".column.stopped"), /var\(--bad-tint\)/);
 });
 
@@ -248,14 +254,17 @@ await test("watch design: the pairing view of the phone takes its own row in the
 
 await test("watch design: card details read in the body font, and only the run ID stays in the code font", () => {
   for (const selector of [".card-step", ".card-review", ".card-cost"]) {
-    assert.match(declarations(selector), /font: [^;]*var\(--body-font\)/);
-    assert.doesNotMatch(declarations(selector), /var\(--code-font\)/);
+    assert.match(declarations(selector), /font: [^;]*var\(--font-ui\)/);
+    assert.doesNotMatch(declarations(selector), /var\(--font-code\)/);
   }
-  assert.match(declarations(".card small"), /var\(--code-font\)/);
+  assert.match(declarations(".card small"), /var\(--font-code\)/);
 });
 
 await test("watch design: cards in a column are flat, so the column edge does not cut a shadow into a band", () => {
   assert.doesNotMatch(declarations(".card"), /var\(--shadow\)/);
   assert.doesNotMatch(declarations(".stopped .card"), /var\(--shadow\)/);
-  assert.match(declarations(".card"), /inset 0 0 0 1px var\(--line\)/);
+  assert.match(
+    declarations(".card"),
+    /inset 0 0 0 var\(--shape-border\) var\(--color-line\)/,
+  );
 });

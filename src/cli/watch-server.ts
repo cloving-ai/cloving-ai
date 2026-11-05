@@ -30,12 +30,18 @@ import {
 import { pageDocument } from "./watch-page.ts";
 import type { WatchItem, WatchModel, WatchTurn } from "./watch-render.ts";
 import { watchStream, type WatchStream } from "./watch-stream.ts";
+import {
+  themeFile,
+  watchThemes,
+  type WatchThemeSettings,
+} from "./watch-themes.ts";
 
 export const defaultWatchPort = 3663;
 
 export interface WatchSettings {
   readonly actions?: string;
   readonly pullRequests?: WatchPrSettings;
+  readonly themes?: WatchThemeSettings;
   readonly runtimeDirectory: string;
   readonly port: number;
   readonly client: string;
@@ -50,6 +56,7 @@ interface Reply {
   readonly body: string | Uint8Array;
   readonly cache?: string;
   readonly allow?: string;
+  readonly policy?: string;
 }
 
 interface Watch {
@@ -84,6 +91,7 @@ const fontFiles = new Map(
 );
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 const pageChange = (): string => "data: change\n\n";
+const artPolicy = "default-src 'none'; style-src 'unsafe-inline'";
 function parsed(text: string): unknown {
   try {
     const value: unknown = JSON.parse(text);
@@ -238,12 +246,8 @@ async function answered(
 
 async function readReply(watch: Watch, url: URL): Promise<Reply> {
   const path = url.pathname;
-  if (path === "/")
-    return {
-      status: 200,
-      type: "text/html; charset=utf-8",
-      body: pageDocument(watch.actions?.token ?? null),
-    };
+  if (path === "/") return pageReply(watch);
+  if (path.startsWith("/themes/")) return themeReply(watch, path);
   if (path === "/preact.mjs")
     return {
       status: 200,
@@ -267,11 +271,37 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
   };
 }
 
+async function pageReply(watch: Watch): Promise<Reply> {
+  const { themes } = watch.settings;
+  return {
+    status: 200,
+    type: "text/html; charset=utf-8",
+    body: pageDocument(
+      watch.actions?.token ?? null,
+      themes === undefined ? undefined : await watchThemes(themes),
+    ),
+  };
+}
+
+async function themeReply(watch: Watch, path: string): Promise<Reply> {
+  const folders = watch.settings.themes?.folders;
+  const file = folders === undefined ? null : await themeFile(folders, path);
+  return file === null
+    ? notFound
+    : { status: 200, type: file.type, body: file.body, policy: artPolicy };
+}
+
 function replied(response: ServerResponse, reply: Reply): void {
   response.writeHead(reply.status, {
     "content-type": reply.type,
     "cache-control": reply.cache ?? "no-store",
     ...(reply.allow === undefined ? {} : { allow: reply.allow }),
+    ...(reply.policy === undefined
+      ? {}
+      : {
+          "content-security-policy": reply.policy,
+          "x-content-type-options": "nosniff",
+        }),
   });
   response.end(reply.body);
 }

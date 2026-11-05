@@ -3,7 +3,12 @@ import { priceText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import {
-  counted,
+  countText,
+  labelWord,
+  wordText,
+  type WatchWords,
+} from "./watch-theme-view.ts";
+import {
   elapsed,
   type WatchLamp,
   type WatchModel,
@@ -57,6 +62,7 @@ export function Token(props: {
 export function Station(props: {
   readonly station: WatchStation;
   readonly now: string;
+  readonly words?: WatchWords | undefined;
 }): Shown {
   const { station, now } = props;
   const lamp = station.lamp ?? "empty";
@@ -67,7 +73,10 @@ export function Station(props: {
         class: `lamp ${lamp}`,
         title: lampLabel(station.lamp),
       }),
-      element("span", { class: "station-name", children: station.name }),
+      element("span", {
+        class: "station-name",
+        children: labelWord(props.words, station.name),
+      }),
       station.tokens.length === 0
         ? null
         : element("ul", {
@@ -176,8 +185,9 @@ export function Legend(): Shown {
 export function Line(props: {
   readonly workflow: WatchWorkflow;
   readonly now: string;
+  readonly words?: WatchWords | undefined;
 }): Shown {
-  const { workflow, now } = props;
+  const { workflow, now, words } = props;
   return element("li", {
     class: "line",
     children: [
@@ -199,7 +209,7 @@ export function Line(props: {
         children: element("ol", {
           class: "stations",
           children: workflow.stations.map((station) =>
-            component(Station, { key: station.name, station, now }),
+            component(Station, { key: station.name, station, now, words }),
           ),
         }),
       }),
@@ -211,8 +221,9 @@ export function Line(props: {
 export function Floor(props: {
   readonly model: WatchModel;
   readonly now: string;
+  readonly words?: WatchWords | undefined;
 }): Shown {
-  const { model, now } = props;
+  const { model, now, words } = props;
   return element("section", {
     class: "floor",
     "aria-labelledby": "floor-title",
@@ -220,7 +231,13 @@ export function Floor(props: {
       element("div", {
         class: "floor-head",
         children: [
-          element("h2", { id: "floor-title", children: "Floor" }),
+          element("h2", {
+            id: "floor-title",
+            children: wordText(words, {
+              key: "workflows.title",
+              text: "Floor",
+            }),
+          }),
           component(Legend, {}),
         ],
       }),
@@ -229,7 +246,12 @@ export function Floor(props: {
         : element("ol", {
             class: "lines",
             children: model.workflows.map((workflow) =>
-              component(Line, { key: workflow.workflowId, workflow, now }),
+              component(Line, {
+                key: workflow.workflowId,
+                workflow,
+                now,
+                words,
+              }),
             ),
           }),
     ],
@@ -330,8 +352,13 @@ export function Demo(props: {
   ];
 }
 
-export function Shelf(props: { readonly model: WatchModel }): Shown {
-  const { model } = props;
+export function Shelf(props: {
+  readonly model: WatchModel;
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  const { model, words } = props;
+  const unit =
+    words?.["completed.unit"] === undefined ? "run.unit" : "completed.unit";
   const tiles = model.completed ?? [];
   const lines = model.workflows.map((workflow) => workflow.workflowId);
   return element("section", {
@@ -344,7 +371,11 @@ export function Shelf(props: { readonly model: WatchModel }): Shown {
           element("h2", { id: "shelf-title", children: "Completed today" }),
           element("span", {
             class: "shelf-count",
-            children: counted(tiles.length, "run"),
+            children: countText(words, {
+              key: unit,
+              count: tiles.length,
+              noun: "run",
+            }),
           }),
         ],
       }),

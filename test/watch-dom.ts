@@ -89,6 +89,10 @@ export class PageNode {
     this.attributes.delete(name);
   }
 
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
   addEventListener(type: string, listener: Listener): void {
     this.listeners.set(type, listener);
   }
@@ -98,7 +102,9 @@ export class PageNode {
   }
 
   dispatch(type: string): unknown {
-    return this.listeners.get(type)?.call(this, { type });
+    return this.listeners
+      .get(type)
+      ?.call(this, { type, currentTarget: this, target: this });
   }
 
   all(name: string): PageNode[] {

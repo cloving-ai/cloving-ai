@@ -6,6 +6,7 @@ import { priceText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchCard, WatchWorkflow } from "./watch-render.ts";
+import { labelWord, wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export const boardSizing = {
   minimumColumnWidth: 200,
@@ -101,11 +102,15 @@ export function observationText(card: WatchCard, fallback: string): string {
 
 export function completionMark(
   card: WatchCard,
-  context: { readonly workflowId: string; readonly now: string },
+  context: {
+    readonly workflowId: string;
+    readonly now: string;
+    readonly words?: WatchWords | undefined;
+  },
 ): Shown {
   const mark = card.completionMark;
   if (mark === null) return null;
-  const text = observationText(card, mark.text);
+  const text = labelWord(context.words, observationText(card, mark.text));
   if (mark.laterRunId === null)
     return [
       element("span", { class: "completion-mark", children: text }),
@@ -120,13 +125,23 @@ export function completionMark(
   });
 }
 
+export function cardTotals(
+  card: WatchCard,
+  words: WatchWords | undefined,
+): string {
+  const totals = wordText(words, { key: "totals.label", text: "Totals" });
+  const label = card.currentStep === null ? totals : `${totals} so far`;
+  return `${label} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`;
+}
+
 export function Card(props: {
   readonly card: WatchCard;
   readonly workflowId: string;
   readonly now: string;
   readonly observationNow?: string | undefined;
+  readonly words?: WatchWords | undefined;
 }): Shown {
-  const { card, workflowId, now } = props;
+  const { card, workflowId, now, words } = props;
   return element("article", {
     class: "card",
     children: [
@@ -154,18 +169,22 @@ export function Card(props: {
               }),
           element("span", {
             class: "card-cost",
-            children: `${card.currentStep === null ? "Totals" : "Totals so far"} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`,
+            children: cardTotals(card, words),
           }),
           card.decisionWaiting
             ? element("span", {
                 class: "decision-mark",
-                children: "! Decision waiting",
+                children: `! ${wordText(words, { key: "state.decision", text: "Decision waiting" })}`,
               })
             : null,
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
-      completionMark(card, { workflowId, now: props.observationNow ?? now }),
+      completionMark(card, {
+        workflowId,
+        now: props.observationNow ?? now,
+        words,
+      }),
       element("span", {
         class: "meta",
         children: effectBudgetText(card.spent, card.limit),
@@ -223,9 +242,11 @@ export function Column(props: {
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly words?: WatchWords | undefined;
 }): Shown {
-  const { column, workflowId, now, controls } = props;
+  const { column, workflowId, now, controls, words } = props;
   const collapsed = columnCollapsed(controls?.choices ?? null, column.name);
+  const name = labelWord(words, column.name);
   const tone = column.name === "Stopped" ? "column stopped" : "column";
   return element("section", {
     class: `${tone}${collapsed ? " collapsed" : ""}`,
@@ -237,7 +258,7 @@ export function Column(props: {
       element("h3", {
         class: "column-name",
         children: [
-          element("span", { children: column.name }),
+          element("span", { children: name }),
           " ",
           element("span", {
             class: "column-count",
@@ -245,7 +266,7 @@ export function Column(props: {
           }),
           element("button", {
             type: "button",
-            "aria-label": `${collapsed ? "Expand" : "Collapse"} ${column.name}`,
+            "aria-label": `${collapsed ? "Expand" : "Collapse"} ${name}`,
             "aria-expanded": String(!collapsed),
             onClick: () => controls?.onToggle(column.name),
             children: collapsed ? "+" : "−",
@@ -264,6 +285,7 @@ export function Column(props: {
                   workflowId,
                   now,
                   observationNow: props.observationNow,
+                  words,
                 }),
               ),
               props.addCard,
@@ -280,8 +302,9 @@ export function Board(props: {
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly words?: WatchWords | undefined;
 }): Shown {
-  const { workflow, now } = props;
+  const { workflow, now, words } = props;
   return element("main", {
     class: "board",
     children: [
@@ -305,6 +328,7 @@ export function Board(props: {
             now,
             observationNow: props.observationNow,
             controls: props.controls,
+            words,
             addCard:
               index === 0
                 ? component(AddCard, {
