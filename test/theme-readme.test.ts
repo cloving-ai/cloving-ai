@@ -41,3 +41,19 @@ await test("CLV-291 the README explains how the watch page applies the selected 
     assert.ok(section.includes(text), text);
   assert.doesNotMatch(section, /does not apply a theme yet/);
 });
+
+await test("CLV-292 the README shows the three built-in themes and points to the theme format", () => {
+  for (const text of [
+    "`floor`",
+    "`floor-at-night`",
+    "`workshop`",
+    "![Floor](",
+    "![Floor at night](",
+    "![Workshop](",
+    "](#the-theme-format)",
+    "##### The theme format",
+    "SIL Open Font License",
+  ])
+    assert.ok(section.includes(text), text);
+  assert.doesNotMatch(section, /`light` and `dark`|built-in theme `light`/);
+});

@@ -1,0 +1,216 @@
+{
+  "color": {
+    "$type": "color",
+    "page": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.082, 0.098, 0.09],
+        "hex": "#151917"
+      }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.118, 0.141, 0.129],
+        "hex": "#1E2421"
+      }
+    },
+    "panel": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.102, 0.122, 0.11],
+        "hex": "#1A1F1C"
+      }
+    },
+    "ink": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.886, 0.898, 0.882],
+        "hex": "#E2E5E1"
+      }
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.639, 0.671, 0.647],
+        "hex": "#A3ABA5"
+      }
+    },
+    "line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.18, 0.208, 0.192],
+        "hex": "#2E3531"
+      }
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.239, 0.796, 0.494],
+        "hex": "#3DCB7E"
+      }
+    },
+    "accent-strong": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.388, 0.851, 0.604],
+        "hex": "#63D99A"
+      }
+    },
+    "on-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.016, 0.09, 0.047],
+        "hex": "#04170C"
+      }
+    },
+    "warn": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.941, 0.745, 0.173],
+        "hex": "#F0BE2C"
+      }
+    },
+    "bad": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.957, 0.439, 0.494],
+        "hex": "#F4707E"
+      }
+    },
+    "code": {
+      "background": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.055, 0.071, 0.063],
+          "hex": "#0E1210"
+        }
+      },
+      "header": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.082, 0.102, 0.09],
+          "hex": "#151A17"
+        }
+      },
+      "text": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.867, 0.886, 0.871],
+          "hex": "#DDE2DE"
+        }
+      },
+      "line": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.149, 0.176, 0.161],
+          "hex": "#262D29"
+        }
+      },
+      "muted": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.557, 0.596, 0.573],
+          "hex": "#8E9892"
+        }
+      }
+    },
+    "state": {
+      "running": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.239, 0.796, 0.494],
+          "hex": "#3DCB7E"
+        }
+      },
+      "waiting": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.941, 0.745, 0.173],
+          "hex": "#F0BE2C"
+        }
+      },
+      "attention": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.29, 0.608, 0.918],
+          "hex": "#4A9BEA"
+        }
+      },
+      "completed": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.263, 0.769, 0.498],
+          "hex": "#43C47F"
+        }
+      },
+      "failed": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.941, 0.353, 0.416],
+          "hex": "#F05A6A"
+        }
+      }
+    }
+  },
+  "shape": {
+    "$type": "dimension",
+    "cut": {
+      "$value": {
+        "value": 7,
+        "unit": "px"
+      }
+    },
+    "radius": {
+      "$value": {
+        "value": 2,
+        "unit": "px"
+      }
+    },
+    "border": {
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      }
+    }
+  },
+  "size": {
+    "$type": "dimension",
+    "text": {
+      "$value": {
+        "value": 14,
+        "unit": "px"
+      }
+    },
+    "gap": {
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "ui": {
+      "$value": ["Barlow", "system-ui", "sans-serif"]
+    },
+    "heading": {
+      "$value": ["Barlow Semi Condensed", "system-ui", "sans-serif"]
+    },
+    "code": {
+      "$value": [
+        "Fira Code",
+        "ui-monospace",
+        "SFMono-Regular",
+        "Menlo",
+        "monospace"
+      ]
+    }
+  },
+  "$extensions": {
+    "ai.cloving.theme": {
+      "name": "Floor at night",
+      "colorScheme": "dark"
+    }
+  }
+}

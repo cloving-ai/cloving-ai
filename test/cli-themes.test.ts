@@ -6,43 +6,36 @@ import { withDoctor } from "./doctor-fixture.ts";
 import { items } from "./service-fixture.ts";
 import { withThemeData } from "./theme-check-fixture.ts";
 import {
+  builtInThemes,
   cloving,
   projectThemes,
   userThemes,
   writeTheme,
 } from "./theme-scene-fixture.ts";
 
-const builtIn = [
-  {
-    name: "dark",
-    place: "built-in",
-    title: "Cloving dark",
-    colorScheme: "dark",
-    usable: true,
-    codes: [],
-    replaces: [],
-  },
-  {
-    name: "light",
-    place: "built-in",
-    title: "Cloving light",
-    colorScheme: "light",
-    usable: true,
-    codes: [],
-    replaces: [],
-  },
-];
+await test("CLV-292 themes list shows the three built-in themes with no refusal code", () =>
+  withDoctor(async (scene) => {
+    const listed = await cloving(scene, ["themes", "list", "--json"]);
+    assert.equal(listed.status, 0);
+    assert.equal(listed.stderr, "");
+    assert.deepEqual(JSON.parse(listed.stdout), builtInThemes);
+    const shown = await cloving(scene, ["themes", "list"]);
+    assert.equal(
+      shown.stdout,
+      'floor (built-in, usable) "Floor"\nfloor-at-night (built-in, usable) "Floor at night"\nworkshop (built-in, usable) "Workshop"\n',
+    );
+  }));
 
 await test("CLV-290 themes list shows a valid project theme with no refusal code and the built-in themes", () =>
   withDoctor(async (scene) => {
-    await writeTheme(join(projectThemes(scene), "workshop"));
+    await writeTheme(join(projectThemes(scene), "shop"));
     const listed = await cloving(scene, ["themes", "list", "--json"]);
     assert.equal(listed.status, 0);
     assert.equal(listed.stderr, "");
     assert.deepEqual(JSON.parse(listed.stdout), [
-      ...builtIn,
+      ...builtInThemes.slice(0, 2),
       {
-        name: "workshop",
+        name: "shop",
         place: "project",
         title: "Workshop",
         colorScheme: "light",
@@ -50,27 +43,28 @@ await test("CLV-290 themes list shows a valid project theme with no refusal code
         codes: [],
         replaces: [],
       },
+      ...builtInThemes.slice(2),
     ]);
     const shown = await cloving(scene, ["themes", "list"]);
     assert.equal(
       shown.stdout,
-      'dark (built-in, usable) "Cloving dark"\nlight (built-in, usable) "Cloving light"\nworkshop (project, usable) "Workshop"\n',
+      'floor (built-in, usable) "Floor"\nfloor-at-night (built-in, usable) "Floor at night"\nshop (project, usable) "Workshop"\nworkshop (built-in, usable) "Workshop"\n',
     );
   }));
 
 await test("CLV-290 themes list shows that a refused project theme replaces a user theme of the same name", () =>
   withDoctor(async (scene) => {
-    await writeTheme(join(userThemes(scene), "light"));
+    await writeTheme(join(userThemes(scene), "floor"));
     await writeTheme(
-      join(projectThemes(scene), "light"),
+      join(projectThemes(scene), "floor"),
       withThemeData({ name: "url(x)" }),
     );
     await mkdir(join(projectThemes(scene), "Bad\u001b[31m"), {
       recursive: true,
     });
     const listed = await cloving(scene, ["themes", "list", "--json"]);
-    assert.deepEqual(items(JSON.parse(listed.stdout))[2], {
-      name: "light",
+    assert.deepEqual(items(JSON.parse(listed.stdout))[1], {
+      name: "floor",
       place: "project",
       title: "url(x)",
       colorScheme: "light",
@@ -81,7 +75,7 @@ await test("CLV-290 themes list shows that a refused project theme replaces a us
     const shown = await cloving(scene, ["themes", "list"]);
     assert.equal(
       shown.stdout,
-      'Bad\\u001b[31m (project, refused: invalid-folder-name, missing-theme-file)\ndark (built-in, usable) "Cloving dark"\nlight (project, refused: css-text; replaces user, built-in) "url(x)"\n',
+      'Bad\\u001b[31m (project, refused: invalid-folder-name, missing-theme-file)\nfloor (project, refused: css-text; replaces user, built-in) "url(x)"\nfloor-at-night (built-in, usable) "Floor at night"\nworkshop (built-in, usable) "Workshop"\n',
     );
   }));
 

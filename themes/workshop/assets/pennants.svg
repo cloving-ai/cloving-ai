@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="16" viewBox="0 0 48 8" shape-rendering="crispEdges">
+  <title>Pennant banners</title>
+  <rect x="0" y="0" width="48" height="1" fill="#6B4423"/>
+  <g fill="#CC3D2E">
+    <rect x="2" y="1" width="8" height="1"/>
+    <rect x="3" y="2" width="6" height="2"/>
+    <rect x="4" y="4" width="4" height="1"/>
+    <rect x="5" y="5" width="2" height="2"/>
+  </g>
+  <g fill="#E2A62B">
+    <rect x="14" y="1" width="8" height="1"/>
+    <rect x="15" y="2" width="6" height="2"/>
+    <rect x="16" y="4" width="4" height="1"/>
+    <rect x="17" y="5" width="2" height="2"/>
+  </g>
+  <g fill="#5B9A32">
+    <rect x="26" y="1" width="8" height="1"/>
+    <rect x="27" y="2" width="6" height="2"/>
+    <rect x="28" y="4" width="4" height="1"/>
+    <rect x="29" y="5" width="2" height="2"/>
+  </g>
+  <g fill="#3F82D6">
+    <rect x="38" y="1" width="8" height="1"/>
+    <rect x="39" y="2" width="6" height="2"/>
+    <rect x="40" y="4" width="4" height="1"/>
+    <rect x="41" y="5" width="2" height="2"/>
+  </g>
+</svg>

@@ -27,6 +27,7 @@ import {
   watchModel,
   type GithubRecords,
 } from "./watch-model.ts";
+import { fontNames } from "./watch-fonts.ts";
 import { pageDocument } from "./watch-page.ts";
 import type { WatchItem, WatchModel, WatchTurn } from "./watch-render.ts";
 import { watchStream, type WatchStream } from "./watch-stream.ts";
@@ -74,17 +75,7 @@ interface Watch {
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const notFound: Reply = { status: 404, type: "text/plain", body: "not found" };
 const fontFiles = new Map(
-  [
-    "fira-code-latin-400-normal.woff2",
-    "fira-code-latin-500-normal.woff2",
-    "heebo-latin-500-normal.woff2",
-    "heebo-latin-700-normal.woff2",
-    "heebo-latin-800-normal.woff2",
-    "space-grotesk-latin-400-normal.woff2",
-    "space-grotesk-latin-500-normal.woff2",
-    "space-grotesk-latin-600-normal.woff2",
-    "space-grotesk-latin-700-normal.woff2",
-  ].map((name) => [
+  fontNames.map((name) => [
     `/watch-fonts-v1/${name}`,
     new URL(`assets/watch-fonts/${name}`, import.meta.resolve("#package")),
   ]),

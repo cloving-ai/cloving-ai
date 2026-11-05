@@ -121,13 +121,23 @@ await test("QG-07 reads a git work tree, whose root has a git file in place of t
   );
 });
 
-await test("CLV-130 admits exactly the nine packaged watch fonts", async () => {
+await test("CLV-130 CLV-292 admits exactly the nineteen packaged watch fonts", async () => {
   const fonts = [
+    "barlow-latin-400-normal.woff2",
+    "barlow-latin-500-normal.woff2",
+    "barlow-latin-600-normal.woff2",
+    "barlow-latin-700-normal.woff2",
+    "barlow-semi-condensed-latin-700-normal.woff2",
     "fira-code-latin-400-normal.woff2",
     "fira-code-latin-500-normal.woff2",
     "heebo-latin-500-normal.woff2",
     "heebo-latin-700-normal.woff2",
     "heebo-latin-800-normal.woff2",
+    "pixelify-sans-latin-400-normal.woff2",
+    "pixelify-sans-latin-500-normal.woff2",
+    "pixelify-sans-latin-600-normal.woff2",
+    "pixelify-sans-latin-700-normal.woff2",
+    "silkscreen-latin-700-normal.woff2",
     "space-grotesk-latin-400-normal.woff2",
     "space-grotesk-latin-500-normal.woff2",
     "space-grotesk-latin-600-normal.woff2",
@@ -150,6 +160,7 @@ await test("CLV-130 rejects unlisted WOFF2 paths and font symlinks", async () =>
   for (const path of [
     "assets/watch-fonts/other.woff2",
     "assets/watch-fonts/heebo-latin-400-normal.woff2",
+    "assets/watch-fonts/barlow-latin-300-normal.woff2",
     "nested/assets/watch-fonts/fira-code-latin-400-normal.woff2",
     "fira-code-latin-400-normal.woff2",
     "assets/watch-fonts/Fira-Code-latin-400-normal.woff2",
@@ -171,4 +182,33 @@ await test("CLV-130 rejects unlisted WOFF2 paths and font symlinks", async () =>
     );
     await assert.rejects(inspectInventory(directory, {}), /inventory-symlink/);
   });
+});
+
+await test("CLV-292 admits exactly the six art files of the built-in Workshop theme", async () => {
+  const files = Object.fromEntries(
+    ["bench", "bricks", "pennants", "shoe", "tiles", "worker"].map((name) => [
+      `themes/workshop/assets/${name}.svg`,
+      "<svg/>",
+    ]),
+  );
+  await withFiles(
+    { "src/main.ts": "export {};", ...files },
+    async (directory) => {
+      const inventory = await inspectInventory(directory, {});
+      assert.deepEqual(inventory.metadata, Object.keys(files).sort());
+    },
+  );
+  for (const path of [
+    "themes/workshop/assets/other.svg",
+    "themes/floor/assets/bench.svg",
+    "nested/themes/workshop/assets/bench.svg",
+  ])
+    await withFiles(
+      { "src/main.ts": "export {};", [path]: "<svg/>" },
+      async (directory) => {
+        await assert.rejects(inspectInventory(directory, {}), {
+          message: `unsupported-inventory-file: ${path}`,
+        });
+      },
+    );
 });

@@ -52,16 +52,14 @@ import {
   Legend,
   Line,
   LineEnd,
-  Demo,
   ReadyCount,
-  Shelf,
   Station,
-  Tile,
   Token,
   lampLabel,
   nextRunText,
   stepAge,
 } from "./watch-floor-view.ts";
+import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
 import {
   Need,
   NeedsYou,

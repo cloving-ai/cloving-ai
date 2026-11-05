@@ -1,4 +1,5 @@
 import { boardSizing } from "./watch-board-view.ts";
+import { fontFaces } from "./watch-fonts.ts";
 
 const dark = `
   color-scheme: dark;
@@ -11,15 +12,7 @@ const dark = `
 `;
 
 export const watchStyle = `
-@font-face { font-family: "Fira Code"; font-style: normal; font-weight: 400; font-display: swap; src: url("/watch-fonts-v1/fira-code-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Fira Code"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/fira-code-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Heebo"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Heebo"; font-style: normal; font-weight: 700; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "Heebo"; font-style: normal; font-weight: 800; font-display: swap; src: url("/watch-fonts-v1/heebo-latin-800-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/watch-fonts-v1/space-grotesk-latin-700-normal.woff2") format("woff2"); }
+${fontFaces}
 :root {
   color-scheme: light;
   --color-page: #D6E7DF; --color-surface: #F4FAF6; --color-panel: #E4F0E9;

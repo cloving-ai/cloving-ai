@@ -1,0 +1,264 @@
+{
+  "color": {
+    "$type": "color",
+    "page": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.831, 0.694, 0.514],
+        "hex": "#D4B183"
+      }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.953, 0.902, 0.784],
+        "hex": "#F3E6C8"
+      }
+    },
+    "panel": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.918, 0.847, 0.69],
+        "hex": "#EAD8B0"
+      }
+    },
+    "ink": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.169, 0.114, 0.071],
+        "hex": "#2B1D12"
+      }
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.306, 0.227, 0.153],
+        "hex": "#4E3A27"
+      }
+    },
+    "line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.788, 0.682, 0.518],
+        "hex": "#C9AE84"
+      }
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.18, 0.427, 0.706],
+        "hex": "#2E6DB4"
+      }
+    },
+    "accent-strong": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.09, 0.243, 0.424],
+        "hex": "#173E6C"
+      }
+    },
+    "on-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [1, 1, 1],
+        "hex": "#FFFFFF"
+      }
+    },
+    "warn": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.361, 0.227, 0],
+        "hex": "#5C3A00"
+      }
+    },
+    "bad": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.494, 0.102, 0.071],
+        "hex": "#7E1A12"
+      }
+    },
+    "code": {
+      "background": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.169, 0.114, 0.071],
+          "hex": "#2B1D12"
+        }
+      },
+      "header": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.227, 0.157, 0.094],
+          "hex": "#3A2818"
+        }
+      },
+      "text": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.953, 0.902, 0.784],
+          "hex": "#F3E6C8"
+        }
+      },
+      "line": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.306, 0.227, 0.153],
+          "hex": "#4E3A27"
+        }
+      },
+      "muted": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.788, 0.69, 0.541],
+          "hex": "#C9B08A"
+        }
+      }
+    },
+    "state": {
+      "running": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.357, 0.604, 0.196],
+          "hex": "#5B9A32"
+        }
+      },
+      "waiting": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.886, 0.651, 0.169],
+          "hex": "#E2A62B"
+        }
+      },
+      "attention": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.247, 0.51, 0.839],
+          "hex": "#3F82D6"
+        }
+      },
+      "completed": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.541, 0.353, 0.169],
+          "hex": "#8A5A2B"
+        }
+      },
+      "failed": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8, 0.239, 0.18],
+          "hex": "#CC3D2E"
+        }
+      }
+    }
+  },
+  "shape": {
+    "$type": "dimension",
+    "cut": {
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "radius": {
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "border": {
+      "$value": {
+        "value": 2,
+        "unit": "px"
+      }
+    }
+  },
+  "size": {
+    "$type": "dimension",
+    "text": {
+      "$value": {
+        "value": 14,
+        "unit": "px"
+      }
+    },
+    "gap": {
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "ui": {
+      "$value": ["Pixelify Sans", "system-ui", "sans-serif"]
+    },
+    "heading": {
+      "$value": ["Silkscreen", "system-ui", "sans-serif"]
+    },
+    "code": {
+      "$value": [
+        "Fira Code",
+        "ui-monospace",
+        "SFMono-Regular",
+        "Menlo",
+        "monospace"
+      ]
+    }
+  },
+  "$extensions": {
+    "ai.cloving.theme": {
+      "name": "Workshop",
+      "colorScheme": "light",
+      "art": {
+        "floor": {
+          "src": "assets/tiles.svg",
+          "mode": "mask",
+          "repeat": "both",
+          "pixelated": true
+        },
+        "header": {
+          "src": "assets/bricks.svg",
+          "mode": "image",
+          "repeat": "both",
+          "pixelated": true
+        },
+        "line-banner": {
+          "src": "assets/pennants.svg",
+          "mode": "image",
+          "repeat": "x",
+          "pixelated": true
+        },
+        "station": {
+          "src": "assets/bench.svg",
+          "mode": "image",
+          "pixelated": true
+        },
+        "run-token": {
+          "src": "assets/worker.svg",
+          "mode": "image",
+          "pixelated": true
+        },
+        "completed-badge": {
+          "src": "assets/shoe.svg",
+          "mode": "image",
+          "pixelated": true
+        }
+      },
+      "words": {
+        "workflows.title": "Workshop",
+        "today.title": "Bulletin board",
+        "needs.title": "Inspector",
+        "ready.count": {
+          "one": "Help desk: {count}",
+          "other": "Help desk: {count}"
+        },
+        "completed.unit": {
+          "one": "shoe",
+          "other": "shoes"
+        }
+      }
+    }
+  }
+}
