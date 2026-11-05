@@ -4,13 +4,17 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { WatchModel } from "../src/cli/watch-render.ts";
 import { watchThemes, type WatchThemes } from "../src/cli/watch-themes.ts";
-import { twoLineModel } from "./watch-floor-fixture.ts";
+import { withThemeData } from "./theme-check-fixture.ts";
+import { writeTheme } from "./theme-scene-fixture.ts";
+import { floorModel, floorRun, twoLineModel } from "./watch-floor-fixture.ts";
 import { watchPageServer } from "./watch-page-server.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 import { shelfModel } from "./watch-shelf-fixture.ts";
 import { themeScene } from "./watch-theme-fixture.ts";
 
 const bench = "/themes/workshop/assets/bench.svg";
+const maskedBench = "/themes/masked/assets/bench.svg";
+const themeRunning = "color(srgb 0.122 0.616 0.333)";
 const defaultRunning = "rgb(31, 157, 85)";
 const plainRunning = "rgb(122, 31, 162)";
 
@@ -41,6 +45,26 @@ const measure = `(async () => {
   };
 })()`;
 
+const layers = `(async () => {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  for (let attempt = 0; attempt < 300 && !document.querySelector(".station .lamp.running, .token.waiting"); attempt++) await frame();
+  await frame();
+  const style = (selector, part) => {
+    const node = document.querySelector(selector);
+    if (node === null) return null;
+    const shown = getComputedStyle(node, part);
+    return { mask: shown.maskImage, color: shown.backgroundColor, content: shown.content };
+  };
+  return {
+    classes: document.documentElement.className,
+    lamp: style(".station .lamp.running", null),
+    art: style(".station .lamp.running", "::before"),
+    mark: style(".station .lamp.running", "::after"),
+    running: style(".token.running .token-worker", "::before"),
+    waiting: style(".token.waiting .token-worker", "::before"),
+  };
+})()`;
+
 const chosen = (name: string) => `(async () => {
   const menu = document.querySelector(".theme-menu select");
   menu.value = ${JSON.stringify(name)};
@@ -54,25 +78,66 @@ async function sceneThemes(setting: string): Promise<{
   readonly art: Uint8Array;
 }> {
   await using folders = await themeScene();
+  await writeTheme(
+    join(folders.project, "masked"),
+    withThemeData({
+      name: "Masked",
+      art: {
+        station: { src: "assets/bench.svg", mode: "mask" },
+        "run-token": { src: "assets/bench.svg", mode: "mask" },
+      },
+    }),
+  );
   return {
     themes: await watchThemes({ setting, folders }),
     art: await readFile(join(folders.project, "workshop/assets/bench.svg")),
   };
 }
 
-async function shown(
-  setting: string,
-  model: WatchModel = twoLineModel(),
-): Promise<Record<string, unknown>> {
-  const { themes, art } = await sceneThemes(setting);
-  await using fixture = await watchPageServer(model, {
+async function evaluated(input: {
+  readonly setting: string;
+  readonly model: WatchModel;
+  readonly script: string;
+}): Promise<Record<string, unknown>> {
+  const { themes, art } = await sceneThemes(input.setting);
+  const file = { type: "image/svg+xml", body: art };
+  await using fixture = await watchPageServer(input.model, {
     themes,
-    files: { [bench]: { type: "image/svg+xml", body: art } },
+    files: { [bench]: file, [maskedBench]: file },
   });
   await using browser = await realBrowser();
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
-  return await page.evaluate(measure);
+  return await page.evaluate(input.script);
+}
+
+function shown(
+  setting: string,
+  model: WatchModel = twoLineModel(),
+): Promise<Record<string, unknown>> {
+  return evaluated({ setting, model, script: measure });
+}
+
+function maskedLayers(): Promise<Record<string, unknown>> {
+  return evaluated({
+    setting: "masked",
+    script: layers,
+    model: floorModel([
+      floorRun("turn-585", {
+        operation: "claude-turn",
+        minutes: 3,
+        ticketId: "585",
+        harness: "claude",
+      }),
+      floorRun("pr-586", {
+        operation: "github-open-pr",
+        minutes: 2,
+        ticketId: "586",
+        harness: "claude",
+        awaitedRunId: "turn-585",
+      }),
+    ]),
+  });
 }
 
 function field(value: unknown, name: string): unknown {
@@ -119,6 +184,35 @@ await test("CLV-291 a theme with station art draws the art at each station with 
   );
   const plain = await shown("plain");
   assert.equal(field(plain["running"], "mark"), "none");
+});
+
+await test("CLV-291 a mask theme draws the station art on its own layer, so the state mark of the station stays visible", async () => {
+  const masked = await maskedLayers();
+  assert.equal(
+    masked["classes"],
+    "art-station art-station-mask art-run-token art-run-token-mask",
+  );
+  assert.equal(field(masked["lamp"], "mask"), "none");
+  assert.match(
+    String(field(masked["art"], "mask")),
+    /url\(".*\/themes\/masked\/assets\/bench\.svg"\)/,
+  );
+  assert.equal(field(masked["art"], "color"), themeRunning);
+  assert.equal(field(masked["mark"], "content"), '""');
+  assert.equal(field(masked["mark"], "mask"), "none");
+  assert.equal(field(masked["mark"], "color"), themeRunning);
+});
+
+await test("CLV-291 a mask run token draws its sprite in the text color of its state, dark on a waiting token", async () => {
+  const masked = await maskedLayers();
+  for (const name of ["running", "waiting"])
+    assert.match(
+      String(field(masked[name], "mask")),
+      /url\(".*\/themes\/masked\/assets\/bench\.svg"\)/,
+      name,
+    );
+  assert.equal(field(masked["running"], "color"), "rgb(255, 255, 255)");
+  assert.equal(field(masked["waiting"], "color"), "rgb(36, 27, 0)");
 });
 
 await test("CLV-291 the shelf heading counts completed runs with the word of the theme", async () => {

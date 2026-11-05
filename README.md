@@ -237,7 +237,7 @@ A theme is a folder with a `theme.json` file and an optional `assets` folder. Cl
 
 1. The built-in themes of the package, `light` and `dark`, with the current colors and fonts of the page.
 2. The user folder `<config>/cloving/themes/<name>`. `<config>` is an absolute `XDG_CONFIG_HOME`, or `~/.config` otherwise.
-3. The project folder `.cloving/themes/<name>` in the repository.
+3. The project folder `.cloving/themes/<name>` in the repository. The watch process of `start` uses the service repository in `CLOVING_WATCH_REPOSITORY`.
 
 A project theme replaces a user theme with the same name, and a user theme replaces a built-in theme. A refused theme also replaces the theme of the same name. The folder name is the name of the theme. It has 1 to 64 lowercase letters, digits and single hyphens, and starts with a letter. The name `auto` is reserved.
 
@@ -262,7 +262,7 @@ The watch server puts each usable theme on the page as CSS custom properties, on
 | `run-token` | Each run token, in place of the worker initial. The token keeps its state color. |
 | `completed-badge` | A badge on each tile of the Completed today shelf. |
 
-An `image` slot shows the file as it is. A `mask` slot uses the file as a shape and fills it with a color of the theme: the state color for a station, the text color on a state for a run token, the completed color for a badge and the line color for a background.
+An `image` slot shows the file as it is. A `mask` slot uses the file as a shape and fills it with a color of the theme: the state color for a station, the text color on a state for a run token, the completed color for a badge and the line color for a background. The state mark of a station stays outside the shape.
 
 `theme.json` uses the W3C Design Tokens Format Module 2025.10. The tokens are in groups. Each token has a `$value` and a `$type`, or it gets the `$type` of its group. A group `$type` is `color`, `dimension` or `fontFamily`. A token or a group can also have a `$description` text. Cloving refuses all other `$` properties and aliases. A token or group name cannot contain `.`, `{` or `}`. The theme data that is not a token is in `$extensions` under the key `ai.cloving.theme`:
 

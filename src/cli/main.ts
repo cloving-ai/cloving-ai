@@ -174,7 +174,10 @@ function watchSettings(input: {
     watchThemes: {
       setting: environment["CLOVING_WATCH_THEME"] ?? "auto",
       folders: themeFolders({
-        repository: input.repository ?? process.cwd(),
+        repository:
+          environment["CLOVING_WATCH_REPOSITORY"] ??
+          input.repository ??
+          process.cwd(),
         environment,
       }),
     },

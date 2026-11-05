@@ -7,10 +7,14 @@ import {
   truncate,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { test } from "node:test";
 import type { Fields } from "../src/protocol.ts";
-import { themeList, type ThemeFolders } from "../src/cli/theme-folders.ts";
+import {
+  loadedTheme,
+  themeList,
+  type ThemeFolders,
+} from "../src/cli/theme-folders.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { withThemeData, workshopTheme } from "./theme-check-fixture.ts";
 
@@ -72,6 +76,72 @@ await test("CLV-290 a project theme replaces a user theme and a built-in theme o
       ["workshop", "project", "Team shop", ["user", "built-in"]],
     ],
   );
+});
+
+function loaded(
+  files: Readonly<Record<string, string>>,
+  name: string,
+): Promise<Readonly<Record<string, unknown>> | null> {
+  return withFiles(files, async (root) => {
+    const theme = await loadedTheme(folders(root), name);
+    return theme === null
+      ? null
+      : {
+          ...theme.entry,
+          folder: relative(root, theme.folder),
+          assets: theme.assets,
+        };
+  });
+}
+
+await test("CLV-291 one theme loads by its name with the place order of the theme list", async () => {
+  const files = {
+    ...themeFiles("built-in/workshop"),
+    ...themeFiles("user/workshop", withThemeData({ name: "User shop" })),
+    ...themeFiles("project/workshop", withThemeData({ name: "Team shop" })),
+    ...themeFiles("user/plain", withThemeData({ name: "Plain" })),
+    ...themeFiles("built-in/plain"),
+  };
+  const shop = {
+    colorScheme: "light",
+    usable: true,
+    codes: [],
+    assets: ["assets/bench.svg"],
+  };
+  assert.deepEqual(await loaded(files, "workshop"), {
+    ...shop,
+    name: "workshop",
+    place: "project",
+    title: "Team shop",
+    replaces: ["user", "built-in"],
+    folder: "project/workshop",
+  });
+  assert.deepEqual(await loaded(files, "plain"), {
+    ...shop,
+    name: "plain",
+    place: "user",
+    title: "Plain",
+    replaces: ["built-in"],
+    folder: "user/plain",
+  });
+  assert.equal(await loaded(files, "missing"), null);
+});
+
+await test("CLV-291 a theme folder link loads as a refused theme that hides the user theme of its name", async () => {
+  const theme = await withFiles(themeFiles("user/workshop"), async (root) => {
+    await mkdir(join(root, "project"));
+    await symlink(join(root, "user/workshop"), join(root, "project/workshop"));
+    return (await loadedTheme(folders(root), "workshop"))?.entry;
+  });
+  assert.deepEqual(theme, {
+    name: "workshop",
+    place: "project",
+    title: null,
+    colorScheme: null,
+    usable: false,
+    codes: ["invalid-theme-folder"],
+    replaces: ["user"],
+  });
 });
 
 await test("CLV-290 a refused project theme still replaces a valid user theme", async () => {

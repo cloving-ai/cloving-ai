@@ -194,57 +194,84 @@ function absent(error: unknown): readonly Dirent[] {
   );
 }
 
-async function placeThemes(
+interface PlaceEntry {
+  readonly found: FoundTheme;
+  readonly path: string;
+  readonly folder: boolean;
+}
+
+async function placeEntries(
   place: ThemePlace,
   folder: string,
-): Promise<readonly LoadedTheme[]> {
+): Promise<readonly PlaceEntry[]> {
   const entries = await readdir(folder, { withFileTypes: true }).catch(absent);
-  const themes = entries
+  return entries
     .filter((item) => !item.name.startsWith(".") && !item.isFile())
-    .map((item) => {
-      const found = { name: item.name, place };
-      const path = join(folder, item.name);
-      return item.isDirectory()
-        ? folderTheme(found, path)
-        : Promise.resolve({
-            folder: path,
-            document: {},
-            assets: [],
-            entry: entry(found, { codes: ["invalid-theme-folder"] }),
-          });
-    });
-  return Promise.all(themes);
+    .map((item) => ({
+      found: { name: item.name, place },
+      path: join(folder, item.name),
+      folder: item.isDirectory(),
+    }));
+}
+
+async function themeEntries(
+  folders: ThemeFolders,
+): Promise<readonly PlaceEntry[]> {
+  const found = await Promise.all([
+    placeEntries("project", folders.project),
+    placeEntries("user", folders.user),
+    placeEntries("built-in", folders.builtIn),
+  ]);
+  return found.flat();
+}
+
+function placeTheme(item: PlaceEntry): Promise<LoadedTheme> {
+  if (item.folder) return folderTheme(item.found, item.path);
+  return Promise.resolve({
+    folder: item.path,
+    document: {},
+    assets: [],
+    entry: entry(item.found, { codes: ["invalid-theme-folder"] }),
+  });
+}
+
+async function chosenTheme(
+  item: PlaceEntry,
+  entries: readonly PlaceEntry[],
+): Promise<LoadedTheme> {
+  const theme = await placeTheme(item);
+  const replaces = entries
+    .filter((other) => other.found.name === item.found.name && other !== item)
+    .map((other) => other.found.place);
+  return { ...theme, entry: { ...theme.entry, replaces } };
 }
 
 export async function loadedThemes(
   folders: ThemeFolders,
 ): Promise<readonly LoadedTheme[]> {
-  const found = await Promise.all([
-    placeThemes("project", folders.project),
-    placeThemes("user", folders.user),
-    placeThemes("built-in", folders.builtIn),
-  ]);
-  const chosen = new Map<string, LoadedTheme>();
-  for (const theme of found.flat()) {
-    const current = chosen.get(theme.entry.name);
-    chosen.set(
-      theme.entry.name,
-      current === undefined
-        ? theme
-        : {
-            ...current,
-            entry: {
-              ...current.entry,
-              replaces: [...current.entry.replaces, theme.entry.place],
-            },
-          },
-    );
-  }
-  return [...chosen.values()].sort(
+  const entries = await themeEntries(folders);
+  const chosen = entries.filter(
+    (item, index) =>
+      entries.findIndex((other) => other.found.name === item.found.name) ===
+      index,
+  );
+  const themes = await Promise.all(
+    chosen.map((item) => chosenTheme(item, entries)),
+  );
+  return themes.toSorted(
     (first, second) =>
       Number(first.entry.name > second.entry.name) -
       Number(first.entry.name < second.entry.name),
   );
+}
+
+export async function loadedTheme(
+  folders: ThemeFolders,
+  name: string,
+): Promise<LoadedTheme | null> {
+  const entries = await themeEntries(folders);
+  const item = entries.find((other) => other.found.name === name);
+  return item === undefined ? null : await chosenTheme(item, entries);
 }
 
 export async function themeList(

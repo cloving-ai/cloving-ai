@@ -6,6 +6,7 @@ import {
   type ThemeWord,
 } from "../theme-style.ts";
 import {
+  loadedTheme,
   loadedThemes,
   themeAssetBytes,
   type LoadedTheme,
@@ -78,9 +79,8 @@ export async function themeAsset(
   folders: ThemeFolders,
   request: { readonly name: string; readonly path: string },
 ): Promise<Uint8Array | null> {
-  const themes = await loadedThemes(folders).catch(() => []);
-  const theme = themes.find((item) => item.entry.name === request.name);
-  return theme === undefined ? null : themeAssetBytes(theme, request.path);
+  const theme = await loadedTheme(folders, request.name).catch(() => null);
+  return theme === null ? null : themeAssetBytes(theme, request.path);
 }
 
 const assetAddress =

@@ -45,7 +45,7 @@ function colorText(value: unknown): string {
 function fontText(value: unknown): string {
   return [value]
     .flat()
-    .map(String)
+    .filter((name) => typeof name === "string")
     .map((name) => (genericFonts.includes(name) ? name : `"${name}"`))
     .join(", ");
 }

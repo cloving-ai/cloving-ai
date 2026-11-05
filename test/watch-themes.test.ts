@@ -175,3 +175,29 @@ await test("CLV-291 cloving watch uses the watch.theme setting and the theme fol
     await watch.stop();
   }
 });
+
+await test("CLV-291 cloving watch takes the project themes from the service repository that start gives, not from its start folder", async () => {
+  await using folders = await themeScene();
+  const repository = join(folders.root, "repository");
+  const product = join(folders.root, "product");
+  for (const folder of [repository, product])
+    execFileSync("git", ["init", "--quiet", folder]);
+  await writeTheme(join(repository, ".cloving/themes/workshop"));
+  const watch = await watching(join(folders.root, "run"), {
+    directory: product,
+    environment: {
+      CLOVING_WATCH_REPOSITORY: repository,
+      CLOVING_WATCH_THEME: "workshop",
+      XDG_CONFIG_HOME: join(folders.root, "config"),
+    },
+  });
+  try {
+    const page = await (await fetch(watch.address)).text();
+    assert.ok(page.includes(':root[data-theme="workshop"] {'));
+    const art = await fetch(`${watch.address}themes/workshop/assets/bench.svg`);
+    assert.equal(art.status, 200);
+    await art.arrayBuffer();
+  } finally {
+    await watch.stop();
+  }
+});

@@ -283,7 +283,7 @@ const noThemes: WatchThemes = {
   failure: null,
 };
 
-function scriptData(value: unknown): string {
+function scriptData(value: WatchThemes): string {
   return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
 
