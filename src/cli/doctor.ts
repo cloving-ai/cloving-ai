@@ -119,10 +119,9 @@ async function repositoryObservations(
   observations["runtime-directory"] = location.observation;
   const service = await serviceObservation(location, { environment, probe });
   observations["service"] = service.observation;
-  observations["thread-pool"] = await threadPoolObservation(
-    service.status,
+  observations["thread-pool"] = await threadPoolObservation(service.status, {
     environment,
-  );
+  });
   observations["retention"] =
     location.runtime === undefined || location.observation.result !== "ok"
       ? { result: "skip", detail: "Runtime prerequisite unavailable" }

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { watchApiTimeout } from "./watch-api.ts";
 import type { WatchStream } from "./watch-stream.ts";
 
 export const defaultReplyMilliseconds = 10_000;
@@ -36,10 +37,11 @@ export function deadlined<Answer>(
   const expired = new Promise<Reply>((settle) => {
     timer = setTimeout(() => {
       const elapsed = Math.round(performance.now() - started);
+      const path = route(deadline.request);
       deadline.complain(
-        `watch-reply-timeout path=${route(deadline.request)} ms=${String(elapsed)}\n`,
+        `watch-reply-timeout path=${path} ms=${String(elapsed)}\n`,
       );
-      settle(timeout);
+      settle(watchApiTimeout(path) ?? timeout);
     }, deadline.milliseconds);
   });
   return Promise.race([answer, expired]).finally(() => {

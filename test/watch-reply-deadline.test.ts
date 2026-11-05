@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { closeSync, constants, openSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createServer, type Socket } from "node:net";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -12,25 +11,24 @@ import { testMilliseconds } from "./test-timing.ts";
 const replyMilliseconds = 200;
 const settings = { replyMilliseconds };
 
-async function stalledJournal(root: string): Promise<string> {
-  const pipe = join(root, "journal/stalled/started.json");
-  await mkdir(dirname(pipe), { recursive: true });
-  execFileSync("mkfifo", [pipe]);
-  return pipe;
-}
-
-function released(pipe: string): void {
-  try {
-    closeSync(openSync(pipe, constants.O_WRONLY | constants.O_NONBLOCK));
-  } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENXIO"))
-      throw error;
-  }
+async function silentService(runtime: string): Promise<() => Promise<void>> {
+  await mkdir(runtime, { recursive: true, mode: 0o700 });
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+  });
+  await new Promise<void>((settle) => {
+    server.listen(join(runtime, "control.sock"), settle);
+  });
+  return async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise((settle) => server.close(settle));
+  };
 }
 
 await test("CLV-298 a watch reply that never settles gets 503 after the reply deadline, and the watch logs watch-reply-timeout with the route", () =>
   withFiles({}, async (root) => {
-    const pipe = await stalledJournal(root);
+    const release = await silentService(join(root, "run"));
     const watch = await directWatch(join(root, "run"), settings);
     try {
       const reply = await fetch(`${watch.address}data.json?view=private`, {
@@ -44,7 +42,39 @@ await test("CLV-298 a watch reply that never settles gets 503 after the reply de
       const elapsed = Number(/ms=(\d+)/.exec(line)?.[1]);
       assert.ok(elapsed >= replyMilliseconds, line);
     } finally {
-      released(pipe);
+      await release();
+      assert.equal(await watch.stop(), 0);
+    }
+  }));
+
+await test("CLV-298 an API reply that never settles gets a 503 problem reply with the code timeout after the reply deadline", () =>
+  withFiles({}, async (root) => {
+    const release = await silentService(join(root, "run"));
+    const watch = await directWatch(join(root, "run"), settings);
+    try {
+      const reply = await fetch(`${watch.address}api/v1/runs`, {
+        signal: AbortSignal.timeout(testMilliseconds(5000)),
+      });
+      assert.equal(reply.status, 503);
+      assert.equal(
+        reply.headers.get("content-type"),
+        "application/problem+json",
+      );
+      assert.deepEqual(await reply.json(), {
+        type: "about:blank",
+        title: "Service Unavailable",
+        status: 503,
+        detail:
+          "The watch page did not complete the reply before the deadline.",
+        code: "timeout",
+      });
+      assert.equal(watch.complaints.length, 1);
+      assert.match(
+        watch.complaints[0] ?? "",
+        /^watch-reply-timeout path=\/api\/v1\/runs ms=\d+\n$/,
+      );
+    } finally {
+      await release();
       assert.equal(await watch.stop(), 0);
     }
   }));
