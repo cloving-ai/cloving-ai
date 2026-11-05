@@ -2,13 +2,18 @@ import { access, constants, lstat, realpath, stat } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
-import { record } from "../protocol.ts";
+import { record, type Fields } from "../protocol.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import {
   adoptionRecordPath,
   runtimeDirectory,
   legacyRuntimeDirectory,
 } from "./runtime-directory.ts";
+
+export interface ServiceState {
+  readonly observation: DoctorObservation;
+  readonly status: Fields | undefined;
+}
 
 export interface DoctorRuntime {
   readonly runtime: string | undefined;
@@ -177,7 +182,7 @@ export async function serviceObservation(
     readonly environment: Readonly<NodeJS.ProcessEnv>;
     readonly probe: ProbeRunner;
   },
-): Promise<DoctorObservation> {
+): Promise<ServiceState> {
   const { environment, probe } = options;
   const { runtime, project } = location;
   if (
@@ -185,7 +190,7 @@ export async function serviceObservation(
     project === undefined ||
     location.observation.result !== "ok"
   )
-    return { result: "skip", detail: "Runtime prerequisite unavailable" };
+    return skippedService("Runtime prerequisite unavailable");
   const entry = await lstat(join(runtime, "control.sock")).catch(
     (error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT")
@@ -194,7 +199,7 @@ export async function serviceObservation(
     },
   );
   if (entry === undefined)
-    return { result: "skip", detail: "No service for this repository" };
+    return skippedService("No service for this repository");
   const result = await probe(process.execPath, {
     arguments: [
       join(
@@ -207,13 +212,28 @@ export async function serviceObservation(
     directory: project,
     milliseconds: 5000,
   });
-  const usable =
-    result.reason === null &&
-    record(JSON.parse(result.stdout))?.["kind"] === "result";
+  const reply = result.reason === null ? record(JSON.parse(result.stdout)) : {};
+  return answeredService(
+    reply?.["kind"] === "result" ? record(reply["result"]) : undefined,
+  );
+}
+
+function skippedService(detail: string): ServiceState {
+  return { observation: { result: "skip", detail }, status: undefined };
+}
+
+function answeredService(status: Fields | undefined): ServiceState {
   return {
-    result: usable ? "ok" : "fail",
-    detail: usable
-      ? "Service answers from its generated project folder"
-      : "Service did not answer successfully within 5 seconds",
+    observation:
+      status === undefined
+        ? {
+            result: "fail",
+            detail: "Service did not answer successfully within 5 seconds",
+          }
+        : {
+            result: "ok",
+            detail: "Service answers from its generated project folder",
+          },
+    status,
   };
 }

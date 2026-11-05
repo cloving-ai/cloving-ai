@@ -1,3 +1,4 @@
+import type { ThreadPoolSettings } from "../cli/thread-pool.ts";
 import { join } from "node:path";
 import {
   startDelivery,
@@ -71,6 +72,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly checkCommand?: readonly string[];
   readonly mergeMode?: MergeMode;
   readonly privateTexts?: readonly string[];
+  readonly threadPool?: ThreadPoolSettings;
   readonly concurrency: number;
 }
 

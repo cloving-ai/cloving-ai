@@ -27,6 +27,8 @@ import {
   runtimeDirectory,
 } from "./cli/runtime-directory.ts";
 import { commandUsage } from "./cli/usage.ts";
+import { stalledExit } from "./cli/thread-pool.ts";
+import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
 const [command, ...options] = process.argv.slice(2);
 
@@ -319,4 +321,9 @@ else {
       execute: watchCommand,
     },
   });
+  if (
+    invocation.kind === "watch" &&
+    process.exitCode === threadPoolStallExitCode
+  )
+    await stalledExit(process);
 }

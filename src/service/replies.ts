@@ -12,10 +12,12 @@ import type { Gateway } from "./gateway.ts";
 import type { Registry, WorkflowCatalog } from "./registry.ts";
 import type { CommandEffects } from "../command-settings.ts";
 import type { RunTurns, TurnDetails } from "../record-retention.ts";
+import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 
 export interface ServiceReads {
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
+  readonly threadPool?: () => ThreadPoolCheck | undefined;
 }
 
 export interface ServiceContext extends ServiceReads {
@@ -53,6 +55,7 @@ export function queryMetadata(
   | "queue"
   | "workerHarness"
   | "turnDetails"
+  | "threadPool"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
   | "version"
@@ -73,7 +76,15 @@ export function queryMetadata(
     ...(options.commandEffects === undefined
       ? {}
       : { commandEffects: options.commandEffects }),
+    ...(options.threadPool === undefined
+      ? {}
+      : { threadPool: options.threadPool }),
   };
+}
+
+export function threadPoolField(context: ServiceReads): Fields {
+  const check = context.threadPool?.();
+  return check === undefined ? {} : { threadPool: check };
 }
 
 const codes: Readonly<Record<string, string>> = {

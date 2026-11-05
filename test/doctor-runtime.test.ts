@@ -4,14 +4,17 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import net from "node:net";
-import { replyLine } from "../src/protocol.ts";
 import { test } from "node:test";
 import {
   adoptionRecordPath,
   runtimeDirectory,
 } from "../src/cli/runtime-directory.ts";
-import { check, withDoctor, type DoctorScene } from "./doctor-fixture.ts";
+import {
+  check,
+  withDoctor,
+  withServiceSocket,
+  type DoctorScene,
+} from "./doctor-fixture.ts";
 
 function runtime(scene: DoctorScene) {
   const path = runtimeDirectory(scene.environment, scene.repository);
@@ -121,50 +124,9 @@ await test("CLV-207 adoption record folder must be writable", () =>
     }
   }));
 
-async function withSocket(
-  options: { readonly scene: DoctorScene; readonly answer: "reply" | "silent" },
-  use: (path: string) => Promise<void>,
-) {
-  const { scene, answer } = options;
-  const path = join(scene.root, "long".repeat(30), "run");
-  const project = join(dirname(path), "project");
-  await mkdir(path, { recursive: true, mode: 0o700 });
-  await mkdir(project);
-  const prior = process.cwd();
-  const sockets = new Set<net.Socket>();
-  const server = net.createServer((socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-    if (answer === "reply")
-      socket.once("data", () =>
-        socket.end(replyLine({ kind: "result", result: { runs: [] } })),
-      );
-  });
-  try {
-    process.chdir(project);
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen("../run/control.sock", resolve);
-    });
-  } finally {
-    process.chdir(prior);
-  }
-  try {
-    await use(path);
-  } finally {
-    for (const socket of sockets) socket.destroy();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve();
-      }),
-    );
-  }
-}
-
 await test("CLV-207 long absolute sockets pass and answer from a distant folder through the generated project", () =>
   withDoctor((scene) =>
-    withSocket({ scene, answer: "reply" }, async (path) => {
+    withServiceSocket({ scene, answer: { runs: [] } }, async (path) => {
       assert.ok(Buffer.byteLength(join(path, "control.sock")) > 103);
       const output = await scene.report({ CLOVING_RUNTIME_DIR: path });
       assert.equal(check(output, "runtime-directory")["result"], "ok");
@@ -174,7 +136,7 @@ await test("CLV-207 long absolute sockets pass and answer from a distant folder 
 
 await test("CLV-207 a socket that does not answer fails after five seconds", () =>
   withDoctor((scene) =>
-    withSocket({ scene, answer: "silent" }, async (path) => {
+    withServiceSocket({ scene, answer: "silent" }, async (path) => {
       const started = performance.now();
       const output = await scene.report({ CLOVING_RUNTIME_DIR: path });
       assert.equal(check(output, "service")["result"], "fail");
