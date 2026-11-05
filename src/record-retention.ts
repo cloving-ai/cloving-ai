@@ -44,6 +44,8 @@ export const sharedRecordFolders: readonly string[] = [
   "journal/targets",
 ];
 
+export const bundleDigestPattern = /^[a-f0-9]{64}$/;
+
 export const defaultRetention: RetentionSettings = {
   days: 30,
   action: "archive",
@@ -81,6 +83,43 @@ export function retentionVerdict(
 
 function endedBefore(run: StoredRun, limit: number): boolean {
   return finished.includes(run.status) && (run.endedAt ?? Number.NaN) < limit;
+}
+
+export interface StoredBundle {
+  readonly digest: string;
+  readonly currentAt: number;
+}
+
+export interface BundleContext {
+  readonly current: string | undefined;
+  readonly pinned: readonly string[];
+  readonly now: number;
+  readonly days: number | null;
+}
+
+export function dueBundles(
+  bundles: readonly StoredBundle[],
+  context: BundleContext,
+): string[] {
+  const { current, pinned, days } = context;
+  if (days === null) return [];
+  const limit = context.now - days * dayMilliseconds;
+  return bundles
+    .filter(
+      (bundle) =>
+        bundle.digest !== current &&
+        !pinned.includes(bundle.digest) &&
+        bundle.currentAt < limit,
+    )
+    .map((bundle) => bundle.digest);
+}
+
+export function batchAfter(
+  names: readonly string[],
+  context: { readonly cursor: string; readonly size: number },
+): readonly string[] {
+  const rest = names.filter((name) => name > context.cursor);
+  return (rest.length === 0 ? names : rest).slice(0, context.size);
 }
 
 export function turnDetails(

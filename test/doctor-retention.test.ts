@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, truncate, utimes, writeFile } from "node:fs/promises";
+import { mkdir, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
@@ -45,7 +45,7 @@ await test("CLV-271 doctor shows the size, folder count and oldest age of the ke
     assert.equal(shown["required"], false);
     assert.equal(
       shown["detail"],
-      `journal 2.1 kB in 2 folders; github 302 bytes in 1 folder; oldest kept folder 12 days old; retention.days 30, retention.action archive, retention.archiveFolder null (${join(stateFolder(scene), "archive")})`,
+      `journal 2.1 kB in 2 folders; github 302 bytes in 1 folder; workflow-bundles 0 bytes in 0 bundles; oldest kept folder 12 days old; retention.days 30, retention.action archive, retention.archiveFolder null (${join(stateFolder(scene), "archive")})`,
     );
     const configured = check(
       await scene.report({
@@ -79,7 +79,7 @@ await test("CLV-271 doctor warns when retention.days is null and the records are
     assert.equal(warned["result"], "warn");
     assert.match(
       String(warned["detail"]),
-      /^journal 1\.0 GB in 1 folder; github 10 bytes in 1 folder; .*; the records are larger than 1 GB and retention\.days is null$/,
+      /^journal 1\.0 GB in 1 folder; github 10 bytes in 1 folder; workflow-bundles 0 bytes in 0 bundles; .*; the records are larger than 1 GB and retention\.days is null$/,
     );
     assert.equal(
       warned["fix"],
@@ -101,5 +101,43 @@ await test("CLV-271 an invalid retention setting fails the optional doctor check
     assert.equal(
       failed["detail"],
       "invalid-setting: CLOVING_RETENTION_ACTION must be archive or delete",
+    );
+  }));
+
+await test("CLV-295 doctor shows the size and the count of the workflow bundles and counts them in the 1 GB warning", () =>
+  withDoctor(async (scene) => {
+    const store = join(stateFolder(scene), "workflow-bundles");
+    await recordFolder(scene, { path: "journal/first", bytes: 100, days: 3 });
+    for (const record of [
+      { path: `workflow-bundles/${"a".repeat(64)}`, bytes: 2000, days: 400 },
+      { path: `workflow-bundles/${"b".repeat(64)}`, bytes: 500, days: 1 },
+      { path: "workflow-bundles/.history/x", bytes: 10, days: 1 },
+      {
+        path: `workflow-bundles/.removing-${"c".repeat(64)}`,
+        bytes: 5,
+        days: 1,
+      },
+    ])
+      await recordFolder(scene, record);
+    await symlink("..", join(store, "node_modules"));
+    const shown = check(await scene.report(), "retention");
+    assert.equal(shown["result"], "ok");
+    assert.match(
+      String(shown["detail"]),
+      /^journal 100 bytes in 1 folder; github 0 bytes in 0 folders; workflow-bundles 2\.5 kB in 2 bundles; oldest kept folder 3 days old; /,
+    );
+    await recordFolder(scene, {
+      path: `workflow-bundles/${"d".repeat(64)}`,
+      bytes: 1_000_000_000,
+      days: 1,
+    });
+    const warned = check(
+      await scene.report({ CLOVING_RETENTION_DAYS: "null" }),
+      "retention",
+    );
+    assert.equal(warned["result"], "warn");
+    assert.match(
+      String(warned["detail"]),
+      /; workflow-bundles 1\.0 GB in 3 bundles; .*; the records are larger than 1 GB and retention\.days is null$/,
     );
   }));

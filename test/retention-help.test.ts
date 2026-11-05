@@ -28,6 +28,16 @@ await test("CLV-270 start help has one line for each retention variable with its
   );
 });
 
+await test("CLV-295 start help says that the retention days also remove old workflow bundles", () => {
+  const found = String(commandUsage["start"])
+    .split("\n")
+    .find((line) => line.startsWith("  CLOVING_RETENTION_DAYS "));
+  assert.match(
+    String(found),
+    /workflow bundle.*no unfinished run is pinned.*not the current generation.*not current during this count of days.*null keeps all records and workflow bundles/,
+  );
+});
+
 await test("CLV-270 config set keeps the retention settings only in the private file", () => {
   using fixture = configScene();
   for (const [field, value] of [

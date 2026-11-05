@@ -2,6 +2,7 @@ import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { DoctorObservation } from "../doctor-report.ts";
 import {
+  bundleDigestPattern,
   retentionSettings,
   sharedRecordFolders,
   type RetentionSettings,
@@ -14,12 +15,28 @@ interface TreeUse {
 
 interface KindUse {
   readonly kind: string;
+  readonly noun: string;
   readonly size: number;
   readonly folders: number;
   readonly oldest: number;
 }
 
-const kinds = ["journal", "github"] as const;
+interface Kind {
+  readonly kind: string;
+  readonly noun: string;
+  readonly kept: (name: string) => boolean;
+}
+
+const recordKinds: readonly Kind[] = ["journal", "github"].map((kind) => ({
+  kind,
+  noun: "folder",
+  kept: (name) => !sharedRecordFolders.includes(`${kind}/${name}`),
+}));
+const bundleKind: Kind = {
+  kind: "workflow-bundles",
+  noun: "bundle",
+  kept: (name) => bundleDigestPattern.test(name),
+};
 const dayMilliseconds = 86_400_000;
 const warningBytes = 1_000_000_000;
 const units = [
@@ -63,19 +80,19 @@ async function entryUse(
   return { ...(await treeUse(path)), folder: true };
 }
 
-async function kindUse(state: string, kind: string): Promise<KindUse> {
-  const folder = join(state, kind);
+async function kindUse(state: string, kind: Kind): Promise<KindUse> {
+  const folder = join(state, kind.kind);
   const names = await readdir(folder).catch(() => []);
   const uses = await Promise.all(
     names.map(async (name) => {
       const use = await entryUse(join(folder, name));
-      const shared = sharedRecordFolders.includes(`${kind}/${name}`);
-      return { ...use, record: use.folder && !shared };
+      return { ...use, record: use.folder && kind.kept(name) };
     }),
   );
   const records = uses.filter((use) => use.record);
   return {
-    kind,
+    kind: kind.kind,
+    noun: kind.noun,
     size: uses.reduce((total, use) => total + use.size, 0),
     folders: records.length,
     oldest: records
@@ -102,8 +119,11 @@ export async function retentionObservation(
 ): Promise<DoctorObservation> {
   try {
     const settings = retentionSettings(environment);
-    const uses = await Promise.all(kinds.map((kind) => kindUse(state, kind)));
-    const oldest = Math.min(...uses.map((use) => use.oldest));
+    const records = await Promise.all(
+      recordKinds.map((kind) => kindUse(state, kind)),
+    );
+    const uses = [...records, await kindUse(state, bundleKind)];
+    const oldest = Math.min(...records.map((use) => use.oldest));
     const unlimited =
       settings.days === null &&
       uses.reduce((total, use) => total + use.size, 0) > warningBytes;
@@ -113,7 +133,7 @@ export async function retentionObservation(
         uses
           .map(
             (use) =>
-              `${use.kind} ${sizeText(use.size)} in ${counted(use.folders, "folder")}`,
+              `${use.kind} ${sizeText(use.size)} in ${counted(use.folders, use.noun)}`,
           )
           .join("; "),
         ageText(oldest, Date.now()),
