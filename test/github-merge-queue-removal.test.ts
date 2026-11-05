@@ -5,6 +5,7 @@ import { git, resultOf, until } from "./claude-worker-fixture.ts";
 import {
   checkRuns,
   conflictingBase,
+  earlierAttempt,
   groupRuns,
   observer,
   queueCalls,
@@ -29,7 +30,7 @@ await test("CLV-297 a pull request that leaves the queue after a failed merge gr
       replies: {
         "api GET workflow-runs": groupRuns([
           { id: 78, branch: "gh-readonly-queue/main/pr-12-abc" },
-          { id: 77, branch: `gh-readonly-queue/main/pr-1-${commit}` },
+          { id: 77, branch: "gh-readonly-queue/main/pr-1-def" },
         ]),
       },
       sequences: {
@@ -59,7 +60,7 @@ await test("CLV-297 a pull request that leaves the queue after a failed merge gr
     );
   }));
 
-await test("CLV-297 a pull request that leaves the queue with no merge group run gives merge-queue-removed", () =>
+await test("CLV-297 a pull request that leaves the queue with no merge group run of this queue wait gives merge-queue-removed", () =>
   withGithub(async (scene) => {
     const worker = queueWorker(scene);
     const commit = await opened(scene, worker);
@@ -68,7 +69,15 @@ await test("CLV-297 a pull request that leaves the queue with no merge group run
       replies: {
         "api GET workflow-runs": groupRuns([
           { id: 78, branch: "gh-readonly-queue/main/pr-12-abc" },
+          {
+            id: 77,
+            branch: "gh-readonly-queue/main/pr-1-def",
+            created: earlierAttempt,
+          },
         ]),
+      },
+      sequences: {
+        "api GET check-runs": [checkRuns("success"), checkRuns("failure")],
       },
     });
     settleQueue(scene, "removed");

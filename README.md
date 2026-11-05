@@ -716,8 +716,8 @@ Then the step leaves the merge turn, so the next merge step of the repository ca
 
 - GitHub merges the pull request. The result is a merge with the merge commit of GitHub.
 - The pull request leaves the queue with no merge, and it now conflicts with the newest default branch. The result is `merge-conflict` with the conflict output, for the usual conflict repair.
-- The pull request leaves the queue with no merge and no conflict. The result is `ci-failed` with the failed checks of its latest merge group run. If Cloving finds no failed check of a merge group run, the result is `merge-queue-removed`.
-- The pull request stays in the queue for 3 hours. The step removes it with `dequeuePullRequest`, and the result is `merge-queue-timeout`.
+- The pull request leaves the queue with no merge and no conflict. The result is `ci-failed` with the failed checks of its latest merge group run. Cloving uses only the merge group runs that GitHub started after the step added the pull request to the queue. If Cloving finds no failed check of such a run, the result is `merge-queue-removed`.
+- The pull request stays in the queue for 3 hours. The step removes it with `dequeuePullRequest`, and the result is `merge-queue-timeout`. The step keeps the time at which it added the pull request to the queue. Thus a restart of the daemon does not start the 3 hours again.
 
 The develop workflow blocks on `merge-queue-removed` and on `merge-queue-timeout` without a fix round.
 

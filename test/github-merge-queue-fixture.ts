@@ -65,6 +65,7 @@ interface GroupRun {
   readonly head_branch: string;
   readonly head_sha: string;
   readonly event: string;
+  readonly created_at: string;
 }
 
 interface CheckRunReply {
@@ -76,15 +77,23 @@ interface CheckRunReply {
   readonly details_url: string;
 }
 
+export const earlierAttempt = "2026-01-01T00:00:00Z";
+
 export function groupRuns(
-  runs: readonly { readonly id: number; readonly branch: string }[],
+  runs: readonly {
+    readonly id: number;
+    readonly branch: string;
+    readonly created?: string;
+  }[],
 ): { readonly workflow_runs: readonly GroupRun[] } {
+  const thisAttempt = new Date(Date.now() + 86_400_000).toISOString();
   return {
     workflow_runs: runs.map((run) => ({
       id: run.id,
       head_branch: run.branch,
       head_sha: String(run.id).repeat(20).slice(0, 40),
       event: "merge_group",
+      created_at: run.created ?? thisAttempt,
     })),
   };
 }

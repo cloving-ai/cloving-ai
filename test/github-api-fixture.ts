@@ -135,10 +135,9 @@ const actions = {
     const pr = queued();
     pr.queuePolls = (pr.queuePolls ?? 0) + 1;
     const result = existsSync(file + ".queue") ? readFileSync(file + ".queue", "utf8") : undefined;
-    if (pr.queue && result && pr.queuePolls >= (state.queuePolls ?? 1)) {
-      if (result === "merged") Object.assign(pr, { state: "MERGED", mergedHead: headOf(pr.head), mergeCommit: "d".repeat(40) });
-      pr.queue = null;
-    }
+    const settled = pr.queue && result && pr.queuePolls >= (state.queuePolls ?? 1);
+    if (settled && result === "merged") Object.assign(pr, { state: "MERGED", mergedHead: headOf(pr.head), mergeCommit: "d".repeat(40) });
+    if (settled) pr.queue = null;
     const merged = pr.state === "MERGED";
     out({ data: { node: { id: "PR_" + pr.number, state: pr.state, headRefOid: merged ? pr.mergedHead : headOf(pr.head), mergeCommit: merged ? { oid: pr.mergeCommit } : null, mergeQueueEntry: pr.queue ?? null } } });
   },

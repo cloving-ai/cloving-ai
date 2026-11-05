@@ -1054,6 +1054,7 @@
     "test/github-merge-poll.test.ts": "test",
     "test/github-merge-queue-fixture.ts": "test",
     "test/github-merge-queue-removal.test.ts": "test",
+    "test/github-merge-queue-restart.test.ts": "test",
     "test/github-merge-queue.test.ts": "test",
     "test/github-merge-refresh.test.ts": "test",
     "test/github-merge-replies.test.ts": "test",

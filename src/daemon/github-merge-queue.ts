@@ -20,6 +20,7 @@ import {
 } from "./github-operation.ts";
 import { githubRead, retryGithub } from "./github-retry.ts";
 import { inMergeTurn } from "./merge-turns.ts";
+import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
 
 const stateQuery =
   "query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeCommit { oid } mergeQueueEntry { state position } } } }";
@@ -118,6 +119,25 @@ async function enqueued(operation: Operation, queued: Queued): Promise<void> {
   });
 }
 
+async function queueStart(
+  operation: Operation,
+  commit: string,
+): Promise<number> {
+  const name = `queue-${operationKey(commit)}.json`;
+  const record = await readRecord(operation.folder, name);
+  if (record === undefined) {
+    const startedAt = Date.now();
+    await writeRecord(operation.folder, {
+      name,
+      value: { commit, startedAt },
+    });
+    return startedAt;
+  }
+  const startedAt = field(record, "startedAt");
+  if (typeof startedAt !== "number") throw new Error("github-call-failed");
+  return startedAt;
+}
+
 async function queueEntry(
   operation: Operation,
   pull: ReviewedPull,
@@ -131,13 +151,14 @@ async function queueEntry(
   await checkedLocally(operation, pull);
   const ci = await waitForCi(operation, pull.commit);
   if (ci !== undefined) return ci;
+  await queueStart(operation, pull.commit);
   await enqueued(operation, queued);
   return queued;
 }
 
 async function groupHead(
   operation: Operation,
-  number: number,
+  wait: { readonly number: number; readonly started: number },
 ): Promise<string | undefined> {
   const reply: unknown = JSON.parse(
     await githubRead(operation, [
@@ -146,10 +167,12 @@ async function groupHead(
     ]),
   );
   const branch = new RegExp(
-    `^gh-readonly-queue/.+/pr-${String(number)}-[0-9a-f]+$`,
+    `^gh-readonly-queue/.+/pr-${String(wait.number)}-[0-9a-f]+$`,
   );
-  const run = list(field(reply, "workflow_runs")).find((item) =>
-    branch.test(String(field(item, "head_branch"))),
+  const run = list(field(reply, "workflow_runs")).find(
+    (item) =>
+      branch.test(String(field(item, "head_branch"))) &&
+      Date.parse(String(field(item, "created_at"))) >= wait.started,
   );
   const head = field(run, "head_sha");
   return typeof head === "string" ? head : undefined;
@@ -157,10 +180,14 @@ async function groupHead(
 
 async function removal(
   operation: Operation,
-  pull: ReviewedPull,
+  wait: { readonly queued: Queued; readonly started: number },
 ): Promise<CiResult | QueueResult> {
+  const { pull } = wait.queued;
   await conflictChecked(operation, pull.commit);
-  const head = await groupHead(operation, pull.number);
+  const head = await groupHead(operation, {
+    number: pull.number,
+    started: wait.started,
+  });
   const failed =
     head === undefined ? undefined : await failedChecks(operation, head);
   return (
@@ -212,7 +239,7 @@ async function settled(
     queueLimitMilliseconds: 10_800_000,
     ...operation.settings.timing,
   };
-  const started = Date.now();
+  const started = await queueStart(operation, queued.pull.commit);
   let shown = "";
   try {
     for (;;) {
@@ -225,7 +252,7 @@ async function settled(
           mergedResult(queued.pull, state.merged),
         );
       if (state.entry === undefined)
-        return await removal(operation, queued.pull);
+        return await removal(operation, { queued, started });
       shown = await shownEntry(operation, {
         started,
         entry: state.entry,
