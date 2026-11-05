@@ -180,6 +180,27 @@ await test("CLV-297 a pull request that another person added to the queue gets t
     assert.notEqual(scene.state().prs[0]?.["state"], "MERGED");
   }));
 
+await test("CLV-297 a failed local check of an adopted queue entry keeps check-failed when the dequeue call fails", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene, {
+      check: [process.execPath, "-e", "process.exit(3)"],
+    });
+    const commit = await opened(scene, worker);
+    scene.plan({
+      scores: [],
+      queuePolls: 3,
+      fail: "api graphql dequeue",
+      failureText: "gh: GraphQL: Something went wrong (HTTP 502)",
+    });
+    enqueuedBefore(scene, commit);
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["reason"], "check-failed");
+  }));
+
 await test("CLV-297 a pull request that leaves the queue and now conflicts with main gives the merge-conflict repair", () =>
   withGithub(async (scene) => {
     const worker = queueWorker(scene);

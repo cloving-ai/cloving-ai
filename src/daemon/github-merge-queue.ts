@@ -185,8 +185,18 @@ async function adoptedCheck(
   try {
     await checkedLocally(operation, target.pull);
   } catch (error) {
-    await operation.calls.gh(graphql(dequeueMutation, [`id=${target.id}`]));
+    await dequeued(operation, target.id).catch(() => undefined);
     throw error;
+  }
+}
+
+async function dequeued(operation: Operation, id: string): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const state = await queueState(operation, id);
+    if (state.kind !== "queued") return;
+    await retryGithub(operation, {
+      action: () => operation.calls.gh(graphql(dequeueMutation, [`id=${id}`])),
+    });
   }
 }
 
@@ -378,9 +388,5 @@ async function removedOnStop(
   };
   const known = await knownMerge(after, { ...pull, updated: pull.commit });
   if (known.node === undefined) return;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const state = await queueState(after, known.node);
-    if (state.kind !== "queued") return;
-    await stopCalls.gh(graphql(dequeueMutation, [`id=${known.node}`]));
-  }
+  await dequeued(after, known.node);
 }
