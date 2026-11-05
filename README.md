@@ -235,7 +235,7 @@ A theme gives the watch page other colors, sizes, fonts, art and words. A theme 
 
 A theme is a folder with a `theme.json` file and an optional `assets` folder. Cloving finds themes in three places:
 
-1. The built-in themes of the package, `light` and `dark`, with the current colors and fonts of the page.
+1. The built-in themes of the package: `floor`, `floor-at-night` and `workshop` (see "Built-in themes").
 2. The user folder `<config>/cloving/themes/<name>`. `<config>` is an absolute `XDG_CONFIG_HOME`, or `~/.config` otherwise.
 3. The project folder `.cloving/themes/<name>` in the repository. The watch process of `start` uses the service repository in `CLOVING_WATCH_REPOSITORY`.
 
@@ -249,7 +249,25 @@ cloving config set watch.theme workshop
 cloving doctor
 ```
 
-The header of the watch page has a theme menu. The menu shows `Auto` and each usable theme. A choice in the menu applies at once, and the browser keeps it for the next visits. With no choice in the browser, the page uses `watch.theme`. `auto` uses the built-in theme `light` when the browser uses a light color scheme, and `dark` when it uses a dark color scheme. When the selected theme is refused or missing, the page uses the default theme and shows a short notice, for example "The page uses the default theme: the theme workshop is refused: invalid-color." When `auto` finds no `light` or `dark` theme, the page uses the default theme with no notice.
+The header of the watch page has a theme menu. The menu shows `Auto` and each usable theme. A choice in the menu applies at once, and the browser keeps it for the next visits. With no choice in the browser, the page uses `watch.theme`. `auto` uses the theme `floor` when the browser uses a light color scheme, and `floor-at-night` when it uses a dark color scheme. When the selected theme is refused or missing, the page uses the default theme and shows a short notice, for example "The page uses the default theme: the theme workshop is refused: invalid-color." When `auto` finds no `floor` or `floor-at-night` theme, the page uses the default theme with no notice.
+
+##### Built-in themes
+
+Cloving has three built-in themes. Each one is a theme folder in the `themes` folder of the package, in the same theme format as your own themes (see [The theme format](#the-theme-format)). Copy a built-in folder to the user folder or to the project folder to start a theme of your own.
+
+- **Floor** (`floor`) is the default for a light browser. It has concrete and steel colors and the safety colors for the states: green for running, yellow for waiting, blue for needs you and red for stopped. Buttons and run tokens have angled corners (`shape.cut` of 7 px). It uses the fonts Barlow and Barlow Semi Condensed.
+- **Floor at night** (`floor-at-night`) is the default for a dark browser. It has the same structure as Floor, with colors for a dark room.
+- **Workshop** (`workshop`) shows how far a theme can go with only tokens, art and words. It has a tile floor, a brick header, pennant banners, benches as stations, worker sprites as run tokens and a shoe badge on the tiles of the Completed today shelf. Its words include "Workshop", "Bulletin board", "Inspector", "Help desk" and "shoes". It uses the pixel fonts Silkscreen and Pixelify Sans.
+
+In each built-in theme, the text colors have a contrast of at least 4.5:1 on the page and panel colors. The package includes the font files with their licenses in `assets/watch-fonts`. All the fonts use the SIL Open Font License 1.1.
+
+![Floor](https://github.com/user-attachments/assets/bd6afd21-8e26-4330-bb3f-bc0d520cc51c)
+
+![Floor at night](https://github.com/user-attachments/assets/ef7b02fa-c51b-41d1-a491-4705429e8146)
+
+![Workshop](https://github.com/user-attachments/assets/d16acc47-e27e-4f76-a09e-8b8ce11deffc)
+
+##### How the page applies a theme
 
 The watch server puts each usable theme on the page as CSS custom properties, one for each token. The name of a property is the token name with `-` in place of `.`, for example `--color-state-running` and `--shape-cut`. The page takes its colors, corner cuts, borders, text size, gaps and fonts from these properties. Only the logo, the colors of the workflow lines, the text on state colors and the error text in code windows keep fixed colors. Each art slot that a theme sets becomes the page class `art-<slot>`, for example `art-station`, and the custom properties `--art-<slot>`, `--art-<slot>-repeat` and `--art-<slot>-rendering`, for example `--art-station`, `--art-station-repeat` and `--art-station-rendering`. A slot in `mask` mode also gives the class `art-<slot>-mask`, for example `art-station-mask`. The server serves the art files at `/themes/<name>/assets/<path>`, only for a usable theme and only for the files of its art slots.
 
@@ -263,6 +281,8 @@ The watch server puts each usable theme on the page as CSS custom properties, on
 | `completed-badge` | A badge on each tile of the Completed today shelf. |
 
 An `image` slot shows the file as it is. A `mask` slot uses the file as a shape and fills it with a color of the theme: the state color for a station, the text color on a state for a run token, the completed color for a badge and the line color for a background. The state mark of a station stays outside the shape.
+
+##### The theme format
 
 `theme.json` uses the W3C Design Tokens Format Module 2025.10. The tokens are in groups. Each token has a `$value` and a `$type`, or it gets the `$type` of its group. A group `$type` is `color`, `dimension` or `fontFamily`. A token or a group can also have a `$description` text. Cloving refuses all other `$` properties and aliases. A token or group name cannot contain `.`, `{` or `}`. The theme data that is not a token is in `$extensions` under the key `ai.cloving.theme`:
 
@@ -303,7 +323,7 @@ A theme can set only these token names. All tokens are optional.
 | `size.gap` | `dimension` | 0 to 48 px |
 | `font.ui`, `font.heading`, `font.code` | `fontFamily` | A list of font names |
 
-A color is a hex value `#RRGGBB` or `#RRGGBBAA`, or a color object. A color object has the `colorSpace` `srgb` and three `components` from 0 to 1. It can also have an `alpha` from 0 to 1 and a `hex` value `#RRGGBB`. A dimension is an object with a `value` in the range of its token and the `unit` `px`. A font family is a list of 1 to 8 font names. A font name has 1 to 64 letters, digits, spaces, `_` and `-`, and starts and ends with a letter or a digit.
+A color is a hex value `#RRGGBB` or `#RRGGBBAA`, or a color object. A color object has the `colorSpace` `srgb` and three `components` from 0 to 1. It can also have an `alpha` from 0 to 1 and a `hex` value `#RRGGBB`. A dimension is an object with a `value` in the range of its token and the `unit` `px`. A font family is a list of 1 to 8 font names. A font name has 1 to 64 letters, digits, spaces, `_` and `-`, and starts and ends with a letter or a digit. The watch page includes the fonts Barlow, Barlow Semi Condensed, Fira Code, Heebo, Pixelify Sans, Silkscreen and Space Grotesk. A theme can use other font names only for fonts that the computer of the browser has.
 
 A theme can set art in these slots: `floor`, `header`, `line-banner`, `station`, `run-token` and `completed-badge`. Each slot is an object with these fields:
 
@@ -334,6 +354,9 @@ A theme can set only these words:
 | `station.agent` | text | The name of an agent step on the floor and on the board, now "Agent turn" |
 | `station.review` | text | The name of a review step on the floor and on the board, now "Your review" |
 | `totals.label` | text | The label of the totals of a board card, now "Totals" |
+| `today.title` | text | The heading of the Today panel, now "Today" |
+| `needs.title` | text | The heading of the Needs you panel, now "Needs you" |
+| `ready.count` | plural | The count of ready tickets at the end of a workflow line, now "3 ready" |
 | `completed.unit` | plural | The unit of the count on the Completed today shelf |
 | `run.unit` | plural | The unit of the count on the Completed today shelf, when `completed.unit` is not set |
 | `ticket.unit` | plural | The unit of the count of skipped tickets of the queue |

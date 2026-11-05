@@ -23,6 +23,7 @@ import {
   runOperator,
 } from "./operator-startup-fixture.ts";
 import { packagedFontFiles, servedFonts } from "./watch-font-fixture.ts";
+import { packedThemePaths, packedThemes } from "./packed-themes.ts";
 import { packedWorkflowFolders } from "./packed-workflow-folders.ts";
 import { packedWorkflowTesting } from "./packed-workflow-testing.ts";
 import {
@@ -107,6 +108,7 @@ async function installed(root: string): Promise<string> {
     ),
     [],
   );
+  packedThemePaths(paths);
   await installPacked(root, {
     archive: join(root, archive.filename),
     checkout,
@@ -351,6 +353,7 @@ await test("CLV-096 an omitted-dev packed installation compiles, registers, serv
     const executable = await installed(root);
     await packedCommandWait(root);
     await packedDoctor(root);
+    await packedThemes(root);
     await running(root, executable);
     await withFiles({}, async (directory) => {
       command("git", { args: ["init", "-q"], cwd: directory });

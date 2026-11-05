@@ -166,7 +166,7 @@ await test("CLV-291 cloving watch uses the watch.theme setting and the theme fol
   try {
     const page = await (await fetch(watch.address)).text();
     assert.match(page, /const themes = \{"setting":"workshop",/);
-    for (const name of ["dark", "light", "workshop"])
+    for (const name of ["floor", "floor-at-night", "workshop"])
       assert.ok(page.includes(`:root[data-theme="${name}"] {`), name);
     const art = await fetch(`${watch.address}themes/workshop/assets/bench.svg`);
     assert.equal(art.status, 200);

@@ -15,6 +15,36 @@ export interface CommandOutput {
   readonly stderr: string;
 }
 
+export const builtInThemes = [
+  {
+    name: "floor",
+    place: "built-in",
+    title: "Floor",
+    colorScheme: "light",
+    usable: true,
+    codes: [],
+    replaces: [],
+  },
+  {
+    name: "floor-at-night",
+    place: "built-in",
+    title: "Floor at night",
+    colorScheme: "dark",
+    usable: true,
+    codes: [],
+    replaces: [],
+  },
+  {
+    name: "workshop",
+    place: "built-in",
+    title: "Workshop",
+    colorScheme: "light",
+    usable: true,
+    codes: [],
+    replaces: [],
+  },
+];
+
 export function projectThemes(scene: DoctorScene): string {
   return join(scene.repository, ".cloving/themes");
 }

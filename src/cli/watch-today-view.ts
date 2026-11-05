@@ -2,6 +2,7 @@ import type { Fields } from "../protocol.ts";
 import type { DailyNumbers } from "../report-days.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import type { WatchModel } from "./watch-render.ts";
+import { wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export function dollars(value: number | null): string {
   return value === null ? "unknown" : `$${value.toFixed(2)}`;
@@ -150,7 +151,10 @@ export function LaneLine(props: { readonly queue: Fields | undefined }): Shown {
   });
 }
 
-export function Today(props: { readonly model: WatchModel }): Shown {
+export function Today(props: {
+  readonly model: WatchModel;
+  readonly words?: WatchWords | undefined;
+}): Shown {
   const { today, queue } = props.model;
   if (today === undefined) return null;
   return element("section", {
@@ -160,7 +164,13 @@ export function Today(props: { readonly model: WatchModel }): Shown {
       element("div", {
         class: "today-head",
         children: [
-          element("h2", { id: "today-title", children: "Today" }),
+          element("h2", {
+            id: "today-title",
+            children: wordText(props.words, {
+              key: "today.title",
+              text: "Today",
+            }),
+          }),
           element("span", { class: "today-since", children: "since midnight" }),
         ],
       }),

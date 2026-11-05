@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <title>Shoe</title>
+  <rect x="2" y="4" width="6" height="1" fill="#6B4423"/>
+  <rect x="2" y="5" width="6" height="4" fill="#8A5A2B"/>
+  <rect x="3" y="6" width="1" height="3" fill="#A9743F"/>
+  <rect x="6" y="6" width="2" height="1" fill="#F3E6C8"/>
+  <rect x="6" y="8" width="2" height="1" fill="#F3E6C8"/>
+  <rect x="2" y="9" width="11" height="4" fill="#8A5A2B"/>
+  <rect x="8" y="9" width="2" height="1" fill="#F3E6C8"/>
+  <rect x="13" y="10" width="1" height="3" fill="#8A5A2B"/>
+  <rect x="14" y="11" width="1" height="2" fill="#8A5A2B"/>
+  <rect x="3" y="10" width="9" height="1" fill="#A9743F"/>
+  <rect x="1" y="13" width="15" height="2" fill="#3B2414"/>
+</svg>

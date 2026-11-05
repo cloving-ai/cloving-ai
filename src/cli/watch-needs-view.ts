@@ -2,6 +2,7 @@ import { component, element, type Shown } from "./watch-element.ts";
 import { stepAge } from "./watch-floor-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchDecision, WatchRun } from "./watch-render.ts";
+import { wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export interface WatchNeed {
   readonly kind: "decision" | "stopped";
@@ -102,6 +103,7 @@ export function Need(props: {
 export function NeedsYou(props: {
   readonly runs: readonly WatchRun[];
   readonly now: string;
+  readonly words?: WatchWords | undefined;
 }): Shown {
   const { now } = props;
   const needs = needsOf(props.runs);
@@ -112,7 +114,13 @@ export function NeedsYou(props: {
       element("div", {
         class: "needs-head",
         children: [
-          element("h2", { id: "needs-title", children: "Needs you" }),
+          element("h2", {
+            id: "needs-title",
+            children: wordText(props.words, {
+              key: "needs.title",
+              text: "Needs you",
+            }),
+          }),
           element("span", {
             class: "needs-count",
             children: `${String(needs.length)} waiting for a person`,

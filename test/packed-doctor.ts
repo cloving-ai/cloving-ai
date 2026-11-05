@@ -11,7 +11,7 @@ export function packedDoctor(root: string): Promise<void> {
       [join(root, "node_modules/cloving/dist/src/cli.js"), "doctor", "--json"],
       {
         cwd: scene.repository,
-        env: { ...scene.environment, CLOVING_WATCH_THEME: "dark" },
+        env: { ...scene.environment, CLOVING_WATCH_THEME: "floor-at-night" },
         encoding: "utf8",
         timeout: 20000,
       },
@@ -40,7 +40,7 @@ export function packedDoctor(root: string): Promise<void> {
     );
     assert.equal(
       checks.find((check) => check["code"] === "theme")?.["detail"],
-      'watch.theme dark: the built-in theme "Cloving dark"',
+      'watch.theme floor-at-night: the built-in theme "Floor at night"',
     );
   });
 }

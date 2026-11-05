@@ -33,12 +33,12 @@ await test("CLV-290 doctor reports a refused theme that watch.theme selects", ()
 
 await test("CLV-290 doctor reports a missing theme that watch.theme selects", () =>
   withDoctor(async (scene) => {
-    const output = await scene.report({ CLOVING_WATCH_THEME: "workshop" });
+    const output = await scene.report({ CLOVING_WATCH_THEME: "garage" });
     const reported = check(output, "theme");
     assert.equal(reported["result"], "fail");
     assert.equal(
       reported["detail"],
-      "watch.theme workshop: no theme folder has this name",
+      "watch.theme garage: no theme folder has this name",
     );
   }));
 
@@ -55,12 +55,12 @@ await test("CLV-290 doctor accepts a usable selected theme and the default auto"
       'watch.theme workshop: the project theme "Workshop"',
     );
     const builtIn = check(
-      await scene.report({ CLOVING_WATCH_THEME: "dark" }),
+      await scene.report({ CLOVING_WATCH_THEME: "floor-at-night" }),
       "theme",
     );
     assert.equal(
       builtIn["detail"],
-      'watch.theme dark: the built-in theme "Cloving dark"',
+      'watch.theme floor-at-night: the built-in theme "Floor at night"',
     );
     const automatic = check(await scene.report(), "theme");
     assert.equal(automatic["result"], "ok");
