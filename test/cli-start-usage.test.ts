@@ -109,6 +109,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*check run names.*GitHub Actions.*90 minutes/,
   ],
   ["CLOVING_PRIVATE_TEXTS", /JSON list of texts .*home folder.*case/],
+  [
+    "CLOVING_MERGE_MODE",
+    /direct or queue.*default is direct.*merge queue rule/,
+  ],
 ];
 
 await test("CLV-131 start help describes the persistent failure limit and explicit queue recovery", () => {
@@ -126,7 +130,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 31);
+  assert.equal(names.length, 32);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

@@ -21,6 +21,8 @@ export type MergeReason =
   | "merge-conflict"
   | "ci-failed"
   | "ci-pending"
+  | "merge-queue-removed"
+  | "merge-queue-timeout"
   | "check-not-configured"
   | "not-approved";
 

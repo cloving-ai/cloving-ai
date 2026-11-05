@@ -147,6 +147,13 @@ export interface DevelopFeedback {
   readonly remaining: readonly string[];
 }
 
+const waitReasons = [
+  "ci-pending",
+  "check-not-configured",
+  "merge-queue-removed",
+  "merge-queue-timeout",
+];
+
 export function repair(input: {
   readonly cycleId: string;
   readonly round: number;
@@ -158,8 +165,7 @@ export function repair(input: {
   const needsAnswer = reason === "review-changes" || reason === "not-approved";
   if (
     round === 4 ||
-    reason === "ci-pending" ||
-    reason === "check-not-configured" ||
+    waitReasons.includes(reason) ||
     (needsAnswer && result.output.trim() === "")
   )
     return {

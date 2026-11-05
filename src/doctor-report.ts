@@ -15,6 +15,7 @@ export const doctorCodes = [
   "ticket-command",
   "next-command",
   "check-command",
+  "merge-mode",
   "queue-interval",
   "private-texts",
   "retention",
@@ -56,6 +57,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Set tickets.nextCommand to an executable list: ${EDITOR:-vi} .cloving/config.json",
   "check-command":
     "Set checks.beforeMerge to an executable list: ${EDITOR:-vi} .cloving/config.json",
+  "merge-mode":
+    "Set the merge mode to direct or queue: cloving config set merge.mode direct",
   "queue-interval":
     "Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 cloving doctor",
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,

@@ -1,6 +1,6 @@
 export const fakeGh = `
 import { execFileSync } from "node:child_process";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const file = process.env.FAKE_GH_STATE;
 const origin = process.env.FAKE_GH_ORIGIN;
@@ -9,6 +9,8 @@ const args = process.argv.slice(2);
 state.calls.push(args);
 state.callTimes = [...(state.callTimes ?? []), Date.now()];
 const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+const variable = (key) => args.find((part) => part.startsWith(key + "="))?.slice(key.length + 1);
+const queued = () => state.prs.find((item) => "PR_" + item.number === variable("id"));
 const headOf = (branch) => execFileSync("git", ["-C", origin, "rev-parse", "refs/heads/" + branch], { encoding: "utf8" }).trim();
 const visibleHead = (pr) => state.headAfterReads === undefined ? headOf(pr.head) : pr.visibleHead;
 const readHead = (pr) => {
@@ -127,7 +129,34 @@ const actions = {
       return;
     }
     const merged = pr.state === "MERGED";
-    out({ number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), base: { ref: pr.base, sha: headOf(pr.base) }, head: { sha: merged ? pr.mergedHead : readHead(pr) } });
+    out({ number, node_id: "PR_" + number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), base: { ref: pr.base, sha: headOf(pr.base) }, head: { sha: merged ? pr.mergedHead : readHead(pr) } });
+  },
+  "api graphql pull": () => {
+    const pr = queued();
+    pr.queuePolls = (pr.queuePolls ?? 0) + 1;
+    const result = existsSync(file + ".queue") ? readFileSync(file + ".queue", "utf8") : undefined;
+    const settled = pr.queue && result && pr.queuePolls >= (state.queuePolls ?? 1);
+    if (settled && result === "merged") Object.assign(pr, { state: "MERGED", mergedHead: headOf(pr.head), mergeCommit: "d".repeat(40) });
+    if (settled) pr.queue = null;
+    const merged = pr.state === "MERGED";
+    out({ data: { node: { id: "PR_" + pr.number, state: pr.state, headRefOid: merged ? pr.mergedHead : headOf(pr.head), mergeCommit: merged ? { oid: pr.mergeCommit } : null, mergeQueueEntry: pr.queue ?? null } } });
+  },
+  "api graphql enqueue": () => {
+    const pr = queued();
+    if (variable("head") !== headOf(pr.head)) {
+      process.stderr.write("gh: GraphQL: The head of the pull request changed (HTTP 422)");
+      process.exitCode = 1;
+      return;
+    }
+    pr.queue = { state: "QUEUED", position: state.queuePosition ?? 1, enqueuedAt: state.enqueuedAt ?? new Date().toISOString() };
+    pr.queuePolls = 0;
+    out({ data: { enqueuePullRequest: { mergeQueueEntry: pr.queue } } });
+  },
+  "api graphql dequeue": () => {
+    const pr = queued();
+    pr.queue = null;
+    pr.dequeued = true;
+    out({ data: { dequeuePullRequest: { mergeQueueEntry: null } } });
   },
   "api PUT merge": () => {
     const pr = state.prs.find((item) => item.number === number);
@@ -152,9 +181,15 @@ const actions = {
   "api DELETE refs": () => { execFileSync("git", ["-C", origin, "branch", "-D", path.split("/heads/")[1]]); },
 };
 const kind = path.includes("/actions/workflows?") ? "workflows" : path.includes("/attempts/") ? "attempt-jobs" : path.includes("/actions/runs?") ? "workflow-runs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
-const name = args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
+const query = variable("query") ?? "";
+const mutation = ["enqueue", "dequeue"].find((word) => query.includes(word + "PullRequest(")) ?? "pull";
+const name = args[1] === "graphql" ? "api graphql " + mutation : args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));
+if (state.holds?.includes(name)) {
+  writeFileSync(file + ".held", name);
+  await new Promise(resolve => setTimeout(resolve, 600_000));
+}
 const index = state.failures?.findIndex((failure) => failure.call === name) ?? -1;
 const failure = index < 0 ? undefined : state.failures.splice(index, 1)[0];
 if (failure?.after) actions[name]();

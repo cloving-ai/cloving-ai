@@ -256,3 +256,42 @@ await test("CLV-293 status shows a git retry and the time of the next attempt", 
     /^Reason: git-network-retry: git fetch failed, retry 2 of 3\.$/m,
   );
 });
+
+await test("CLV-297 status shows the merge queue state and position of the pull request", () => {
+  const view = runView(
+    input({
+      status: "running",
+      observed: {
+        reason: "github-merge-queued",
+        evidence: "merge-queue/AWAITING_CHECKS/2",
+      },
+      operations: [sent],
+    }),
+  );
+  assert.equal(view.condition, "working");
+  assert.deepEqual(view.reason, {
+    code: "github-merge-queued",
+    detail: "In the merge queue, position 2. Queue state: AWAITING_CHECKS.",
+  });
+  assert.equal(view.nextAction, null);
+  assert.equal(view.humanInputCanHelp, false);
+  assert.match(
+    rendered({ kind: "run-status", run: view }),
+    /^Reason: github-merge-queued: In the merge queue, position 2\. Queue state: AWAITING_CHECKS\.$/m,
+  );
+});
+
+await test("CLV-297 status notices without evidence keep a readable detail", () => {
+  for (const [observed, detail] of [
+    [{ condition: "waiting-run" }, "The run waits for run unknown."],
+    [
+      { reason: "git-network-retry", attempt: 1, limit: 3 },
+      "git failed, retry 1 of 3.",
+    ],
+  ] as const)
+    assert.equal(
+      runView(input({ status: "running", observed, operations: [sent] })).reason
+        .detail,
+      detail,
+    );
+});

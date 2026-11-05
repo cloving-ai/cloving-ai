@@ -118,3 +118,38 @@ await test("CLV-163 CI diagnostics hide private texts in every letter case", asy
   assert.match(result.output, /Failed step: Build \[hidden\]/);
   assert.match(result.output, /Failed \[hidden\] \[hidden\] exacttoken/);
 });
+
+await test("CLV-297 a failed check with a run link and no job link reads the run log and keeps the failure when the log is unavailable", async () => {
+  const { result, calls } = await ciScenario({
+    snapshots: [
+      [
+        checkRun({
+          conclusion: "failure",
+          details_url: "https://github.com/acme/demo/actions/runs/88",
+        }),
+      ],
+    ],
+    reply: () => {
+      throw new Error("github-call-failed");
+    },
+  });
+  assert.equal(result?.reason, "ci-failed");
+  assert.match(
+    result.output,
+    /CI diagnostics unavailable: GitHub logs could not be read/,
+  );
+  const logs = calls.filter((call) => call.includes("--log-failed"));
+  assert.ok(logs.length > 0);
+  assert.ok(logs.every((call) => !call.includes("--job")));
+});
+
+await test("CLV-297 a failed check summary that fills the output limit keeps no log tail", async () => {
+  const { result } = await ciScenario({
+    snapshots: [[checkRun({ name: "q".repeat(6_100), conclusion: "failure" })]],
+    reply: (parts) =>
+      parts.includes("--json") ? JSON.stringify({ jobs: [] }) : "Log tail.",
+  });
+  assert.equal(result?.reason, "ci-failed");
+  assert.equal(result.output.length, 6_000);
+  assert.doesNotMatch(result.output, /Log tail/);
+});

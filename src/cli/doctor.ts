@@ -19,6 +19,7 @@ import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
 import {
   commandObservation,
+  mergeModeObservation,
   nodeObservation,
   privateTextsObservation,
   queueObservation,
@@ -107,6 +108,9 @@ async function repositoryObservations(
     "settings-files": configured.observation,
   };
   const settingsValid = configured.observation.result === "ok";
+  observations["merge-mode"] = mergeModeObservation(
+    environment["CLOVING_MERGE_MODE"],
+  );
   observations["theme"] = settingsValid
     ? await themeObservation({ repository, environment })
     : { result: "skip", detail: "Settings files are invalid" };
