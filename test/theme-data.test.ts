@@ -239,3 +239,26 @@ await test("CLV-290 a deeply nested value gives a refusal code and does not stop
     "invalid-word",
   ]);
 });
+
+await test("CLV-292 a theme can name the Today panel, the Needs you panel and the ready count of a line", () => {
+  assert.deepEqual(
+    codes(
+      words({
+        "today.title": "Bulletin board",
+        "needs.title": "Inspector",
+        "ready.count": {
+          one: "Help desk: {count}",
+          other: "Help desk: {count}",
+        },
+      }),
+    ),
+    [],
+  );
+  assert.deepEqual(codes(words({ "ready.count": "Help desk" })), [
+    "invalid-word",
+  ]);
+  assert.deepEqual(
+    codes(words({ "today.title": { one: "Board", other: "Boards" } })),
+    ["invalid-word"],
+  );
+});

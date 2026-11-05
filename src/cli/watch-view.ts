@@ -26,7 +26,8 @@ import {
   type ColumnControls,
 } from "./watch-board-view.ts";
 import { watchHash, watchLocation } from "./watch-navigation.ts";
-import { Floor, Shelf } from "./watch-floor-view.ts";
+import { Floor } from "./watch-floor-view.ts";
+import { Shelf } from "./watch-shelf-view.ts";
 import { NeedsYou } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
@@ -284,13 +285,13 @@ export function FloorPage(
             class: "floor-main",
             children: [
               component(Floor, { model, now, words }),
-              component(NeedsYou, { runs: model.runs, now }),
+              component(NeedsYou, { runs: model.runs, now, words }),
             ],
           }),
           element("aside", {
             class: "side-panels",
             children: [
-              component(Today, { model }),
+              component(Today, { model, words }),
               component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],

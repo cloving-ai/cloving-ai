@@ -46,12 +46,16 @@ const broken: WatchTheme = {
 };
 const light: WatchTheme = {
   ...workshop,
-  name: "light",
+  name: "floor",
   title: null,
   classes: [],
   words: {},
 };
-const dark: WatchTheme = { ...light, name: "dark", colorScheme: "dark" };
+const dark: WatchTheme = {
+  ...light,
+  name: "floor-at-night",
+  colorScheme: "dark",
+};
 
 function listed(setting: string, themes: readonly WatchTheme[]): WatchThemes {
   return { setting, style: "", themes, failure: null };
@@ -87,13 +91,13 @@ function page(
   );
 }
 
-await test("CLV-291 the shown theme is the choice of the browser, else watch.theme, and auto follows the color scheme", () => {
+await test("CLV-291 CLV-292 the shown theme is the choice of the browser, else watch.theme, and auto follows the color scheme with the Floor themes", () => {
   const themes = listed("workshop", [broken, dark, light, workshop]);
   for (const [choice, scheme, name] of [
     [null, false, "workshop"],
-    ["light", false, "light"],
-    ["auto", false, "light"],
-    ["auto", true, "dark"],
+    ["floor", false, "floor"],
+    ["auto", false, "floor"],
+    ["auto", true, "floor-at-night"],
   ] as const) {
     const shown = shownTheme(themes, { choice, dark: scheme });
     assert.equal(shown.theme?.name, name, String(choice));
@@ -138,15 +142,15 @@ await test("CLV-291 the header has a theme menu with Auto and each usable theme,
     now: twoLineModel().updatedAt,
     stale: false,
     copying: noCopy,
-    theme: controls("light", { chosen }),
+    theme: controls("floor", { chosen }),
   });
   const html = rendered(shown);
   assert.match(
     html,
-    /<label class="theme-menu">Theme <select[^>]*><option value="auto">Auto<\/option><option value="dark">dark<\/option><option value="light">light<\/option><option value="workshop">Workshop<\/option><\/select><\/label>/,
+    /<label class="theme-menu">Theme <select[^>]*><option value="auto">Auto<\/option><option value="floor-at-night">floor-at-night<\/option><option value="floor">floor<\/option><option value="workshop">Workshop<\/option><\/select><\/label>/,
   );
   const menu = found(shown, "select")[0] ?? {};
-  assert.equal(menu["value"], "light");
+  assert.equal(menu["value"], "floor");
   const change: unknown = menu["onChange"];
   assert.ok(typeof change === "function");
   Reflect.apply(change, undefined, [{ currentTarget: { value: "workshop" } }]);
@@ -175,7 +179,7 @@ await test("CLV-291 the floor and the shelf use the words of the theme with its 
     /<span class="shelf-count">1 shoe<\/span>/,
   );
   assert.match(
-    page(shelf, { theme: controls("light") }),
+    page(shelf, { theme: controls("floor") }),
     /<span class="shelf-count">3 runs<\/span>/,
   );
 });

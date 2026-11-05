@@ -1,6 +1,69 @@
 {
   "files": [
     {
+      "path": "barlow-latin-400-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow/-/barlow-5.3.0.tgz",
+      "sourceMember": "package/files/barlow-latin-400-normal.woff2",
+      "package": "@fontsource/barlow",
+      "version": "5.3.0",
+      "bytes": 22196,
+      "sha256": "b0a8ad37ac45f5fb22ced461576db72e44e295107aad7a9c8a7a4bad728fd03b"
+    },
+    {
+      "path": "barlow-latin-500-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow/-/barlow-5.3.0.tgz",
+      "sourceMember": "package/files/barlow-latin-500-normal.woff2",
+      "package": "@fontsource/barlow",
+      "version": "5.3.0",
+      "bytes": 22008,
+      "sha256": "cd759df8ef9efc98fee14307b4eb5ba27f08b1f8f2f3ad2872432e25c89907a8"
+    },
+    {
+      "path": "barlow-latin-600-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow/-/barlow-5.3.0.tgz",
+      "sourceMember": "package/files/barlow-latin-600-normal.woff2",
+      "package": "@fontsource/barlow",
+      "version": "5.3.0",
+      "bytes": 22772,
+      "sha256": "4b52ddd4836b592df0e4832b8286956883cdc651b015126bdd18f184b7f90cc3"
+    },
+    {
+      "path": "barlow-latin-700-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow/-/barlow-5.3.0.tgz",
+      "sourceMember": "package/files/barlow-latin-700-normal.woff2",
+      "package": "@fontsource/barlow",
+      "version": "5.3.0",
+      "bytes": 22788,
+      "sha256": "2d797dd8b35dcb3413e1af9d7052b3f4f8c341a147cdcb01f4f06af80db53289"
+    },
+    {
+      "path": "barlow-OFL.md",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow/-/barlow-5.3.0.tgz",
+      "sourceMember": "package/LICENSE",
+      "package": "@fontsource/barlow",
+      "version": "5.3.0",
+      "bytes": 6014,
+      "sha256": "4877e0c1b66f0b16cc3ebc4801c4def24c06252f618b9229428b20c7387aa0c0"
+    },
+    {
+      "path": "barlow-semi-condensed-latin-700-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow-semi-condensed/-/barlow-semi-condensed-5.3.0.tgz",
+      "sourceMember": "package/files/barlow-semi-condensed-latin-700-normal.woff2",
+      "package": "@fontsource/barlow-semi-condensed",
+      "version": "5.3.0",
+      "bytes": 23244,
+      "sha256": "fb958c8c20a05552ac8a85d925d96028d52565792650e941a5fe96b6997aa5cb"
+    },
+    {
+      "path": "barlow-semi-condensed-OFL.md",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/barlow-semi-condensed/-/barlow-semi-condensed-5.3.0.tgz",
+      "sourceMember": "package/LICENSE",
+      "package": "@fontsource/barlow-semi-condensed",
+      "version": "5.3.0",
+      "bytes": 6235,
+      "sha256": "56027070a748db90a33c074bf7b9b7f0df66dd38a8a0d3e3a951f79035f9c4a0"
+    },
+    {
       "path": "fira-code-latin-400-normal.woff2",
       "sourceArchive": "https://registry.npmjs.org/@fontsource/fira-code/-/fira-code-5.3.0.tgz",
       "sourceMember": "package/files/fira-code-latin-400-normal.woff2",
@@ -62,6 +125,69 @@
       "version": "5.3.0",
       "bytes": 4379,
       "sha256": "50ac3e340fcd4822b2904413d14b457e02392f0bef38cd790e88da82014be44f"
+    },
+    {
+      "path": "pixelify-sans-latin-400-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/pixelify-sans/-/pixelify-sans-5.3.0.tgz",
+      "sourceMember": "package/files/pixelify-sans-latin-400-normal.woff2",
+      "package": "@fontsource/pixelify-sans",
+      "version": "5.3.0",
+      "bytes": 7692,
+      "sha256": "d830612ac9131788ebae754b9268f83f7c1d3ffa9bc0f9a5514207a8283fe71e"
+    },
+    {
+      "path": "pixelify-sans-latin-500-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/pixelify-sans/-/pixelify-sans-5.3.0.tgz",
+      "sourceMember": "package/files/pixelify-sans-latin-500-normal.woff2",
+      "package": "@fontsource/pixelify-sans",
+      "version": "5.3.0",
+      "bytes": 8096,
+      "sha256": "d17198a8057c1d0354ca39fffd54533734c1c8a6f47a9bde29ee1fb4cdfa06f0"
+    },
+    {
+      "path": "pixelify-sans-latin-600-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/pixelify-sans/-/pixelify-sans-5.3.0.tgz",
+      "sourceMember": "package/files/pixelify-sans-latin-600-normal.woff2",
+      "package": "@fontsource/pixelify-sans",
+      "version": "5.3.0",
+      "bytes": 8216,
+      "sha256": "9ee47c039a991caea6072eecfe03cf36debf4f70bb2566bd602b9eada1ab1112"
+    },
+    {
+      "path": "pixelify-sans-latin-700-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/pixelify-sans/-/pixelify-sans-5.3.0.tgz",
+      "sourceMember": "package/files/pixelify-sans-latin-700-normal.woff2",
+      "package": "@fontsource/pixelify-sans",
+      "version": "5.3.0",
+      "bytes": 7904,
+      "sha256": "c836cfa5c0e9d62ea9b890e0418d52a6004149090a521cd198a8c09f5d5ab893"
+    },
+    {
+      "path": "pixelify-sans-OFL.md",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/pixelify-sans/-/pixelify-sans-5.3.0.tgz",
+      "sourceMember": "package/LICENSE",
+      "package": "@fontsource/pixelify-sans",
+      "version": "5.3.0",
+      "bytes": 4393,
+      "sha256": "8ed5cd9e189e30dfdb0df2d5c2771556b50e9d502d899221328c3245caf8423c"
+    },
+    {
+      "path": "silkscreen-latin-700-normal.woff2",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/silkscreen/-/silkscreen-5.3.0.tgz",
+      "sourceMember": "package/files/silkscreen-latin-700-normal.woff2",
+      "package": "@fontsource/silkscreen",
+      "version": "5.3.0",
+      "bytes": 7524,
+      "sha256": "5741b7f01a127f40ed70281fa2f686e8fc2cfe241930a120e4d1a1cebe78f995"
+    },
+    {
+      "path": "silkscreen-OFL.md",
+      "sourceArchive": "https://registry.npmjs.org/@fontsource/silkscreen/-/silkscreen-5.3.0.tgz",
+      "sourceMember": "package/LICENSE",
+      "package": "@fontsource/silkscreen",
+      "version": "5.3.0",
+      "bytes": 4503,
+      "sha256": "5e647e94c4b72dc6c92dabfabb3c32225fbeff0f5f9e38db93c118b5bcb85d0c"
     },
     {
       "path": "space-grotesk-latin-400-normal.woff2",

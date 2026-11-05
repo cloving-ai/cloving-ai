@@ -1,19 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import { notFound, type Reply } from "./watch-reply.ts";
 import { readFile } from "node:fs/promises";
+import { fontNames } from "./watch-fonts.ts";
 
 const fontFiles = new Map(
-  [
-    "fira-code-latin-400-normal.woff2",
-    "fira-code-latin-500-normal.woff2",
-    "heebo-latin-500-normal.woff2",
-    "heebo-latin-700-normal.woff2",
-    "heebo-latin-800-normal.woff2",
-    "space-grotesk-latin-400-normal.woff2",
-    "space-grotesk-latin-500-normal.woff2",
-    "space-grotesk-latin-600-normal.woff2",
-    "space-grotesk-latin-700-normal.woff2",
-  ].map((name) => [
+  fontNames.map((name) => [
     `/watch-fonts-v1/${name}`,
     new URL(`assets/watch-fonts/${name}`, import.meta.resolve("#package")),
   ]),

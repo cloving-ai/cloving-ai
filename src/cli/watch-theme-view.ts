@@ -22,7 +22,7 @@ export function themeName(view: {
   readonly dark: boolean;
 }): string {
   if (view.choice !== "auto") return view.choice;
-  return view.dark ? "dark" : "light";
+  return view.dark ? "floor-at-night" : "floor";
 }
 
 export function themeReason(themes: WatchThemes, name: string): string | null {
