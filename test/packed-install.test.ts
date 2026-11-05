@@ -12,6 +12,7 @@ import {
   packedTemplateSources,
 } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
+import { packedReload } from "./packed-reload.ts";
 import {
   packedIdeaSources,
   packedIdeaTemplate,
@@ -327,6 +328,7 @@ async function running(root: string, executable: string): Promise<void> {
     await runPackedDecision(root, { executable, env, address });
     for (const [name, bytes] of Object.entries(files))
       assert.equal(await readFile(name, "utf8"), bytes);
+    await packedReload(fixture, { executable, env });
     const page = await fetch(address, { signal: AbortSignal.timeout(5000) });
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Cloving/);
