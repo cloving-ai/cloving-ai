@@ -15,6 +15,7 @@ import {
 import {
   field,
   githubTiming,
+  operationStopped,
   repositoryPath,
   type Operation,
 } from "./github-operation.ts";
@@ -167,7 +168,7 @@ async function queuedOf(
   return { ...view.target, started };
 }
 
-async function endedAttempt(
+async function savedAttempt(
   operation: Operation,
   target: Target,
 ): Promise<Queued | undefined> {
@@ -175,6 +176,18 @@ async function endedAttempt(
   const started = field(record, "enqueuedAt");
   if (field(record, "commit") !== target.pull.commit) return undefined;
   return typeof started === "number" ? { ...target, started } : undefined;
+}
+
+async function adoptedCheck(
+  operation: Operation,
+  target: Target,
+): Promise<void> {
+  try {
+    await checkedLocally(operation, target.pull);
+  } catch (error) {
+    await operation.calls.gh(graphql(dequeueMutation, [`id=${target.id}`]));
+    throw error;
+  }
 }
 
 async function queueEntry(
@@ -187,9 +200,11 @@ async function queueEntry(
   if (known.node === undefined) throw new Error("github-call-failed");
   const target = { pull, id: known.node };
   const state = await queueState(operation, target.id);
+  const saved = await savedAttempt(operation, target);
+  if (state.kind === "queued" && saved === undefined)
+    await adoptedCheck(operation, target);
   if (state.kind !== "left") return queuedOf(operation, { target, state });
-  const ended = await endedAttempt(operation, target);
-  if (ended !== undefined) return ended;
+  if (saved !== undefined) return saved;
   await checkedLocally(operation, pull);
   const ci = await waitForCi(operation, pull.commit);
   if (ci !== undefined) return ci;
@@ -344,6 +359,28 @@ export async function mergeStep(
     if (!("started" in entered)) return entered;
     return await settled(operation, entered);
   } catch (error) {
+    if (operation.signal.reason === operationStopped)
+      await removedOnStop(operation, pull).catch(() => undefined);
     return mergeRepair(operation, error);
+  }
+}
+
+async function removedOnStop(
+  operation: Operation,
+  pull: ReviewedPull,
+): Promise<void> {
+  const stopCalls = operation.stopCalls?.();
+  if (stopCalls === undefined) return;
+  const after = {
+    ...operation,
+    calls: stopCalls,
+    signal: AbortSignal.timeout(60_000),
+  };
+  const known = await knownMerge(after, { ...pull, updated: pull.commit });
+  if (known.node === undefined) return;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const state = await queueState(after, known.node);
+    if (state.kind !== "queued") return;
+    await stopCalls.gh(graphql(dequeueMutation, [`id=${known.node}`]));
   }
 }

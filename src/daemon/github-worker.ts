@@ -8,7 +8,7 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
 import { retriedOperation } from "./git-retry.ts";
-import { payloadOf } from "./github-operation.ts";
+import { operationStopped, payloadOf } from "./github-operation.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
@@ -125,6 +125,7 @@ async function outcome(
         settings,
         folder: run.folder,
         calls: calls(settings, signal),
+        stopCalls: () => calls(settings, AbortSignal.timeout(60_000)),
         target: intent.target,
         payload,
         signal,
@@ -247,7 +248,7 @@ async function stopped(
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
   const active = parts.active.get(placed(parts, intent).key);
-  if (active !== undefined) await halted(active, "github-operation-stopped");
+  if (active !== undefined) await halted(active, operationStopped);
   return reconciled(parts, intent);
 }
 

@@ -161,6 +161,25 @@ await test("CLV-297 a step that finds the pull request in the queue uses the mer
     assert.equal(queueCalls(scene, "enqueuePullRequest").length, 1);
   }));
 
+await test("CLV-297 a pull request that another person added to the queue gets the local check, and a failed check takes it out of the queue", () =>
+  withGithub(async (scene) => {
+    const worker = queueWorker(scene, {
+      check: [process.execPath, "-e", "process.exit(3)"],
+    });
+    const commit = await opened(scene, worker);
+    scene.plan({ scores: [], queuePolls: 3 });
+    enqueuedBefore(scene, commit);
+    settleQueue(scene, "merged");
+    const report = await scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit },
+    });
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.equal(resultOf(report.result)["reason"], "check-failed");
+    assert.equal(queueCalls(scene, "dequeuePullRequest").length, 1);
+    assert.notEqual(scene.state().prs[0]?.["state"], "MERGED");
+  }));
+
 await test("CLV-297 a pull request that leaves the queue and now conflicts with main gives the merge-conflict repair", () =>
   withGithub(async (scene) => {
     const worker = queueWorker(scene);

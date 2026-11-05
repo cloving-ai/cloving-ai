@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, globSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -99,10 +99,29 @@ await test("CLV-297 a pull request that leaves the queue while the daemon is sto
       scores: [],
       replies: { "api GET workflow-runs": groupRuns([]) },
     });
-    const commit = await stopped(scene, () => queued(scene));
+    const commit = await stopped(
+      scene,
+      () =>
+        globSync("*/merge-queue.json", { cwd: join(scene.directory, "github") })
+          .length > 0,
+    );
     settleQueue(scene, "removed");
     const report = await resumed(scene, { commit, limit: 3_600_000 });
     assert.equal(report.outcome, "completed", report.reason ?? "");
     assert.equal(resultOf(report.result)["reason"], "merge-queue-removed");
     assert.equal(queueCalls(scene, "enqueuePullRequest").length, 1);
+  }));
+
+await test("CLV-297 a stop of the run during the queue wait takes the pull request out of the queue", () =>
+  withGithub(async (scene) => {
+    scene.plan({ scores: [] });
+    const commit = await opened(scene, scene.worker());
+    const worker = queueWorker(scene, { document: document(commit) });
+    const intent = githubIntent({ operationId, method: "merge" });
+    await worker.deliver(intent, new AbortController().signal);
+    await until(() => queued(scene));
+    await worker.stop(intent, new AbortController().signal);
+    assert.equal(queueCalls(scene, "dequeuePullRequest").length, 1);
+    assert.equal(queued(scene), false);
+    await worker.close();
   }));

@@ -31,6 +31,8 @@ export interface MethodSettings extends CallSettings {
   readonly mergeMode?: MergeMode;
 }
 
+export const operationStopped = "github-operation-stopped";
+
 export interface Operation {
   readonly settings: MethodSettings;
   readonly calls: Calls;
@@ -38,6 +40,7 @@ export interface Operation {
   readonly payload: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
   readonly folder: string;
+  readonly stopCalls?: () => Calls;
   readonly observe?: (
     report: Pick<
       ObservationReport,
