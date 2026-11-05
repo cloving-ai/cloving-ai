@@ -93,15 +93,19 @@ await test("CLV-042 a dead-lettered callback found while another delivery handle
     directory,
     "CREATE TRIGGER inject BEFORE UPDATE ON deliveries BEGIN SELECT RAISE(ABORT, 'injected-callback-failure'); END;",
   );
-  const run = gatedDelivery((call) => call.count === 2);
+  alterDatabase(
+    directory,
+    `UPDATE solid_effects SET available_at_ms = available_at_ms + ${String(testMilliseconds(500))} WHERE json_extract(arguments, '$.runId') = 'run-2';`,
+  );
+  const run = gatedDelivery((call) => call.runId === "run-2");
   const authority = await openedAuthority(directory, {
     delivery: run.delivery,
     timing: { ...fastTiming, shutdownMilliseconds: testMilliseconds(150) },
   });
-  const reported = refusalWhileDelivering(authority);
-  await run.entered;
   try {
-    const { read, stopped } = await reported;
+    const { read, stopped } = await refusalWhileDelivering(authority, {
+      readsAfter: run.entered,
+    });
     assert.match(read, deadLetter);
     assert.match(stopped, deadLetter);
   } finally {

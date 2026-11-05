@@ -139,6 +139,7 @@ export async function readUntil(
 
 export async function refusalWhileDelivering(
   authority: Authority,
+  order: { readonly readsAfter?: Promise<void> } = {},
 ): Promise<{ readonly read: string; readonly stopped: string }> {
   const controller = new AbortController();
   const delivering = authority.deliver(controller.signal).then(
@@ -147,6 +148,7 @@ export async function refusalWhileDelivering(
   );
   let read: string;
   try {
+    await order.readsAfter;
     read = await readUntil(
       authority,
       (outcome) => !outcome.startsWith("sequence "),

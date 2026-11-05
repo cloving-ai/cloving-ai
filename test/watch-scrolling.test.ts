@@ -31,7 +31,7 @@ function overflowingBoard() {
 }
 
 function watchFixture(shown: WatchModel = overflowingBoard()) {
-  return watchPageServer(shown, "#workflow=develop-issue");
+  return watchPageServer(shown, { hash: "#workflow=develop-issue" });
 }
 
 for (const width of [390, 1000])

@@ -5,11 +5,24 @@ import assert from "node:assert/strict";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import type { WatchModel } from "../src/cli/watch-render.ts";
 
-export async function watchPageServer(shown: WatchModel, hash: string) {
+export async function watchPageServer(
+  shown: WatchModel,
+  options: {
+    readonly hash?: string;
+    readonly files?: Readonly<
+      Record<string, { readonly type: string; readonly body: Uint8Array }>
+    >;
+  } = {},
+) {
   const preact = await readFile(new URL(import.meta.resolve("preact")));
   const page = pageDocument().replace(/<link rel="stylesheet"[^>]*>/, "");
   const model = JSON.stringify(shown);
   const server = createServer((request, response) => {
+    const file = options.files?.[request.url ?? ""];
+    if (file !== undefined) {
+      response.writeHead(200, { "content-type": file.type }).end(file.body);
+      return;
+    }
     if (request.url === "/preact.mjs") {
       response
         .writeHead(200, { "content-type": "text/javascript" })
@@ -43,6 +56,6 @@ export async function watchPageServer(shown: WatchModel, hash: string) {
       server.closeAllConnections();
       await server[Symbol.asyncDispose]();
     },
-    url: `http://127.0.0.1:${String(address.port)}/${hash}`,
+    url: `http://127.0.0.1:${String(address.port)}/${options.hash ?? ""}`,
   };
 }

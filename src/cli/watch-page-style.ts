@@ -140,10 +140,10 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .lines { list-style: none; margin: 0; padding: 0; }
 .line { display: grid; grid-template-columns: 180px minmax(0, 1fr) 170px; border-top: 1px solid var(--line); }
 .line:first-child { border-top: 0; }
-.line:nth-child(4n+1) { --line-color: var(--line-1); }
-.line:nth-child(4n+2) { --line-color: var(--line-2); }
-.line:nth-child(4n+3) { --line-color: var(--line-3); }
-.line:nth-child(4n) { --line-color: var(--line-4); }
+.line:nth-child(4n+1), .line-color-1 { --line-color: var(--line-1); }
+.line:nth-child(4n+2), .line-color-2 { --line-color: var(--line-2); }
+.line:nth-child(4n+3), .line-color-3 { --line-color: var(--line-3); }
+.line:nth-child(4n), .line-color-4 { --line-color: var(--line-4); }
 .line-name { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 16px 16px 16px 32px; overflow-wrap: anywhere; }
 .line-name::before { content: ""; position: absolute; left: 18px; top: 16px; bottom: 16px; width: 5px; background: var(--line-color); clip-path: polygon(0 4px, 100% 0, 100% 100%, 0 100%); }
 .line-name a { color: var(--ink); font: 700 17px/1.3 var(--heading-font); text-decoration: none; }
@@ -174,6 +174,25 @@ h2, h3 { font-family: var(--heading-font); font-weight: 700; }
 .line-end { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; min-width: 0; padding: 16px 20px; border-left: 1px dashed var(--line); color: var(--muted); font-size: 13px; text-align: right; }
 .line-ready { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .line-wait { font-variant-numeric: tabular-nums; }
+.shelf { min-width: 0; margin-top: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; padding: 12px 20px; }
+.shelf-head h2 { margin: 0; font-size: 18px; }
+.shelf-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.shelf > .meta { margin: 0; padding: 0 20px 16px; }
+.tiles { display: flex; gap: 16px; list-style: none; margin: 0; padding: 0 20px 16px; overflow-x: auto; overscroll-behavior-x: contain; }
+.tile { flex: 0 0 320px; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-left: 5px solid var(--line-color, var(--muted)); background: var(--surface-2); clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%); }
+.tile-ids { display: flex; gap: 10px; font-variant-numeric: tabular-nums; }
+.tile-ticket { font-weight: 700; }
+.tile-pull { color: var(--muted); }
+.tile-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font: 700 15px/1.35 var(--heading-font); text-decoration: none; }
+.tile-title:hover { text-decoration: underline; }
+.tile-facts { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.tile-demo { display: inline-flex; align-items: center; gap: 10px; width: fit-content; margin: 4px 0 0; padding: 0; background: none; clip-path: none; color: var(--ink); font: 600 14px/1.5 var(--body-font); }
+.tile-demo:hover { text-decoration: underline; }
+.demo-frame { width: 72px; height: 40px; object-fit: cover; background: var(--code-bg); box-shadow: 0 0 0 1px var(--line); }
+.demo-player { padding: 0; border: 0; background: var(--code-bg); box-shadow: var(--shadow); }
+.demo-player::backdrop { background: rgba(0,0,0,0.6); }
+.demo-player video { display: block; width: min(960px, 92vw); max-height: 85dvh; }
 .board { width: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .columns { display: flex; align-items: flex-start; gap: ${String(boardSizing.gap)}px; flex: 1; min-height: 0; overflow-x: scroll; overflow-y: hidden; padding: 6px 6px 12px; scrollbar-color: var(--muted) var(--surface-2); }
 @supports selector(::-webkit-scrollbar) { .columns { scrollbar-color: auto; } }

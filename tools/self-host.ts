@@ -235,9 +235,10 @@ if (opening.kind !== "started") {
 process.stdout.write(${JSON.stringify(guide(workflows))});
 process.send?.("started");
 process.channel?.unref();
-const stop = async () => { await opening.daemon.close(); process.exit(0); };
-process.once("SIGINT", stop);
-process.once("SIGTERM", stop);
+let closing;
+const stop = () => { closing ??= opening.daemon.close().then(() => process.exit(0)); };
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
 `,
   );
 }

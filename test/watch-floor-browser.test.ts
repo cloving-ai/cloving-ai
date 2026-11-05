@@ -39,7 +39,7 @@ await test("CLV-286 at a width of 390 px every station and every token is reacha
     floorRun("merge", { operation: "github-merge", ticketId: "583" }),
     floorRun("draft", { workflowId: "idea", operation: "write-draft" }),
   ]);
-  await using fixture = await watchPageServer(model, "");
+  await using fixture = await watchPageServer(model);
   await using browser = await realBrowser();
   const page = await browser.page({ width: 390, height: 844 });
   await page.navigate(fixture.url);
@@ -88,7 +88,6 @@ const needs = `(async () => {
 await test("CLV-287 the Needs you panel sits under the floor with a blue and a red mark and reachable actions, at 1280 px and at 390 px", async () => {
   await using fixture = await watchPageServer(
     needsModel({ decision: 12, stopped: 51 }),
-    "",
   );
   await using browser = await realBrowser();
   for (const width of [1280, 390]) {

@@ -21,6 +21,8 @@ import type {
   WatchTurn,
 } from "./watch-render.ts";
 import { boardsOf, currentStepOf, roundOf, stagesFor } from "./watch-board.ts";
+import { completedOf } from "./watch-floor.ts";
+import { todayStart } from "./watch-today.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
 import { pullOf, type GithubRecords } from "./watch-pull-request.ts";
@@ -358,6 +360,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   );
   return {
     workflows,
+    completed: completedOf(runs, todayStart(inputs.updatedAt)),
     ...(inputs.schedules === undefined ? {} : { schedules: inputs.schedules }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     ...(inputs.today === undefined ? {} : { today: inputs.today }),

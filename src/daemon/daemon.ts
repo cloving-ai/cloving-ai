@@ -36,6 +36,12 @@ import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
+import {
+  bundleSweep,
+  currentBundle,
+  unfinishedPins,
+  type CurrentBundle,
+} from "./bundle-sweep.ts";
 import { turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
@@ -140,11 +146,21 @@ export async function startDaemon(
   });
 }
 
-function controlConnections(): {
+function controlConnections(settings: DaemonSettings): {
   readonly schedules: ReturnType<typeof scheduleConnection>;
   readonly queues: ReturnType<typeof queueConnection>;
+  readonly current: CurrentBundle;
 } {
-  return { schedules: scheduleConnection(), queues: queueConnection() };
+  return {
+    schedules: scheduleConnection(),
+    queues: queueConnection(),
+    current: currentBundle({
+      directory: settings.directory,
+      bundleDigest: settings.bundleDigest,
+      now: settings.retentionClock ?? Date.now,
+      log: (line) => process.stderr.write(line),
+    }),
+  };
 }
 
 function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
@@ -171,10 +187,11 @@ function workflowOptions(
   parts: {
     readonly generations: ReturnType<typeof workflowGenerations>;
     readonly turnSettings: Adapters["turnSettings"];
+    readonly current: CurrentBundle;
   },
 ) {
   const { reloadCommand, loadBundle } = settings;
-  const { generations, turnSettings } = parts;
+  const { generations, turnSettings, current } = parts;
   return {
     workflowBundles: {
       directory: join(settings.directory, "workflow-bundles"),
@@ -188,13 +205,15 @@ function workflowOptions(
     ...(reloadCommand === undefined || loadBundle === undefined
       ? {}
       : {
-          reload: workflowReload({
-            ...settings,
-            reloadCommand,
-            loadBundle,
-            generations,
-            turnSettings,
-          }),
+          reload: current.reloading(
+            workflowReload({
+              ...settings,
+              reloadCommand,
+              loadBundle,
+              generations,
+              turnSettings,
+            }),
+          ),
         }),
   };
 }
@@ -212,7 +231,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const { worker, github, runs, handoff, commands } = resources;
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
-  const controls = controlConnections();
+  const controls = controlConnections(settings);
   const opening = await startService({
     version: clovingVersion,
     schedule: controls.schedules.request,
@@ -225,7 +244,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,
-    ...workflowOptions(settings, { ...resources, generations }),
+    ...workflowOptions(settings, { ...resources, ...controls, generations }),
     workflows: admitted.registrations,
     delivery: deliveryRouter({
       runs,
@@ -276,23 +295,46 @@ async function closeWorkers(resources: Workers): Promise<void> {
   ]);
 }
 
+async function retentionLoop(
+  settings: DaemonSettings,
+  resources: {
+    readonly current: CurrentBundle;
+    readonly ports: Promise<HostPorts>;
+  },
+) {
+  const ports = await resources.ports;
+  const sweep = {
+    directory: settings.directory,
+    retention: settings.retention ?? defaultRetention,
+    now: settings.retentionClock ?? Date.now,
+    log: (line: string) => process.stderr.write(line),
+  };
+  return recordRetention({
+    ...sweep,
+    runs: authorityRuns(ports),
+    bundles: bundleSweep({
+      ...sweep,
+      current: resources.current,
+      pinned: unfinishedPins({
+        state: ports.state,
+        manifest: ports.workflow.manifest,
+      }),
+    }),
+  });
+}
+
 async function runningDaemon(
   settings: DaemonSettings,
   resources: {
     readonly service: Service;
     readonly schedules: ReturnType<typeof scheduleConnection>;
     readonly queues: ReturnType<typeof queueConnection>;
+    readonly current: CurrentBundle;
     readonly ports: Promise<HostPorts>;
   } & Workers,
 ): Promise<Daemon> {
   const { service, github } = resources;
-  const retention = await recordRetention({
-    directory: settings.directory,
-    retention: settings.retention ?? defaultRetention,
-    runs: authorityRuns(await resources.ports),
-    now: settings.retentionClock ?? Date.now,
-    log: (line) => process.stderr.write(line),
-  });
+  const retention = await retentionLoop(settings, resources);
   await github.scan();
   const loops = await daemonLoops({
     ...settings,

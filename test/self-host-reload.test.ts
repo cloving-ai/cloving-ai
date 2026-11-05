@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -356,3 +356,37 @@ await test("CLV-252 cloving reload admits a new workflow while a run is in a sta
       new RegExp(`Workflow reload: reloaded ${String(startDigest)} -> `),
     );
   }));
+
+const stops = {
+  SIGTERM: (child: ChildProcess) => {
+    child.kill("SIGTERM");
+  },
+  "SIGINT to its process group": (child: ChildProcess) => {
+    process.kill(-Number(child.pid), "SIGINT");
+  },
+};
+
+for (const [name, stop] of Object.entries(stops))
+  await test(`CLV-294 a service that loaded a second bundle by reload stops with exit code 0 on ${name}`, () =>
+    withoutChildren(async () => {
+      const fixture = await scene();
+      const folder = join(fixture.repository, ".cloving/workflows");
+      await operatorWorkflow(folder, { name: "develop", prompt: "v1" });
+      const child = await fixture.start({
+        XDG_CONFIG_HOME: join(fixture.root, "config"),
+        CLOVING_SELF_UPDATE_SECONDS: undefined,
+        CLOVING_NOTIFY_COMMAND: "[]",
+      });
+      let output = "";
+      child.stderr?.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      await operatorWorkflow(folder, { name: "triage", prompt: "triage" });
+      const { reply } = await reloadReply(fixture, ["--json"]);
+      assert.equal(reply["status"], "reloaded");
+      const closed = new Promise<number | null>((settle) => {
+        child.once("close", settle);
+      });
+      stop(child);
+      assert.equal(await closed, 0, output);
+    }));
