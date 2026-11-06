@@ -283,7 +283,13 @@ await test("CLV-306 cloving restart prints the refusal of a service that cannot 
     assert.equal(result.stdout, "");
   }));
 
-function silentStatusServer(held: Socket[]) {
+function silentStatusServer(
+  held: Socket[],
+  result: Record<string, unknown> = {
+    serviceStartedAt: before.startedAt,
+    restart: { activeRuns: 0 },
+  },
+) {
   return createServer((socket) => {
     let buffered = "";
     socket.on("data", (chunk: Buffer) => {
@@ -291,15 +297,7 @@ function silentStatusServer(held: Socket[]) {
       if (!buffered.includes("\n")) return;
       const parsed = parseRequest(buffered.trim());
       if (parsed.kind === "request" && parsed.request.operation === "restart") {
-        socket.end(
-          replyLine({
-            kind: "result",
-            result: {
-              serviceStartedAt: before.startedAt,
-              restart: { activeRuns: 0 },
-            },
-          }),
-        );
+        socket.end(replyLine({ kind: "result", result }));
         return;
       }
       held.push(socket);
@@ -326,6 +324,41 @@ await test("CLV-306 Control-C ends the wait while a status request gets no answe
         delay(testMilliseconds(3000)).then(() => "still waiting"),
       ]);
       assert.equal(outcome, 130);
+    } finally {
+      for (const socket of held) socket.destroy();
+      await new Promise<void>((closed) =>
+        server.close(() => {
+          closed();
+        }),
+      );
+    }
+  }));
+
+await test("CLV-306 a restart reply with no start time fails at once", () =>
+  withHarness(async (harness) => {
+    const address = socketAddress(
+      join(harness.runtimeDirectory, "control.sock"),
+    );
+    assert.equal(address.kind, "address");
+    const held: Socket[] = [];
+    const server = silentStatusServer(held, { restart: { activeRuns: 0 } });
+    await new Promise<void>((ready) => server.listen(address.path, ready));
+    try {
+      const finished = directRestart(harness, {
+        commandId: "restart-no-start",
+        interrupted: () => delay(testMilliseconds(5000)),
+      });
+      const outcome = await Promise.race([
+        finished,
+        delay(testMilliseconds(3000)).then(() => ({
+          code: -1,
+          out: [],
+          error: ["still waiting"],
+        })),
+      ]);
+      assert.equal(outcome.code, 1);
+      assert.match(outcome.error.join(""), /^restart-reply-invalid: /m);
+      assert.deepEqual(held, []);
     } finally {
       for (const socket of held) socket.destroy();
       await new Promise<void>((closed) =>

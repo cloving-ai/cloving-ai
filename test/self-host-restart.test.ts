@@ -18,6 +18,7 @@ import { restartMarks } from "../src/daemon/restart-marks.ts";
 import {
   restartMark,
   restartText,
+  type RestartMark,
   type RestartTime,
 } from "../src/restart-request.ts";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
@@ -161,7 +162,7 @@ await test("CLV-306 a start removes a restart mark that an earlier start left", 
     },
   ));
 
-async function markAt(path: string): Promise<unknown> {
+async function markAt(path: string): Promise<RestartMark | undefined> {
   return restartMark(await readFile(path, "utf8"));
 }
 

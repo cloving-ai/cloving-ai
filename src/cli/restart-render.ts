@@ -56,8 +56,9 @@ export function restartLines(result: Fields): readonly string[] {
   return [...pendingLines(restart), ...unresumableLines(restart)];
 }
 
-function commitOf(fields: Fields): unknown {
-  return fields["serviceCommit"] ?? null;
+function commitOf(fields: Fields): string | null {
+  const commit = fields["serviceCommit"];
+  return typeof commit === "string" ? commit : null;
 }
 
 export function restartedLines(

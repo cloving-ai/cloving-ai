@@ -25,6 +25,11 @@ const cancelledRestart: ServiceError = {
   detail: "Another command cancelled the restart before it started.",
 };
 
+const invalidReply: ServiceError = {
+  code: "restart-reply-invalid",
+  detail: "The service accepted the restart but sent no start time.",
+};
+
 async function serviceStatus(
   runtimeDirectory: string,
   signal: AbortSignal,
@@ -39,7 +44,7 @@ async function serviceStatus(
 
 function settled(
   now: Fields | undefined,
-  startedAt: unknown,
+  startedAt: string,
 ): Waited | undefined {
   if (now === undefined) return undefined;
   if (now["serviceStartedAt"] !== startedAt)
@@ -49,7 +54,7 @@ function settled(
 
 async function restarted(
   environment: RestartEnvironment,
-  startedAt: unknown,
+  startedAt: string,
 ): Promise<Waited> {
   const stopped = new AbortController();
   const stop = (): void => {
@@ -111,7 +116,10 @@ export async function restartCommand(
   const shown = presented(environment, { reply, format });
   if (reply.kind === "error" || invocation.cancel) return shown;
   const before = reply.result;
-  const waited = await restarted(environment, before["serviceStartedAt"]);
+  const startedAt = before["serviceStartedAt"];
+  if (typeof startedAt !== "string")
+    return failed(environment, { error: invalidReply, format });
+  const waited = await restarted(environment, startedAt);
   if (waited.kind === "interrupted") {
     environment.terminal.error(
       "The restart stays pending. Cancel it with: cloving restart --cancel\n",
