@@ -10,6 +10,7 @@ import { withHarness, parsed, type Harness } from "./service-fixture.ts";
 
 async function withSchedule(
   body: (harness: Harness) => Promise<void>,
+  scheduling = { declarations: [scheduledWorkflow], clock: 0 },
 ): Promise<void> {
   await withHarness(async (harness) => {
     await mkdir(join(harness.stateDirectory, "state"));
@@ -18,8 +19,8 @@ async function withSchedule(
     const scheduler = await workflowSchedules({
       directory: harness.stateDirectory,
       runtimeDirectory: harness.runtimeDirectory,
-      declarations: [scheduledWorkflow],
-      scheduleClock: () => 0,
+      declarations: scheduling.declarations,
+      scheduleClock: () => scheduling.clock,
       submit: () =>
         Promise.resolve({ kind: "accepted", sequence: 1, intents: [] }),
     });
@@ -60,6 +61,53 @@ await test("CLV-242 schedule CLI lists text and JSON state", () =>
       },
     ]);
   }));
+
+await test("CLV-314 schedule and status show a calendar schedule and its next run with the offset", () =>
+  withSchedule(
+    async (harness) => {
+      const plain = await harness.cli(["schedule"]);
+      assert.equal(plain.status, 0, plain.stderr);
+      assert.match(
+        plain.stdout,
+        /^ {2}review {2}Mondays at 07:00 America\/Los_Angeles {2}active {2}next 2026-11-16T07:00:00-08:00 /m,
+      );
+      const status = await harness.cli(["status"]);
+      assert.equal(status.status, 0, status.stderr);
+      assert.match(
+        status.stdout,
+        /^Schedule review: Mondays at 07:00 America\/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row$/m,
+      );
+      const json = await harness.cli(["status", "--json"]);
+      assert.equal(json.status, 0, json.stderr);
+      assert.deepEqual(parsed(json)["schedules"], [
+        {
+          workflowId: "review",
+          at: "07:00",
+          timeZone: "America/Los_Angeles",
+          weekdays: ["monday"],
+          state: "active",
+          failuresInRow: 0,
+          nextAt: Date.parse("2026-11-16T07:00:00-08:00"),
+          nextLocal: "2026-11-16T07:00:00-08:00",
+          stoppedAt: null,
+        },
+      ]);
+    },
+    {
+      declarations: [
+        {
+          ...scheduledWorkflow,
+          schedule: {
+            at: "07:00",
+            timeZone: "America/Los_Angeles",
+            weekdays: ["monday"],
+            input: { prompt: "current" },
+          },
+        },
+      ],
+      clock: Date.parse("2026-11-10T06:00:00-08:00"),
+    },
+  ));
 
 await test("CLV-242 schedule CLI pauses and resumes in text and JSON", () =>
   withSchedule(async (harness) => {

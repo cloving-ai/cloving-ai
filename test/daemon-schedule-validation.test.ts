@@ -23,20 +23,36 @@ await test("CLV-179 prototype-named workflow IDs remain unscheduled without a de
   }
 });
 
+const refusals = [
+  [null, "invalid-schedules"],
+  [[], "invalid-schedules"],
+  [{ missing: { everySeconds: 300, input: {} } }, "unknown-schedule-workflow"],
+  [{ review: { everySeconds: 59, input: {} } }, "invalid-schedule-interval"],
+  [
+    { review: { everySeconds: 300, input: { extra: true } } },
+    "invalid-schedule-input",
+  ],
+  [
+    { review: { everySeconds: 2592001, input: {} } },
+    "invalid-schedule-interval",
+  ],
+  [
+    { review: { at: "07:00", timeZone: "Mars/Olympus", input: {} } },
+    "invalid-schedule-time-zone",
+  ],
+  [
+    { review: { at: "07:00", timeZone: "+05:00", input: {} } },
+    "invalid-schedule-time-zone",
+  ],
+  [
+    { review: { at: "24:00", timeZone: "UTC", input: {} } },
+    "invalid-schedule-shape",
+  ],
+  [{ review: { at: "07:00", input: {} } }, "invalid-schedule-shape"],
+] as const;
+
 await test("CLV-179 invalid schedules refuse startup before any state or host is created", async () => {
-  for (const [schedules, code] of [
-    [null, "invalid-schedules"],
-    [[], "invalid-schedules"],
-    [
-      { missing: { everySeconds: 300, input: {} } },
-      "unknown-schedule-workflow",
-    ],
-    [{ review: { everySeconds: 59, input: {} } }, "invalid-schedule-interval"],
-    [
-      { review: { everySeconds: 300, input: { extra: true } } },
-      "invalid-schedule-input",
-    ],
-  ] as const)
+  for (const [schedules, code] of refusals)
     await withFiles({}, async (directory) => {
       const opening = await startDaemon({
         directory,
@@ -112,4 +128,39 @@ await test("CLV-179 schedules must fit the service document limit including the 
       });
       assert.equal(existsSync(join(directory, "state")), false);
     });
+});
+
+await test("CLV-314 a declared calendar schedule registers only with a known time zone", () => {
+  const declaration = {
+    workflowId: "review",
+    functionName: "review",
+    effectLimit: 1,
+    capabilities: ["claude" as const],
+    input: { maximumBytes: 100, fields: {} },
+  };
+  for (const timeZone of ["America/Los_Angeles", "UTC", "Etc/GMT+5"]) {
+    const scheduled = {
+      ...declaration,
+      schedule: { at: "07:00", timeZone, input: {} },
+    };
+    assert.deepEqual(scheduledDeclarations({ declarations: [scheduled] }), {
+      kind: "configured",
+      declarations: [scheduled],
+    });
+  }
+  assert.deepEqual(
+    scheduledDeclarations({
+      declarations: [
+        {
+          ...declaration,
+          schedule: { at: "07:00", timeZone: "Nowhere/Town", input: {} },
+        },
+      ],
+    }),
+    {
+      kind: "refused",
+      reason: "schedule-rejected",
+      detail: "Error: invalid-schedule-time-zone",
+    },
+  );
 });

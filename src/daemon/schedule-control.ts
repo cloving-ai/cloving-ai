@@ -1,10 +1,11 @@
 import type { Fields, Reply } from "../protocol.ts";
 import type { SchedulePort, ScheduleProgress } from "../schedule-progress.ts";
-import { scheduleStops } from "../schedule-progress.ts";
+import { scheduleStops, scheduleTiming } from "../schedule-progress.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import { failed, invalidRequest, result } from "../service/replies.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
 import type { scheduleJournal } from "./schedule-journal.ts";
+import { firstSlot, localStamp } from "./schedule-slots.ts";
 
 type Journal = Awaited<ReturnType<typeof scheduleJournal>>;
 
@@ -18,15 +19,26 @@ interface ScheduleState {
   }) => Promise<ScheduleProgress>;
 }
 
+function nextLocal(progress: ScheduleProgress): Fields {
+  if (!("timeZone" in progress)) return {};
+  return {
+    nextLocal:
+      progress.state === "active"
+        ? localStamp(progress.timeZone, progress.nextAt)
+        : null,
+  };
+}
+
 function summary(workflowId: string, progress: ScheduleProgress): Fields {
   return {
     workflowId,
-    everySeconds: progress.everySeconds,
+    ...scheduleTiming(progress),
     state: progress.state,
     failuresInRow: progress.failuresInRow,
     failedRunIds: progress.failedRunIds,
     lastSlot: progress.lastSlot,
     nextAt: progress.state === "active" ? progress.nextAt : null,
+    ...nextLocal(progress),
     activeRunId:
       progress.activeCommandId === undefined
         ? null
@@ -84,7 +96,7 @@ async function change(
           failuresInRow: 0,
           failedRunIds: [],
           stops: scheduleStops(prior),
-          nextAt: now + prior.everySeconds * 1000,
+          nextAt: firstSlot(prior, now),
         };
   journal.entries.set(workflowId, progress);
   try {

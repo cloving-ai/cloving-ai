@@ -54,7 +54,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ],
   [
     "CLOVING_SCHEDULES",
-    /JSON object.*everySeconds.*input.*60.*86400.*Unset keeps declaration schedules.*skip.*restart/,
+    /JSON object.*everySeconds.*input.*at.*timeZone.*weekdays.*60.*2592000.*HH:MM.*IANA.*Unset keeps declaration schedules.*skip.*restart/,
   ],
   ["CLOVING_NOTIFY_COMMAND", /JSON list.*standard input.*no default/],
   [

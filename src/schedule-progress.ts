@@ -1,4 +1,9 @@
 import { record, type Fields, type Reply } from "./protocol.ts";
+import type {
+  CalendarTiming,
+  IntervalTiming,
+  ScheduleTiming,
+} from "./workflow-schedule.ts";
 
 export type SchedulePort = (parameters: Fields) => Promise<Reply>;
 
@@ -12,8 +17,7 @@ export interface ScheduleStop {
   readonly failedRunIds: readonly string[];
 }
 
-export interface ScheduleProgress {
-  readonly everySeconds: number;
+export interface ScheduleProgressFields {
   readonly nextAt: number;
   readonly lastSlot: number;
   readonly state: "active" | "paused" | "stopped";
@@ -24,6 +28,39 @@ export interface ScheduleProgress {
   readonly stops?: readonly ScheduleStop[];
   readonly activeCommandId?: string;
   readonly pending?: PendingSlot;
+}
+
+export type ScheduleProgress = ScheduleTiming & ScheduleProgressFields;
+
+type AnyTiming = IntervalTiming & CalendarTiming;
+type LooseTiming = { -readonly [Key in keyof AnyTiming]?: AnyTiming[Key] };
+
+export function scheduleTiming(source: ScheduleTiming): ScheduleTiming {
+  if ("everySeconds" in source) return { everySeconds: source.everySeconds };
+  const { at, timeZone, weekdays } = source;
+  return weekdays === undefined ? { at, timeZone } : { at, timeZone, weekdays };
+}
+
+export function sameTiming(
+  left: ScheduleTiming,
+  right: ScheduleTiming,
+): boolean {
+  return (
+    JSON.stringify(scheduleTiming(left)) ===
+    JSON.stringify(scheduleTiming(right))
+  );
+}
+
+export function retimedProgress(
+  progress: LooseTiming & Omit<ScheduleProgressFields, "nextAt">,
+  change: { readonly timing: ScheduleTiming; readonly nextAt: number },
+): ScheduleProgress {
+  const rest = { ...progress };
+  delete rest.everySeconds;
+  delete rest.at;
+  delete rest.timeZone;
+  delete rest.weekdays;
+  return { ...rest, ...scheduleTiming(change.timing), nextAt: change.nextAt };
 }
 
 export function scheduleStops(
