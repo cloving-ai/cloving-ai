@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered } from "../src/cli/render.ts";
+import { scheduleStatusLine } from "../src/cli/schedule-render.ts";
 import { eventually } from "./service-fixture.ts";
 import {
   notifyReply,
@@ -35,6 +36,49 @@ await test("CLV-242 text rendering tolerates a missing schedule row without an e
   const output = rendered({ kind: "schedule", schedule: null });
   assert.match(output, /next none/);
   assert.match(output, /active run none/);
+});
+
+await test("CLV-314 schedule text shows a calendar schedule and its next run with the offset", () => {
+  const schedule = {
+    workflowId: "review",
+    at: "07:00",
+    timeZone: "America/Los_Angeles",
+    weekdays: ["monday"],
+    state: "active",
+    nextAt: Date.parse("2026-11-16T07:00:00-08:00"),
+    nextLocal: "2026-11-16T07:00:00-08:00",
+    failuresInRow: 0,
+    lastSlot: 1,
+    activeRunId: null,
+  };
+  assert.match(
+    rendered({ kind: "schedules", schedules: [schedule] }),
+    /^ {2}review {2}Mondays at 07:00 America\/Los_Angeles {2}active {2}next 2026-11-16T07:00:00-08:00 {2}0 failures in a row {2}slot 1 {2}active run none$/m,
+  );
+  const shown = {
+    workflowId: "review",
+    at: "07:00",
+    timeZone: "UTC",
+    state: "active" as const,
+    failuresInRow: 0,
+    nextAt: Date.parse("2026-11-16T07:00:00Z"),
+    nextLocal: "2026-11-16T07:00:00+00:00",
+    stoppedAt: null,
+  };
+  for (const [weekdays, text] of [
+    [undefined, "each day"],
+    [["friday"], "Fridays"],
+    [["monday", "friday"], "Mondays and Fridays"],
+    [["monday", "wednesday", "friday"], "Mondays, Wednesdays and Fridays"],
+  ] as const)
+    for (const style of ["status", "watch"] as const)
+      assert.equal(
+        scheduleStatusLine(
+          weekdays === undefined ? shown : { ...shown, weekdays },
+          style,
+        ),
+        `Schedule review: ${text} at 07:00 UTC, active, next run at 2026-11-16T07:00:00+00:00, 0 failures in a row`,
+      );
 });
 
 const stopped = {
