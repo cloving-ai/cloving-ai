@@ -329,6 +329,23 @@ function hostCommandWait(hold: Hold) {
   });
 }
 
+function chained(
+  hold: Hold,
+  request: Pick<ProtectedRequest, "method" | "target" | "payload">,
+): Promise<ProtectedResult> {
+  return effect(hold, {
+    ...request,
+    scope: {
+      phase: "handoff",
+      operation: request.method === "run" ? "handoff" : "continue",
+      round: 1,
+      key: createHash("sha256").update(hold.ports.call().stepId).digest("hex"),
+    },
+    capability: "handoff",
+    units: 1,
+  });
+}
+
 export function stepBridge(ports: BridgePorts): StepBridge {
   const hold = { ports, timing: ports.timing ?? bridgeTiming };
   return {
@@ -357,19 +374,17 @@ export function stepBridge(ports: BridgePorts): StepBridge {
     checkRunWait: (request) => checkRunWait(hold, request),
     waitForRun: async ({ runId, maximumWaitSeconds }) =>
       retriedOutcome(await checkRunWait(hold, { runId, maximumWaitSeconds })),
-    handoff: (request) =>
-      effect(hold, {
-        scope: {
-          phase: "handoff",
-          operation: "handoff",
-          round: 1,
-          key: createHash("sha256").update(ports.call().stepId).digest("hex"),
-        },
-        capability: "handoff",
+    handoff: ({ workflowId, input }) =>
+      chained(hold, {
         method: "run",
-        target: request.workflowId,
-        payload: JSON.stringify(request.input),
-        units: 1,
+        target: workflowId,
+        payload: JSON.stringify(input),
+      }),
+    continueRun: ({ runId, from = null, bundle = "retained" }) =>
+      chained(hold, {
+        method: "continue",
+        target: runId,
+        payload: JSON.stringify({ from, bundle }),
       }),
   };
 }

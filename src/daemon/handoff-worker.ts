@@ -5,7 +5,7 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { send } from "../cli/client.ts";
-import { record, type Reply } from "../protocol.ts";
+import { record, type Reply, type ServiceRequest } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
 import { located, readRecord, writeRecord } from "./operation-journal.ts";
@@ -29,11 +29,13 @@ const uncertain = [
   "resolver-failure",
 ];
 
+const methods = ["run", "continue"];
+
 function own(intent: DeliveryIntent): intent is ProtectedIntent {
   return (
     intent.kind === "protected-effect" &&
     intent.capability === "handoff" &&
-    intent.method === "run" &&
+    methods.includes(String(intent.method)) &&
     intent.target !== undefined &&
     intent.payload !== undefined &&
     intent.leaseGeneration !== undefined
@@ -72,19 +74,55 @@ async function retained(
   return outcome;
 }
 
-function outcome(reply: Reply): AdapterOutcome | undefined {
+function commandIdOf(intent: ProtectedIntent): string {
+  const prefix = intent.method === "continue" ? "continue" : "handoff";
+  return `${prefix}:${intent.operationId}`;
+}
+
+function outcome(
+  reply: Reply,
+  intent: ProtectedIntent,
+): AdapterOutcome | undefined {
   if (reply.kind !== "error") {
     const runId = reply.result["runId"];
-    return reply.result["kind"] === "run-admitted" && typeof runId === "string"
+    return ["run-admitted", "run-continued"].includes(
+      String(reply.result["kind"]),
+    ) && typeof runId === "string"
       ? completed(runId)
       : { kind: "unknown" };
   }
-  if (reply.error.code === "workflow-active") return undefined;
-  if (reply.error.code === "chain-limit")
-    return { kind: "failed", reason: "chain-limit" };
-  return uncertain.includes(reply.error.code)
-    ? { kind: "unknown" }
+  const { code } = reply.error;
+  if (code === "workflow-active") return undefined;
+  if (uncertain.includes(code)) return { kind: "unknown" };
+  return code === "chain-limit" || intent.method === "continue"
+    ? { kind: "failed", reason: code }
     : { kind: "failed", reason: "handoff-input-refused" };
+}
+
+function serviceRequest(
+  intent: ProtectedIntent,
+  submission: Readonly<Record<string, unknown>>,
+): ServiceRequest {
+  const commandId = commandIdOf(intent);
+  if (intent.method === "continue")
+    return {
+      operation: "continue-run",
+      parameters: {
+        runId: intent.target,
+        commandId,
+        from: submission["from"] ?? null,
+        bundle: submission["bundle"] ?? "retained",
+      },
+    };
+  return {
+    operation: "run",
+    parameters: {
+      workflowId: intent.target,
+      source: "input",
+      submission,
+      commandId,
+    },
+  };
 }
 
 async function input(settings: Settings, intent: ProtectedIntent) {
@@ -122,7 +160,7 @@ async function submit(
       folder,
     });
     if (reply === undefined) return { kind: "unknown" };
-    const result = outcome(reply);
+    const result = outcome(reply, intent);
     if (result !== undefined) return retained(folder, result);
     await writeRecord(folder, {
       name: "attempts.json",
@@ -158,15 +196,10 @@ async function submitted(
     await marker("settled");
     return undefined;
   }
-  const reply = await send(settings.runtimeDirectory, {
-    operation: "run",
-    parameters: {
-      workflowId: intent.target,
-      source: "input",
-      submission,
-      commandId: `handoff:${intent.operationId}`,
-    },
-  });
+  const reply = await send(
+    settings.runtimeDirectory,
+    serviceRequest(intent, submission),
+  );
   if (reply.kind !== "error" || reply.error.code !== "outcome-unknown")
     await marker("settled");
   return reply;
@@ -228,7 +261,7 @@ async function observed(
   if (known !== undefined) return known;
   const reply = await send(settings.runtimeDirectory, {
     operation: "status",
-    parameters: { runId: runIdentity(`handoff:${intent.operationId}`) },
+    parameters: { runId: runIdentity(commandIdOf(intent)) },
   });
   if (reply.kind === "error")
     return reply.error.code === "unknown-run"

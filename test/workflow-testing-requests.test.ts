@@ -8,6 +8,7 @@ import {
   type ScenarioResult,
 } from "../src/testing.ts";
 import {
+  continueRun,
   waitForDecision,
   handoff,
   protectedEffect,
@@ -51,7 +52,14 @@ const requests = [
     },
   ],
   ["waitForRun", { runId: "target-run", maximumWaitSeconds: 1 }],
+  ["continueRun", { runId: "old-run", from: "merge/merge", bundle: "current" }],
 ] as const;
+
+function sleepDetails(
+  request: { readonly seconds: number } | { readonly until: string },
+) {
+  return "seconds" in request ? request.seconds : request.until;
+}
 
 function requestDetails([kind, request]: ScenarioRequest) {
   switch (kind) {
@@ -65,8 +73,10 @@ function requestDetails([kind, request]: ScenarioRequest) {
       return request.input;
     case "waitForRun":
       return request.maximumWaitSeconds;
+    case "continueRun":
+      return [request.from, request.bundle];
     case "sleep":
-      return "seconds" in request ? request.seconds : request.until;
+      return sleepDetails(request);
   }
 }
 
@@ -76,6 +86,7 @@ function inspectRequests(requests: ScenarioResult["requests"]): void {
     "later",
     { nested: [true, 1, null, { key: "value" }] },
     1,
+    ["merge/merge", "current"],
   ]);
 }
 
@@ -87,6 +98,7 @@ await test("CLV-224 recorded requests narrow to each concrete step request type"
   await waitForDecision(requests[1][1]);
   await handoff(requests[2][1]);
   await waitForRun(requests[3][1]);
+  await continueRun(requests[4][1]);
   inspectRequests(bridge.requests);
   await withFiles(
     {
@@ -140,6 +152,10 @@ const malformedRequests = [
   ["handoff", { workflowId: 1, input: {} }],
   ["waitForRun", null],
   ["waitForRun", { runId: "run", maximumWaitSeconds: "one" }],
+  ["continueRun", null],
+  ["continueRun", { runId: 1 }],
+  ["continueRun", { runId: "run", from: 1 }],
+  ["continueRun", { runId: "run", bundle: "old" }],
 ] as const;
 
 await test("CLV-224 scenarios reject malformed recorded request payloads", () =>

@@ -231,7 +231,7 @@ function scenarioEffects(
     readonly requests: ScenarioRequest[];
     readonly budget: { spent: number };
   },
-): Pick<StepBridge, "effect" | "handoff"> {
+): Pick<StepBridge, "effect" | "handoff" | "continueRun"> {
   const { requests, budget } = state;
   const effects = new Map(
     Object.entries(scenario.effects ?? {}).map(([key, values]) => [
@@ -254,21 +254,38 @@ function scenarioEffects(
     },
     handoff: (request) => {
       requests.push(["handoff", request]);
-      const refusal = spend(scenario, {
-        budget,
-        request: { capability: "handoff", units: 1 },
-      });
-      if (refusal !== undefined) return Promise.resolve(refusal);
-      return Promise.resolve(
-        effects.get("handoff")?.shift() ?? {
-          kind: "completed",
-          operationId: "handoff",
-          receipt: null,
-          result: "target-run",
-        },
-      );
+      return chained({ scenario, budget, effects }, "handoff");
+    },
+    continueRun: (request) => {
+      requests.push(["continueRun", request]);
+      return chained({ scenario, budget, effects }, "continueRun");
     },
   };
+}
+
+const chainedRuns = { handoff: "target-run", continueRun: "continued-run" };
+
+function chained(
+  state: {
+    readonly scenario: StepScenario;
+    readonly budget: { spent: number };
+    readonly effects: ReadonlyMap<string, ProtectedResult[]>;
+  },
+  name: keyof typeof chainedRuns,
+): Promise<ProtectedResult> {
+  const refusal = spend(state.scenario, {
+    budget: state.budget,
+    request: { capability: "handoff", units: 1 },
+  });
+  if (refusal !== undefined) return Promise.resolve(refusal);
+  return Promise.resolve(
+    state.effects.get(name)?.shift() ?? {
+      kind: "completed",
+      operationId: name,
+      receipt: null,
+      result: chainedRuns[name],
+    },
+  );
 }
 
 function spend(

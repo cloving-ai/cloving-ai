@@ -179,6 +179,11 @@ function analyzeProgram(
       subpath: "cloving/workflows/steps/handoff",
       name: "handoff",
     }),
+    continueSymbol: protectedHelper(modules, {
+      checker,
+      subpath: "cloving/workflows/steps/continue-run",
+      name: "continueRun",
+    }),
     commandWaitSymbol: protectedHelper(modules, {
       checker,
       subpath: "cloving/workflows/steps/wait-for-command",

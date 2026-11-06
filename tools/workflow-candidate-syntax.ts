@@ -14,6 +14,7 @@ export interface CandidateSymbols {
   readonly source: ts.SourceFile;
   readonly protectedSymbol: ts.Symbol | undefined;
   readonly handoffSymbol: ts.Symbol | undefined;
+  readonly continueSymbol: ts.Symbol | undefined;
   readonly commandWaitSymbol?: ts.Symbol | undefined;
   readonly commandSymbol: ts.Symbol | undefined;
   readonly reviewSymbol: ts.Symbol | undefined;
@@ -35,6 +36,7 @@ export function protectedCall(
     [
       symbols.protectedSymbol,
       symbols.handoffSymbol,
+      symbols.continueSymbol,
       symbols.commandSymbol,
       symbols.commandWaitSymbol,
       symbols.reviewSymbol,
@@ -54,8 +56,11 @@ export function handoffCall(
   node: ts.CallExpression,
   symbols: CandidateSymbols,
 ): boolean {
-  const symbol = symbols.handoffSymbol;
-  return symbol !== undefined && calledSymbol(node, symbols) === symbol;
+  const symbol = calledSymbol(node, symbols);
+  return (
+    symbol !== undefined &&
+    [symbols.handoffSymbol, symbols.continueSymbol].includes(symbol)
+  );
 }
 
 export function commandCall(
@@ -150,6 +155,7 @@ function escapedHelper(node: ts.Node, symbols: CandidateSymbols): boolean {
     ![
       symbols.protectedSymbol,
       symbols.handoffSymbol,
+      symbols.continueSymbol,
       symbols.commandSymbol,
       symbols.commandWaitSymbol,
       symbols.reviewSymbol,

@@ -8,6 +8,7 @@ import type {
   HandoffRequest,
   RunWaitRequest,
   CommandWaitRequest,
+  ContinueRunRequest,
 } from "./step-bridge.ts";
 
 export type ScenarioRequest =
@@ -15,6 +16,7 @@ export type ScenarioRequest =
   | readonly ["gate", GateRequest]
   | readonly ["waitForDecision", GateRequest]
   | readonly ["handoff", HandoffRequest]
+  | readonly ["continueRun", ContinueRunRequest]
   | readonly ["waitForRun", RunWaitRequest]
   | readonly ["waitForCommand", CommandWaitRequest]
   | readonly [
@@ -42,24 +44,8 @@ export function scenarioResult(value: unknown): value is ScenarioResult {
 function scenarioRequest(value: unknown): value is ScenarioRequest {
   if (!requestPair(value)) return false;
   const request = record(value[1]);
-  if (request === undefined) return false;
-  switch (value[0]) {
-    case "effect":
-      return protectedRequest(request);
-    case "gate":
-    case "waitForDecision":
-      return gateRequest(request);
-    case "handoff":
-      return handoffRequest(request);
-    case "waitForRun":
-      return runWaitRequest(request);
-    case "waitForCommand":
-      return isCommandWaitRequest(request);
-    case "sleep":
-      return sleepRequest(request);
-    default:
-      return false;
-  }
+  const check = requestChecks.get(String(value[0]));
+  return request !== undefined && check !== undefined && check(request);
 }
 
 function requestPair(value: unknown): value is readonly [unknown, unknown] {
@@ -141,3 +127,28 @@ function handoffValue(value: unknown): value is HandoffValue {
   const fields = record(value);
   return fields !== undefined && Object.values(fields).every(handoffValue);
 }
+
+function continueRunRequest(
+  request: Readonly<Record<string, unknown>>,
+): boolean {
+  const bundle = request["bundle"];
+  return (
+    typeof request["runId"] === "string" &&
+    optionalText(request["from"]) &&
+    (bundle === undefined || bundle === "retained" || bundle === "current")
+  );
+}
+
+const requestChecks: ReadonlyMap<
+  string,
+  (request: Readonly<Record<string, unknown>>) => boolean
+> = new Map([
+  ["effect", protectedRequest],
+  ["gate", gateRequest],
+  ["waitForDecision", gateRequest],
+  ["handoff", handoffRequest],
+  ["continueRun", continueRunRequest],
+  ["waitForRun", runWaitRequest],
+  ["waitForCommand", isCommandWaitRequest],
+  ["sleep", sleepRequest],
+]);

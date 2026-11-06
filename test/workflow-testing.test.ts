@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { resolve, join } from "node:path";
 import { fakeStepBridge, runScenario } from "../src/testing.ts";
 import {
+  continueRun,
   protectedEffect,
   waitForDecision,
   handoff,
@@ -68,6 +69,27 @@ await test("CLV-224 fake handoffs share the effect budget and charge one unit", 
     });
     assert.equal(bridge.spent, 2);
   }
+});
+
+await test("CLV-307 fake continuations record the request, share the effect budget and return a run ID", async () => {
+  using bridge = fakeStepBridge({
+    effectLimit: 2,
+    effects: { continueRun: [{ ...completed, result: "next-run" }] },
+  });
+  assert.equal(
+    await continueRun({ runId: "old-run", from: "merge/merge" }),
+    "next-run",
+  );
+  assert.equal(await continueRun({ runId: "other-run" }), "continued-run");
+  await assert.rejects(continueRun({ runId: "third-run" }), {
+    message: "budget-exhausted",
+  });
+  assert.equal(bridge.spent, 2);
+  assert.deepEqual(bridge.requests, [
+    ["continueRun", { runId: "old-run", from: "merge/merge" }],
+    ["continueRun", { runId: "other-run" }],
+    ["continueRun", { runId: "third-run" }],
+  ]);
 });
 
 await test("CLV-224 a portable scenario captures requests and returns fake step results", () =>
