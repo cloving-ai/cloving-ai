@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StoredRun } from "../src/record-retention.ts";
@@ -18,6 +25,7 @@ export interface TreeScene {
     target: string,
     records: readonly { readonly kind: string; readonly runId: string }[],
   ) => Promise<string>;
+  readonly born: (target: string, bornAt: number) => Promise<void>;
   readonly archive: (runId: string) => Promise<void>;
   readonly merged: (target: string) => Promise<void>;
   readonly kept: (target: string) => boolean;
@@ -39,6 +47,7 @@ function storedRuns(now: number): Readonly<Record<string, StoredRun>> {
     failedOld: { status: "failed", endedAt: now - 40 * day },
     cancelledOld: { status: "cancelled", endedAt: now - 40 * day },
     failedRecent: { status: "failed", endedAt: now - 10 * day },
+    failedAgain: { status: "failed", endedAt: now - 35 * day },
     completedOld: { status: "completed", endedAt: now - 40 * day },
     active: { status: "running", endedAt: null },
   };
@@ -181,6 +190,7 @@ export async function withTrees(body: (scene: TreeScene) => Promise<void>) {
       const path = join(state, "worktrees", treeName(target));
       const branch = `cloving/${treeName(target)}`;
       git(repository, ["worktree", "add", "--quiet", "-b", branch, path]);
+      await scene.born(target, now - 50 * day);
       await mkdir(join(state, "attachments", treeName(target)), {
         recursive: true,
       });
@@ -195,6 +205,10 @@ export async function withTrees(body: (scene: TreeScene) => Promise<void>) {
         folders.set(runId, [...(folders.get(runId) ?? []), folder]);
       }
       return path;
+    },
+    born: async (target, bornAt) => {
+      const link = join(state, "worktrees", treeName(target), ".git");
+      await utimes(link, new Date(bornAt), new Date(bornAt));
     },
     archive: async (runId) => {
       for (const folder of folders.get(runId) ?? [])

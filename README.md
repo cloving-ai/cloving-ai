@@ -1411,7 +1411,9 @@ The retention rule also removes old work trees. At each pass, before it moves re
 - Each of these runs ended more than `retention.days` days ago.
 - GitHub has no open pull request for the branch.
 
-The daemon keeps the work tree when a run is not known, when a run is active or completed, or when the pull request check fails. It never removes the work tree of a `branch:` target. When a work tree is gone, the daemon deletes its run list, so a new work tree of the same target counts only its own runs. With `retention.days` set to `null`, the daemon keeps all work trees. A run whose records moved to the archive before the first pass that wrote the run list is not on the list.
+A run counts for a work tree only when the run did not end before the daemon made the work tree. The daemon reads that time from the modification time (`mtime`) of the `.git` file in the work tree. Thus a new work tree of a target does not count the runs of an earlier work tree of the same target, also when the earlier work tree went away between two passes.
+
+The daemon keeps the work tree when a run is not known, when a run is active or completed, or when the pull request check fails. It also keeps the work tree when it cannot read the `.git` file or the run list of the work tree. The daemon does not change a run list that it cannot read, and the log line names the work tree with `tree-runs-unreadable`. When the daemon cannot read the `journal/trees/` folder, the pass removes no work tree. It never removes the work tree of a `branch:` target. When a work tree is gone, the daemon deletes its run list. With `retention.days` set to `null`, the daemon keeps all work trees. A run whose records moved to the archive before the first pass that wrote the run list is not on the list.
 
 A pass checks at most three work trees with GitHub, and the next pass continues with the others. Each GitHub read stops after 10 seconds, and a stop of the daemon cancels it. Each pass writes one log line, `retention: removed <count> work trees, kept <count> with an open pull request`, with the failures at the end.
 

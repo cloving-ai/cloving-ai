@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { operationKey } from "../src/daemon/operation-journal.ts";
 import { treeSweep } from "../src/daemon/tree-sweep.ts";
 import { day, git, running, withTrees } from "./tree-sweep-fixture.ts";
 
@@ -154,12 +155,13 @@ await test("CLV-310 the sweep forgets the runs of a work tree that is gone, so a
     assert.equal(scene.gone("ticket/again"), true);
   }));
 
-await test("CLV-310 the sweep ignores run lists that it cannot read and run IDs that are not text", () =>
+await test("CLV-310 the sweep keeps the work trees of run lists that it cannot read or that have run IDs that are not text", () =>
   withTrees(async (scene) => {
     await scene.tree("ticket/listed", [
       { kind: "journal", runId: "failedOld" },
     ]);
     await scene.tree("ticket/only-list", []);
+    await scene.tree("ticket/plain", [{ kind: "journal", runId: "failedOld" }]);
     const folder = join(scene.state, "journal", "trees");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "broken.json"), "{");
@@ -173,9 +175,73 @@ await test("CLV-310 the sweep ignores run lists that it cannot read and run IDs 
       JSON.stringify({ target: "ticket/only-list", runIds: ["failedOld", 7] }),
     );
     await treeSweep(scene.settings()).pass(running);
-    assert.equal(scene.gone("ticket/listed"), true);
-    assert.equal(scene.gone("ticket/only-list"), true);
+    assert.equal(scene.kept("ticket/listed"), true);
+    assert.equal(scene.kept("ticket/only-list"), true);
+    assert.equal(scene.gone("ticket/plain"), true);
     assert.deepEqual(scene.lines, [
-      "retention: removed 2 work trees, kept 0 with an open pull request\n",
+      "retention: removed 1 work trees, kept 0 with an open pull request, failed 2 (ticket/listed: tree-runs-unreadable)\n",
+    ]);
+  }));
+
+await test("CLV-310 the sweep keeps a work tree and does not replace its run list when it cannot read the list", () =>
+  withTrees(async (scene) => {
+    await scene.tree("ticket/unread", [
+      { kind: "journal", runId: "completedOld" },
+      { kind: "github", runId: "failedOld" },
+    ]);
+    await treeSweep(scene.settings()).pass(running);
+    await scene.archive("completedOld");
+    const list = join(
+      scene.state,
+      "journal",
+      "trees",
+      `${operationKey("ticket/unread")}.json`,
+    );
+    await writeFile(list, "{");
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.kept("ticket/unread"), true);
+    assert.equal(await readFile(list, "utf8"), "{");
+    assert.deepEqual(scene.lines.slice(1), [
+      "retention: removed 0 work trees, kept 0 with an open pull request, failed 1 (ticket/unread: tree-runs-unreadable)\n",
+    ]);
+  }));
+
+await test("CLV-310 a pass that cannot read the folder of run lists removes no work tree", () =>
+  withTrees(async (scene) => {
+    await scene.tree("ticket/failed", [
+      { kind: "journal", runId: "failedOld" },
+    ]);
+    await mkdir(join(scene.state, "journal"), { recursive: true });
+    await writeFile(join(scene.state, "journal", "trees"), "");
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.kept("ticket/failed"), true);
+    assert.deepEqual(scene.lines, ["retention: work trees failed (ENOTDIR)\n"]);
+  }));
+
+await test("CLV-310 the sweep counts only the runs that did not end before the work tree was made, so a replacement work tree expires", () =>
+  withTrees(async (scene) => {
+    await scene.tree("ticket/replaced", [
+      { kind: "journal", runId: "completedOld" },
+    ]);
+    await treeSweep(scene.settings()).pass(running);
+    await scene.merged("ticket/replaced");
+    await scene.tree("ticket/replaced", [
+      { kind: "journal", runId: "failedAgain" },
+    ]);
+    await scene.born("ticket/replaced", scene.now - 38 * day);
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.gone("ticket/replaced"), true);
+  }));
+
+await test("CLV-310 the sweep keeps a work tree folder that has no git link", () =>
+  withTrees(async (scene) => {
+    const path = await scene.tree("ticket/unlinked", [
+      { kind: "journal", runId: "failedOld" },
+    ]);
+    await rm(join(path, ".git"));
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.kept("ticket/unlinked"), true);
+    assert.deepEqual(scene.lines, [
+      "retention: removed 0 work trees, kept 0 with an open pull request\n",
     ]);
   }));

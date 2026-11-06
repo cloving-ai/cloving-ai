@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { attachmentFolder } from "./attachments.ts";
 import { calls, type Calls } from "./github-calls.ts";
@@ -36,6 +36,22 @@ interface TargetRuns {
   readonly stored: number;
 }
 
+interface TargetLists {
+  readonly targets: Map<string, TargetRuns>;
+  readonly unreadable: Set<string>;
+}
+
+interface PresentTree {
+  readonly target: string;
+  readonly runIds: ReadonlySet<string>;
+  readonly bornAt: number;
+}
+
+interface FoundTrees {
+  readonly present: readonly PresentTree[];
+  readonly unreadable: readonly string[];
+}
+
 const kinds = ["github", "journal"] as const;
 const treesPerPass = 3;
 const readMilliseconds = 10_000;
@@ -45,21 +61,40 @@ function runsFolder(directory: string): string {
   return join(directory, "journal", "trees");
 }
 
-async function storedRuns(directory: string): Promise<Map<string, TargetRuns>> {
+async function listNames(folder: string): Promise<readonly string[]> {
+  const names = await readdir(folder).catch((error: unknown) => {
+    if (failureReason(error) === "ENOENT") return [];
+    throw error;
+  });
+  return names.filter((name) => name.endsWith(".json"));
+}
+
+function textItems(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter(
+    (item): item is string => typeof item === "string",
+  );
+  return items.length === value.length ? items : undefined;
+}
+
+async function storedRuns(directory: string): Promise<TargetLists> {
   const folder = runsFolder(directory);
-  const found = new Map<string, TargetRuns>();
-  for (const name of await readdir(folder).catch(() => [])) {
-    if (!name.endsWith(".json")) continue;
+  const lists: TargetLists = { targets: new Map(), unreadable: new Set() };
+  for (const name of await listNames(folder)) {
     const record: unknown = await readRecord(folder, name).catch(() => ({}));
     const target: unknown = Reflect.get(Object(record), "target");
-    const listed: unknown = Reflect.get(Object(record), "runIds");
-    if (typeof target !== "string" || !Array.isArray(listed)) continue;
-    const runIds = new Set(
-      listed.filter((runId): runId is string => typeof runId === "string"),
-    );
-    found.set(target, { runIds, stored: runIds.size });
+    const listed = textItems(Reflect.get(Object(record), "runIds"));
+    if (typeof target !== "string") {
+      lists.unreadable.add(name);
+      continue;
+    }
+    const runIds = new Set(listed);
+    lists.targets.set(target, { runIds, stored: runIds.size });
+    if (listed !== undefined) continue;
+    lists.unreadable.add(name);
+    lists.unreadable.add(runsName(target));
   }
-  return found;
+  return lists;
 }
 
 function runsName(target: string): string {
@@ -78,27 +113,41 @@ async function storeRuns(
 
 async function presentTree(
   directory: string,
-  item: { readonly target: string; readonly entry: TargetRuns },
-): Promise<boolean> {
+  item: {
+    readonly target: string;
+    readonly entry: TargetRuns;
+    readonly unreadable: boolean;
+  },
+): Promise<number | undefined> {
   const { target, entry } = item;
   const worktrees = join(directory, "worktrees");
-  if (!existsSync(treePlace({ worktrees, target }).path)) {
+  const { path } = treePlace({ worktrees, target });
+  if (!existsSync(path)) {
     await rm(join(runsFolder(directory), runsName(target)), { force: true });
-    return false;
+    return undefined;
   }
-  if (entry.runIds.size > entry.stored)
+  if (!item.unreadable && entry.runIds.size > entry.stored)
     await storeRuns(directory, { target, runIds: entry.runIds });
-  return true;
+  const link = await stat(join(path, ".git")).catch(() => undefined);
+  return link?.mtimeMs;
 }
 
-async function storedTrees(
-  directory: string,
-): Promise<readonly (readonly [string, TargetRuns])[]> {
-  const present: (readonly [string, TargetRuns])[] = [];
-  for (const [target, entry] of await targetRuns(directory))
-    if (await presentTree(directory, { target, entry }))
-      present.push([target, entry]);
-  return present;
+async function storedTrees(directory: string): Promise<FoundTrees> {
+  const lists = await targetRuns(directory);
+  const present: PresentTree[] = [];
+  const unreadable: string[] = [];
+  for (const [target, entry] of lists.targets) {
+    const listUnreadable = lists.unreadable.has(runsName(target));
+    const bornAt = await presentTree(directory, {
+      target,
+      entry,
+      unreadable: listUnreadable,
+    });
+    if (bornAt === undefined) continue;
+    if (listUnreadable) unreadable.push(target);
+    else present.push({ target, runIds: entry.runIds, bornAt });
+  }
+  return { present, unreadable: unreadable.sort() };
 }
 
 async function startedRecords(directory: string): Promise<unknown[]> {
@@ -120,10 +169,9 @@ async function startedRecords(directory: string): Promise<unknown[]> {
   return records;
 }
 
-async function targetRuns(
-  directory: string,
-): Promise<ReadonlyMap<string, TargetRuns>> {
-  const targets = await storedRuns(directory);
+async function targetRuns(directory: string): Promise<TargetLists> {
+  const lists = await storedRuns(directory);
+  const { targets } = lists;
   for (const started of await startedRecords(directory)) {
     const target: unknown = Reflect.get(Object(started), "target");
     const runId = folderRunId(started);
@@ -133,7 +181,7 @@ async function targetRuns(
     entry.runIds.add(runId);
     targets.set(target, entry);
   }
-  return targets;
+  return lists;
 }
 
 async function openPulls(github: Calls, branch: string): Promise<number> {
@@ -212,23 +260,29 @@ async function swept(sweep: Sweep, signal: AbortSignal): Promise<void> {
   const { settings } = sweep;
   const days = settings.retention.days;
   if (days === null) return;
-  const targets = await storedTrees(settings.directory);
+  const found = await storedTrees(settings.directory);
   const runs = await settings.runs([
-    ...new Set(targets.flatMap(([, { runIds }]) => [...runIds])),
+    ...new Set(found.present.flatMap(({ runIds }) => [...runIds])),
   ]);
   const now = settings.now();
-  const due = targets
-    .filter(([, { runIds }]) =>
+  const due = found.present
+    .filter(({ runIds, bornAt }) =>
       treeDue(
         [...runIds].map((runId) => runs[runId]),
-        { now, days },
+        { now, days, bornAt },
       ),
     )
-    .map(([target]) => target)
+    .map(({ target }) => target)
     .sort();
   const batch = batchAfter(due, { cursor: sweep.cursor, size: treesPerPass });
   sweep.cursor = batch.at(-1) ?? "";
-  const tally: Tally = { removed: 0, open: 0, failures: [] };
+  const tally: Tally = {
+    removed: 0,
+    open: 0,
+    failures: found.unreadable.map(
+      (target) => `${target}: tree-runs-unreadable`,
+    ),
+  };
   for (const target of batch) {
     if (signal.aborted) break;
     await handledTree(settings, { target, tally, signal });

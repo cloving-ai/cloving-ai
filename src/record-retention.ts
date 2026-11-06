@@ -84,12 +84,20 @@ export function retentionVerdict(
 
 export function treeDue(
   runs: readonly (StoredRun | undefined)[],
-  context: Pick<RetentionContext, "now" | "days">,
+  context: Pick<RetentionContext, "now" | "days"> & {
+    readonly bornAt: number;
+  },
 ): boolean {
   const limit = context.now - context.days * dayMilliseconds;
+  const own = runs.filter(
+    (run) =>
+      run === undefined ||
+      run.endedAt === null ||
+      run.endedAt >= context.bornAt,
+  );
   return (
-    runs.length > 0 &&
-    runs.every(
+    own.length > 0 &&
+    own.every(
       (run) =>
         run !== undefined &&
         run.status !== "completed" &&
