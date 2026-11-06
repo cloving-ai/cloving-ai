@@ -1,10 +1,14 @@
+import { dirname, join } from "node:path";
 import {
+  activeRun,
   defaultBranch,
   field,
   repositoryPath,
   type Operation,
 } from "./github-operation.ts";
-import { treeName, workTree, type WorkTree } from "./work-tree.ts";
+import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
+import { releaseClaim, takeClaim } from "./tree-claims.ts";
+import { treeClaim, treeName, workTree, type WorkTree } from "./work-tree.ts";
 
 const clovingPrefix = "cloving/";
 
@@ -77,17 +81,63 @@ async function pullHead(
   return { target, head };
 }
 
+async function ownedPull(operation: Operation, target: string): Promise<void> {
+  const { run } = operation;
+  const folder = join(dirname(operation.folder), "claims");
+  const name = `${operationKey(target)}.json`;
+  const owner = field(await readRecord(folder, name), "runId");
+  if (
+    typeof owner === "string" &&
+    owner !== run.runId &&
+    activeRun(await run.status(owner))
+  )
+    throw new Error("pull-request-claimed");
+  await writeRecord(folder, { name, value: { target, runId: run.runId } });
+}
+
+async function claimedPull(
+  operation: Operation,
+  target: string,
+): Promise<void> {
+  const claim = treeClaim({ worktrees: operation.settings.worktrees, target });
+  if (!(await takeClaim(claim))) throw new Error("pull-request-claimed");
+  try {
+    await ownedPull(operation, target);
+  } finally {
+    await releaseClaim(claim);
+  }
+}
+
+async function headReached(
+  operation: Operation,
+  tree: { readonly path: string; readonly head: string },
+): Promise<void> {
+  const { git } = operation.calls;
+  const contained = await git(tree.path, [
+    "merge-base",
+    "--is-ancestor",
+    tree.head,
+    "HEAD",
+  ]).then(
+    () => true,
+    () => false,
+  );
+  if (contained) return;
+  await git(tree.path, ["merge", "--ff-only", "--quiet", tree.head]).catch(
+    () => {
+      throw new Error("pull-request-diverged");
+    },
+  );
+}
+
 async function pullTree(operation: Operation, base: string): Promise<unknown> {
   const pull = await pullHead(operation);
+  await claimedPull(operation, pull.target);
   const tree = await treeAt(operation, {
     target: pull.target,
     base: pull.head,
   });
-  await operation.calls
-    .git(tree.path, ["merge", "--ff-only", "--quiet", pull.head])
-    .catch(() => {
-      throw new Error("pull-request-diverged");
-    });
+  await headReached(operation, { path: tree.path, head: pull.head });
   const head = await operation.calls.git(tree.path, ["rev-parse", "HEAD"]);
   return {
     target: pull.target,

@@ -26,8 +26,11 @@ file `{"pullRequest": 641}`.
    pull request. It refuses a pull request that is not open
    (`pull-request-not-open`) or that is not on a `cloving/` branch
    (`pull-request-not-cloving`). Thus a pull request that a person opened is never
-   rescued. The method puts the work tree of that branch at the head of the pull
-   request. A local branch that has other commits than the pull request gives
+   rescued. Only one active run can own a pull request. While another active run
+   owns it, the method gives `pull-request-claimed`. The method puts the work tree
+   of that branch at the head of the pull request. A kept work tree that already
+   contains the head stays as it is. Thus an unfinished merge of a stopped turn
+   stays for the next turn. A kept work tree that cannot move to the head gives
    `pull-request-diverged`. The result names the target of the work tree, and all
    later effects of the run use that target.
 2. A turn merges the default branch into the branch, resolves the conflicts, and

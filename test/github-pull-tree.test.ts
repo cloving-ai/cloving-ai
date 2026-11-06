@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -125,6 +126,85 @@ await test("CLV-305 prepare brings a kept work tree up to the pull request head"
       git(join(scene.worktrees, "task-0123456789ab"), ["rev-parse", "HEAD"]),
       later,
     );
+  }));
+
+await test("CLV-305 prepare keeps an unfinished merge on the pull request head for the next turn", () =>
+  withGithub(async (scene) => {
+    const head = pushedBranch(scene);
+    openPull(scene, { head: branch });
+    const worker = scene.worker();
+    await scene.perform(worker, {
+      method: "prepare",
+      payload: { pullRequest: 7 },
+    });
+    committed(scene.repository, { name: "stuck.ts", text: "2;\n" });
+    git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    const tree = join(scene.worktrees, "task-0123456789ab");
+    git(tree, ["fetch", "--quiet", "origin"]);
+    const merge = spawnSync("git", [
+      "-C",
+      tree,
+      "merge",
+      "--quiet",
+      "origin/main",
+    ]);
+    const report = await scene.perform(worker, {
+      method: "prepare",
+      payload: { pullRequest: 7 },
+    });
+    assert.deepEqual(
+      [merge.status, report.outcome, report.reason],
+      [1, "completed", undefined],
+    );
+    assert.equal(
+      Reflect.get(Object(JSON.parse(String(report.result))), "head"),
+      head,
+    );
+    assert.equal(
+      git(tree, ["diff", "--name-only", "--diff-filter=U"]),
+      "src/stuck.ts",
+    );
+  }));
+
+await test("CLV-305 prepare gives a pull request to one active run at a time", () =>
+  withGithub(async (scene) => {
+    pushedBranch(scene);
+    openPull(scene, { head: branch });
+    const statuses = new Map([
+      ["run-1", "running"],
+      ["run-2", "running"],
+    ]);
+    const worker = scene.worker({
+      runStatus: (runId) => Promise.resolve(statuses.get(runId)),
+    });
+    const prepared = async (runId: string) => {
+      const report = await scene.perform(worker, {
+        method: "prepare",
+        payload: { pullRequest: 7 },
+        runId,
+      });
+      return report.reason ?? report.outcome;
+    };
+    const first = await prepared("run-1");
+    const second = await prepared("run-2");
+    const again = await prepared("run-1");
+    statuses.set("run-1", "failed");
+    const later = await prepared("run-2");
+    const old = await prepared("run-1");
+    assert.deepEqual(
+      [first, second, again, later, old],
+      [
+        "completed",
+        "pull-request-claimed",
+        "completed",
+        "completed",
+        "pull-request-claimed",
+      ],
+    );
+    mkdirSync(join(scene.directory, "tree-claims", "task-0123456789ab"), {
+      recursive: true,
+    });
+    assert.equal(await prepared("run-2"), "pull-request-claimed");
   }));
 
 await test("CLV-305 prepare refuses an invalid number, a nested branch, a diverged branch and a blocked tree", () =>

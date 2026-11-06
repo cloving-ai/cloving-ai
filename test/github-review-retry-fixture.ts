@@ -92,6 +92,7 @@ export async function withReview<Result>(
       run: () => Promise.reject(new Error("unexpected-run")),
     },
     target: "ticket-review",
+    run: { runId: "run-1", status: () => Promise.resolve(undefined) },
     payload: { number: 1, commit: reviewCommit },
     signal: new AbortController().signal,
     folder,
