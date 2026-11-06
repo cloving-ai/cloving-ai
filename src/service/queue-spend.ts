@@ -7,8 +7,15 @@ import { failed, type ServiceContext } from "./replies.ts";
 
 type SpendContext = Pick<
   ServiceContext,
-  "authority" | "clock" | "queueDailySpendLimitUsd"
+  "authority" | "clock" | "queueDailySpendLimitUsd" | "spendScope"
 >;
+
+export async function spendCounted(
+  context: Pick<ServiceContext, "authority" | "spendScope">,
+  runId: string,
+): Promise<boolean> {
+  return context.spendScope === "all" || (await queueRun(context, runId));
+}
 
 export async function queueRun(
   context: Pick<ServiceContext, "authority">,
@@ -54,7 +61,7 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
   };
   const queued = new Set<string>();
   for (const runId of runIds) {
-    if (await queueRun(context, runId)) queued.add(runId);
+    if (await spendCounted(context, runId)) queued.add(runId);
   }
   for (const operation of operations) {
     if (queued.has(operation.runId))

@@ -222,7 +222,11 @@ async function spendRefusal(
   context: ServiceContext,
   admission: Admission,
 ): Promise<Reply | undefined> {
-  if (admission.workflow.manifest.queue !== true) return undefined;
+  if (
+    admission.workflow.manifest.queue !== true &&
+    context.spendScope !== "all"
+  )
+    return undefined;
   return spendLimitRefusal(context, { commandId: admission.commandId });
 }
 

@@ -133,6 +133,10 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
   const budget = effectBudgetText(run.spent, run.limit);
+  const place =
+    run.chain === undefined
+      ? ""
+      : ` · run ${String(run.chain.position)} of ${String(run.chain.limit)} in its chain`;
   const none = "No agent turn for this run.";
   const turns =
     run.turns.length === 0
@@ -146,7 +150,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
           }),
         ]);
   const foot = [
-    `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}`,
+    `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}${place}`,
     element("br", {}),
     `${run.code}: ${run.detail}`,
   ];

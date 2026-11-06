@@ -16,7 +16,7 @@ import {
   result,
   type ServiceContext,
 } from "./replies.ts";
-import { queueRun, spendLimitRefusal } from "./queue-spend.ts";
+import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
 import { runIdentity } from "./submission-handler.ts";
 
 interface ContinueRequest {
@@ -112,7 +112,7 @@ async function spendRefusal(
   context: ServiceContext,
   request: ContinueRequest,
 ): Promise<Reply | undefined> {
-  if (!(await queueRun(context, request.runId))) return undefined;
+  if (!(await spendCounted(context, request.runId))) return undefined;
   return spendLimitRefusal(context, identity(request));
 }
 

@@ -61,6 +61,27 @@ export function runLinks(
   );
 }
 
+export interface ChainPlace {
+  readonly position: number;
+  readonly limit: number;
+}
+
+export function chainPlace(
+  origins: Readonly<Record<string, RunOrigin>>,
+  runId: string,
+): ChainPlace {
+  const ancestors = new Set<string>([runId]);
+  let parent = origins[runId]?.parentRunId ?? null;
+  while (parent !== null && !ancestors.has(parent)) {
+    ancestors.add(parent);
+    parent = origins[parent]?.parentRunId ?? null;
+  }
+  return {
+    position: ancestors.size,
+    limit: chainLimitOf(origins, origins[runId]?.chainId ?? runId),
+  };
+}
+
 export function childRuns(
   origins: RunOrigins,
 ): Readonly<Record<string, readonly string[]>> {

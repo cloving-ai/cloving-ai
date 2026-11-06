@@ -14,16 +14,25 @@ import {
   type Harness,
 } from "./service-fixture.ts";
 
+interface SpendSettings {
+  readonly limitUsd?: number;
+  readonly issueResolver?: Resolver;
+  readonly spendScope?: "all";
+}
+
+function scopeOf(settings: SpendSettings): { readonly spendScope?: "all" } {
+  return settings.spendScope === undefined
+    ? {}
+    : { spendScope: settings.spendScope };
+}
+
 export async function withQueueSpend(
   body: (
     scene: Awaited<ReturnType<typeof spendScene>> & {
       readonly messages: string[];
     },
   ) => Promise<void>,
-  settings: {
-    readonly limitUsd?: number;
-    readonly issueResolver?: Resolver;
-  } = {},
+  settings: SpendSettings = {},
 ): Promise<void> {
   await withHarness(async (harness) => {
     const scene = await spendScene(harness, settings);
@@ -45,25 +54,25 @@ export async function withQueueSpend(
   });
 }
 
-async function spendScene(
-  harness: Harness,
-  settings: { readonly limitUsd?: number; readonly issueResolver?: Resolver },
-) {
+async function spendScene(harness: Harness, settings: SpendSettings) {
   const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
   const clock = { now: "2026-10-10T12:00:00.000Z" };
   const counts = { admissions: 0, clockReads: 0 };
   const resolution = { wait: Promise.resolve() };
-  const options = spendOptions(harness, {
-    clock,
-    counts,
-    limitUsd: settings.limitUsd ?? 20,
-    issueResolver: settings.issueResolver ?? {
-      ...harness.registration.resolver,
-      id: "declared-input",
-    },
-    resolution,
-    workflow,
-  });
+  const options = {
+    ...scopeOf(settings),
+    ...spendOptions(harness, {
+      clock,
+      counts,
+      limitUsd: settings.limitUsd ?? 20,
+      issueResolver: settings.issueResolver ?? {
+        ...harness.registration.resolver,
+        id: "declared-input",
+      },
+      resolution,
+      workflow,
+    }),
+  };
   let service = await harness.start(options);
   let queue: ReturnType<typeof issueQueue> | undefined;
   const status = () =>

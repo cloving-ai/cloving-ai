@@ -112,6 +112,13 @@
       },
       "additionalProperties": false
     },
+    "spend": {
+      "type": "object",
+      "properties": {
+        "scope": { "type": "string", "enum": ["queue", "all"] }
+      },
+      "additionalProperties": false
+    },
     "limits": {
       "type": "object",
       "properties": {

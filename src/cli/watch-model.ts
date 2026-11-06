@@ -273,8 +273,17 @@ function outcomeOf(
   };
 }
 
+function chainOf(value: unknown): Pick<WatchRun, "chain"> {
+  const chain = record(value);
+  const position = count(chain["position"]);
+  const limit = count(chain["limit"]);
+  if (position === null || limit === null) return {};
+  return { chain: { position, limit } };
+}
+
 function runLinksOf(status: Readonly<Record<string, unknown>>) {
   return {
+    ...chainOf(status["chain"]),
     parentRunId: stamp(status["parentRunId"]),
     chainId: stamp(status["chainId"]) ?? text(status["runId"]),
     childRunIds: texts(status["childRunIds"]),

@@ -70,3 +70,17 @@ await test("CLV-308 a chain limit of 8 starts 7 handoffs and refuses the 8th, al
     }
     assert.equal(codeOf(await service.submit(handoff(last))), "chain-limit");
   }));
+
+await test("CLV-308 a reload that lowers effectLimit does not change the budget of an active run", () =>
+  withHarness(async (harness) => {
+    const service = await limitedService(harness, { effectLimit: 10 });
+    const runId = String(runIdOf(await service.submit("budget-root")));
+    service.registry.replace([{ ...fakeRegistration([]), effectLimit: 2 }]);
+    const budget = await service.authority.effects.budget(runId);
+    assert.deepEqual(
+      { limit: budget?.limit, spent: budget?.spent },
+      { limit: 10, spent: 0 },
+    );
+    const later = String(runIdOf(await service.submit("budget-later")));
+    assert.equal((await service.authority.effects.budget(later))?.limit, 2);
+  }));

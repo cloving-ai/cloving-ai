@@ -265,6 +265,11 @@ export function runStatus(result: Fields): readonly string[] {
       : [
           `Effects: ${show(part(part(run, "budget"), "spent"))} of ${show(part(part(run, "budget"), "limit"))}`,
         ]),
+    ...(record(part(run, "chain")) === undefined
+      ? []
+      : [
+          `Chain position: run ${show(part(part(run, "chain"), "position"))} of ${show(part(part(run, "chain"), "limit"))}`,
+        ]),
     ...shownCommands(part(run, "commandEffects")).map((effect) =>
       visible(commandText(effect)),
     ),

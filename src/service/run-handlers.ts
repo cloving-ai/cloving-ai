@@ -7,7 +7,12 @@ import {
   ticketMetadataPage,
   workflowMetadata,
 } from "./run-metadata.ts";
-import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
+import {
+  chainPlace,
+  linksOf,
+  type ChainPlace,
+  type RunLinks,
+} from "../authority/handoff-chain.ts";
 import { terminal } from "../authority/transitions.ts";
 import {
   runView,
@@ -137,6 +142,7 @@ type ShownRun = RunView &
     readonly latestAt: string | null;
     readonly unresolvedEffects: readonly string[];
     readonly feedback: readonly Fields[];
+    readonly chain: ChainPlace;
   };
 
 async function viewOf(
@@ -181,6 +187,7 @@ async function viewOf(
     })),
     commandOperations: effects.commandOperations,
     ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
+    chain: chainPlace(scope.snapshot.links, run.runId),
     input: await submittedInput(context, details?.submission),
     workflowId,
     latestAt: times[run.runId] ?? null,
@@ -219,6 +226,7 @@ function full(view: ShownRun & WorkerTotals): Fields {
     usage: view.usage,
     workerTurns: view.workerTurns,
     budget: view.budget,
+    chain: view.chain,
     effects: view.effects,
     nextAction: view.nextAction,
     nextActionAt: view.nextActionAt,

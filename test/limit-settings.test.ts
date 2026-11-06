@@ -6,6 +6,7 @@ import { validateSetting } from "../src/configuration-schema.ts";
 import { settingsScene } from "./project-settings-fixture.ts";
 import { workflowLimits } from "../src/workflow-limits.ts";
 import { commandUsage } from "../src/cli/usage.ts";
+import { queueSpendLimit, spendScope } from "../tools/self-host-queue.ts";
 
 for (const [scope, limits, variables] of [
   [
@@ -88,9 +89,58 @@ await test("CLV-308 the start help names the operator maximums with their ranges
       /1 to 1000.*default is 100.*effectLimit.*effect-limit-above-maximum/,
     ],
     ["CLOVING_LIMIT_CHAIN", /2 to 50.*default is 5.*chainLimit/],
+    [
+      "CLOVING_SPEND_SCOPE",
+      /queue or all.*default is queue.*all.*every workflow.*CLOVING_QUEUE_SECONDS/,
+    ],
   ] as const)
     assert.match(
       lines.find((line) => line.startsWith(`  ${name} `)) ?? "",
       fact,
     );
+});
+
+await test("CLV-308 spend.scope accepts queue and all in both files and refuses other values", () => {
+  const fixture = settingsScene();
+  try {
+    for (const [file, scope] of [
+      [fixture.project, "all"],
+      [fixture.privateFile, "queue"],
+    ] as const) {
+      fixture.write(file, { version: 1, spend: { scope } });
+      assert.equal(
+        settingsEnvironment(fixture.environment, fixture.repository)[
+          "CLOVING_SPEND_SCOPE"
+        ],
+        scope,
+      );
+      fixture.write(file, { version: 1 });
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+  for (const value of ["every", "", 1, null])
+    assert.throws(() => {
+      validateSetting("spend.scope", value);
+    }, /invalid-setting: spend.scope/);
+});
+
+await test("CLV-308 the daemon reads the spend scope, and the scope all needs no queue for a daily spend limit", () => {
+  assert.equal(spendScope({}), "queue");
+  assert.equal(spendScope({ CLOVING_SPEND_SCOPE: "all" }), "all");
+  assert.throws(
+    () => spendScope({ CLOVING_SPEND_SCOPE: "every" }),
+    /invalid-spend-scope/,
+  );
+  assert.throws(
+    () => queueSpendLimit({ CLOVING_QUEUE_DAILY_SPEND_USD: "20" }),
+    /queue-spend-limit-needs-queue/,
+  );
+  assert.equal(
+    queueSpendLimit({
+      CLOVING_QUEUE_DAILY_SPEND_USD: "20",
+      CLOVING_SPEND_SCOPE: "all",
+    }),
+    20,
+  );
 });

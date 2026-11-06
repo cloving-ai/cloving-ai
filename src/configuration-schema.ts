@@ -36,6 +36,7 @@ export interface Configuration {
     readonly effects?: number;
     readonly chain?: number;
   };
+  readonly spend?: { readonly scope?: "queue" | "all" };
   readonly harness?: {
     readonly name?: string;
     readonly turn?: readonly string[];

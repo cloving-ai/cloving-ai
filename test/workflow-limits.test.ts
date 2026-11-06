@@ -15,6 +15,7 @@ import { folderInput } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { workflowRefusals } from "../src/workflow-refusals.ts";
 import {
+  chainPlace,
   handoffChain,
   type RunOrigin,
 } from "../src/authority/handoff-chain.ts";
@@ -159,4 +160,19 @@ await test("CLV-308 the first run of a chain decides the chain limit for every h
     handoffChain(`handoff:${operationOf("run-5", { round: 1 })}`, unlimited),
     { kind: "refused", reason: "chain-limit" },
   );
+});
+
+await test("CLV-308 the chain place counts the ancestors of a run and reads the limit of the first run", () => {
+  const origins: Record<string, RunOrigin> = {
+    root: { parentRunId: null, chainId: "root", chainLimit: 8 },
+    child: { parentRunId: "root", chainId: "root" },
+    orphan: { parentRunId: "absent", chainId: "absent" },
+    cycle: { parentRunId: "loop", chainId: "cycle" },
+    loop: { parentRunId: "cycle", chainId: "cycle" },
+  };
+  assert.deepEqual(chainPlace(origins, "root"), { position: 1, limit: 8 });
+  assert.deepEqual(chainPlace(origins, "child"), { position: 2, limit: 8 });
+  assert.deepEqual(chainPlace(origins, "orphan"), { position: 2, limit: 5 });
+  assert.deepEqual(chainPlace(origins, "cycle"), { position: 2, limit: 5 });
+  assert.deepEqual(chainPlace(origins, "unknown"), { position: 1, limit: 5 });
 });
