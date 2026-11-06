@@ -148,6 +148,19 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
+  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--command-id <id>] [--json]
+       cloving restart --cancel [--command-id <id>] [--json]
+
+Restarts the service that cloving start runs, with the settings files and the product files of the new start.
+--at gap waits for the next gap: no run that has not ended, no open turn and no queue submission. It is the default.
+While the restart waits, the queue admits no new run. cloving status shows the pending restart.
+--at now stops at once. Claude and Codex turns resume after the start.
+The command waits for the new service and prints the old commit, the new commit and the start time.
+Control-C stops the wait and keeps the restart pending. --cancel cancels a pending restart.
+The restart keeps a drain of the queue and its failure count.
+--resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
+--settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
+`,
   watch: `Usage: cloving watch [--port <n>]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
@@ -252,6 +265,7 @@ Commands:
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.
+  restart    Restart the service at the next gap or at once.
   phone      Show, list, remove and reset the connected phones.
   config     Read and change repository settings.
   start      Start the service for a repository.

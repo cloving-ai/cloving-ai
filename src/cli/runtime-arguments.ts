@@ -2,6 +2,7 @@ import { isRecordKey } from "../authority/commands.ts";
 import { scheduleInvocation } from "./schedule-arguments.ts";
 import { queueInvocation } from "./queue-arguments.ts";
 import { continueInvocation } from "./continue-arguments.ts";
+import { restartInvocation } from "./restart-arguments.ts";
 import {
   argumentRules,
   type DecisionCommand,
@@ -95,8 +96,16 @@ function noSubjectShape(
   return { subject: "none", required: [], allowed: () => allowed, build };
 }
 
+type Parser = (request: RuntimeRequest) => Outcome;
+
+const ownParsers = new Map<string, Parser>([
+  ["schedule", scheduleInvocation],
+  ["queue", queueInvocation],
+  ["restart", restartInvocation],
+]);
+
 export function isRuntimeCommand(command: string): boolean {
-  return command === "schedule" || command === "queue" || shapes.has(command);
+  return ownParsers.has(command) || shapes.has(command);
 }
 
 export function runtimeInvocation(request: RuntimeRequest): Outcome {
@@ -106,8 +115,8 @@ export function runtimeInvocation(request: RuntimeRequest): Outcome {
   if (new Set(names).size !== names.length) return "repeated-option";
   if (names.includes("help"))
     return { kind: "command-help", command: request.command };
-  if (request.command === "schedule") return scheduleInvocation(request);
-  if (request.command === "queue") return queueInvocation(request);
+  const parser = ownParsers.get(request.command);
+  if (parser !== undefined) return parser(request);
   if (request.command === "run" && request.positionals[0] === "continue")
     return continueInvocation({
       ...request,

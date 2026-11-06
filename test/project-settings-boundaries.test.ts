@@ -216,6 +216,7 @@ await test("CLV-205 no configuration files preserve environment and built-in def
       environment: fixture.environment,
       profiles: {},
       sources: {},
+      hidden: [],
       values: {},
     });
     const environment = {

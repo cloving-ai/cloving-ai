@@ -27,6 +27,8 @@ import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
 import type { MergeMode } from "../merge-mode.ts";
+import { clovingVersion } from "../cli/toolchain.ts";
+import type { RecordedSource } from "../project-settings.ts";
 import type { RunWaitChecks } from "../run-wait.ts";
 import {
   turnSettingsSource,
@@ -44,6 +46,8 @@ export interface DaemonSettings extends HarnessSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
+  readonly commit?: string | null;
+  readonly settingSources?: Readonly<Record<string, RecordedSource>>;
   readonly bundleDigest?: string;
   readonly manifests: Readonly<Record<string, string | undefined>>;
   readonly declarations?: readonly DeclaredWorkflow[];
@@ -253,4 +257,15 @@ async function recoveryCalls(
     }
   }
   return calls;
+}
+
+export function daemonIdentity(settings: DaemonSettings) {
+  return {
+    version: clovingVersion,
+    commit: settings.commit ?? null,
+    startedAt: new Date().toISOString(),
+    ...(settings.settingSources === undefined
+      ? {}
+      : { settingSources: settings.settingSources }),
+  };
 }

@@ -11,6 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { selfUpdater } from "./self-update.ts";
 import { selfUpdateActive } from "./self-update-host.ts";
+import { clearedRestart, restartWatch } from "./self-host-restart.ts";
 
 export interface HostProcesses {
   readonly environment?: Readonly<NodeJS.ProcessEnv>;
@@ -22,6 +23,7 @@ export interface HostProcesses {
   readonly watchPort: string;
   readonly phoneRelay: string;
   readonly updateMilliseconds: number | undefined;
+  readonly restartMilliseconds?: number;
   readonly stopMilliseconds?: number;
   readonly watchRestart?: WatchRestartPolicy;
 }
@@ -169,6 +171,30 @@ async function polled(
   return undefined;
 }
 
+async function hostWatches(
+  settings: HostProcesses,
+  lifecycle: {
+    readonly stopping: AbortController;
+    readonly stop: () => Promise<void>;
+  },
+): Promise<number | undefined> {
+  const finished = (status: number | undefined): number | undefined => {
+    if (status !== undefined) lifecycle.stopping.abort();
+    return status;
+  };
+  const watches = { stopping: lifecycle.stopping.signal, stop: lifecycle.stop };
+  const [updated, restarted] = await Promise.all([
+    polled(settings, watches).then(finished),
+    restartWatch({
+      ...watches,
+      directory: settings.directory,
+      runtime: settings.runtime,
+      milliseconds: settings.restartMilliseconds ?? 2000,
+    }).then(finished),
+  ]);
+  return restarted ?? updated;
+}
+
 function productChild(
   settings: HostProcesses,
   argumentsList: readonly [string, ...string[]],
@@ -310,6 +336,7 @@ async function watchAfterStart(
 }
 
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
+  await clearedRestart(settings.directory);
   const { daemon, programs } = hostedChildren(settings);
   const stopping = new AbortController();
   let updating = false;
@@ -335,8 +362,8 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
-  const polling = polled(settings, {
-    stopping: stopping.signal,
+  const polling = hostWatches(settings, {
+    stopping,
     stop: async () => {
       updating = true;
       await stop();

@@ -234,6 +234,7 @@ export interface WatchInputs {
   readonly updatedAt: string;
   readonly service: string;
   readonly serviceVersion?: string;
+  readonly restart?: Fields;
   readonly runs: readonly unknown[];
   readonly completionCandidates?: readonly unknown[];
   readonly decisions: readonly unknown[];
@@ -376,6 +377,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
     ...(inputs.serviceVersion === undefined
       ? {}
       : { serviceVersion: inputs.serviceVersion }),
+    ...(inputs.restart === undefined ? {} : { restart: inputs.restart }),
     runs: runs.toSorted((first, second) =>
       began(first) < began(second) ? 1 : -1,
     ),

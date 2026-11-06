@@ -14,11 +14,11 @@ import {
   statusScheduleLines,
   scheduleLines,
 } from "./schedule-render.ts";
-
 import { show, oneLine, visible } from "./terminal-text.ts";
 import { queueHeadline, queueStateLines } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
+import { restartLines, serviceLines } from "./restart-render.ts";
 import {
   continuationLines,
   listing,
@@ -28,14 +28,7 @@ import {
   runContinuedLines,
 } from "./run-command-render.ts";
 export { oneLine } from "./terminal-text.ts";
-
-export function errorText(error: Fields): string {
-  const { candidates } = error;
-  const lines = [`${visible(error["code"])}: ${visible(error["detail"])}`];
-  if (Array.isArray(candidates))
-    lines.push(`Candidates: ${candidates.map(visible).join(", ")}`);
-  return lines.map((line) => `${line}\n`).join("");
-}
+export { errorText } from "./error-render.ts";
 
 function admitted(result: Fields): readonly string[] {
   return [
@@ -125,6 +118,7 @@ function runList(result: Fields): readonly string[] {
   const hiddenRuns = result["hiddenRuns"];
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
+    ...serviceLines(result),
     ...queueLines(result["queue"]),
     ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...refusalLines(result["workflowRefusals"]),
@@ -359,6 +353,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
   ["reload", reloadLines],
+  ["restart", restartLines],
 ]);
 
 export function rendered(result: Fields): string {

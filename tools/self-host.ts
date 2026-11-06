@@ -5,7 +5,11 @@ import {
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
-import { absoluteWorkflowFolder } from "../src/project-settings.ts";
+import {
+  absoluteWorkflowFolder,
+  settingSourceMap,
+  startSettingLines,
+} from "../src/project-settings.ts";
 import {
   retentionSettings,
   type RetentionSettings,
@@ -36,6 +40,7 @@ import {
 } from "./self-host-project.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
+import { productCommit } from "./self-host-restart.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
 import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
@@ -116,6 +121,7 @@ interface Commands extends HarnessSettings {
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
   readonly settingDigests: Readonly<Record<string, string>>;
+  readonly settingSources: ReturnType<typeof settingSourceMap>;
   readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
@@ -133,6 +139,7 @@ interface Commands extends HarnessSettings {
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
   readonly reloadCommand: readonly string[];
+  readonly commit: string | null;
 }
 
 function queueLanes(): number {
@@ -268,9 +275,7 @@ function guide(workflows: RegisteredWorkflows): string {
     `Runtime directory: ${runtime}`,
     `Work trees: ${join(directory, "worktrees")}`,
     ...(selectedRuntime.note === "" ? [] : [selectedRuntime.note]),
-    ...Object.entries(configuration.sources).map(
-      ([field, source]) => `${field}: ${source}`,
-    ),
+    ...startSettingLines(configuration),
     ...workflows.workflowRefusals.map(
       (refusal) =>
         `Refused workflow ${refusal.scope} ${refusal.label}: ${refusal.codes.join(", ")}`,
@@ -349,6 +354,7 @@ await launchers(
     shell: environment["SHELL"] ?? "/bin/sh",
     profiles,
     settingDigests: configurationDigests(configuration, profiles),
+    settingSources: settingSourceMap(configuration.sources),
     command,
     ticketCommand,
     nextCommand,
@@ -365,6 +371,9 @@ await launchers(
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     mergeMode: merging,
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
+    commit: await productCommit(
+      extname(import.meta.filename) === ".ts" ? product : dirname(product),
+    ),
     reloadCommand: [
       process.execPath,
       join(product, `tools/self-host-reload${extname(import.meta.filename)}`),

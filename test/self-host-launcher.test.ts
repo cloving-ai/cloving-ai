@@ -1,6 +1,7 @@
 import { stopChildGroup } from "./stop-child.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { chmod, lstat, mkdir, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -57,6 +58,16 @@ for (const command of ["{}", "[1]"]) {
     }));
 }
 
+function checkoutCommit(): string | null {
+  const shown = spawnSync("git", ["rev-parse", "--show-toplevel", "HEAD"], {
+    encoding: "utf8",
+  });
+  const [top, commit] = shown.stdout.trim().split("\n");
+  if (shown.status !== 0 || top === undefined || commit === undefined)
+    return null;
+  return realpathSync(top) === realpathSync(".") ? commit : null;
+}
+
 async function idleLauncher(root: string, worker: string): Promise<void> {
   await mkdir(join(root, "bin"));
   for (const name of ["claude", "codex"]) {
@@ -95,6 +106,8 @@ async function idleLauncher(root: string, worker: string): Promise<void> {
     );
     assert.deepEqual(status["runs"], []);
     assert.deepEqual(status["workflowRefusals"], []);
+    assert.equal(status["serviceCommit"], checkoutCommit());
+    assert.equal(typeof status["serviceStartedAt"], "string");
     assert.match(output, /cloving status/);
     for (const name of ["worker-called", ".cloving", ".config"])
       await assert.rejects(lstat(join(root, name)), { code: "ENOENT" });

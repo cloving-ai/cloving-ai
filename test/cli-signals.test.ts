@@ -150,6 +150,26 @@ await test("CLV-008 a mutation whose connection ends before the reply exits 1 wi
   );
 });
 
+await test("CLV-306 a lost restart reply gives outcome-unknown and tells the operator to read the status before a new restart", async () => {
+  const ended = await withSilentService({
+    argumentsList: ["restart", "--command-id", "c-restart", "--json"],
+    onRequest: (socket) => {
+      socket.destroy();
+    },
+  });
+  assert.equal(ended.code, 1, ended.stderr);
+  assert.deepEqual(JSON.parse(ended.stdout), {
+    schemaVersion: 1,
+    kind: "error",
+    code: "outcome-unknown",
+    detail:
+      "The connection ended before the reply. The restart can be pending or complete. Run cloving status before you send the restart again.",
+    commandId: "c-restart",
+    runId: null,
+    currentRevision: null,
+  });
+});
+
 await test("CLV-008 a read command has no signal handler: a signal ends it with no result and no success exit", async () => {
   const ended = await withSilentService({
     argumentsList: ["status", "--json"],

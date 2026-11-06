@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { extname, join } from "node:path";
 import { promisify } from "node:util";
 import { record, type Fields } from "../src/protocol.ts";
+import { atGap, workInProgress, type WorkReads } from "../src/work-gap.ts";
 
 interface ActivitySettings {
   readonly directory: string;
@@ -36,32 +37,19 @@ async function runPage(
   return page;
 }
 
+export function hostWorkReads(settings: ActivitySettings): WorkReads {
+  return {
+    runPage: (after) => runPage(settings, after),
+    openTurn: () => workerTurnActive(settings.directory),
+    pendingSubmission: () =>
+      present(join(settings.directory, "queue-submission")),
+  };
+}
+
 export async function selfUpdateActive(
   settings: ActivitySettings,
 ): Promise<boolean> {
-  if (await present(join(settings.directory, "queue-submission"))) return true;
-  if (await workerTurnActive(settings.directory)) return true;
-  let after: string | null = "";
-  do {
-    const page = await runPage(settings, after);
-    const runs = page["runs"];
-    if (!Array.isArray(runs)) throw new Error("invalid-run-list");
-    if (
-      runs.some((value: unknown) => {
-        const run = record(value);
-        if (!run) throw new Error("invalid-run-status");
-        return !["completed", "failed", "cancelled"].includes(
-          String(run["state"]),
-        );
-      })
-    )
-      return true;
-    const next = page["next"];
-    if (next !== null && (typeof next !== "string" || next <= after))
-      throw new Error("invalid-run-page");
-    after = next;
-  } while (after !== null);
-  return false;
+  return !atGap(await workInProgress(hostWorkReads(settings)));
 }
 
 export async function selfUpdateMilliseconds(settings: {
