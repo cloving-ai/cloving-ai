@@ -20,6 +20,7 @@ export type {
   PullRequest,
 } from "./merge-request.ts";
 export { handoff } from "./steps/handoff.ts";
+export { continueRun } from "./steps/continue-run.ts";
 export { waitForRun } from "./steps/wait-for-run.ts";
 export { runCommand } from "./steps/run-command.ts";
 export {
@@ -30,6 +31,7 @@ export {
 export { sleep } from "./steps/sleep.ts";
 export type {
   CommandRequest,
+  ContinueRunRequest,
   GateRequest,
   GateResult,
   DecisionResult,

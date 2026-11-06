@@ -51,3 +51,17 @@ await test("CLV-182 a handoff always requests one unit and the run method", () =
       reason: "invalid-handoff-request",
     });
 });
+
+await test("CLV-307 a continuation request names a run, needs no declared target and requests one unit", () => {
+  const continuation = { method: "continue", target: "run-child" };
+  assert.equal(admission([], continuation).kind, "admissible");
+  for (const extra of [
+    { units: 2 },
+    { target: "bad id" },
+    { target: "constructor" },
+  ])
+    assert.deepEqual(admission([], { ...continuation, ...extra }), {
+      kind: "rejected",
+      reason: "invalid-handoff-request",
+    });
+});

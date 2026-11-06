@@ -1,4 +1,6 @@
+import { isCommandId } from "../authority/commands.ts";
 import { continuationStart } from "../authority/continuations.ts";
+import { chainRefusal, type RunOrigins } from "../authority/handoff-chain.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
 import type { RunRecord } from "../broker/actor/authority-queries.ts";
 import { documentDigest } from "../broker/decision-restore.ts";
@@ -46,7 +48,7 @@ function continueRequest(parameters: Fields): ContinueRequest | undefined {
   const { runId, commandId } = parameters;
   const from = parameters["from"] ?? null;
   const bundle = parameters["bundle"] ?? "retained";
-  if (!isIdentifier(runId) || !isIdentifier(commandId)) return undefined;
+  if (!isIdentifier(runId) || !isCommandId(commandId)) return undefined;
   if (from !== null && typeof from !== "string") return undefined;
   if (bundle !== "retained" && bundle !== "current") return undefined;
   return { runId, commandId, from, bundle };
@@ -114,11 +116,25 @@ async function spendRefusal(
   return spendLimitRefusal(context, identity(request));
 }
 
-async function continuedRefusal(
-  context: ServiceContext,
+function chainRefused(
   request: ContinueRequest,
-): Promise<Reply | undefined> {
-  const origins = await context.authority.queries.runOrigins();
+  origins: RunOrigins,
+): Reply | undefined {
+  const reason = chainRefusal(request.commandId, {
+    runId: request.runId,
+    origins,
+  });
+  if (reason === undefined) return undefined;
+  return failed(reason, {
+    ...identity(request),
+    detail: "A workflow can continue only a run of its own handoff chain.",
+  });
+}
+
+function continuedRefusal(
+  request: ContinueRequest,
+  origins: RunOrigins,
+): Reply | undefined {
   const continuedBy = Object.entries(origins).find(
     ([, origin]) => origin.continuedFrom === request.runId,
   )?.[0];
@@ -135,9 +151,11 @@ async function refusal(
   subject: Subject,
 ): Promise<Reply | undefined> {
   const { request } = subject;
+  const origins = await context.authority.queries.runOrigins();
   return (
+    chainRefused(request, origins) ??
     (await statusRefusal(context, subject)) ??
-    (await continuedRefusal(context, request)) ??
+    continuedRefusal(request, origins) ??
     (await retentionRefusal(context, request)) ??
     (await spendRefusal(context, request))
   );
