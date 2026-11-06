@@ -21,7 +21,8 @@ async function queuedRun(
   });
   if (reply.kind === "error") return undefined;
   const runs: unknown = reply.result["runs"];
-  return Array.isArray(runs) ? record(runs[0]) : undefined;
+  if (!Array.isArray(runs)) return undefined;
+  return runs.map(record).find((run) => run?.["runId"] === runId);
 }
 
 async function chainHandedOff(
