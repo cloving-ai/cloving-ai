@@ -153,6 +153,9 @@ const actions = {
     pr.queuePolls = 0;
     out({ data: { enqueuePullRequest: { mergeQueueEntry: pr.queue } } });
   },
+  "api graphql threads": () => out({ data: { viewer: { login: "operator" }, repository: { pullRequest: state.reviewPull } } }),
+  "api graphql reply": () => out({ data: { addPullRequestReviewThreadReply: { comment: { id: "PRRC_reply" + state.calls.length } } } }),
+  "api graphql resolve": () => out({ data: { resolveReviewThread: { thread: { id: variable("thread"), isResolved: true } } } }),
   "api graphql dequeue": () => {
     const pr = queued();
     pr.queue = null;
@@ -183,7 +186,8 @@ const actions = {
 };
 const kind = path.includes("/actions/workflows?") ? "workflows" : path.includes("/attempts/") ? "attempt-jobs" : path.includes("/actions/runs?") ? "workflow-runs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const query = variable("query") ?? "";
-const mutation = ["enqueue", "dequeue"].find((word) => query.includes(word + "PullRequest(")) ?? "pull";
+const graphqlNames = { "enqueuePullRequest(": "enqueue", "dequeuePullRequest(": "dequeue", "reviewThreads(": "threads", "addPullRequestReviewThreadReply(": "reply", "resolveReviewThread(": "resolve" };
+const mutation = Object.entries(graphqlNames).find(([word]) => query.includes(word))?.[1] ?? "pull";
 const name = args[1] === "graphql" ? "api graphql " + mutation : args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));
