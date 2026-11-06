@@ -34,6 +34,7 @@ const program = [
   "project-configuration.ts",
   "self-host.ts",
   "self-host-processes.ts",
+  "self-host-queue.ts",
 ]
   .map((file) =>
     readFileSync(join(import.meta.dirname, "../tools", file), "utf8"),

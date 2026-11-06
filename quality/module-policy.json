@@ -1809,6 +1809,7 @@
     "tools/red-green-process.ts": "candidate-adapter",
     "tools/self-host-processes.ts": "build",
     "tools/self-host-project.ts": "candidate-adapter",
+    "tools/self-host-queue.ts": "build",
     "tools/self-host-reload.ts": "candidate-adapter",
     "tools/self-host-restart.ts": "build",
     "tools/self-host-runtime.ts": "candidate-adapter",
