@@ -29,6 +29,7 @@ import {
   type ServiceReads,
 } from "./replies.ts";
 import { dispatcher } from "./dispatcher.ts";
+import type { ServiceIdentity } from "./service-identity.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
 import { runWaitTarget } from "./run-waits.ts";
@@ -105,8 +106,7 @@ export interface HostPorts {
   readonly registerWait: WorkerPort["registerWait"];
 }
 
-export interface ServiceOptions extends ServiceReads {
-  readonly version?: string;
+export interface ServiceOptions extends ServiceReads, ServiceIdentity {
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queue?: NonNullable<ServiceContext["queue"]>;
   readonly queueDailySpendLimitUsd?: number;

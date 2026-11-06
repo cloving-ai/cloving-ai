@@ -1,6 +1,7 @@
 import type { ScheduleInvocation } from "./schedule-arguments.ts";
 import type { QueueInvocation } from "./queue-arguments.ts";
 import type { ContinueInvocation } from "./continue-arguments.ts";
+import type { RestartInvocation } from "./restart-arguments.ts";
 
 export type RunSource =
   | { readonly kind: "prompt"; readonly text: string }
@@ -15,6 +16,7 @@ export type RuntimeInvocation =
   | ScheduleInvocation
   | QueueInvocation
   | ContinueInvocation
+  | RestartInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "reload"; readonly json: boolean }
   | { readonly kind: "command-help"; readonly command: string }

@@ -222,6 +222,15 @@ function skippedService(detail: string): ServiceState {
   return { observation: { result: "skip", detail }, status: undefined };
 }
 
+function environmentSettings(status: Fields): string {
+  const fields = Object.entries(record(status["settingSources"]) ?? {})
+    .filter(([, source]) => source === "environment")
+    .map(([field]) => field);
+  return fields.length === 0
+    ? ""
+    : `. Settings from the environment: ${fields.join(", ")}`;
+}
+
 function answeredService(status: Fields | undefined): ServiceState {
   return {
     observation:
@@ -232,7 +241,7 @@ function answeredService(status: Fields | undefined): ServiceState {
           }
         : {
             result: "ok",
-            detail: "Service answers from its generated project folder",
+            detail: `Service answers from its generated project folder${environmentSettings(status)}`,
           },
     status,
   };

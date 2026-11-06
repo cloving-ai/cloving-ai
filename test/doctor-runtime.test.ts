@@ -134,6 +134,32 @@ await test("CLV-207 long absolute sockets pass and answer from a distant folder 
     }),
   ));
 
+await test("CLV-306 the service check names the settings that come from the environment", () =>
+  withDoctor((scene) =>
+    withServiceSocket(
+      {
+        scene,
+        answer: {
+          runs: [],
+          settingSources: {
+            "merge.mode": "environment",
+            "queue.lanes": "project",
+            "watch.port": "environment",
+          },
+        },
+      },
+      async (path) => {
+        const output = await scene.report({ CLOVING_RUNTIME_DIR: path });
+        const service = check(output, "service");
+        assert.equal(service["result"], "ok");
+        assert.equal(
+          service["detail"],
+          "Service answers from its generated project folder. Settings from the environment: merge.mode, watch.port",
+        );
+      },
+    ),
+  ));
+
 await test("CLV-207 a socket that does not answer fails after five seconds", () =>
   withDoctor((scene) =>
     withServiceSocket({ scene, answer: "silent" }, async (path) => {

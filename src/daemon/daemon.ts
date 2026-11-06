@@ -1,5 +1,6 @@
 import {
   adapters,
+  daemonIdentity,
   recoverCommands,
   recoverClaude,
   type Adapters,
@@ -34,6 +35,8 @@ import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
+import { restartMarks } from "./restart-marks.ts";
+import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
@@ -44,7 +47,6 @@ import {
 } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
-import { clovingVersion } from "../cli/toolchain.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
 import { stalledLine } from "../thread-pool-check.ts";
 import {
@@ -153,8 +155,10 @@ function controlConnections(settings: DaemonSettings): {
   readonly queues: ReturnType<typeof queueConnection>;
   readonly current: CurrentBundle;
   readonly pool: ThreadPoolWatch;
+  readonly restart: RestartPort;
 } {
   return {
+    restart: restartMarks(settings.directory),
     schedules: scheduleConnection(),
     queues: queueConnection(),
     pool: threadPoolWatch({
@@ -247,7 +251,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const controls = controlConnections(settings);
   const opening = await startService({
-    version: clovingVersion,
+    ...daemonIdentity(settings),
     ...controlPorts(controls),
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
@@ -290,6 +294,7 @@ function controlPorts(controls: ReturnType<typeof controlConnections>) {
     schedule: controls.schedules.request,
     queue: controls.queues.port,
     threadPool: controls.pool.latest,
+    restart: controls.restart,
   };
 }
 

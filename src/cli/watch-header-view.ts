@@ -1,5 +1,6 @@
 import { queueSpendLines } from "./usage-render.ts";
 import { record } from "../protocol.ts";
+import { restartPendingText } from "./restart-render.ts";
 import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { clockTime, type WatchModel } from "./watch-render.ts";
@@ -139,6 +140,12 @@ export function HeaderStatus(props: HeaderProps): Shown {
       lanes === null
         ? null
         : element("span", { class: "queue-lanes", children: lanes }),
+      model?.restart === undefined
+        ? null
+        : element("span", {
+            class: "restart-pending",
+            children: restartPendingText(model.restart),
+          }),
     ],
   });
 }
