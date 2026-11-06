@@ -10,7 +10,13 @@ import {
   type ServiceRequest,
 } from "../protocol.ts";
 
-const mutations = ["run", "decision", "run-command", "queue-command"];
+const mutations = [
+  "run",
+  "decision",
+  "run-command",
+  "continue-run",
+  "queue-command",
+];
 
 function unavailable(runtimeDirectory: string): Reply {
   return {

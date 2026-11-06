@@ -1,5 +1,10 @@
-import { operationScope, operationPhase } from "../operation-identity.ts";
+import {
+  operationOfRun,
+  operationScope,
+  operationPhase,
+} from "../operation-identity.ts";
 import { authorization } from "./budgets.ts";
+import { reusable, reusedOperation } from "./continuations.ts";
 import { current, ownedLease } from "./leases.ts";
 import {
   cancelledOperation,
@@ -105,8 +110,46 @@ function withoutWaits(
   );
 }
 
-function admitted(effects: EffectState, context: EffectContext): EffectResult {
+function reusedSource(
+  effects: EffectState,
+  context: EffectContext,
+): Operation | undefined {
+  const { event, continuation } = context;
+  if (continuation === undefined) return undefined;
+  const sourceId = operationOfRun(
+    field(event, "operationId"),
+    continuation.runId,
+  );
+  const source = sourceId === null ? undefined : effects.operations[sourceId];
+  const request = {
+    continuation,
+    capability: field(event, "capability"),
+    method: field(event, "method"),
+  };
+  return reusable(source, request) ? source : undefined;
+}
+
+function grantedOperation(
+  effects: EffectState,
+  context: EffectContext,
+): Operation {
   const { event, runStatus } = context;
+  const waiting = requestedOperation(event, {
+    status: "waiting",
+    reason: waitReason(effects, { leaseKey: leaseKeyOf(event), runStatus }),
+    waitSequence: event.sequence,
+  });
+  const source = reusedSource(effects, context);
+  return source === undefined ? waiting : reusedOperation(waiting, source);
+}
+
+function admittedDisposition(operation: Operation): string {
+  if (operation.status === "refused") return "refused";
+  return operation.status === "completed" ? "existing" : "admitted";
+}
+
+function admitted(effects: EffectState, context: EffectContext): EffectResult {
+  const { event } = context;
   const operationId = field(event, "operationId");
   const { reason, budget } = authorization(effects.budgets[event.runId], event);
   const budgets =
@@ -119,14 +162,7 @@ function admitted(effects: EffectState, context: EffectContext): EffectResult {
       : effects.operations;
   const operation =
     reason === null
-      ? requestedOperation(event, {
-          status: "waiting",
-          reason: waitReason(effects, {
-            leaseKey: leaseKeyOf(event),
-            runStatus,
-          }),
-          waitSequence: event.sequence,
-        })
+      ? grantedOperation(effects, context)
       : requestedOperation(event, {
           status: "refused",
           reason,
@@ -140,7 +176,7 @@ function admitted(effects: EffectState, context: EffectContext): EffectResult {
     ),
     disposition: {
       operationId,
-      disposition: reason === null ? "admitted" : "refused",
+      disposition: admittedDisposition(operation),
       reason,
     },
   };

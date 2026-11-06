@@ -19,18 +19,21 @@ export async function queueRunStatuses(
   )
     return invalidRequest("A queue status batch needs one to four run IDs.");
   const state = await context.authority.state();
+  const links = await context.authority.queries.runLinks();
   const runs: Fields[] = [];
   for (const runId of runIds) {
     const run = state.runs[runId];
     if (run === undefined)
       return failed("unknown-run", { detail: `No run has the ID ${runId}.` });
-    runs.push(
-      await queuedRun(context, {
+    const continuedBy = links[runId]?.continuedBy;
+    runs.push({
+      ...(await queuedRun(context, {
         runId,
         status: run.status,
         sequence: state.sequence,
-      }),
-    );
+      })),
+      ...(continuedBy === undefined ? {} : { continuedBy }),
+    });
   }
   return result("queue-run-statuses", { runs });
 }

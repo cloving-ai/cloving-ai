@@ -12,6 +12,13 @@ export interface WatchNeed {
   readonly text: string;
   readonly workflowId: string;
   readonly since: string | null;
+  readonly continuable?: true;
+}
+
+export interface ContinueControls {
+  readonly busy: readonly string[];
+  readonly messages: Readonly<Record<string, string>>;
+  readonly onContinue: (runId: string) => void;
 }
 
 export function decisionText(type: string): string {
@@ -52,6 +59,27 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
   };
 }
 
+export function continuableRun(run: WatchRun): boolean {
+  if (run.continuedBy !== undefined) return false;
+  if (run.state === "failed") return true;
+  return run.state === "completed" && run.outcome === "blocked";
+}
+
+export function continuableNeed(run: WatchRun): WatchNeed {
+  return {
+    kind: "stopped",
+    key: `continue:${run.runId}`,
+    runId: run.runId,
+    title: run.title ?? run.runId,
+    text: [run.detail, "Examine the run, then continue it or take it over."]
+      .filter((part) => part !== "")
+      .join(" "),
+    workflowId: run.workflowId,
+    since: run.latestAt,
+    continuable: true,
+  };
+}
+
 export function needsOf(runs: readonly WatchRun[]): WatchNeed[] {
   const waited = (need: WatchNeed): number => {
     const time = Date.parse(need.since ?? "");
@@ -62,6 +90,7 @@ export function needsOf(runs: readonly WatchRun[]): WatchNeed[] {
       run.decisions.map((decision) => decisionNeed(run, decision)),
     ),
     ...runs.filter((run) => run.state === "paused").map(stoppedNeed),
+    ...runs.filter(continuableRun).map(continuableNeed),
   ].toSorted((first, second) => waited(first) - waited(second));
 }
 
@@ -70,11 +99,38 @@ export function needMeta(need: WatchNeed, now: string): string {
   return age === "" ? need.workflowId : `${need.workflowId}, waiting ${age}`;
 }
 
+export function ContinueAction(props: {
+  readonly need: WatchNeed;
+  readonly continuing: ContinueControls | undefined;
+}): Shown {
+  const { need, continuing } = props;
+  if (need.continuable !== true || continuing === undefined) return null;
+  return element("button", {
+    type: "button",
+    class: "need-action need-continue",
+    ...(continuing.busy.includes(need.runId) ? { disabled: true } : {}),
+    onClick: () => {
+      continuing.onContinue(need.runId);
+    },
+    children: "Continue",
+  });
+}
+
+export function NeedMessage(props: {
+  readonly need: WatchNeed;
+  readonly continuing: ContinueControls | undefined;
+}): Shown {
+  const message = props.continuing?.messages[props.need.runId];
+  if (message === undefined) return null;
+  return element("p", { class: "need-message", children: message });
+}
+
 export function Need(props: {
   readonly need: WatchNeed;
   readonly now: string;
+  readonly continuing?: ContinueControls | undefined;
 }): Shown {
-  const { need, now } = props;
+  const { need, now, continuing } = props;
   const decision = need.kind === "decision";
   return element("li", {
     class: `need need-${need.kind}`,
@@ -89,8 +145,10 @@ export function Need(props: {
           element("h3", { class: "need-title", children: need.title }),
           element("p", { class: "need-text", children: need.text }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
+          component(NeedMessage, { need, continuing }),
         ],
       }),
+      component(ContinueAction, { need, continuing }),
       element("a", {
         class: "need-action",
         href: watchHash({ workflowId: null, runId: need.runId }),
@@ -104,8 +162,9 @@ export function NeedsYou(props: {
   readonly runs: readonly WatchRun[];
   readonly now: string;
   readonly words?: WatchWords | undefined;
+  readonly continuing?: ContinueControls | undefined;
 }): Shown {
-  const { now } = props;
+  const { now, continuing } = props;
   const needs = needsOf(props.runs);
   return element("section", {
     class: "needs",
@@ -132,7 +191,7 @@ export function NeedsYou(props: {
         : element("ol", {
             class: "needs-list",
             children: needs.map((need) =>
-              component(Need, { key: need.key, need, now }),
+              component(Need, { key: need.key, need, now, continuing }),
             ),
           }),
     ],

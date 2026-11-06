@@ -109,9 +109,17 @@ export interface EffectEvent {
   readonly payload: Readonly<Record<string, string>>;
 }
 
+export interface Continuation {
+  readonly runId: string;
+  readonly before: number;
+}
+
+export type Continuations = Readonly<Record<string, Continuation>>;
+
 export interface EffectContext {
   readonly event: EffectEvent;
   readonly runStatus: string;
+  readonly continuation?: Continuation;
 }
 
 const holdingStatuses: readonly string[] = [

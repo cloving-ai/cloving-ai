@@ -9,6 +9,7 @@ import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
 import { readyRefreshes } from "./ticket-source.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
+import { clearContinuedFailures, handedOff } from "./queue-continuations.ts";
 import {
   queueControlPort,
   queueStopped,
@@ -81,15 +82,6 @@ async function trackedRuns(
     if (run === undefined) throw new Error("queue-run-missing");
     return { commandId, run };
   });
-}
-
-function handedOff(run: Fields): boolean {
-  const outcome = record(run["outcome"]);
-  return (
-    run["state"] === "completed" &&
-    outcome?.["kind"] === "handoff_requested" &&
-    outcome["issueUpdate"] !== "failed"
-  );
 }
 
 function limited(pending: QueueJournal): boolean {
@@ -294,6 +286,7 @@ async function admissible(
   checks: CycleChecks,
 ): Promise<boolean> {
   const { pending, stop } = checks;
+  await clearContinuedFailures(settings.runtimeDirectory, pending);
   const pendingRuns = stop(pending) ? 0 : await completed(settings, pending);
   if (stop(pending) && pending.drain === undefined) return false;
   const status = await queueStatus(settings);

@@ -39,7 +39,10 @@ export class HistoryState {
       ...(this.runWaits.has(event.runId)
         ? { commandWaits: this.runWaits.get(event.runId) ?? {} }
         : {}),
-      runs: entry(this.runs, event.runId),
+      runs: {
+        ...entry(this.runs, event.payload["continuedFrom"] ?? event.runId),
+        ...entry(this.runs, event.runId),
+      },
       commands: entry(this.commands, event.commandId),
       details: entry(this.details, event.runId),
       gates: this.runGates.get(event.runId) ?? {},

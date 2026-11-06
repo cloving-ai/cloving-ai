@@ -11,7 +11,7 @@ import type {
   DecisionCommand,
   RunCommand,
   RunSource,
-} from "./runtime-arguments.ts";
+} from "./runtime-invocation.ts";
 
 export interface ReadCommand {
   readonly kind: "status" | "questions" | "events" | "reload";
