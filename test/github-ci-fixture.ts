@@ -203,6 +203,7 @@ export async function ciScenario(options: CiScenarioOptions): Promise<{
     options.folder ?? (await mkdtemp(join(tmpdir(), "cloving-ci-")));
   const operation: Operation = {
     target: "ticket/one",
+    run: { runId: "run-1", status: () => Promise.resolve(undefined) },
     payload: { number: 1 },
     folder,
     signal: options.signal ?? new AbortController().signal,
@@ -273,6 +274,7 @@ export async function movingCiScenario(
   let base = "";
   const operation = {
     target: "ticket/one",
+    run: { runId: "run-1", status: () => Promise.resolve(undefined) },
     payload: {},
     folder: `${scene.directory}/merge`,
     signal,

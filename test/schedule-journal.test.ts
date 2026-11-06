@@ -136,3 +136,51 @@ await test("CLV-179 schedule journal propagates JSON and filesystem failures", (
     await writeFile(join(directory, "schedules.json"), "{}");
     await journal.save();
   }));
+
+await test("CLV-314 the journal keeps intervals of up to 30 days and calendar fields", async () => {
+  const common = {
+    state: "active" as const,
+    failuresInRow: 0,
+    failedRunIds: [],
+    nextAt: 600000,
+    lastSlot: 1,
+  };
+  for (const timing of [
+    { everySeconds: 2592000 },
+    { at: "07:00", timeZone: "America/Los_Angeles" },
+    { at: "23:59", timeZone: "UTC", weekdays: ["monday", "friday"] },
+  ]) {
+    const saved = { ...common, ...timing };
+    await withFiles(
+      { "schedules.json": JSON.stringify({ review: saved }) },
+      async (directory) => {
+        const journal = await scheduleJournal(directory);
+        assert.deepEqual(journal.entries.get("review"), saved);
+        await journal.save();
+        assert.deepEqual(
+          (await scheduleJournal(directory)).entries.get("review"),
+          saved,
+        );
+      },
+    );
+  }
+  for (const timing of [
+    { everySeconds: 2592001 },
+    { at: "24:00", timeZone: "UTC" },
+    { at: "07:00" },
+    { at: "07:00", timeZone: "UTC", everySeconds: 300 },
+    { at: "07:00", timeZone: "UTC", weekdays: [] },
+    { timeZone: "UTC" },
+  ])
+    await withFiles(
+      {
+        "schedules.json": JSON.stringify({ review: { ...common, ...timing } }),
+      },
+      async (directory) => {
+        await assert.rejects(
+          scheduleJournal(directory),
+          /invalid-schedule-state/,
+        );
+      },
+    );
+});

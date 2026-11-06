@@ -1,0 +1,20 @@
+{
+  "workflow": {
+    "workflowId": "rescue-pr",
+    "effectLimit": 21,
+    "capabilities": ["claude", "github"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "pullRequest": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string", "optional": true },
+        "issue": { "type": "string", "optional": true },
+        "ticketStatus": { "type": "string", "optional": true }
+      }
+    }
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "github": ["prepare", "open-pr", "wait-review", "merge", "close-issue"]
+  }
+}

@@ -33,10 +33,26 @@ export interface MethodSettings extends CallSettings {
 
 export const operationStopped = "github-operation-stopped";
 
+const endedRuns: ReadonlySet<string> = new Set([
+  "cancelled",
+  "failed",
+  "completed",
+]);
+
+export function activeRun(status: string | undefined): boolean {
+  return status !== undefined && !endedRuns.has(status);
+}
+
+export interface RunCheck {
+  readonly runId: string;
+  readonly status: (runId: string) => Promise<string | undefined>;
+}
+
 export interface Operation {
   readonly settings: MethodSettings;
   readonly calls: Calls;
   readonly target: string;
+  readonly run: RunCheck;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
   readonly folder: string;

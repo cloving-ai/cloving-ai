@@ -1,6 +1,10 @@
 import { terminal } from "../authority/transitions.ts";
 import type { Fields, Reply } from "../protocol.ts";
-import { isRestartTime, type RestartMark } from "../restart-request.ts";
+import {
+  isRestartTime,
+  type RestartMark,
+  type RestartTime,
+} from "../restart-request.ts";
 import {
   failed,
   invalidRequest,
@@ -37,8 +41,10 @@ function identityFields(context: ServiceContext): Fields {
 
 export async function restartFields(context: ServiceContext): Promise<Fields> {
   const mark = await context.restart?.pending();
+  const failure = await context.restart?.failure();
   return {
     ...identityFields(context),
+    ...(failure === undefined ? {} : { restartFailure: { ...failure } }),
     ...(context.settingSources === undefined
       ? {}
       : { settingSources: context.settingSources }),
@@ -56,19 +62,32 @@ function optionalTrue(value: unknown): boolean {
 }
 
 function validOptions(parameters: Fields): boolean {
-  const { cancel, resumeQueue, settings } = parameters;
+  const { cancel, resumeQueue, settings, update } = parameters;
   return (
-    optionalTrue(cancel) &&
-    optionalTrue(resumeQueue) &&
+    [cancel, resumeQueue, update].every(optionalTrue) &&
     (settings === undefined || settings === "files")
   );
+}
+
+function requestedMark(
+  parameters: Fields & { readonly at: RestartTime; readonly commandId: string },
+): RestartMark {
+  const { resumeQueue, settings, update } = parameters;
+  return {
+    at: parameters.at,
+    requestedAt: Date.now(),
+    commandId: parameters.commandId,
+    resumeQueue: resumeQueue === true,
+    ...(settings === "files" ? { settings: "files" } : {}),
+    ...(update === true ? { update: true } : {}),
+  };
 }
 
 export async function restartOperation(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
-  const { at, commandId, cancel, resumeQueue, settings } = parameters;
+  const { at, commandId, cancel } = parameters;
   if (!isIdentifier(commandId) || !validOptions(parameters))
     return invalidRequest("The restart request is not valid.");
   const port = context.restart;
@@ -81,13 +100,13 @@ export async function restartOperation(
     return result("restart", { restart: { state: await port.cancel() } });
   if (!isRestartTime(at))
     return invalidRequest("A restart needs --at gap or --at now.");
-  const mark: RestartMark = {
-    at,
-    requestedAt: Date.now(),
-    commandId,
-    resumeQueue: resumeQueue === true,
-    ...(settings === "files" ? { settings: "files" } : {}),
-  };
+  if (parameters["update"] === true && typeof context.commit !== "string")
+    return failed("update-unavailable", {
+      commandId,
+      detail:
+        "The product of the service is not a git checkout. Update it by hand.",
+    });
+  const mark = requestedMark({ ...parameters, at, commandId });
   const unresumable =
     at === "now" ? { unresumableRuns: await port.unresumable() } : {};
   await port.request(mark);

@@ -137,6 +137,7 @@ export function operation(
       run: () => Promise.reject(new Error("unexpected command")),
     },
     target,
+    run: { runId: "run-1", status: () => Promise.resolve(undefined) },
     payload: request.payload,
     signal: new AbortController().signal,
     folder: join(scene.root, "operation"),

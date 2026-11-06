@@ -150,11 +150,17 @@ export async function scheduleMetadata(
         [
           "workflowId",
           "everySeconds",
+          "at",
+          "timeZone",
+          "weekdays",
           "state",
           "failuresInRow",
           "nextAt",
+          "nextLocal",
           "stoppedAt",
-        ].map((name) => [name, schedule[name]]),
+        ].flatMap((name) =>
+          schedule[name] === undefined ? [] : [[name, schedule[name]]],
+        ),
       );
     }),
   };

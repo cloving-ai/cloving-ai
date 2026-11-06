@@ -25,6 +25,7 @@ interface SchedulerOptions {
   readonly handle?: Handle;
   readonly submit?: Settings["submit"];
   readonly declarations?: readonly DeclaredWorkflow[];
+  readonly start?: number;
 }
 
 const acceptedSkip: Settings["submit"] = () =>
@@ -73,8 +74,8 @@ function capturedErrors(): {
   };
 }
 
-function controlledClock() {
-  let now = 0;
+function controlledClock(start: number) {
+  let now = start;
   let ticks = 0;
   return {
     read: () => {
@@ -111,7 +112,7 @@ export async function withScheduler(
             : options.handle(request, connection);
         },
       });
-      const clock = controlledClock();
+      const clock = controlledClock(options.start ?? 0);
       const settings = {
         directory,
         runtimeDirectory,

@@ -49,6 +49,7 @@ await test("CLV-258 workflow path selection fetches a base that moves after the 
     const paths = await pullRequestWorkflows(
       {
         target: "ticket/one",
+        run: { runId: "run-1", status: () => Promise.resolve(undefined) },
         payload: { number: 1 },
         folder: join(scene.directory, "ci"),
         signal,

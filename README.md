@@ -629,6 +629,22 @@ Before enabling more than one lane, update the next-ticket command to honor `CLO
 
 In the ticket text returned by `CLOVING_TICKET_COMMAND`, each `#N` in a sentence starting with **Needs** inside `## Dependencies` is a hard dependency. For example, `Needs #123 and #124.` waits until both GitHub issues close. Other references and sections do not create dependencies. Cloving reads dependency state with `CLOVING_GH_COMMAND` (default `gh`); an unavailable or invalid response prevents admission. An open dependency returns `ticket-dependency-open` and puts the ticket in the skip list. Waiting tickets are checked again each cycle with a free lane, so a closed dependency makes its ticket eligible again.
 
+A ticket names its blockers in a `## Dependencies` section, with one line `Needs #<number>` for each blocker:
+
+```markdown
+## Dependencies
+
+Needs #586
+Needs #590
+```
+
+The `develop` template has two reference scripts for GitHub issues that honor this section. `cloving templates copy develop` puts them in the helper folder of the copy and prints the settings that use them:
+
+- `develop/next-ticket.mts` is for `tickets.nextCommand`. It prints the oldest open issue with the `cloving: ready` label whose blockers are all closed. It never prints an ID from `CLOVING_SKIP_TICKETS`.
+- `develop/ready-tickets.mts` is for `tickets.readyCommand`. It prints the same issues as a JSON list of `id` and `readyAt`. The ready time is the later of the time when the issue was opened and the time when its last blocker closed.
+
+The scripts find blockers with the same `Needs` rule as the service. They run `gh` in the current folder of the service, and `gh` finds the repository from that folder. They read all pages of ready issues, so no limit hides an old issue. A pull request with the `cloving: ready` label is not a ticket. An issue in a dependency cycle is never printed. The script writes a line for each cycle that it finds to standard error, for example `Dependency cycle: #4 -> #5 -> #4`. Each issue in a cycle is in one or more of these lines. A blocker that does not exist counts as open, and the warning names it, for example `Missing blocker: #3 needs #99, which does not exist`. When a `gh` call fails, the script prints no ticket, writes the cause and ends with the code 1.
+
 `cloving status` and watch display the queue state, busy lanes and skipped tickets with their reasons. A pending self-update holds new admissions while active lanes drain. Three unsuccessful runs in a row, counted in the order they finish, stop the queue; a successful handoff clears the streak. Ordinary restarts preserve it. After inspecting and reconciling the failures, run `cloving queue resume`, or start with `--reset-queue`, to clear the streak. A conflict caused by an earlier lane's merge returns its diagnostics to a fix round. The merge steps of one repository take turns: a step waits until the earlier step ends, and then it merges `main`, runs the merge check, pushes and waits for CI. Lanes do not add CI runners or parallelize turns within one run.
 
 An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-not-available`. Missing configuration gives `next-source-not-configured`. Multiple IDs, an invalid ID, or `next` as the selected ID give `invalid-ticket-id`. Use only one of `--next`, `--ticket`, `--prompt` and `--input`.
@@ -789,6 +805,32 @@ A workflow can continue a run of its own handoff chain with the step `continueRu
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
+### Rescue stuck pull requests
+
+A run can end `blocked` or `failed` while its pull request stays open. The templates `patrol` and `rescue-pr` find such pull requests and repair them. Copy both into your private workflow folder with `cloving templates copy patrol` and `cloving templates copy rescue-pr`.
+
+`patrol` runs every 30 minutes. It reads the operator command `patrol-status` from `CLOVING_COMMANDS`. The command prints a JSON array with one item for each open pull request of Cloving:
+
+```json
+[
+  {
+    "number": 641,
+    "branch": "cloving/task-0123456789ab",
+    "state": "blocked",
+    "active": false,
+    "reason": "merge-conflict",
+    "head": "0123456789abcdef0123456789abcdef01234567",
+    "score": 4,
+    "issue": "acme/demo#627",
+    "ticketStatus": "complete"
+  }
+]
+```
+
+`state` is the state of the last run on the branch. `active` is `true` while a run of Cloving is active on the pull request. `score` is the last review score or `null`. `issue` and `ticketStatus` (`complete` or `partial`, from the last worker report) can be `null`. A candidate has `state` `blocked` or `failed`, `active` `false` and a `cloving/` branch. The point `act` selects **Ask a person first** (the default) or **Hand off at once**. One pass hands off at most four `rescue-pr` runs.
+
+`rescue-pr` takes the pull request number. The GitHub `prepare` method with `{"pullRequest": N}` puts the work tree on the branch of that pull request. A turn merges the default branch, resolves the conflicts and fixes the failed CI or the review findings. Then the run pushes, and the points `accept` and `merge` work as in `develop`. After the merge, the run closes the ticket only when the original worker reported `Ticket status: complete`. The README files of the two templates give the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
@@ -849,6 +891,9 @@ During a wait, `cloving status` shows the reason `git-network-retry` with a text
 - `--at gap` is the default. The restart waits for the next gap. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. The queue drain and the self-update use the same rule.
 - `--at now` stops the service at once. Claude and Codex turns resume after the start, as after Control-C. The reply lists the runs with a turn that cannot resume: a turn of another harness, a turn that waits for a retry, or a turn with no recorded session. `--json` shows them in `restart.unresumableRuns`.
 - `--cancel` cancels a pending restart. When the restart already started, the cancel prints `Restart: started, cannot cancel`, and the restart continues.
+- `--update` updates the product checkout before the stop, at the gap or at once. The update fetches the default branch. It needs a fast-forward and a clean tree. Then it merges, runs `npm ci --ignore-scripts` when `package-lock.json` changed, and runs `npm run build`. While the update runs, the queue admits no new run. When a step fails, the command prints `restart-update-failed` with the step and its output, and exits with status 1. The service keeps running on the old commit. When the install or the build fails, the update puts the checkout back on the old commit and installs and builds it again. `--json` shows the step and the output in `step` and `output`. `cloving status --json` shows the newest failure in `restartFailure` until the next start. The service refuses `--update` with `update-unavailable` when the product is not the top folder of a git checkout.
+
+The update and the self-update do not run at the same time. When `cloving start` stops during the update, the update stops its command and puts the checkout back on the old commit. It does not install or build again. The output of `cloving start` shows the failed step and the commands to run before the next start. When `cloving start` stops while the restart stops the service, the service stays stopped and does not start again.
 
 While a restart waits, the queue admits no new run. `cloving status` and the watch page show `Restart pending: 2 runs active`. The reply to the request holds the commit and the start time of the service that accepted it. The command waits for a service with a different start time. Then it prints the old commit, the new commit and the start time that the new service reports. Control-C stops the wait, and the restart stays pending. When another command cancels the restart, the wait ends with `restart-cancelled` and exit status 1. When the connection ends before the reply, the command prints `outcome-unknown`. Then check `cloving status` before you send the request again. `cloving status --json` shows `serviceCommit`, `serviceStartedAt` and `restart`. The commit is `null` when the product is not the top folder of a git checkout.
 
@@ -856,7 +901,7 @@ The restart keeps a drain of the queue and the failure count. `cloving restart -
 
 ## Continuous process
 
-In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
+In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. Before the restart, also run the two `cloving config set` commands that the copy printed. Then the queue selects tickets with the reference ticket scripts, which honor ticket dependencies. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
 
 The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts only the declared queue workflow, `develop`.
 
@@ -869,7 +914,7 @@ Use one terminal session for the service that stays open, for example a `tmux` s
    - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
    - Check the ticket status and issue: `gh issue view ISSUE_NUMBER --json state,body,labels`. Complete work closes the issue; partial work stays open and requeues until the third partial run blocks it.
 5. Update the local `main`: `git switch main`, then `git pull --ff-only`.
-6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Run `npm run build`, then `cloving restart`. The restart waits for the next gap.
+6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Run `cloving restart --update`. The restart waits for the next gap, updates and builds the checkout, and then restarts.
 7. Go to the next issue.
 
 When a run stops and the pull request stays open, read the review. Fix the work yourself, or write a smaller issue.
@@ -941,6 +986,8 @@ GitHub issue: OWNER/REPOSITORY#NUMBER
   A numbered list. A test can check each criterion.
 ## First tests
   The first tests to write. Each test fails before the change.
+## Dependencies
+  Only when other tickets must close first. One line "Needs #NUMBER" for each of these tickets.
 
 Rules:
 - One ticket has one behavior. If the work needs more than one pull request, split the ticket.
@@ -1193,6 +1240,8 @@ The package contains workflow templates. `cloving templates list` shows each tem
 
 `cloving templates copy <name>` writes the workflow file, its helper folder, its declaration and its test into `.cloving/workflows/` of the current repository (or of `--repository <directory>`), and prints the decision points and the next command `cloving workflows test <workflow-id>`. The declaration of the copy names its template in the field `template`. `--id <workflow-id>` gives the copy another workflow ID: the command renames the files, the helper folder, the workflow ID and the exported function, and changes the imports and the test references. The ID uses lowercase letters, digits and single hyphens and starts with a letter; another ID fails with `invalid-workflow-id`. A copy writes no file when a workflow file or folder of that ID is already present, and fails with `workflow-exists`. The command writes the files into a temporary folder first, and then puts each file in place; after a failure, it removes the files that it put in place. When two workflows of the project and user folders have `"queue": true` after a copy, the command prints `queue-workflow-conflict`; select "a person" for the select point of one copy.
 
+The optional `scripts` list of `template.json` names script files of the template. Each item has the `file` and the `setting` that uses it. After a copy, the command prints one `cloving config set <setting> '["node","<path>"]' --private` command for each script, with the absolute path of the copied file. Run these commands in the repository of the service. With `--json`, the output has `settings`, a list of `{ setting, command }`. The `develop` template lists its two ticket scripts there.
+
 Tests can import `runScenario` from `cloving/workflows/testing`:
 
 ```typescript
@@ -1417,23 +1466,58 @@ Each committed opening moves the run's single card to the matching column. Compl
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
-A declared workflow can include an interval schedule:
+A declared workflow can include a schedule. A schedule has one of two shapes. An interval schedule repeats after a fixed number of seconds:
 
 ```json
 "schedule": { "everySeconds": 300, "input": {} }
 ```
 
-`everySeconds` must be a whole number from 60 through 86400, and `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object such as `{"review-queue":{"everySeconds":600,"input":{}}}` to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+`everySeconds` must be a whole number from 60 through 2592000 (30 days).
 
-The first run starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+A calendar schedule runs at a time of day in a named time zone:
+
+```json
+"schedule": {
+  "at": "07:00",
+  "timeZone": "America/Los_Angeles",
+  "weekdays": ["monday"],
+  "input": {}
+}
+```
+
+- `at` is a local time `HH:MM` from `00:00` through `23:59`.
+- `timeZone` is an IANA name, for example `America/Los_Angeles` or `UTC`. A calendar schedule must have it.
+- `weekdays` is an optional list of day names from `monday` through `sunday`, with no duplicates. With no list, the schedule runs each day.
+
+A calendar schedule gets `invalid-schedule-shape` in these conditions:
+
+- It also has `everySeconds`.
+- The `at` text is not `HH:MM` from `00:00` through `23:59`, for example `24:00`.
+- It has no `timeZone`, or it has a `timeZone` or `weekdays` but no `at`.
+- The `weekdays` list is empty, has a duplicate or has a name that is not a day.
+
+The pure check cannot read the time zone data. The daemon checks the time zone when it registers the schedule. It refuses an unknown name, or an offset such as `+05:00`, with `invalid-schedule-time-zone`.
+
+In both shapes, `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Each value has one of the two shapes, for example `{"review-queue":{"everySeconds":600,"input":{}}}` or `{"review-queue":{"at":"07:00","timeZone":"UTC","weekdays":["monday","thursday"],"input":{}}}`. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval`, `invalid-schedule-shape`, `invalid-schedule-time-zone` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+
+The first run of an interval schedule starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+
+The daemon computes the slots of a calendar schedule from the local calendar of its time zone. The first run starts at the next slot after the daemon registers the schedule. Each run or skip of a calendar schedule adds one to the slot number. When the daemon was stopped during one or more slots, it submits one run when it starts again. The next slot is then the first slot after that start. A change of `at`, `timeZone` or `weekdays`, or a change between the two shapes, computes a new next slot. The change keeps the slot numbers and any active run.
+
+Daylight saving time changes the local clock two times each year. The daemon applies these rules:
+
+- When the clock moves forward, a local time in the skipped hour does not occur on that day. The schedule runs at the first minute after the gap. For example, a schedule at `02:30` in `America/Los_Angeles` runs at 03:00 on 2027-03-14.
+- When the clock moves back, a local time in the repeated hour occurs two times. The schedule runs one time, at the first occurrence. For example, a schedule at `01:30` in `America/Los_Angeles` runs at 01:30 PDT on 2026-11-01, and not again at 01:30 PST.
 
 An earlier scheduled run blocks later scheduled slots while queued, running, waiting for a decision or paused. Each overlap records a `schedule.skipped` event on that earlier run, with `workflowId` and `slot`, without changing its status or observation. Manual runs remain independent. The ticket queue continues to use `CLOVING_QUEUE_SECONDS`.
 
-Use `cloving schedule [--json]` to list workflow IDs, intervals, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
+Use `cloving schedule [--json]` to list workflow IDs, intervals or calendar times, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, or at the next calendar slot, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
 
 `cloving status` shows each schedule after the queue lines, for example `Schedule review-queue: every 300 s, active, next run at 2026-10-14T12:05:00.000Z, 0 failures in a row`. Paused schedules show `paused` without a next run time; stopped schedules show `stopped`, the stop time and the failure count. The watch board shows the same information on the workflow's board and refreshes it on the next poll. Status times use ISO timestamps; watch times use the browser's local date and time.
 
-Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
+A calendar schedule shows its days, its time and its time zone. The next run shows the local time of that time zone with its offset, in status, in `cloving schedule` and on the watch board. For example, `cloving status` shows `Schedule review: Mondays at 07:00 America/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row`. A schedule with no `weekdays` shows `each day`, for example `each day at 07:00 UTC`.
+
+Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. A calendar entry has `at`, `timeZone` and, when set, `weekdays` in place of `everySeconds`. It also has `nextLocal`, the next run as a local ISO time with its offset, or `null` when `nextAt` is `null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
 
 Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. Manual runs have no scheduled mark.
 

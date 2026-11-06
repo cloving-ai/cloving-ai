@@ -54,6 +54,12 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const review = record(
       JSON.parse(readFileSync("templates/review-day/template.json", "utf8")),
     );
+    const patrol = record(
+      JSON.parse(readFileSync("templates/patrol/template.json", "utf8")),
+    );
+    const rescue = record(
+      JSON.parse(readFileSync("templates/rescue-pr/template.json", "utf8")),
+    );
     assert.deepEqual(JSON.parse(result.stdout), [
       {
         name: "develop",
@@ -61,12 +67,14 @@ await test("CLV-223 templates list gives each template with its summary and poin
         points: points.length,
       },
       { name: "idea-to-issue", summary: idea?.["summary"], points: 3 },
+      { name: "patrol", summary: patrol?.["summary"], points: 1 },
+      { name: "rescue-pr", summary: rescue?.["summary"], points: 2 },
       { name: "review-day", summary: review?.["summary"], points: 2 },
     ]);
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^develop: .+ \(7 decision points\)\nidea-to-issue: .+ \(3 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
+      /^develop: .+ \(7 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
     );
   }));
 
@@ -236,3 +244,40 @@ await test("CLV-223 template files skip invalid template folders and need a pack
       assert.equal(templateRoot(), join(process.cwd(), "templates"));
     },
   ));
+
+await test("CLV-301 template scripts name a template file and a setting", () => {
+  const description = (scripts: unknown) =>
+    JSON.stringify({ summary: "Scripts.", points: [{ id: "one" }], scripts });
+  const script = { file: "one/next.ts", setting: "tickets.nextCommand" };
+  const invalid = [
+    "one/next.ts",
+    [null],
+    [{ ...script, file: "one/missing.ts" }],
+    [{ ...script, setting: "tickets next" }],
+    [{ setting: script.setting }],
+  ];
+  return withFiles(
+    {
+      "templates/one/template.json": description([script]),
+      "templates/one/one/next.ts": "export {};\n",
+      ...Object.fromEntries(
+        invalid.flatMap((scripts, index) => [
+          [`templates/bad${String(index)}/template.json`, description(scripts)],
+          [`templates/bad${String(index)}/one/next.ts`, "export {};\n"],
+        ]),
+      ),
+    },
+    async (root) => {
+      const templatesRoot = join(root, "templates");
+      assert.deepEqual((await readTemplate(templatesRoot, "one")).scripts, [
+        script,
+      ]);
+      for (const index of invalid.keys())
+        await assert.rejects(
+          readTemplate(templatesRoot, `bad${String(index)}`),
+          { message: `invalid-template: bad${String(index)}` },
+          String(index),
+        );
+    },
+  );
+});

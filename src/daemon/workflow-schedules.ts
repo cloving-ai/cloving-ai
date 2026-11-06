@@ -10,9 +10,17 @@ import {
 import type { WorkerPort } from "../service/worker-port.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import type { DeclaredWorkflow } from "../workflow-declaration.ts";
-import { configuredSchedules } from "../workflow-schedule.ts";
+import {
+  configuredSchedules,
+  type WorkflowSchedule,
+} from "../workflow-schedule.ts";
 import { declaredInput } from "./declared-input.ts";
-import { finishedScheduleRun } from "../schedule-progress.ts";
+import {
+  finishedScheduleRun,
+  retimedProgress,
+  sameTiming,
+} from "../schedule-progress.ts";
+import { dueSlot, firstSlot, knownTimeZone } from "./schedule-slots.ts";
 import { scheduleControl } from "./schedule-control.ts";
 import type { SchedulePort } from "../schedule-progress.ts";
 import {
@@ -38,12 +46,44 @@ interface ScheduleContext extends ScheduleSettings {
 
 type Journal = Awaited<ReturnType<typeof scheduleJournal>>;
 
+type ScheduleLimits = {
+  readonly repository: string;
+  readonly documentBytes: number;
+};
+
+function checkRegistration(
+  configured: Readonly<Record<string, WorkflowSchedule>>,
+  limits: ScheduleLimits | undefined,
+): void {
+  if (
+    Object.values(configured).some(
+      (schedule) => "timeZone" in schedule && !knownTimeZone(schedule.timeZone),
+    )
+  )
+    throw new Error("invalid-schedule-time-zone");
+  if (
+    limits !== undefined &&
+    Object.entries(configured).some(
+      ([workflowId, schedule]) =>
+        Buffer.byteLength(
+          JSON.stringify(
+            declaredInput(limits.repository, {
+              commandId: commandId(workflowId, 1),
+              submission: schedule.input,
+            }),
+          ),
+        ) > limits.documentBytes,
+    )
+  )
+    throw new Error("invalid-schedule-input");
+}
+
 export function scheduledDeclarations(
   settings: {
     readonly declarations?: readonly DeclaredWorkflow[];
     readonly schedules?: unknown;
   },
-  limits?: { readonly repository: string; readonly documentBytes: number },
+  limits?: ScheduleLimits,
 ):
   | {
       readonly kind: "configured";
@@ -60,21 +100,7 @@ export function scheduledDeclarations(
       declarations,
       settings.schedules === undefined ? {} : settings.schedules,
     );
-    if (
-      limits !== undefined &&
-      Object.entries(configured).some(
-        ([workflowId, schedule]) =>
-          Buffer.byteLength(
-            JSON.stringify(
-              declaredInput(limits.repository, {
-                commandId: commandId(workflowId, 1),
-                submission: schedule.input,
-              }),
-            ),
-          ) > limits.documentBytes,
-      )
-    )
-      throw new Error("invalid-schedule-input");
+    checkRegistration(configured, limits);
     return {
       kind: "configured",
       declarations: declarations.map((entry) => {
@@ -224,14 +250,9 @@ async function advance(
     runId === undefined
       ? { kind: "run", input: schedule.input }
       : { kind: "skip", runId };
-  const elapsed =
-    Math.floor(
-      (settings.now - progress.nextAt) / (schedule.everySeconds * 1000),
-    ) + 1;
   progress = {
     ...progress,
-    lastSlot: progress.lastSlot + elapsed,
-    nextAt: progress.nextAt + elapsed * schedule.everySeconds * 1000,
+    ...dueSlot(schedule, { ...progress, now: settings.now }),
     pending: planned,
   };
   settings.journal.entries.set(workflowId, progress);
@@ -259,17 +280,19 @@ async function initialized(settings: ScheduleSettings): Promise<Journal> {
     const { workflowId, schedule } = declaration;
     if (schedule === undefined) continue;
     const prior = journal.entries.get(workflowId);
-    if (prior?.everySeconds === schedule.everySeconds) continue;
-    journal.entries.set(workflowId, {
-      ...(prior ?? {
-        lastSlot: 0,
-        state: "active",
-        failuresInRow: 0,
-        failedRunIds: [],
-      }),
-      everySeconds: schedule.everySeconds,
-      nextAt: now + schedule.everySeconds * 1000,
-    });
+    if (prior !== undefined && sameTiming(prior, schedule)) continue;
+    journal.entries.set(
+      workflowId,
+      retimedProgress(
+        prior ?? {
+          lastSlot: 0,
+          state: "active",
+          failuresInRow: 0,
+          failedRunIds: [],
+        },
+        { timing: schedule, nextAt: firstSlot(schedule, now) },
+      ),
+    );
   }
   if (settings.declarations?.some((entry) => entry.schedule !== undefined))
     await journal.save();

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   readdir,
   readFile,
@@ -13,19 +14,39 @@ import { promisify } from "node:util";
 import {
   isRestartRequest,
   newestRestart,
+  restartFailureText,
   restartFiles,
+  serialCalls,
   type RestartMark,
   type RestartRequest,
 } from "../src/restart-request.ts";
 import { atGap, workInProgress } from "../src/work-gap.ts";
+import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
+
+export type CheckoutLock = (
+  work: () => Promise<number | undefined>,
+) => Promise<number | undefined>;
+
+export function checkoutLock(stopping: AbortController): CheckoutLock {
+  const inOrder = serialCalls();
+  return (work) =>
+    inOrder(async () => {
+      const status = await work();
+      if (status !== undefined) stopping.abort();
+      return status;
+    });
+}
 
 export interface RestartWatch {
   readonly directory: string;
   readonly runtime: string;
+  readonly checkout: string;
+  readonly environment: NodeJS.ProcessEnv;
   readonly milliseconds: number;
   readonly stopping: AbortSignal;
   readonly stop: () => Promise<void>;
+  readonly exclusive: CheckoutLock;
 }
 
 function coded(error: unknown, code: string): boolean {
@@ -88,11 +109,60 @@ async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
   return atGap(work);
 }
 
+async function updated(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<boolean> {
+  if (mark.update !== true) return true;
+  const outcome = await updatedCheckout(checkoutCommands(watch));
+  if (outcome.kind === "updated") return true;
+  const temporary = join(watch.directory, `restart-${randomUUID()}.tmp`);
+  const { step, output } = outcome;
+  const { commandId, requestedAt } = mark;
+  process.stderr.write(`Restart update failed at step ${step}.\n${output}\n`);
+  await writeFile(
+    temporary,
+    restartFailureText({ commandId, requestedAt, step, output }),
+    { mode: 0o600 },
+  );
+  await rename(temporary, join(watch.directory, restartFiles.failure));
+  await rm(join(watch.directory, restartFiles.claimed), { force: true });
+  return false;
+}
+
 export async function clearedRestart(directory: string): Promise<void> {
-  const names = [...(await requestNames(directory)), restartFiles.claimed];
+  const names = [
+    ...(await requestNames(directory)),
+    restartFiles.claimed,
+    restartFiles.failure,
+  ];
   await Promise.all(
     names.map((name) => rm(join(directory, name), { force: true })),
   );
+}
+
+function stopSignalled(watch: RestartWatch): boolean {
+  return watch.stopping.aborted;
+}
+
+async function restarted(
+  watch: RestartWatch,
+  claimed: RestartMark,
+): Promise<number | undefined> {
+  if (stopSignalled(watch)) return undefined;
+  if (!(await updated(watch, claimed))) return undefined;
+  await watch.stop();
+  if (stopSignalled(watch)) return undefined;
+  if (claimed.resumeQueue)
+    await writeFile(join(watch.directory, "resume-queue"), "", {
+      mode: 0o600,
+    });
+  if (claimed.settings === "files")
+    await writeFile(join(watch.directory, restartFiles.settings), "files", {
+      mode: 0o600,
+    });
+  await clearedRestart(watch.directory);
+  return 75;
 }
 
 export async function restartWatch(
@@ -112,17 +182,8 @@ export async function restartWatch(
       () => undefined,
     );
     if (claimed === undefined) continue;
-    await watch.stop();
-    if (claimed.resumeQueue)
-      await writeFile(join(watch.directory, "resume-queue"), "", {
-        mode: 0o600,
-      });
-    if (claimed.settings === "files")
-      await writeFile(join(watch.directory, restartFiles.settings), "files", {
-        mode: 0o600,
-      });
-    await clearedRestart(watch.directory);
-    return 75;
+    const status = await watch.exclusive(() => restarted(watch, claimed));
+    if (status !== undefined) return status;
   }
 }
 

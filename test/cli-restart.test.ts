@@ -46,6 +46,7 @@ function restartingPort(harness: Harness, running: Running): RestartPort {
         running.marks.splice(0).length > 0 ? "cancelled" : "none",
       ),
     unresumable: () => Promise.resolve(["run-shell"]),
+    failure: () => Promise.resolve(undefined),
   };
 }
 
@@ -210,6 +211,7 @@ async function directRestart(
       cancel: false,
       resumeQueue: false,
       settings: "environment",
+      update: false,
       commandId: null,
       json: false,
     },
@@ -230,6 +232,7 @@ function waitingPort(
     },
     cancel: () => Promise.resolve("none"),
     unresumable: () => Promise.resolve([]),
+    failure: () => Promise.resolve(undefined),
   };
 }
 
@@ -283,13 +286,7 @@ await test("CLV-306 cloving restart prints the refusal of a service that cannot 
     assert.equal(result.stdout, "");
   }));
 
-function silentStatusServer(
-  held: Socket[],
-  result: Record<string, unknown> = {
-    serviceStartedAt: before.startedAt,
-    restart: { activeRuns: 0 },
-  },
-) {
+function silentStatusServer(held: Socket[], result: Record<string, unknown>) {
   return createServer((socket) => {
     let buffered = "";
     socket.on("data", (chunk: Buffer) => {
@@ -305,66 +302,74 @@ function silentStatusServer(
   });
 }
 
+async function silentRestart(
+  harness: Harness,
+  scene: {
+    readonly result: Record<string, unknown>;
+    readonly interrupted: () => Promise<void>;
+  },
+): Promise<{
+  readonly code: number;
+  readonly error: readonly string[];
+  readonly held: number;
+}> {
+  const address = socketAddress(join(harness.runtimeDirectory, "control.sock"));
+  assert.equal(address.kind, "address");
+  const held: Socket[] = [];
+  const server = silentStatusServer(held, scene.result);
+  await new Promise<void>((ready) => server.listen(address.path, ready));
+  try {
+    const finished = directRestart(harness, {
+      commandId: "restart-silent",
+      interrupted: scene.interrupted,
+    });
+    const outcome = await Promise.race([
+      finished,
+      delay(testMilliseconds(3000)).then(() => ({
+        code: -1,
+        error: ["still waiting"],
+      })),
+    ]);
+    return { code: outcome.code, error: outcome.error, held: held.length };
+  } finally {
+    for (const socket of held) socket.destroy();
+    await new Promise<void>((closed) =>
+      server.close(() => {
+        closed();
+      }),
+    );
+  }
+}
+
 await test("CLV-306 Control-C ends the wait while a status request gets no answer", () =>
   withHarness(async (harness) => {
-    const address = socketAddress(
-      join(harness.runtimeDirectory, "control.sock"),
-    );
-    assert.equal(address.kind, "address");
-    const held: Socket[] = [];
-    const server = silentStatusServer(held);
-    await new Promise<void>((ready) => server.listen(address.path, ready));
-    try {
-      const finished = directRestart(harness, {
-        commandId: "restart-silent",
-        interrupted: () => delay(300),
-      }).then((result) => result.code);
-      const outcome = await Promise.race([
-        finished,
-        delay(testMilliseconds(3000)).then(() => "still waiting"),
-      ]);
-      assert.equal(outcome, 130);
-    } finally {
-      for (const socket of held) socket.destroy();
-      await new Promise<void>((closed) =>
-        server.close(() => {
-          closed();
-        }),
-      );
-    }
+    const outcome = await silentRestart(harness, {
+      result: {
+        serviceStartedAt: before.startedAt,
+        restart: { activeRuns: 0, requestedAt: 1 },
+      },
+      interrupted: () => delay(300),
+    });
+    assert.equal(outcome.code, 130);
   }));
 
-await test("CLV-306 a restart reply with no start time fails at once", () =>
+await test("CLV-306 a restart reply with no start time or no whole request time fails at once", () =>
   withHarness(async (harness) => {
-    const address = socketAddress(
-      join(harness.runtimeDirectory, "control.sock"),
-    );
-    assert.equal(address.kind, "address");
-    const held: Socket[] = [];
-    const server = silentStatusServer(held, { restart: { activeRuns: 0 } });
-    await new Promise<void>((ready) => server.listen(address.path, ready));
-    try {
-      const finished = directRestart(harness, {
-        commandId: "restart-no-start",
+    const replies = [
+      { restart: { activeRuns: 0, requestedAt: 1 } },
+      { serviceStartedAt: before.startedAt, restart: { activeRuns: 0 } },
+      {
+        serviceStartedAt: before.startedAt,
+        restart: { activeRuns: 0, requestedAt: 1.5 },
+      },
+    ];
+    for (const result of replies) {
+      const outcome = await silentRestart(harness, {
+        result,
         interrupted: () => delay(testMilliseconds(5000)),
       });
-      const outcome = await Promise.race([
-        finished,
-        delay(testMilliseconds(3000)).then(() => ({
-          code: -1,
-          out: [],
-          error: ["still waiting"],
-        })),
-      ]);
       assert.equal(outcome.code, 1);
       assert.match(outcome.error.join(""), /^restart-reply-invalid: /m);
-      assert.deepEqual(held, []);
-    } finally {
-      for (const socket of held) socket.destroy();
-      await new Promise<void>((closed) =>
-        server.close(() => {
-          closed();
-        }),
-      );
+      assert.equal(outcome.held, 0);
     }
   }));

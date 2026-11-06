@@ -1,4 +1,6 @@
 import {
+  calendarText,
+  dayText,
   scheduleStatusLine,
   scheduledText,
   shownScheduled,
@@ -156,6 +158,8 @@ import {
 
 const functions = [
   scheduleStatusLine,
+  calendarText,
+  dayText,
   scheduledText,
   shownScheduled,
   record,

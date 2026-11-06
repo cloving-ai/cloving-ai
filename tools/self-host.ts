@@ -89,6 +89,8 @@ const updateMilliseconds = await selfUpdateMilliseconds({
   product:
     extname(import.meta.filename) === ".ts" ? topLevel(product) : product,
 });
+const checkout =
+  extname(import.meta.filename) === ".ts" ? product : dirname(product);
 const client = flag("--client") ?? "cloving";
 const project = join(directory, "project");
 const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
@@ -333,9 +335,7 @@ await launchers(
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     mergeMode: merging,
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
-    commit: await productCommit(
-      extname(import.meta.filename) === ".ts" ? product : dirname(product),
-    ),
+    commit: await productCommit(checkout),
     reloadCommand: [
       process.execPath,
       join(product, `tools/self-host-reload${extname(import.meta.filename)}`),
@@ -361,6 +361,7 @@ process.exitCode = await hostedPrograms({
   runtime,
   directory,
   repository,
+  checkout,
   updateMilliseconds,
   watchPort: environment["CLOVING_WATCH_PORT"] ?? "3663",
   phoneRelay: environment["CLOVING_PHONE_RELAY"] ?? "on",

@@ -5,9 +5,11 @@ import type { QueueJournal } from "./queue-journal.ts";
 import {
   isRestartRequest,
   newestRestart,
+  restartFailure,
   restartFiles,
   restartMark,
   restartText,
+  serialCalls,
   type RestartEntry,
   type RestartPort,
 } from "../restart-request.ts";
@@ -50,13 +52,7 @@ async function taken(directory: string, name: string): Promise<RestartEntry> {
   return { name, text };
 }
 
-let order: Promise<unknown> = Promise.resolve();
-
-function inOrder<Value>(work: () => Promise<Value>): Promise<Value> {
-  const next = order.then(work);
-  order = next.catch(() => undefined);
-  return next;
-}
+const inOrder = serialCalls();
 
 export function restartMarks(directory: string): RestartPort {
   const claimed = join(directory, restartFiles.claimed);
@@ -90,6 +86,12 @@ export function restartMarks(directory: string): RestartPort {
         return (await markIn(claimed)) === undefined ? "none" : "started";
       }),
     unresumable: () => unresumableRuns(directory),
+    failure: async () =>
+      restartFailure(
+        await readFile(join(directory, restartFiles.failure), "utf8").catch(
+          absent,
+        ),
+      ),
   };
 }
 

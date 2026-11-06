@@ -120,6 +120,19 @@ await test("CLV-270 a pass leaves the shared target records of the journal out o
     ]);
   }));
 
+await test("CLV-305 a pass leaves the pull request claims of the GitHub journal out of the sweep", () =>
+  withSweep(async (scene) => {
+    await scene.folder("github/a", { runId: "done" });
+    const claim = join(scene.root, "github/claims/t.json");
+    await mkdir(join(claim, ".."), { recursive: true });
+    await writeFile(claim, "{}");
+    await scene.sweep().pass();
+    assert.equal(existsSync(claim), true);
+    assert.deepEqual(scene.lines, [
+      "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 0\n",
+    ]);
+  }));
+
 await test("CLV-300 a pass leaves the saved merge heads of the GitHub journal out of the sweep", () =>
   withSweep(async (scene) => {
     await scene.folder("github/a", { runId: "done" });
