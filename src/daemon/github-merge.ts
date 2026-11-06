@@ -12,7 +12,11 @@ import {
 import { treePlace } from "./work-tree.ts";
 import { waitForCi, type CiResult } from "./github-ci.ts";
 import { githubText } from "./github-calls.ts";
-import { recordedHead, savedHead } from "./github-merge-head.ts";
+import {
+  recordedHead,
+  savedHead,
+  type RecordedHead,
+} from "./github-merge-head.ts";
 import {
   knownMerge,
   mergePull,
@@ -117,7 +121,7 @@ async function checked(
     readonly commit: string;
     readonly check?: MergeCheck | undefined;
   },
-): Promise<string> {
+): Promise<RecordedHead> {
   await changeChecked(operation, place);
   const head = await headOf(operation, place.tree);
   const command = place.check === null ? undefined : operation.settings.check;
@@ -128,7 +132,7 @@ async function checked(
     throw new Error("uncommitted-change");
   if (head !== place.commit && command === undefined && place.check !== null)
     throw new Error("check-required");
-  return head;
+  return { updated: head, checked: command !== undefined };
 }
 
 async function refreshed(
@@ -136,27 +140,30 @@ async function refreshed(
   place: {
     readonly tree: Place;
     readonly commit: string;
-    readonly recorded: string | undefined;
+    readonly recorded: RecordedHead | undefined;
     readonly check?: MergeCheck | undefined;
   },
-): Promise<string> {
+): Promise<RecordedHead> {
+  const { recorded } = place;
   await restored(operation, {
     tree: place.tree,
-    commit: place.recorded ?? place.commit,
+    commit: recorded?.updated ?? place.commit,
   });
   const base = await defaultBranch(operation);
   let newest = await fetched(operation, base);
   if (
-    place.recorded !== undefined &&
+    recorded !== undefined &&
     (
       await operation.calls.git(place.tree.path, [
         "merge-base",
-        place.recorded,
+        recorded.updated,
         newest,
       ])
     ).trim() === newest
   )
-    return place.recorded;
+    return recorded.checked
+      ? recorded
+      : await checked(operation, { ...place, base });
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await updatedTree(operation, { tree: place.tree, base: newest });
     const head = await checked(operation, { ...place, base });
@@ -188,7 +195,7 @@ async function removed(operation: Operation, place: Place): Promise<void> {
 async function readyHead(
   operation: Operation,
   pull: ReviewedPull & {
-    readonly recorded: string | undefined;
+    readonly recorded: RecordedHead | undefined;
     readonly remote: string;
   },
 ): Promise<{ readonly updated: string; readonly merged: string } | CiResult> {
@@ -196,15 +203,16 @@ async function readyHead(
   let recorded = pull.recorded;
   let remote = pull.remote;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const updated = await pushedHead(operation, {
+    const head = await pushedHead(operation, {
       ...pull,
       tree,
       recorded,
       remote,
     });
+    const { updated } = head;
     const ci = await waitForCi(operation, updated);
     if (ci !== undefined) return ci;
-    recorded = updated;
+    recorded = head;
     remote = updated;
     if (!(await containsBase(operation, updated))) continue;
 
@@ -243,13 +251,18 @@ async function pushedHead(
   operation: Operation,
   pull: ReviewedPull & {
     readonly tree: Place;
-    readonly recorded: string | undefined;
+    readonly recorded: RecordedHead | undefined;
     readonly remote: string;
   },
-): Promise<string> {
-  const updated = await refreshed(operation, pull);
-  if (updated !== pull.commit && pull.recorded !== updated)
-    await savedHead(operation, { commit: pull.commit, updated });
+): Promise<RecordedHead> {
+  const head = await refreshed(operation, pull);
+  const { updated } = head;
+  if (updated !== pull.commit && changedHead(pull.recorded, head))
+    await savedHead(operation, {
+      commit: pull.commit,
+      updated,
+      checked: head.checked,
+    });
   if (updated !== pull.commit && pull.remote !== updated)
     await operation.calls.git(pull.tree.path, [
       "push",
@@ -257,7 +270,16 @@ async function pushedHead(
       "origin",
       `${updated}:refs/heads/${pull.tree.branch}`,
     ]);
-  return updated;
+  return head;
+}
+
+function changedHead(
+  recorded: RecordedHead | undefined,
+  head: RecordedHead,
+): boolean {
+  return (
+    recorded?.updated !== head.updated || recorded.checked !== head.checked
+  );
 }
 
 async function containsBase(
@@ -361,14 +383,12 @@ async function completedMerge(
   pull: ReviewedPull,
 ): Promise<SuccessfulMerge | CiResult> {
   const recorded = await recordedHead(operation, pull.commit);
-  const known = await knownMerge(operation, {
-    ...pull,
-    updated: recorded ?? pull.commit,
-  });
+  const updated = recorded?.updated ?? pull.commit;
+  const known = await knownMerge(operation, { ...pull, updated });
   const result =
     known.merged === undefined
       ? await readyHead(operation, { ...pull, recorded, remote: known.head })
-      : { updated: recorded ?? pull.commit, merged: known.merged };
+      : { updated, merged: known.merged };
   if ("reason" in result) return result;
   return finishedMerge(operation, {
     number: pull.number,

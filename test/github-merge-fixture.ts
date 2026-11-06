@@ -90,8 +90,11 @@ export function leftMerge(scene: GithubScene, commit: string): string {
   return folder;
 }
 
-export function pausedMerge(scene: GithubScene): readonly string[] {
-  const script = join(scene.directory, "pause-merge.mjs");
+function wrappedMerge(
+  scene: GithubScene,
+  wrapper: { readonly name: string; readonly merge: string },
+): readonly string[] {
+  const script = join(scene.directory, wrapper.name);
   writeFileSync(
     script,
     `
@@ -99,14 +102,29 @@ export function pausedMerge(scene: GithubScene): readonly string[] {
     import { execFileSync } from "node:child_process";
     const args = process.argv.slice(2);
     if (args.some((arg) => arg.endsWith("/merge"))) {
-      writeFileSync(${JSON.stringify(join(scene.directory, "paused"))}, "paused");
-      setTimeout(() => process.exit(1), 60000);
+      ${wrapper.merge}
     } else {
       process.stdout.write(execFileSync(process.execPath, [${JSON.stringify(join(scene.directory, "fake-gh.mjs"))}, ...args]));
     }
   `,
   );
   return ["env", "-u", "NODE_V8_COVERAGE", process.execPath, script];
+}
+
+export function pausedMerge(scene: GithubScene): readonly string[] {
+  return wrappedMerge(scene, {
+    name: "pause-merge.mjs",
+    merge: `writeFileSync(${JSON.stringify(join(scene.directory, "paused"))}, "paused");
+      setTimeout(() => process.exit(1), 60000);`,
+  });
+}
+
+export function unreachableMerge(scene: GithubScene): readonly string[] {
+  return wrappedMerge(scene, {
+    name: "unreachable-merge.mjs",
+    merge: `process.stderr.write("error connecting to api.github.com\\n");
+      process.exit(1);`,
+  });
 }
 
 export function matchesCall(parts: readonly string[], call: string): boolean {

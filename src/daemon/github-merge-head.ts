@@ -2,10 +2,12 @@ import { dirname, join } from "node:path";
 import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
 import { field, type Operation } from "./github-operation.ts";
 
-export interface UpdatedHead {
-  readonly commit: string;
+export interface RecordedHead {
   readonly updated: string;
+  readonly checked: boolean;
 }
+
+export type UpdatedHead = RecordedHead & { readonly commit: string };
 
 const name = "updated-head.json";
 
@@ -16,7 +18,7 @@ function targetRecord(operation: Operation) {
   };
 }
 
-function checkedHead(record: unknown, commit: string): string {
+function validHead(record: unknown, commit: string): string {
   const updated = field(record, "updated");
   if (
     field(record, "commit") !== commit ||
@@ -30,20 +32,27 @@ function checkedHead(record: unknown, commit: string): string {
 export async function recordedHead(
   operation: Operation,
   commit: string,
-): Promise<string | undefined> {
+): Promise<RecordedHead | undefined> {
   const record = await readRecord(operation.folder, name);
-  if (record !== undefined) return checkedHead(record, commit);
+  if (record !== undefined)
+    return { updated: validHead(record, commit), checked: true };
   const target = targetRecord(operation);
   const saved = await readRecord(target.folder, target.name);
   if (field(saved, "commit") !== commit) return undefined;
-  return checkedHead(saved, commit);
+  return {
+    updated: validHead(saved, commit),
+    checked: field(saved, "checked") === true,
+  };
 }
 
 export async function savedHead(
   operation: Operation,
   head: UpdatedHead,
 ): Promise<void> {
-  await writeRecord(operation.folder, { name, value: head });
+  await writeRecord(operation.folder, {
+    name,
+    value: { commit: head.commit, updated: head.updated },
+  });
   const target = targetRecord(operation);
   await writeRecord(target.folder, { name: target.name, value: head });
 }
