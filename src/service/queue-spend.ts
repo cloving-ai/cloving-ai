@@ -1,8 +1,7 @@
 import { record, type Fields, type Reply } from "../protocol.ts";
 import { queueSpending } from "../queue-spend.ts";
-import { priceOf } from "../worker-usage.ts";
+import { reportedPrice } from "../worker-usage.ts";
 import type { OperationView } from "../broker/actor/authority.ts";
-import { reportFields } from "./worker-totals.ts";
 import { failed, type ServiceContext } from "./replies.ts";
 
 type SpendContext = Pick<
@@ -100,13 +99,11 @@ async function countTurn(
     totals.turnsInWork += 1;
     return;
   }
-  const report = reportFields(
+  const cost = reportedPrice(
     operation.result === null
       ? undefined
       : await context.authority.queries.document(operation.result),
   );
-  const cost =
-    priceOf(report["costUsd"]) ?? priceOf(report["estimatedCostUsd"]);
   if (cost === null) totals.unknownTurns += 1;
   else totals.costs.push(cost);
 }

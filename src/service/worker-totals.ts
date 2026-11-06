@@ -1,6 +1,7 @@
-import { record, type Fields } from "../protocol.ts";
+import type { Fields } from "../protocol.ts";
 import {
   priceOf,
+  reportFields,
   usageOf,
   attemptsOf,
   workerTotals,
@@ -8,14 +9,6 @@ import {
   type WorkerTurnUsage,
 } from "../worker-usage.ts";
 import type { ServiceContext } from "./replies.ts";
-
-export function reportFields(text: string | undefined): Fields {
-  try {
-    return record(JSON.parse(text ?? "null")) ?? {};
-  } catch {
-    return {};
-  }
-}
 
 export async function usageTotals(
   context: ServiceContext,

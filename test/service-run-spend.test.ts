@@ -1,7 +1,78 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { documentDigest } from "../src/broker/decision-restore.ts";
+import { effectInputDigest } from "../src/broker/effect-restore.ts";
+import { operationIdentity } from "../src/operation-identity.ts";
+import { pinnedSpendLimit } from "../src/service/run-spend.ts";
+import type { Fields } from "../src/protocol.ts";
+import { openedAuthority } from "./authority-actor-fixture.ts";
 import { turnRequest, withQueueSpend } from "./queue-spend-fixture.ts";
 import { call, field } from "./service-fixture.ts";
+
+function directTurn(
+  runId: string,
+  given: { readonly round: number; readonly spend: Fields },
+) {
+  const request = turnRequest(runId, given.round);
+  const identity = operationIdentity({ ...request.scope, run: runId });
+  if (identity.kind !== "valid") throw new Error(identity.reason);
+  const payload = documentDigest(request.payload);
+  const { capability, method, target } = request;
+  return {
+    kind: "request-effect",
+    runId,
+    commandId: request.commandId,
+    operationId: identity.value,
+    capability,
+    method,
+    target,
+    payload,
+    inputDigest: effectInputDigest({ capability, method, target, payload }),
+    units: 1,
+    recoveryLimit: 3,
+    ...given.spend,
+  };
+}
+
+await test("CLV-308 the authority reads the recorded cost of a run in its own turn, so a turn request with an old cost or no cost gets spend-limit", () =>
+  withQueueSpend(
+    async (scene) => {
+      const runId = await scene.begin("run-direct", "manual");
+      await scene.turn(runId, { costUsd: 1.2 });
+      await scene.stop();
+      const authority = await openedAuthority(scene.harness.stateDirectory);
+      const sent = [
+        { round: 2, spend: { spendLimitUsd: 1, recordedCostUsd: 0 } },
+        { round: 3, spend: {} },
+      ].map((given) => directTurn(runId, given));
+      const receipts = [];
+      for (const command of sent)
+        receipts.push(
+          await authority.execute(command, {
+            recordedAt: scene.clock.now,
+            epoch: authority.epoch,
+            documents: ["Work"],
+          }),
+        );
+      const pinned = [
+        await pinnedSpendLimit({ authority }, runId),
+        await pinnedSpendLimit({ authority }, "run-unknown"),
+      ];
+      await authority.close();
+      assert.deepEqual(pinned, [1, undefined]);
+      assert.deepEqual(
+        receipts.map((receipt) => [
+          receipt.kind,
+          "disposition" in receipt ? receipt.disposition : null,
+        ]),
+        [
+          ["accepted", "refused"],
+          ["accepted", "refused"],
+        ],
+      );
+    },
+    { runSpendLimitUsd: 1 },
+  ));
 
 await test("CLV-308 a run with a spend limit of 1 USD and a recorded cost of 1.20 USD gets spend-limit for its next turn effect", () =>
   withQueueSpend(

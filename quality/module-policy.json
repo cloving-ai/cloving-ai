@@ -186,6 +186,7 @@
     "src/broker/actor/pin-check.ts": "broker",
     "src/broker/actor/projection-memory.ts": "broker",
     "src/broker/actor/runtime-parts.ts": "broker",
+    "src/broker/actor/spend-turn.ts": "broker",
     "src/broker/actor/stop-plan.ts": "broker",
     "src/broker/actor/stop-turn.ts": "broker",
     "src/broker/actor/turn-draft.ts": "broker",
