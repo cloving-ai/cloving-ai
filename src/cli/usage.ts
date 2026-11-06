@@ -148,7 +148,7 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
@@ -160,6 +160,10 @@ Control-C stops the wait and keeps the restart pending. --cancel cancels a pendi
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
+--update updates the product checkout before the stop, at the gap or at once.
+The update fetches the default branch and needs a fast-forward and a clean tree.
+It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
+When a step fails, the command prints the step and its output. The service keeps running on the old commit.
 `,
   watch: `Usage: cloving watch [--port <n>]
 
