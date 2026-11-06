@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { record } from "../src/protocol.ts";
 import { call } from "./service-fixture.ts";
 import { ended, scene, withoutChildren } from "./self-host-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
@@ -94,7 +95,8 @@ await test("CLV-308 the reload program registers workflows under the operator ma
         ],
         { encoding: "utf8", timeout: testMilliseconds(90_000) },
       );
-      const output: unknown = JSON.parse(result.stdout);
+      const output = record(JSON.parse(result.stdout));
+      assert.ok(output !== undefined, result.stdout + result.stderr);
       return output;
     };
     assert.partialDeepStrictEqual(reloaded({ effects: 100, chain: 5 }), {
@@ -139,7 +141,10 @@ await test("CLV-308 cloving workflows list applies limits.effects of the project
     );
     assert.equal(result.status, 0, result.stderr);
     const listed: unknown = JSON.parse(result.stdout);
-    assert.partialDeepStrictEqual(listed, [
-      { workflowId: "limited", admitted: true, codes: [] },
-    ]);
+    assert.ok(Array.isArray(listed), result.stdout);
+    const limited = record(
+      listed.find((row) => record(row)?.["workflowId"] === "limited"),
+    );
+    assert.equal(limited?.["admitted"], true);
+    assert.deepEqual(limited["codes"], []);
   }));
