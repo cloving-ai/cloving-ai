@@ -46,6 +46,7 @@ function restartingPort(harness: Harness, running: Running): RestartPort {
         running.marks.splice(0).length > 0 ? "cancelled" : "none",
       ),
     unresumable: () => Promise.resolve(["run-shell"]),
+    failure: () => Promise.resolve(undefined),
   };
 }
 
@@ -210,6 +211,7 @@ async function directRestart(
       cancel: false,
       resumeQueue: false,
       settings: "environment",
+      update: false,
       commandId: null,
       json: false,
     },
@@ -230,6 +232,7 @@ function waitingPort(
     },
     cancel: () => Promise.resolve("none"),
     unresumable: () => Promise.resolve([]),
+    failure: () => Promise.resolve(undefined),
   };
 }
 

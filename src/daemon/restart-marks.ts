@@ -5,6 +5,7 @@ import type { QueueJournal } from "./queue-journal.ts";
 import {
   isRestartRequest,
   newestRestart,
+  restartFailure,
   restartFiles,
   restartMark,
   restartText,
@@ -90,6 +91,12 @@ export function restartMarks(directory: string): RestartPort {
         return (await markIn(claimed)) === undefined ? "none" : "started";
       }),
     unresumable: () => unresumableRuns(directory),
+    failure: async () =>
+      restartFailure(
+        await readFile(join(directory, restartFiles.failure), "utf8").catch(
+          absent,
+        ),
+      ),
   };
 }
 

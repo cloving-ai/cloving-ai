@@ -20,6 +20,7 @@ export interface HostProcesses {
   readonly runtime: string;
   readonly directory: string;
   readonly repository: string;
+  readonly checkout?: string;
   readonly watchPort: string;
   readonly phoneRelay: string;
   readonly updateMilliseconds: number | undefined;
@@ -189,6 +190,8 @@ async function hostWatches(
       ...watches,
       directory: settings.directory,
       runtime: settings.runtime,
+      checkout: settings.checkout ?? settings.product,
+      environment: settings.environment ?? process.env,
       milliseconds: settings.restartMilliseconds ?? 2000,
     }).then(finished),
   ]);

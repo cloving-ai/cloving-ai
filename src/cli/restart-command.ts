@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { Fields, ServiceError } from "../protocol.ts";
+import { record, type Fields, type ServiceError } from "../protocol.ts";
 import { send } from "./client.ts";
+import { show } from "./terminal-text.ts";
 import type { RestartInvocation } from "./restart-arguments.ts";
 import { restartedJson, restartedLines } from "./restart-render.ts";
 import {
@@ -17,8 +18,14 @@ export interface RestartEnvironment extends OutputEnvironment {
 
 type Waited =
   | { readonly kind: "restarted"; readonly after: Fields }
+  | { readonly kind: "failed"; readonly failure: Fields }
   | { readonly kind: "cancelled" }
   | { readonly kind: "interrupted" };
+
+interface Waiting {
+  readonly startedAt: string;
+  readonly commandId: string;
+}
 
 const cancelledRestart: ServiceError = {
   code: "restart-cancelled",
@@ -44,17 +51,30 @@ async function serviceStatus(
 
 function settled(
   now: Fields | undefined,
-  startedAt: string,
+  waiting: Waiting,
 ): Waited | undefined {
   if (now === undefined) return undefined;
-  if (now["serviceStartedAt"] !== startedAt)
+  if (now["serviceStartedAt"] !== waiting.startedAt)
     return { kind: "restarted", after: now };
+  const failure = record(now["restartFailure"]);
+  if (failure?.["commandId"] === waiting.commandId)
+    return { kind: "failed", failure };
   return now["restart"] === null ? { kind: "cancelled" } : undefined;
+}
+
+function updateFailure(failure: Fields, before: Fields): ServiceError {
+  const { step, output } = failure;
+  return {
+    code: "restart-update-failed",
+    detail: `The update stopped at step ${show(step)}. The service keeps running on commit ${show(before["serviceCommit"] ?? "unknown")}.\n${show(output)}`,
+    step,
+    output,
+  };
 }
 
 async function restarted(
   environment: RestartEnvironment,
-  startedAt: string,
+  waiting: Waiting,
 ): Promise<Waited> {
   const stopped = new AbortController();
   const stop = (): void => {
@@ -71,7 +91,7 @@ async function restarted(
       stopped.signal,
     );
     if (stopped.signal.aborted) return { kind: "interrupted" };
-    const outcome = settled(now, startedAt);
+    const outcome = settled(now, waiting);
     if (outcome !== undefined) return outcome;
   }
 }
@@ -101,6 +121,7 @@ function requested(invocation: RestartInvocation, commandId: string): Fields {
     commandId,
     ...(invocation.resumeQueue ? { resumeQueue: true } : {}),
     ...(invocation.settings === "files" ? { settings: "files" } : {}),
+    ...(invocation.update ? { update: true } : {}),
   };
 }
 
@@ -119,7 +140,10 @@ export async function restartCommand(
   const startedAt = before["serviceStartedAt"];
   if (typeof startedAt !== "string")
     return failed(environment, { error: invalidReply, format });
-  const waited = await restarted(environment, startedAt);
+  const waited = await restarted(environment, {
+    startedAt,
+    commandId: format.commandId,
+  });
   if (waited.kind === "interrupted") {
     environment.terminal.error(
       "The restart stays pending. Cancel it with: cloving restart --cancel\n",
@@ -128,6 +152,11 @@ export async function restartCommand(
   }
   if (waited.kind === "cancelled")
     return failed(environment, { error: cancelledRestart, format });
+  if (waited.kind === "failed")
+    return failed(environment, {
+      error: updateFailure(waited.failure, before),
+      format,
+    });
   report(environment, { before, after: waited.after, json: invocation.json });
   return 0;
 }

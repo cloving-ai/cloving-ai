@@ -68,6 +68,7 @@ const options = {
   cancel: { type: "boolean" },
   "resume-queue": { type: "boolean" },
   settings: { type: "string" },
+  update: { type: "boolean" },
 } as const;
 
 type Parsed = ReturnType<

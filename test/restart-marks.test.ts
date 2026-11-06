@@ -219,3 +219,17 @@ await test("CLV-306 the queue start clears the drain for a resume file and the f
     await mkdir(join(directory, "resume-queue"));
     await assert.rejects(startedQueue({ directory }, journal()));
   }));
+
+await test("CLV-306 the daemon reads the failure of an update that the host wrote", () =>
+  withDirectory(async (directory) => {
+    const marks = restartMarks(directory);
+    assert.equal(await marks.failure(), undefined);
+    const failure = { commandId: "one", step: "build", output: "broken" };
+    const file = join(directory, "restart-failure");
+    await writeFile(file, `${JSON.stringify(failure)}\n`);
+    assert.deepEqual(await marks.failure(), failure);
+    await writeFile(file, "{");
+    assert.equal(await marks.failure(), undefined);
+    await writeFile(file, JSON.stringify({ ...failure, step: 2 }));
+    assert.equal(await marks.failure(), undefined);
+  }));

@@ -10,6 +10,7 @@ export const restartFiles = {
   request: "pending-restart-",
   claimed: "claimed-restart",
   settings: "restart-settings",
+  failure: "restart-failure",
 } as const;
 
 export interface RestartMark {
@@ -18,6 +19,13 @@ export interface RestartMark {
   readonly commandId: string;
   readonly resumeQueue: boolean;
   readonly settings?: "files";
+  readonly update?: true;
+}
+
+export interface RestartFailure {
+  readonly commandId: string;
+  readonly step: string;
+  readonly output: string;
 }
 
 export interface RestartEntry {
@@ -35,6 +43,7 @@ export interface RestartPort {
   readonly request: (mark: RestartMark) => Promise<void>;
   readonly cancel: () => Promise<RestartCancel>;
   readonly unresumable: () => Promise<readonly string[]>;
+  readonly failure: () => Promise<RestartFailure | undefined>;
 }
 
 export function isRestartTime(value: unknown): value is RestartTime {
@@ -65,6 +74,7 @@ export function restartMark(text: string): RestartMark | undefined {
     commandId,
     resumeQueue: fields["resumeQueue"] === true,
     ...(fields["settings"] === "files" ? { settings: "files" as const } : {}),
+    ...(fields["update"] === true ? { update: true as const } : {}),
   };
 }
 
@@ -95,4 +105,15 @@ export function newestRestart(
 
 export function restartText(mark: RestartMark): string {
   return `${JSON.stringify(mark)}\n`;
+}
+
+export function restartFailure(text: string): RestartFailure | undefined {
+  const { commandId, step, output } = record(parsed(text)) ?? {};
+  if (typeof commandId !== "string" || typeof step !== "string")
+    return undefined;
+  return typeof output === "string" ? { commandId, step, output } : undefined;
+}
+
+export function restartFailureText(failure: RestartFailure): string {
+  return `${JSON.stringify(failure)}\n`;
 }

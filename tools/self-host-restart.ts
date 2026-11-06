@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   readdir,
   readFile,
@@ -13,16 +14,20 @@ import { promisify } from "node:util";
 import {
   isRestartRequest,
   newestRestart,
+  restartFailureText,
   restartFiles,
   type RestartMark,
   type RestartRequest,
 } from "../src/restart-request.ts";
 import { atGap, workInProgress } from "../src/work-gap.ts";
+import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
 export interface RestartWatch {
   readonly directory: string;
   readonly runtime: string;
+  readonly checkout: string;
+  readonly environment: NodeJS.ProcessEnv;
   readonly milliseconds: number;
   readonly stopping: AbortSignal;
   readonly stop: () => Promise<void>;
@@ -88,8 +93,31 @@ async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
   return atGap(work);
 }
 
+async function updated(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<boolean> {
+  if (mark.update !== true) return true;
+  const outcome = await updatedCheckout(checkoutCommands(watch));
+  if (outcome.kind === "updated") return true;
+  const temporary = join(watch.directory, `restart-${randomUUID()}.tmp`);
+  const { step, output } = outcome;
+  await writeFile(
+    temporary,
+    restartFailureText({ commandId: mark.commandId, step, output }),
+    { mode: 0o600 },
+  );
+  await rename(temporary, join(watch.directory, restartFiles.failure));
+  await rm(join(watch.directory, restartFiles.claimed), { force: true });
+  return false;
+}
+
 export async function clearedRestart(directory: string): Promise<void> {
-  const names = [...(await requestNames(directory)), restartFiles.claimed];
+  const names = [
+    ...(await requestNames(directory)),
+    restartFiles.claimed,
+    restartFiles.failure,
+  ];
   await Promise.all(
     names.map((name) => rm(join(directory, name), { force: true })),
   );
@@ -112,6 +140,7 @@ export async function restartWatch(
       () => undefined,
     );
     if (claimed === undefined) continue;
+    if (!(await updated(watch, claimed))) continue;
     await watch.stop();
     if (claimed.resumeQueue)
       await writeFile(join(watch.directory, "resume-queue"), "", {
