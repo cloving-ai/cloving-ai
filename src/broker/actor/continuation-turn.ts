@@ -1,8 +1,5 @@
-import {
-  continuationOf,
-  type Continuations,
-} from "../../authority/continuations.ts";
-import type { EffectState } from "../../authority/operations.ts";
+import { continuationOf } from "../../authority/continuations.ts";
+import type { Continuations, EffectState } from "../../authority/operations.ts";
 import type { RunState } from "../../authority/reducer.ts";
 import type { AuthorityCommand } from "../../authority/transitions.ts";
 import { operationOfRun } from "../../operation-identity.ts";

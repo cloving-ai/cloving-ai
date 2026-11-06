@@ -1,5 +1,4 @@
 import { operationScope } from "../operation-identity.ts";
-import type { Continuation } from "./continuations.ts";
 
 export type OperationStatus =
   | "refused"
@@ -109,6 +108,13 @@ export interface EffectEvent {
   readonly recordedAt: string;
   readonly payload: Readonly<Record<string, string>>;
 }
+
+export interface Continuation {
+  readonly runId: string;
+  readonly before: number;
+}
+
+export type Continuations = Readonly<Record<string, Continuation>>;
 
 export interface EffectContext {
   readonly event: EffectEvent;

@@ -313,7 +313,6 @@
     "src/cli/watch-card-reply.ts": "cli",
     "src/cli/watch-card-view.ts": "cli",
     "src/cli/watch-client.ts": "cli",
-    "src/cli/watch-command.ts": "cli",
     "src/cli/watch-element.ts": "cli",
     "src/cli/watch-floor-view.ts": "cli",
     "src/cli/watch-floor.ts": "cli",

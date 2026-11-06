@@ -1,13 +1,6 @@
 import { operationStep } from "../operation-identity.ts";
-import type { Operation } from "./operations.ts";
+import type { Continuation, Continuations, Operation } from "./operations.ts";
 import type { RunState } from "./transitions.ts";
-
-export interface Continuation {
-  readonly runId: string;
-  readonly before: number;
-}
-
-export type Continuations = Readonly<Record<string, Continuation>>;
 
 type Payload = Readonly<Record<string, string>>;
 

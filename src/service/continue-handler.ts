@@ -97,12 +97,12 @@ async function continuedRefusal(
   });
 }
 
-function storedBudget(command: AuthorityCommand): Fields {
-  if (command.effectLimit === undefined) return {};
-  return {
-    effectLimit: command.effectLimit,
-    capabilities: command.capabilities,
-  };
+function budgetOf(limit: {
+  readonly effectLimit?: number | undefined;
+  readonly capabilities?: string | undefined;
+}): Fields {
+  if (limit.effectLimit === undefined) return {};
+  return { effectLimit: limit.effectLimit, capabilities: limit.capabilities };
 }
 
 function unavailable(request: ContinueRequest): Reply {
@@ -126,7 +126,7 @@ async function pinnedWorkflow(
   if (request.bundle === "retained")
     return (await context.registry.available(manifest)) === undefined
       ? unavailable(request)
-      : { workflow: String(command.workflow), budget: storedBudget(command) };
+      : { workflow: String(command.workflow), budget: budgetOf(command) };
   const workflowId =
     (await context.authority.queries.workflowIds([request.runId]))[
       request.runId
@@ -139,13 +139,10 @@ async function pinnedWorkflow(
     });
   return {
     workflow: current.pin,
-    budget:
-      current.effectLimit === undefined
-        ? {}
-        : {
-            effectLimit: current.effectLimit,
-            capabilities: executionCapabilities(current.manifest),
-          },
+    budget: budgetOf({
+      effectLimit: current.effectLimit,
+      capabilities: executionCapabilities(current.manifest),
+    }),
   };
 }
 
@@ -175,7 +172,7 @@ async function admitted(
     continuedFrom: request.runId,
     commandId: request.commandId,
     replayed: receipt.kind === "duplicate",
-    reuseBefore: command["reuseBefore"] ?? null,
+    reuseBefore: command["reuseBefore"],
     receipt: publicReceipt(stored),
   });
 }
@@ -227,7 +224,7 @@ async function replayedContinuation(
     continuedFrom: request.runId,
     commandId: request.commandId,
     replayed: true,
-    reuseBefore: existing.command.reuseBefore ?? null,
+    reuseBefore: existing.command.reuseBefore,
     receipt: publicReceipt(existing),
   });
 }

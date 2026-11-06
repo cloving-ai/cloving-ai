@@ -1,8 +1,7 @@
 import type { CommandWaitsState } from "./command-waits.ts";
-import type { Continuations } from "./continuations.ts";
 import type { RunDetails } from "./details.ts";
 import type { GateState } from "./gates.ts";
-import type { EffectState } from "./operations.ts";
+import type { Continuations, EffectState } from "./operations.ts";
 
 export type RunStatus =
   | "queued"

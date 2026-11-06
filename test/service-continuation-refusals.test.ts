@@ -49,13 +49,19 @@ const service = await hosted({ destination: scripted });
 const runId = await submitted("c-1");
 const before = await ended(runId);
 rmSync("block");
+const unnamed = await continued({ runId });
+const unknown = await continued({ runId, from: "merge/merge/7" });
 const reply = await continued({ runId, from: "implement/claude-turn/2" });
 const after = await ended(reply.runId);
-print({ before: [before.state, before.outcome?.kind], after: [after.state, after.outcome?.kind], sent: lines("sent.log") });
+print({ refused: [refusal(unnamed), refusal(unknown)], before: [before.state, before.outcome?.kind], after: [after.state, after.outcome?.kind], sent: lines("sent.log") });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
+      refused: [
+        ["error", "continuation-step-required"],
+        ["error", "unknown-continuation-step"],
+      ],
       before: ["completed", "blocked"],
       after: ["completed", "handoff_requested"],
       sent: [
@@ -111,13 +117,24 @@ rmSync("fail-merge");
 const first = await continued({ runId: failed });
 const handedOff = await ended(first.runId);
 const second = await continued({ runId: failed, commandId: "c-continue-2" });
+const again = await continued({ runId: failed });
+const conflicting = await continued({ runId: dropped });
+const invalid = [
+  await continued({ runId: "bad id" }),
+  await continued({ runId: failed, commandId: "bad id" }),
+  await continued({ runId: failed, from: 7 }),
+  await continued({ runId: failed, bundle: "old" }),
+];
 const finished = await continued({ runId: first.runId, commandId: "c-continue-3" });
 const droppedReply = await continued({ runId: dropped, commandId: "c-continue-4" });
-print({ outcome: handedOff.outcome?.kind, second: refusal(second), finished: refusal(finished), cancelled: refusal(droppedReply), continuedBy: (await asked("status", { runId: failed })).run.continuedBy === first.runId, continuedFrom: handedOff.continuedFrom === failed });
+print({ again: [again.kind, again.replayed, again.runId === first.runId], conflicting: refusal(conflicting), invalid: invalid.map(refusal), outcome: handedOff.outcome?.kind, second: refusal(second), finished: refusal(finished), cancelled: refusal(droppedReply), continuedBy: (await asked("status", { runId: failed })).run.continuedBy === first.runId, continuedFrom: handedOff.continuedFrom === failed });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
+      again: ["run-continued", true, true],
+      conflicting: ["error", "conflicting-command"],
+      invalid: Array.from({ length: 4 }, () => ["error", "invalid-request"]),
       outcome: "handoff_requested",
       second: ["error", "run-already-continued"],
       finished: ["error", "run-not-blocked"],

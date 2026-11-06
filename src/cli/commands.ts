@@ -34,7 +34,7 @@ import {
 import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import { continueServiceRequest } from "./continue-arguments.ts";
 import { commandUsage } from "./usage.ts";
-import { watchCommand } from "./watch-command.ts";
+import { defaultWatchPort, watchServer } from "./watch-server.ts";
 
 export interface Terminal {
   readonly out: (text: string) => void;
@@ -305,23 +305,6 @@ interface Located extends CommandEnvironment {
   readonly runtimeDirectory: string;
 }
 
-type Mutation = Invoked<"run" | "decision" | "run-command" | "continue">;
-
-const mutationKinds = ["run", "decision", "run-command", "continue"];
-
-function isMutation(invocation: RuntimeInvocation): invocation is Mutation {
-  return mutationKinds.includes(invocation.kind);
-}
-
-function mutationCommand(
-  environment: Located,
-  invocation: Mutation,
-): Promise<number> {
-  if (invocation.kind === "run") return run(environment, invocation);
-  if (invocation.kind === "decision") return decision(environment, invocation);
-  return runCommand(environment, invocation);
-}
-
 export function runtimeCommand(
   invocation: RuntimeInvocation,
   environment: CommandEnvironment,
@@ -342,11 +325,13 @@ export function runtimeCommand(
         format: { json: invocation.json },
       }),
     );
-  return located(invocation, { ...environment, runtimeDirectory });
+  const placed = { ...environment, runtimeDirectory };
+  if (invocation.kind === "watch") return watch(placed, invocation);
+  return located(invocation, placed);
 }
 
 function located(
-  invocation: Exclude<RuntimeInvocation, { kind: "command-help" }>,
+  invocation: Exclude<RuntimeInvocation, { kind: "command-help" | "watch" }>,
   environment: Located,
 ): Promise<number> {
   if (invocation.kind === "schedule")
@@ -357,11 +342,12 @@ function located(
   if (invocation.kind === "queue") return queue(environment, invocation);
   if (invocation.kind === "report")
     return reportCommand(invocation, environment);
-  if (isMutation(invocation)) return mutationCommand(environment, invocation);
+  if (invocation.kind === "run") return run(environment, invocation);
+  if (invocation.kind === "decision") return decision(environment, invocation);
+  if (invocation.kind === "run-command" || invocation.kind === "continue")
+    return runCommand(environment, invocation);
   if (invocation.kind === "status") return status(environment, invocation);
   if (invocation.kind === "events") return events(environment, invocation);
-  if (invocation.kind === "watch")
-    return watchCommand(environment, invocation.port);
   return requested(environment, {
     format: { json: invocation.json },
     request: readCommandRequest(invocation),
@@ -381,5 +367,26 @@ function queue(
   return mutated(environment, {
     format,
     request: queueServiceRequest(invocation, format.commandId),
+  });
+}
+
+function watch(
+  environment: Located,
+  invocation: Invoked<"watch">,
+): Promise<number> {
+  return watchServer({
+    actions: environment.watchActions ?? "on",
+    ...(environment.watchPr === undefined
+      ? {}
+      : { pullRequests: environment.watchPr }),
+    ...(environment.watchThemes === undefined
+      ? {}
+      : { themes: environment.watchThemes }),
+    runtimeDirectory: environment.runtimeDirectory,
+    port: invocation.port ?? defaultWatchPort,
+    client: environment.client ?? "cloving",
+    announce: environment.terminal.out,
+    complain: environment.terminal.error,
+    stopped: environment.interrupted(),
   });
 }
