@@ -42,6 +42,7 @@ const copiedFields = [
   "resolver",
   "parentRunId",
   "chainId",
+  "chainLimit",
 ] as const;
 
 function continueRequest(parameters: Fields): ContinueRequest | undefined {

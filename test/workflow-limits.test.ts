@@ -14,6 +14,7 @@ import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
 import { folderInput } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { workflowRefusals } from "../src/workflow-refusals.ts";
+import { chainLimitWithin } from "../src/workflow-limits.ts";
 import {
   chainPlace,
   handoffChain,
@@ -130,6 +131,18 @@ await test("CLV-308 a chain limit of 8 registers under an operator maximum of 10
       }),
       ["invalid-declaration"],
     );
+});
+
+await test("CLV-308 a workflow without a chain limit gets the default of 5, capped at the operator maximum", () => {
+  assert.deepEqual(chainLimitWithin({}, { effects: 100, chain: 2 }), {
+    chainLimit: 2,
+  });
+  assert.deepEqual(chainLimitWithin({}, { effects: 100, chain: 10 }), {});
+  assert.deepEqual(chainLimitWithin({}), {});
+  assert.deepEqual(
+    chainLimitWithin({ chainLimit: 8 }, { effects: 100, chain: 10 }),
+    { chainLimit: 8 },
+  );
 });
 
 await test("CLV-308 the first run of a chain decides the chain limit for every handoff", () => {

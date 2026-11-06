@@ -22,7 +22,10 @@ import {
   workflowBundleDependencies,
   workflowPackageRoot,
 } from "./workflow-bundle-dependencies.ts";
-import type { WorkflowLimits } from "../src/workflow-limits.ts";
+import {
+  chainLimitWithin,
+  type WorkflowLimits,
+} from "../src/workflow-limits.ts";
 
 interface ProjectSettings {
   readonly product: string;
@@ -168,7 +171,10 @@ async function stageCandidates(
 }
 
 function operatorDeclaration(
-  staged: StagedCandidate & { readonly project: string },
+  staged: StagedCandidate & {
+    readonly project: string;
+    readonly limits: WorkflowLimits | undefined;
+  },
   compiled: Awaited<ReturnType<typeof compile>>,
 ): DeclaredWorkflow {
   const { candidate, project } = staged;
@@ -190,6 +196,7 @@ function operatorDeclaration(
     );
   return {
     ...declaration,
+    ...chainLimitWithin(declaration, staged.limits),
     capabilities: [...new Set(declaration.capabilities)],
     functionName: workflow.workflowId.slice(
       workflow.workflowId.lastIndexOf("//") + 2,
@@ -254,7 +261,10 @@ export async function preparedBundle(
   const compiled = await compile(settings);
   await recordProject(settings);
   const combined = staged.map((candidate) =>
-    operatorDeclaration({ ...candidate, project }, compiled),
+    operatorDeclaration(
+      { ...candidate, project, limits: settings.limits },
+      compiled,
+    ),
   );
   const manifests = await writeManifests(
     project,

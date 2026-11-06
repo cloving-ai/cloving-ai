@@ -28,7 +28,7 @@ export async function develop(input: { cycleId: string }) {
 }
 `;
 
-const scene = `${servicePrelude}
+const failingPrelude = `${servicePrelude}
 const failing = {
   ...destination,
   deliver: async (intent) => {
@@ -41,6 +41,9 @@ const finalState = async (runId) => { await until(async () => ["completed", "fai
 const continued = (parameters) => asked("continue-run", { commandId: "c-continue", ...parameters });
 const outputOf = async (runId) => { const world = (await tagged()).filter((run) => run.run === runId && run.status === "completed"); return world.length === 0 ? null : await getRun(world[0].receipt).returnValue; };
 writeFileSync("fail-merge", "");
+`;
+
+const scene = `${failingPrelude}
 const service = await hosted({ destination: failing });
 const runId = await submitted("c-1");
 const before = await finalState(runId);
@@ -111,5 +114,29 @@ await service.close();
     assert.deepEqual(result.lines[0], {
       active: ["error", "run-active"],
       unknown: ["error", "unknown-run"],
+    });
+  }));
+
+await test("CLV-308 a continued first run keeps the chain limit of its chain", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`${failingPrelude}
+const service = await hosted({ destination: failing, registrations: [{ ...fakeRegistration([]), effectLimit: 5, chainLimit: 2 }] });
+const runId = await submitted("c-1");
+const before = await finalState(runId);
+rmSync("fail-merge");
+const reply = await continued({ runId });
+const after = await finalState(reply.runId);
+const chainOf = async (id) => (await asked("status", { runId: id })).run.chain;
+print({ before, after, chains: [await chainOf(runId), await chainOf(reply.runId)] });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      before: "failed",
+      after: "completed",
+      chains: [
+        { position: 1, limit: 2 },
+        { position: 1, limit: 2 },
+      ],
     });
   }));

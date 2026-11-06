@@ -9,6 +9,7 @@ import { settingValue, type JsonValue } from "./configuration-change.ts";
 import { harnessDefaults, nativeHarness } from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
+import { defaultWorkflowLimits } from "./workflow-limits.ts";
 
 type Source = "environment" | "private" | "project" | "default";
 type DisplayValue = SettingValue | JsonValue;
@@ -25,6 +26,9 @@ export interface SettingEntry extends ValueSource {
 const defaults: Readonly<Record<string, SettingValue>> = {
   "merge.mode": "direct",
   "queue.lanes": 1,
+  "limits.effects": defaultWorkflowLimits.effects,
+  "limits.chain": defaultWorkflowLimits.chain,
+  "spend.scope": "queue",
   "harness.name": "claude",
   "harness.output": "text",
   tokenPrices: builtInPriceTable.prices,

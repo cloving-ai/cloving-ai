@@ -106,9 +106,10 @@ await test("CLV-308 the reload program registers workflows under the operator ma
         },
       ],
     });
-    assert.partialDeepStrictEqual(reloaded({ effects: 200, chain: 5 }), {
+    assert.partialDeepStrictEqual(reloaded({ effects: 200, chain: 2 }), {
       workflowRefusals: [],
       workflows: [{ workflowId: "limited", admitted: true }],
+      declarations: [{ workflowId: "limited", chainLimit: 2 }],
     });
   }));
 

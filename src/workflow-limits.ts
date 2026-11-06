@@ -1,3 +1,4 @@
+import { defaultChainLimit } from "./authority/handoff-chain.ts";
 import type { WorkflowDeclaration } from "./workflow-declaration.ts";
 
 export interface WorkflowLimits {
@@ -20,6 +21,16 @@ export function workflowLimitRefusals(
   if ((declaration.chainLimit ?? 0) > limits.chain)
     codes.push("chain-limit-above-maximum");
   return codes;
+}
+
+export function chainLimitWithin(
+  declaration: Pick<WorkflowDeclaration, "chainLimit">,
+  limits: WorkflowLimits = defaultWorkflowLimits,
+): Pick<WorkflowDeclaration, "chainLimit"> {
+  if (declaration.chainLimit !== undefined)
+    return { chainLimit: declaration.chainLimit };
+  if (limits.chain >= defaultChainLimit) return {};
+  return { chainLimit: limits.chain };
 }
 
 function limit(

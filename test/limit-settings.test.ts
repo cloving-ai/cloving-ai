@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { settingsEnvironment } from "../src/cli/project-settings.ts";
 import { validateSetting } from "../src/configuration-schema.ts";
+import { configurationEntries } from "../src/configuration-display.ts";
 import { settingsScene } from "./project-settings-fixture.ts";
 import { workflowLimits } from "../src/workflow-limits.ts";
 import { commandUsage } from "../src/cli/usage.ts";
@@ -142,5 +143,23 @@ await test("CLV-308 the daemon reads the spend scope, and the scope all needs no
       CLOVING_SPEND_SCOPE: "all",
     }),
     20,
+  );
+});
+
+await test("CLV-308 the configuration shows the defaults of the operator maximums and the spend scope", () => {
+  const shown = configurationEntries({
+    project: undefined,
+    private: undefined,
+    environment: {},
+  }).filter((entry) =>
+    ["limits.effects", "limits.chain", "spend.scope"].includes(entry.field),
+  );
+  assert.deepEqual(
+    shown.map(({ field, value, source }) => [field, value, source]),
+    [
+      ["spend.scope", "queue", "default"],
+      ["limits.effects", 100, "default"],
+      ["limits.chain", 5, "default"],
+    ],
   );
 });
