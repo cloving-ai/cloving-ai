@@ -81,7 +81,11 @@ function spawnCommand(start: CommandStart, configuration: string) {
   return spawn(executable, argumentsList, {
     cwd: start.directory,
     env: {
-      ...turnEnvironment(configuration, { ...start, prompt: start.payload }),
+      ...turnEnvironment(configuration, {
+        ...start,
+        prompt: start.payload,
+        variables: "inherit",
+      }),
       CLOVING_RUN_ID: start.runId,
       CLOVING_OPERATION_ID: start.operationId,
     },

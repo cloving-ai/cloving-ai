@@ -82,6 +82,7 @@ export async function scene(
   const repository = join(root, "repository");
   const directory = join(root, "host");
   execFileSync("git", ["init", "-q", "-b", "main", repository]);
+  git(repository, ["config", "commit.gpgsign", "false"]);
   await writeFile(join(repository, "README.md"), "A project.\n");
   git(repository, ["add", "README.md"]);
   git(repository, [

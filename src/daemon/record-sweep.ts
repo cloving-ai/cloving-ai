@@ -34,6 +34,10 @@ export interface RecordSweep {
   readonly pass: () => Promise<void>;
 }
 
+export interface StoppableSweep {
+  readonly pass: (signal: AbortSignal) => Promise<void>;
+}
+
 export interface RetentionLoop {
   readonly stop: () => Promise<void>;
 }
@@ -202,10 +206,13 @@ export async function recordRetention(
   settings: SweepSettings & {
     readonly intervalMilliseconds?: number;
     readonly bundles?: RecordSweep;
+    readonly trees?: StoppableSweep;
   },
 ): Promise<RetentionLoop> {
   const records = recordSweep(settings);
+  const stopping = new AbortController();
   const pass = async () => {
+    await settings.trees?.pass(stopping.signal);
     await records.pass();
     await settings.bundles?.pass();
   };
@@ -218,6 +225,7 @@ export async function recordRetention(
   return {
     stop: async () => {
       clearInterval(timer);
+      stopping.abort();
       await running;
     },
   };

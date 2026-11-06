@@ -15,6 +15,14 @@ import {
   type RetentionSettings,
 } from "../src/record-retention.ts";
 import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
+import { turnVariablesSetting } from "../src/turn-environment.ts";
+import {
+  listedSetting,
+  queueInterval,
+  queueLanes,
+  queueSpendLimit,
+  readyTicketCommand,
+} from "./self-host-queue.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
@@ -141,59 +149,7 @@ interface Commands extends HarnessSettings {
   readonly commit: string | null;
 }
 
-function queueLanes(): number {
-  const value = environment["CLOVING_QUEUE_LANES"];
-  if (value === undefined) return 1;
-  if (!/^[1-4]$/.test(value))
-    throw new Error("The daemon did not start: invalid-queue-lanes");
-  if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
-    throw new Error("The daemon did not start: queue-lanes-needs-queue");
-  return Number(value);
-}
-
-function queueSpendLimit(): number | undefined {
-  const value = environment["CLOVING_QUEUE_DAILY_SPEND_USD"];
-  if (value === undefined) return undefined;
-  const limit = Number(value);
-  if (!Number.isFinite(limit) || limit <= 0)
-    throw new Error("The daemon did not start: invalid-queue-spend-limit");
-  if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
-    throw new Error("The daemon did not start: queue-spend-limit-needs-queue");
-  return limit;
-}
-
-function readyTicketCommand(): readonly string[] | undefined {
-  const command = listed("CLOVING_READY_COMMAND");
-  if (
-    command !== undefined &&
-    environment["CLOVING_QUEUE_SECONDS"] === undefined
-  )
-    throw new Error("The daemon did not start: ready-command-needs-queue");
-  return command;
-}
-
-function queueInterval(): number | undefined {
-  const value = environment["CLOVING_QUEUE_SECONDS"];
-  if (value === undefined) return undefined;
-  const seconds = Number(value);
-  if (
-    !/^\d+$/.test(value) ||
-    !Number.isInteger(seconds) ||
-    seconds < 10 ||
-    seconds > 3600
-  )
-    throw new Error("The daemon did not start: invalid-queue-seconds");
-  return seconds * 1000;
-}
-
-function listed(name: string): readonly string[] | undefined {
-  const given = environment[name];
-  if (given === undefined) return undefined;
-  const list: unknown = JSON.parse(given);
-  if (!Array.isArray(list) || !list.every((part) => typeof part === "string"))
-    throw new Error(`${name} is not a JSON list of texts.`);
-  return list.map(String);
-}
+const listed = (name: string) => listedSetting(environment, name);
 
 function source(file: string): string {
   return JSON.stringify(
@@ -320,11 +276,14 @@ const harness = configuration.harness ?? {};
 const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
-const queueDailySpendLimitUsd = queueSpendLimit();
-const lanes = queueLanes();
-const readyCommand = readyTicketCommand();
-const queueMilliseconds = queueInterval();
+const queueDailySpendLimitUsd = queueSpendLimit(environment);
+const lanes = queueLanes(environment);
+const readyCommand = readyTicketCommand(environment);
+const queueMilliseconds = queueInterval(environment);
 const retention = retentionSettings(environment);
+const turnVariables = turnVariablesSetting(
+  environment["CLOVING_TURN_ENVIRONMENT"],
+);
 const merging = mergeMode(environment["CLOVING_MERGE_MODE"]);
 const places = {
   repository,
@@ -360,6 +319,7 @@ await launchers(
     queueDailySpendLimitUsd,
     resetQueue: flags.includes("--reset-queue"),
     retention,
+    turnVariables,
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,

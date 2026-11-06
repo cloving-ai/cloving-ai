@@ -38,6 +38,8 @@ import { queueConnection } from "./queue-control.ts";
 import { restartMarks } from "./restart-marks.ts";
 import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
+import { clearedTreeClaims } from "./tree-claims.ts";
+import { treeSweep } from "./tree-sweep.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
   bundleSweep,
@@ -268,7 +270,8 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
       effects: { claude: worker, github, handoff, command: commands },
     }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
-    host: (ports) => {
+    host: async (ports) => {
+      await clearedTreeClaims(settings.directory);
       given.resolve(ports);
       return hosted(settings, { ports, generations });
     },
@@ -341,6 +344,12 @@ async function retentionLoop(
   return recordRetention({
     ...sweep,
     runs: authorityRuns(ports),
+    trees: treeSweep({
+      ...sweep,
+      runs: authorityRuns(ports),
+      repository: settings.repository,
+      gh: settings.githubCommand ?? ["gh"],
+    }),
     bundles: bundleSweep({
       ...sweep,
       current: resources.current,

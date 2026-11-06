@@ -38,6 +38,7 @@ const codes = [
   "merge-mode",
   "queue-interval",
   "private-texts",
+  "turn-environment",
   "retention",
   "theme",
 ];

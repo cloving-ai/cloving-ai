@@ -43,6 +43,7 @@ export const sharedRecordFolders: readonly string[] = [
   "github/targets",
   "journal/runs",
   "journal/targets",
+  "journal/trees",
 ];
 
 export const bundleDigestPattern = /^[a-f0-9]{64}$/;
@@ -80,6 +81,30 @@ export function retentionVerdict(
   if (!finished.includes(run.status)) return "skipped";
   const limit = context.now - context.days * dayMilliseconds;
   return endedBefore(run, limit) && folder.changedAt < limit ? "due" : "kept";
+}
+
+export function treeDue(
+  runs: readonly (StoredRun | undefined)[],
+  context: Pick<RetentionContext, "now" | "days"> & {
+    readonly bornAt: number;
+  },
+): boolean {
+  const limit = context.now - context.days * dayMilliseconds;
+  const own = runs.filter(
+    (run) =>
+      run === undefined ||
+      run.endedAt === null ||
+      run.endedAt >= context.bornAt,
+  );
+  return (
+    own.length > 0 &&
+    own.every(
+      (run) =>
+        run !== undefined &&
+        run.status !== "completed" &&
+        endedBefore(run, limit),
+    )
+  );
 }
 
 function endedBefore(run: StoredRun, limit: number): boolean {

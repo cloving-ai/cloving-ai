@@ -54,3 +54,45 @@ await test("CLV-270 a pass that fails logs the reason and does not stop the daem
     assert.equal(existsSync(join(scene.root, "journal/a/started.json")), true);
     assert.deepEqual(scene.lines, ["retention: failed (authority-closed)\n"]);
   }));
+
+await test("CLV-310 the retention loop sweeps the work trees before it moves the records", () =>
+  withSweep(async (scene) => {
+    await scene.folder("journal/a", { runId: "done" });
+    const seen: boolean[] = [];
+    const loop = await recordRetention({
+      ...scene.settings(),
+      trees: {
+        pass: () => {
+          seen.push(existsSync(join(scene.root, "journal/a/started.json")));
+          return Promise.resolve();
+        },
+      },
+    });
+    await loop.stop();
+    assert.deepEqual(seen, [true]);
+    assert.equal(existsSync(join(scene.root, "archive/journal/a")), true);
+  }));
+
+await test("CLV-310 a stop of the retention loop cancels a running work tree pass", () =>
+  withSweep(async (scene) => {
+    const signals: AbortSignal[] = [];
+    const loop = await recordRetention({
+      ...scene.settings(),
+      intervalMilliseconds: 20,
+      trees: {
+        pass: (signal: AbortSignal) => {
+          signals.push(signal);
+          const waited = signals.length === 1 ? 0 : testMilliseconds(2000);
+          return new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => {
+              resolve();
+            });
+            setTimeout(resolve, waited);
+          });
+        },
+      },
+    });
+    await reached(() => signals.length === 2);
+    await loop.stop();
+    assert.equal(signals[1]?.aborted, true);
+  }));

@@ -36,4 +36,8 @@ process.exit(0);
       result.stderr,
       /retention: archived 2, kept 0, skipped 1 \(active runs\), unreadable 1\n/,
     );
+    assert.match(
+      result.stderr,
+      /retention: removed 0 work trees, kept 0 with an open pull request\n/,
+    );
   }));

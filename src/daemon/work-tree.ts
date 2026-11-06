@@ -1,13 +1,15 @@
 import { readRecord, writeRecord, operationKey } from "./operation-journal.ts";
+import { claimReleased } from "./tree-claims.ts";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const executed = promisify(execFile);
 const lineLimit = 30;
 const lineLength = 120;
+const claimLimitMilliseconds = 120_000;
 
 export interface WorkTree {
   readonly path: string;
@@ -21,6 +23,7 @@ export interface TreeRequest {
   readonly target: string;
   readonly signal: AbortSignal;
   readonly base?: string;
+  readonly claimMilliseconds?: number;
 }
 
 export interface Changes {
@@ -93,6 +96,12 @@ export function treePlace(request: Pick<TreeRequest, "worktrees" | "target">): {
   return { path: join(request.worktrees, name), branch: `cloving/${name}` };
 }
 
+export function treeClaim(
+  place: Pick<TreeRequest, "worktrees" | "target">,
+): string {
+  return join(dirname(place.worktrees), "tree-claims", treeName(place.target));
+}
+
 export async function workTree(request: TreeRequest): Promise<WorkTree> {
   if (request.target.startsWith("branch:"))
     return branchTree(request).catch((error: unknown) => {
@@ -104,6 +113,10 @@ export async function workTree(request: TreeRequest): Promise<WorkTree> {
       );
     });
   const { path, branch } = treePlace(request);
+  await claimReleased(treeClaim(request), {
+    signal: request.signal,
+    milliseconds: request.claimMilliseconds ?? claimLimitMilliseconds,
+  });
   if (!existsSync(join(path, ".git"))) await added(request, { path, branch });
   const head = await git({
     directory: path,

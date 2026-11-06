@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`. For each environment value that hides a file value, the start guide prints a warning, for example `Warning: CLOVING_MERGE_MODE in the environment hides merge.mode in the private file.` At each start, the service records the source of each setting: `environment`, `private`, `project` or `default`. `cloving status --json` shows them in `settingSources`, and the `service` check of `cloving doctor` names the settings that come from the environment.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action` and `retention.archiveFolder`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue").
+The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action`, `retention.archiveFolder` and `turns.environment`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The turn environment is a list of variable names, or `"inherit"`; the default is an empty list (see "What a turn can reach"). The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue").
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -137,6 +137,8 @@ Run `cloving doctor` from the repository before starting the service. It lists e
 The required `no-workflow` check fails when neither the project nor the user folder has a workflow declaration. Its fix is `cloving init`. During `cloving init-prompt` setup, defer this check to the template step, copy or create the workflow, then run doctor again. `no-workflow` must report `ok` before setup is ready.
 
 The optional `retention` check shows the size and the folder count of `journal/` and `github/` in the state folder, the size and the bundle count of `workflow-bundles/`, the age of the oldest kept record folder, and the values of `retention.days`, `retention.action` and `retention.archiveFolder`. The size includes all files in the three folders. The folder count and the age include only the record folders that the retention rule can archive or delete. The bundle count includes only the folders with a bundle digest as name. The age of a folder starts at the change time of its newest file. The check gives `warn` when `retention.days` is `null` and the three folders together are larger than 1 GB (1,000,000,000 bytes). An invalid retention setting fails the check and names the variable.
+
+The optional `turn-environment` check names the variables of the environment of `cloving doctor` that a turn does not get. It shows the names only, never the values. It does not name the `CLOVING_*` settings, `GH_CONFIG_DIR` or the GitHub token variables, because a turn never got them from the service. When a project needs a variable from the list, add its name to `turns.environment`. The check gives `warn` when `turns.environment` is `"inherit"`. An invalid value fails the check and names the variable.
 
 Doctor probes harness versions and effective executable paths without running a turn. Shell scripts and simple `node script` wrappers receive `--version` from the repository folder; unsupported launcher arguments fail the probe. GitHub login and reads use the origin's host, including GitHub Enterprise. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
 
@@ -550,7 +552,31 @@ cloving deny DECISION_REF --text "FEEDBACK" --expected-revision N --generation N
 
 The rule: read the diff before you approve.
 
-Claude turns have web research tools by default, an empty GitHub CLI configuration folder, and no GitHub token environment variables. This is not a sandbox: a turn can still find other credentials. The PRD refusal rules catch the listed private text and common sensitive forms; unlisted private names can pass. A `post-uncertain` result requires checking GitHub before trying another run.
+Claude turns have web research tools by default, an empty GitHub CLI configuration folder, and no GitHub token environment variables. The PRD refusal rules catch the listed private text and common sensitive forms; unlisted private names can pass. A `post-uncertain` result requires checking GitHub before trying another run.
+
+### What a turn can reach
+
+A turn runs on the host as the operator user. It is not a sandbox and not a container. A later ticket adds sandboxed runners.
+
+A turn gets only these variables of the service environment:
+
+- The base list: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR`, `TZ`, `LANG`, `LC_ALL`, `LC_CTYPE`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and `XDG_STATE_HOME`.
+- The login variables of its own harness. Claude gets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_CONFIG_DIR`. Codex gets `CODEX_HOME`, `OPENAI_API_KEY` and `OPENAI_BASE_URL`. Gemini gets `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_GENAI_USE_VERTEXAI`. Grok gets `GROK_API_KEY` and `XAI_API_KEY`. OpenCode gets `OPENCODE_CONFIG` and `OPENCODE_CONFIG_DIR`. Cursor Agent gets `CURSOR_API_KEY`. A shell or file harness gets no login variables.
+- The `env` values of its profile.
+- The variables that the private setting `turns.environment` names.
+
+Cloving also sets `CLOVING_TURN_ID`, `CLOVING_ATTACHMENTS_DIRECTORY` and an empty `GH_CONFIG_DIR`. A turn never gets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. A turn does not get the other variables, for example `SSH_AUTH_SOCK`, cloud keys or other secrets of the shell that started the service. A shell harness starts a login shell, and the startup files of that shell can set more variables. A harness that signs commits with an SSH agent needs `SSH_AUTH_SOCK` in `turns.environment`. Run `cloving doctor` to see the names that a turn does not get.
+
+For one release, `turns.environment` can have the value `"inherit"`. Then a turn gets the whole service environment except the GitHub tokens, as in earlier versions. A later release removes this value. Commands of `CLOVING_COMMANDS` keep the whole service environment.
+
+A turn can still reach these things:
+
+- All files that the operator user can read or write, which includes the main checkout, the home folder and the credential files in it. The instruction to not change the main checkout is only text in the turn prompt.
+- The network, which includes the local network.
+- The keychain and the other services of the operator session.
+- The credentials of a login that the harness itself stores, for example in its configuration folder.
+
+When a turn ends, Cloving stops each process whose current folder is in the work tree of the run and that started after the start of the turn. Thus a shell that the operator opened in the work tree before the turn stays. Cloving signals a process group only when all processes of the group are new processes in the work tree. Cloving sends SIGTERM, and after 15 seconds SIGKILL to each process that did not stop. It writes one log line for each process, with its process ID and command name. A process that changes its current folder to a place outside the work tree stays.
 
 `cloving status --active` lists only the runs that are not `completed`, `failed` or `cancelled`. It uses the same order and format as `cloving status`. The service selects the active runs before it builds a run view. Thus it makes no view query for a finished run. The number of queries does not change with the number of finished runs, but the service still reads the stored state of each run. `--active` works with `--json`, `--limit` and `--after`. With `--json`, one request returns one page of active runs and its `next` cursor.
 
@@ -1432,6 +1458,18 @@ The daemon removes a bundle as one unit. It first renames the bundle folder to `
 Each pass removes no more than five bundles. The next pass continues after the last bundle of the pass before it. Thus a bundle that the daemon cannot remove does not stop the other bundles.
 
 The archive folder can already have a bundle with the same digest. Then the daemon compares all files of the two copies. When the copies are equal, it deletes the `.removing-<digest>` folder. Otherwise it keeps that folder and writes the log line `retention: workflow bundle <digest> not removed (archive-copy-differs)`.
+
+The retention rule also removes old work trees. At each pass, before it moves records, the daemon finds the runs of each work tree from the `started.json` files in `journal/` and `github/`. It adds these runs to the run list of the work tree in `journal/trees/`. The retention rule does not move this folder, so a run stays on the list after its records move to the archive. The daemon removes the work tree, its `cloving/<name>` branch and its attachments folder only when all of these conditions are true:
+
+- All runs of the work tree ended `failed` or `cancelled`.
+- Each of these runs ended more than `retention.days` days ago.
+- GitHub has no open pull request for the branch.
+
+A run counts for a work tree only when the run did not end before the daemon made the work tree. The daemon reads that time from the modification time (`mtime`) of the `.git` file in the work tree. Thus a new work tree of a target does not count the runs of an earlier work tree of the same target, also when the earlier work tree went away between two passes.
+
+The daemon keeps the work tree when a run is not known, when a run is active or completed, or when the pull request check fails. It also keeps the work tree when it cannot read the `.git` file or the run list of the work tree. The daemon does not change a run list that it cannot read, and the log line names the work tree with `tree-runs-unreadable`. When the daemon cannot read the `journal/trees/` folder, the pass removes no work tree. It never removes the work tree of a `branch:` target. When a work tree is gone, the daemon deletes its run list. With `retention.days` set to `null`, the daemon keeps all work trees. A run whose records moved to the archive before the first pass that wrote the run list is not on the list.
+
+A pass checks at most three work trees with GitHub, and the next pass continues with the others. Each GitHub read stops after 10 seconds, and a stop of the daemon cancels it. Each pass writes one log line, `retention: removed <count> work trees, kept <count> with an open pull request`, with the failures at the end.
 
 ### Project and user workflows
 

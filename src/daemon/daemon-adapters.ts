@@ -127,6 +127,7 @@ function workerHarness(settings: DaemonSettings) {
     harness: settings.harness ?? {},
     shell: settings.shell ?? process.env["SHELL"] ?? "/bin/sh",
     command: settings.command,
+    turnVariables: settings.turnVariables ?? [],
   };
 }
 
@@ -158,6 +159,7 @@ export function adapters(
     report,
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "journal"),
+    log: process.stderr.write.bind(process.stderr),
   });
   const github = githubOf(settings, given);
   const runs = startDelivery({

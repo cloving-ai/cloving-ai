@@ -20,6 +20,11 @@ export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
+import {
+  githubTokens,
+  passedVariables,
+  type TurnVariables,
+} from "../turn-environment.ts";
 
 export interface TurnEnd {
   readonly retryKind?: RetryKind | null;
@@ -39,6 +44,7 @@ export interface TurnStart {
   readonly worker?: Worker;
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
+  readonly variables?: TurnVariables;
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
@@ -55,6 +61,10 @@ export interface RunningTurn {
   readonly processId: number | null;
   readonly ended: Promise<TurnEnd>;
   readonly stop: (graceMilliseconds: number) => void;
+}
+
+export interface StartedTurn extends RunningTurn {
+  readonly exited: Promise<void>;
 }
 
 interface Stream {
@@ -85,23 +95,16 @@ export function turnEnvironment(
   configuration: string,
   start: TurnStart,
 ): NodeJS.ProcessEnv {
-  const excluded = new Set([
-    "GH_TOKEN",
-    "GITHUB_TOKEN",
-    "GH_ENTERPRISE_TOKEN",
-    "GITHUB_ENTERPRISE_TOKEN",
-  ]);
-  const supplied = Object.fromEntries(
-    Object.entries(start.environment ?? {}).map(([name, value]) => [
+  const supplied = Object.entries(start.environment ?? {})
+    .filter(([name]) => !githubTokens.includes(name))
+    .map(([name, value]): [string, string] => [
       name,
       value.replaceAll("{turn}", start.turnId ?? ""),
-    ]),
-  );
-  const environment = Object.fromEntries(
-    Object.entries({ ...process.env, ...supplied }).filter(
-      ([name]) => !excluded.has(name),
-    ),
-  );
+    ]);
+  const environment: NodeJS.ProcessEnv = {
+    ...passedVariables(process.env, start),
+    ...Object.fromEntries(supplied),
+  };
   if (start.turnId !== undefined) environment["CLOVING_TURN_ID"] = start.turnId;
   environment["GH_CONFIG_DIR"] = configuration;
   if (start.worker === "opencode")
@@ -316,7 +319,7 @@ function signalTurn(
   }
 }
 
-export function startTurn(start: TurnStart): RunningTurn {
+export function startTurn(start: TurnStart): StartedTurn {
   const { child, configuration, standardInput } = spawnTurn(start);
   const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
@@ -331,9 +334,18 @@ export function startTurn(start: TurnStart): RunningTurn {
     child.once("error", () => undefined);
     child.once("close", settle);
   });
+  const exited = new Promise<void>((settle) => {
+    child.once("exit", () => {
+      settle();
+    });
+    child.once("close", () => {
+      settle();
+    });
+  });
   const timers: NodeJS.Timeout[] = [];
   return {
     processId: child.pid ?? null,
+    exited,
     ended: closed
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);

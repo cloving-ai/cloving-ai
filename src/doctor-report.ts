@@ -19,6 +19,7 @@ export const doctorCodes = [
   "merge-mode",
   "queue-interval",
   "private-texts",
+  "turn-environment",
   "retention",
   "theme",
 ] as const;
@@ -65,6 +66,7 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "queue-interval":
     "Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 cloving doctor",
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
+  "turn-environment": `Give a turn a variable that the project needs: cloving config set turns.environment '["NAME"]' --private`,
   retention:
     "Set a retention period: cloving config set retention.days 30 --private",
   theme:
