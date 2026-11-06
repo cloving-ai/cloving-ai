@@ -39,6 +39,7 @@ const initialRunDetails = {
   },
   workerTurns: [],
   budget: null,
+  chain: { position: 1, limit: 5 },
   effects: [],
   feedback: [],
   decisions: [],
