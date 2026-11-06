@@ -575,7 +575,7 @@ A turn can still reach these things:
 - The keychain and the other services of the operator session.
 - The credentials of a login that the harness itself stores, for example in its configuration folder.
 
-When a turn ends, Cloving stops each process whose current folder is in the work tree of the run. It sends SIGTERM, and after 15 seconds SIGKILL to each process that did not stop. It writes one log line for each process, with its process ID and command name. A process that changes its current folder to a place outside the work tree stays.
+When a turn ends, Cloving stops each process whose current folder is in the work tree of the run and that started after the start of the turn. Thus a shell that the operator opened in the work tree before the turn stays. Cloving sends SIGTERM, and after 15 seconds SIGKILL to each process that did not stop. It writes one log line for each process, with its process ID and command name. A process that changes its current folder to a place outside the work tree stays.
 
 `cloving status --active` lists only the runs that are not `completed`, `failed` or `cancelled`. It uses the same order and format as `cloving status`. The service selects the active runs before it builds a run view. Thus it makes no view query for a finished run. The number of queries does not change with the number of finished runs, but the service still reads the stored state of each run. `--active` works with `--json`, `--limit` and `--after`. With `--json`, one request returns one page of active runs and its `next` cursor.
 

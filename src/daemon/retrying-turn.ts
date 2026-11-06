@@ -37,9 +37,13 @@ function written(
   return writeRecord(folder, { ...entry, permissions: "private" });
 }
 
-async function leftProcesses(attempts: Attempts): Promise<void> {
+async function leftProcesses(
+  attempts: Attempts,
+  startedAt: number,
+): Promise<void> {
   await stopLeftProcesses({
     directory: attempts.start.directory,
+    seconds: Math.ceil((performance.now() - startedAt) / 1000) + 2,
     signal: new AbortController().signal,
     stopMilliseconds: attempts.grace.milliseconds,
     log: attempts.options.log,
@@ -47,6 +51,7 @@ async function leftProcesses(attempts: Attempts): Promise<void> {
 }
 
 function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
+  const startedAt = performance.now();
   const turn = startTurn(start);
   const stop = () => {
     turn.stop(attempts.grace.milliseconds);
@@ -55,7 +60,7 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
   return {
     ...turn,
     ended: turn.ended
-      .finally(() => leftProcesses(attempts))
+      .finally(() => leftProcesses(attempts, startedAt))
       .finally(() => {
         attempts.stopping.signal.removeEventListener("abort", stop);
       }),

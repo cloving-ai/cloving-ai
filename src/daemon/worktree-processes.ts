@@ -6,45 +6,55 @@ import { promisify } from "node:util";
 import { writeRecord } from "./operation-journal.ts";
 
 const execute = promisify(execFile);
+const limits = {
+  encoding: "utf8",
+  timeout: 5000,
+  maxBuffer: 8 * 1024 * 1024,
+} as const;
 
 interface TreeProcess {
   readonly processId: number;
   readonly group: number;
   readonly user: number;
+  readonly seconds: number;
   readonly command: string;
   readonly directory?: string;
 }
 
 async function output(command: string, arguments_: readonly string[]) {
-  return (
-    await execute(command, arguments_, {
-      encoding: "utf8",
-      timeout: 5000,
-      maxBuffer: 8 * 1024 * 1024,
-    })
-  ).stdout;
+  return (await execute(command, arguments_, limits)).stdout;
 }
 
-async function directories(): Promise<ReadonlyMap<number, string>> {
-  if (process.platform === "linux") {
-    const entries = await readdir("/proc");
-    const links = await Promise.all(
-      entries
-        .filter((entry) => /^\d+$/.test(entry))
-        .map(async (entry) => {
-          const directory = await readlink(`/proc/${entry}/cwd`).catch(
-            () => undefined,
-          );
-          return [Number(entry), directory] as const;
-        }),
-    );
-    return new Map(
-      links.filter(
-        (entry): entry is readonly [number, string] => entry[1] !== undefined,
-      ),
-    );
-  }
-  const text = await output("lsof", ["-d", "cwd", "-Fpn", "-n", "-P"]);
+function settledOutput(
+  command: string,
+  arguments_: readonly string[],
+): Promise<string> {
+  return new Promise((settle) => {
+    execFile(command, arguments_, limits, (_error, stdout) => {
+      settle(stdout);
+    });
+  });
+}
+
+async function procDirectories(
+  entries: readonly string[],
+): Promise<ReadonlyMap<number, string>> {
+  const links = await Promise.all(
+    entries.map(async (entry) => {
+      const directory = await readlink(`/proc/${entry}/cwd`).catch(
+        () => undefined,
+      );
+      return [Number(entry), directory] as const;
+    }),
+  );
+  return new Map(
+    links.filter(
+      (entry): entry is readonly [number, string] => entry[1] !== undefined,
+    ),
+  );
+}
+
+function lsofDirectories(text: string): ReadonlyMap<number, string> {
   const found = new Map<number, string>();
   let processId = 0;
   for (const line of text.split("\n")) {
@@ -54,31 +64,92 @@ async function directories(): Promise<ReadonlyMap<number, string>> {
   return found;
 }
 
+async function directories(
+  processIds?: readonly number[],
+): Promise<ReadonlyMap<number, string>> {
+  const fields = ["-d", "cwd", "-Fpn", "-n", "-P"];
+  if (process.platform === "linux")
+    return procDirectories(
+      processIds?.map(String) ??
+        (await readdir("/proc")).filter((entry) => /^\d+$/.test(entry)),
+    );
+  return lsofDirectories(
+    processIds === undefined
+      ? await output("lsof", fields)
+      : await settledOutput("lsof", [
+          "-a",
+          "-p",
+          processIds.join(","),
+          ...fields,
+        ]),
+  );
+}
+
+export function elapsedSeconds(text: string): number {
+  const days = text.includes("-") ? Number.parseInt(text, 10) : 0;
+  const clock = text.slice(text.indexOf("-") + 1);
+  return (
+    days * 86_400 +
+    clock.split(":").reduce((total, part) => total * 60 + Number(part), 0)
+  );
+}
+
+async function table(): Promise<readonly TreeProcess[]> {
+  const text = await output("ps", ["-axo", "pid=,pgid=,uid=,etime=,comm="]);
+  return text
+    .trim()
+    .split("\n")
+    .map((line) => {
+      const [
+        processId = "0",
+        group = "0",
+        user = "-1",
+        elapsed = "",
+        ...command
+      ] = line.trim().split(/\s+/);
+      return {
+        processId: Number(processId),
+        group: Number(group),
+        user: Number(user),
+        seconds: elapsedSeconds(elapsed),
+        command: command.join(" "),
+      };
+    });
+}
+
+function located(
+  entries: readonly TreeProcess[],
+  working: ReadonlyMap<number, string>,
+): readonly TreeProcess[] {
+  return entries.map((entry) => {
+    const directory = working.get(entry.processId);
+    return { ...entry, ...(directory === undefined ? {} : { directory }) };
+  });
+}
+
 async function processes(): Promise<readonly TreeProcess[] | undefined> {
   try {
-    const text = await output("ps", ["-axo", "pid=,pgid=,uid=,comm="]);
-    const entries = text
-      .trim()
-      .split("\n")
-      .map((line) => {
-        const [processId = "0", group = "0", user = "-1", ...command] = line
-          .trim()
-          .split(/\s+/);
-        return {
-          processId: Number(processId),
-          group: Number(group),
-          user: Number(user),
-          command: command.join(" "),
-        };
-      });
-    const working = await directories();
-    return entries.map((entry) => {
-      const directory = working.get(entry.processId);
-      return { ...entry, ...(directory === undefined ? {} : { directory }) };
-    });
+    return located(await table(), await directories());
   } catch {
     return undefined;
   }
+}
+
+async function youngInTree(request: {
+  readonly directory: string;
+  readonly seconds: number;
+}): Promise<boolean> {
+  const young = (await table()).filter(
+    (entry) =>
+      entry.user === process.getuid?.() &&
+      entry.processId !== process.pid &&
+      entry.seconds <= request.seconds,
+  );
+  if (young.length === 0) return false;
+  const working = await directories(young.map((entry) => entry.processId));
+  return located(young, working).some((entry) =>
+    inTree(entry, request.directory),
+  );
 }
 
 function inTree(entry: TreeProcess, directory: string): boolean {
@@ -171,11 +242,13 @@ export async function stopTreeProcesses(
 
 export async function stopLeftProcesses(
   request: TreeRequest & {
+    readonly seconds: number;
     readonly log: ((line: string) => void) | undefined;
   },
 ): Promise<void> {
   const directory = await realpath(request.directory).catch(() => undefined);
   if (directory === undefined) return;
+  if (!(await youngInTree({ directory, seconds: request.seconds }))) return;
   const cleanup = await stopCanonicalTree({ ...request, directory });
   for (const entry of distinct(cleanup?.stopped ?? []).values())
     request.log?.(

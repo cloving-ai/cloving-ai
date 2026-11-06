@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { signal } from "./claude-profiles-fixture.ts";
@@ -10,6 +12,10 @@ import {
   withScene,
   type Scene,
 } from "./claude-worker-fixture.ts";
+import {
+  elapsedSeconds,
+  stopLeftProcesses,
+} from "../src/daemon/worktree-processes.ts";
 
 function leaving(scene: Scene): readonly string[] {
   const script = join(scene.directory, "leaving-worker.mjs");
@@ -56,3 +62,43 @@ await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTE
       if (alive(child)) process.kill(child, "SIGKILL");
     }
   }));
+
+await test("CLV-310 the age of a process comes from the elapsed time of ps", () => {
+  assert.equal(elapsedSeconds("00:05"), 5);
+  assert.equal(elapsedSeconds("01:02:03"), 3723);
+  assert.equal(elapsedSeconds("2-01:02:03"), 2 * 86_400 + 3723);
+});
+
+await test("CLV-310 a turn end stops only the processes in the work tree that are not older than the turn", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-left-"));
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      "process.on('SIGTERM', () => undefined); setInterval(() => undefined, 1000);",
+    ],
+    { cwd: directory, detached: true, stdio: "ignore" },
+  );
+  child.unref();
+  const lines: string[] = [];
+  const request = {
+    directory,
+    signal: new AbortController().signal,
+    stopMilliseconds: 100,
+    log: (line: string) => {
+      lines.push(line);
+    },
+  };
+  try {
+    await until(() => alive(child.pid ?? 0));
+    await stopLeftProcesses({ ...request, seconds: -1 });
+    assert.equal(alive(child.pid ?? 0), true);
+    assert.deepEqual(lines, []);
+    await stopLeftProcesses({ ...request, seconds: 60 });
+    assert.equal(alive(child.pid ?? 0), false);
+    assert.equal(lines.length, 1);
+  } finally {
+    if (alive(child.pid ?? 0)) process.kill(child.pid ?? 0, "SIGKILL");
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
