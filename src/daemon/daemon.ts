@@ -33,22 +33,20 @@ import { commandEffects } from "./command-journal.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
-import type { queueConnection } from "./queue-control.ts";
-import type { scheduleConnection } from "./schedule-control.ts";
-import type { QueueLimitsSource } from "./queue-limits.ts";
+import { queueConnection } from "./queue-control.ts";
+import { scheduleConnection } from "./schedule-control.ts";
+import { queueLimitsSource, type QueueLimitsSource } from "./queue-limits.ts";
+import { restartMarks } from "./restart-marks.ts";
+import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { clearedTreeClaims } from "./tree-claims.ts";
-import { treeSweep } from "./tree-sweep.ts";
-import { authorityRuns, recordRetention } from "./record-sweep.ts";
-import {
-  bundleSweep,
-  unfinishedPins,
-  type CurrentBundle,
-} from "./bundle-sweep.ts";
+import { authorityRuns } from "./record-sweep.ts";
+import { currentBundle, type CurrentBundle } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
-import type { ThreadPoolWatch } from "../cli/thread-pool.ts";
-import { controlConnections, controlPorts } from "./daemon-controls.ts";
+import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
+import { stalledLine } from "../thread-pool-check.ts";
+import { retentionLoop } from "./daemon-retention.ts";
 import {
   daemonRegistrations,
   queueWorkflowId,
@@ -148,6 +146,43 @@ export async function startDaemon(
     declarations: scheduled.declarations,
     repository,
   });
+}
+
+function controlConnections(settings: DaemonSettings): {
+  readonly schedules: ReturnType<typeof scheduleConnection>;
+  readonly queues: ReturnType<typeof queueConnection>;
+  readonly current: CurrentBundle;
+  readonly pool: ThreadPoolWatch;
+  readonly restart: RestartPort;
+  readonly queueLimitSource: QueueLimitsSource;
+} {
+  return {
+    restart: restartMarks(settings.directory),
+    queueLimitSource: queueLimitsSource(settings),
+    schedules: scheduleConnection(),
+    queues: queueConnection(),
+    pool: threadPoolWatch({
+      ...settings.threadPool,
+      stalled: (check) => {
+        process.stderr.write(stalledLine(check));
+      },
+    }),
+    current: currentBundle({
+      directory: settings.directory,
+      bundleDigest: settings.bundleDigest,
+      now: settings.retentionClock ?? Date.now,
+      log: (line) => process.stderr.write(line),
+    }),
+  };
+}
+
+function controlPorts(controls: ReturnType<typeof controlConnections>) {
+  return {
+    schedule: controls.schedules.request,
+    queue: controls.queues.port,
+    threadPool: controls.pool.latest,
+    restart: controls.restart,
+  };
 }
 
 function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
@@ -290,40 +325,6 @@ async function closeWorkers(resources: Workers): Promise<void> {
     resources.github.close(),
     resources.commands.close(),
   ]);
-}
-
-async function retentionLoop(
-  settings: DaemonSettings,
-  resources: {
-    readonly current: CurrentBundle;
-    readonly ports: Promise<HostPorts>;
-  },
-) {
-  const ports = await resources.ports;
-  const sweep = {
-    directory: settings.directory,
-    retention: settings.retention ?? defaultRetention,
-    now: settings.retentionClock ?? Date.now,
-    log: (line: string) => process.stderr.write(line),
-  };
-  return recordRetention({
-    ...sweep,
-    runs: authorityRuns(ports),
-    trees: treeSweep({
-      ...sweep,
-      runs: authorityRuns(ports),
-      repository: settings.repository,
-      gh: settings.githubCommand ?? ["gh"],
-    }),
-    bundles: bundleSweep({
-      ...sweep,
-      current: resources.current,
-      pinned: unfinishedPins({
-        state: ports.state,
-        manifest: ports.workflow.manifest,
-      }),
-    }),
-  });
 }
 
 async function runningDaemon(
