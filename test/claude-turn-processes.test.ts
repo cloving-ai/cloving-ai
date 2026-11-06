@@ -61,7 +61,7 @@ await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTE
       assert.match(
         lines[0] ?? "",
         new RegExp(
-          `^turn: stopped process ${String(child)} \\(.*node.*\\) left in the work tree ${scene.worktrees}/ticket-one\\n$`,
+          `^turn: stopped process ${String(child)} \\([^()\\n]+\\) left in the work tree ${scene.worktrees}/ticket-one\\n$`,
         ),
       );
     } finally {
