@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
-import { readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { attachmentFolder } from "./attachments.ts";
 import { calls, type Calls } from "./github-calls.ts";
 import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
 import { failureReason } from "./record-archive.ts";
 import type { StoppableSweep, SweepSettings } from "./record-sweep.ts";
-import { treePlace } from "./work-tree.ts";
+import { treeClaim, treePlace } from "./work-tree.ts";
 import {
   batchAfter,
   folderRunId,
@@ -28,6 +28,7 @@ interface Sweep {
 interface Tally {
   removed: number;
   open: number;
+  inUse: number;
   readonly failures: string[];
 }
 
@@ -228,15 +229,69 @@ async function removedTree(
   });
 }
 
+async function stillDue(
+  settings: TreeSweepSettings,
+  check: { readonly tree: PresentTree; readonly days: number },
+): Promise<boolean> {
+  const { tree } = check;
+  const current = (await targetRuns(settings.directory)).targets.get(
+    tree.target,
+  );
+  const runIds = [...(current?.runIds ?? [])];
+  if (
+    runIds.length !== tree.runIds.size ||
+    runIds.some((runId) => !tree.runIds.has(runId))
+  )
+    return false;
+  const runs = await settings.runs(runIds);
+  return treeDue(
+    runIds.map((runId) => runs[runId]),
+    { now: settings.now(), days: check.days, bornAt: tree.bornAt },
+  );
+}
+
+async function claimedRemoval(
+  settings: TreeSweepSettings,
+  request: {
+    readonly tree: PresentTree;
+    readonly days: number;
+    readonly tally: Tally;
+    readonly path: string;
+  },
+): Promise<void> {
+  const { tree, tally } = request;
+  const claim = treeClaim(request.path);
+  const claimed = await mkdir(claim).then(
+    () => true,
+    () => false,
+  );
+  if (!claimed) {
+    tally.inUse += 1;
+    return;
+  }
+  try {
+    if (!(await stillDue(settings, request))) {
+      tally.inUse += 1;
+      return;
+    }
+    await removedTree(settings, tree.target);
+    tally.removed += 1;
+  } finally {
+    await rm(claim, { recursive: true, force: true });
+  }
+}
+
 async function handledTree(
   settings: TreeSweepSettings,
   request: {
-    readonly target: string;
+    readonly tree: PresentTree;
+    readonly days: number;
     readonly tally: Tally;
     readonly signal: AbortSignal;
   },
 ): Promise<void> {
-  const { target, tally, signal } = request;
+  const { tree, tally, signal } = request;
+  const { target } = tree;
   const place = treePlace({
     worktrees: join(settings.directory, "worktrees"),
     target,
@@ -250,8 +305,7 @@ async function handledTree(
       tally.open += 1;
       return;
     }
-    await removedTree(settings, target);
-    tally.removed += 1;
+    await claimedRemoval(settings, { ...request, path: place.path });
   } catch (error) {
     tally.failures.push(`${target}: ${failureReason(error)}`);
   }
@@ -262,7 +316,8 @@ function countLine(tally: Tally): string {
     tally.failures.length === 0
       ? ""
       : `, failed ${String(tally.failures.length)} (${tally.failures.slice(0, 1).join("")})`;
-  return `retention: removed ${String(tally.removed)} work trees, kept ${String(tally.open)} with an open pull request${failed}\n`;
+  const used = tally.inUse === 0 ? "" : `, kept ${String(tally.inUse)} in use`;
+  return `retention: removed ${String(tally.removed)} work trees, kept ${String(tally.open)} with an open pull request${used}${failed}\n`;
 }
 
 async function swept(sweep: Sweep, signal: AbortSignal): Promise<void> {
@@ -288,13 +343,17 @@ async function swept(sweep: Sweep, signal: AbortSignal): Promise<void> {
   const tally: Tally = {
     removed: 0,
     open: 0,
+    inUse: 0,
     failures: found.unreadable.map(
       (target) => `${target}: tree-runs-unreadable`,
     ),
   };
+  const trees = new Map(found.present.map((tree) => [tree.target, tree]));
   for (const target of batch) {
     if (signal.aborted) break;
-    await handledTree(settings, { target, tally, signal });
+    const tree = trees.get(target);
+    if (tree !== undefined)
+      await handledTree(settings, { tree, days, tally, signal });
   }
   settings.log(countLine(tally));
 }

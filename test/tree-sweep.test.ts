@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -245,5 +246,41 @@ await test("CLV-310 the sweep keeps a work tree folder that has no git link", ()
     assert.equal(scene.kept("ticket/unlinked"), true);
     assert.deepEqual(scene.lines, [
       "retention: removed 0 work trees, kept 0 with an open pull request\n",
+    ]);
+  }));
+
+await test("CLV-310 the sweep keeps a work tree when a run of its target starts during the pull request check", () =>
+  withTrees(async (scene) => {
+    const path = await scene.tree("ticket/started", [
+      { kind: "journal", runId: "failedOld" },
+    ]);
+    const script = join(scene.state, "starting-gh.mjs");
+    const folder = join(scene.state, "journal", "record-started");
+    const started = {
+      operationId: JSON.stringify([
+        "cloving-operation",
+        1,
+        "active",
+        "turn",
+        "operation-started",
+      ]),
+      target: "ticket/started",
+      worktree: path,
+    };
+    await writeFile(
+      script,
+      `import { mkdirSync, writeFileSync } from "node:fs";
+mkdirSync(${JSON.stringify(folder)}, { recursive: true });
+writeFileSync(${JSON.stringify(join(folder, "started.json"))}, ${JSON.stringify(JSON.stringify(started))});
+process.stdout.write("[]");
+`,
+    );
+    await treeSweep(scene.settings({ gh: [process.execPath, script] })).pass(
+      running,
+    );
+    assert.equal(scene.kept("ticket/started"), true);
+    assert.equal(existsSync(`${path}.removing`), false);
+    assert.deepEqual(scene.lines, [
+      "retention: removed 0 work trees, kept 0 with an open pull request, kept 1 in use\n",
     ]);
   }));

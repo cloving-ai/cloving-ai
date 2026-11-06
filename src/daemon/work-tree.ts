@@ -3,11 +3,14 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 const executed = promisify(execFile);
 const lineLimit = 30;
 const lineLength = 120;
+const claimPollMilliseconds = 250;
+const claimLimitMilliseconds = 120_000;
 
 export interface WorkTree {
   readonly path: string;
@@ -21,6 +24,7 @@ export interface TreeRequest {
   readonly target: string;
   readonly signal: AbortSignal;
   readonly base?: string;
+  readonly claimMilliseconds?: number;
 }
 
 export interface Changes {
@@ -93,6 +97,22 @@ export function treePlace(request: Pick<TreeRequest, "worktrees" | "target">): {
   return { path: join(request.worktrees, name), branch: `cloving/${name}` };
 }
 
+export function treeClaim(path: string): string {
+  return `${path}.removing`;
+}
+
+async function claimReleased(
+  path: string,
+  request: TreeRequest,
+): Promise<void> {
+  const deadline =
+    performance.now() + (request.claimMilliseconds ?? claimLimitMilliseconds);
+  while (existsSync(treeClaim(path))) {
+    if (performance.now() >= deadline) throw new Error("work-tree-removing");
+    await delay(claimPollMilliseconds, undefined, { signal: request.signal });
+  }
+}
+
 export async function workTree(request: TreeRequest): Promise<WorkTree> {
   if (request.target.startsWith("branch:"))
     return branchTree(request).catch((error: unknown) => {
@@ -104,6 +124,7 @@ export async function workTree(request: TreeRequest): Promise<WorkTree> {
       );
     });
   const { path, branch } = treePlace(request);
+  await claimReleased(path, request);
   if (!existsSync(join(path, ".git"))) await added(request, { path, branch });
   const head = await git({
     directory: path,

@@ -1698,6 +1698,7 @@
     "test/watch-workflow-pull-request.test.ts": "test",
     "test/watch-workflow-refusals.test.ts": "test",
     "test/watch-workshop-fixture.ts": "test",
+    "test/work-tree-claim.test.ts": "test",
     "test/worker-capacity-failures.test.ts": "test",
     "test/worker-capacity-recovery.test.ts": "test",
     "test/worker-capacity-stream.test.ts": "test",
