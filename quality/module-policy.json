@@ -1607,7 +1607,6 @@
     "test/ticket-status.test.ts": "test",
     "test/token-prices.test.ts": "test",
     "test/toolchain-runtime.test.ts": "test",
-    "test/tree-claim-fixture.ts": "test",
     "test/tree-claims.test.ts": "test",
     "test/tree-sweep-fixture.ts": "test",
     "test/tree-sweep-limits.test.ts": "test",

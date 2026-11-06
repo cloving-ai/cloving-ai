@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { treeClaim, workTree } from "../src/daemon/work-tree.ts";
-import { endedProcess, ownedClaim } from "./tree-claim-fixture.ts";
 
 interface Place {
   readonly repository: string;
@@ -53,7 +52,7 @@ await test("CLV-310 a work tree setup waits while the sweep holds the claim of i
       worktrees: place.worktrees,
       target: "ticket/one",
     });
-    await ownedClaim(claim, { processId: process.pid });
+    await mkdir(claim, { recursive: true });
     const state = { done: false };
     const started = setup(place, { target: "ticket/one" }).then((tree) => {
       state.done = true;
@@ -72,28 +71,13 @@ await test("CLV-310 a work tree setup refuses a claim that the sweep does not re
       worktrees: place.worktrees,
       target: "ticket/two",
     });
-    await ownedClaim(claim, { processId: process.pid });
+    await mkdir(claim, { recursive: true });
     await assert.rejects(
       setup(place, { target: "ticket/two", claimMilliseconds: 300 }),
       {
         message: "work-tree-removing",
       },
     );
-  }));
-
-await test("CLV-310 a work tree setup clears a claim whose owner process ended", () =>
-  withRepository(async (place) => {
-    const claim = treeClaim({
-      worktrees: place.worktrees,
-      target: "ticket/three",
-    });
-    await ownedClaim(claim, { processId: endedProcess() });
-    const tree = await setup(place, {
-      target: "ticket/three",
-      claimMilliseconds: 300,
-    });
-    assert.equal(existsSync(join(tree.path, ".git")), true);
-    assert.equal(existsSync(claim), false);
   }));
 
 await test("CLV-310 a work tree with a claim-like name does not block another target", () =>

@@ -38,6 +38,7 @@ import { queueConnection } from "./queue-control.ts";
 import { restartMarks } from "./restart-marks.ts";
 import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
+import { clearedTreeClaims } from "./tree-claims.ts";
 import { treeSweep } from "./tree-sweep.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
@@ -139,6 +140,7 @@ export async function startDaemon(
   givenSettings: DaemonSettings,
 ): Promise<DaemonOpening> {
   const repository = await realpath(givenSettings.repository);
+  await clearedTreeClaims(givenSettings.directory);
   const scheduled = scheduledDeclarations(givenSettings, {
     repository,
     documentBytes: serviceLimits.documentBytes,
