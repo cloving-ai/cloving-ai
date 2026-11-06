@@ -95,22 +95,27 @@ await test("CLV-306 an update runs npm ci --ignore-scripts before the build when
     ]);
   }));
 
-await test("CLV-306 an update refuses a dirty tree, prints the changed files and changes nothing", () =>
+await test("CLV-320 an update skips a dirty tree before the fetch, prints the changed files and changes nothing", () =>
   withUpdateRepository(async ({ repository, git, old }) => {
     await writeFile(join(repository, "notes.txt"), "local work\n");
     const calls: string[][] = [];
+    const commands: string[] = [];
     const outcome = await updatedCheckout({
-      git: rejecting(git),
+      git: (argumentsList) => {
+        commands.push(argumentsList[0] ?? "");
+        return rejecting(git)(argumentsList);
+      },
       npm: recordedNpm(calls),
       stopping: running,
     });
     assert.deepEqual(outcome, {
-      kind: "failed",
+      kind: "skipped",
       step: "clean",
       output: "?? notes.txt",
     });
     assert.equal(git(["rev-parse", "HEAD"]), old);
     assert.deepEqual(calls, []);
+    assert.equal(commands.includes("fetch"), false);
   }));
 
 await test("CLV-306 a failed build puts the checkout back on the old commit, installs and builds it again", () =>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,15 +8,18 @@ import {
   restartMark,
   restartText,
   serialCalls,
-  type RestartTime,
 } from "../src/restart-request.ts";
-import { hostedPrograms } from "../tools/self-host-processes.ts";
 import {
   checkoutLock,
   restartWatch,
   type CheckoutLock,
 } from "../tools/self-host-restart.ts";
-import { programs } from "./self-host-processes-fixture.ts";
+import {
+  fakeNpm,
+  npmPath,
+  updateMark,
+  withUpdateHost,
+} from "./restart-host-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 import { eventually } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -25,91 +28,7 @@ afterEach(() => {
   mock.restoreAll();
 });
 
-async function fakeNpm(root: string): Promise<string> {
-  const bin = join(root, "bin");
-  await mkdir(bin);
-  const executable = join(bin, "npm");
-  await writeFile(
-    executable,
-    `#!${process.execPath}
-import { appendFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
-const line = process.argv.slice(2).join(" ");
-appendFileSync(${JSON.stringify(join(root, "npm-calls"))}, line + "\\n");
-const blocking = ${JSON.stringify(join(root, "build-blocks"))};
-if (line === "run build" && existsSync(blocking)) {
-  rmSync(blocking);
-  writeFileSync(${JSON.stringify(join(root, "building"))}, String(process.pid));
-  const release = ${JSON.stringify(join(root, "build-release"))};
-  setInterval(() => existsSync(release) && process.exit(0), 20);
-  setTimeout(() => process.exit(0), 20000);
-}
-const failing = ${JSON.stringify(join(root, "build-fails"))};
-if (line === "run build" && existsSync(failing)) {
-  rmSync(failing);
-  process.stdout.write("> tsc --project tsconfig.build.json\\n");
-  process.stderr.write("error TS2322: Type 'string' is not assignable\\n");
-  process.exit(2);
-}
-`,
-  );
-  await chmod(executable, 0o755);
-  return bin;
-}
-
-function npmPath(bin: string): NodeJS.ProcessEnv {
-  return { ...process.env, PATH: `${bin}:${process.env["PATH"] ?? ""}` };
-}
-
-function updateMark(at: RestartTime, commandId: string): string {
-  return restartText({
-    at,
-    requestedAt: Date.now(),
-    commandId,
-    resumeQueue: false,
-    update: true,
-  });
-}
-
-async function withUpdateHost(
-  body: (scene: {
-    readonly root: string;
-    readonly directory: string;
-    readonly git: (argumentsList: readonly string[]) => string;
-    readonly old: string;
-    readonly target: string;
-    readonly hosted: () => Promise<number>;
-  }) => Promise<void>,
-  options: { readonly updateMilliseconds?: number } = {},
-): Promise<void> {
-  await withUpdateRepository(async ({ root, repository, git, old, target }) => {
-    const paths = await programs(root);
-    const bin = await fakeNpm(root);
-    const directory = join(root, "host");
-    await mkdir(directory, { recursive: true });
-    await body({
-      root,
-      directory,
-      git,
-      old,
-      target,
-      hosted: () =>
-        hostedPrograms({
-          ...paths,
-          environment: npmPath(bin),
-          repository,
-          checkout: repository,
-          runtime: join(directory, "run"),
-          directory,
-          watchPort: "off",
-          phoneRelay: "off",
-          updateMilliseconds: options.updateMilliseconds,
-          restartMilliseconds: 50,
-        }),
-    });
-  });
-}
-
-await test("CLV-306 a restart with an update builds the new commit at the gap and then stops the programs with exit 75", () =>
+await test("CLV-320 a restart with an update stops the programs at the gap, then builds the new commit and ends with exit 75", () =>
   withUpdateHost(async ({ root, directory, git, target, hosted }) => {
     const hosting = hosted();
     await eventually(() =>
@@ -129,9 +48,10 @@ await test("CLV-306 a restart with an update builds the new commit at the gap an
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGTERM\n",
     );
+    assert.equal(await readFile(join(root, "npm-daemon"), "utf8"), "stopped\n");
   }));
 
-await test("CLV-306 a failed build keeps the programs running on the old commit and records the step for the command", () =>
+await test("CLV-320 a failed build of an update puts the checkout back on the old commit, restarts with exit 75 and keeps the step for the command", () =>
   withUpdateHost(async ({ root, directory, git, old, hosted }) => {
     await writeFile(join(root, "build-fails"), "");
     const hosting = hosted();
@@ -140,33 +60,55 @@ await test("CLV-306 a failed build keeps the programs running on the old commit 
     );
     const request = updateMark("now", "restart-broken");
     await writeFile(join(directory, "pending-restart-one"), request);
-    const failure = join(directory, "restart-failure");
-    await eventually(() => (existsSync(failure) ? true : undefined));
-    assert.deepEqual(JSON.parse(await readFile(failure, "utf8")), {
-      commandId: "restart-broken",
-      requestedAt: restartMark(request)?.requestedAt,
-      step: "build",
-      output:
-        "> tsc --project tsconfig.build.json\nerror TS2322: Type 'string' is not assignable",
-    });
+    assert.equal(await hosting, 75);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(directory, "restart-failure"), "utf8")),
+      {
+        commandId: "restart-broken",
+        requestedAt: restartMark(request)?.requestedAt,
+        code: "restart-update-failed",
+        step: "build",
+        output:
+          "> tsc --project tsconfig.build.json\nerror TS2322: Type 'string' is not assignable",
+      },
+    );
     assert.equal(existsSync(join(directory, "claimed-restart")), false);
-    assert.equal(existsSync(join(root, "daemon-signals")), false);
     assert.equal(git(["rev-parse", "HEAD"]), old);
     assert.equal(
       await readFile(join(root, "npm-calls"), "utf8"),
       "run build\nrun build\n",
     );
-    await writeFile(
-      join(directory, "pending-restart-two"),
-      restartText({
-        at: "now",
-        requestedAt: Date.now(),
-        commandId: "restart-plain",
-        resumeQueue: false,
-      }),
+    assert.equal(
+      await readFile(join(root, "npm-daemon"), "utf8"),
+      "stopped\nstopped\n",
     );
+  }));
+
+await test("CLV-320 local changes skip the update, keep the note for the command and restart on the current commit", () =>
+  withUpdateHost(async ({ root, directory, git, old, hosted }) => {
+    const hosting = hosted();
+    await eventually(() =>
+      existsSync(join(root, "daemon-ready")) ? true : undefined,
+    );
+    await writeFile(
+      join(git(["rev-parse", "--show-toplevel"]), "notes.txt"),
+      "local\n",
+    );
+    const request = updateMark("gap", "restart-dirty");
+    await writeFile(join(directory, "pending-restart-one"), request);
     assert.equal(await hosting, 75);
-    assert.equal(existsSync(failure), false);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(directory, "restart-failure"), "utf8")),
+      {
+        commandId: "restart-dirty",
+        requestedAt: restartMark(request)?.requestedAt,
+        code: "restart-update-skipped",
+        step: "clean",
+        output: "?? notes.txt",
+      },
+    );
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+    assert.equal(existsSync(join(root, "npm-calls")), false);
   }));
 
 await test("CLV-306 a stop during the build of an update ends the host at once on the old commit with no restart", () =>
@@ -220,6 +162,7 @@ async function checkoutWatch(scene: {
     checkout: scene.repository,
     environment: npmPath(bin),
     milliseconds: 50,
+    stopChildren: () => Promise.resolve([]),
     stopping: scene.stopping.signal,
     stop: scene.stop,
     exclusive: scene.exclusive,
@@ -314,8 +257,8 @@ await test("CLV-306 a restart that waits for the checkout does nothing after the
     },
   ));
 
-await test("CLV-306 a stop signal while a restart stops the programs ends the watch with no restart", () =>
-  withUpdateRepository(async ({ root, repository, git, target }) => {
+await test("CLV-320 a stop signal while a restart stops the programs ends the watch with no update and no restart", () =>
+  withUpdateRepository(async ({ root, repository, git, old }) => {
     const stopping = new AbortController();
     const { watching } = await checkoutWatch({
       root,
@@ -340,7 +283,7 @@ await test("CLV-306 a stop signal while a restart stops the programs ends the wa
       }),
     );
     assert.equal(await watching, undefined);
-    assert.equal(git(["rev-parse", "HEAD"]), target);
+    assert.equal(git(["rev-parse", "HEAD"]), old);
     assert.equal(existsSync(join(directory, "resume-queue")), false);
     assert.equal(existsSync(join(directory, "restart-settings")), false);
   }));

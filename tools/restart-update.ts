@@ -16,11 +16,18 @@ interface FailedUpdate {
   readonly output: string;
 }
 
+interface SkippedUpdate {
+  readonly kind: "skipped";
+  readonly step: "clean";
+  readonly output: string;
+}
+
 export type CheckoutUpdate =
   | { readonly kind: "updated"; readonly from: string; readonly to: string }
+  | SkippedUpdate
   | FailedUpdate;
 
-type Stepped<Value> =
+export type Stepped<Value> =
   { readonly kind: "done"; readonly value: Value } | FailedUpdate;
 
 interface UpdatePlan {
@@ -46,7 +53,7 @@ function failedAt(step: UpdateStep, output: string): FailedUpdate {
   return { kind: "failed", step, output };
 }
 
-async function stepped<Value>(
+export async function stepped<Value>(
   step: UpdateStep,
   work: () => Promise<Value>,
 ): Promise<Stepped<Value>> {
@@ -105,16 +112,17 @@ async function checkedBranch(
 
 async function updatePlan(
   git: CheckoutCommands["git"],
-): Promise<Stepped<UpdatePlan>> {
+): Promise<Stepped<UpdatePlan> | SkippedUpdate> {
+  const changes = await stepped("clean", () => changedFiles(git));
+  if (changes.kind === "failed") return changes;
+  if (changes.value !== "")
+    return { kind: "skipped", step: "clean", output: changes.value };
   const remote = await checkedBranch(git);
   if (remote.kind === "failed") return remote;
   const commits = await stepped("fast-forward", () =>
     fastForward(git, remote.value),
   );
   if (commits.kind === "failed") return commits;
-  const changes = await stepped("clean", () => changedFiles(git));
-  if (changes.kind === "failed") return changes;
-  if (changes.value !== "") return failedAt("clean", changes.value);
   const [head, target] = commits.value;
   const install = await git([
     "diff",
@@ -177,7 +185,7 @@ export async function updatedCheckout(
   commands: CheckoutCommands,
 ): Promise<CheckoutUpdate> {
   const plan = await updatePlan(commands.git);
-  if (plan.kind === "failed") return plan;
+  if (plan.kind !== "done") return plan;
   const { head, target } = plan.value;
   const merged = await stepped("merge", () =>
     commands.git(["merge", "--ff-only", "--no-overwrite-ignore", target]),

@@ -18,9 +18,11 @@ import {
   restartFiles,
   serialCalls,
   type RestartMark,
+  type RestartProblem,
   type RestartRequest,
 } from "../src/restart-request.ts";
-import { atGap, workInProgress } from "../src/work-gap.ts";
+import { atGap, workInProgress, type Work } from "../src/work-gap.ts";
+import { checkedBuild } from "./restart-build.ts";
 import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
@@ -46,6 +48,7 @@ export interface RestartWatch {
   readonly milliseconds: number;
   readonly stopping: AbortSignal;
   readonly stop: () => Promise<void>;
+  readonly stopChildren: () => Promise<readonly string[]>;
   readonly exclusive: CheckoutLock;
 }
 
@@ -97,8 +100,11 @@ export async function claimedRestart(
   return moved ? checked.mark : undefined;
 }
 
-async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
-  if (mark.at === "now") return true;
+async function gapWork(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<Work | undefined> {
+  if (mark.at === "now") return undefined;
   const work = await workInProgress(
     hostWorkReads({
       directory: watch.directory,
@@ -106,36 +112,75 @@ async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
       signal: watch.stopping,
     }),
   );
-  return atGap(work);
+  return atGap(work) ? undefined : work;
 }
 
-async function updated(
+function workLines(work: Work | null): string {
+  if (work === null) return "The service did not list its active runs.";
+  return [
+    ...(work.runIds.length > 0
+      ? [`Active runs: ${work.runIds.join(", ")}`]
+      : []),
+    ...(work.openTurn ? ["A worker turn is open."] : []),
+    ...(work.pendingSubmission ? ["A queue submission is pending."] : []),
+  ].join("\n");
+}
+
+async function expired(
   watch: RestartWatch,
-  mark: RestartMark,
-): Promise<boolean> {
-  if (mark.update !== true) return true;
-  const outcome = await updatedCheckout(checkoutCommands(watch));
-  if (outcome.kind === "updated") return true;
+  waiting: { readonly request: RestartRequest; readonly work: Work | null },
+): Promise<void> {
+  const { mark, name } = waiting.request;
+  if (mark.deadline === undefined || Date.now() < mark.deadline) return;
+  const output = workLines(waiting.work);
+  await failureNoted(watch, {
+    mark,
+    failure: { code: "restart-deadline", step: "wait", output },
+  });
+  await rm(join(watch.directory, name), { force: true });
+  process.stderr.write(`Restart cancelled: restart-deadline\n${output}\n`);
+}
+
+async function failureNoted(
+  watch: RestartWatch,
+  noted: { readonly mark: RestartMark; readonly failure: RestartProblem },
+): Promise<void> {
   const temporary = join(watch.directory, `restart-${randomUUID()}.tmp`);
-  const { step, output } = outcome;
-  const { commandId, requestedAt } = mark;
-  process.stderr.write(`Restart update failed at step ${step}.\n${output}\n`);
+  const { commandId, requestedAt } = noted.mark;
   await writeFile(
     temporary,
-    restartFailureText({ commandId, requestedAt, step, output }),
+    restartFailureText({ commandId, requestedAt, ...noted.failure }),
     { mode: 0o600 },
   );
   await rename(temporary, join(watch.directory, restartFiles.failure));
-  await rm(join(watch.directory, restartFiles.claimed), { force: true });
-  return false;
+}
+
+const updateHeadings = {
+  skipped: "Restart update skipped: the checkout has local changes.",
+  failed: "Restart update failed at step",
+} as const;
+
+async function updateNoted(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<void> {
+  if (mark.update !== true) return;
+  const outcome = await updatedCheckout(checkoutCommands(watch));
+  if (outcome.kind === "updated") return;
+  const { step, output } = outcome;
+  const heading =
+    outcome.kind === "skipped"
+      ? updateHeadings.skipped
+      : `${updateHeadings.failed} ${step}.`;
+  process.stderr.write(`${heading}\n${output}\n`);
+  await failureNoted(watch, {
+    mark,
+    failure: { code: `restart-update-${outcome.kind}`, step, output },
+  });
 }
 
 export async function clearedRestart(directory: string): Promise<void> {
-  const names = [
-    ...(await requestNames(directory)),
-    restartFiles.claimed,
-    restartFiles.failure,
-  ];
+  const names = [...(await requestNames(directory)), restartFiles.claimed];
   await Promise.all(
     names.map((name) => rm(join(directory, name), { force: true })),
   );
@@ -145,13 +190,55 @@ function stopSignalled(watch: RestartWatch): boolean {
   return watch.stopping.aborted;
 }
 
+async function refusal(
+  watch: RestartWatch,
+  noted: { readonly mark: RestartMark; readonly failure: RestartProblem },
+): Promise<true> {
+  const { code, output } = noted.failure;
+  process.stderr.write(`Restart refused: ${code}\n${output}\n`);
+  await failureNoted(watch, noted);
+  await rm(join(watch.directory, restartFiles.claimed), { force: true });
+  return true;
+}
+
+async function refused(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<boolean> {
+  if ((await productCommit(watch.checkout)) === null) return false;
+  const output = await checkedBuild(watch.checkout, checkoutCommands(watch));
+  if (output === undefined || stopSignalled(watch)) return stopSignalled(watch);
+  return refusal(watch, {
+    mark,
+    failure: { code: "restart-build-failed", step: "build", output },
+  });
+}
+
+async function childrenAlive(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<boolean> {
+  const alive = await watch.stopChildren();
+  if (alive.length === 0) return stopSignalled(watch);
+  return refusal(watch, {
+    mark,
+    failure: {
+      code: "restart-children-alive",
+      step: "stop",
+      output: alive.join("\n"),
+    },
+  });
+}
+
 async function restarted(
   watch: RestartWatch,
   claimed: RestartMark,
 ): Promise<number | undefined> {
-  if (stopSignalled(watch)) return undefined;
-  if (!(await updated(watch, claimed))) return undefined;
+  if (stopSignalled(watch) || (await refused(watch, claimed))) return undefined;
+  if (await childrenAlive(watch, claimed)) return undefined;
   await watch.stop();
+  if (stopSignalled(watch)) return undefined;
+  await updateNoted(watch, claimed);
   if (stopSignalled(watch)) return undefined;
   if (claimed.resumeQueue)
     await writeFile(join(watch.directory, "resume-queue"), "", {
@@ -177,7 +264,11 @@ export async function restartWatch(
       () => undefined,
     );
     if (request === undefined) continue;
-    if (!(await due(watch, request.mark).catch(() => false))) continue;
+    const work = await gapWork(watch, request.mark).catch(() => null);
+    if (work !== undefined) {
+      await expired(watch, { request, work }).catch(() => undefined);
+      continue;
+    }
     const claimed = await claimedRestart(watch.directory, request).catch(
       () => undefined,
     );
