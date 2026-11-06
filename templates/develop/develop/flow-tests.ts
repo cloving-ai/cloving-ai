@@ -222,7 +222,7 @@ flowTests.push({
         commit,
         score: 4,
         summary: "Add recovery.",
-        findings: [],
+        findings: [{ path: "src/recovery.ts", line: 1, body: "Retry." }],
       }),
     );
     using bridge = fakeStepBridge({

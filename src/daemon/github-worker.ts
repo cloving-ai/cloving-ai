@@ -158,7 +158,7 @@ async function outcome(
 
 function failureReason(reason: string, detail: unknown): string {
   if (!methodReasons.has(reason)) return "github-call-failed";
-  const server = /\bHTTP 5\d\d\b/.test(String(detail));
+  const server = typeof detail === "string" && /\bHTTP 5\d\d\b/.test(detail);
   return reason === "github-call-failed" && server
     ? "github-network-failed"
     : reason;

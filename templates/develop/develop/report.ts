@@ -145,6 +145,7 @@ export interface RoundResult {
   readonly merged: boolean;
   readonly reason: string | null;
   readonly output: string;
+  readonly findings?: number;
 }
 
 export interface DevelopFailure {

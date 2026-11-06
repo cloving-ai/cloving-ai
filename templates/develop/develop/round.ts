@@ -35,7 +35,12 @@ export async function deliverPull(request: {
     commit: pull.commit,
   });
   if (!review.accepted)
-    return { merged: false, reason: "review-changes", output: review.feedback };
+    return {
+      merged: false,
+      reason: "review-changes",
+      output: review.feedback,
+      findings: review.findings,
+    };
   try {
     return await mergeWhenGreen({
       pull: pull,

@@ -88,21 +88,17 @@ export async function retryMerge(request: {
   readonly error: unknown;
 }): Promise<MergeResult | CycleOutcome> {
   const { pull, round } = request;
-  let failure = shortError(request.error);
+  const failure = shortError(request.error);
   if (failure === null) throw request.error;
-  let result: MergeResult | null = null;
+  let attempt: MergeResult | string = failure;
   for (let retry = 1; retry <= 3; retry += 1)
-    if (result === null) {
-      await retryPause(retry);
-      const next = await mergeAttempt({ pull, round, retry });
-      if (typeof next === "string") failure = next;
-      else result = next;
-    }
-  if (result !== null) return result;
+    if (typeof attempt === "string")
+      attempt = await mergeAttempt({ pull, round, retry });
+  if (typeof attempt !== "string") return attempt;
   return {
     kind: "blocked",
     cycleId: pull.target,
-    reason: `${failure}: ${pull.url}`,
+    reason: `${attempt}: ${pull.url}`,
     evidenceId: "merge",
   };
 }
@@ -112,6 +108,7 @@ export async function mergeAttempt(request: {
   readonly round: number;
   readonly retry: number;
 }): Promise<MergeResult | string> {
+  await retryPause(request.retry);
   try {
     return await mergeWhenGreen({
       pull: request.pull,
@@ -151,17 +148,22 @@ export async function recover(
   });
   if (recovery === "stop") return next;
   const feedback = recoveryFeedback(request);
+  const unanswered = result.findings === 0;
   return (
-    recoveryStep({ next, feedback }) ?? (await askPerson(request, feedback))
+    recoveryStep({ next, feedback, unanswered }) ??
+    (await askPerson(request, feedback))
   );
 }
 
 function recoveryStep(state: {
   readonly next: CycleOutcome | DevelopFeedback;
   readonly feedback: RecoveryFeedback;
+  readonly unanswered: boolean;
 }): CycleOutcome | DevelopFeedback | null {
   const { next, feedback } = state;
-  const asked = feedback.conflicts >= 3 && feedback.reason === "merge-conflict";
+  const asked =
+    state.unanswered ||
+    (feedback.conflicts >= 3 && feedback.reason === "merge-conflict");
   if (!asked && !("kind" in next)) return feedback;
   const kept = waitReasons.concat("not-approved").includes(feedback.reason);
   if ("kind" in next && kept) return next;

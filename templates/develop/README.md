@@ -165,6 +165,8 @@ README's `cloving red-green` documentation for the tool's complete contract.
   again after a `sleep` of 60, 300 and 900 seconds. The worker commit stays,
   and no new turn runs. Each retry adds the key `retry-1`, `retry-2` or
   `retry-3` to the scope, and a merge retry passes `retry` to `mergeWhenGreen`.
+  When an earlier merge attempt pushed a merge of the default branch, the
+  retry uses that pushed head and does not make a new merge.
 - After the last retry, the run ends `blocked` with the last reason. A merge
   reason also gives the pull request link, for example
   `git-network-failed: https://github.com/acme/demo/pull/7`. A run never
@@ -174,7 +176,8 @@ README's `cloving red-green` documentation for the tool's complete contract.
   lines of git. The third `merge-conflict` opens the decision below.
 - At the round limit, or after a review that does not accept and gives no
   findings, `develop/decision.ts` opens a question with the latest result and
-  the pull request link. The answer `1` ("Two more rounds") gives two more
+  the pull request link. A Greptile review with a summary and no findings has
+  `findings` set to 0, so it also opens the question. The answer `1` ("Two more rounds") gives two more
   rounds, up to round 6. The answer `2` ("Stop and keep the pull request
   open") ends the run `blocked` with the reason and the link. The answer `3`
   ("Close the pull request") calls the GitHub method `close-pr`, then ends the

@@ -304,6 +304,47 @@ decisionTests.push({
 });
 
 decisionTests.push({
+  name: "CLV-300 a review that does not accept and gives only a summary asks a person",
+  run: async () => {
+    const scenario = failingRounds([
+      checkFailed,
+      checkFailed,
+      checkFailed,
+      ...effects()["github merge"],
+    ]);
+    scenario["github wait-review"] = [
+      completed({
+        number: 7,
+        commit,
+        score: 4,
+        summary: "Risky.",
+        findings: [],
+      }),
+      ...scenario["github wait-review"].slice(1),
+    ];
+    scenario["github merge"] = scenario["github merge"].slice(1);
+    using bridge = fakeStepBridge({
+      effects: scenario,
+      decisions: [answered("2")],
+    });
+    assert.deepEqual(await develop(input), {
+      kind: "blocked",
+      cycleId: input.cycleId,
+      reason: "review-changes: pull/7",
+      evidenceId: "review",
+    });
+    const asked = questions(bridge.requests);
+    assert.deepEqual(
+      asked.map((question) => [
+        question.gateId,
+        question.prompt.includes("Risky."),
+      ]),
+      [["recovery:run-1:1", true]],
+    );
+  },
+});
+
+decisionTests.push({
   name: "CLV-300 a merge denial without an answer stops without a recovery question",
   run: async () => {
     using bridge = fakeStepBridge({});

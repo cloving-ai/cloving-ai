@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { readRecord, writeRecord } from "./operation-journal.ts";
 import {
   changeChecked,
   defaultBranch,
@@ -13,6 +12,7 @@ import {
 import { treePlace } from "./work-tree.ts";
 import { waitForCi, type CiResult } from "./github-ci.ts";
 import { githubText } from "./github-calls.ts";
+import { recordedHead, savedHead } from "./github-merge-head.ts";
 import {
   knownMerge,
   mergePull,
@@ -185,22 +185,6 @@ async function removed(operation: Operation, place: Place): Promise<void> {
   ]);
 }
 
-async function recordedHead(
-  operation: Operation,
-  commit: string,
-): Promise<string | undefined> {
-  const record = await readRecord(operation.folder, "updated-head.json");
-  if (record === undefined) return undefined;
-  const updated = field(record, "updated");
-  if (
-    field(record, "commit") !== commit ||
-    typeof updated !== "string" ||
-    !/^[0-9a-f]{40,64}$/.test(updated)
-  )
-    throw new Error("git-call-failed");
-  return updated;
-}
-
 async function readyHead(
   operation: Operation,
   pull: ReviewedPull & {
@@ -265,10 +249,7 @@ async function pushedHead(
 ): Promise<string> {
   const updated = await refreshed(operation, pull);
   if (updated !== pull.commit && pull.recorded !== updated)
-    await writeRecord(operation.folder, {
-      name: "updated-head.json",
-      value: { commit: pull.commit, updated },
-    });
+    await savedHead(operation, { commit: pull.commit, updated });
   if (updated !== pull.commit && pull.remote !== updated)
     await operation.calls.git(pull.tree.path, [
       "push",

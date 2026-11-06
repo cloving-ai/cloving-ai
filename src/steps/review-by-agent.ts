@@ -1,9 +1,10 @@
-import type {
-  CommitReviewSubject,
-  ReviewResult,
-  ReviewSubject,
-  ReviewSnapshot,
-  Reviewer,
+import {
+  changeCount,
+  type CommitReviewSubject,
+  type ReviewResult,
+  type ReviewSubject,
+  type ReviewSnapshot,
+  type Reviewer,
 } from "../review-subject.ts";
 import { record } from "../protocol.ts";
 import { protectedEffect } from "./protected-effect.ts";
@@ -92,6 +93,7 @@ function turnResult(parsed: unknown) {
     return {
       accepted: false,
       feedback: "The review turn has no verdict line.",
+      findings: 0,
     };
   if (
     !result ||
@@ -100,9 +102,11 @@ function turnResult(parsed: unknown) {
       result["reviewVerdict"] !== "change")
   )
     throw new Error("invalid-review-result");
+  const accepted = result["reviewVerdict"] === "accept";
   return {
-    accepted: result["reviewVerdict"] === "accept",
+    accepted,
     feedback: result["summary"],
+    findings: changeCount({ accepted, feedback: result["summary"] }),
   };
 }
 
@@ -112,6 +116,7 @@ function greptileFeedback(parsed: unknown, subject: ReviewSubject) {
   return {
     accepted: result.score === 5,
     feedback: [result.summary, ...result.findings].filter(Boolean).join("\n\n"),
+    findings: result.findings.length,
   };
 }
 
