@@ -2,7 +2,18 @@ import type { CycleOutcome } from "cloving/workflows";
 import { mergeWhenGreen } from "cloving/workflows/steps/merge-when-green";
 import { acceptWork } from "./accept.ts";
 import { finishRescue, pushPull } from "./pull.ts";
+import type { RescueTask } from "./input.ts";
+import type { RescueTree } from "./prepare.ts";
 import { rescueTurn, type RescueFeedback, type RescueState } from "./turn.ts";
+
+export type RescueStep = CycleOutcome | RescueFeedback;
+
+export interface RescueRequest {
+  readonly task: RescueTask;
+  readonly tree: RescueTree;
+  readonly round: number;
+  readonly last: RescueStep;
+}
 
 const waitReasons = [
   "ci-pending",
@@ -14,7 +25,7 @@ const waitReasons = [
 function repair(
   state: RescueState,
   result: { readonly reason: string | null; readonly output: string },
-): CycleOutcome | RescueFeedback {
+): RescueStep {
   const reason = result.reason ?? "merge-failed";
   const needsAnswer = reason === "review-changes" || reason === "not-approved";
   if (
@@ -30,9 +41,10 @@ function repair(
   return { reason, output: result.output };
 }
 
-export async function rescueRound(
-  state: RescueState,
-): Promise<CycleOutcome | RescueFeedback> {
+export async function rescueRound(request: RescueRequest): Promise<RescueStep> {
+  const { task, tree, round, last } = request;
+  if ("kind" in last) return last;
+  const state: RescueState = { task, tree, round, feedback: last };
   await rescueTurn(state);
   const pull = await pushPull(state);
   const review = await acceptWork({

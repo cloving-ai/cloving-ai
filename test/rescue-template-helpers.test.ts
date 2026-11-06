@@ -122,6 +122,10 @@ await test("CLV-305 invalid effect results block the rescue with their reason", 
       "invalid-rescue-result",
     ],
     [
+      { "github prepare": [{ ...completed({}), result: "{" }] },
+      "rescue-failed",
+    ],
+    [
       { "claude run-turn": [completed({ text: "done" })] },
       "invalid-rescue-report",
     ],
