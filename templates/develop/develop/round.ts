@@ -20,8 +20,9 @@ export async function developRound(
   if ("kind" in pull) return pull;
   const result = await deliverPull({ round, pull });
   if ("kind" in result) return result;
-  if (result.merged) return await finishPull({ input, round, report, pull });
-  return await recover({ state, report, pull, result });
+  return result.merged
+    ? await finishPull({ input, round, report, pull })
+    : await recover({ state, report, pull, result });
 }
 
 export async function deliverPull(request: {
