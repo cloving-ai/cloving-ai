@@ -110,7 +110,7 @@ export interface ServiceOptions extends ServiceReads, ServiceIdentity {
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queue?: NonNullable<ServiceContext["queue"]>;
   readonly queueDailySpendLimitUsd?: number;
-  readonly spendScope?: "all";
+  readonly spendScope?: "queue" | "all";
   readonly commandEffects?: CommandEffects;
   readonly stateDirectory: string;
   readonly runtimeDirectory: string;

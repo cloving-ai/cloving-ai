@@ -26,7 +26,7 @@ export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly schedule?: SchedulePort;
   readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
-  readonly spendScope?: "all";
+  readonly spendScope?: "queue" | "all";
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
@@ -62,7 +62,7 @@ export function queryMetadata(
       readonly schedule?: SchedulePort;
       readonly queue?: QueuePort;
       readonly queueDailySpendLimitUsd?: number;
-      readonly spendScope?: "all";
+      readonly spendScope?: "queue" | "all";
       readonly commandEffects?: CommandEffects;
     },
 ): Pick<

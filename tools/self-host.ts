@@ -145,7 +145,7 @@ interface Commands extends HarnessSettings {
   readonly queueMilliseconds: number | undefined;
   readonly queueLanes: number;
   readonly queueDailySpendLimitUsd: number | undefined;
-  readonly spendScope?: "all";
+  readonly spendScope: "queue" | "all";
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
   readonly reloadCommand: readonly string[];
@@ -323,7 +323,7 @@ await launchers(
     queueMilliseconds,
     queueLanes: lanes,
     queueDailySpendLimitUsd,
-    ...(scope === "all" ? { spendScope: scope } : {}),
+    spendScope: scope,
     resetQueue: flags.includes("--reset-queue"),
     retention,
     turnVariables,
