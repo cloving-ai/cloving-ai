@@ -50,7 +50,7 @@ export async function writeLocalWorkflow(
         options.input === "prompt" ? "promptInput" : "ticketInput",
       )
       .replace(
-        'import { preparePull, labelTicket } from "./develop/pull.ts";\n',
+        'import { preparePull, labelTicket, blockTicket } from "./develop/pull.ts";\n',
         "",
       )
       .replace(
@@ -58,11 +58,14 @@ export async function writeLocalWorkflow(
         'import { localRound as developRound } from "./develop/local.ts";',
       )
       .replace("  await preparePull(input.cycleId);\n", "")
-      .replace('  await labelTicket(input, { key: "start", round: 1 });\n', "")
-      .replace("  let endingRound = 1;\n", "")
-      .replace("      endingRound = round;\n", "")
       .replace(
-        '  if (outcome.kind === "blocked")\n    await labelTicket(input, { key: "blocked", round: endingRound });\n',
+        '  const started = await labelTicket(input, { key: "start", round: 1 });\n  if (started !== null) return started;\n',
+        "",
+      )
+      .replace("  let endingRound = 1;\n", "")
+      .replace("        endingRound = round;\n", "")
+      .replace(
+        '  if (failure !== null || outcome?.kind === "blocked")\n    failure = await blockTicket(input, { round: endingRound, failure });\n',
         "",
       ),
   );

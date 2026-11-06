@@ -165,3 +165,11 @@ export async function discard(operation: Operation): Promise<unknown> {
   await removeWorktree(operation, place);
   return { discarded: place.branch };
 }
+
+export async function closePull(operation: Operation): Promise<unknown> {
+  const number = operation.payload["number"];
+  if (typeof number !== "number" || !Number.isSafeInteger(number) || number < 1)
+    throw new Error("invalid-payload");
+  await operation.calls.gh(["pr", "close", String(number)]);
+  return { number, closed: true };
+}

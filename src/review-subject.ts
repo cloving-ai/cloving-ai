@@ -20,6 +20,7 @@ export type Reviewer =
 export interface ReviewResult {
   readonly accepted: boolean;
   readonly feedback: string;
+  readonly findings: number;
   readonly commit: string | null;
   readonly subjectDigest: string;
 }
@@ -131,4 +132,11 @@ export function reviewReportStream(limit: number) {
       return { reviewVerdict: verdict, feedback: reviewReport(text).feedback };
     },
   };
+}
+
+export function changeCount(review: {
+  readonly accepted: boolean;
+  readonly feedback: string;
+}): number {
+  return !review.accepted && review.feedback.trim() !== "" ? 1 : 0;
 }

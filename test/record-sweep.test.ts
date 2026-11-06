@@ -119,3 +119,16 @@ await test("CLV-270 a pass leaves the shared target records of the journal out o
       "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 0\n",
     ]);
   }));
+
+await test("CLV-300 a pass leaves the saved merge heads of the GitHub journal out of the sweep", () =>
+  withSweep(async (scene) => {
+    await scene.folder("github/a", { runId: "done" });
+    const target = join(scene.root, "github/targets/t.json");
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "{}");
+    await scene.sweep().pass();
+    assert.equal(existsSync(target), true);
+    assert.deepEqual(scene.lines, [
+      "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 0\n",
+    ]);
+  }));

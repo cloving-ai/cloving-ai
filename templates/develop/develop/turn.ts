@@ -16,7 +16,7 @@ export interface DevelopTurnInput {
 }
 
 function turnPrompt(input: DevelopTurnInput): string {
-  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 4)
+  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 6)
     throw new Error("invalid-development-round");
   const task = input.ticket ?? input.prompt;
   if (

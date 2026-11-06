@@ -13,6 +13,7 @@ import { mergeStep } from "./github-merge-queue.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
 import {
   captureDraft,
+  closePull,
   createIssue,
   discard,
   repositoryName,
@@ -378,6 +379,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],
+  ["close-pr", closePull],
   ["attach-asset", attachAsset],
   ["wait-review", waitReview],
   [

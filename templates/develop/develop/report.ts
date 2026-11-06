@@ -141,13 +141,35 @@ function commitSnapshot(value: object) {
   };
 }
 
+export interface RoundResult {
+  readonly merged: boolean;
+  readonly reason: string | null;
+  readonly output: string;
+  readonly findings?: number;
+}
+
+export interface DevelopFailure {
+  readonly error: unknown;
+}
+
+export function endOf(state: {
+  readonly outcome: CycleOutcome | null;
+  readonly failure: DevelopFailure | null;
+}): CycleOutcome {
+  if (state.failure !== null) throw state.failure.error;
+  if (state.outcome === null) throw new Error("development-round-limit");
+  return state.outcome;
+}
+
 export interface DevelopFeedback {
   readonly reason: string;
   readonly output: string;
   readonly remaining: readonly string[];
+  readonly limit?: number;
+  readonly conflicts?: number;
 }
 
-const waitReasons = [
+export const waitReasons = [
   "ci-pending",
   "check-not-configured",
   "merge-queue-removed",
@@ -159,12 +181,13 @@ export function repair(input: {
   readonly round: number;
   readonly report: DevelopReport;
   readonly result: { readonly reason: string | null; readonly output: string };
+  readonly limit?: number;
 }): DevelopFeedback | CycleOutcome {
   const { cycleId, round, report, result } = input;
   const reason = result.reason ?? "merge-failed";
   const needsAnswer = reason === "review-changes" || reason === "not-approved";
   if (
-    round === 4 ||
+    round >= (input.limit ?? 4) ||
     waitReasons.includes(reason) ||
     (needsAnswer && result.output.trim() === "")
   )

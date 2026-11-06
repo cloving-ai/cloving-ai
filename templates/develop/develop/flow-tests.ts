@@ -222,14 +222,17 @@ flowTests.push({
         commit,
         score: 4,
         summary: "Add recovery.",
-        findings: [],
+        findings: [{ path: "src/recovery.ts", line: 1, body: "Retry." }],
       }),
     );
-    using bridge = fakeStepBridge({ effects: scenario });
+    using bridge = fakeStepBridge({
+      effects: scenario,
+      decisions: [{ decision: "answered", answer: "2" }],
+    });
     assert.deepEqual(await develop(input), {
       kind: "blocked",
       cycleId: input.cycleId,
-      reason: "review-changes",
+      reason: "review-changes: pull/7",
       evidenceId: "review",
     });
     assert.equal(
