@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "patrol",
-  "summary": "Find open pull requests of Cloving whose run ended blocked or failed every 30 minutes and hand at most four of them to rescue-pr.",
+  "summary": "Every 30 minutes, find open pull requests of Cloving whose run ended blocked or failed and hand at most four of them to rescue-pr. Hand at most four quiet pull requests with open review threads to answer-review.",
   "points": [
     {
       "id": "act",

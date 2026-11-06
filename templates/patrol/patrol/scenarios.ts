@@ -18,6 +18,37 @@ export function stuck(number: number, fields: Record<string, unknown> = {}) {
   };
 }
 
+export function quiet(number: number, fields: Record<string, unknown> = {}) {
+  return stuck(number, {
+    state: "completed",
+    reason: null,
+    head: null,
+    ...fields,
+  });
+}
+
+export function review(fields: Record<string, unknown> = {}) {
+  return completed({
+    number: 643,
+    head: "c".repeat(40),
+    threads: [{ id: "PRRT_1", path: "src/a.ts", line: 3, bot: true }],
+    comments: [],
+    latest: { id: "C_2", at: "2026-11-06T10:00:00Z" },
+    answered: null,
+    quietSeconds: 600,
+    ...fields,
+  });
+}
+
+export function reviewed(requests: readonly ScenarioRequest[]) {
+  return requests.flatMap((request): unknown[] => {
+    if (request[0] !== "effect" || request[1].method !== "review-threads")
+      return [];
+    const value: unknown = JSON.parse(request[1].payload);
+    return [value];
+  });
+}
+
 export function completed(value: unknown) {
   return {
     kind: "completed" as const,

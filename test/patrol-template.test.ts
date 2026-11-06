@@ -8,13 +8,37 @@ import { folderInput } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { cli } from "./cli-workflows-fixture.ts";
 import { packagedEntry } from "./cli-templates-fixture.ts";
+import { configuredAnswerFiles } from "./answer-review-options-fixture.ts";
 import {
   configuredPatrolFiles,
   configuredRescueFiles,
   patrolSelections,
 } from "./rescue-template-options-fixture.ts";
 
-await test("CLV-305 patrol declares the act choice, a 30 minute schedule and the rescue-pr handoff", async () => {
+const readmeRequirements = [
+  "private workflow folder",
+  "CLOVING_COMMANDS",
+  "patrol-status",
+  '"number"',
+  '"branch"',
+  '"state"',
+  '"active"',
+  '"reason"',
+  '"head"',
+  '"score"',
+  '"issue"',
+  '"ticketStatus"',
+  "rescue-pr",
+  "four",
+  "1800",
+  "answer-review",
+  "review-threads",
+  "5 minutes",
+  "record-answered",
+  "eight",
+];
+
+await test("CLV-305 patrol declares the act choice, a 30 minute schedule and the rescue-pr and answer-review handoffs", async () => {
   const root = new URL("../templates/patrol/", import.meta.url);
   const document = manifest(
     JSON.parse(await readFile(new URL("template.json", root), "utf8")),
@@ -44,27 +68,17 @@ await test("CLV-305 patrol declares the act choice, a 30 minute schedule and the
     input: {},
   });
   assert.deepEqual(declaration.workflow.commands, ["patrol-status"]);
-  assert.deepEqual(declaration.workflow.capabilities, ["command"]);
-  assert.deepEqual(declaration.workflow.handoffs, ["rescue-pr"]);
-  assert.deepEqual(declaration.methods, { command: ["run:patrol-status"] });
-  const readme = await readFile(new URL("README.md", root), "utf8");
-  for (const requirement of [
-    "private workflow folder",
-    "CLOVING_COMMANDS",
-    "patrol-status",
-    '"number"',
-    '"branch"',
-    '"state"',
-    '"active"',
-    '"reason"',
-    '"head"',
-    '"score"',
-    '"issue"',
-    '"ticketStatus"',
+  assert.deepEqual(declaration.workflow.capabilities, ["command", "github"]);
+  assert.deepEqual(declaration.workflow.handoffs, [
     "rescue-pr",
-    "four",
-    "1800",
-  ])
+    "answer-review",
+  ]);
+  assert.deepEqual(declaration.methods, {
+    command: ["run:patrol-status"],
+    github: ["review-threads"],
+  });
+  const readme = await readFile(new URL("README.md", root), "utf8");
+  for (const requirement of readmeRequirements)
     assert.ok(readme.includes(requirement), requirement);
 });
 
@@ -73,13 +87,14 @@ for (const selection of patrolSelections)
     const files = Object.assign(
       await configuredPatrolFiles(selection),
       await configuredRescueFiles({ accept: "greptile", merge: "green" }),
+      await configuredAnswerFiles({ resolve: "bot-fix" }),
     );
     await withFiles(files, async (directory) => {
       const loaded = await loadWorkflowFolders(folderInput(directory));
       assert.deepEqual(loaded.refusals, []);
       assert.deepEqual(
         loaded.candidates.map((candidate) => candidate.label).sort(),
-        ["patrol.ts", "rescue-pr.ts"],
+        ["answer-review.ts", "patrol.ts", "rescue-pr.ts"],
       );
       const result = cli(directory, {
         entry: packagedEntry,

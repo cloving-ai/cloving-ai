@@ -835,6 +835,8 @@ The template `answer-review` answers the open review threads of one pull request
 
 The GitHub method `review-threads` returns the threads that are not resolved and whose last comment is not by the GitHub account of the operator, and the top-level comments of people since the last commit. Only the comments of bots, of the operator and of people with the association `OWNER`, `MEMBER` or `COLLABORATOR` count. One turn fixes the code with a failing test first, or explains why no change is needed, and ends with one line for each thread: `Thread T1: fixed <short SHA>`, `Thread T1: no change <reason>` or `Thread T1: question <text>`. The run pushes the new commits, and the GitHub method `reply-thread` posts one reply to each thread through the same privacy check as an issue body. A question opens a decision, and the reply has the answer of the person. The point `resolve` selects **Resolve bot threads after a fix** (the default) or **Never resolve**. The run never resolves a thread of a person. After a push, `wait-review` asks for a new Greptile review. The run does not merge.
 
+`patrol` also reads the open pull requests with no active run whose last run did not end `blocked` or `failed`. A pull request with an open thread and no new comment for 5 minutes gets an `answer-review` run. The GitHub method `record-answered` keeps the newest comment of each run, so the patrol does not start a second run on the same comments.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.

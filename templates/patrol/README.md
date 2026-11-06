@@ -1,8 +1,9 @@
 # Patrol
 
 Copy the template into your private workflow folder, named by `workflows.folder`,
-with `cloving templates copy patrol`. Copy `rescue-pr` into the same folder with
-`cloving templates copy rescue-pr`, because the patrol hands off to it. This
+with `cloving templates copy patrol`. Copy `rescue-pr` and `answer-review` into
+the same folder with `cloving templates copy rescue-pr` and
+`cloving templates copy answer-review`, because the patrol hands off to them. This
 operator step happens outside the application repository. Inspect
 `cloving templates show patrol --json`, choose the `act` option, apply its edit,
 update `selection` in `patrol/scenarios.ts`, then run
@@ -66,6 +67,25 @@ Build the wrapper from the run list of Cloving and the open pull requests, for
 example from `gh pr list --state open --json number,headRefName,headRefOid`. Read
 `ticketStatus` from the `Ticket status:` line of the last report of the original
 worker. Leave it `null` when that line is not available.
+
+## Review candidates
+
+An item with `active` `false`, a `cloving/` branch and a `state` that is not
+`blocked` or `failed` can be a review candidate. For at most eight such items in
+each pass, the patrol reads the pull request with the GitHub method
+`review-threads`. The item is a candidate when all these conditions are true:
+
+- The pull request has an open review thread whose last comment is not by the
+  GitHub account of the operator.
+- No new comment came in the last 5 minutes (`quietSeconds` is 300 or more).
+- The newest comment is not the comment that the GitHub method `record-answered`
+  kept for the last `answer-review` run of the pull request.
+
+The patrol hands off each candidate to `answer-review` with the input
+`pullRequest`, with no decision. One pass hands off at most four answers. A
+failed read skips the pull request. The record of the last answered comment stops
+a second run on the same comments, also when the last run left a thread without a
+reply.
 
 ## The `act` point
 

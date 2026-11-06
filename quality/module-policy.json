@@ -661,6 +661,7 @@
     "templates/idea-to-issue/idea-to-issue/turn.ts": "workflow",
     "templates/patrol/patrol.test.ts": "test",
     "templates/patrol/patrol.ts": "workflow",
+    "templates/patrol/patrol/answer.ts": "workflow",
     "templates/patrol/patrol/pick.ts": "workflow",
     "templates/patrol/patrol/rescue.ts": "workflow",
     "templates/patrol/patrol/scenarios.ts": "test",
