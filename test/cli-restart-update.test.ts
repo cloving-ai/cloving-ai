@@ -29,6 +29,7 @@ function failingPort(updating: Updating): RestartPort {
       setTimeout(() => {
         updating.failure = {
           commandId: mark.commandId,
+          requestedAt: mark.requestedAt,
           step: "build",
           output: "> tsc\nerror TS2322: broken",
         };
@@ -42,10 +43,10 @@ function failingPort(updating: Updating): RestartPort {
   };
 }
 
-function earlierFailure(): Updating {
+function earlierFailure(commandId = "restart-earlier"): Updating {
   return {
     marks: [],
-    failure: { commandId: "restart-earlier", step: "clean", output: "?? a" },
+    failure: { commandId, requestedAt: 1, step: "clean", output: "?? a" },
   };
 }
 
@@ -95,6 +96,21 @@ await test("CLV-306 cloving restart --update --json prints the failed step and o
     assert.equal(failed["commandId"], "restart-json");
     assert.equal(failed["step"], "build");
     assert.equal(failed["output"], "> tsc\nerror TS2322: broken");
+  }));
+
+await test("CLV-306 a retry with the command ID of a failed update waits for its own result", () =>
+  withHarness(async (harness) => {
+    const updating = earlierFailure("restart-retry");
+    await harness.start({ restart: failingPort(updating), ...identity });
+    const result = await harness.cli([
+      "restart",
+      "--update",
+      "--command-id",
+      "restart-retry",
+    ]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /The update stopped at step build\./);
+    assert.equal(updating.marks.length, 0);
   }));
 
 const codeOf = (argumentsList: readonly string[]): unknown =>

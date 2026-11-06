@@ -24,6 +24,7 @@ export interface RestartMark {
 
 export interface RestartFailure {
   readonly commandId: string;
+  readonly requestedAt: number;
   readonly step: string;
   readonly output: string;
 }
@@ -108,12 +109,27 @@ export function restartText(mark: RestartMark): string {
 }
 
 export function restartFailure(text: string): RestartFailure | undefined {
-  const { commandId, step, output } = record(parsed(text)) ?? {};
+  const { commandId, requestedAt, step, output } = record(parsed(text)) ?? {};
   if (typeof commandId !== "string" || typeof step !== "string")
     return undefined;
-  return typeof output === "string" ? { commandId, step, output } : undefined;
+  if (typeof requestedAt !== "number" || !Number.isSafeInteger(requestedAt))
+    return undefined;
+  return typeof output === "string"
+    ? { commandId, requestedAt, step, output }
+    : undefined;
 }
 
 export function restartFailureText(failure: RestartFailure): string {
   return `${JSON.stringify(failure)}\n`;
+}
+
+export function serialCalls(): <Value>(
+  work: () => Promise<Value>,
+) => Promise<Value> {
+  let order: Promise<unknown> = Promise.resolve();
+  return <Value>(work: () => Promise<Value>): Promise<Value> => {
+    const next = order.then(work);
+    order = next.catch(() => undefined);
+    return next;
+  };
 }

@@ -224,7 +224,12 @@ await test("CLV-306 the daemon reads the failure of an update that the host wrot
   withDirectory(async (directory) => {
     const marks = restartMarks(directory);
     assert.equal(await marks.failure(), undefined);
-    const failure = { commandId: "one", step: "build", output: "broken" };
+    const failure = {
+      commandId: "one",
+      requestedAt: 1_000,
+      step: "build",
+      output: "broken",
+    };
     const file = join(directory, "restart-failure");
     await writeFile(file, `${JSON.stringify(failure)}\n`);
     assert.deepEqual(await marks.failure(), failure);
@@ -232,4 +237,8 @@ await test("CLV-306 the daemon reads the failure of an update that the host wrot
     assert.equal(await marks.failure(), undefined);
     await writeFile(file, JSON.stringify({ ...failure, step: 2 }));
     assert.equal(await marks.failure(), undefined);
+    for (const requestedAt of [undefined, 1.5, "1000"]) {
+      await writeFile(file, JSON.stringify({ ...failure, requestedAt }));
+      assert.equal(await marks.failure(), undefined);
+    }
   }));

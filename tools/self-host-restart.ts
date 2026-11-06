@@ -16,12 +16,27 @@ import {
   newestRestart,
   restartFailureText,
   restartFiles,
+  serialCalls,
   type RestartMark,
   type RestartRequest,
 } from "../src/restart-request.ts";
 import { atGap, workInProgress } from "../src/work-gap.ts";
 import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
+
+export type CheckoutLock = (
+  work: () => Promise<number | undefined>,
+) => Promise<number | undefined>;
+
+export function checkoutLock(stopping: AbortController): CheckoutLock {
+  const inOrder = serialCalls();
+  return (work) =>
+    inOrder(async () => {
+      const status = await work();
+      if (status !== undefined) stopping.abort();
+      return status;
+    });
+}
 
 export interface RestartWatch {
   readonly directory: string;
@@ -31,6 +46,7 @@ export interface RestartWatch {
   readonly milliseconds: number;
   readonly stopping: AbortSignal;
   readonly stop: () => Promise<void>;
+  readonly exclusive: CheckoutLock;
 }
 
 function coded(error: unknown, code: string): boolean {
@@ -102,9 +118,11 @@ async function updated(
   if (outcome.kind === "updated") return true;
   const temporary = join(watch.directory, `restart-${randomUUID()}.tmp`);
   const { step, output } = outcome;
+  const { commandId, requestedAt } = mark;
+  process.stderr.write(`Restart update failed at step ${step}.\n${output}\n`);
   await writeFile(
     temporary,
-    restartFailureText({ commandId: mark.commandId, step, output }),
+    restartFailureText({ commandId, requestedAt, step, output }),
     { mode: 0o600 },
   );
   await rename(temporary, join(watch.directory, restartFiles.failure));
@@ -121,6 +139,25 @@ export async function clearedRestart(directory: string): Promise<void> {
   await Promise.all(
     names.map((name) => rm(join(directory, name), { force: true })),
   );
+}
+
+async function restarted(
+  watch: RestartWatch,
+  claimed: RestartMark,
+): Promise<number | undefined> {
+  if (watch.stopping.aborted) return undefined;
+  if (!(await updated(watch, claimed))) return undefined;
+  await watch.stop();
+  if (claimed.resumeQueue)
+    await writeFile(join(watch.directory, "resume-queue"), "", {
+      mode: 0o600,
+    });
+  if (claimed.settings === "files")
+    await writeFile(join(watch.directory, restartFiles.settings), "files", {
+      mode: 0o600,
+    });
+  await clearedRestart(watch.directory);
+  return 75;
 }
 
 export async function restartWatch(
@@ -140,18 +177,8 @@ export async function restartWatch(
       () => undefined,
     );
     if (claimed === undefined) continue;
-    if (!(await updated(watch, claimed))) continue;
-    await watch.stop();
-    if (claimed.resumeQueue)
-      await writeFile(join(watch.directory, "resume-queue"), "", {
-        mode: 0o600,
-      });
-    if (claimed.settings === "files")
-      await writeFile(join(watch.directory, restartFiles.settings), "files", {
-        mode: 0o600,
-      });
-    await clearedRestart(watch.directory);
-    return 75;
+    const status = await watch.exclusive(() => restarted(watch, claimed));
+    if (status !== undefined) return status;
   }
 }
 

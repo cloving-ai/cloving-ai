@@ -11,7 +11,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { selfUpdater } from "./self-update.ts";
 import { selfUpdateActive } from "./self-update-host.ts";
-import { clearedRestart, restartWatch } from "./self-host-restart.ts";
+import {
+  checkoutLock,
+  clearedRestart,
+  restartWatch,
+  type RestartWatch,
+} from "./self-host-restart.ts";
 
 export interface HostProcesses {
   readonly environment?: Readonly<NodeJS.ProcessEnv>;
@@ -131,10 +136,7 @@ function updatingGit(settings: HostProcesses, stopping: AbortSignal) {
 
 async function polled(
   settings: HostProcesses,
-  lifecycle: {
-    readonly stopping: AbortSignal;
-    readonly stop: () => Promise<void>;
-  },
+  lifecycle: Pick<RestartWatch, "stopping" | "stop" | "exclusive">,
 ): Promise<number | undefined> {
   if (settings.updateMilliseconds === undefined) {
     await rm(join(settings.directory, "pending-self-update"), { force: true });
@@ -166,7 +168,7 @@ async function polled(
       if (!(error instanceof Error) || error.name !== "AbortError") throw error;
     });
     if (cancelled()) return;
-    const status = await updater.check();
+    const status = await lifecycle.exclusive(() => updater.check());
     if (status !== undefined) return status;
   }
   return undefined;
@@ -179,13 +181,13 @@ async function hostWatches(
     readonly stop: () => Promise<void>;
   },
 ): Promise<number | undefined> {
-  const finished = (status: number | undefined): number | undefined => {
-    if (status !== undefined) lifecycle.stopping.abort();
-    return status;
+  const watches = {
+    stopping: lifecycle.stopping.signal,
+    stop: lifecycle.stop,
+    exclusive: checkoutLock(lifecycle.stopping),
   };
-  const watches = { stopping: lifecycle.stopping.signal, stop: lifecycle.stop };
   const [updated, restarted] = await Promise.all([
-    polled(settings, watches).then(finished),
+    polled(settings, watches),
     restartWatch({
       ...watches,
       directory: settings.directory,
@@ -193,7 +195,7 @@ async function hostWatches(
       checkout: settings.checkout ?? settings.product,
       environment: settings.environment ?? process.env,
       milliseconds: settings.restartMilliseconds ?? 2000,
-    }).then(finished),
+    }),
   ]);
   return restarted ?? updated;
 }

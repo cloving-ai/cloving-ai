@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import {
+  checkoutCommands,
   updatedCheckout,
   type CheckoutUpdate,
 } from "../tools/restart-update.ts";
+import { eventually } from "./service-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 
 function rejecting(
@@ -16,6 +20,8 @@ function rejecting(
       resolve(git(argumentsList));
     });
 }
+
+const running = new AbortController().signal;
 
 function recordedNpm(
   calls: string[][],
@@ -43,6 +49,7 @@ await test("CLV-306 an update fast-forwards the default branch and builds with n
     const outcome = await updatedCheckout({
       git: rejecting(git),
       npm: recordedNpm(calls),
+      stopping: running,
     });
     assert.deepEqual(outcome, { kind: "updated", from: old, to: target });
     assert.equal(git(["rev-parse", "HEAD"]), target);
@@ -75,6 +82,7 @@ await test("CLV-306 an update runs npm ci --ignore-scripts before the build when
     const outcome = await updatedCheckout({
       git: rejecting(fixture.git),
       npm: recordedNpm(calls),
+      stopping: running,
     });
     assert.deepEqual(outcome, {
       kind: "updated",
@@ -94,6 +102,7 @@ await test("CLV-306 an update refuses a dirty tree, prints the changed files and
     const outcome = await updatedCheckout({
       git: rejecting(git),
       npm: recordedNpm(calls),
+      stopping: running,
     });
     assert.deepEqual(outcome, {
       kind: "failed",
@@ -111,6 +120,7 @@ await test("CLV-306 a failed build puts the checkout back on the old commit, ins
     const outcome = await updatedCheckout({
       git: rejecting(fixture.git),
       npm: recordedNpm(calls, ["run build"]),
+      stopping: running,
     });
     assert.deepEqual(outcome, {
       kind: "failed",
@@ -133,6 +143,7 @@ await test("CLV-306 a failed install puts the checkout back on the old commit an
     const outcome = await updatedCheckout({
       git: rejecting(fixture.git),
       npm: recordedNpm(calls, ["ci --ignore-scripts"]),
+      stopping: running,
     });
     assert.equal(outcome.kind === "failed" ? outcome.step : "", "install");
     assert.equal(fixture.git(["rev-parse", "HEAD"]), fixture.old);
@@ -153,6 +164,7 @@ await test("CLV-306 an update refuses another branch, a commit that cannot fast-
     const commands = {
       git: rejecting(git),
       npm: recordedNpm(calls),
+      stopping: running,
     };
     git(["switch", "-q", "-c", "other"]);
     assert.deepEqual(failure(await updatedCheckout(commands)), [
@@ -185,6 +197,7 @@ await test("CLV-306 a merge that would overwrite an ignored file fails at the me
       await updatedCheckout({
         git: rejecting(git),
         npm: recordedNpm(calls),
+        stopping: running,
       }),
     );
     assert.equal(step, "merge");
@@ -198,6 +211,7 @@ await test("CLV-306 a failed rollback adds its output to the failure of the buil
     const outcome = await updatedCheckout({
       git: rejecting(git),
       npm: () => Promise.reject(new Error("build broke")),
+      stopping: running,
     });
     assert.deepEqual(failure(outcome), [
       "build",
@@ -223,6 +237,7 @@ await test("CLV-306 a failed status check fails at the clean step, and a failed 
       await updatedCheckout({
         git: refusing(git, "status"),
         npm: recordedNpm(calls),
+        stopping: running,
       }),
     );
     assert.equal(step, "clean");
@@ -230,6 +245,7 @@ await test("CLV-306 a failed status check fails at the clean step, and a failed 
     const outcome = await updatedCheckout({
       git: refusing(git, "reset"),
       npm: recordedNpm(calls, ["run build"]),
+      stopping: running,
     });
     assert.deepEqual(failure(outcome), [
       "build",
@@ -237,4 +253,116 @@ await test("CLV-306 a failed status check fails at the clean step, and a failed 
     ]);
     assert.equal(git(["rev-parse", "HEAD"]), target);
     assert.deepEqual(calls, [["run", "build"]]);
+  }));
+
+async function blockingNpm(root: string): Promise<string> {
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "npm"),
+    `#!/bin/sh\ntouch ${JSON.stringify(join(root, "npm-started"))}\nexec sleep 15\n`,
+  );
+  await chmod(join(bin, "npm"), 0o755);
+  return bin;
+}
+
+await test("CLV-306 a stop ends a running update command, and a merge or a reset runs to its end", () =>
+  withUpdateRepository(async ({ root, repository, git, old, target }) => {
+    const bin = await blockingNpm(root);
+    const stopping = new AbortController();
+    const commands = checkoutCommands({
+      checkout: repository,
+      environment: {
+        ...process.env,
+        PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+      },
+      stopping: stopping.signal,
+    });
+    const build = commands.npm(["run", "build"]).then(
+      () => "finished",
+      () => "stopped",
+    );
+    await eventually(() =>
+      existsSync(join(root, "npm-started")) ? true : undefined,
+    );
+    stopping.abort();
+    assert.equal(
+      await Promise.race([build, delay(5000, "running")]),
+      "stopped",
+    );
+    await assert.rejects(commands.git(["rev-parse", "HEAD"]));
+    await commands.git(["merge", "--ff-only", target]);
+    assert.equal(git(["rev-parse", "HEAD"]), target);
+    await commands.git(["reset", "--keep", old]);
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+  }));
+
+function npmStoppedAt(
+  calls: string[][],
+  stop: { readonly controller: AbortController; readonly call: number },
+): (argumentsList: readonly string[]) => Promise<string> {
+  return (argumentsList) => {
+    calls.push([...argumentsList]);
+    if (calls.length === stop.call) stop.controller.abort();
+    return Promise.reject(new Error(`npm ${argumentsList.join(" ")} ended`));
+  };
+}
+
+function stoppedNote(old: string, commands: string): string {
+  return `The service stopped during the update. The checkout is back on ${old}. Run ${commands} in the checkout before the next start.`;
+}
+
+await test("CLV-306 a stop during the build puts the checkout back on the old commit and builds nothing again", () =>
+  withUpdateRepository(async ({ git, old }) => {
+    const calls: string[][] = [];
+    const controller = new AbortController();
+    const outcome = await updatedCheckout({
+      git: rejecting(git),
+      npm: npmStoppedAt(calls, { controller, call: 1 }),
+      stopping: controller.signal,
+    });
+    assert.deepEqual(failure(outcome), [
+      "build",
+      `Error: npm run build ended\n${stoppedNote(old, "npm run build")}`,
+    ]);
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+    assert.deepEqual(calls, [["run", "build"]]);
+  }));
+
+await test("CLV-306 a stop during the install asks for an install and a build by hand", () =>
+  withUpdateRepository(async (fixture) => {
+    await pushedLockChange(fixture);
+    const calls: string[][] = [];
+    const controller = new AbortController();
+    const outcome = await updatedCheckout({
+      git: rejecting(fixture.git),
+      npm: npmStoppedAt(calls, { controller, call: 1 }),
+      stopping: controller.signal,
+    });
+    assert.deepEqual(failure(outcome), [
+      "install",
+      `Error: npm ci --ignore-scripts ended\n${stoppedNote(fixture.old, "npm ci --ignore-scripts and npm run build")}`,
+    ]);
+    assert.equal(fixture.git(["rev-parse", "HEAD"]), fixture.old);
+    assert.deepEqual(calls, [["ci", "--ignore-scripts"]]);
+  }));
+
+await test("CLV-306 a stop during the build of the rollback gives the same note", () =>
+  withUpdateRepository(async ({ git, old }) => {
+    const calls: string[][] = [];
+    const controller = new AbortController();
+    const outcome = await updatedCheckout({
+      git: rejecting(git),
+      npm: npmStoppedAt(calls, { controller, call: 2 }),
+      stopping: controller.signal,
+    });
+    assert.deepEqual(failure(outcome), [
+      "build",
+      `Error: npm run build ended\n${stoppedNote(old, "npm run build")}`,
+    ]);
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+    assert.deepEqual(calls, [
+      ["run", "build"],
+      ["run", "build"],
+    ]);
   }));

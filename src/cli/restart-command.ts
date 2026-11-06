@@ -25,6 +25,7 @@ type Waited =
 interface Waiting {
   readonly startedAt: string;
   readonly commandId: string;
+  readonly requestedAt: unknown;
 }
 
 const cancelledRestart: ServiceError = {
@@ -56,8 +57,11 @@ function settled(
   if (now === undefined) return undefined;
   if (now["serviceStartedAt"] !== waiting.startedAt)
     return { kind: "restarted", after: now };
-  const failure = record(now["restartFailure"]);
-  if (failure?.["commandId"] === waiting.commandId)
+  const failure = record(now["restartFailure"]) ?? {};
+  if (
+    failure["commandId"] === waiting.commandId &&
+    failure["requestedAt"] === waiting.requestedAt
+  )
     return { kind: "failed", failure };
   return now["restart"] === null ? { kind: "cancelled" } : undefined;
 }
@@ -143,6 +147,7 @@ export async function restartCommand(
   const waited = await restarted(environment, {
     startedAt,
     commandId: format.commandId,
+    requestedAt: record(before["restart"])?.["requestedAt"],
   });
   if (waited.kind === "interrupted") {
     environment.terminal.error(

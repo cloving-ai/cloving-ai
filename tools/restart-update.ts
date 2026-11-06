@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 export interface CheckoutCommands {
   readonly git: (argumentsList: readonly string[]) => Promise<string>;
   readonly npm: (argumentsList: readonly string[]) => Promise<string>;
+  readonly stopping: AbortSignal;
 }
 
 export type UpdateStep =
@@ -142,6 +143,21 @@ async function built(
   return stepped("build", () => commands.npm(["run", "build"]));
 }
 
+function stoppedNote(plan: UpdatePlan): string {
+  const steps = plan.install
+    ? "npm ci --ignore-scripts and npm run build"
+    : "npm run build";
+  return `\nThe service stopped during the update. The checkout is back on ${plan.head}. Run ${steps} in the checkout before the next start.`;
+}
+
+function failedRollback(plan: UpdatePlan, output: string): string {
+  return `\nThe rollback to ${plan.head} failed: ${output}`;
+}
+
+function stopped(commands: CheckoutCommands): boolean {
+  return commands.stopping.aborted;
+}
+
 async function rollbackNote(
   commands: CheckoutCommands,
   plan: UpdatePlan,
@@ -149,9 +165,12 @@ async function rollbackNote(
   const reset = await stepped("merge", () =>
     commands.git(["reset", "--keep", plan.head]),
   );
-  const rebuilt = reset.kind === "failed" ? reset : await built(commands, plan);
+  if (reset.kind === "failed") return failedRollback(plan, reset.output);
+  if (stopped(commands)) return stoppedNote(plan);
+  const rebuilt = await built(commands, plan);
   if (rebuilt.kind === "done") return "";
-  return `\nThe rollback to ${plan.head} failed: ${rebuilt.output}`;
+  if (stopped(commands)) return stoppedNote(plan);
+  return failedRollback(plan, rebuilt.output);
 }
 
 export async function updatedCheckout(
@@ -172,9 +191,12 @@ export async function updatedCheckout(
 
 const commandLimits = { git: 120_000, npm: 1_800_000 } as const;
 
+const steadyCommands = new Set(["git merge", "git reset"]);
+
 export function checkoutCommands(settings: {
   readonly checkout: string;
   readonly environment: NodeJS.ProcessEnv;
+  readonly stopping: AbortSignal;
 }): CheckoutCommands {
   const command =
     (file: "git" | "npm") =>
@@ -186,7 +208,14 @@ export function checkoutCommands(settings: {
           encoding: "utf8",
           maxBuffer: 64 * 1024 * 1024,
           timeout: commandLimits[file],
+          ...(steadyCommands.has(`${file} ${argumentsList[0] ?? ""}`)
+            ? {}
+            : { signal: settings.stopping }),
         })
       ).stdout;
-  return { git: command("git"), npm: command("npm") };
+  return {
+    git: command("git"),
+    npm: command("npm"),
+    stopping: settings.stopping,
+  };
 }

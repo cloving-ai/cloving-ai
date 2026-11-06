@@ -177,6 +177,7 @@ await test("CLV-306 a restart with an update keeps the update in the mark, and t
   withHarness(async (harness) => {
     const failure = {
       commandId: "restart-update",
+      requestedAt: 1,
       step: "build",
       output: "error TS2322",
     };
