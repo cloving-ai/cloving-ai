@@ -115,9 +115,9 @@ export function payloads(
   requests: readonly ScenarioRequest[],
   method: string,
 ): readonly unknown[] {
-  return requests.flatMap((request) =>
-    request[0] === "effect" && request[1].method === method
-      ? [JSON.parse(request[1].payload)]
-      : [],
-  );
+  return requests.flatMap((request): unknown[] => {
+    if (request[0] !== "effect" || request[1].method !== method) return [];
+    const value: unknown = JSON.parse(request[1].payload);
+    return [value];
+  });
 }

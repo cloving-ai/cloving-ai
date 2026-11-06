@@ -13,11 +13,11 @@ function failureReason(error: unknown): string {
 export async function rescuePr(request: RescueInput): Promise<CycleOutcome> {
   "use workflow";
   let outcome: CycleOutcome | null = null;
-  let feedback: RescueFeedback = { reason: "unknown", output: "" };
+  let reason: string;
   try {
     const task = rescueTask(request);
     const tree = await prepareRescue(task);
-    feedback = { reason: task.reason, output: "" };
+    let feedback: RescueFeedback = { reason: task.reason, output: "" };
     for (let round = 1; round <= 4; round += 1) {
       if (outcome === null) {
         const next = await rescueRound({ task, tree, round, feedback });
@@ -25,14 +25,15 @@ export async function rescuePr(request: RescueInput): Promise<CycleOutcome> {
         feedback = "kind" in next ? feedback : next;
       }
     }
+    reason = feedback.reason;
   } catch (error) {
-    feedback = { reason: failureReason(error), output: "" };
+    reason = failureReason(error);
   }
   return (
     outcome ?? {
       kind: "blocked",
       cycleId: request.cycleId,
-      reason: feedback.reason,
+      reason: reason,
       evidenceId: "rescue",
     }
   );
