@@ -72,3 +72,27 @@ await test("CLV-310 the retention loop sweeps the work trees before it moves the
     assert.deepEqual(seen, [true]);
     assert.equal(existsSync(join(scene.root, "archive/journal/a")), true);
   }));
+
+await test("CLV-310 a stop of the retention loop cancels a running work tree pass", () =>
+  withSweep(async (scene) => {
+    const signals: AbortSignal[] = [];
+    const loop = await recordRetention({
+      ...scene.settings(),
+      intervalMilliseconds: 20,
+      trees: {
+        pass: (signal: AbortSignal) => {
+          signals.push(signal);
+          const waited = signals.length === 1 ? 0 : testMilliseconds(2000);
+          return new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => {
+              resolve();
+            });
+            setTimeout(resolve, waited);
+          });
+        },
+      },
+    });
+    await reached(() => signals.length === 2);
+    await loop.stop();
+    assert.equal(signals[1]?.aborted, true);
+  }));

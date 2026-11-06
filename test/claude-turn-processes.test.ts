@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -99,6 +105,56 @@ await test("CLV-310 a turn end stops only the processes in the work tree that ar
     assert.equal(lines.length, 1);
   } finally {
     if (alive(child.pid ?? 0)) process.kill(child.pid ?? 0, "SIGKILL");
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-310 a turn end keeps an older process that shares the work tree and the process group of a young process", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-left-"));
+  const youngFile = join(directory, "young.pid");
+  const older = spawn(
+    process.execPath,
+    [
+      "-e",
+      `const { spawn } = require("node:child_process");
+const { writeFileSync } = require("node:fs");
+setTimeout(() => {
+  const young = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => undefined); setInterval(() => undefined, 1000);"], { stdio: "ignore" });
+  writeFileSync(${JSON.stringify(youngFile)}, String(young.pid));
+}, 3000);
+setInterval(() => undefined, 1000);`,
+    ],
+    { cwd: directory, detached: true, stdio: "ignore" },
+  );
+  older.unref();
+  const lines: string[] = [];
+  let young = 0;
+  try {
+    await until(
+      () =>
+        existsSync(youngFile) && Number(readFileSync(youngFile, "utf8")) > 0,
+    );
+    young = Number(readFileSync(youngFile, "utf8"));
+    await until(() => alive(young));
+    await stopLeftProcesses({
+      directory,
+      signal: new AbortController().signal,
+      stopMilliseconds: 100,
+      seconds: 1,
+      log: (line: string) => {
+        lines.push(line);
+      },
+    });
+    assert.equal(alive(young), false);
+    assert.equal(alive(older.pid ?? 0), true);
+    assert.equal(lines.length, 1, lines.join(""));
+    assert.match(
+      lines[0] ?? "",
+      new RegExp(`stopped process ${String(young)} `),
+    );
+  } finally {
+    for (const processId of [young, older.pid ?? 0])
+      if (processId > 0 && alive(processId)) process.kill(processId, "SIGKILL");
     rmSync(directory, { recursive: true, force: true });
   }
 });

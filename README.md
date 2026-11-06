@@ -575,7 +575,7 @@ A turn can still reach these things:
 - The keychain and the other services of the operator session.
 - The credentials of a login that the harness itself stores, for example in its configuration folder.
 
-When a turn ends, Cloving stops each process whose current folder is in the work tree of the run and that started after the start of the turn. Thus a shell that the operator opened in the work tree before the turn stays. Cloving sends SIGTERM, and after 15 seconds SIGKILL to each process that did not stop. It writes one log line for each process, with its process ID and command name. A process that changes its current folder to a place outside the work tree stays.
+When a turn ends, Cloving stops each process whose current folder is in the work tree of the run and that started after the start of the turn. Thus a shell that the operator opened in the work tree before the turn stays. Cloving signals a process group only when all processes of the group are new processes in the work tree. Cloving sends SIGTERM, and after 15 seconds SIGKILL to each process that did not stop. It writes one log line for each process, with its process ID and command name. A process that changes its current folder to a place outside the work tree stays.
 
 `cloving status --active` lists only the runs that are not `completed`, `failed` or `cancelled`. It uses the same order and format as `cloving status`. The service selects the active runs before it builds a run view. Thus it makes no view query for a finished run. The number of queries does not change with the number of finished runs, but the service still reads the stored state of each run. `--active` works with `--json`, `--limit` and `--after`. With `--json`, one request returns one page of active runs and its `next` cursor.
 
@@ -1405,13 +1405,15 @@ Each pass removes no more than five bundles. The next pass continues after the l
 
 The archive folder can already have a bundle with the same digest. Then the daemon compares all files of the two copies. When the copies are equal, it deletes the `.removing-<digest>` folder. Otherwise it keeps that folder and writes the log line `retention: workflow bundle <digest> not removed (archive-copy-differs)`.
 
-The retention rule also removes old work trees. At each pass, before it moves records, the daemon finds the runs of each work tree from the `started.json` files in `journal/` and `github/`. It removes the work tree, its `cloving/<name>` branch and its attachments folder only when all of these conditions are true:
+The retention rule also removes old work trees. At each pass, before it moves records, the daemon finds the runs of each work tree from the `started.json` files in `journal/` and `github/`. It adds these runs to the run list of the work tree in `journal/trees/`. The retention rule does not move this folder, so a run stays on the list after its records move to the archive. The daemon removes the work tree, its `cloving/<name>` branch and its attachments folder only when all of these conditions are true:
 
 - All runs of the work tree ended `failed` or `cancelled`.
 - Each of these runs ended more than `retention.days` days ago.
 - GitHub has no open pull request for the branch.
 
-The daemon keeps the work tree when a run is not known, when a run is active or completed, or when the pull request check fails. It never removes the work tree of a `branch:` target. Each pass writes one log line, `retention: removed <count> work trees, kept <count> with an open pull request`, with the failures at the end. With `retention.days` set to `null`, the daemon keeps all work trees. A work tree that a pull request kept after its records moved to the archive stays until the operator removes it.
+The daemon keeps the work tree when a run is not known, when a run is active or completed, or when the pull request check fails. It never removes the work tree of a `branch:` target. When a work tree is gone, the daemon deletes its run list, so a new work tree of the same target counts only its own runs. With `retention.days` set to `null`, the daemon keeps all work trees. A run whose records moved to the archive before the first pass that wrote the run list is not on the list.
+
+A pass checks at most three work trees with GitHub, and the next pass continues with the others. Each GitHub read stops after 10 seconds, and a stop of the daemon cancels it. Each pass writes one log line, `retention: removed <count> work trees, kept <count> with an open pull request`, with the failures at the end.
 
 ### Project and user workflows
 

@@ -1556,6 +1556,8 @@
     "test/ticket-status.test.ts": "test",
     "test/token-prices.test.ts": "test",
     "test/toolchain-runtime.test.ts": "test",
+    "test/tree-sweep-fixture.ts": "test",
+    "test/tree-sweep-limits.test.ts": "test",
     "test/tree-sweep.test.ts": "test",
     "test/turn-details.test.ts": "test",
     "test/turn-environment-settings.test.ts": "test",

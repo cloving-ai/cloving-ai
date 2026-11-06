@@ -135,21 +135,25 @@ async function processes(): Promise<readonly TreeProcess[] | undefined> {
   }
 }
 
-async function youngInTree(request: {
-  readonly directory: string;
-  readonly seconds: number;
-}): Promise<boolean> {
-  const young = (await table()).filter(
-    (entry) =>
-      entry.user === process.getuid?.() &&
-      entry.processId !== process.pid &&
-      entry.seconds <= request.seconds,
-  );
-  if (young.length === 0) return false;
-  const working = await directories(young.map((entry) => entry.processId));
-  return located(young, working).some((entry) =>
-    inTree(entry, request.directory),
-  );
+async function youngProcesses(
+  seconds: number,
+): Promise<readonly TreeProcess[] | undefined> {
+  try {
+    const entries = await table();
+    const young = entries.filter(
+      (entry) =>
+        entry.user === process.getuid?.() &&
+        entry.processId !== process.pid &&
+        entry.seconds <= seconds,
+    );
+    if (young.length === 0) return entries;
+    return located(
+      entries,
+      await directories(young.map((entry) => entry.processId)),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function inTree(entry: TreeProcess, directory: string): boolean {
@@ -204,21 +208,25 @@ interface StopRequest {
 
 type TreeRequest = Omit<StopRequest, "folder">;
 
+type ScannedRequest = TreeRequest & {
+  readonly scan: () => Promise<readonly TreeProcess[] | undefined>;
+};
+
 interface Cleanup {
   readonly stopped: readonly TreeProcess[];
   readonly remaining: readonly TreeProcess[] | undefined;
 }
 
-async function treeSnapshot(directory: string) {
-  const entries = await processes();
-  return entries?.some((entry) => inTree(entry, directory)) === false
-    ? processes()
+async function treeSnapshot(request: ScannedRequest) {
+  const entries = await request.scan();
+  return entries?.some((entry) => inTree(entry, request.directory)) === false
+    ? request.scan()
     : entries;
 }
 
-async function waitForTree(request: TreeRequest, deadline: number) {
+async function waitForTree(request: ScannedRequest, deadline: number) {
   while (!request.signal.aborted) {
-    const entries = await treeSnapshot(request.directory);
+    const entries = await treeSnapshot(request);
     if (
       entries === undefined ||
       !entries.some((entry) => inTree(entry, request.directory)) ||
@@ -236,7 +244,7 @@ export async function stopTreeProcesses(
   const directory = await realpath(request.directory).catch(() => undefined);
   if (directory === undefined) return false;
   const canonical = { ...request, directory };
-  const cleanup = await stopCanonicalTree(canonical);
+  const cleanup = await stopCanonicalTree({ ...canonical, scan: processes });
   return cleanup === undefined ? false : recordCleanup(canonical, cleanup);
 }
 
@@ -248,8 +256,14 @@ export async function stopLeftProcesses(
 ): Promise<void> {
   const directory = await realpath(request.directory).catch(() => undefined);
   if (directory === undefined) return;
-  if (!(await youngInTree({ directory, seconds: request.seconds }))) return;
-  const cleanup = await stopCanonicalTree({ ...request, directory });
+  const calledAt = performance.now();
+  const scan = () =>
+    youngProcesses(
+      request.seconds + Math.floor((performance.now() - calledAt) / 1000),
+    );
+  const found = await scan();
+  if (found?.some((entry) => inTree(entry, directory)) !== true) return;
+  const cleanup = await stopCanonicalTree({ ...request, directory, scan });
   for (const entry of distinct(cleanup?.stopped ?? []).values())
     request.log?.(
       `turn: stopped process ${String(entry.processId)} (${entry.command}) left in the work tree ${directory}\n`,
@@ -257,9 +271,9 @@ export async function stopLeftProcesses(
 }
 
 async function stopCanonicalTree(
-  request: TreeRequest,
+  request: ScannedRequest,
 ): Promise<Cleanup | undefined> {
-  const entries = await treeSnapshot(request.directory);
+  const entries = await treeSnapshot(request);
   const aborted = () => request.signal.aborted;
   if (entries === undefined || aborted()) return undefined;
   const stopped = terminate(entries, {

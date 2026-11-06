@@ -42,6 +42,7 @@ export interface TurnFolders {
 export const sharedRecordFolders: readonly string[] = [
   "journal/runs",
   "journal/targets",
+  "journal/trees",
 ];
 
 export const bundleDigestPattern = /^[a-f0-9]{64}$/;
