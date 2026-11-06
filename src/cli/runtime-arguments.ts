@@ -2,12 +2,13 @@ import { isRecordKey } from "../authority/commands.ts";
 import { scheduleInvocation } from "./schedule-arguments.ts";
 import { queueInvocation } from "./queue-arguments.ts";
 import { continueInvocation } from "./continue-arguments.ts";
-import type {
-  DecisionCommand,
-  RunCommand,
-  RunSource,
-  RuntimeInvocation,
-  RuntimeRequest,
+import {
+  argumentRules,
+  type DecisionCommand,
+  type RunCommand,
+  type RunSource,
+  type RuntimeInvocation,
+  type RuntimeRequest,
 } from "./runtime-invocation.ts";
 
 type Outcome = RuntimeInvocation | string;
@@ -24,22 +25,14 @@ interface Range {
   readonly maximum: number;
 }
 
-const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
-const decisionReference = /^[A-Za-z0-9._:/-]{1,256}$/;
-const sha256Digest = /^sha256:[0-9a-f]{64}$/;
 const wholeNumber = /^(?:0|[1-9][0-9]*)$/;
 const invalid = Symbol("invalid");
-const revisions = { minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
 const sequences = { minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const bindingOptions = ["expected-revision", "generation", "subject-digest"];
 const mutationOptions = ["command-id", "json"];
 
-export const argumentRules = {
-  identifier,
-  decisionReference,
-  sha256Digest,
-  revisions,
-};
+const { identifier, decisionReference, sha256Digest, revisions } =
+  argumentRules;
 
 const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
   [

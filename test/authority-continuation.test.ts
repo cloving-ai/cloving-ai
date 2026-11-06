@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { continuationStart } from "../src/authority/continuations.ts";
 import { linksOf, runLinks } from "../src/authority/handoff-chain.ts";
 import { rebuildHistory } from "../src/authority/history.ts";
+import { operationOfRun, operationStep } from "../src/operation-identity.ts";
 import { emptyAuthority } from "../src/authority/reducer.ts";
 import {
   accepted,
@@ -302,4 +303,24 @@ await test("CLV-307 a continuation sets the ticket labels again, so the labels f
     { ...continuedRequest(1), ...label },
   ]);
   assert.equal(last.disposition?.disposition, "admitted");
+});
+
+await test("CLV-307 the operation helpers name the step of an operation and the same step in another run", () => {
+  assert.deepEqual(operationStep(operationOf(2)), {
+    phase: "work",
+    operation: "effect",
+    round: 2,
+  });
+  assert.equal(
+    operationOfRun(operationOf(2), "run-2"),
+    operationOf(2, "run-2"),
+  );
+  for (const text of [
+    "not json",
+    '["other",1,"run-1","work","effect",null,null]',
+    '["cloving-operation","1","run-1","work","effect",null,null]',
+    '["cloving-operation",1,"run-1","bad phase","effect",null,null]',
+  ])
+    assert.equal(operationStep(text), null, text);
+  assert.equal(operationOfRun("not json", "run-2"), null);
 });

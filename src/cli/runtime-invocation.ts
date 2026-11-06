@@ -81,3 +81,10 @@ export interface RuntimeRequest {
   readonly positionals: readonly string[];
   readonly options: readonly GivenOption[];
 }
+
+export const argumentRules = {
+  identifier: /^[A-Za-z0-9._:/-]{1,128}$/,
+  decisionReference: /^[A-Za-z0-9._:/-]{1,256}$/,
+  sha256Digest: /^sha256:[0-9a-f]{64}$/,
+  revisions: { minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+};

@@ -91,6 +91,8 @@ export interface WatchCard {
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly childRunIds?: readonly string[];
+  readonly continuedFrom?: string;
+  readonly continuedBy?: string;
   readonly estimatedCostUsd: number | null;
   readonly runId: string;
   readonly title: string | null;
@@ -171,6 +173,8 @@ export interface WatchRun {
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly childRunIds?: readonly string[];
+  readonly continuedFrom?: string;
+  readonly continuedBy?: string;
   readonly mergeProof?: PrIdentity | null;
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";

@@ -1587,6 +1587,7 @@
     "test/watch-completion-fixture.ts": "test",
     "test/watch-completion-reads.test.ts": "test",
     "test/watch-completion.test.ts": "test",
+    "test/watch-continuation-links.test.ts": "test",
     "test/watch-direct-fixture.ts": "test",
     "test/watch-dom.ts": "test",
     "test/watch-element.test.ts": "test",

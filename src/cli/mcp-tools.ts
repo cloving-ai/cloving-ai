@@ -16,9 +16,12 @@ import {
   type ReadCommand,
   type SubmittedSource,
 } from "./command-requests.ts";
-import { argumentRules } from "./runtime-arguments.ts";
 import { continueServiceRequest, stepName } from "./continue-arguments.ts";
-import type { DecisionCommand, RunCommand } from "./runtime-invocation.ts";
+import {
+  argumentRules,
+  type DecisionCommand,
+  type RunCommand,
+} from "./runtime-invocation.ts";
 
 interface Argument {
   readonly schema: Fields;

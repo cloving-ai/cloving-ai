@@ -749,7 +749,7 @@ The command admits a new run of the same workflow with the same input. The new r
 
 The new run uses the kept workflow bundle of the old run. If that bundle is not kept, the command refuses with `pinned-workflow-unavailable`. With `--bundle current`, the new run uses the current workflow, and a step whose scope changed runs again. The reused effects count against the effect limit of the new run.
 
-The old run keeps its state. `cloving status` shows `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
+The old run keeps its state. `cloving status` and the watch page show `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
 
 ### Queue control
 
