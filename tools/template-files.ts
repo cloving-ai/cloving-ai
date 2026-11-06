@@ -9,11 +9,17 @@ export interface TemplateSummary {
   readonly points: number;
 }
 
+export interface TemplateScript {
+  readonly file: string;
+  readonly setting: string;
+}
+
 export interface Template {
   readonly name: string;
   readonly description: Fields;
   readonly points: readonly unknown[];
   readonly files: readonly string[];
+  readonly scripts: readonly TemplateScript[];
 }
 
 export const templateName = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -73,7 +79,29 @@ export async function readTemplate(
     !Array.isArray(points)
   )
     throw new Error(`invalid-template: ${name}`);
-  return { name, description, points, files: await workflowFiles(folder) };
+  const files = await workflowFiles(folder);
+  const scripts = templateScripts(description["scripts"] ?? [], files);
+  if (scripts === undefined) throw new Error(`invalid-template: ${name}`);
+  return { name, description, points, files, scripts };
+}
+
+function templateScripts(
+  value: unknown,
+  files: readonly string[],
+): readonly TemplateScript[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const scripts = value.map((item) => {
+    const fields = record(item);
+    const file = fields?.["file"];
+    const setting = fields?.["setting"];
+    return typeof file === "string" &&
+      files.includes(file) &&
+      typeof setting === "string" &&
+      /^[A-Za-z]+(?:\.[A-Za-z]+)*$/.test(setting)
+      ? { file, setting }
+      : undefined;
+  });
+  return scripts.every((script) => script !== undefined) ? scripts : undefined;
 }
 
 export async function exportedFunctions(

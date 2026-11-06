@@ -99,7 +99,7 @@ async function installed(root: string): Promise<string> {
     [],
   );
   assert.deepEqual(
-    paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
+    paths.filter((path) => /(?<!\.d)\.m?ts$/.test(path)),
     packedTemplateSources.concat(packedIdeaSources, packedReviewSources),
   );
   assert.deepEqual(

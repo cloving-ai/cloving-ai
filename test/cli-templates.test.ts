@@ -236,3 +236,40 @@ await test("CLV-223 template files skip invalid template folders and need a pack
       assert.equal(templateRoot(), join(process.cwd(), "templates"));
     },
   ));
+
+await test("CLV-301 template scripts name a template file and a setting", () => {
+  const description = (scripts: unknown) =>
+    JSON.stringify({ summary: "Scripts.", points: [{ id: "one" }], scripts });
+  const script = { file: "one/next.ts", setting: "tickets.nextCommand" };
+  const invalid = [
+    "one/next.ts",
+    [null],
+    [{ ...script, file: "one/missing.ts" }],
+    [{ ...script, setting: "tickets next" }],
+    [{ setting: script.setting }],
+  ];
+  return withFiles(
+    {
+      "templates/one/template.json": description([script]),
+      "templates/one/one/next.ts": "export {};\n",
+      ...Object.fromEntries(
+        invalid.flatMap((scripts, index) => [
+          [`templates/bad${String(index)}/template.json`, description(scripts)],
+          [`templates/bad${String(index)}/one/next.ts`, "export {};\n"],
+        ]),
+      ),
+    },
+    async (root) => {
+      const templatesRoot = join(root, "templates");
+      assert.deepEqual((await readTemplate(templatesRoot, "one")).scripts, [
+        script,
+      ]);
+      for (const index of invalid.keys())
+        await assert.rejects(
+          readTemplate(templatesRoot, `bad${String(index)}`),
+          { message: `invalid-template: bad${String(index)}` },
+          String(index),
+        );
+    },
+  );
+});
