@@ -68,7 +68,7 @@
           "id": "red-green",
           "label": "Red and green test check",
           "summary": "Verify an assertion failure on the base and passing tests on the pull request head before review.",
-          "change": "In develop/round.ts import verifyRedGreen from develop/red-green.ts. After openPull and before acceptWork, call verifyRedGreen({ cycleId: input.cycleId, head: pull.commit, round }). Return a blocked outcome immediately; pass non-null feedback to repair({ cycleId: input.cycleId, round, report, result: verification }). In develop.declaration.json add the command capability to workflow.capabilities and \"commands\": [\"red-green\"] to workflow, and command: [\"run:red-green\"] to methods. Add 4 to workflow.effectLimit. Configure the operator red-green command and checks.redGreen.",
+          "change": "In develop/round.ts import verifyRedGreen from develop/red-green.ts. In deliverPull, before acceptWork, call verifyRedGreen({ cycleId: pull.target, head: pull.commit, round }). Return a blocked outcome immediately; for non-null feedback return { merged: false, reason: verification.reason, output: verification.output }, so that developRound passes it to recover for the next fix turn. In develop.declaration.json add the command capability to workflow.capabilities and \"commands\": [\"red-green\"] to workflow, and command: [\"run:red-green\"] to methods. Add 6 to workflow.effectLimit. Configure the operator red-green command and checks.redGreen.",
           "requires": {
             "merge": [
               "green",
@@ -135,7 +135,7 @@
           "id": "local",
           "label": "A person merges the local branch",
           "summary": "Leave the accepted branch for a person to merge by hand. Do not push or open a pull request.",
-          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, preparePull, both labelTicket calls and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
+          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, preparePull, the start labelTicket call and its check, the blockTicket call and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
           "requires": {
             "accept": ["person", "turn"],
             "partial": ["person"]
@@ -171,6 +171,30 @@
           "label": "A person decides",
           "summary": "Ask what to do with partial work. Use the answer as feedback for a bounded continuation, or stop and leave it for the person.",
           "change": "For a pull-request workflow, in develop/round.ts import partialChoice from develop/partial-choice.ts. Immediately after the line that returns a blocked outcome of developReport, call partialChoice({ input, round, report }) and return any non-null result. develop/local.ts already does this. The helper calls waitForDecision({ gateId: partialGateId, kind: \"question\", prompt: partialQuestion }); an explicit answer feeds the next bounded turn and an empty answer stops.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "recovery",
+      "question": "What happens when a run cannot finish by itself?",
+      "options": [
+        {
+          "id": "person",
+          "label": "Ask a person",
+          "summary": "Try a short git or GitHub failure of open-pr, merge or label again after 60, 300 and 900 seconds, without a new turn, then stop blocked with the reason and the pull request link. Give the second merge conflict a conflict prompt. At the round limit, after the third conflict, or after a review without findings, ask a person for two more rounds, a stop with the pull request open, or a close of the pull request.",
+          "change": "Keep export const recovery = \"person\" as \"person\" | \"stop\" in develop/recovery.ts. Keep github close-pr in the declaration methods. The default workflow.effectLimit of 87 covers six rounds with all retries.",
+          "requires": {
+            "merge": ["green", "person"]
+          },
+          "needs": []
+        },
+        {
+          "id": "stop",
+          "label": "Stop as today",
+          "summary": "Fail the run on a failed GitHub effect, and stop blocked at the round limit without a question.",
+          "change": "In develop/recovery.ts set export const recovery = \"stop\" as \"person\" | \"stop\". The retry, conflict and decision helpers then return the earlier results unchanged.",
           "requires": {},
           "needs": []
         }

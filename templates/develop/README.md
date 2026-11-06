@@ -1,6 +1,6 @@
 # Develop template decisions
 
-`template.json` describes the six decisions used by the develop template.
+`template.json` describes the seven decisions used by the develop template.
 The default workflow in `develop.ts` accepts the declared ticket input, selects
 from the queue, opens a pull request, waits for Greptile at 5/5, and calls
 `mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
@@ -12,7 +12,8 @@ The host supplies `{ cycleId, repository, input: { ticket: { id, text } } }`.
 status. `develop/round.ts` composes development, review and merge. A failed
 review or repairable merge result gives its full output and remaining work to
 the next worker turn. Review, local-check, conflict and CI fixes share a limit
-of three fix rounds. Pending CI and an unconfigured check stop the run.
+of three fix rounds. At that limit, the default `recovery` option asks a person
+(see "Recovery" below). Pending CI and an unconfigured check stop the run.
 
 `develop/pull.ts` keeps the first line of the ticket as the pull request title,
 removes leading `#` characters and limits it to 200 characters. For a task with
@@ -40,7 +41,8 @@ loader and the installed package, covering every option.
 `ticket` or a task `prompt`. It calls the public protected effect helper and
 returns the broker result unchanged. Its `feedback` takes the previous
 result's `reason`, full `output`, and `remaining` items. Rounds 1 through 4
-allow the initial turn and three fix turns; the workflow must stop after that.
+allow the initial turn and three fix turns. Rounds 5 and 6 occur only after a
+person chooses "Two more rounds"; the workflow must stop after round 6.
 `develop.test.ts` exercises this helper with `cloving/workflows/testing`.
 The package tests also load small compositions of this helper through folder
 admission for both input forms and test both forms in complete workflows.
@@ -59,7 +61,8 @@ outcome with the reason `turn-interrupted`. `develop/round.ts` and
 `develop/local.ts` return this outcome before they use the report. A
 pull-request workflow then adds `cloving: blocked` to the GitHub issue of the
 ticket. Other results that are not `completed` fail the run. The default effect
-limit of 31 includes one more turn in each of the four rounds.
+limit of 87 covers six rounds with both turns, all retries and one close of the
+pull request in each round.
 
 `develop/partial.ts` implements the person's partial-work question.
 `develop/partial-choice.ts` connects its answer to a development report and the
@@ -85,32 +88,35 @@ Task text keeps its full contents, including any issue-looking lines, without
 selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
-no additional verification, Greptile at 5/5, merge after checks, and return
-partial work to the queue.
+no additional verification, Greptile at 5/5, merge after checks, return
+partial work to the queue, and ask a person for recovery.
 Selecting `person` at selection, acceptance and partial work, with `local` at
 merge, describes the existing reviewed local-branch process.
 
 The `verify` point defaults to `none`, preserving the current round and
 declaration. Select `red-green` with either `green` or `person` at `merge`.
 Import `verifyRedGreen` from `develop/red-green.ts` in `develop/round.ts`.
-Immediately after `openPull`, before constructing the review subject or
-calling `acceptWork`, add:
+At the start of `deliverPull`, before the call of `acceptWork`, add:
 
 ```typescript
 const verification = await verifyRedGreen({
-  cycleId: input.cycleId,
+  cycleId: pull.target,
   head: pull.commit,
   round,
 });
 if (verification !== null && "kind" in verification) return verification;
 if (verification !== null)
-  return repair({ cycleId: input.cycleId, round, report, result: verification });
+  return {
+    merged: false,
+    reason: verification.reason,
+    output: verification.output,
+  };
 ```
 
 Add `"command"` to `workflow.capabilities`, `"commands": ["red-green"]` to
 `workflow`, and `"command": ["run:red-green"]` to `methods` in
-`develop.declaration.json`. Increase `workflow.effectLimit` by 4, from 31 to
-35, allowing one verification command in each of the four development rounds.
+`develop.declaration.json`. Increase `workflow.effectLimit` by 6, from 87 to
+93, allowing one verification command in each of the six development rounds.
 Set `selection.verify` to `"red-green"` in `develop/scenarios.ts` and run the
 option tests. The local merge option does not support this verification.
 
@@ -118,8 +124,8 @@ The helper calls the operator command on the pull request's immutable head with
 scope `{ phase: "verify", operation: "red-green", round }`.
 `accepted` and `no-test-change` proceed to review. `false-red`,
 `red-not-assertion`, `skipped-test` and `green-failed` pass the verdict and full
-tool output through `repair` to the next fix turn. These fixes share the
-existing four-round limit with review and merge fixes. `prepare-failed`, a
+tool output through `recover` to the next fix turn. These fixes share the
+existing round limit with review and merge fixes. `prepare-failed`, a
 failed command or an invalid result blocks immediately with
 `red-green-unavailable`, without a fix turn.
 
@@ -148,6 +154,44 @@ Increase `CLOVING_COMMAND_SECONDS`, for example to `600`, to cover both
 preparation and test runs. Optional `assertionPattern` and `skipPattern`
 override the defaults for non-terminal `node --test` output. See the package
 README's `cloving red-green` documentation for the tool's complete contract.
+
+## Recovery
+
+`develop/recovery.ts` sets `recovery` to `"person"` or `"stop"`. The default
+`"person"` makes these changes:
+
+- A `failed` result of `open-pr`, `merge` or `label` with the reason
+  `git-call-failed`, `git-network-failed` or `github-network-failed` runs
+  again after a `sleep` of 60, 300 and 900 seconds. The worker commit stays,
+  and no new turn runs. Each retry adds the key `retry-1`, `retry-2` or
+  `retry-3` to the scope, and a merge retry passes `retry` to `mergeWhenGreen`.
+- After the last retry, the run ends `blocked` with the last reason. A merge
+  reason also gives the pull request link, for example
+  `git-network-failed: https://github.com/acme/demo/pull/7`. A run never
+  fails for these reasons.
+- The second `merge-conflict` gives the fix turn a conflict prompt. The prompt
+  names the conflicting files, both sides of the merge and the `CONFLICT`
+  lines of git. The third `merge-conflict` opens the decision below.
+- At the round limit, or after a review that does not accept and gives no
+  findings, `develop/decision.ts` opens a question with the latest result and
+  the pull request link. The answer `1` ("Two more rounds") gives two more
+  rounds, up to round 6. The answer `2` ("Stop and keep the pull request
+  open") ends the run `blocked` with the reason and the link. The answer `3`
+  ("Close the pull request") calls the GitHub method `close-pr`, then ends the
+  run `blocked` with `pull-request-closed` and the link. Any other answer, a
+  denial or an expiry stops the run with the pull request open. The question
+  after round 6 has no "Two more rounds" option.
+
+Pending CI, an unconfigured check, a merge queue stop and a merge denial still
+end the run `blocked` without a question.
+
+Select `"stop"` to keep the earlier behavior: a failed GitHub effect fails the
+run, and the run ends `blocked` at the round limit without a question. Local
+merge supports only `"stop"`, because it has no pull request.
+
+The workflow can read only the reason of a failed effect. For this reason, the
+GitHub worker reports a `gh` call that fails with an HTTP 5xx status as
+`github-network-failed`, and the template tries it again.
 
 Each option has an `id`, `label`, `summary`, `change`, `requires` and `needs`.
 `change` describes the step call or declaration edit for the setup agent.

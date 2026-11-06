@@ -1,6 +1,8 @@
 import { flowTests } from "./develop/flow-tests.ts";
 import { refusalTests } from "./develop/refusal-tests.ts";
+import { recoveryTests } from "./develop/recovery-tests.ts";
 import { interruptionTests } from "./develop/interruption-tests.ts";
+import { recoveryOptionTests } from "./develop/recovery-option-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
@@ -8,15 +10,15 @@ import { developTurn } from "./develop/turn.ts";
 import { reviewPartial } from "./develop/partial.ts";
 import { queuePartial } from "./develop/queue-partial.ts";
 
-for (const scenario of flowTests.concat(refusalTests))
+for (const scenario of flowTests.concat(refusalTests, recoveryTests))
   await test(scenario.name, scenario.run);
 
-for (const scenario of interruptionTests)
+for (const scenario of interruptionTests.concat(recoveryOptionTests))
   await test(scenario.name, scenario.run);
 
 await test("CLV-221 invalid partial rounds never dispatch an effect or open a question", async () => {
   using bridge = fakeStepBridge({});
-  for (const round of [0, -1, 1.5, 5, NaN, Infinity]) {
+  for (const round of [0, -1, 1.5, 7, NaN, Infinity]) {
     const input = {
       cycleId: "run-1",
       round,
@@ -32,6 +34,34 @@ await test("CLV-221 invalid partial rounds never dispatch an effect or open a qu
     });
   }
   assert.deepEqual(bridge.requests, []);
+});
+
+await test("CLV-300 partial work in the two extra rounds is queued without a question", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      "github partial-issue": [
+        {
+          kind: "completed",
+          operationId: "partial-update",
+          receipt: null,
+          result: "{}",
+        },
+      ],
+    },
+  });
+  const input = {
+    cycleId: "run-1",
+    issue: { owner: "acme", repository: "demo", number: 42 },
+    pullRequest: 7,
+    remaining: ["Test."],
+  };
+  assert.equal((await queuePartial({ ...input, round: 6 })).kind, "completed");
+  for (const round of [5, 6])
+    assert.equal(await reviewPartial({ ...input, round }), null);
+  assert.deepEqual(
+    bridge.requests.map((request) => request[0]),
+    ["effect"],
+  );
 });
 
 await test("CLV-221 partial questions use distinct rounds and stop after three fixes", async () => {
@@ -269,7 +299,7 @@ await test("CLV-221 invalid turn inputs never dispatch a worker", async () => {
     await assert.rejects(developTurn({ ...common, ...task }), {
       message: "invalid-development-task",
     });
-  for (const round of [0, -1, 1.5, 5, NaN, Infinity])
+  for (const round of [0, -1, 1.5, 7, NaN, Infinity])
     await assert.rejects(developTurn({ ...common, ticket: "Ticket", round }), {
       message: "invalid-development-round",
     });

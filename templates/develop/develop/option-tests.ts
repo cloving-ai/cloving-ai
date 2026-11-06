@@ -80,7 +80,7 @@ export const optionTests = [
       using bridge = fakeStepBridge({
         effects: scenarioEffects(),
         decisions: [approved, approved],
-        effectLimit: selection.verify === "red-green" ? 35 : 31,
+        effectLimit: selection.verify === "red-green" ? 93 : 87,
       });
       assert.deepEqual(await develop(requestInput()), {
         kind: "handoff_requested",
@@ -197,7 +197,7 @@ function repairTests() {
       using bridge = fakeStepBridge({
         effects: verificationEffects([verdict, "accepted"]),
         decisions: [approved, approved],
-        effectLimit: 35,
+        effectLimit: 93,
       });
       assert.equal((await develop(requestInput())).kind, "handoff_requested");
       const expected = completeCalls();
@@ -241,14 +241,16 @@ function limitTests() {
     {
       name: "CLV-249 verification repairs stop after four development rounds",
       run: async () => {
+        const stopped = selection.recovery === "stop";
         using bridge = fakeStepBridge({
           effects: verificationEffects(Array(4).fill("false-red")),
-          effectLimit: 35,
+          decisions: stopped ? [] : [{ decision: "answered", answer: "2" }],
+          effectLimit: 93,
         });
         assert.deepEqual(await develop(requestInput()), {
           kind: "blocked",
           cycleId: input.cycleId,
-          reason: "false-red",
+          reason: stopped ? "false-red" : "false-red: pull/7",
           evidenceId: "merge",
         });
         const names = bridge.requests.map(callName);

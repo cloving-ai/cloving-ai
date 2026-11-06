@@ -66,7 +66,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^develop: .+ \(6 decision points\)\nidea-to-issue: .+ \(3 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
+      /^develop: .+ \(7 decision points\)\nidea-to-issue: .+ \(3 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
     );
   }));
 

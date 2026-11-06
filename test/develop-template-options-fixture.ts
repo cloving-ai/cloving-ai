@@ -8,6 +8,7 @@ export interface DevelopSelection {
   readonly accept: string;
   readonly merge: string;
   readonly partial: string;
+  readonly recovery: string;
 }
 
 const prefix = "repo/.cloving/workflows/";
@@ -19,6 +20,7 @@ export const automatic = {
   accept: "greptile",
   merge: "green",
   partial: "queue",
+  recovery: "person",
 };
 export const reviewed = {
   input: "ticket",
@@ -27,6 +29,7 @@ export const reviewed = {
   accept: "person",
   merge: "local",
   partial: "person",
+  recovery: "stop",
 };
 export const completeConfigurations = [
   automatic,
@@ -71,6 +74,12 @@ export async function configuredDevelopFiles(
   acceptanceFiles(files, selected.accept);
   deliveryFiles(files, selected);
   if (selected.verify === "red-green") verificationFiles(files);
+  if (selected.recovery === "stop")
+    edit(files, {
+      file: "develop/recovery.ts",
+      from: 'export const recovery = "person" as',
+      to: 'export const recovery = "stop" as',
+    });
   files[prefix + "develop.declaration.json"] = declaration(selected);
   scenarioFiles(files, selected);
   return files;
@@ -84,12 +93,12 @@ function verificationFiles(files: Record<string, string>): void {
   });
   edit(files, {
     file: "develop/round.ts",
-    from: "const pull = await openPull({ input, round });",
-    to: `const pull = await openPull({ input, round });
-    const verification = await verifyRedGreen({ cycleId: input.cycleId, head: pull.commit, round });
-    if (verification !== null && "kind" in verification) return verification;
-    if (verification !== null)
-      return repair({ cycleId: input.cycleId, round, report, result: verification });`,
+    from: "  const { round, pull } = request;",
+    to: `  const { round, pull } = request;
+  const verification = await verifyRedGreen({ cycleId: pull.target, head: pull.commit, round });
+  if (verification !== null && "kind" in verification) return verification;
+  if (verification !== null)
+    return { merged: false, reason: verification.reason, output: verification.output };`,
   });
 }
 
@@ -191,7 +200,12 @@ function scenarioFiles(
   });
   edit(files, {
     file: "develop.test.ts",
-    from: "flowTests.concat(refusalTests)",
+    from: 'import { recoveryTests } from "./develop/recovery-tests.ts";',
+    to: "",
+  });
+  edit(files, {
+    file: "develop.test.ts",
+    from: "flowTests.concat(refusalTests, recoveryTests)",
     to: "flowTests",
   });
 }
@@ -199,7 +213,7 @@ function scenarioFiles(
 function localFiles(files: Record<string, string>): void {
   edit(files, {
     file: "develop.ts",
-    from: 'import { preparePull, labelTicket } from "./develop/pull.ts";',
+    from: 'import { preparePull, labelTicket, blockTicket } from "./develop/pull.ts";',
     to: "",
   });
   edit(files, {
@@ -209,10 +223,11 @@ function localFiles(files: Record<string, string>): void {
   });
   for (const line of [
     "  await preparePull(input.cycleId);\n",
-    '  await labelTicket(input, { key: "start", round: 1 });\n',
+    '  const started = await labelTicket(input, { key: "start", round: 1 });\n',
+    "  if (started !== null) return started;\n",
     "  let endingRound = 1;\n",
-    "      endingRound = round;\n",
-    '  if (outcome.kind === "blocked")\n    await labelTicket(input, { key: "blocked", round: endingRound });\n',
+    "        endingRound = round;\n",
+    '  if (failure !== null || outcome?.kind === "blocked")\n    failure = await blockTicket(input, { round: endingRound, failure });\n',
   ])
     edit(files, { file: "develop.ts", from: line, to: "" });
 }
@@ -222,12 +237,12 @@ function declaration(selected: DevelopSelection): string {
   const verification =
     selected.verify === "red-green"
       ? {
-          effectLimit: 35,
+          effectLimit: 93,
           capabilities: ["command"],
           workflow: { commands: ["red-green"] },
           methods: { command: ["run:red-green"] },
         }
-      : { effectLimit: 31, capabilities: [], workflow: {}, methods: {} };
+      : { effectLimit: 87, capabilities: [], workflow: {}, methods: {} };
   const claude =
     selected.accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"];
   const github = [
@@ -237,6 +252,7 @@ function declaration(selected: DevelopSelection): string {
     "merge",
     "close-issue",
     "partial-issue",
+    "close-pr",
   ];
   if (selected.accept === "greptile") github.push("wait-review");
   return JSON.stringify({

@@ -15,14 +15,14 @@ const facts: InitPromptFacts = {
   runtime: "<runtime>",
   chatStores: [],
   files: [".cloving/config.json"],
-  templates: ["develop: 6 decision points"],
+  templates: ["develop: 7 decision points"],
   workflows: [],
 };
 
-await test("CLV-249 setup walks through the verify decision with the other develop points", () => {
+await test("CLV-300 setup walks through the recovery decision with the other develop points", () => {
   assert.match(
     initPrompt(facts),
-    /all six points: input, select, verify, accept, merge and partial/,
+    /all seven points: input, select, verify, accept, merge, partial and recovery/,
   );
 });
 
