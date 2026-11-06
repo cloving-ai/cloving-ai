@@ -69,31 +69,45 @@ export function blockersOf(body: string): readonly number[] {
   return [...new Set(numbers)];
 }
 
+function issueFrom(
+  issue: Readonly<Record<string, unknown>>,
+  number: number,
+): Issue {
+  return {
+    number,
+    open: isOpen(issue["state"]),
+    createdAt: text(issue["created_at"]),
+    closedAt:
+      typeof issue["closed_at"] === "string" ? issue["closed_at"] : null,
+    blockers: blockersOf(
+      typeof issue["body"] === "string" ? issue["body"] : "",
+    ),
+  };
+}
+
+function isList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function rowsOf(pages: unknown): readonly unknown[] {
+  if (!isList(pages)) throw unexpected();
+  return pages.flatMap((page) => {
+    if (!isList(page)) throw unexpected();
+    return page;
+  });
+}
+
 async function readyIssues(gh: Gh): Promise<readonly Issue[]> {
-  const rows = await read(gh, [
-    "issue",
-    "list",
-    "--state",
-    "open",
-    "--label",
-    "cloving: ready",
-    "--limit",
-    "1000",
-    "--json",
-    "number,createdAt,body",
+  const pages = await read(gh, [
+    "api",
+    "--paginate",
+    "--slurp",
+    "repos/{owner}/{repo}/issues?state=open&labels=cloving%3A%20ready&per_page=100",
   ]);
-  if (!Array.isArray(rows)) throw unexpected();
-  return rows
-    .map((row) => {
-      const issue = fields(row);
-      return {
-        number: issueNumber(issue["number"]),
-        open: true,
-        createdAt: text(issue["createdAt"]),
-        closedAt: null,
-        blockers: blockersOf(text(issue["body"])),
-      };
-    })
+  return rowsOf(pages)
+    .map((row) => fields(row))
+    .filter((issue) => issue["pull_request"] === undefined)
+    .map((issue) => issueFrom(issue, issueNumber(issue["number"])))
     .toSorted(
       (left, right) =>
         left.createdAt.localeCompare(right.createdAt) ||
@@ -119,17 +133,7 @@ async function issueOf(gh: Gh, number: number): Promise<Issue | null> {
     throw error;
   });
   if (response === null) return null;
-  const issue = fields(response);
-  return {
-    number,
-    open: isOpen(issue["state"]),
-    createdAt: text(issue["created_at"]),
-    closedAt:
-      typeof issue["closed_at"] === "string" ? issue["closed_at"] : null,
-    blockers: blockersOf(
-      typeof issue["body"] === "string" ? issue["body"] : "",
-    ),
-  };
+  return issueFrom(fields(response), number);
 }
 
 async function issuesOf(

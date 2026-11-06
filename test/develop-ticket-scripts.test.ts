@@ -154,6 +154,60 @@ await test("CLV-301 a blocker that does not exist keeps the issue back and the w
     },
   ));
 
+const minute = (number: number) =>
+  new Date(Date.UTC(2026, 9, 1) + number * 60_000).toISOString();
+
+await test("CLV-301 the scripts read every ready issue, also the oldest of more than 1000", () =>
+  withFakeGithub(
+    {
+      issues: [
+        readyIssue(1, { createdAt: minute(1) }),
+        ...Array.from({ length: 1000 }, (_, index) =>
+          readyIssue(index + 2, {
+            createdAt: minute(index + 2),
+            body: needs(1002),
+          }),
+        ),
+        { number: 1002, state: "open", createdAt: minute(1002) },
+      ],
+    },
+    (directory) => {
+      const next = runScript(nextTicketScript, { directory });
+      assert.equal(next.status, 0, next.warnings.join("\n"));
+      assert.equal(next.stdout, "1\n");
+      assert.deepEqual(next.warnings, []);
+      const ready = runScript(readyTicketsScript, { directory });
+      assert.equal(ready.status, 0, ready.warnings.join("\n"));
+      assert.deepEqual(readyList(ready.stdout), {
+        kind: "read",
+        tickets: [{ id: "1", readyAt: minute(1) }],
+      });
+    },
+  ));
+
+await test("CLV-301 the scripts never print a pull request with the ready label", () =>
+  withFakeGithub(
+    {
+      issues: [
+        {
+          ...readyIssue(20, { createdAt: "2026-11-01T08:00:00Z" }),
+          pullRequest: true,
+        },
+        readyIssue(21, { createdAt: "2026-11-02T08:00:00Z" }),
+      ],
+    },
+    (directory) => {
+      const next = runScript(nextTicketScript, { directory });
+      assert.equal(next.status, 0, next.warnings.join("\n"));
+      assert.equal(next.stdout, "21\n");
+      const ready = runScript(readyTicketsScript, { directory });
+      assert.deepEqual(readyList(ready.stdout), {
+        kind: "read",
+        tickets: [{ id: "21", readyAt: "2026-11-02T08:00:00Z" }],
+      });
+    },
+  ));
+
 await test("CLV-301 the next-ticket script never prints an ID from CLOVING_SKIP_TICKETS", () =>
   withFakeGithub(
     {
@@ -227,16 +281,27 @@ const failures = [
   {
     github: { failure: { command: "list", stderr: "" } },
     warning:
-      "Command failed: gh issue list --state open --label cloving: ready --limit 1000 --json number,createdAt,body",
+      "Command failed: gh api --paginate --slurp repos/{owner}/{repo}/issues?state=open&labels=cloving%3A%20ready&per_page=100",
   },
   {
     github: { listOutput: "{}" },
     warning: "gh printed an unexpected response.",
   },
   {
+    github: { listOutput: "[{}]" },
+    warning: "gh printed an unexpected response.",
+  },
+  {
     github: {
       listOutput: JSON.stringify([
-        { number: "3", createdAt: "2026-11-01T08:00:00Z", body: "" },
+        [
+          {
+            number: "3",
+            state: "open",
+            created_at: "2026-11-01T08:00:00Z",
+            body: "",
+          },
+        ],
       ]),
     },
     warning: "gh printed an unexpected response.",
