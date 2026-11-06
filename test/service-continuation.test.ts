@@ -117,26 +117,26 @@ await service.close();
     });
   }));
 
-await test("CLV-308 a continued first run keeps the chain limit of its chain", () =>
+await test("CLV-308 a continued first run keeps the chain limit of its chain and its spend limit", () =>
   withConsumer(workflows, async (consumer) => {
     const result = await consumer.run(`${failingPrelude}
-const service = await hosted({ destination: failing, registrations: [{ ...fakeRegistration([]), effectLimit: 5, chainLimit: 2 }] });
+const service = await hosted({ destination: failing, registrations: [{ ...fakeRegistration([]), effectLimit: 5, chainLimit: 2, spendLimitUsd: 3 }] });
 const runId = await submitted("c-1");
 const before = await finalState(runId);
 rmSync("fail-merge");
 const reply = await continued({ runId });
 const after = await finalState(reply.runId);
-const chainOf = async (id) => (await asked("status", { runId: id })).run.chain;
-print({ before, after, chains: [await chainOf(runId), await chainOf(reply.runId)] });
+const limitsOf = async (id) => { const { run } = await asked("status", { runId: id }); return [run.chain, run.spendLimitUsd]; };
+print({ before, after, limits: [await limitsOf(runId), await limitsOf(reply.runId)] });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
       before: "failed",
       after: "completed",
-      chains: [
-        { position: 1, limit: 2 },
-        { position: 1, limit: 2 },
+      limits: [
+        [{ position: 1, limit: 2 }, 3],
+        [{ position: 1, limit: 2 }, 3],
       ],
     });
   }));

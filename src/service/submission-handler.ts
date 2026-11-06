@@ -81,10 +81,15 @@ function replayed(
 }
 
 function effectBudget(workflow: Registered): Fields {
-  if (workflow.effectLimit === undefined) return {};
+  const spend =
+    workflow.spendLimitUsd === undefined
+      ? {}
+      : { spendLimitUsd: workflow.spendLimitUsd };
+  if (workflow.effectLimit === undefined) return spend;
   return {
     effectLimit: workflow.effectLimit,
     capabilities: executionCapabilities(workflow.manifest),
+    ...spend,
   };
 }
 

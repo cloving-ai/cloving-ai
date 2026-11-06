@@ -25,7 +25,7 @@ export async function usageTotals(
   const operations = (await effects.operations(runId)).filter(
     (operation) =>
       operation.capability === "claude" &&
-      ["completed", "failed", "stopped", "cancelled", "refused"].includes(
+      ["completed", "failed", "stopped", "cancelled"].includes(
         operation.status,
       ),
   );

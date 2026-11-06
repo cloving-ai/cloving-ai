@@ -133,6 +133,18 @@ await test("CLV-308 a chain limit of 8 registers under an operator maximum of 10
     );
 });
 
+await test("CLV-308 a declaration can set a spend limit in USD above 0", () => {
+  for (const spendLimitUsd of [0.5, 1, 250])
+    assert.deepEqual(
+      candidateDeclarationRefusals(limited({ spendLimitUsd })),
+      [],
+    );
+  for (const spendLimitUsd of [0, -1, "1", null])
+    assert.deepEqual(candidateDeclarationRefusals(limited({ spendLimitUsd })), [
+      "invalid-declaration",
+    ]);
+});
+
 await test("CLV-308 a workflow without a chain limit gets the default of 5, capped at the operator maximum", () => {
   assert.deepEqual(chainLimitWithin({}, { effects: 100, chain: 2 }), {
     chainLimit: 2,

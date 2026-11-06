@@ -51,6 +51,7 @@ export interface WorkflowRegistration {
   readonly resolver: Resolver;
   readonly effectLimit?: number;
   readonly chainLimit?: number;
+  readonly spendLimitUsd?: number;
   readonly stages?: readonly WorkflowStage[];
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];

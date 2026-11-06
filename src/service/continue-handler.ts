@@ -43,6 +43,7 @@ const copiedFields = [
   "parentRunId",
   "chainId",
   "chainLimit",
+  "spendLimitUsd",
 ] as const;
 
 function continueRequest(parameters: Fields): ContinueRequest | undefined {

@@ -40,6 +40,13 @@ export interface Authorization {
 
 const exhausted = "budget-exhausted";
 
+function spendReached(event: EffectEvent): boolean {
+  const limit = event.payload["spendLimitUsd"];
+  const cost = event.payload["recordedCostUsd"];
+  if (limit === undefined || cost === undefined) return false;
+  return Number(cost) >= Number(limit);
+}
+
 export function authorization(
   budget: RunBudget | undefined,
   event: EffectEvent,
@@ -56,6 +63,8 @@ export function authorization(
       },
     },
   );
+  if (result.kind === "authorized" && spendReached(event))
+    return { reason: "spend-limit", budget };
   if (result.kind === "authorized")
     return { reason: null, budget: { ...budget, spent: result.spent } };
   return {

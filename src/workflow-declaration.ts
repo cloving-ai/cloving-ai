@@ -31,6 +31,7 @@ export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
   readonly chainLimit?: number;
+  readonly spendLimitUsd?: number;
   readonly capabilities: readonly ("claude" | "github" | "command")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
@@ -285,6 +286,7 @@ export function isWorkflowDeclaration(
       "workflowId",
       "effectLimit",
       "chainLimit",
+      "spendLimitUsd",
       "capabilities",
       "input",
       "stages",
@@ -300,7 +302,7 @@ export function isWorkflowDeclaration(
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
     integer(effectLimit, { minimum: 1, maximum: 1000 }) &&
-    declaredChainLimit(declaration) &&
+    declaredBudgets(declaration) &&
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
@@ -308,10 +310,13 @@ export function isWorkflowDeclaration(
   );
 }
 
-function declaredChainLimit(declaration: Fields): boolean {
+function declaredBudgets(declaration: Fields): boolean {
+  const spend = declaration["spendLimitUsd"];
   return (
-    !Object.hasOwn(declaration, "chainLimit") ||
-    integer(declaration["chainLimit"], { minimum: 2, maximum: 50 })
+    (!Object.hasOwn(declaration, "chainLimit") ||
+      integer(declaration["chainLimit"], { minimum: 2, maximum: 50 })) &&
+    (!Object.hasOwn(declaration, "spendLimitUsd") ||
+      (typeof spend === "number" && Number.isFinite(spend) && spend > 0))
   );
 }
 

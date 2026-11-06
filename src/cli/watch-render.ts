@@ -173,6 +173,7 @@ export interface WatchRun {
   readonly parentRunId?: string | null;
   readonly chainId?: string;
   readonly chain?: { readonly position: number; readonly limit: number };
+  readonly spendLimitUsd?: number;
   readonly childRunIds?: readonly string[];
   readonly continuedFrom?: string;
   readonly continuedBy?: string;

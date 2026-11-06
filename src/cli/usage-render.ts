@@ -17,6 +17,10 @@ export function priceText(value: unknown, estimate?: unknown): string {
   })} USD`;
 }
 
+export function spendLimitText(value: unknown): string {
+  return priceOf(value) === null ? "" : ` (spend limit ${priceText(value)})`;
+}
+
 export function usageText(value: unknown): string {
   const usage = usageOf(value);
   return [

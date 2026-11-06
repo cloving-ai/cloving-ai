@@ -84,3 +84,20 @@ await test("CLV-308 a reload that lowers effectLimit does not change the budget 
     const later = String(runIdOf(await service.submit("budget-later")));
     assert.equal((await service.authority.effects.budget(later))?.limit, 2);
   }));
+
+await test("CLV-308 the admission pins the spend limit of the workflow, and a reload does not change it", () =>
+  withHarness(async (harness) => {
+    const service = await limitedService(harness, { spendLimitUsd: 2 });
+    const runId = String(runIdOf(await service.submit("spend-root")));
+    service.registry.replace([{ ...fakeRegistration([]), spendLimitUsd: 1 }]);
+    const later = String(runIdOf(await service.submit("spend-later")));
+    const pinned = async (id: string) =>
+      (
+        await service.authority.queries.eventsAfter({
+          runId: id,
+          after: 0,
+          limit: 1,
+        })
+      ).events[0]?.payload["spendLimitUsd"];
+    assert.deepEqual([await pinned(runId), await pinned(later)], ["2", "1"]);
+  }));

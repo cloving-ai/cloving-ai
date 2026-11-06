@@ -174,3 +174,14 @@ export async function scheduledMetadata(
     ? { scheduled: { slot } }
     : {};
 }
+
+export async function submittedInput(
+  context: ServiceContext,
+  digest: string | null | undefined,
+): Promise<Fields | null> {
+  const document = digest
+    ? await context.authority.queries.document(digest)
+    : undefined;
+  const request = record(JSON.parse(document ?? "null"));
+  return record(request?.["submission"]) ?? null;
+}

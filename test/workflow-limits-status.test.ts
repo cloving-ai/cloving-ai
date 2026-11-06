@@ -6,6 +6,7 @@ import { Run } from "../src/cli/watch-view.ts";
 import { boardModel, boardTime } from "./watch-board-fixture.ts";
 import { rendered } from "./watch-dom.ts";
 import { noCopy } from "./watch-sample.ts";
+import { runStatus } from "../src/cli/render.ts";
 import {
   call,
   field,
@@ -66,6 +67,7 @@ await test("CLV-308 the watch run detail shows the effects, the cost and the cha
     state: "running",
     budget: { spent: 3, limit: 40 },
     claudeCostUsd: 1.25,
+    spendLimitUsd: 2,
     chain: { position: 2, limit: 8 },
   };
   const run = boardModel([{ status }]).runs[0];
@@ -74,6 +76,19 @@ await test("CLV-308 the watch run detail shows the effects, the cost and the cha
     component(Run, { run, now: boardTime, copying: noCopy }),
   );
   assert.match(html, /3 of 40 effect units/);
-  assert.match(html, /1\.25 USD/);
+  assert.match(html, /1\.25 USD \(spend limit 2\.00 USD\)/);
   assert.match(html, /run 2 of 8 in its chain/);
+});
+
+await test("CLV-308 the status text shows the cost of a run with its spend limit", () => {
+  const cost = (run: Readonly<Record<string, unknown>>) =>
+    runStatus({ run }).find((line) => line.startsWith("Cost"));
+  assert.equal(
+    cost({ state: "running", claudeCostUsd: 1.2, spendLimitUsd: 1 }),
+    "Cost so far: 1.20 USD (spend limit 1.00 USD)",
+  );
+  assert.equal(
+    cost({ state: "running", claudeCostUsd: 1.2, spendLimitUsd: null }),
+    "Cost so far: 1.20 USD",
+  );
 });

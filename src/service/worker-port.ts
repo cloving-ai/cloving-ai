@@ -8,6 +8,7 @@ import { documentDigest } from "../broker/decision-restore.ts";
 import { effectInputDigest } from "../broker/effect-restore.ts";
 import { operationIdentity } from "../operation-identity.ts";
 import type { Command, Gateway } from "./gateway.ts";
+import { runSpend } from "./run-spend.ts";
 
 interface Identified {
   readonly runId: string;
@@ -184,6 +185,7 @@ function effectPort(parts: Parts): Effects {
             payload: digest,
           }),
           recoveryLimit: authority.recoveryLimit,
+          ...(await runSpend(authority, request)),
         },
         documents: [payload],
         epoch: epoch ?? authority.epoch,

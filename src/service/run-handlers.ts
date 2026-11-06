@@ -4,6 +4,7 @@ import {
   scheduledMetadata,
   metadataOf,
   outcomeOf,
+  submittedInput,
   ticketMetadataPage,
   workflowMetadata,
 } from "./run-metadata.ts";
@@ -26,7 +27,7 @@ import type {
   OperationView,
   StoredState,
 } from "../broker/actor/authority.ts";
-import { record, type Fields, type Reply } from "../protocol.ts";
+import type { Fields, Reply } from "../protocol.ts";
 import {
   committed,
   failed,
@@ -47,6 +48,7 @@ import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 import { workflowFields } from "./workflow-reload.ts";
 import { restartFields } from "./restart-handler.ts";
+import { pinnedSpendLimit } from "./run-spend.ts";
 
 interface ListPage {
   readonly after: string;
@@ -235,17 +237,6 @@ function full(view: ShownRun & WorkerTotals): Fields {
   };
 }
 
-async function submittedInput(
-  context: ServiceContext,
-  digest: string | null | undefined,
-): Promise<Fields | null> {
-  const document = digest
-    ? await context.authority.queries.document(digest)
-    : undefined;
-  const request = record(JSON.parse(document ?? "null"));
-  return record(request?.["submission"]) ?? null;
-}
-
 async function listed(
   context: ServiceContext,
   page: ListPage & { readonly snapshot: Snapshot },
@@ -307,6 +298,7 @@ export async function status(
   return result("run-status", {
     run: {
       ...full({ ...view, ...totals }),
+      spendLimitUsd: (await pinnedSpendLimit(context, view.runId)) ?? null,
       ...(await turnDetailsOf(context, { runId: view.runId, totals })),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),

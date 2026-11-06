@@ -4,7 +4,12 @@ import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
-import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
+import {
+  priceText,
+  spendLimitText,
+  usageText,
+  totalsSuffix,
+} from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
@@ -167,7 +172,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
         element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
         element("p", { children: usageText(run.usage) }),
         element("p", {
-          children: priceText(run.claudeCostUsd, run.estimatedCostUsd),
+          children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
         }),
       ],
     }),

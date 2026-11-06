@@ -80,6 +80,31 @@ export interface AuthorityEvent {
   readonly payload: Readonly<Record<string, string>>;
 }
 
+export const commandEvents: Readonly<Record<string, EventType>> = {
+  "admit-run": "run.created",
+  "open-command-wait": "command-wait.opened",
+  "check-command-wait": "command-wait.checked",
+  "expire-command-wait": "command-wait.expired",
+  "mark-started": "run.started",
+  "open-gate": "gate.opened",
+  "register-wait": "gate.wait-registered",
+  "decide-gate": "gate.decided",
+  "expire-gate": "gate.expired",
+  "pause-run": "run.paused",
+  "resume-run": "run.resumed",
+  "complete-run": "run.completed",
+  "fail-run": "run.failed",
+  "cancel-run": "run.cancelled",
+  "report-observation": "run.observed",
+  "record-dispatch": "step.dispatched",
+  "request-effect": "effect.requested",
+  "grant-lease": "lease.granted",
+  "expire-lease": "lease.expired",
+  "report-effect": "effect.reported",
+  "record-outcome": "operation.reconciled",
+  "record-schedule-skip": "schedule.skipped",
+};
+
 export const numberFields = [
   "expectedRevision",
   "expectedObservation",
@@ -88,6 +113,8 @@ export const numberFields = [
   "limit",
   "effectLimit",
   "chainLimit",
+  "spendLimitUsd",
+  "recordedCostUsd",
   "units",
   "recoveryLimit",
   "leaseGeneration",

@@ -273,17 +273,26 @@ function outcomeOf(
   };
 }
 
-function chainOf(value: unknown): Pick<WatchRun, "chain"> {
-  const chain = record(value);
+function budgetsOf(status: Readonly<Record<string, unknown>>) {
+  const budget = record(status["budget"]);
+  const chain = record(status["chain"]);
   const position = count(chain["position"]);
-  const limit = count(chain["limit"]);
-  if (position === null || limit === null) return {};
-  return { chain: { position, limit } };
+  const chainLimit = count(chain["limit"]);
+  const spendLimitUsd = priceOf(status["spendLimitUsd"]);
+  return {
+    ...(position === null || chainLimit === null
+      ? {}
+      : { chain: { position, limit: chainLimit } }),
+    spent: count(budget["spent"]),
+    limit: count(budget["limit"]),
+    claudeCostUsd: priceOf(status["claudeCostUsd"]),
+    estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
+    ...(spendLimitUsd === null ? {} : { spendLimitUsd }),
+  };
 }
 
 function runLinksOf(status: Readonly<Record<string, unknown>>) {
   return {
-    ...chainOf(status["chain"]),
     parentRunId: stamp(status["parentRunId"]),
     chainId: stamp(status["chainId"]) ?? text(status["runId"]),
     childRunIds: texts(status["childRunIds"]),
@@ -301,7 +310,6 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
   const workflowId = text(status["workflowId"]);
-  const budget = record(status["budget"]);
   const pull = pullOf(
     { records: inputs.githubRecords, repository: inputs.repository ?? null },
     runId,
@@ -322,8 +330,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     title: stamp(status["title"]),
     ...outcomeOf(status["outcome"]),
     latestAt: stamp(status["latestAt"]),
-    claudeCostUsd: priceOf(status["claudeCostUsd"]),
-    estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
+    ...budgetsOf(status),
     usage: usageOf(status["usage"]),
     currentStep: currentStepOf(list(record(value)["events"]), {
       pullRequest: pull.pullRequest,
@@ -333,8 +340,6 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     state: text(status["state"]),
     code: text(record(status["reason"])["code"]),
     detail: text(record(status["reason"])["detail"]),
-    spent: count(budget["spent"]),
-    limit: count(budget["limit"]),
     decisions: inputs.decisions
       .filter((decision) => record(decision)["runId"] === runId)
       .map((decision) =>

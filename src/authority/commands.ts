@@ -3,10 +3,10 @@ import { operationScope } from "../operation-identity.ts";
 import { isInstant } from "./instants.ts";
 import { isBlockedReason, isPromotionId } from "../workflow-contracts.ts";
 import {
+  commandEvents,
   numberFields,
   textFields,
   type AuthorityCommand,
-  type EventType,
   type NumberField,
   type TextField,
 } from "./transitions.ts";
@@ -14,31 +14,6 @@ import {
 const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
 const digest = /^sha256:[0-9a-f]{64}$/;
 const operation = /^[\x20-\x7e]{1,512}$/;
-
-export const commandEvents: Readonly<Record<string, EventType>> = {
-  "admit-run": "run.created",
-  "open-command-wait": "command-wait.opened",
-  "check-command-wait": "command-wait.checked",
-  "expire-command-wait": "command-wait.expired",
-  "mark-started": "run.started",
-  "open-gate": "gate.opened",
-  "register-wait": "gate.wait-registered",
-  "decide-gate": "gate.decided",
-  "expire-gate": "gate.expired",
-  "pause-run": "run.paused",
-  "resume-run": "run.resumed",
-  "complete-run": "run.completed",
-  "fail-run": "run.failed",
-  "cancel-run": "run.cancelled",
-  "report-observation": "run.observed",
-  "record-dispatch": "step.dispatched",
-  "request-effect": "effect.requested",
-  "grant-lease": "lease.granted",
-  "expire-lease": "lease.expired",
-  "report-effect": "effect.reported",
-  "record-outcome": "operation.reconciled",
-  "record-schedule-skip": "schedule.skipped",
-};
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -82,6 +57,7 @@ const shapes: Readonly<Record<string, Shape>> = {
       "effectLimit",
       "capabilities",
       "chainLimit",
+      "spendLimitUsd",
       "continuedFrom",
       "reuseBefore",
       "continueRequest",
@@ -172,8 +148,18 @@ const shapes: Readonly<Record<string, Shape>> = {
       "units",
       "recoveryLimit",
     ],
-    optional: ["resource", "transport", "source", "sourceGeneration"],
-    groups: [["source", "sourceGeneration"]],
+    optional: [
+      "resource",
+      "transport",
+      "source",
+      "sourceGeneration",
+      "spendLimitUsd",
+      "recordedCostUsd",
+    ],
+    groups: [
+      ["source", "sourceGeneration"],
+      ["spendLimitUsd", "recordedCostUsd"],
+    ],
   },
   "grant-lease": {
     required: ["operationId", "leaseGeneration", "expiresAt", "capacity"],
@@ -287,6 +273,10 @@ function texts(fields: Fields): Partial<Record<TextField, string>> {
   return result;
 }
 
+function usd(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function whole(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
@@ -349,6 +339,8 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   subject: isDigest,
   effectLimit: whole,
   chainLimit: (value) => whole(value) && value >= 2 && value <= 50,
+  spendLimitUsd: (value) => usd(value) && value > 0,
+  recordedCostUsd: usd,
   reuseBefore: positive,
   continuedFrom: isRecordKey,
   continueRequest: isDigest,
