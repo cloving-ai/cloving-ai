@@ -148,3 +148,23 @@ await service.close();
       continuedFrom: true,
     });
   }));
+
+await test("CLV-307 the service refuses a continuation of a run that ended before the retention period", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`${scene}
+writeFileSync("fail-merge", "");
+let expired;
+const service = await hosted({ destination: scripted, retentionExpired: async (runId) => runId === expired });
+const runId = await submitted("c-1");
+await ended(runId);
+expired = runId;
+const reply = await continued({ runId });
+print({ refused: refusal(reply), runs: (await asked("status", {})).runs.length });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      refused: ["error", "run-retention-expired"],
+      runs: 1,
+    });
+  }));

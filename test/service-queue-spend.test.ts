@@ -187,6 +187,31 @@ await test("CLV-241 pinned queue metadata holds admission for a declared workflo
     assert.equal(refused["code"], "queue-spend-limit");
   }));
 
+await test("CLV-307 the spend of a failed queue run holds its continuation until the spend window passes", () =>
+  withQueueSpend(async (scene) => {
+    const runId = await scene.begin("spent", "queued");
+    await scene.turn(runId, { costUsd: 25 });
+    const shown = await call(scene.harness, {
+      operation: "status",
+      parameters: { runId },
+    });
+    const failed = await scene.worker().submit({
+      kind: "fail-run",
+      commandId: "spent-fail",
+      runId,
+      expectedRevision: Number(record(shown["run"])?.["revision"]),
+    });
+    assert.equal(failed.kind, "accepted");
+    const continued = () =>
+      call(scene.harness, {
+        operation: "continue-run",
+        parameters: { runId, commandId: "spent-continue", from: "work/turn/1" },
+      });
+    assert.equal((await continued())["code"], "queue-spend-limit");
+    scene.clock.now = "2026-10-11T12:00:00.000Z";
+    assert.equal((await continued())["kind"], "run-continued");
+  }));
+
 function queueRequest(commandId: string, ticket = "specific") {
   return {
     operation: "run",

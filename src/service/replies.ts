@@ -17,6 +17,7 @@ import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 export interface ServiceReads {
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
+  readonly retentionExpired?: (runId: string) => Promise<boolean>;
   readonly threadPool?: () => ThreadPoolCheck | undefined;
 }
 
@@ -55,6 +56,7 @@ export function queryMetadata(
   | "queue"
   | "workerHarness"
   | "turnDetails"
+  | "retentionExpired"
   | "threadPool"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
@@ -73,6 +75,9 @@ export function queryMetadata(
     ...(options.turnDetails === undefined
       ? {}
       : { turnDetails: options.turnDetails }),
+    ...(options.retentionExpired === undefined
+      ? {}
+      : { retentionExpired: options.retentionExpired }),
     ...(options.commandEffects === undefined
       ? {}
       : { commandEffects: options.commandEffects }),

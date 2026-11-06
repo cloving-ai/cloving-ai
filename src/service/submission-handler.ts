@@ -18,7 +18,7 @@ import {
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
 import { activeWorkflow } from "./active-tickets.ts";
-import { queueSpend } from "./queue-spend.ts";
+import { spendLimitRefusal } from "./queue-spend.ts";
 import {
   committed,
   failed,
@@ -220,13 +220,7 @@ async function spendRefusal(
   admission: Admission,
 ): Promise<Reply | undefined> {
   if (admission.workflow.manifest.queue !== true) return undefined;
-  const spend = record((await queueSpend(context))["spend"]);
-  return spend?.["holding"] === true
-    ? failed("queue-spend-limit", {
-        commandId: admission.commandId,
-        detail: "Queue holding for spend limit.",
-      })
-    : undefined;
+  return spendLimitRefusal(context, { commandId: admission.commandId });
 }
 
 function admissionRefusal(

@@ -14,6 +14,7 @@ import {
   result,
   type ServiceContext,
 } from "./replies.ts";
+import { queueRun, spendLimitRefusal } from "./queue-spend.ts";
 import { runIdentity } from "./submission-handler.ts";
 
 interface ContinueRequest {
@@ -92,6 +93,27 @@ async function statusRefusal(
   });
 }
 
+async function retentionRefusal(
+  context: ServiceContext,
+  request: ContinueRequest,
+): Promise<Reply | undefined> {
+  if ((await context.retentionExpired?.(request.runId)) !== true)
+    return undefined;
+  return failed("run-retention-expired", {
+    ...identity(request),
+    detail:
+      "The run ended before the retention period. A run past retention cannot continue.",
+  });
+}
+
+async function spendRefusal(
+  context: ServiceContext,
+  request: ContinueRequest,
+): Promise<Reply | undefined> {
+  if (!(await queueRun(context, request.runId))) return undefined;
+  return spendLimitRefusal(context, identity(request));
+}
+
 async function continuedRefusal(
   context: ServiceContext,
   request: ContinueRequest,
@@ -106,6 +128,19 @@ async function continuedRefusal(
     continuedBy,
     detail: `The run ${continuedBy} already continues this run.`,
   });
+}
+
+async function refusal(
+  context: ServiceContext,
+  subject: Subject,
+): Promise<Reply | undefined> {
+  const { request } = subject;
+  return (
+    (await statusRefusal(context, subject)) ??
+    (await continuedRefusal(context, request)) ??
+    (await retentionRefusal(context, request)) ??
+    (await spendRefusal(context, request))
+  );
 }
 
 function budgetOf(limit: {
@@ -256,9 +291,7 @@ export async function continueRun(
       ...identity(request),
       detail: `No run has the ID ${request.runId}.`,
     });
-  const refused =
-    (await statusRefusal(context, { request, run })) ??
-    (await continuedRefusal(context, request));
+  const refused = await refusal(context, { request, run });
   if (refused !== undefined) return refused;
   const admission =
     run.admissionCommandId === null
