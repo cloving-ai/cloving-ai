@@ -25,6 +25,8 @@ export interface SettingEntry extends ValueSource {
 const defaults: Readonly<Record<string, SettingValue>> = {
   "merge.mode": "direct",
   "queue.lanes": 1,
+  "queue.maxLoadPerCore": 0.7,
+  "queue.maxMemoryPressure": "normal",
   "harness.name": "claude",
   "harness.output": "text",
   tokenPrices: builtInPriceTable.prices,

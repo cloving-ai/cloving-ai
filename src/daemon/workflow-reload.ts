@@ -35,6 +35,7 @@ import {
   type SettingDigests,
   type TurnSettingsSource,
 } from "./settings-reload.ts";
+import type { QueueLimitsSource } from "./queue-limits.ts";
 
 interface PreparedBundle extends ReloadedSettings {
   readonly kind: "prepared";
@@ -235,6 +236,7 @@ type ReloadSettings = DaemonSettings & {
   readonly reloadCommand: readonly string[];
   readonly loadBundle: WorkflowBundleLoader;
   readonly turnSettings: TurnSettingsSource;
+  readonly queueLimitSource: QueueLimitsSource;
 };
 
 type Generations = Pick<ReturnType<typeof workflowGenerations>, "replace">;
@@ -343,6 +345,7 @@ async function reloadOutcome(
   if (workflows.kind === "refused") return kept(workflows);
   const changes = settingChanges(state.settingDigests, bundle.settingDigests);
   settings.turnSettings.replace(bundle.turnSettings);
+  settings.queueLimitSource.replace(bundle.queueLimits);
   return {
     outcome: { ...workflows, ...changes },
     state: {

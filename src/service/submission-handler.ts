@@ -17,7 +17,7 @@ import {
   type CheckedResolution,
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
-import { activeWorkflow } from "./active-tickets.ts";
+import { activeWorkflow, currentLanes } from "./active-tickets.ts";
 import { spendLimitRefusal } from "./queue-spend.ts";
 import {
   committed,
@@ -92,7 +92,8 @@ type Usable =
   | { readonly kind: "usable"; readonly workflow: Registered }
   | { readonly kind: "unusable"; readonly reply: Reply };
 
-function usable(workflow: Registered | undefined, workflowId: string): Usable {
+function usable(context: ServiceContext, workflowId: string): Usable {
+  const workflow = currentLanes(context, context.registry.byId(workflowId));
   if (workflow === undefined)
     return {
       kind: "unusable",
@@ -292,7 +293,7 @@ async function submitted(
       detail:
         "A hand-off chain permits at most five runs and requires a recorded parent.",
     });
-  const found = usable(context.registry.byId(workflowId), workflowId);
+  const found = usable(context, workflowId);
   if (found.kind === "unusable") return found.reply;
   const contract = found.workflow.submission;
   const check = checkSubmission(

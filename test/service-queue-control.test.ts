@@ -61,6 +61,8 @@ await test("CLV-273 the queue read and the status show a queue stopped on an err
       stop: { reason: "invalid-ticket-id" },
       failedRunIds: ["run-first"],
       drain: null,
+      hold: null,
+      holds: [],
     });
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.deepEqual(status["queue"], queue);

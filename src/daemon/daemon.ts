@@ -33,24 +33,22 @@ import { commandEffects } from "./command-journal.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
-import { scheduleConnection } from "./schedule-control.ts";
-import { queueConnection } from "./queue-control.ts";
-import { restartMarks } from "./restart-marks.ts";
-import type { RestartPort } from "../restart-request.ts";
+import type { queueConnection } from "./queue-control.ts";
+import type { scheduleConnection } from "./schedule-control.ts";
+import type { QueueLimitsSource } from "./queue-limits.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { clearedTreeClaims } from "./tree-claims.ts";
 import { treeSweep } from "./tree-sweep.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
   bundleSweep,
-  currentBundle,
   unfinishedPins,
   type CurrentBundle,
 } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
-import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
-import { stalledLine } from "../thread-pool-check.ts";
+import type { ThreadPoolWatch } from "../cli/thread-pool.ts";
+import { controlConnections, controlPorts } from "./daemon-controls.ts";
 import {
   daemonRegistrations,
   queueWorkflowId,
@@ -152,32 +150,6 @@ export async function startDaemon(
   });
 }
 
-function controlConnections(settings: DaemonSettings): {
-  readonly schedules: ReturnType<typeof scheduleConnection>;
-  readonly queues: ReturnType<typeof queueConnection>;
-  readonly current: CurrentBundle;
-  readonly pool: ThreadPoolWatch;
-  readonly restart: RestartPort;
-} {
-  return {
-    restart: restartMarks(settings.directory),
-    schedules: scheduleConnection(),
-    queues: queueConnection(),
-    pool: threadPoolWatch({
-      ...settings.threadPool,
-      stalled: (check) => {
-        process.stderr.write(stalledLine(check));
-      },
-    }),
-    current: currentBundle({
-      directory: settings.directory,
-      bundleDigest: settings.bundleDigest,
-      now: settings.retentionClock ?? Date.now,
-      log: (line) => process.stderr.write(line),
-    }),
-  };
-}
-
 function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
   const place = {
     directory: settings.directory,
@@ -207,11 +179,12 @@ function workflowOptions(
   parts: {
     readonly generations: ReturnType<typeof workflowGenerations>;
     readonly turnSettings: Adapters["turnSettings"];
+    readonly queueLimitSource: QueueLimitsSource;
     readonly current: CurrentBundle;
   },
 ) {
   const { reloadCommand, loadBundle } = settings;
-  const { generations, turnSettings, current } = parts;
+  const { generations, turnSettings, queueLimitSource, current } = parts;
   return {
     workflowBundles: {
       directory: join(settings.directory, "workflow-bundles"),
@@ -232,6 +205,7 @@ function workflowOptions(
               loadBundle,
               generations,
               turnSettings,
+              queueLimitSource,
             }),
           ),
         }),
@@ -291,15 +265,6 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
 type Workers = Pick<Adapters, "worker" | "github" | "commands"> & {
   readonly pool: ThreadPoolWatch;
 };
-
-function controlPorts(controls: ReturnType<typeof controlConnections>) {
-  return {
-    schedule: controls.schedules.request,
-    queue: controls.queues.port,
-    threadPool: controls.pool.latest,
-    restart: controls.restart,
-  };
-}
 
 async function recoverWorkers(
   resources: Workers & { readonly service: Service },
@@ -367,6 +332,7 @@ async function runningDaemon(
     readonly service: Service;
     readonly schedules: ReturnType<typeof scheduleConnection>;
     readonly queues: ReturnType<typeof queueConnection>;
+    readonly queueLimitSource: QueueLimitsSource;
     readonly current: CurrentBundle;
     readonly ports: Promise<HostPorts>;
   } & Workers,
@@ -378,6 +344,7 @@ async function runningDaemon(
     ...settings,
     scheduleConnection: resources.schedules,
     queueConnection: resources.queues,
+    queueLimits: resources.queueLimitSource.current,
     submit: service.worker.submit,
     queueWorkflowId: queueWorkflowId(settings),
   }).catch(async (error: unknown) => {

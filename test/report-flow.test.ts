@@ -138,6 +138,7 @@ await test("CLV-244 every flow value carries a seven-day baseline, evidence and 
       run("b", { start: -24, end: -23 }),
     ],
     skips: [{ workflowId: "queue", at: now - hour, sequence: 3 }],
+    holds: [{ reason: "load" as const, start: now - hour, end: null }],
   };
   const ready = [
     {
@@ -168,7 +169,7 @@ await test("CLV-244 every flow value carries a seven-day baseline, evidence and 
   });
   const metrics = fields(report.metrics);
   const names = Object.keys(metrics).filter((name) => name.startsWith("flow."));
-  assert.equal(names.length, 9);
+  assert.equal(names.length, 10);
   for (const name of names) {
     const metric = fields(metrics[name]);
     assert.deepEqual(
@@ -242,4 +243,35 @@ await test("CLV-244 short observed history gives no baseline mark for every flow
     assert.equal(fields(fields(value)["baseline"])["history"], "short", name);
     assert.equal(fields(value)["mark"], undefined, name);
   }
+});
+
+await test("CLV-309 the report sums the hours that the queue held runs for load or memory pressure", () => {
+  const report = loopReport({
+    ...window,
+    completions: [],
+    flow: {
+      queue: { workflowId: "queue", lanes: 2 },
+      runs: [],
+      holds: [
+        { reason: "load", start: now - 30 * hour, end: now - 23 * hour },
+        { reason: "memory", start: now - 10 * hour, end: now - 8.5 * hour },
+        { reason: "load", start: now - 2 * hour, end: null },
+      ],
+    },
+  });
+  const held = fields(fields(report.metrics)["flow.loadHoldHours"]);
+  assert.equal(held["value"], 4.5);
+  assert.equal(
+    fields(fields(report)["semantics"])["flowHold"],
+    "hours-the-queue-held-new-runs-for-load-or-memory-pressure",
+  );
+  const unknown = loopReport({
+    ...window,
+    completions: [],
+    flow: { queue: { workflowId: "queue", lanes: 2 }, runs: [] },
+  });
+  assert.equal(
+    fields(fields(unknown.metrics)["flow.loadHoldHours"])["value"],
+    null,
+  );
 });

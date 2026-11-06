@@ -2,6 +2,17 @@ import { record, type Fields } from "../protocol.ts";
 import { queueStateFields, readyFields } from "../queue-state.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
 import type { ServiceContext } from "./replies.ts";
+import type { Registered } from "./registry.ts";
+
+export function currentLanes(
+  context: ServiceContext,
+  workflow: Registered | undefined,
+): Registered | undefined {
+  const lanes = context.queue?.control()?.lanes;
+  return workflow?.queue === true && lanes !== undefined
+    ? { ...workflow, admission: lanes }
+    : workflow;
+}
 
 export async function activeWorkflow(
   context: ServiceContext,
@@ -33,7 +44,7 @@ export async function activeWorkflow(
 
 export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const workflow = context.registry.workflowIds
-    .map((id) => context.registry.byId(id))
+    .map((id) => currentLanes(context, context.registry.byId(id)))
     .find((workflow) => workflow?.admission !== undefined);
   if (workflow?.admission === undefined) return {};
   const active = await activeWorkflow(context, workflow.workflowId);

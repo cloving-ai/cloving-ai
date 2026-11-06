@@ -14,6 +14,10 @@ export type RecordedSource = SettingSource | "default";
 export const reloadedSettingFields: readonly string[] = [
   "fallbackModels",
   "profiles",
+  "queue.lanes",
+  "queue.maxLoadPerCore",
+  "queue.maxMemoryPressure",
+  "queue.workingLanes",
   "tokenPrices",
   "workflows.folder",
 ];
@@ -43,6 +47,9 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "tickets.readyCommand": "CLOVING_READY_COMMAND",
   "queue.everySeconds": "CLOVING_QUEUE_SECONDS",
   "queue.lanes": "CLOVING_QUEUE_LANES",
+  "queue.workingLanes": "CLOVING_QUEUE_WORKING_LANES",
+  "queue.maxLoadPerCore": "CLOVING_QUEUE_MAX_LOAD_PER_CORE",
+  "queue.maxMemoryPressure": "CLOVING_QUEUE_MAX_MEMORY_PRESSURE",
   "queue.dailySpendLimitUsd": "CLOVING_QUEUE_DAILY_SPEND_USD",
   "harness.name": "CLOVING_WORKER",
   fallbackModels: "CLOVING_FALLBACK_MODELS",

@@ -43,6 +43,24 @@ function busyShare(input: ReportFlow, window: ReportWindow) {
   };
 }
 
+function heldHours(flow: ReportFlow | undefined, window: ReportWindow) {
+  const holds = flow?.holds;
+  if (holds == null) return null;
+  const spans = holds.map(
+    (hold) =>
+      Math.min(hold.end ?? window.end, window.end) -
+      Math.max(hold.start, window.start),
+  );
+  const held = spans.filter((span) => span > 0);
+  return [
+    {
+      at: window.start,
+      value: held.reduce((sum, span) => sum + span, 0) / 3_600_000,
+      evidence: { periods: held.length },
+    },
+  ];
+}
+
 function peakRuns(runs: readonly ReportFlowRun[], window: ReportWindow) {
   const points = runs
     .filter(
@@ -135,6 +153,7 @@ function windowData(input: FlowInput, window: ReportWindow): FlowSeries {
             },
           ],
     "flow.idleLaneHoursWithReadyTicket": waits.idle,
+    "flow.loadHoldHours": heldHours(input.flow, window),
     "flow.readyWaitHours.dependency": waits.dependency,
     "flow.readyWaitHours.noLane": waits.noLane,
   };

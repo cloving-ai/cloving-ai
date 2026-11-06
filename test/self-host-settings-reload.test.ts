@@ -200,7 +200,7 @@ async function changedDuringTurn(fixture: Scene): Promise<void> {
       profiles: { review: { model: "new-model" } },
       tokenPrices: { "start-model": price(3), "new-model": price(5) },
       fallbackModels: ["new-fallback"],
-      queue: { lanes: 2 },
+      merge: { mode: "queue" },
       notify: { command: ["notify-stand-in"] },
     }),
   );
@@ -211,7 +211,7 @@ async function changedDuringTurn(fixture: Scene): Promise<void> {
     "profiles",
     "tokenPrices",
   ]);
-  assert.deepEqual(reply["restartFields"], ["notify.command", "queue.lanes"]);
+  assert.deepEqual(reply["restartFields"], ["merge.mode", "notify.command"]);
   const second = await submitted(fixture, "review");
   assert.equal(second["kind"], "run-admitted", JSON.stringify(second));
   await turnStarted(fixture);
@@ -231,19 +231,21 @@ async function refusedReloads(fixture: Scene): Promise<void> {
     }),
   );
   assert.equal(await refusal(fixture), "harness-no-worker");
+  await privateSettings(fixture, settingsText({ queue: { lanes: 2 } }));
+  assert.equal(await refusal(fixture), "queue-lanes-needs-queue");
   await privateSettings(
     fixture,
     settingsText({
       profiles: { review: { model: "new-model" } },
       tokenPrices: { "start-model": price(3), "new-model": price(5) },
       fallbackModels: ["new-fallback"],
-      queue: { lanes: 2 },
+      merge: { mode: "queue" },
       notify: { command: ["notify-stand-in"] },
     }),
   );
   const kept = await reloaded(fixture);
   assert.deepEqual(kept["reloadedFields"], []);
-  assert.deepEqual(kept["restartFields"], ["notify.command", "queue.lanes"]);
+  assert.deepEqual(kept["restartFields"], ["merge.mode", "notify.command"]);
   await privateSettings(
     fixture,
     settingsText({

@@ -1,5 +1,6 @@
 import { isAfter, isInstant } from "./authority/instants.ts";
 import { record, type Fields } from "./protocol.ts";
+import type { HoldPeriod, QueueHold } from "./queue-room.ts";
 
 export const queueFailureLimit = 3;
 
@@ -24,6 +25,9 @@ export interface QueueControl {
   readonly drain: QueueDrain | undefined;
   readonly error: string | undefined;
   readonly ready?: ReadyList;
+  readonly hold?: QueueHold;
+  readonly lanes?: number;
+  readonly holds?: readonly HoldPeriod[];
 }
 
 export type QueueCommand = "resume" | "drain";
@@ -70,6 +74,8 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
             startedAt: control.drain.startedAt,
             drainedAt: control.drain.drainedAt,
           },
+    hold: control.hold ?? null,
+    holds: [...(control.holds ?? [])],
   };
 }
 

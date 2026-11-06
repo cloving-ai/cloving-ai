@@ -3,6 +3,7 @@ import type { queueConnection } from "./queue-control.ts";
 import { workflowSchedules } from "./workflow-schedules.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
+import type { HostSignals, QueueLimits } from "../queue-room.ts";
 
 interface LoopSettings extends ParametersOfSchedules {
   readonly scheduleConnection?: ReturnType<typeof scheduleConnection>;
@@ -10,7 +11,8 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
-  readonly queueLanes?: number;
+  readonly queueLimits: () => QueueLimits;
+  readonly hostSignals?: () => Promise<HostSignals>;
   readonly readyCommand?: readonly string[];
   readonly resetQueue?: boolean;
   readonly queueWorkflowId: string | undefined;
@@ -30,7 +32,10 @@ async function startedQueue(
     directory: settings.directory,
     runtimeDirectory: settings.runtimeDirectory,
     intervalMilliseconds: settings.queueMilliseconds,
-    lanes: settings.queueLanes ?? 1,
+    limits: settings.queueLimits,
+    ...(settings.hostSignals === undefined
+      ? {}
+      : { signals: settings.hostSignals }),
     resetQueue: settings.resetQueue ?? false,
     ...(settings.readyCommand === undefined
       ? {}

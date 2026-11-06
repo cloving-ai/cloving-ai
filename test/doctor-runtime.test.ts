@@ -160,6 +160,31 @@ await test("CLV-306 the service check names the settings that come from the envi
     ),
   ));
 
+await test("CLV-309 the service check names the reason of a queue hold", () =>
+  withDoctor((scene) =>
+    withServiceSocket(
+      {
+        scene,
+        answer: {
+          runs: [],
+          queue: {
+            hold: {
+              reason: "memory",
+              text: "Held: memory pressure warn, limit normal",
+            },
+          },
+        },
+      },
+      async (path) => {
+        const output = await scene.report({ CLOVING_RUNTIME_DIR: path });
+        assert.equal(
+          check(output, "service")["detail"],
+          "Service answers from its generated project folder. Queue held: memory pressure warn, limit normal",
+        );
+      },
+    ),
+  ));
+
 await test("CLV-207 a socket that does not answer fails after five seconds", () =>
   withDoctor((scene) =>
     withServiceSocket({ scene, answer: "silent" }, async (path) => {

@@ -30,6 +30,9 @@ export interface Configuration {
   readonly queue?: {
     readonly everySeconds?: number;
     readonly lanes?: number;
+    readonly workingLanes?: number;
+    readonly maxLoadPerCore?: number;
+    readonly maxMemoryPressure?: "normal" | "warn";
     readonly dailySpendLimitUsd?: number;
   };
   readonly harness?: {

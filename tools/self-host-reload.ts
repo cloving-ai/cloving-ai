@@ -8,6 +8,7 @@ import {
   projectConfiguration,
 } from "./project-configuration.ts";
 import { preparedBundle } from "./self-host-project.ts";
+import { queueLimits } from "./self-host-queue.ts";
 
 const settings = record(JSON.parse(String(process.argv[2]))) ?? {};
 
@@ -38,6 +39,17 @@ function startEnvironment(): NodeJS.ProcessEnv {
   };
 }
 
+function reloadedLimits(environment: NodeJS.ProcessEnv) {
+  try {
+    return queueLimits(environment);
+  } catch (error) {
+    const detail = String(Reflect.get(Object(error), "message"));
+    throw new Error(detail.replace(/^The daemon did not start: /, ""), {
+      cause: error,
+    });
+  }
+}
+
 async function reloadedSettings(repository: string) {
   const configuration = await projectConfiguration(
     repository,
@@ -50,6 +62,7 @@ async function reloadedSettings(repository: string) {
     ),
     turnSettings,
     settingDigests: configurationDigests(configuration, turnSettings.profiles),
+    queueLimits: reloadedLimits(configuration.environment),
   };
 }
 

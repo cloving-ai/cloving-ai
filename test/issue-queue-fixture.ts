@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
 import { record } from "../src/protocol.ts";
 import type { QueueDrain } from "../src/queue-state.ts";
+import type { HostSignals, RoomLimits } from "../src/queue-room.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { withHarness } from "./service-fixture.ts";
 
@@ -21,6 +22,7 @@ interface QueueOptions {
   readonly failures?: readonly string[];
   readonly intervalMilliseconds?: number;
   readonly lanes?: number;
+  readonly workingLanes?: number;
   readonly readyCommand?: readonly string[];
   readonly selfUpdateHold?: {
     readonly mark: string;
@@ -29,6 +31,10 @@ interface QueueOptions {
   readonly drain?: QueueDrain;
   readonly pendingRestart?: string;
   readonly resumeQueue?: boolean;
+  readonly room?: {
+    readonly limits: () => RoomLimits;
+    readonly signals: () => Promise<HostSignals>;
+  };
 }
 
 function savedJournal(options: QueueOptions): unknown {
@@ -71,6 +77,7 @@ export async function withQueue(
     readonly stop: () => Promise<void>;
     readonly directory: string;
     readonly control: ReturnType<typeof issueQueue>["port"]["control"];
+    readonly change: ReturnType<typeof issueQueue>["port"]["change"];
   }) => Promise<void>,
 ): Promise<void> {
   return withHarness(async (harness) => {
@@ -88,10 +95,15 @@ export async function withQueue(
       directory,
       runtimeDirectory: harness.runtimeDirectory,
       intervalMilliseconds: options.intervalMilliseconds ?? 5,
-      lanes: options.lanes ?? 1,
+      limits: () => ({
+        lanes: options.lanes ?? 1,
+        workingLanes: options.workingLanes ?? options.lanes ?? 1,
+        ...(options.room === undefined ? {} : { room: options.room.limits() }),
+      }),
       ...(options.readyCommand === undefined
         ? {}
         : { readyCommand: options.readyCommand }),
+      ...(options.room === undefined ? {} : { signals: options.room.signals }),
     });
     try {
       await body({
@@ -99,6 +111,7 @@ export async function withQueue(
         commands: () => queueCommands(file),
         stop: queue.stop,
         control: queue.port.control,
+        change: queue.port.change,
       });
     } finally {
       await queue.stop();

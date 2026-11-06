@@ -54,3 +54,59 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.match(String(result["html"]), headline);
 });
+
+const held = {
+  ...queue,
+  state: "running",
+  busy: 0,
+  drain: null,
+  hold: {
+    reason: "load",
+    loadPerCore: 0.92,
+    limit: 0.7,
+    text: "Held: load 0.92 for each core, limit 0.70",
+  },
+};
+
+await test("CLV-309 cloving status shows the reason of a queue hold", () => {
+  const text = statusText({
+    kind: "run-list",
+    workflows: ["develop"],
+    queue: held,
+    runs: [],
+  });
+  assert.match(
+    text,
+    /Queue: running, 0 of 2 lanes busy\nHeld: load 0\.92 for each core, limit 0\.70/,
+  );
+  assert.doesNotMatch(
+    statusText({ kind: "run-list", workflows: [], queue, runs: [] }),
+    /Held:/,
+  );
+});
+
+await test("CLV-309 the queue line of the watch page shows the reason of a hold in both renders", () => {
+  const line =
+    /Queue: running, 0 of 2 lanes busy\. Held: load 0\.92 for each core, limit 0\.70/;
+  const model = { ...sampleModel([]), queue: held };
+  const html = rendered(
+    component(Page, {
+      model,
+      selected: "",
+      now: at("21:34:41"),
+      stale: false,
+      copying: noCopy,
+    }),
+  );
+  assert.match(html, line);
+  const result = played(
+    model,
+    `
+location.hash = "";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  assert.match(String(result["html"]), line);
+});

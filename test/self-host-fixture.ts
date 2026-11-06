@@ -71,6 +71,11 @@ function withOrigin(root: string, repository: string): string {
   return origin;
 }
 
+const roomyQueue = {
+  CLOVING_QUEUE_MAX_LOAD_PER_CORE: "4",
+  CLOVING_QUEUE_MAX_MEMORY_PRESSURE: "warn",
+};
+
 export async function scene(
   script = fakeClaude,
   entryPoint = entry,
@@ -181,6 +186,9 @@ async function launched(
         CLOVING_OWNERSHIP_LEASE_SECONDS: "2",
         CLOVING_HOST_BOUND: settings.bound ?? "8",
         CLOVING_WATCH_PORT: "off",
+        ...(settings.environment?.["CLOVING_QUEUE_SECONDS"] === undefined
+          ? {}
+          : roomyQueue),
         XDG_CONFIG_HOME: join(settings.directory, "configuration"),
         ...settings.environment,
       },

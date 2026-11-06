@@ -3,8 +3,10 @@ import type {
   ReportFlow,
   ReportFlowRun,
   ReportCompletion,
+  ReportHold,
 } from "../report-flow-types.ts";
 import { send } from "./client.ts";
+import { holdPeriodOf } from "../queue-room.ts";
 
 function queueOf(value: unknown): ReportFlow["queue"] {
   const queue = record(value);
@@ -19,6 +21,19 @@ function queueOf(value: unknown): ReportFlow["queue"] {
     : null;
 }
 
+function holdsOf(value: unknown): readonly ReportHold[] | null {
+  const listed = record(value)?.["holds"];
+  if (!Array.isArray(listed)) return null;
+  const periods = listed.map(holdPeriodOf);
+  return periods.every((period) => period !== undefined)
+    ? periods.map((period) => ({
+        reason: period.reason,
+        start: period.startedAt,
+        end: period.endedAt,
+      }))
+    : null;
+}
+
 async function overview(runtime: string) {
   const reply = await send(runtime, {
     operation: "status",
@@ -28,6 +43,7 @@ async function overview(runtime: string) {
   const workflows = reply.result["workflows"];
   return {
     queue: queueOf(reply.result["queue"]),
+    holds: holdsOf(reply.result["queue"]),
     workflows: Array.isArray(workflows)
       ? workflows.filter((id: unknown): id is string => typeof id === "string")
       : [],
@@ -140,6 +156,7 @@ export async function readReportFlow(
 ): Promise<ReportFlow> {
   const settings = await overview(runtime).catch(() => ({
     queue: null,
+    holds: null,
     workflows: [],
   }));
   const runs =

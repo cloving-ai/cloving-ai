@@ -254,6 +254,7 @@ export function loopReport(input: ReportInput) {
       flowIdle:
         "elapsed-hours-with-spare-capacity-and-at-least-one-eligible-ticket",
       flowWait: "sum-of-ticket-hours-by-dependency-or-full-lanes",
+      flowHold: "hours-the-queue-held-new-runs-for-load-or-memory-pressure",
       flowStreak:
         "terminal-time-then-sequence;current-carries-history;longest-counts-window-ends",
       operatorLabels: "time-match-within-2-minutes-for-same-issue",

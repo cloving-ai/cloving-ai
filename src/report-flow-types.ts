@@ -21,12 +21,19 @@ export interface ReportFlowRun {
   readonly end: number | null;
 }
 
+export interface ReportHold {
+  readonly reason: "load" | "memory";
+  readonly start: number;
+  readonly end: number | null;
+}
+
 export interface ReportFlow {
   readonly queue: {
     readonly workflowId: string;
     readonly lanes: number;
   } | null;
   readonly runs: readonly ReportFlowRun[] | null;
+  readonly holds?: readonly ReportHold[] | null;
   readonly workflows?: readonly string[];
   readonly skips?:
     | readonly {
