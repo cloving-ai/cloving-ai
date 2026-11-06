@@ -15,6 +15,15 @@ import { pathToFileURL } from "node:url";
 import { spawnStall } from "./spawn-stall-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
+const adoptionScript = `if (process.env.CLOVING_TEST_ADOPT && launches.length === 1) {
+  const value = (name) => process.argv[process.argv.indexOf(name) + 1];
+  const legacy = value("--legacy-runtime");
+  mkdirSync(dirname(value("--adoption-record")), { recursive: true });
+  writeFileSync(value("--adoption-record"), JSON.stringify({ schemaVersion: 1, repository: value("--repository"), runtimeDirectory: legacy }));
+  mkdirSync(dirname(legacy), { recursive: true });
+  writeFileSync(join(dirname(legacy), "restart-settings"), "files");
+}`;
+
 async function startTree(
   root: string,
   launch: {
@@ -47,12 +56,14 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   await writeFile(
     join(root, "tools/self-host.ts"),
     `
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 let launches = [];
 try { launches = JSON.parse(readFileSync("launches.json", "utf8")); }
 catch (error) { if (error.code !== "ENOENT") throw error; }
 launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE });
 if (process.env.CLOVING_TEST_FILES && launches.length === 1) writeFileSync("restart-settings", "files");
+${adoptionScript}
 writeFileSync("launches.json", JSON.stringify(launches));
 const status = ${JSON.stringify(launch.statuses)}[launches.length - 1] ?? 2;
 if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
@@ -76,6 +87,7 @@ interface StartOptions {
   readonly stallMilliseconds?: number;
   readonly mergeMode?: string;
   readonly files?: "first" | "stale";
+  readonly adopt?: true;
 }
 
 interface StartObservation {
@@ -102,6 +114,14 @@ function startEnvironment(input: {
     CLOVING_MERGE_MODE: options.mergeMode,
     CLOVING_TEST_FILES: options.files === "first" ? "1" : undefined,
     NODE_OPTIONS: nodeOptions,
+    ...(options.adopt === true
+      ? {
+          CLOVING_RUNTIME_DIR: undefined,
+          CLOVING_TEST_ADOPT: "1",
+          XDG_RUNTIME_DIR: "",
+          XDG_STATE_HOME: join(root, "state"),
+        }
+      : {}),
   };
 }
 
@@ -117,6 +137,8 @@ async function started(
     });
     if (options.files === "stale")
       await writeFile(join(root, "restart-settings"), "files");
+    if (options.adopt === true)
+      spawnSync("git", ["init", "-q", join(root, "chosen")]);
     const result = spawnSync(
       process.execPath,
       [
@@ -224,4 +246,17 @@ await test("CLV-306 start removes a settings note that no restart of this start 
     { ...result.expected, mergeMode: "queue" },
     { ...result.expected, mergeMode: "queue" },
   ]);
+});
+
+await test("CLV-306 a restart from the files reads the settings note of an adopted legacy runtime", async () => {
+  const result = await started([75, 0], { mergeMode: "queue", adopt: true });
+  assert.equal(result.status, 0);
+  assert.deepEqual(
+    result.launches.map((launch) =>
+      typeof launch === "object" && launch !== null && "mergeMode" in launch
+        ? launch.mergeMode
+        : undefined,
+    ),
+    ["queue", undefined],
+  );
 });

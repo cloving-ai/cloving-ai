@@ -231,6 +231,13 @@ function toolProcess(input: {
   });
 }
 
+function currentRuntime(start: {
+  readonly repository: string | undefined;
+  readonly runtime: string;
+}): string {
+  return runtimeDirectory(process.env, start.repository) ?? start.runtime;
+}
+
 function started(input: StartRequest): Promise<number> {
   return toolProcess({
     tool: "self-host",
@@ -284,7 +291,10 @@ async function start(): Promise<number> {
   });
   const restarting = options.filter((option) => option !== "--reset-queue");
   while (status === 75) {
-    environment = await restartEnvironment(dirname(runtime), environment);
+    environment = await restartEnvironment(
+      dirname(currentRuntime({ repository, runtime })),
+      environment,
+    );
     status = await started({
       runtime,
       argumentsList: restarting,
