@@ -6,6 +6,7 @@ import { operationOfRun } from "../../operation-identity.ts";
 import {
   optionalText,
   runRow,
+  text,
   type SqlConnection,
 } from "../../storage/domain-rows.ts";
 import { storedRun } from "../authority-restore.ts";
@@ -31,6 +32,26 @@ interface Scope {
 const admission =
   "SELECT json_extract(payload, '$.continuedFrom') AS continued_from, json_extract(payload, '$.reuseBefore') AS reuse_before FROM events WHERE run_id = ? AND type = 'run.created'";
 
+const continuing =
+  "SELECT run_id, json_extract(payload, '$.reuseBefore') AS reuse_before FROM events WHERE type = 'run.created' AND json_extract(payload, '$.continuedFrom') = ?";
+
+async function existingContinuations(
+  connection: SqlConnection,
+  runId: string | undefined,
+): Promise<{ readonly continuations?: Continuations }> {
+  if (runId === undefined) return {};
+  const rows = await connection.all(continuing, [runId]);
+  if (rows.length === 0) return {};
+  return {
+    continuations: Object.fromEntries(
+      rows.map((row) => [
+        text(row, "run_id"),
+        { runId, before: Number(text(row, "reuse_before")) },
+      ]),
+    ),
+  };
+}
+
 async function storedRuns(
   connection: SqlConnection,
   runId: string | undefined,
@@ -48,6 +69,7 @@ export async function continuationTurn(
   scope: Scope,
 ): Promise<ContinuationTurn> {
   const runs = await storedRuns(connection, scope.continuedFrom);
+  const existing = await existingContinuations(connection, scope.continuedFrom);
   const row = await connection.get(admission, [scope.runId]);
   const continuedFrom =
     row === undefined ? null : optionalText(row, "continued_from");
@@ -57,9 +79,9 @@ export async function continuationTurn(
     continuedFrom === null || reuseBefore === null
       ? undefined
       : continuationOf({ continuedFrom, reuseBefore });
-  if (continuation === undefined) return { operations: [], runs };
+  if (continuation === undefined) return { ...existing, operations: [], runs };
   return {
-    continuations: { [scope.runId]: continuation },
+    continuations: { ...existing.continuations, [scope.runId]: continuation },
     operations: scope.operations
       .map((operationId) => operationOfRun(operationId, continuation.runId))
       .filter((operationId) => operationId !== null),

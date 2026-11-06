@@ -67,6 +67,11 @@ async function reported(
   assert.equal(receipt.kind, "accepted", JSON.stringify(receipt));
 }
 
+const continued = {
+  continuedFrom: "run-1",
+  continueRequest: digestOf("the continue request"),
+};
+
 const failure = {
   outcome: "failed",
   result: undefined,
@@ -96,7 +101,7 @@ await test("CLV-307 the stored authority gives a continuation the completed resu
     (command, documents) =>
       send(
         command["kind"] === "admit-run"
-          ? { ...command, continuedFrom: "run-1", reuseBefore: start }
+          ? { ...command, ...continued, reuseBefore: start }
           : command,
         documents,
       ),
@@ -138,12 +143,41 @@ await test("CLV-307 the stored authority refuses a continuation of an active run
     commandId: "c-continue",
     effectLimit: 5,
     capabilities: JSON.stringify([...manifest.capabilities].sort()),
-    continuedFrom: "run-1",
+    ...continued,
     reuseBefore: 1,
   });
   assert.deepEqual(
     [receipt.kind, Reflect.get(receipt, "reason")],
     ["rejected", "continued-run-active"],
+  );
+  await scene.authority.close();
+});
+
+await test("CLV-307 the stored authority refuses a second continuation of a run that has a continuation", async () => {
+  const scene = await opened(await temporaryDirectory());
+  await runningRun(scene.send, { effectLimit: 5 });
+  const failed = await scene.send({
+    kind: "fail-run",
+    commandId: "c-fail",
+    runId: "run-1",
+    expectedRevision: 2,
+  });
+  assert.equal(failed.kind, "accepted", JSON.stringify(failed));
+  const continuation = (runId: string) =>
+    scene.send({
+      ...storedGate[0],
+      runId,
+      commandId: `c-continue-${runId}`,
+      effectLimit: 5,
+      capabilities: JSON.stringify([...manifest.capabilities].sort()),
+      ...continued,
+      reuseBefore: 1,
+    });
+  const first = await continuation("run-2");
+  const second = await continuation("run-3");
+  assert.deepEqual(
+    [first.kind, second.kind, Reflect.get(second, "reason")],
+    ["accepted", "rejected", "run-already-continued"],
   );
   await scene.authority.close();
 });

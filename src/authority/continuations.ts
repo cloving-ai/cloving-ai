@@ -1,6 +1,6 @@
 import { operationStep } from "../operation-identity.ts";
 import type { Continuation, Continuations, Operation } from "./operations.ts";
-import type { RunState } from "./transitions.ts";
+import type { AuthorityState } from "./transitions.ts";
 
 type Payload = Readonly<Record<string, string>>;
 
@@ -17,18 +17,24 @@ export function continuationOf(payload: Payload): Continuation | undefined {
 }
 
 export function continuationRefusal(
-  runs: Readonly<Record<string, RunState>>,
+  state: Pick<AuthorityState, "runs" | "continuations">,
   admission: Admission,
 ): string | undefined {
   const continuation = continuationOf(admission.payload);
   if (continuation === undefined) return undefined;
-  const status = runs[continuation.runId]?.status;
+  const status = state.runs[continuation.runId]?.status;
   if (status === undefined) return "unknown-continued-run";
   if (status === "cancelled") return "continued-run-cancelled";
   if (status !== "failed" && status !== "completed")
     return "continued-run-active";
   if (continuation.before > admission.sequence)
     return "invalid-continuation-start";
+  if (
+    Object.values(state.continuations ?? {}).some(
+      (existing) => existing.runId === continuation.runId,
+    )
+  )
+    return "run-already-continued";
   return undefined;
 }
 

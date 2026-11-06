@@ -179,7 +179,7 @@ function created(
 ): Reduction {
   const { event, commands } = recorded;
   if (state.runs[event.runId]) return invalid("existing-run");
-  const refused = continuationRefusal(state.runs, event);
+  const refused = continuationRefusal(state, event);
   if (refused !== undefined) return invalid(refused);
   const intent: EffectIntent = {
     kind: "start-run",

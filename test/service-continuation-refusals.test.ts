@@ -118,6 +118,7 @@ const first = await continued({ runId: failed });
 const handedOff = await ended(first.runId);
 const second = await continued({ runId: failed, commandId: "c-continue-2" });
 const again = await continued({ runId: failed });
+const changed = [await continued({ runId: failed, from: "merge/merge/1" }), await continued({ runId: failed, bundle: "current" })];
 const conflicting = await continued({ runId: dropped });
 const invalid = [
   await continued({ runId: "bad id" }),
@@ -127,12 +128,16 @@ const invalid = [
 ];
 const finished = await continued({ runId: first.runId, commandId: "c-continue-3" });
 const droppedReply = await continued({ runId: dropped, commandId: "c-continue-4" });
-print({ again: [again.kind, again.replayed, again.runId === first.runId], conflicting: refusal(conflicting), invalid: invalid.map(refusal), outcome: handedOff.outcome?.kind, second: refusal(second), finished: refusal(finished), cancelled: refusal(droppedReply), continuedBy: (await asked("status", { runId: failed })).run.continuedBy === first.runId, continuedFrom: handedOff.continuedFrom === failed });
+print({ again: [again.kind, again.replayed, again.runId === first.runId], changed: changed.map(refusal), conflicting: refusal(conflicting), invalid: invalid.map(refusal), outcome: handedOff.outcome?.kind, second: refusal(second), finished: refusal(finished), cancelled: refusal(droppedReply), continuedBy: (await asked("status", { runId: failed })).run.continuedBy === first.runId, continuedFrom: handedOff.continuedFrom === failed });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
       again: ["run-continued", true, true],
+      changed: [
+        ["error", "conflicting-command"],
+        ["error", "conflicting-command"],
+      ],
       conflicting: ["error", "conflicting-command"],
       invalid: Array.from({ length: 4 }, () => ["error", "invalid-request"]),
       outcome: "handoff_requested",

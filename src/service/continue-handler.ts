@@ -1,6 +1,7 @@
 import { continuationStart } from "../authority/continuations.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
 import type { RunRecord } from "../broker/actor/authority-queries.ts";
+import { documentDigest } from "../broker/decision-restore.ts";
 import { executionCapabilities } from "../execution-pin.ts";
 import type { Fields, Reply } from "../protocol.ts";
 import {
@@ -48,6 +49,16 @@ function continueRequest(parameters: Fields): ContinueRequest | undefined {
   if (from !== null && typeof from !== "string") return undefined;
   if (bundle !== "retained" && bundle !== "current") return undefined;
   return { runId, commandId, from, bundle };
+}
+
+function requestDigest(request: ContinueRequest): string {
+  return documentDigest(
+    JSON.stringify({
+      runId: request.runId,
+      from: request.from,
+      bundle: request.bundle,
+    }),
+  );
 }
 
 function identity(request: ContinueRequest): Fields {
@@ -204,6 +215,7 @@ async function continued(
       ...pinned.budget,
       continuedFrom: request.runId,
       reuseBefore: start.reuseBefore,
+      continueRequest: requestDigest(request),
     },
   });
 }
@@ -214,7 +226,7 @@ async function replayedContinuation(
 ): Promise<Reply | undefined> {
   const existing = await context.authority.queries.receipt(request.commandId);
   if (existing === undefined) return undefined;
-  if (existing.command.continuedFrom !== request.runId)
+  if (existing.command.continueRequest !== requestDigest(request))
     return failed("conflicting-command", {
       commandId: request.commandId,
       detail: "The command ID is known with a different request.",

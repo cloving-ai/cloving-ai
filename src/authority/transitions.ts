@@ -140,6 +140,7 @@ export const textFields = [
   "waitName",
   "commandOutput",
   "continuedFrom",
+  "continueRequest",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];

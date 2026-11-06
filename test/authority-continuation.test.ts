@@ -56,6 +56,7 @@ function continuation(reuseBefore: number, extra: Fields = {}): Fields {
     runId: "run-2",
     continuedFrom: "run-1",
     reuseBefore,
+    continueRequest: letters("e"),
     ...extra,
   };
 }
@@ -166,6 +167,31 @@ await test("CLV-307 the authority refuses a continuation of an unknown, active o
   assert.equal(
     rejection(failed, continuation(failed.sequence + 2)),
     "invalid-continuation-start",
+  );
+});
+
+await test("CLV-307 the authority refuses a second continuation of a run that has a continuation", () => {
+  const first = applied([...failedMerge, continuation(failedSequence())]).state;
+  assert.equal(
+    rejection(
+      first,
+      continuation(failedSequence(), {
+        commandId: "c-continue-2",
+        runId: "run-3",
+      }),
+    ),
+    "run-already-continued",
+  );
+});
+
+await test("CLV-307 the authority refuses a continuation without the digest of the continue request", () => {
+  const failed = applied(failedMerge).state;
+  assert.equal(
+    rejection(
+      failed,
+      continuation(failedSequence(), { continueRequest: undefined }),
+    ),
+    "invalid-command",
   );
 });
 
