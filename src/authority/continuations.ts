@@ -51,6 +51,20 @@ export function continuedRuns(
   };
 }
 
+const repeatedEffects: readonly (readonly [string, string])[] = [
+  ["github", "label"],
+];
+
+function repeated(request: {
+  readonly capability: string;
+  readonly method: string;
+}): boolean {
+  return repeatedEffects.some(
+    ([capability, method]) =>
+      request.capability === capability && request.method === method,
+  );
+}
+
 export function reusable(
   source: Operation | undefined,
   request: {
@@ -61,6 +75,7 @@ export function reusable(
 ): source is Operation {
   return (
     source !== undefined &&
+    !repeated(request) &&
     source.runId === request.continuation.runId &&
     source.status === "completed" &&
     source.requestedSequence < request.continuation.before &&

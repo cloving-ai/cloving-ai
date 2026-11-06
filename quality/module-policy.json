@@ -1474,6 +1474,7 @@
     "test/service-changes.test.ts": "test",
     "test/service-claude-cost.test.ts": "test",
     "test/service-connections.test.ts": "test",
+    "test/service-continuation-refusals.test.ts": "test",
     "test/service-continuation.test.ts": "test",
     "test/service-decision-actor.test.ts": "test",
     "test/service-decision-rules.test.ts": "test",

@@ -127,11 +127,15 @@ async function pinnedWorkflow(
     return (await context.registry.available(manifest)) === undefined
       ? unavailable(request)
       : { workflow: String(command.workflow), budget: storedBudget(command) };
-  const current = context.registry.byId(manifest.workflowId);
+  const workflowId =
+    (await context.authority.queries.workflowIds([request.runId]))[
+      request.runId
+    ] ?? manifest.workflowId;
+  const current = context.registry.byId(workflowId);
   if (current?.availability !== "available")
     return failed("workflow-unavailable", {
       ...identity(request),
-      detail: `The workflow ${manifest.workflowId} is not available.`,
+      detail: `The workflow ${workflowId} is not available.`,
     });
   return {
     workflow: current.pin,

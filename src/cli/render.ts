@@ -20,6 +20,7 @@ import { queueHeadline, queueStateLines } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import {
+  continuationLines,
   listing,
   part,
   receiptLines,
@@ -61,6 +62,7 @@ function chainLines(run: unknown): readonly string[] {
     `Parent run: ${visible(part(run, "parentRunId") ?? "none")}`,
     `Chain: ${visible(part(run, "chainId") ?? part(run, "runId") ?? "none")}`,
     `Child runs: ${visible(listing(part(run, "childRunIds")))}`,
+    ...continuationLines(run),
   ];
 }
 

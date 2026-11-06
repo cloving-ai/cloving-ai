@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { continuationStart } from "../src/authority/continuations.ts";
+import { linksOf, runLinks } from "../src/authority/handoff-chain.ts";
 import { rebuildHistory } from "../src/authority/history.ts";
 import { emptyAuthority } from "../src/authority/reducer.ts";
 import {
@@ -26,7 +27,7 @@ function completed(round: number): readonly Fields[] {
   ];
 }
 
-const failedMerge = [
+const failedMerge: readonly Fields[] = [
   admission,
   started,
   ...completed(1),
@@ -260,4 +261,45 @@ await test("CLV-307 the continuation starts at the failed step, or at the first 
     kind: "refused",
     reason: "continuation-step-required",
   });
+});
+
+await test("CLV-307 the run links name the continuation on the old run and the old run on the continuation", () => {
+  const links = runLinks({
+    "run-1": { parentRunId: null, chainId: "run-1" },
+    "run-2": { parentRunId: null, chainId: "run-2", continuedFrom: "run-1" },
+  });
+  assert.deepEqual(linksOf({ runId: "run-1", ...links["run-1"] }), {
+    parentRunId: null,
+    chainId: "run-1",
+    childRunIds: [],
+    continuedBy: "run-2",
+  });
+  assert.deepEqual(linksOf({ runId: "run-2", ...links["run-2"] }), {
+    parentRunId: null,
+    chainId: "run-2",
+    childRunIds: [],
+    continuedFrom: "run-1",
+  });
+});
+
+await test("CLV-307 a continuation sets the ticket labels again, so the labels follow the new run", () => {
+  const label = { capability: "github", method: "label" };
+  const labelled = failedMerge.map((step) =>
+    step["kind"] === "request-effect" && step["operationId"] === operationOf(1)
+      ? { ...step, ...label }
+      : step,
+  );
+  const { last } = applied([
+    ...labelled.map((step) =>
+      step["kind"] === "admit-run"
+        ? { ...step, capabilities: '["fake-harness","github"]' }
+        : step,
+    ),
+    continuation(failedSequence(), {
+      capabilities: '["fake-harness","github"]',
+    }),
+    continuedStart,
+    { ...continuedRequest(1), ...label },
+  ]);
+  assert.equal(last.disposition?.disposition, "admitted");
 });

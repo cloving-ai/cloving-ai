@@ -1,5 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
-import { show } from "./terminal-text.ts";
+import { show, visible } from "./terminal-text.ts";
 
 export function part(value: unknown, name: string): unknown {
   return record(value)?.[name];
@@ -37,5 +37,18 @@ export function runContinuedLines(result: Fields): readonly string[] {
   return [
     `Run ${show(result["runId"])} continues ${show(result["continuedFrom"])}. The steps from event ${show(result["reuseBefore"])} run again.`,
     ...receiptLines(result),
+  ];
+}
+
+export function continuationLines(run: unknown): readonly string[] {
+  const continuedFrom = part(run, "continuedFrom");
+  const continuedBy = part(run, "continuedBy");
+  return [
+    ...(continuedFrom === undefined
+      ? []
+      : [`Continues: ${visible(continuedFrom)}`]),
+    ...(continuedBy === undefined
+      ? []
+      : [`Continued by: ${visible(continuedBy)}`]),
   ];
 }

@@ -17,6 +17,7 @@ import {
   type SubmittedSource,
 } from "./command-requests.ts";
 import { argumentRules } from "./runtime-arguments.ts";
+import { continueServiceRequest, stepName } from "./continue-arguments.ts";
 import type { DecisionCommand, RunCommand } from "./runtime-invocation.ts";
 
 interface Argument {
@@ -214,6 +215,37 @@ function runCall(values: Fields): McpCall | undefined {
   );
 }
 
+const step = matching(stepName, {
+  type: "string",
+  pattern: stepName.source,
+});
+const bundle: Argument = {
+  schema: { type: "string", enum: ["retained", "current"] },
+  valid: (value) => value === "retained" || value === "current",
+};
+
+const continueTool: Tool = {
+  name: "cloving_continue",
+  description: `Continue a failed run, or a run that completed blocked, in a new run on the same branch and pull request. The new run reuses the completed effects before the failed step, or before the step in from. ${repeat}`,
+  arguments: { runId: key, from: step, bundle, commandId: key },
+  required: ["runId", "commandId"],
+  annotations: mutation,
+  call: (values) =>
+    mutationCall(values, (commandId) =>
+      continueServiceRequest(
+        {
+          kind: "continue",
+          runId: String(values["runId"]),
+          from: typeof values["from"] === "string" ? values["from"] : null,
+          bundle: values["bundle"] === "current" ? "current" : "retained",
+          commandId,
+          json: true,
+        },
+        commandId,
+      ),
+    ),
+};
+
 const tools: readonly Tool[] = [
   read("status", { runId: key, limit, after: identifier }),
   read("questions", { runId: key }),
@@ -242,6 +274,7 @@ const tools: readonly Tool[] = [
   runCommand("pause"),
   runCommand("resume"),
   runCommand("drop"),
+  continueTool,
 ];
 
 function listing(tool: Tool): Fields {

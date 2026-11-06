@@ -431,14 +431,15 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has ten tools:
+The server has eleven tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
 - `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
+- `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
 
-Each of the seven tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the eight tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -733,6 +734,22 @@ Partial history, including its JSON block, is bounded by the 48,000-byte ticket-
 Merged runs retain `handoff_requested` with `ticketStatus: complete` or `partial`, visible in `cloving status` and watch. If the issue update fails, `issueUpdate: failed` is also shown. The queue reports each terminal run without a successful handoff and continues, stopping after three such runs in a row. A successful handoff resets the count; the queue journal preserves the count and run IDs across daemon restarts. Inspect failed GitHub operations and reconcile their issues before requeueing them. A later partial run does not mark an earlier blocked ticket as done.
 
 To resume a queue stopped at this limit, stop the service with Control-C, inspect the failures and reconcile the affected issues, then run `cloving start --reset-queue` with the same repository, runtime and queue settings. This clears the failure streak once and preserves tracked commands. Ordinary restarts, including automatic self-updates, preserve the count. Resetting the queue does not change issue labels or retry blocked issues.
+
+### Continue a stopped run
+
+A run can stop on a problem that a person can fix, for example a rejected push. After the fix, continue the run:
+
+```sh
+cloving run continue <run-id>
+cloving run continue <run-id> --from pull-request/github-open-pr
+cloving run continue <run-id> --from implement/claude-turn/2 --bundle current
+```
+
+The command admits a new run of the same workflow with the same input. The new run keeps the cycle of the old run, so it uses the same branch, work tree and pull request. An effect of the new run whose scope (phase, operation, round and key) is the same as a completed effect of the old run gets the old result with the disposition `existing`. The worker does not do that effect again. The failed effect and all effects after it run again. GitHub label effects always run again, so the ticket labels follow the new run. With `--from <phase>/<operation>[/<round>]`, the first visit of that step and all steps after it run again.
+
+The new run uses the kept workflow bundle of the old run. If that bundle is not kept, the command refuses with `pinned-workflow-unavailable`. With `--bundle current`, the new run uses the current workflow, and a step whose scope changed runs again. The reused effects count against the effect limit of the new run.
+
+The old run keeps its state. `cloving status` shows `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
 
 ### Queue control
 

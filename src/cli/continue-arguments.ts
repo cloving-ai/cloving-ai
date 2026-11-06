@@ -16,7 +16,8 @@ interface GivenOption {
 }
 
 const allowed = ["from", "bundle", "command-id", "json"];
-const stepName = /^[A-Za-z0-9._:-]+\/[A-Za-z0-9._:-]+(?:\/(?:0|[1-9][0-9]*))?$/;
+export const stepName =
+  /^[A-Za-z0-9._:-]+\/[A-Za-z0-9._:-]+(?:\/(?:0|[1-9][0-9]*))?$/;
 const invalid = "invalid-option-value";
 
 function valueOf(
