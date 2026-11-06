@@ -205,6 +205,7 @@ export interface WatchRun {
 
 export interface WatchModel {
   readonly serviceVersion?: string;
+  readonly restart?: Fields;
   readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
   readonly workflowRefusals?: readonly WorkflowRefusal[];

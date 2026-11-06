@@ -66,6 +66,9 @@ const options = {
   since: { type: "string" },
   repository: { type: "string" },
   harness: { type: "string" },
+  at: { type: "string" },
+  cancel: { type: "boolean" },
+  "resume-queue": { type: "boolean" },
 } as const;
 
 type Parsed = ReturnType<

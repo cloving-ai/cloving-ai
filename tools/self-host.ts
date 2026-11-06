@@ -35,6 +35,7 @@ import {
 } from "./self-host-project.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
+import { productCommit } from "./self-host-restart.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
 import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
@@ -132,6 +133,7 @@ interface Commands extends HarnessSettings {
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
   readonly reloadCommand: readonly string[];
+  readonly commit: string | null;
 }
 
 function queueLanes(): number {
@@ -360,6 +362,9 @@ await launchers(
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     mergeMode: merging,
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
+    commit: await productCommit(
+      extname(import.meta.filename) === ".ts" ? product : dirname(product),
+    ),
     reloadCommand: [
       process.execPath,
       join(product, `tools/self-host-reload${extname(import.meta.filename)}`),

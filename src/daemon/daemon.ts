@@ -34,6 +34,8 @@ import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
+import { restartMarks } from "./restart-marks.ts";
+import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
@@ -153,8 +155,10 @@ function controlConnections(settings: DaemonSettings): {
   readonly queues: ReturnType<typeof queueConnection>;
   readonly current: CurrentBundle;
   readonly pool: ThreadPoolWatch;
+  readonly restart: RestartPort;
 } {
   return {
+    restart: restartMarks(settings.directory),
     schedules: scheduleConnection(),
     queues: queueConnection(),
     pool: threadPoolWatch({
@@ -242,7 +246,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const controls = controlConnections(settings);
   const opening = await startService({
-    version: clovingVersion,
+    ...serviceIdentity(settings),
     ...controlPorts(controls),
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
@@ -285,6 +289,15 @@ function controlPorts(controls: ReturnType<typeof controlConnections>) {
     schedule: controls.schedules.request,
     queue: controls.queues.port,
     threadPool: controls.pool.latest,
+    restart: controls.restart,
+  };
+}
+
+function serviceIdentity(settings: DaemonSettings) {
+  return {
+    version: clovingVersion,
+    commit: settings.commit ?? null,
+    startedAt: new Date().toISOString(),
   };
 }
 

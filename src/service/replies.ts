@@ -13,6 +13,7 @@ import type { Registry, WorkflowCatalog } from "./registry.ts";
 import type { CommandEffects } from "../command-settings.ts";
 import type { RunTurns, TurnDetails } from "../record-retention.ts";
 import type { ThreadPoolCheck } from "../thread-pool-check.ts";
+import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
 
 export interface ServiceReads {
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
@@ -20,8 +21,7 @@ export interface ServiceReads {
   readonly threadPool?: () => ThreadPoolCheck | undefined;
 }
 
-export interface ServiceContext extends ServiceReads {
-  readonly version?: string;
+export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly schedule?: SchedulePort;
   readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
@@ -42,13 +42,13 @@ export interface ServiceContext extends ServiceReads {
 }
 
 export function queryMetadata(
-  options: ServiceReads & {
-    readonly version?: string;
-    readonly schedule?: SchedulePort;
-    readonly queue?: QueuePort;
-    readonly queueDailySpendLimitUsd?: number;
-    readonly commandEffects?: CommandEffects;
-  },
+  options: ServiceReads &
+    ServiceIdentity & {
+      readonly schedule?: SchedulePort;
+      readonly queue?: QueuePort;
+      readonly queueDailySpendLimitUsd?: number;
+      readonly commandEffects?: CommandEffects;
+    },
 ): Pick<
   ServiceContext,
   | "schedule"
@@ -58,10 +58,10 @@ export function queryMetadata(
   | "threadPool"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
-  | "version"
+  | keyof ServiceIdentity
 > {
   return {
-    ...(options.version === undefined ? {} : { version: options.version }),
+    ...serviceIdentity(options),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queue === undefined ? {} : { queue: options.queue }),
     ...(options.queueDailySpendLimitUsd === undefined

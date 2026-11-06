@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
 import { record } from "../src/protocol.ts";
+import type { QueueDrain } from "../src/queue-state.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { withHarness } from "./service-fixture.ts";
 
@@ -25,6 +26,39 @@ interface QueueOptions {
     readonly mark: string;
     readonly startedAt: number;
   };
+  readonly drain?: QueueDrain;
+  readonly pendingRestart?: string;
+  readonly resumeQueue?: boolean;
+}
+
+function savedJournal(options: QueueOptions): unknown {
+  if (
+    options.failures === undefined &&
+    options.selfUpdateHold === undefined &&
+    options.drain === undefined
+  )
+    return options.commands ?? [];
+  return {
+    commands: options.commands ?? [],
+    failures: options.failures ?? [],
+    selfUpdateHold: options.selfUpdateHold,
+    drain: options.drain,
+  };
+}
+
+async function writeMarks(
+  directory: string,
+  options: QueueOptions,
+): Promise<void> {
+  if (options.pendingRestart !== undefined)
+    await writeFile(join(directory, "pending-restart"), options.pendingRestart);
+  if (options.resumeQueue === true)
+    await writeFile(join(directory, "resume-queue"), "");
+  if (options.selfUpdateHold !== undefined)
+    await writeFile(
+      join(directory, "pending-self-update"),
+      options.selfUpdateHold.mark,
+    );
 }
 
 export async function withQueue(
@@ -39,28 +73,13 @@ export async function withQueue(
   return withHarness(async (harness) => {
     const directory = harness.stateDirectory;
     const file = join(directory, "queue-commands.json");
-    await writeFile(
-      file,
-      JSON.stringify(
-        options.failures === undefined && options.selfUpdateHold === undefined
-          ? (options.commands ?? [])
-          : {
-              commands: options.commands ?? [],
-              failures: options.failures ?? [],
-              selfUpdateHold: options.selfUpdateHold,
-            },
-      ),
-    );
+    await writeFile(file, JSON.stringify(savedJournal(options)));
     const listener = await listen({
       path: join(harness.runtimeDirectory, "control.sock"),
       handle: options.handle,
       limits: { idleMilliseconds: 5000 },
     });
-    if (options.selfUpdateHold !== undefined)
-      await writeFile(
-        join(directory, "pending-self-update"),
-        options.selfUpdateHold.mark,
-      );
+    await writeMarks(directory, options);
     const queue = issueQueue({
       workflowId: "develop",
       directory,

@@ -3,6 +3,7 @@ import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { queueCommand, queueRead } from "./queue-handlers.ts";
 import { failed, scheduleRequest, type ServiceContext } from "./replies.ts";
+import { restartOperation } from "./restart-handler.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { submissionHandler } from "./submission-handler.ts";
 import { reloadUnavailable } from "./workflow-reload.ts";
@@ -30,6 +31,7 @@ export function dispatcher(
     ["decision", (request) => decision(context, request.parameters)],
     ["run-command", (request) => runCommand(context, request.parameters)],
     ["reload", () => context.reload?.() ?? reloadUnavailable()],
+    ["restart", (request) => restartOperation(context, request.parameters)],
     [
       "events",
       (request, connection) =>

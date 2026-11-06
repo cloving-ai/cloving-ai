@@ -8,6 +8,9 @@ import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
 import { readyRefreshes } from "./ticket-source.ts";
+import { atGap, workInProgress } from "../work-gap.ts";
+import { daemonWorkReads } from "./work-reads.ts";
+import { restartHold, startedQueue } from "./restart-marks.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
 import {
   queueControlPort,
@@ -274,9 +277,13 @@ async function admission(
   }
 }
 
-async function drained(pending: QueueJournal, busy: number): Promise<void> {
+async function drained(
+  settings: QueueSettings,
+  pending: QueueJournal,
+): Promise<void> {
   const { drain } = pending;
-  if (drain === undefined || drain.drainedAt !== null || busy > 0) return;
+  if (drain === undefined || drain.drainedAt !== null) return;
+  if (!atGap(await workInProgress(daemonWorkReads(settings)))) return;
   pending.drain = { ...drain, drainedAt: Date.now() };
   await pending.save();
   process.stderr.write("Queue drained\n");
@@ -296,8 +303,8 @@ async function admissible(
   const { pending, stop } = checks;
   const pendingRuns = stop(pending) ? 0 : await completed(settings, pending);
   if (stop(pending) && pending.drain === undefined) return false;
+  await drained(settings, pending);
   const status = await queueStatus(settings);
-  await drained(pending, status.busy);
   if (stop(pending) || pending.drain !== undefined) return false;
   const spend = checks.notice(status);
   const updating = await checks.update(status.busy);
@@ -312,12 +319,13 @@ async function cycle(
   run: { readonly signal: AbortSignal; readonly pending: QueueJournal },
 ): Promise<void> {
   const { signal, pending } = run;
-  if (settings.resetQueue === true) {
-    pending.failures.length = 0;
-    pending.drain = undefined;
-    await pending.save();
-  }
-  const update = updateHold(settings.directory, pending);
+  await startedQueue(settings, pending);
+  const selfUpdate = updateHold(settings.directory, pending);
+  const restart = restartHold(settings.directory);
+  const update = async (activeRuns = 0) => {
+    const restarting = await restart();
+    return (await selfUpdate(activeRuns)) || restarting;
+  };
   const notice = spendNotice();
   const stop = stopNotice();
   const holding = async (activeRuns = 0) => {

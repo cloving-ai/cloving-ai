@@ -41,6 +41,7 @@ import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 import { workflowFields } from "./workflow-reload.ts";
+import { restartFields } from "./restart-handler.ts";
 
 interface ListPage {
   readonly after: string;
@@ -252,9 +253,7 @@ async function listed(
     views.push(await viewOf(context, { snapshot: page.snapshot, runId }));
   const runs = views.filter((view) => view !== undefined).map(summary);
   return result("run-list", {
-    ...(context.version === undefined
-      ? {}
-      : { serviceVersion: context.version }),
+    ...(await restartFields(context)),
     ...(await queueOverview(context)),
     ...(await scheduleMetadata(context)),
     ...workflowFields(context),

@@ -54,6 +54,7 @@ a { color: var(--color-accent-strong); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .header-status { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .queue-lanes { padding: 2px 8px; border-radius: 999px; background: var(--color-panel); box-shadow: inset 0 0 0 var(--shape-border) var(--color-line); font-variant-numeric: tabular-nums; }
+.restart-pending { padding: 2px 8px; border-radius: 999px; background: var(--warn-tint); box-shadow: inset 0 0 0 var(--shape-border) var(--color-warn); }
 .header-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .queue-waiting { flex-shrink: 0; margin: 0 0 4px; color: var(--color-muted); font-size: 12px; }
 .queue-waiting ul { margin: 6px 0 0; padding: 0 0 0 18px; columns: 220px; column-gap: 24px; max-height: 25dvh; overflow-y: auto; }

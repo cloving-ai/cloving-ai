@@ -1,7 +1,5 @@
 import {
-  commandJson,
   decisionRequest,
-  errorObject,
   readCommandReply,
   readCommandRequest,
   runCommandRequest,
@@ -11,6 +9,14 @@ import {
 import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
 import { queueServiceRequest } from "./queue-arguments.ts";
+import { restartCommand } from "./restart-command.ts";
+import {
+  failed,
+  identified,
+  presented,
+  type Format,
+  type Terminal,
+} from "./command-output.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import type { WatchThemeSettings } from "./watch-themes.ts";
 import { withCiReruns } from "./github-ci-progress.ts";
@@ -19,26 +25,14 @@ import { resolve } from "node:path";
 import {
   record,
   type Fields,
-  type Reply,
   type ServiceError,
   type ServiceRequest,
 } from "../protocol.ts";
 import { follow, listRuns, mutate, send } from "./client.ts";
-import {
-  errorText,
-  eventText,
-  pendingSummary,
-  rendered,
-  runOverview,
-} from "./render.ts";
+import { eventText, pendingSummary, runOverview } from "./render.ts";
 import type { RuntimeInvocation } from "./runtime-arguments.ts";
 import { commandUsage } from "./usage.ts";
 import { defaultWatchPort, watchServer } from "./watch-server.ts";
-
-export interface Terminal {
-  readonly out: (text: string) => void;
-  readonly error: (text: string) => void;
-}
 
 export interface CommandEnvironment {
   readonly runtimeDirectory: string | undefined;
@@ -56,43 +50,6 @@ type Invoked<Kind extends RuntimeInvocation["kind"]> = Extract<
   RuntimeInvocation,
   { kind: Kind }
 >;
-
-interface Format {
-  readonly json: boolean;
-  readonly commandId?: string;
-  readonly announced?: boolean;
-}
-
-function failed(
-  environment: CommandEnvironment,
-  failure: { readonly error: ServiceError; readonly format: Format },
-): number {
-  const { terminal } = environment;
-  const shown = errorObject(failure.error, failure.format);
-  if (failure.format.json) {
-    terminal.out(`${JSON.stringify(shown)}\n`);
-    return 1;
-  }
-  terminal.error(errorText(failure.error));
-  if (typeof shown["commandId"] === "string" && !failure.format.announced)
-    terminal.error(`Command ID: ${shown["commandId"]}\n`);
-  return 1;
-}
-
-function presented(
-  environment: CommandEnvironment,
-  outcome: { readonly reply: Reply; readonly format: Format },
-): number {
-  const { reply, format } = outcome;
-  if (reply.kind === "error")
-    return failed(environment, { error: reply.error, format });
-  environment.terminal.out(
-    format.json
-      ? `${JSON.stringify(commandJson(reply))}\n`
-      : rendered(reply.result),
-  );
-  return 0;
-}
 
 async function requested(
   environment: Located,
@@ -119,18 +76,6 @@ async function mutated(
     }),
     format: exchange.format,
   });
-}
-
-function identified(
-  environment: CommandEnvironment,
-  invocation: { readonly commandId: string | null; readonly json: boolean },
-): Format & { readonly commandId: string } {
-  const { json } = invocation;
-  if (invocation.commandId !== null)
-    return { json, commandId: invocation.commandId, announced: false };
-  const commandId = environment.identifier();
-  if (!json) environment.terminal.error(`Command ID: ${commandId}\n`);
-  return { json, commandId, announced: !json };
 }
 
 type Submission =
@@ -321,11 +266,13 @@ export function runtimeCommand(
         format: { json: invocation.json },
       }),
     );
+  if (invocation.kind === "restart")
+    return restartCommand({ ...environment, runtimeDirectory }, invocation);
   return located(invocation, { ...environment, runtimeDirectory });
 }
 
 function located(
-  invocation: Exclude<RuntimeInvocation, { kind: "command-help" }>,
+  invocation: Exclude<RuntimeInvocation, { kind: "command-help" | "restart" }>,
   environment: Located,
 ): Promise<number> {
   if (invocation.kind === "schedule")

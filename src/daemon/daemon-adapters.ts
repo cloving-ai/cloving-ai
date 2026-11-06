@@ -44,6 +44,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly repository: string;
+  readonly commit?: string | null;
   readonly bundleDigest?: string;
   readonly manifests: Readonly<Record<string, string | undefined>>;
   readonly declarations?: readonly DeclaredWorkflow[];

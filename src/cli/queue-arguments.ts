@@ -8,7 +8,7 @@ export interface QueueInvocation {
   readonly json: boolean;
 }
 
-function givenCommandId(
+export function givenCommandId(
   options: readonly {
     readonly name: string;
     readonly value: string | undefined;

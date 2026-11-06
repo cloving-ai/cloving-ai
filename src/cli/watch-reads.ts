@@ -1,4 +1,5 @@
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
+import { serviceOf } from "./restart-render.ts";
 import { shownSchedules, type ShownSchedules } from "./schedule-render.ts";
 import {
   workflowStagesOf,
@@ -308,10 +309,6 @@ function stoppedIssues(
   );
 }
 
-function versionOf(value: unknown): { readonly serviceVersion?: string } {
-  return typeof value === "string" ? { serviceVersion: value } : {};
-}
-
 async function service(reader: Reader, now: string): Promise<WatchRead> {
   const status = await asked(reader, {
     operation: "status",
@@ -349,7 +346,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
       (value) => typeof value === "string",
     ),
     workflowStages: workflowStagesOf(status["workflowStages"]),
-    ...versionOf(status["serviceVersion"]),
+    ...serviceOf(status),
     workflowRefusals: workflowRefusals(status["workflowRefusals"]),
     summaries,
     runs,

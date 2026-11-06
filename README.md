@@ -740,9 +740,9 @@ The operator controls the queue of a running service with three commands. Each c
 
 - `cloving queue [--json]` shows the state of the queue: `running`, `stopped`, `draining` or `drained`. It also shows the busy lanes, the failed runs in a row and, for a stopped queue, the reason. `cloving status` and the watch page show the same state.
 - `cloving queue resume [--command-id <id>] [--json]` sets the failure count to 0 and ends a stop or a drain. The next queue check can start a ready ticket. No restart is necessary.
-- `cloving queue drain [--command-id <id>] [--json]` makes the queue start no new run. The runs in work continue to their end. When no lane is busy, the queue journal records the drain time, the service log shows `Queue drained` one time, and the state changes to `drained`. Until the queue records that time, the state stays `draining`.
+- `cloving queue drain [--command-id <id>] [--json]` makes the queue start no new run. The runs in work continue to their end. At the next gap, the queue journal records the drain time, the service log shows `Queue drained` one time, and the state changes to `drained`. Until the queue records that time, the state stays `draining`.
 
-A drained queue is a safe point for a restart. The drain stays in place after a restart. `cloving queue resume` or `cloving start --reset-queue` ends it. A drain does not stop manual runs. A manual run that starts after the drain time shows `draining` until the run ends.
+A drained queue is a safe point for a restart. The queue records the drain time only at a gap, so a run of another workflow keeps the state `draining`. The drain stays in place after a restart. `cloving queue resume`, `cloving restart --resume-queue` or `cloving start --reset-queue` ends it. A drain does not stop manual runs. A manual run that starts after the drain time shows `draining` until the run ends.
 
 With no `--command-id`, the command makes an ID. The text output prints it on standard error, and the JSON result includes it as `commandId`. The queue journal keeps the newest 32 command IDs across restarts. A repeated command with a kept ID does not apply the command again, and the reply shows the current queue state with `replayed: true`. A different command with a kept ID gets `conflicting-command`. The queue applies a command with an older ID as a new command.
 
@@ -787,6 +787,18 @@ The GitHub worker tries a git call to the remote (`fetch`, `push` or `ls-remote`
 
 During a wait, `cloving status` shows the reason `git-network-retry` with a text such as `git fetch failed, retry 2 of 3.` and the time of the next attempt. If the fourth attempt also fails, the operation fails with `git-network-failed`, and its private journal keeps the last git output. Local git calls, for example `merge`, `status` and `rev-parse`, do not try again.
 
+### Restart the service
+
+`cloving restart` restarts the service that `cloving start` runs. The new start reads the settings files and the product files again.
+
+- `--at gap` is the default. The restart waits for the next gap. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. The queue drain and the self-update use the same rule.
+- `--at now` stops the service at once. Claude and Codex turns resume after the start, as after Control-C.
+- `--cancel` cancels a pending restart.
+
+While a restart waits, the queue admits no new run. `cloving status` and the watch page show `Restart pending: 2 runs active`. The command waits for the new service. Then it prints the old commit, the new commit and the start time that the new service reports. Control-C stops the wait, and the restart stays pending. `cloving status --json` shows `serviceCommit`, `serviceStartedAt` and `restart`. The commit is `null` when the product is not the top folder of a git checkout.
+
+The restart keeps a drain of the queue and the failure count. `cloving restart --resume-queue` clears the drain at the new start and keeps the failure count. `cloving start --reset-queue` clears the drain and the failure count. The new start keeps the environment of `cloving start`, so an environment value still hides a file value.
+
 ## Continuous process
 
 In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
@@ -802,7 +814,7 @@ Use one terminal session for the service that stays open, for example a `tmux` s
    - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
    - Check the ticket status and issue: `gh issue view ISSUE_NUMBER --json state,body,labels`. Complete work closes the issue; partial work stays open and requeues until the third partial run blocks it.
 5. Update the local `main`: `git switch main`, then `git pull --ff-only`.
-6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Stop it with Control-C, then start it again with the same settings.
+6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Run `npm run build`, then `cloving restart`. The restart waits for the next gap.
 7. Go to the next issue.
 
 When a run stops and the pull request stays open, read the review. Fix the work yourself, or write a smaller issue.
