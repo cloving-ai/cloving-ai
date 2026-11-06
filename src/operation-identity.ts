@@ -64,6 +64,28 @@ export function operationPhase(operationId: string): string | null {
   return marker === "cloving-operation" && isComponent(phase) ? phase : null;
 }
 
+export interface OperationStep {
+  readonly phase: string;
+  readonly operation: string;
+  readonly round: number;
+}
+
+export function operationStep(operationId: string): OperationStep | null {
+  const [marker, round, , phase, operation] = parsedList(operationId);
+  if (marker !== "cloving-operation" || typeof round !== "number") return null;
+  if (!isComponent(phase) || !isComponent(operation)) return null;
+  return { phase, operation, round };
+}
+
+export function operationOfRun(
+  operationId: string,
+  runId: string,
+): string | null {
+  const list = parsedList(operationId);
+  if (list[0] !== "cloving-operation") return null;
+  return JSON.stringify(list.with(2, runId));
+}
+
 function parsedList(text: string): readonly unknown[] {
   try {
     const value: unknown = JSON.parse(text);

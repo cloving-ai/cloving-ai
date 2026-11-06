@@ -28,7 +28,8 @@ import {
 import { watchHash, watchLocation } from "./watch-navigation.ts";
 import { Floor } from "./watch-floor-view.ts";
 import { Shelf } from "./watch-shelf-view.ts";
-import { NeedsYou } from "./watch-needs-view.ts";
+import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
+export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
@@ -195,6 +196,7 @@ export interface PageProps {
   readonly columns?: ColumnControls;
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
+  readonly continuing?: ContinueControls | undefined;
   readonly theme?: ThemeControls | undefined;
 }
 
@@ -285,7 +287,12 @@ export function FloorPage(
             class: "floor-main",
             children: [
               component(Floor, { model, now, words }),
-              component(NeedsYou, { runs: model.runs, now, words }),
+              component(NeedsYou, {
+                runs: model.runs,
+                now,
+                words,
+                continuing: props.continuing,
+              }),
             ],
           }),
           element("aside", {

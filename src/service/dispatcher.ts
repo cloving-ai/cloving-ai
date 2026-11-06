@@ -1,4 +1,5 @@
 import type { Reply, ServiceRequest } from "../protocol.ts";
+import { continueRun } from "./continue-handler.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { queueCommand, queueRead } from "./queue-handlers.ts";
@@ -30,6 +31,7 @@ export function dispatcher(
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],
     ["run-command", (request) => runCommand(context, request.parameters)],
+    ["continue-run", (request) => continueRun(context, request.parameters)],
     ["reload", () => context.reload?.() ?? reloadUnavailable()],
     ["restart", (request) => restartOperation(context, request.parameters)],
     [

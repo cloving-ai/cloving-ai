@@ -12,6 +12,7 @@ import { atGap, workInProgress } from "../work-gap.ts";
 import { daemonWorkReads } from "./work-reads.ts";
 import { restartHold, startedQueue } from "./restart-marks.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
+import { clearContinuedFailures, handedOff } from "./queue-continuations.ts";
 import {
   queueControlPort,
   queueStopped,
@@ -84,15 +85,6 @@ async function trackedRuns(
     if (run === undefined) throw new Error("queue-run-missing");
     return { commandId, run };
   });
-}
-
-function handedOff(run: Fields): boolean {
-  const outcome = record(run["outcome"]);
-  return (
-    run["state"] === "completed" &&
-    outcome?.["kind"] === "handoff_requested" &&
-    outcome["issueUpdate"] !== "failed"
-  );
 }
 
 function limited(pending: QueueJournal): boolean {
@@ -301,6 +293,7 @@ async function admissible(
   checks: CycleChecks,
 ): Promise<boolean> {
   const { pending, stop } = checks;
+  await clearContinuedFailures(settings.runtimeDirectory, pending);
   const pendingRuns = stop(pending) ? 0 : await completed(settings, pending);
   if (stop(pending) && pending.drain === undefined) return false;
   await drained(settings, pending);

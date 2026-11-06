@@ -30,7 +30,8 @@ import {
 } from "../protocol.ts";
 import { follow, listRuns, mutate, send } from "./client.ts";
 import { eventText, pendingSummary, runOverview } from "./render.ts";
-import type { RuntimeInvocation } from "./runtime-arguments.ts";
+import type { RuntimeInvocation } from "./runtime-invocation.ts";
+import { continueServiceRequest } from "./continue-arguments.ts";
 import { commandUsage } from "./usage.ts";
 import { defaultWatchPort, watchServer } from "./watch-server.ts";
 
@@ -203,17 +204,20 @@ function decision(
 
 function runCommand(
   environment: Located,
-  invocation: Invoked<"run-command">,
+  invocation: Invoked<"run-command"> | Invoked<"continue">,
 ): Promise<number> {
   const format = identified(environment, invocation);
   return mutated(environment, {
     format,
-    request: runCommandRequest({
-      command: invocation.command,
-      runId: invocation.runId,
-      expectedRevision: invocation.expectedRevision,
-      commandId: format.commandId,
-    }),
+    request:
+      invocation.kind === "continue"
+        ? continueServiceRequest(invocation, format.commandId)
+        : runCommandRequest({
+            command: invocation.command,
+            runId: invocation.runId,
+            expectedRevision: invocation.expectedRevision,
+            commandId: format.commandId,
+          }),
   });
 }
 
@@ -266,13 +270,17 @@ export function runtimeCommand(
         format: { json: invocation.json },
       }),
     );
-  if (invocation.kind === "restart")
-    return restartCommand({ ...environment, runtimeDirectory }, invocation);
-  return located(invocation, { ...environment, runtimeDirectory });
+  const placed = { ...environment, runtimeDirectory };
+  if (invocation.kind === "restart") return restartCommand(placed, invocation);
+  if (invocation.kind === "watch") return watch(placed, invocation);
+  return located(invocation, placed);
 }
 
 function located(
-  invocation: Exclude<RuntimeInvocation, { kind: "command-help" | "restart" }>,
+  invocation: Exclude<
+    RuntimeInvocation,
+    { kind: "command-help" | "restart" | "watch" }
+  >,
   environment: Located,
 ): Promise<number> {
   if (invocation.kind === "schedule")
@@ -284,12 +292,11 @@ function located(
   if (invocation.kind === "report")
     return reportCommand(invocation, environment);
   if (invocation.kind === "run") return run(environment, invocation);
-  if (invocation.kind === "status") return status(environment, invocation);
   if (invocation.kind === "decision") return decision(environment, invocation);
-  if (invocation.kind === "run-command")
+  if (invocation.kind === "run-command" || invocation.kind === "continue")
     return runCommand(environment, invocation);
+  if (invocation.kind === "status") return status(environment, invocation);
   if (invocation.kind === "events") return events(environment, invocation);
-  if (invocation.kind === "watch") return watch(environment, invocation);
   return requested(environment, {
     format: { json: invocation.json },
     request: readCommandRequest(invocation),

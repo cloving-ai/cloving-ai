@@ -279,6 +279,12 @@ function runLinksOf(status: Readonly<Record<string, unknown>>) {
     chainId: stamp(status["chainId"]) ?? text(status["runId"]),
     childRunIds: texts(status["childRunIds"]),
     awaitedRunId: stamp(status["awaitedRunId"]),
+    ...(typeof status["continuedFrom"] === "string"
+      ? { continuedFrom: status["continuedFrom"] }
+      : {}),
+    ...(typeof status["continuedBy"] === "string"
+      ? { continuedBy: status["continuedBy"] }
+      : {}),
   };
 }
 

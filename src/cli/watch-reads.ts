@@ -7,7 +7,7 @@ import {
 } from "../workflow-declaration.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
-import { activeRun, recentRun } from "./watch-board.ts";
+import { activeRun, linkFields, recentRun } from "./watch-board.ts";
 import { loadedRun, todayOf } from "./watch-today.ts";
 import {
   workflowRefusals,
@@ -222,7 +222,7 @@ async function completionOf(
 
 function refreshedStatus(run: ReadRun, status: ReadStatus): ReadRun {
   const links = Object.fromEntries(
-    ["parentRunId", "chainId", "childRunIds", "commandWaits"]
+    [...linkFields, "commandWaits"]
       .filter((name) => Object.hasOwn(status, name))
       .map((name) => [name, status[name]]),
   );

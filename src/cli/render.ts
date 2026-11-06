@@ -19,28 +19,16 @@ import { queueHeadline, queueStateLines } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import { restartLines, serviceLines } from "./restart-render.ts";
+import {
+  continuationLines,
+  listing,
+  part,
+  receiptLines,
+  runCommandLines,
+  runContinuedLines,
+} from "./run-command-render.ts";
 export { oneLine } from "./terminal-text.ts";
 export { errorText } from "./error-render.ts";
-
-function part(value: unknown, name: string): unknown {
-  return record(value)?.[name];
-}
-
-function listing(value: unknown): string {
-  const items = Array.isArray(value) ? value.map(show) : [];
-  return items.length === 0 ? "none" : items.join(", ");
-}
-
-function receiptLines(result: Fields): readonly string[] {
-  const receipt = result["receipt"];
-  return [
-    `Command ID: ${show(result["commandId"])}`,
-    `Receipt: sequence ${show(part(receipt, "sequence"))}, recorded at ${show(part(receipt, "recordedAt"))}`,
-    ...(result["replayed"] === true
-      ? ["This is the receipt of the earlier equal command."]
-      : []),
-  ];
-}
 
 function admitted(result: Fields): readonly string[] {
   return [
@@ -67,6 +55,7 @@ function chainLines(run: unknown): readonly string[] {
     `Parent run: ${visible(part(run, "parentRunId") ?? "none")}`,
     `Chain: ${visible(part(run, "chainId") ?? part(run, "runId") ?? "none")}`,
     `Child runs: ${visible(listing(part(run, "childRunIds")))}`,
+    ...continuationLines(run),
   ];
 }
 
@@ -339,18 +328,6 @@ function decisionRecorded(result: Fields): readonly string[] {
   ];
 }
 
-function runCommand(result: Fields): readonly string[] {
-  const committed = result["committed"];
-  const observed = result["observed"];
-  return [
-    `Run ${show(result["runId"])}: ${show(result["command"])} is committed. State ${show(part(committed, "state"))}, revision ${show(part(committed, "revision"))}.`,
-    ...receiptLines(result),
-    `Revoked intents: ${show(part(committed, "revokedIntents"))}`,
-    `Observed: ${show(part(observed, "condition"))}`,
-    `Unresolved effects: ${listing(part(observed, "unresolvedEffects"))}`,
-  ];
-}
-
 export function eventText(event: Fields): string {
   return `${show(event["sequence"])}  ${show(event["recordedAt"])}  ${show(event["type"])}  ${show(event["runId"])}  ${JSON.stringify(event["payload"])}`;
 }
@@ -370,7 +347,8 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-status", runStatus],
   ["decision-list", decisionList],
   ["decision-recorded", decisionRecorded],
-  ["run-command", runCommand],
+  ["run-command", runCommandLines],
+  ["run-continued", runContinuedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],

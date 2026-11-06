@@ -202,6 +202,14 @@ function pullRequestCardDetails(
   };
 }
 
+export const linkFields = [
+  "parentRunId",
+  "chainId",
+  "childRunIds",
+  "continuedFrom",
+  "continuedBy",
+];
+
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,

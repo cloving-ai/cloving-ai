@@ -1,5 +1,6 @@
 import type { ScheduleInvocation } from "./schedule-arguments.ts";
 import type { QueueInvocation } from "./queue-arguments.ts";
+import type { ContinueInvocation } from "./continue-arguments.ts";
 import type { RestartInvocation } from "./restart-arguments.ts";
 
 export type RunSource =
@@ -14,6 +15,7 @@ export type RunCommand = "pause" | "resume" | "drop";
 export type RuntimeInvocation =
   | ScheduleInvocation
   | QueueInvocation
+  | ContinueInvocation
   | RestartInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "reload"; readonly json: boolean }
@@ -71,7 +73,20 @@ export type RuntimeInvocation =
       readonly json: boolean;
     };
 
-export const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
-export const decisionReference = /^[A-Za-z0-9._:/-]{1,256}$/;
-export const sha256Digest = /^sha256:[0-9a-f]{64}$/;
-export const wholeNumber = /^(?:0|[1-9][0-9]*)$/;
+export interface GivenOption {
+  readonly name: string;
+  readonly value: string | undefined;
+}
+
+export interface RuntimeRequest {
+  readonly command: string;
+  readonly positionals: readonly string[];
+  readonly options: readonly GivenOption[];
+}
+
+export const argumentRules = {
+  identifier: /^[A-Za-z0-9._:/-]{1,128}$/,
+  decisionReference: /^[A-Za-z0-9._:/-]{1,256}$/,
+  sha256Digest: /^sha256:[0-9a-f]{64}$/,
+  revisions: { minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+};
