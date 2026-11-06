@@ -10,13 +10,19 @@ import {
   type ServiceRequest,
 } from "../protocol.ts";
 
-const mutations = [
-  "run",
-  "decision",
-  "run-command",
-  "queue-command",
-  "restart",
-];
+const resend =
+  "The connection ended before the reply. Send the command again with the same command ID.";
+
+const lostDetails: ReadonlyMap<string, string> = new Map([
+  ["run", resend],
+  ["decision", resend],
+  ["run-command", resend],
+  ["queue-command", resend],
+  [
+    "restart",
+    "The connection ended before the reply. The restart can be pending or complete. Run cloving status before you send the restart again.",
+  ],
+]);
 
 function unavailable(runtimeDirectory: string): Reply {
   return {
@@ -39,16 +45,9 @@ function refused(runtimeDirectory: string): Reply {
 }
 
 function lost(request: ServiceRequest, runtimeDirectory: string): Reply {
-  if (!mutations.includes(request.operation))
-    return unavailable(runtimeDirectory);
-  return {
-    kind: "error",
-    error: {
-      code: "outcome-unknown",
-      detail:
-        "The connection ended before the reply. Send the command again with the same command ID.",
-    },
-  };
+  const detail = lostDetails.get(request.operation);
+  if (detail === undefined) return unavailable(runtimeDirectory);
+  return { kind: "error", error: { code: "outcome-unknown", detail } };
 }
 
 export interface Interruption {

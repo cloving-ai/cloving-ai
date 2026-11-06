@@ -51,7 +51,10 @@ async function writeMarks(
   options: QueueOptions,
 ): Promise<void> {
   if (options.pendingRestart !== undefined)
-    await writeFile(join(directory, "pending-restart"), options.pendingRestart);
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      options.pendingRestart,
+    );
   if (options.resumeQueue === true)
     await writeFile(join(directory, "resume-queue"), "");
   if (options.selfUpdateHold !== undefined)

@@ -5,7 +5,7 @@ export type RestartTime = "gap" | "now";
 export type RestartCancel = "cancelled" | "none" | "started";
 
 export const restartFiles = {
-  pending: "pending-restart",
+  request: "pending-restart-",
   claimed: "claimed-restart",
 } as const;
 
@@ -14,6 +14,16 @@ export interface RestartMark {
   readonly requestedAt: number;
   readonly commandId: string;
   readonly resumeQueue: boolean;
+}
+
+export interface RestartEntry {
+  readonly name: string;
+  readonly text: string;
+}
+
+export interface RestartRequest {
+  readonly name: string;
+  readonly mark: RestartMark;
 }
 
 export interface RestartPort {
@@ -50,11 +60,29 @@ export function restartMark(text: string): RestartMark | undefined {
   };
 }
 
-export function sameRestart(first: RestartMark, second: RestartMark): boolean {
-  return (
-    first.commandId === second.commandId &&
-    first.requestedAt === second.requestedAt
-  );
+export function isRestartRequest(name: string): boolean {
+  return name.startsWith(restartFiles.request);
+}
+
+function requestOf(entry: RestartEntry): readonly RestartRequest[] {
+  const mark = restartMark(entry.text);
+  return mark === undefined ? [] : [{ name: entry.name, mark }];
+}
+
+function newer(
+  newest: RestartRequest | undefined,
+  next: RestartRequest,
+): RestartRequest {
+  if (newest === undefined) return next;
+  return next.mark.requestedAt > newest.mark.requestedAt ? next : newest;
+}
+
+export function newestRestart(
+  entries: readonly RestartEntry[],
+): RestartRequest | undefined {
+  return entries
+    .flatMap(requestOf)
+    .reduce<RestartRequest | undefined>(newer, undefined);
 }
 
 export function restartText(mark: RestartMark): string {

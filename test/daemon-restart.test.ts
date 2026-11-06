@@ -17,7 +17,10 @@ try {
   assert.equal(status.restart, null);
   const reply = await asked("restart", { at: "gap", commandId: "restart-one" });
   assert.equal(reply.restart.state, "pending", JSON.stringify(reply));
-  const mark = JSON.parse(readFileSync("pending-restart", "utf8"));
+  const { readdirSync } = await import("node:fs");
+  const names = readdirSync(".").filter((name) => name.startsWith("pending-restart-"));
+  assert.equal(names.length, 1, names.join(" "));
+  const mark = JSON.parse(readFileSync(names[0], "utf8"));
   assert.equal(mark.at, "gap");
   assert.equal(mark.commandId, "restart-one");
   assert.deepEqual((await asked("status")).restart, { ...mark, activeRuns: 0 });

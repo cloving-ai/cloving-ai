@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { restartMarks } from "../src/daemon/restart-marks.ts";
 import {
   restartMark,
   restartText,
@@ -13,8 +23,8 @@ import {
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import {
   claimedRestart,
+  clearedRestart,
   productCommit,
-  returnedRestart,
 } from "../tools/self-host-restart.ts";
 import { programs } from "./self-host-processes-fixture.ts";
 import { eventually } from "./service-fixture.ts";
@@ -81,7 +91,7 @@ await test("CLV-306 a restart at the next gap waits for the open turn and then s
     await eventually(() =>
       existsSync(join(root, "daemon-ready")) ? true : undefined,
     );
-    await writeFile(join(directory, "pending-restart"), mark("gap"));
+    await writeFile(join(directory, "pending-restart-one"), mark("gap"));
     await delay(400);
     assert.equal(existsSync(join(root, "daemon-signals")), false);
     await writeFile(join(turn, "result.json"), "{}");
@@ -91,7 +101,7 @@ await test("CLV-306 a restart at the next gap waits for the open turn and then s
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGTERM\n",
     );
-    assert.equal(existsSync(join(directory, "pending-restart")), false);
+    assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   }));
 
 await test("CLV-306 a restart now stops the programs at once while a turn is open", () =>
@@ -102,7 +112,7 @@ await test("CLV-306 a restart now stops the programs at once while a turn is ope
       existsSync(join(root, "daemon-ready")) ? true : undefined,
     );
     await writeFile(
-      join(directory, "pending-restart"),
+      join(directory, "pending-restart-one"),
       mark("now", { resumeQueue: true }),
     );
     assert.equal(await hosting, 75);
@@ -111,7 +121,7 @@ await test("CLV-306 a restart now stops the programs at once while a turn is ope
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGTERM\n",
     );
-    assert.equal(existsSync(join(directory, "pending-restart")), false);
+    assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   }));
 
 await test("CLV-306 a mark that the host cannot read and a failed gap check keep the programs running", () =>
@@ -120,7 +130,7 @@ await test("CLV-306 a mark that the host cannot read and a failed gap check keep
     await eventually(() =>
       existsSync(join(root, "daemon-ready")) ? true : undefined,
     );
-    const place = join(directory, "pending-restart");
+    const place = join(directory, "pending-restart-one");
     await mkdir(place);
     await delay(300);
     assert.equal(existsSync(join(root, "daemon-signals")), false);
@@ -137,10 +147,10 @@ await test("CLV-306 a start removes a restart mark that an earlier start left", 
   withHost(
     { daemonMilliseconds: 300, readyPrograms: [] },
     async ({ directory, hosted }) => {
-      await writeFile(join(directory, "pending-restart"), mark("now"));
+      await writeFile(join(directory, "pending-restart-one"), mark("now"));
       await writeFile(join(directory, "claimed-restart"), mark("gap"));
       assert.equal(await hosted(), 0);
-      assert.equal(existsSync(join(directory, "pending-restart")), false);
+      assert.equal(existsSync(join(directory, "pending-restart-one")), false);
       assert.equal(existsSync(join(directory, "claimed-restart")), false);
     },
   ));
@@ -149,47 +159,56 @@ async function markAt(path: string): Promise<unknown> {
   return restartMark(await readFile(path, "utf8"));
 }
 
-await test("CLV-306 the host claims only the request that it checked, and a cancel or a new request stops the claim", async () => {
+async function requestName(directory: string): Promise<string> {
+  const names = (await readdir(directory)).filter((name) =>
+    name.startsWith("pending-restart-"),
+  );
+  assert.equal(names.length, 1, names.join(" "));
+  return String(names[0]);
+}
+
+await test("CLV-306 the host claims only the request file that it checked, and a cancel stops the claim", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
   try {
-    const pending = join(directory, "pending-restart");
+    const marks = restartMarks(directory);
     const claimed = join(directory, "claimed-restart");
     const checked = restartMark(mark("gap"));
     assert.ok(checked);
-    await writeFile(pending, restartText(checked));
-    assert.deepEqual(await claimedRestart(directory, checked), checked);
-    assert.equal(existsSync(pending), false);
+    await marks.request(checked);
+    const request = { name: await requestName(directory), mark: checked };
+    assert.deepEqual(await claimedRestart(directory, request), checked);
     assert.deepEqual(await markAt(claimed), checked);
+    assert.deepEqual(await marks.pending(), checked);
+    assert.equal(await marks.cancel(), "started");
     await rm(claimed);
-    assert.equal(await claimedRestart(directory, checked), undefined);
-    const newer = { ...checked, commandId: "restart-newer", resumeQueue: true };
-    await writeFile(pending, restartText(newer));
-    assert.equal(await claimedRestart(directory, checked), undefined);
-    assert.deepEqual(await markAt(pending), newer);
+    assert.equal(await claimedRestart(directory, request), undefined);
+    const later = { ...checked, commandId: "restart-later" };
+    await marks.request(later);
+    const cancelled = { name: await requestName(directory), mark: later };
+    assert.equal(await marks.cancel(), "cancelled");
+    assert.equal(await claimedRestart(directory, cancelled), undefined);
     assert.equal(existsSync(claimed), false);
+    await clearedRestart(join(directory, "missing"));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-await test("CLV-306 a returned claim keeps a request that came after the claim", async () => {
+await test("CLV-306 a host claim of a request that the daemon replaced changes nothing in the folder", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
   try {
-    const pending = join(directory, "pending-restart");
-    const claimed = join(directory, "claimed-restart");
-    const [older, later] = [mark("gap"), mark("now")];
-    await writeFile(claimed, older);
-    await writeFile(pending, later);
-    await returnedRestart(directory);
-    assert.equal(existsSync(claimed), false);
-    assert.equal(await readFile(pending, "utf8"), later);
-    await rm(pending);
-    await writeFile(claimed, older);
-    await returnedRestart(directory);
-    assert.equal(existsSync(claimed), false);
-    assert.equal(await readFile(pending, "utf8"), older);
-    await mkdir(claimed);
-    await assert.rejects(returnedRestart(directory));
+    const marks = restartMarks(directory);
+    const checked = restartMark(mark("gap"));
+    assert.ok(checked);
+    await marks.request(checked);
+    const stale = { name: await requestName(directory), mark: checked };
+    const newer = { ...checked, commandId: "restart-newer", resumeQueue: true };
+    await marks.request(newer);
+    const past = new Date(1_700_000_000_000);
+    await utimes(directory, past, past);
+    assert.equal(await claimedRestart(directory, stale), undefined);
+    assert.equal((await stat(directory)).mtimeMs, past.getTime());
+    assert.deepEqual(await marks.pending(), newer);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
