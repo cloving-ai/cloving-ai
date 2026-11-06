@@ -25,7 +25,7 @@ type Waited =
 interface Waiting {
   readonly startedAt: string;
   readonly commandId: string;
-  readonly requestedAt: unknown;
+  readonly requestedAt: number;
 }
 
 const cancelledRestart: ServiceError = {
@@ -35,8 +35,18 @@ const cancelledRestart: ServiceError = {
 
 const invalidReply: ServiceError = {
   code: "restart-reply-invalid",
-  detail: "The service accepted the restart but sent no start time.",
+  detail:
+    "The service accepted the restart but sent no start time or no request time.",
 };
+
+function waitingFor(reply: Fields, commandId: string): Waiting | undefined {
+  const startedAt = reply["serviceStartedAt"];
+  const requestedAt = record(reply["restart"])?.["requestedAt"];
+  if (typeof startedAt !== "string") return undefined;
+  if (typeof requestedAt !== "number" || !Number.isSafeInteger(requestedAt))
+    return undefined;
+  return { startedAt, commandId, requestedAt };
+}
 
 async function serviceStatus(
   runtimeDirectory: string,
@@ -141,14 +151,10 @@ export async function restartCommand(
   const shown = presented(environment, { reply, format });
   if (reply.kind === "error" || invocation.cancel) return shown;
   const before = reply.result;
-  const startedAt = before["serviceStartedAt"];
-  if (typeof startedAt !== "string")
+  const waiting = waitingFor(before, format.commandId);
+  if (waiting === undefined)
     return failed(environment, { error: invalidReply, format });
-  const waited = await restarted(environment, {
-    startedAt,
-    commandId: format.commandId,
-    requestedAt: record(before["restart"])?.["requestedAt"],
-  });
+  const waited = await restarted(environment, waiting);
   if (waited.kind === "interrupted") {
     environment.terminal.error(
       "The restart stays pending. Cancel it with: cloving restart --cancel\n",

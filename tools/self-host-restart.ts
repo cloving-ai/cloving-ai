@@ -141,13 +141,18 @@ export async function clearedRestart(directory: string): Promise<void> {
   );
 }
 
+function stopSignalled(watch: RestartWatch): boolean {
+  return watch.stopping.aborted;
+}
+
 async function restarted(
   watch: RestartWatch,
   claimed: RestartMark,
 ): Promise<number | undefined> {
-  if (watch.stopping.aborted) return undefined;
+  if (stopSignalled(watch)) return undefined;
   if (!(await updated(watch, claimed))) return undefined;
   await watch.stop();
+  if (stopSignalled(watch)) return undefined;
   if (claimed.resumeQueue)
     await writeFile(join(watch.directory, "resume-queue"), "", {
       mode: 0o600,

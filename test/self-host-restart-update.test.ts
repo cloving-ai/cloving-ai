@@ -11,7 +11,11 @@ import {
   type RestartTime,
 } from "../src/restart-request.ts";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
-import { checkoutLock, restartWatch } from "../tools/self-host-restart.ts";
+import {
+  checkoutLock,
+  restartWatch,
+  type CheckoutLock,
+} from "../tools/self-host-restart.ts";
 import { programs } from "./self-host-processes-fixture.ts";
 import { withUpdateRepository } from "./self-update-git-fixture.ts";
 import { eventually } from "./service-fixture.ts";
@@ -200,6 +204,29 @@ await test("CLV-306 a stop during the build of an update ends the host at once o
     );
   }));
 
+async function checkoutWatch(scene: {
+  readonly root: string;
+  readonly repository: string;
+  readonly stopping: AbortController;
+  readonly stop: () => Promise<void>;
+  readonly exclusive: CheckoutLock;
+}): Promise<{ readonly watching: Promise<number | undefined> }> {
+  const bin = await fakeNpm(scene.root);
+  const directory = join(scene.root, "host");
+  await mkdir(directory, { recursive: true });
+  const watching = restartWatch({
+    directory,
+    runtime: join(directory, "run"),
+    checkout: scene.repository,
+    environment: npmPath(bin),
+    milliseconds: 50,
+    stopping: scene.stopping.signal,
+    stop: scene.stop,
+    exclusive: scene.exclusive,
+  });
+  return { watching };
+}
+
 async function withHeldCheckout(
   body: (scene: {
     readonly root: string;
@@ -213,27 +240,22 @@ async function withHeldCheckout(
   }) => Promise<void>,
 ): Promise<void> {
   await withUpdateRepository(async ({ root, repository, git, old, target }) => {
-    const bin = await fakeNpm(root);
-    const directory = join(root, "host");
-    await mkdir(directory, { recursive: true });
     const exclusive = serialCalls();
     const gate = Promise.withResolvers<undefined>();
     const holding = exclusive(() => gate.promise);
     const stopping = new AbortController();
     const stops: string[] = [];
-    const watching = restartWatch({
-      directory,
-      runtime: join(directory, "run"),
-      checkout: repository,
-      environment: npmPath(bin),
-      milliseconds: 50,
-      stopping: stopping.signal,
+    const { watching } = await checkoutWatch({
+      root,
+      repository,
+      stopping,
       stop: () => {
         stops.push("stop");
         return Promise.resolve();
       },
       exclusive,
     });
+    const directory = join(root, "host");
     await writeFile(
       join(directory, "pending-restart-one"),
       updateMark("now", "restart-held"),
@@ -291,6 +313,37 @@ await test("CLV-306 a restart that waits for the checkout does nothing after the
       assert.deepEqual(stops, []);
     },
   ));
+
+await test("CLV-306 a stop signal while a restart stops the programs ends the watch with no restart", () =>
+  withUpdateRepository(async ({ root, repository, git, target }) => {
+    const stopping = new AbortController();
+    const { watching } = await checkoutWatch({
+      root,
+      repository,
+      stopping,
+      stop: () => {
+        stopping.abort();
+        return Promise.resolve();
+      },
+      exclusive: checkoutLock(new AbortController()),
+    });
+    const directory = join(root, "host");
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      restartText({
+        at: "now",
+        requestedAt: Date.now(),
+        commandId: "restart-signal",
+        resumeQueue: true,
+        settings: "files",
+        update: true,
+      }),
+    );
+    assert.equal(await watching, undefined);
+    assert.equal(git(["rev-parse", "HEAD"]), target);
+    assert.equal(existsSync(join(directory, "resume-queue")), false);
+    assert.equal(existsSync(join(directory, "restart-settings")), false);
+  }));
 
 await test("CLV-306 a checkout lock holder that ends with a status stops the watches before the next holder starts", async () => {
   const stopping = new AbortController();
