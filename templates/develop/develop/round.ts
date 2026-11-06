@@ -1,41 +1,53 @@
-import type { CycleOutcome } from "cloving/workflows";
+import type { CycleOutcome, PullRequest } from "cloving/workflows";
 import { mergeWhenGreen } from "cloving/workflows/steps/merge-when-green";
 import { acceptWork } from "./accept.ts";
 import { developReport } from "./report.ts";
-import { repair, type DevelopTask, type DevelopFeedback } from "./report.ts";
-import { openPull, finishPull, labelTicket } from "./pull.ts";
+import {
+  type DevelopState,
+  type DevelopFeedback,
+  type RoundResult,
+} from "./report.ts";
+import { openPull, finishPull } from "./pull.ts";
+import { recover, retryMerge } from "./recovery.ts";
 
-export async function developRound(state: {
-  readonly input: DevelopTask;
-  readonly round: number;
-  readonly feedback: DevelopFeedback | null;
-}): Promise<CycleOutcome | DevelopFeedback> {
+export async function developRound(
+  state: DevelopState,
+): Promise<CycleOutcome | DevelopFeedback> {
   const { input, round } = state;
-  try {
-    const report = await developReport(state);
-    if ("kind" in report) return report;
-    const pull = await openPull({ input, round });
-    const subject = {
-      target: pull.target,
-      number: pull.number,
-      commit: pull.commit,
+  const report = await developReport(state);
+  if ("kind" in report) return report;
+  const pull = await openPull({ input, round });
+  if ("kind" in pull) return pull;
+  const result = await deliverPull({ round, pull });
+  if ("kind" in result) return result;
+  if (result.merged) return await finishPull({ input, round, report, pull });
+  return await recover({ state, report, pull, result });
+}
+
+export async function deliverPull(request: {
+  readonly round: number;
+  readonly pull: PullRequest;
+}): Promise<RoundResult | CycleOutcome> {
+  const { round, pull } = request;
+  const review = await acceptWork({
+    target: pull.target,
+    number: pull.number,
+    commit: pull.commit,
+  });
+  if (!review.accepted)
+    return {
+      merged: false,
+      reason: "review-changes",
+      output: review.feedback,
+      findings: review.findings,
     };
-    const review = await acceptWork(subject);
-    const result = review.accepted
-      ? await mergeWhenGreen({ pull: pull, check: "beforeMerge", round: round })
-      : { merged: false, reason: "review-changes", output: review.feedback };
-    if (result.merged) return await finishPull({ input, round, report, pull });
-    return repair({ cycleId: input.cycleId, round, report, result });
+  try {
+    return await mergeWhenGreen({
+      pull: pull,
+      check: "beforeMerge",
+      round: round,
+    });
   } catch (error) {
-    try {
-      await labelTicket(input, { key: "blocked", round });
-    } catch (labelError) {
-      throw new AggregateError(
-        [error, labelError],
-        "development-and-label-failed",
-        { cause: labelError },
-      );
-    }
-    throw error;
+    return await retryMerge({ pull, round, error });
   }
 }

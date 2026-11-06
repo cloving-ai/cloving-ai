@@ -16,7 +16,7 @@ export interface QueuePartialInput {
 export async function queuePartial(
   input: QueuePartialInput,
 ): Promise<ProtectedResult> {
-  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 4)
+  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 6)
     throw new Error("invalid-development-round");
   return await protectedEffect({
     scope: {

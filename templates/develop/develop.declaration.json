@@ -1,7 +1,7 @@
 {
   "workflow": {
     "workflowId": "develop",
-    "effectLimit": 31,
+    "effectLimit": 87,
     "capabilities": ["claude", "github"],
     "queue": true,
     "input": {
@@ -18,7 +18,8 @@
       "wait-review",
       "merge",
       "close-issue",
-      "partial-issue"
+      "partial-issue",
+      "close-pr"
     ]
   }
 }

@@ -8,7 +8,7 @@ import {
 } from "./develop-template-flow-fixture.ts";
 import { runScenario } from "../src/testing.ts";
 
-await test("CLV-221 a failed check reaches the next turn and a run stops after three fixes", async () => {
+await test("CLV-300 a failed check reaches the next turn and a person stops the run after three fixes", async () => {
   const scenario = effects();
   const output = "check failed\n  expected: 4\n  actual: 3\n";
   for (const key of [
@@ -27,6 +27,7 @@ await test("CLV-221 a failed check reaches the next turn and a run stops after t
     exportName: "develop",
     input,
     effects: scenario,
+    decisions: [{ decision: "answered", answer: "2" }],
   });
   const turns = result.requests.filter(
     (request) => request[0] === "effect" && request[1].method === "run-turn",
@@ -46,7 +47,7 @@ await test("CLV-221 a failed check reaches the next turn and a run stops after t
   assert.deepEqual(result.outcome, {
     kind: "blocked",
     cycleId: input.cycleId,
-    reason: "check-failed",
+    reason: "check-failed: pull/7",
     evidenceId: "merge",
   });
   assert.equal(

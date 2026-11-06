@@ -149,11 +149,19 @@ async function outcome(
     const reason = String(Reflect.get(Object(error), "message"));
     const detail: unknown = Reflect.get(Object(error), "detail");
     return {
-      ...interrupted(methodReasons.has(reason) ? reason : "github-call-failed"),
+      ...interrupted(failureReason(reason, detail)),
       ...(typeof detail === "string" ? { detail } : {}),
       ...(error instanceof ReviewTimeout ? { result: error.detail } : {}),
     };
   }
+}
+
+function failureReason(reason: string, detail: unknown): string {
+  if (!methodReasons.has(reason)) return "github-call-failed";
+  const server = typeof detail === "string" && /\bHTTP 5\d\d\b/.test(detail);
+  return reason === "github-call-failed" && server
+    ? "github-network-failed"
+    : reason;
 }
 
 interface Ending {

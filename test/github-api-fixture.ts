@@ -113,6 +113,7 @@ const actions = {
     out(url(created.number));
   },
   "pr comment": () => { state.triggers.push(Number(args[2])); },
+  "pr close": () => { state.prs.find((item) => item.number === Number(args[2])).state = "CLOSED"; },
   "api GET comments": () => {
     const pr = state.prs.find((item) => item.number === number);
     reviewedNow(pr);

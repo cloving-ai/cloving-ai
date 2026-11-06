@@ -1,7 +1,12 @@
-import type { CycleOutcome, PullRequest } from "cloving/workflows";
+import type {
+  CycleOutcome,
+  ProtectedResult,
+  PullRequest,
+} from "cloving/workflows";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
-import type { DevelopTask, DevelopReport } from "./report.ts";
+import type { DevelopTask, DevelopReport, DevelopFailure } from "./report.ts";
 import { queuePartial } from "./queue-partial.ts";
+import { retryPause, retryScope, shortFailure, stuck } from "./recovery.ts";
 
 export async function preparePull(cycleId: string): Promise<void> {
   const result = await protectedEffect({
@@ -19,11 +24,38 @@ export async function preparePull(cycleId: string): Promise<void> {
 export async function openPull(request: {
   readonly input: DevelopTask;
   readonly round: number;
-}): Promise<PullRequest> {
+}): Promise<PullRequest | CycleOutcome> {
   const { input, round } = request;
+  let result = await openAttempt({ input, round, retry: 0 });
+  for (let retry = 1; retry <= 3; retry += 1)
+    if (shortFailure(result)) {
+      await retryPause(retry);
+      result = await openAttempt({ input, round, retry });
+    }
+  if (shortFailure(result))
+    return stuck({
+      cycleId: input.cycleId,
+      result,
+      evidenceId: "pull-request",
+    });
+  if (result.kind !== "completed")
+    throw new Error(result.reason ?? result.kind);
+  const value: unknown = JSON.parse(result.result ?? "null");
+  return pullOf(value, input.cycleId);
+}
+
+export async function openAttempt(request: {
+  readonly input: DevelopTask;
+  readonly round: number;
+  readonly retry: number;
+}): Promise<ProtectedResult> {
+  const { input, round, retry } = request;
   const issue = input.issue;
-  const result = await protectedEffect({
-    scope: { phase: "pull-request", operation: "github-open-pr", round: round },
+  return await protectedEffect({
+    scope: retryScope(
+      { phase: "pull-request", operation: "github-open-pr", round: round },
+      retry,
+    ),
     capability: "github",
     method: "open-pr",
     target: input.cycleId,
@@ -38,10 +70,6 @@ export async function openPull(request: {
     }),
     units: 1,
   });
-  if (result.kind !== "completed")
-    throw new Error(result.reason ?? result.kind);
-  const value: unknown = JSON.parse(result.result ?? "null");
-  return pullOf(value, input.cycleId);
 }
 
 function pullFields(
@@ -125,19 +153,46 @@ export async function finishPull(request: {
 export async function labelTicket(
   input: DevelopTask,
   state: { readonly key: "start" | "blocked"; readonly round: number },
-): Promise<void> {
+): Promise<CycleOutcome | null> {
   const issue = input.issue;
-  if (issue === null) return;
-  const result = await protectedEffect({
-    scope: {
-      phase: "pull-request",
-      operation: "github-label",
-      round: state.round,
-      key: state.key,
-    },
+  if (issue === null) return null;
+  const target = { cycleId: input.cycleId, issue };
+  let result = await labelAttempt({ target, state, retry: 0 });
+  for (let retry = 1; retry <= 3; retry += 1)
+    if (shortFailure(result)) {
+      await retryPause(retry);
+      result = await labelAttempt({ target, state, retry });
+    }
+  if (shortFailure(result))
+    return stuck({ cycleId: input.cycleId, result, evidenceId: "label" });
+  if (result.kind !== "completed")
+    throw new Error(result.reason ?? result.kind);
+  return null;
+}
+
+export async function labelAttempt(request: {
+  readonly target: {
+    readonly cycleId: string;
+    readonly issue: NonNullable<DevelopTask["issue"]>;
+  };
+  readonly state: { readonly key: "start" | "blocked"; readonly round: number };
+  readonly retry: number;
+}): Promise<ProtectedResult> {
+  const { target, state, retry } = request;
+  const issue = target.issue;
+  return await protectedEffect({
+    scope: retryScope(
+      {
+        phase: "pull-request",
+        operation: "github-label",
+        round: state.round,
+        key: state.key,
+      },
+      retry,
+    ),
     capability: "github",
     method: "label",
-    target: input.cycleId,
+    target: target.cycleId,
     payload: JSON.stringify({
       owner: issue.owner,
       repository: issue.repository,
@@ -151,6 +206,23 @@ export async function labelTicket(
     }),
     units: 1,
   });
-  if (result.kind !== "completed")
-    throw new Error(result.reason ?? result.kind);
+}
+
+export async function blockTicket(
+  input: DevelopTask,
+  state: { readonly round: number; readonly failure: DevelopFailure | null },
+): Promise<DevelopFailure | null> {
+  try {
+    await labelTicket(input, { key: "blocked", round: state.round });
+  } catch (labelError) {
+    if (state.failure === null) return { error: labelError };
+    return {
+      error: new AggregateError(
+        [state.failure.error, labelError],
+        "development-and-label-failed",
+        { cause: labelError },
+      ),
+    };
+  }
+  return state.failure;
 }
