@@ -8,6 +8,7 @@ import { watchReader } from "../src/cli/watch-reads.ts";
 import { result, failed } from "../src/service/replies.ts";
 import { boardModel, boardTime } from "./watch-board-fixture.ts";
 import { rendered } from "./watch-dom.ts";
+import { played } from "./watch-browser.ts";
 import { noCopy } from "./watch-sample.ts";
 import { withHarness, field } from "./service-fixture.ts";
 import { activeSchedule, scheduleModel } from "./watch-schedule-fixture.ts";
@@ -206,5 +207,57 @@ await test("CLV-247 paused schedules suppress next times", () => {
   assert.doesNotMatch(
     rendered(component(Board, { workflow: paused, now: boardTime })),
     /next run at/,
+  );
+});
+
+const calendarSchedule = {
+  workflowId: "review-queue",
+  at: "07:00",
+  timeZone: "America/Los_Angeles",
+  weekdays: ["monday"],
+  state: "active" as const,
+  failuresInRow: 0,
+  nextAt: Date.parse("2026-11-16T07:00:00-08:00"),
+  nextLocal: "2026-11-16T07:00:00-08:00",
+  stoppedAt: null,
+};
+
+await test("CLV-314 watch boards show a calendar schedule and its next run with the offset", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      schedule: () =>
+        Promise.resolve(
+          result("schedules", {
+            schedules: [
+              calendarSchedule,
+              { ...calendarSchedule, weekdays: "monday" },
+              { ...calendarSchedule, timeZone: 8 },
+            ],
+          }),
+        ),
+    });
+    const read = await watchReader(harness.runtimeDirectory).read(boardTime);
+    assert.deepEqual(read.schedules, [calendarSchedule]);
+    const [workflow] = scheduleModel(calendarSchedule).workflows;
+    assert.ok(workflow);
+    assert.match(
+      rendered(component(Board, { workflow, now: boardTime })),
+      /Schedule review-queue: Mondays at 07:00 America\/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row/,
+    );
+  }));
+
+await test("CLV-314 the page script shows a calendar schedule on the board", () => {
+  const served = played(
+    scheduleModel(calendarSchedule),
+    `
+location.hash = "#workflow=review-queue";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  assert.match(
+    String(served["html"]),
+    /Schedule review-queue: Mondays at 07:00 America\/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row/,
   );
 });

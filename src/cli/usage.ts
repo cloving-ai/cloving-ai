@@ -148,7 +148,7 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
@@ -160,6 +160,10 @@ Control-C stops the wait and keeps the restart pending. --cancel cancels a pendi
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
+--update updates the product checkout before the stop, at the gap or at once.
+The update fetches the default branch and needs a fast-forward and a clean tree.
+It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
+When a step fails, the command prints the step and its output. The service keeps running on the old commit.
 `,
   watch: `Usage: cloving watch [--port <n>]
 
@@ -191,7 +195,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
   CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.
   CLOVING_WORKFLOW_FOLDER          An absolute folder path; when set, it replaces the user workflow folder. The private setting workflows.folder sets it. The folder itself must not be a symbolic link.
-  CLOVING_SCHEDULES                A JSON object mapping declared workflow IDs to {everySeconds, input}; replaces declaration schedules. Intervals are whole seconds from 60 to 86400. Unset keeps declaration schedules. Scheduled runs skip overlapping slots and retain their progress across restart.
+  CLOVING_SCHEDULES                A JSON object mapping declared workflow IDs to {everySeconds, input} or {at, timeZone, weekdays, input}; replaces declaration schedules. Intervals are whole seconds from 60 to 2592000. A time is HH:MM in an IANA time zone, and weekdays is an optional list of day names. Unset keeps declaration schedules. Scheduled runs skip overlapping slots and retain their progress across restart.
   CLOVING_SELF_UPDATE_SECONDS      A whole number from 30 to 3600 seconds between checks of the own checkout; unset means no update. An update stops the daemon and restarts with new code. A change of package-lock.json needs the operator to update and install by hand.
   CLOVING_RETENTION_DAYS           A whole number of at least 1, or null. The default is 30. The daemon archives or deletes a journal or GitHub record folder of a completed, failed or cancelled run when the end of the run and the newest file of the folder are older than this count of days. It never touches the records of a run that is not finished. It also removes the work tree, the branch and the attachments folder of a run that ended failed or cancelled more than this count of days ago, when the branch has no open pull request. It also removes a workflow bundle when no unfinished run is pinned to it, it is not the current generation, and it was not current during this count of days. The value null keeps all records and workflow bundles. The daemon sweeps once at start, before the watch page starts, and then each hour, with at most 200 folders in each pass.
   CLOVING_RETENTION_ACTION         archive or delete. The default is archive. An archive keeps the relative path of the folder in the archive folder.

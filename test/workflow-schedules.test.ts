@@ -18,7 +18,7 @@ const declaration = {
 } as const;
 
 await test("CLV-179 declarations accept bounded schedules with contract-checked input", () => {
-  for (const everySeconds of [60, 300, 86400])
+  for (const everySeconds of [60, 300, 86400, 604800, 2592000])
     assert.ok(
       isWorkflowDeclaration({
         ...declaration,
@@ -39,7 +39,7 @@ await test("CLV-179 declarations reject malformed schedules and mismatched input
     { everySeconds: 300, input: { page: "1" } },
     { everySeconds: 300, input: { page: 1, extra: true } },
     { everySeconds: 300, input: { page: 1 }, extra: true },
-    ...[0, 59, 86401, 60.5, NaN, Infinity, "300"].map((everySeconds) => ({
+    ...[0, 59, 2592001, 60.5, NaN, Infinity, "300"].map((everySeconds) => ({
       everySeconds,
       input: { page: 1 },
     })),
@@ -48,7 +48,7 @@ await test("CLV-179 declarations reject malformed schedules and mismatched input
 });
 
 await test("CLV-179 schedule refusals use fixed interval and input codes", () => {
-  for (const everySeconds of [59, 86401, 60.5])
+  for (const everySeconds of [59, 2592001, 60.5])
     assert.deepEqual(
       checkWorkflowSchedule(declaration.input, {
         everySeconds,
@@ -133,5 +133,61 @@ await test("CLV-179 schedules retain command declarations and their validation",
   assert.equal(
     isWorkflowDeclaration({ ...scheduled, handoffs: ["bad/id"] }),
     false,
+  );
+});
+
+const calendar = {
+  at: "07:00",
+  timeZone: "America/Los_Angeles",
+  input: { page: 1 },
+};
+
+await test("CLV-314 declarations accept a time of day in a time zone with optional weekdays", () => {
+  for (const schedule of [
+    calendar,
+    { ...calendar, at: "00:00" },
+    { ...calendar, at: "23:59", timeZone: "UTC" },
+    { ...calendar, weekdays: ["monday"] },
+    { ...calendar, weekdays: ["sunday", "monday", "saturday"] },
+  ])
+    assert.ok(isWorkflowDeclaration({ ...declaration, schedule }));
+  assert.deepEqual(
+    checkWorkflowSchedule(declaration.input, {
+      ...calendar,
+      weekdays: ["sunday", "friday", "monday"],
+    }),
+    {
+      kind: "valid",
+      schedule: { ...calendar, weekdays: ["monday", "friday", "sunday"] },
+    },
+  );
+});
+
+await test("CLV-314 calendar schedules refuse a wrong shape with one code", () => {
+  for (const schedule of [
+    { ...calendar, everySeconds: 300 },
+    { ...calendar, at: "24:00" },
+    { ...calendar, at: "7:00" },
+    { ...calendar, at: "07:60" },
+    { ...calendar, at: "0700" },
+    { ...calendar, at: 700 },
+    { at: "07:00", input: { page: 1 } },
+    { timeZone: "UTC", input: { page: 1 } },
+    { everySeconds: 300, timeZone: "UTC", input: { page: 1 } },
+    { ...calendar, timeZone: "" },
+    { ...calendar, timeZone: 8 },
+    { ...calendar, weekdays: [] },
+    { ...calendar, weekdays: ["monday", "monday"] },
+    { ...calendar, weekdays: ["mon"] },
+    { ...calendar, weekdays: "monday" },
+    { ...calendar, extra: true },
+  ])
+    assert.deepEqual(checkWorkflowSchedule(declaration.input, schedule), {
+      kind: "rejected",
+      code: "invalid-schedule-shape",
+    });
+  assert.deepEqual(
+    checkWorkflowSchedule(declaration.input, { ...calendar, input: {} }),
+    { kind: "rejected", code: "invalid-schedule-input" },
   );
 });

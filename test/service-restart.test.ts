@@ -23,6 +23,7 @@ function memoryPort(): RestartPort {
     },
     unresumable: () =>
       Promise.resolve(mark === undefined ? ["run-shell"] : ["after-request"]),
+    failure: () => Promise.resolve(undefined),
   };
 }
 
@@ -170,4 +171,47 @@ await test("CLV-306 a service with no start time refuses a restart, and a cancel
       parameters: { cancel: true, commandId: "cancel-one" },
     });
     assert.deepEqual(started["restart"], { state: "started" });
+  }));
+
+await test("CLV-306 a restart with an update keeps the update in the mark, and the status shows the failure of an update", () =>
+  withHarness(async (harness) => {
+    const failure = {
+      commandId: "restart-update",
+      requestedAt: 1,
+      step: "build",
+      output: "error TS2322",
+    };
+    const port: RestartPort = {
+      ...memoryPort(),
+      failure: () => Promise.resolve(failure),
+    };
+    await harness.start({ restart: port, ...identity });
+    const reply = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-update", update: true },
+    });
+    assert.equal(record(reply["restart"])?.["update"], true);
+    assert.equal((await port.pending())?.update, true);
+    const status = await call(harness, { operation: "status", parameters: {} });
+    assert.deepEqual(status["restartFailure"], failure);
+  }));
+
+await test("CLV-306 the service refuses an update when the product is not a git checkout, and an update value that is not true", () =>
+  withHarness(async (harness) => {
+    const port = memoryPort();
+    await harness.start({ restart: port, ...identity, commit: null });
+    const refused = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-update", update: true },
+    });
+    assert.equal(refused["code"], "update-unavailable");
+    assert.equal(refused["commandId"], "restart-update");
+    assert.equal(await port.pending(), undefined);
+    const invalid = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-update", update: false },
+    });
+    assert.equal(invalid["code"], "invalid-request");
+    const status = await call(harness, { operation: "status", parameters: {} });
+    assert.equal(Object.hasOwn(status, "restartFailure"), false);
   }));
