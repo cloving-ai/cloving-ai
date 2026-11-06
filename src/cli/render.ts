@@ -2,6 +2,7 @@ import { shownCommandWaits, commandWaitText } from "./command-waits.ts";
 import {
   priceText,
   queueSpendLines,
+  spendLimitText,
   usageText,
   totalsSuffix,
   attemptTexts,
@@ -253,7 +254,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Evidence: ${listing(part(run, "evidence"))}`,
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
-    `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}`,
+    `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}${spendLimitText(part(run, "spendLimitUsd"))}`,
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
     ...turnDetailsLines(part(run, "turnDetails")),
@@ -264,6 +265,11 @@ export function runStatus(result: Fields): readonly string[] {
       ? []
       : [
           `Effects: ${show(part(part(run, "budget"), "spent"))} of ${show(part(part(run, "budget"), "limit"))}`,
+        ]),
+    ...(record(part(run, "chain")) === undefined
+      ? []
+      : [
+          `Chain position: run ${show(part(part(run, "chain"), "position"))} of ${show(part(part(run, "chain"), "limit"))}`,
         ]),
     ...shownCommands(part(run, "commandEffects")).map((effect) =>
       visible(commandText(effect)),

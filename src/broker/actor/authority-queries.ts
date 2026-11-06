@@ -101,10 +101,12 @@ async function run(
 
 function originOf(row: unknown): RunOrigin {
   const continuedFrom = optionalText(row, "continued_from");
+  const chainLimit = optionalText(row, "chain_limit");
   return {
     parentRunId: optionalText(row, "parent_run_id"),
     chainId: text(row, "chain_id"),
     ...(continuedFrom === null ? {} : { continuedFrom }),
+    ...(chainLimit === null ? {} : { chainLimit: Number(chainLimit) }),
   };
 }
 
@@ -113,7 +115,7 @@ async function runOrigins(
   cursor: { readonly after: number; readonly through: number },
 ): Promise<RunOrigins> {
   const rows = await connection.all(
-    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id, json_extract(payload, '$.continuedFrom') AS continued_from FROM events WHERE type = 'run.created' AND sequence > ? AND sequence <= ? ORDER BY sequence",
+    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id, json_extract(payload, '$.continuedFrom') AS continued_from, json_extract(payload, '$.chainLimit') AS chain_limit FROM events WHERE type = 'run.created' AND sequence > ? AND sequence <= ? ORDER BY sequence",
     [cursor.after, cursor.through],
   );
   return Object.fromEntries(

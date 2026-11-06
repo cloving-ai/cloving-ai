@@ -4,7 +4,12 @@ import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
-import { priceText, usageText, totalsSuffix } from "./usage-render.ts";
+import {
+  priceText,
+  spendLimitText,
+  usageText,
+  totalsSuffix,
+} from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
@@ -133,6 +138,10 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
   const budget = effectBudgetText(run.spent, run.limit);
+  const place =
+    run.chain === undefined
+      ? ""
+      : ` · run ${String(run.chain.position)} of ${String(run.chain.limit)} in its chain`;
   const none = "No agent turn for this run.";
   const turns =
     run.turns.length === 0
@@ -146,7 +155,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
           }),
         ]);
   const foot = [
-    `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}`,
+    `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}${place}`,
     element("br", {}),
     `${run.code}: ${run.detail}`,
   ];
@@ -163,7 +172,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
         element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
         element("p", { children: usageText(run.usage) }),
         element("p", {
-          children: priceText(run.claudeCostUsd, run.estimatedCostUsd),
+          children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
         }),
       ],
     }),

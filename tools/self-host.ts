@@ -21,6 +21,7 @@ import {
   queueInterval,
   queueLanes,
   queueSpendLimit,
+  spendScope,
   readyTicketCommand,
 } from "./self-host-queue.ts";
 import {
@@ -53,6 +54,7 @@ import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 import { checkSubmission } from "../src/submission.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+import { workflowLimits } from "../src/workflow-limits.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -145,6 +147,7 @@ interface Commands extends HarnessSettings {
   readonly queueMilliseconds: number | undefined;
   readonly queueLanes: number;
   readonly queueDailySpendLimitUsd: number | undefined;
+  readonly spendScope: "queue" | "all";
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
   readonly reloadCommand: readonly string[];
@@ -279,6 +282,7 @@ const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueDailySpendLimitUsd = queueSpendLimit(environment);
+const scope = spendScope(environment);
 const lanes = queueLanes(environment);
 const readyCommand = readyTicketCommand(environment);
 const queueMilliseconds = queueInterval(environment);
@@ -292,9 +296,11 @@ const places = {
   home: homedir(),
   xdgConfigHome: environment["XDG_CONFIG_HOME"],
 };
+const limits = workflowLimits(environment);
 const folders = {
   ...places,
   userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
+  limits,
 };
 const profilesPath = environment["CLOVING_PROFILES"];
 const manifests = await preparedProject({ product, project, ...folders });
@@ -319,6 +325,7 @@ await launchers(
     queueMilliseconds,
     queueLanes: lanes,
     queueDailySpendLimitUsd,
+    spendScope: scope,
     resetQueue: flags.includes("--reset-queue"),
     retention,
     turnVariables,
@@ -335,6 +342,7 @@ await launchers(
       JSON.stringify({
         directory,
         ...places,
+        limits,
         ...(profilesPath === undefined
           ? {}
           : { profilesFile: resolve(profilesPath) }),

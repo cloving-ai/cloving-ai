@@ -1,4 +1,5 @@
 import {
+  commandEvents,
   numberFields,
   textFields,
   type AuthorityCommand,
@@ -6,7 +7,7 @@ import {
   type AuthorityState,
   type EffectIntent,
 } from "./transitions.ts";
-import { commandEvents, parseCommand } from "./commands.ts";
+import { parseCommand } from "./commands.ts";
 import { parseEvent } from "./events.ts";
 import { gateKey } from "./gates.ts";
 import {

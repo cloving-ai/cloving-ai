@@ -6,6 +6,7 @@ import type { PlanSettings } from "./authority-settings.ts";
 import { stageable, type DeliveryIntent } from "./delivery-intents.ts";
 import { followUps } from "./effect-plan.ts";
 import { draft, merged, unchangedAt, type Row } from "./turn-draft.ts";
+import { pricedCommand } from "./spend-turn.ts";
 import { refusalOf } from "./turn-refusals.ts";
 import { followUp, openAttempts, staged } from "./turn-staging.ts";
 import type {
@@ -28,7 +29,9 @@ export type {
   TurnState,
 } from "./turn-staging.ts";
 
-export function planCommand(planning: CommandPlanning): TurnPlan {
+export function planCommand(given: CommandPlanning): TurnPlan {
+  const command = pricedCommand(given.request.command, given.turn.spend);
+  const planning = { ...given, request: { ...given.request, command } };
   const { turn, request } = planning;
   const refusal = freshRefusal(planning);
   if (refusal !== undefined) return answer(refusal);

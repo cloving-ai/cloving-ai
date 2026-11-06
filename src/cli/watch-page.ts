@@ -32,6 +32,7 @@ import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import {
   priceText,
   queueSpendLines,
+  spendLimitText,
   usageText,
   attemptText,
   totalsSuffix,
@@ -194,6 +195,7 @@ const functions = [
   usageOf,
   priceText,
   queueSpendLines,
+  spendLimitText,
   usageText,
   attemptText,
   totalsSuffix,

@@ -31,6 +31,7 @@ import {
 } from "./delivery-intents.ts";
 import { continuedFromOf, effectParts } from "./continuation-turn.ts";
 import { pendingEffect } from "./effect-turn.ts";
+import { turnSpend } from "./spend-turn.ts";
 import { stopIntents } from "./stop-plan.ts";
 import { droppedRuns, turnStopping } from "./stop-turn.ts";
 import { documentReferences, type TurnState } from "./turn-plan.ts";
@@ -45,7 +46,7 @@ export async function commandTurn(
 ): Promise<TurnState> {
   const { command, sequence, capacity } = scope;
   const parsed = parseCommand(command);
-  return turnState(connection, {
+  const turn = await turnState(connection, {
     runId: parsed?.runId ?? "",
     commandId: parsed?.commandId ?? "",
     kind: parsed?.kind ?? "",
@@ -60,6 +61,7 @@ export async function commandTurn(
     capacity,
     ...continuedFromOf(parsed),
   });
+  return { ...turn, ...(await turnSpend(connection, parsed)) };
 }
 
 export async function stopRecoveries(
