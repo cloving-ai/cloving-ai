@@ -3,7 +3,10 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
-import { turnDetailsPlace } from "../src/daemon/turn-details.ts";
+import {
+  retentionExpiry,
+  turnDetailsPlace,
+} from "../src/daemon/turn-details.ts";
 import { withSweep } from "./record-sweep-fixture.ts";
 
 const turn = operationKey("op-1");
@@ -88,3 +91,17 @@ await test("CLV-271 turn details stay unknown when a read of a journal folder fa
       );
     });
 });
+
+await test("CLV-307 a run is past retention for a continuation only when it ended before the retention period", () =>
+  withSweep(async (scene) => {
+    const expired = retentionExpiry(scene.settings());
+    assert.equal(await expired("done"), true);
+    for (const runId of ["fresh", "gate", "unknown"])
+      assert.equal(await expired(runId), false, runId);
+    const kept = retentionExpiry(
+      scene.settings({
+        retention: { days: null, action: "archive", archiveFolder: null },
+      }),
+    );
+    assert.equal(await kept("done"), false);
+  }));

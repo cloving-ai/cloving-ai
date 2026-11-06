@@ -1,9 +1,9 @@
-import type { Fields } from "../protocol.ts";
+import { record, type Fields, type Reply } from "../protocol.ts";
 import { queueSpending } from "../queue-spend.ts";
 import { priceOf } from "../worker-usage.ts";
 import type { OperationView } from "../broker/actor/authority.ts";
 import { reportFields } from "./worker-totals.ts";
-import type { ServiceContext } from "./replies.ts";
+import { failed, type ServiceContext } from "./replies.ts";
 
 type SpendContext = Pick<
   ServiceContext,
@@ -23,6 +23,18 @@ export async function queueRun(
     events[0]?.type === "run.created" &&
     events[0].payload["resolver"] === "issue-command:1"
   );
+}
+
+export async function spendLimitRefusal(
+  context: SpendContext,
+  identity: Fields,
+): Promise<Reply | undefined> {
+  const spend = record((await queueSpend(context))["spend"]);
+  if (spend?.["holding"] !== true) return undefined;
+  return failed("queue-spend-limit", {
+    ...identity,
+    detail: "Queue holding for spend limit.",
+  });
 }
 
 export async function queueSpend(context: SpendContext): Promise<Fields> {

@@ -133,13 +133,20 @@ export function turnDetails(
 ): TurnDetails | undefined {
   if (found.archived !== undefined)
     return { state: "archived", folder: found.archived };
-  const { run, retention } = context;
-  if (found.turns === 0 || found.kept > 0 || run === undefined)
-    return undefined;
-  if (retention.action !== "delete" || retention.days === null)
-    return undefined;
-  const limit = context.now - retention.days * dayMilliseconds;
-  return endedBefore(run, limit) ? { state: "deleted" } : undefined;
+  if (found.turns === 0 || found.kept > 0) return undefined;
+  if (context.retention.action !== "delete") return undefined;
+  return retentionExpired(context.run, context)
+    ? { state: "deleted" }
+    : undefined;
+}
+
+export function retentionExpired(
+  run: StoredRun | undefined,
+  context: { readonly retention: RetentionSettings; readonly now: number },
+): boolean {
+  const { days } = context.retention;
+  if (run === undefined || days === null) return false;
+  return endedBefore(run, context.now - days * dayMilliseconds);
 }
 
 function refused(variable: string, expected: string): never {

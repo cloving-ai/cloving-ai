@@ -3,12 +3,25 @@ import { operationScope } from "../operation-identity.ts";
 export interface RunOrigin {
   readonly parentRunId: string | null;
   readonly chainId: string;
+  readonly continuedFrom?: string;
 }
 
 export type RunOrigins = Readonly<Record<string, RunOrigin>>;
 
 export interface RunLinks extends RunOrigin {
   readonly childRunIds: readonly string[];
+  readonly continuedBy?: string;
+}
+
+function continuationLinks(
+  run: Partial<RunLinks>,
+): Pick<RunLinks, "continuedFrom" | "continuedBy"> {
+  return {
+    ...(run.continuedFrom === undefined
+      ? {}
+      : { continuedFrom: run.continuedFrom }),
+    ...(run.continuedBy === undefined ? {} : { continuedBy: run.continuedBy }),
+  };
 }
 
 export function linksOf(
@@ -18,6 +31,7 @@ export function linksOf(
     parentRunId: run.parentRunId ?? null,
     chainId: run.chainId ?? run.runId,
     childRunIds: run.childRunIds ?? [],
+    ...continuationLinks(run),
   };
 }
 
@@ -25,12 +39,20 @@ export function runLinks(
   origins: RunOrigins,
 ): Readonly<Record<string, RunLinks>> {
   const children = childRuns(origins);
+  const continuations: Readonly<Record<string, string>> = Object.fromEntries(
+    Object.entries(origins).flatMap(([runId, origin]) =>
+      origin.continuedFrom === undefined ? [] : [[origin.continuedFrom, runId]],
+    ),
+  );
   return Object.fromEntries(
     Object.entries(origins).map(([runId, origin]) => [
       runId,
       {
         ...origin,
         childRunIds: children[runId] ?? [],
+        ...(continuations[runId] === undefined
+          ? {}
+          : { continuedBy: continuations[runId] }),
       },
     ]),
   );

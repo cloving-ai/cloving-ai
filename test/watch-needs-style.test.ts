@@ -30,3 +30,9 @@ await test("CLV-287 the Needs you panel sits under the floor, marks a decision b
       contrast(rgb(tokens["color-ink"]), rgb(tokens["color-panel"])) >= 4.5,
     );
 });
+
+await test("CLV-307 the Continue button of a stopped run has no border, waits while it posts, and its reply shows under the run", () => {
+  assert.match(rule(".need-action"), /border: 0; cursor: pointer/);
+  assert.match(rule(".need-action:disabled"), /cursor: progress; opacity: 0.6/);
+  assert.match(rule(".need-message"), /margin: 4px 0 0; font-size: 13px/);
+});

@@ -8,6 +8,7 @@ import { watchApiChange, watchApiReply } from "./watch-api.ts";
 import { observedBoard } from "./watch-pr-board.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
+import { continueAction } from "./watch-continue.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
 import type { PrObserver } from "./watch-pr-observer.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -190,11 +191,10 @@ async function snapshot(
   };
 }
 
-function routedAction(
-  path: string,
-): typeof watchAction | typeof phoneAction | typeof queueAction | null {
+function routedAction(path: string): typeof watchAction | null {
   if (isPhoneAction(path)) return phoneAction;
   if (path === "/actions/queue") return queueAction;
+  if (path === "/actions/continue") return continueAction;
   return path === "/actions/run" ? watchAction : null;
 }
 

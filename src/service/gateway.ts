@@ -1,3 +1,4 @@
+import { workflowPin } from "../broker/workflow-pin.ts";
 import type { Authority, StoreReceipt } from "../broker/actor/authority.ts";
 import {
   invalidCommand,
@@ -126,6 +127,20 @@ async function reportLimit(
     : parts.textBytes;
 }
 
+async function admittedManifest(
+  parts: { readonly authority: Authority; readonly registry: Registry },
+  command: Command,
+): Promise<ExecutionManifest | undefined> {
+  const pin = String(command["workflow"]);
+  const continued = command["continuedFrom"];
+  const stored =
+    typeof continued === "string"
+      ? await parts.authority.queries.manifest(continued)
+      : undefined;
+  if (stored !== undefined && workflowPin(stored) === pin) return stored;
+  return parts.registry.byPin(pin)?.manifest;
+}
+
 export function commandGateway(parts: {
   readonly authority: Authority;
   readonly registry: Registry;
@@ -141,7 +156,7 @@ export function commandGateway(parts: {
   ): Promise<ExecutionManifest | undefined> {
     const kind = String(command["kind"]);
     if (kind === "admit-run")
-      return registry.byPin(String(command["workflow"]))?.manifest;
+      return admittedManifest({ authority, registry }, command);
     if (!pinned.includes(kind)) return undefined;
     const runId = String(command["runId"]);
     const stored = await authority.queries.manifest(runId);

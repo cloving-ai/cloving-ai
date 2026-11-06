@@ -1,88 +1,15 @@
 import { isRecordKey } from "../authority/commands.ts";
+import { scheduleInvocation } from "./schedule-arguments.ts";
+import { queueInvocation } from "./queue-arguments.ts";
+import { continueInvocation } from "./continue-arguments.ts";
 import {
-  scheduleInvocation,
-  type ScheduleInvocation,
-} from "./schedule-arguments.ts";
-import { queueInvocation, type QueueInvocation } from "./queue-arguments.ts";
-
-export type RunSource =
-  | { readonly kind: "prompt"; readonly text: string }
-  | { readonly kind: "ticket"; readonly id: string }
-  | { readonly kind: "input"; readonly file: string };
-
-export type DecisionCommand = "answer" | "approve" | "deny";
-
-export type RunCommand = "pause" | "resume" | "drop";
-
-export type RuntimeInvocation =
-  | ScheduleInvocation
-  | QueueInvocation
-  | { readonly kind: "report"; readonly since: number; readonly json: boolean }
-  | { readonly kind: "reload"; readonly json: boolean }
-  | { readonly kind: "command-help"; readonly command: string }
-  | {
-      readonly kind: "run";
-      readonly workflowId: string;
-      readonly source: RunSource;
-      readonly commandId: string | null;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "status";
-      readonly runId: string | null;
-      readonly limit: number | null;
-      readonly after: string | null;
-      readonly active: boolean;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "questions";
-      readonly runId: string | null;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "decision";
-      readonly command: DecisionCommand;
-      readonly reference: string;
-      readonly text: string | null;
-      readonly expectedRevision: number;
-      readonly generation: number;
-      readonly subjectDigest: string;
-      readonly commandId: string | null;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "run-command";
-      readonly command: RunCommand;
-      readonly runId: string;
-      readonly expectedRevision: number;
-      readonly commandId: string | null;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "events";
-      readonly runId: string | null;
-      readonly after: number;
-      readonly limit: number | null;
-      readonly follow: boolean;
-      readonly json: boolean;
-    }
-  | {
-      readonly kind: "watch";
-      readonly port: number | null;
-      readonly json: boolean;
-    };
-
-export interface GivenOption {
-  readonly name: string;
-  readonly value: string | undefined;
-}
-
-export interface RuntimeRequest {
-  readonly command: string;
-  readonly positionals: readonly string[];
-  readonly options: readonly GivenOption[];
-}
+  argumentRules,
+  type DecisionCommand,
+  type RunCommand,
+  type RunSource,
+  type RuntimeInvocation,
+  type RuntimeRequest,
+} from "./runtime-invocation.ts";
 
 type Outcome = RuntimeInvocation | string;
 
@@ -98,22 +25,14 @@ interface Range {
   readonly maximum: number;
 }
 
-const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
-const decisionReference = /^[A-Za-z0-9._:/-]{1,256}$/;
-const sha256Digest = /^sha256:[0-9a-f]{64}$/;
 const wholeNumber = /^(?:0|[1-9][0-9]*)$/;
 const invalid = Symbol("invalid");
-const revisions = { minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
 const sequences = { minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const bindingOptions = ["expected-revision", "generation", "subject-digest"];
 const mutationOptions = ["command-id", "json"];
 
-export const argumentRules = {
-  identifier,
-  decisionReference,
-  sha256Digest,
-  revisions,
-};
+const { identifier, decisionReference, sha256Digest, revisions } =
+  argumentRules;
 
 const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
   [
@@ -189,6 +108,11 @@ export function runtimeInvocation(request: RuntimeRequest): Outcome {
     return { kind: "command-help", command: request.command };
   if (request.command === "schedule") return scheduleInvocation(request);
   if (request.command === "queue") return queueInvocation(request);
+  if (request.command === "run" && request.positionals[0] === "continue")
+    return continueInvocation({
+      ...request,
+      positionals: request.positionals.slice(1),
+    });
   if (shape === undefined) return "unknown-command";
   return shapeFailure(shape, request) ?? shape.build(request);
 }

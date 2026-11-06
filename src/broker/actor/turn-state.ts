@@ -29,7 +29,8 @@ import {
   type DeliveryIntent,
   type Undigested,
 } from "./delivery-intents.ts";
-import { effectTurn, neighbours, pendingEffect } from "./effect-turn.ts";
+import { continuedFromOf, effectParts } from "./continuation-turn.ts";
+import { pendingEffect } from "./effect-turn.ts";
 import { stopIntents } from "./stop-plan.ts";
 import { droppedRuns, turnStopping } from "./stop-turn.ts";
 import { documentReferences, type TurnState } from "./turn-plan.ts";
@@ -57,6 +58,7 @@ export async function commandTurn(
       ),
     keys: parsed?.resource === undefined ? [] : [parsed.resource],
     capacity,
+    ...continuedFromOf(parsed),
   });
 }
 
@@ -261,6 +263,7 @@ interface Scope {
   readonly operations: readonly string[];
   readonly keys: readonly string[];
   readonly capacity: number;
+  readonly continuedFrom?: string;
 }
 
 async function turnState(
@@ -284,8 +287,7 @@ async function turnState(
           request: text(existing, "request"),
           sequence: integer(existing, "sequence"),
         };
-  const effects = await effectTurn(connection, scope);
-  const near = await neighbours(connection, { runId, effects });
+  const { effects, near, ...continued } = await effectParts(connection, scope);
   const decisions = decisionState(await runDecisions(connection, runId));
   const own = await intents(connection, {
     sql: "SELECT operation_id, kind, run_id, created_sequence, released_sequence FROM outbox WHERE run_id = ? AND released_sequence IS NULL ORDER BY created_sequence, rowid",
@@ -295,6 +297,7 @@ async function turnState(
   return {
     state: {
       ...waits,
+      ...continued,
       sequence,
       runs: { ...near.runs, ...(stored ? { [runId]: stored } : {}) },
       commands: recorded ? { [commandId]: recorded } : {},

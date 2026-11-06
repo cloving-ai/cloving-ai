@@ -8,6 +8,7 @@ import {
 import { admittedDetails, observed } from "./details.ts";
 import { settled } from "./gates.ts";
 import { admittedBudgets } from "./budgets.ts";
+import { continuationRefusal, continuedRuns } from "./continuations.ts";
 import { requested } from "./effect-requests.ts";
 import { reconciled, reported, stopReported } from "./effect-results.ts";
 import { decided, expired, opened, registered } from "./gate-reduction.ts";
@@ -96,7 +97,12 @@ function effect(rule: EffectRule): Handler {
     const { event, run } = recorded;
     if (!waitEffectTime(state.commandWaits ?? {}, event))
       return invalid("invalid-recorded-time");
-    const result = rule(state.effects, { event, runStatus: run.status });
+    const continuation = state.continuations?.[event.runId];
+    const result = rule(state.effects, {
+      event,
+      runStatus: run.status,
+      ...(continuation === undefined ? {} : { continuation }),
+    });
     if (result.kind === "invalid") return result;
     const present = new Set(state.intents.map((intent) => intent.operationId));
     return applied(state, {
@@ -173,6 +179,8 @@ function created(
 ): Reduction {
   const { event, commands } = recorded;
   if (state.runs[event.runId]) return invalid("existing-run");
+  const refused = continuationRefusal(state, event);
+  if (refused !== undefined) return invalid(refused);
   const intent: EffectIntent = {
     kind: "start-run",
     runId: event.runId,
@@ -182,6 +190,7 @@ function created(
     kind: "applied",
     state: {
       ...state,
+      ...continuedRuns(state.continuations, event),
       sequence: event.sequence,
       runs: {
         ...state.runs,

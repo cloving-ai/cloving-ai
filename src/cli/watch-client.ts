@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", themeChoice: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, themeChoice: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -69,6 +69,33 @@ function queueControls() {
   if (actionToken === null) return undefined;
   return { busy: state.queueBusy, message: state.queueMessage, onCommand: queuePost };
 }
+function continueMessage(reply) {
+  if (reply.error) return reply.error.code + ": " + reply.error.detail;
+  return "Run " + reply.runId + " continues this run.";
+}
+async function continuePost(runId) {
+  if (state.continueBusy.includes(runId)) return;
+  state.continueBusy = [...state.continueBusy, runId];
+  draw();
+  let message;
+  try {
+    const response = await fetch("actions/continue", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-cloving-token": actionToken },
+      body: JSON.stringify({ runId }),
+    });
+    message = response.ok ? continueMessage(await response.json()) : "The watch page refused the request. Refresh the page.";
+  } catch {
+    message = "The watch tool does not answer.";
+  }
+  state.continueBusy = state.continueBusy.filter((busy) => busy !== runId);
+  state.continueMessages = { ...state.continueMessages, [runId]: message };
+  await load();
+}
+function continueControls() {
+  if (actionToken === null) return undefined;
+  return { busy: state.continueBusy, messages: state.continueMessages, onContinue: continuePost };
+}
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
   state.run = next;
@@ -97,8 +124,9 @@ function draw() {
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
   const phone = model === null ? undefined : phoneControls(now);
   const queue = queueControls();
+  const continuing = continueControls();
   const theme = themeControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, theme });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, theme });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);
