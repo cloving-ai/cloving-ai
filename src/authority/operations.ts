@@ -1,4 +1,5 @@
 import { operationScope } from "../operation-identity.ts";
+import type { Continuation } from "./continuations.ts";
 
 export type OperationStatus =
   | "refused"
@@ -112,6 +113,7 @@ export interface EffectEvent {
 export interface EffectContext {
   readonly event: EffectEvent;
   readonly runStatus: string;
+  readonly continuation?: Continuation;
 }
 
 const holdingStatuses: readonly string[] = [

@@ -1,4 +1,5 @@
 import type { CommandWaitsState } from "./command-waits.ts";
+import type { Continuations } from "./continuations.ts";
 import type { RunDetails } from "./details.ts";
 import type { GateState } from "./gates.ts";
 import type { EffectState } from "./operations.ts";
@@ -39,6 +40,7 @@ export interface AuthorityState {
   readonly details: Readonly<Record<string, RunDetails>>;
   readonly questions: number;
   readonly commandWaits?: CommandWaitsState;
+  readonly continuations?: Continuations;
   readonly effects: EffectState;
 }
 
@@ -94,6 +96,7 @@ export const numberFields = [
   "slot",
   "maximumWaitSeconds",
   "pollEverySeconds",
+  "reuseBefore",
 ] as const;
 
 export const textFields = [
@@ -137,6 +140,7 @@ export const textFields = [
   "actor",
   "waitName",
   "commandOutput",
+  "continuedFrom",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];

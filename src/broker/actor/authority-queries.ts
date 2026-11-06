@@ -21,6 +21,7 @@ import { documentDigest } from "../decision-restore.ts";
 import {
   runLinks,
   type RunLinks,
+  type RunOrigin,
   type RunOrigins,
 } from "../../authority/handoff-chain.ts";
 
@@ -98,22 +99,25 @@ async function run(
   };
 }
 
+function originOf(row: unknown): RunOrigin {
+  const continuedFrom = optionalText(row, "continued_from");
+  return {
+    parentRunId: optionalText(row, "parent_run_id"),
+    chainId: text(row, "chain_id"),
+    ...(continuedFrom === null ? {} : { continuedFrom }),
+  };
+}
+
 async function runOrigins(
   connection: SqlConnection,
   cursor: { readonly after: number; readonly through: number },
 ): Promise<RunOrigins> {
   const rows = await connection.all(
-    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id FROM events WHERE type = 'run.created' AND sequence > ? AND sequence <= ? ORDER BY sequence",
+    "SELECT run_id, json_extract(payload, '$.parentRunId') AS parent_run_id, coalesce(json_extract(payload, '$.chainId'), run_id) AS chain_id, json_extract(payload, '$.continuedFrom') AS continued_from FROM events WHERE type = 'run.created' AND sequence > ? AND sequence <= ? ORDER BY sequence",
     [cursor.after, cursor.through],
   );
   return Object.fromEntries(
-    rows.map((row) => [
-      text(row, "run_id"),
-      {
-        parentRunId: optionalText(row, "parent_run_id"),
-        chainId: text(row, "chain_id"),
-      },
-    ]),
+    rows.map((row) => [text(row, "run_id"), originOf(row)]),
   );
 }
 

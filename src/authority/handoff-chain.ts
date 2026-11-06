@@ -3,6 +3,7 @@ import { operationScope } from "../operation-identity.ts";
 export interface RunOrigin {
   readonly parentRunId: string | null;
   readonly chainId: string;
+  readonly continuedFrom?: string;
 }
 
 export type RunOrigins = Readonly<Record<string, RunOrigin>>;

@@ -109,6 +109,9 @@ export function applied(state: AuthorityState, change: Change): Applied {
       ...(waits === undefined
         ? {}
         : { commandWaits: closedCommandWaits(waits, event) }),
+      ...(state.continuations === undefined
+        ? {}
+        : { continuations: state.continuations }),
       sequence: event.sequence,
       runs: change.moved
         ? { ...state.runs, [event.runId]: change.moved }
