@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { cliOptions, entry } from "./cli-workflows-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { record } from "../src/protocol.ts";
+import {
+  readyIssue,
+  runScript,
+  writeFakeGithub,
+} from "./develop-ticket-scripts-fixture.ts";
 import {
   filesBelow,
   repository,
@@ -180,5 +185,81 @@ await test("CLV-223 the queue warning counts only declarations that discovery ad
       assert.deepEqual(record(JSON.parse(copied.stdout))?.["queueWorkflows"], [
         "develop",
       ]);
+    },
+  ));
+
+function shellWords(line: string): readonly string[] {
+  const words = spawnSync("/bin/sh", ["-c", `printf '%s\\n' ${line}`], {
+    encoding: "utf8",
+  });
+  assert.equal(words.status, 0, words.stderr);
+  return words.stdout.split("\n").slice(0, -1);
+}
+
+async function assertCopiedNextTicket(
+  root: string,
+  script: string,
+): Promise<void> {
+  await writeFakeGithub(root, {
+    issues: [
+      readyIssue(2, { createdAt: "2026-11-02T08:00:00Z" }),
+      readyIssue(3, {
+        createdAt: "2026-11-01T08:00:00Z",
+        body: "## Dependencies\nNeeds #2\n",
+      }),
+    ],
+  });
+  const next = runScript(script, { directory: root });
+  assert.equal(next.status, 0, next.warnings.join("\n"));
+  assert.equal(next.stdout, "2\n");
+}
+
+await test("CLV-301 templates copy installs the ticket scripts and prints the settings that use them", () =>
+  withFiles(
+    {
+      ...repository,
+      "it's/package.json": JSON.stringify({ type: "commonjs" }),
+      "bin/.gitkeep": "",
+    },
+    async (root) => {
+      const project = join(root, "it's");
+      const folder = join(project, ".cloving/workflows");
+      const settings = [
+        {
+          setting: "tickets.nextCommand",
+          command: ["node", join(folder, "dev2/next-ticket.mts")],
+        },
+        {
+          setting: "tickets.readyCommand",
+          command: ["node", join(folder, "dev2/ready-tickets.mts")],
+        },
+      ];
+      const copied = templates(root, [
+        ...["copy", "develop", "--id", "dev2", "--repository", project],
+      ]);
+      assert.equal(copied.status, 0, copied.stderr);
+      assert.deepEqual(
+        copied.stdout
+          .split("\n")
+          .filter((line) => line.startsWith("  cloving config set "))
+          .map(shellWords),
+        settings.map(({ setting, command }) => [
+          ...["cloving", "config", "set", setting],
+          ...[JSON.stringify(command), "--private"],
+        ]),
+      );
+      const printed = templates(root, [
+        ...["copy", "develop", "--id", "dev3", "--repository", project],
+        "--json",
+      ]);
+      assert.equal(printed.status, 0, printed.stderr);
+      assert.deepEqual(
+        record(JSON.parse(printed.stdout))?.["settings"],
+        settings.map(({ setting, command }) => ({
+          setting,
+          command: command.map((part) => part.replace("/dev2/", "/dev3/")),
+        })),
+      );
+      await assertCopiedNextTicket(root, String(settings[0]?.command[1]));
     },
   ));

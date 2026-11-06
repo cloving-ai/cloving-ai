@@ -627,6 +627,22 @@ Before enabling more than one lane, update the next-ticket command to honor `CLO
 
 In the ticket text returned by `CLOVING_TICKET_COMMAND`, each `#N` in a sentence starting with **Needs** inside `## Dependencies` is a hard dependency. For example, `Needs #123 and #124.` waits until both GitHub issues close. Other references and sections do not create dependencies. Cloving reads dependency state with `CLOVING_GH_COMMAND` (default `gh`); an unavailable or invalid response prevents admission. An open dependency returns `ticket-dependency-open` and puts the ticket in the skip list. Waiting tickets are checked again each cycle with a free lane, so a closed dependency makes its ticket eligible again.
 
+A ticket names its blockers in a `## Dependencies` section, with one line `Needs #<number>` for each blocker:
+
+```markdown
+## Dependencies
+
+Needs #586
+Needs #590
+```
+
+The `develop` template has two reference scripts for GitHub issues that honor this section. `cloving templates copy develop` puts them in the helper folder of the copy and prints the settings that use them:
+
+- `develop/next-ticket.mts` is for `tickets.nextCommand`. It prints the oldest open issue with the `cloving: ready` label whose blockers are all closed. It never prints an ID from `CLOVING_SKIP_TICKETS`.
+- `develop/ready-tickets.mts` is for `tickets.readyCommand`. It prints the same issues as a JSON list of `id` and `readyAt`. The ready time is the later of the time when the issue was opened and the time when its last blocker closed.
+
+The scripts find blockers with the same `Needs` rule as the service. They run `gh` in the current folder of the service, and `gh` finds the repository from that folder. They read all pages of ready issues, so no limit hides an old issue. A pull request with the `cloving: ready` label is not a ticket. An issue in a dependency cycle is never printed. The script writes a line for each cycle that it finds to standard error, for example `Dependency cycle: #4 -> #5 -> #4`. Each issue in a cycle is in one or more of these lines. A blocker that does not exist counts as open, and the warning names it, for example `Missing blocker: #3 needs #99, which does not exist`. When a `gh` call fails, the script prints no ticket, writes the cause and ends with the code 1.
+
 `cloving status` and watch display the queue state, busy lanes and skipped tickets with their reasons. A pending self-update holds new admissions while active lanes drain. Three unsuccessful runs in a row, counted in the order they finish, stop the queue; a successful handoff clears the streak. Ordinary restarts preserve it. After inspecting and reconciling the failures, run `cloving queue resume`, or start with `--reset-queue`, to clear the streak. A conflict caused by an earlier lane's merge returns its diagnostics to a fix round. The merge steps of one repository take turns: a step waits until the earlier step ends, and then it merges `main`, runs the merge check, pushes and waits for CI. Lanes do not add CI runners or parallelize turns within one run.
 
 An empty selection gives `no-ready-ticket`; a failed command gives `next-ticket-not-available`. Missing configuration gives `next-source-not-configured`. Multiple IDs, an invalid ID, or `next` as the selected ID give `invalid-ticket-id`. Use only one of `--next`, `--ticket`, `--prompt` and `--input`.
@@ -883,7 +899,7 @@ The restart keeps a drain of the queue and the failure count. `cloving restart -
 
 ## Continuous process
 
-In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
+In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. Before the restart, also run the two `cloving config set` commands that the copy printed. Then the queue selects tickets with the reference ticket scripts, which honor ticket dependencies. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
 
 The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts only the declared queue workflow, `develop`.
 
@@ -968,6 +984,8 @@ GitHub issue: OWNER/REPOSITORY#NUMBER
   A numbered list. A test can check each criterion.
 ## First tests
   The first tests to write. Each test fails before the change.
+## Dependencies
+  Only when other tickets must close first. One line "Needs #NUMBER" for each of these tickets.
 
 Rules:
 - One ticket has one behavior. If the work needs more than one pull request, split the ticket.
@@ -1219,6 +1237,8 @@ Put tests beside each folder workflow as `<name>.test.ts`, then run `cloving wor
 The package contains workflow templates. `cloving templates list` shows each template with its summary and its number of decision points, and `cloving templates show <name>` shows its decision points and its workflow files. With `--json`, `list` prints an array of `{ name, summary, points }`, and `show` prints `{ template, files }`, where `template` is the content of `template.json`.
 
 `cloving templates copy <name>` writes the workflow file, its helper folder, its declaration and its test into `.cloving/workflows/` of the current repository (or of `--repository <directory>`), and prints the decision points and the next command `cloving workflows test <workflow-id>`. The declaration of the copy names its template in the field `template`. `--id <workflow-id>` gives the copy another workflow ID: the command renames the files, the helper folder, the workflow ID and the exported function, and changes the imports and the test references. The ID uses lowercase letters, digits and single hyphens and starts with a letter; another ID fails with `invalid-workflow-id`. A copy writes no file when a workflow file or folder of that ID is already present, and fails with `workflow-exists`. The command writes the files into a temporary folder first, and then puts each file in place; after a failure, it removes the files that it put in place. When two workflows of the project and user folders have `"queue": true` after a copy, the command prints `queue-workflow-conflict`; select "a person" for the select point of one copy.
+
+The optional `scripts` list of `template.json` names script files of the template. Each item has the `file` and the `setting` that uses it. After a copy, the command prints one `cloving config set <setting> '["node","<path>"]' --private` command for each script, with the absolute path of the copied file. Run these commands in the repository of the service. With `--json`, the output has `settings`, a list of `{ setting, command }`. The `develop` template lists its two ticket scripts there.
 
 Tests can import `runScenario` from `cloving/workflows/testing`:
 

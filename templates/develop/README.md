@@ -37,6 +37,14 @@ follows the selected point IDs, so it tests each configuration. Package tests ap
 its requirements, and test ten complete configurations through the folder
 loader and the installed package, covering every option.
 
+`develop/next-ticket.mts` and `develop/ready-tickets.mts` are reference scripts
+for `tickets.nextCommand` and `tickets.readyCommand`. The workflow does not
+import them. Both use `develop/ticket-queue.mts`, which reads the open issues with
+the `cloving: ready` label through `gh`. An issue is ready only when every issue
+in its `Needs #<number>` lines under `## Dependencies` is closed. The `scripts`
+list of `template.json` names both scripts, and `cloving templates copy` prints
+the settings that use them.
+
 `develop/turn.ts` implements the development turn for either a resolved
 `ticket` or a task `prompt`. It calls the public protected effect helper and
 returns the broker result unchanged. Its `feedback` takes the previous

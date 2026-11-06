@@ -16,6 +16,11 @@ interface PlannedFile {
   readonly content: string;
 }
 
+export interface ScriptSetting {
+  readonly setting: string;
+  readonly command: readonly string[];
+}
+
 interface Renaming {
   readonly template: string;
   readonly id: string;
@@ -32,6 +37,7 @@ export async function copyTemplate(input: {
 }): Promise<{
   readonly template: Template;
   readonly files: readonly string[];
+  readonly settings: readonly ScriptSetting[];
 }> {
   if (!templateName.test(input.id) || input.id.length > 64)
     throw new Error(`invalid-workflow-id: ${input.id}`);
@@ -43,12 +49,21 @@ export async function copyTemplate(input: {
     })),
   );
   const renaming = functionRenaming(sources, input);
+  const target = (file: string): string =>
+    input.id + file.slice(input.name.length);
   const plan = sources.map(({ file, text }) => ({
-    target: input.id + file.slice(input.name.length),
+    target: target(file),
     content: copiedContent({ file, text }, renaming),
   }));
   await writePlan(input.folder, plan);
-  return { template, files: plan.map((item) => item.target) };
+  return {
+    template,
+    files: plan.map((item) => item.target),
+    settings: template.scripts.map((script) => ({
+      setting: script.setting,
+      command: ["node", join(input.folder, target(script.file))],
+    })),
+  };
 }
 
 function camelName(id: string): string {
