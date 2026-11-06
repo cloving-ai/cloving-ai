@@ -397,6 +397,7 @@
     "src/daemon/github-merge.ts": "daemon",
     "src/daemon/github-methods.ts": "daemon",
     "src/daemon/github-operation.ts": "daemon",
+    "src/daemon/github-pull-tree.ts": "daemon",
     "src/daemon/github-retry.ts": "daemon",
     "src/daemon/github-ticket-status.ts": "daemon",
     "src/daemon/github-worker.ts": "daemon",
