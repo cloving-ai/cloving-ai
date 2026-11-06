@@ -5,7 +5,10 @@ import {
   type HarnessSettings,
   type NativeHarness,
 } from "../src/harness-defaults.ts";
-import { absoluteWorkflowFolder } from "../src/project-settings.ts";
+import {
+  absoluteWorkflowFolder,
+  startSettingLines,
+} from "../src/project-settings.ts";
 import {
   retentionSettings,
   type RetentionSettings,
@@ -269,9 +272,7 @@ function guide(workflows: RegisteredWorkflows): string {
     `Runtime directory: ${runtime}`,
     `Work trees: ${join(directory, "worktrees")}`,
     ...(selectedRuntime.note === "" ? [] : [selectedRuntime.note]),
-    ...Object.entries(configuration.sources).map(
-      ([field, source]) => `${field}: ${source}`,
-    ),
+    ...startSettingLines(configuration),
     ...workflows.workflowRefusals.map(
       (refusal) =>
         `Refused workflow ${refusal.scope} ${refusal.label}: ${refusal.codes.join(", ")}`,

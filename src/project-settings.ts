@@ -155,6 +155,50 @@ function harnessCommandMapping(
   return {};
 }
 
+export interface HiddenFileValue {
+  readonly field: string;
+  readonly variable: string;
+  readonly file: "private" | "project";
+}
+
+function hiddenFileValues(given: {
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly mapped: Readonly<Record<string, string>>;
+  readonly values: Readonly<Record<string, SettingValue>>;
+  readonly privateFile: Readonly<Record<string, SettingValue>>;
+}): readonly HiddenFileValue[] {
+  return Object.entries(given.mapped).flatMap(
+    ([field, variable]): HiddenFileValue[] =>
+      given.environment[variable] === undefined ||
+      given.values[field] === undefined
+        ? []
+        : [
+            {
+              field,
+              variable,
+              file: Object.hasOwn(given.privateFile, field)
+                ? "private"
+                : "project",
+            },
+          ],
+  );
+}
+
+export function startSettingLines(settings: {
+  readonly sources: Readonly<Record<string, SettingSource>>;
+  readonly hidden: readonly HiddenFileValue[];
+}): readonly string[] {
+  return [
+    ...Object.entries(settings.sources).map(
+      ([field, source]) => `${field}: ${source}`,
+    ),
+    ...settings.hidden.map(
+      (value) =>
+        `Warning: ${value.variable} in the environment hides ${value.field} in the ${value.file} file.`,
+    ),
+  ];
+}
+
 export function resolveSettings(
   environment: Readonly<NodeJS.ProcessEnv>,
   files: {
@@ -166,6 +210,7 @@ export function resolveSettings(
   readonly profiles: TurnProfiles;
   readonly harness?: Configuration["harness"];
   readonly sources: Readonly<Record<string, SettingSource>>;
+  readonly hidden: readonly HiddenFileValue[];
   readonly values: Readonly<Record<string, SettingValue>>;
 } {
   const project = configurationValues(
@@ -195,6 +240,7 @@ export function resolveSettings(
     environment: resolved,
     profiles,
     sources,
+    hidden: hiddenFileValues({ environment, mapped, values, privateFile }),
     values,
     ...(privateConfiguration.harness === undefined
       ? {}

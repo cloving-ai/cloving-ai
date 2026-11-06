@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -40,8 +40,9 @@ async function started(input: {
   readonly repository: string;
   readonly state: string;
   readonly argumentsList?: readonly string[];
+  readonly variables?: NodeJS.ProcessEnv;
 }) {
-  const environment = hostEnvironment(input.state);
+  const environment = { ...hostEnvironment(input.state), ...input.variables };
   const child = spawn(
     process.execPath,
     [
@@ -138,5 +139,29 @@ await test("CLV-204 start from repository A or outside git selects B and prints 
         repository,
         directory,
       });
+  }
+});
+
+await test("CLV-306 the start guide warns when an environment value hides a project file value", async () => {
+  const work = await scene();
+  await mkdir(join(work.repository, ".cloving"));
+  await writeFile(
+    join(work.repository, ".cloving/config.json"),
+    JSON.stringify({ version: 1, merge: { mode: "queue" } }),
+  );
+  const host = await started({
+    cwd: work.repository,
+    repository: work.repository,
+    state: join(work.root, "state"),
+    variables: { CLOVING_MERGE_MODE: "direct" },
+  });
+  try {
+    assert.match(host.output, /^merge\.mode: environment$/m);
+    assert.match(
+      host.output,
+      /^Warning: CLOVING_MERGE_MODE in the environment hides merge\.mode in the project file\.$/m,
+    );
+  } finally {
+    await stopChildGroup(host.child);
   }
 });

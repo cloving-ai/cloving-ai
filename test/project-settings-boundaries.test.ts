@@ -3,7 +3,11 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { configuration } from "../src/configuration-schema.ts";
-import { resolveSettings, settingDigests } from "../src/project-settings.ts";
+import {
+  resolveSettings,
+  settingDigests,
+  startSettingLines,
+} from "../src/project-settings.ts";
 import { settingFields } from "../src/configuration-schema.ts";
 import type { TurnProfiles } from "../src/turn-profile.ts";
 import type { TokenPrices } from "../src/token-prices.ts";
@@ -216,6 +220,7 @@ await test("CLV-205 no configuration files preserve environment and built-in def
       environment: fixture.environment,
       profiles: {},
       sources: {},
+      hidden: [],
       values: {},
     });
     const environment = {
@@ -339,4 +344,30 @@ await test("CLV-205 the start guide attributes environment-only settings", () =>
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
+});
+
+await test("CLV-306 the start guide warns for each environment value that hides a file value", () => {
+  const resolved = resolveSettings(
+    {
+      CLOVING_MERGE_MODE: "direct",
+      CLOVING_QUEUE_LANES: "2",
+      CLOVING_SCHEDULES: "{}",
+    },
+    {
+      project: JSON.stringify({
+        version: 1,
+        merge: { mode: "queue" },
+        queue: { everySeconds: 60 },
+      }),
+      private: JSON.stringify({ version: 1, queue: { lanes: 3 } }),
+    },
+  );
+  assert.deepEqual(startSettingLines(resolved), [
+    "merge.mode: environment",
+    "queue.everySeconds: project",
+    "queue.lanes: environment",
+    "CLOVING_SCHEDULES: environment",
+    "Warning: CLOVING_MERGE_MODE in the environment hides merge.mode in the project file.",
+    "Warning: CLOVING_QUEUE_LANES in the environment hides queue.lanes in the private file.",
+  ]);
 });
