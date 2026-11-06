@@ -66,6 +66,7 @@ export async function review(subject) {
       assert.deepEqual(result.outcome, {
         accepted: true,
         feedback: "",
+        findings: 0,
         commit,
         subjectDigest: digest(
           JSON.stringify([

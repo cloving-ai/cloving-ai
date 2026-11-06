@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  chainRefusal,
   childRuns,
   handoffChain,
   type RunOrigins,
 } from "../src/authority/handoff-chain.ts";
+import { isCommandId } from "../src/authority/commands.ts";
 import { operationOf } from "./effect-fixture.ts";
 import { call, withHarness } from "./service-fixture.ts";
 import { openedAuthority } from "./authority-actor-fixture.ts";
@@ -98,6 +100,34 @@ await test("CLV-183 chain policy counts ancestry, permits siblings and refuses m
     absent: ["missing"],
     cycle: ["cycle"],
   });
+});
+
+await test("CLV-307 a workflow continues only a run of its own handoff chain", () => {
+  const origins: RunOrigins = {
+    root: { parentRunId: null, chainId: "root" },
+    child: { parentRunId: "root", chainId: "root" },
+    other: { parentRunId: null, chainId: "other" },
+  };
+  const asked = (runId: string) =>
+    `continue:${operationOf(runId, { round: 1 })}`;
+  assert.equal(isCommandId(asked("root")), true);
+  for (const [commandId, runId] of [
+    [asked("root"), "child"],
+    [asked("child"), "root"],
+    ["operator-command", "other"],
+  ] as const)
+    assert.equal(chainRefusal(commandId, { runId, origins }), undefined);
+  for (const [commandId, runId] of [
+    [asked("root"), "other"],
+    [asked("other"), "child"],
+    [asked("unknown"), "child"],
+    [asked("root"), "unknown"],
+    ["continue:invalid", "child"],
+  ] as const)
+    assert.equal(
+      chainRefusal(commandId, { runId, origins }),
+      "continuation-outside-chain",
+    );
 });
 
 await test("CLV-183 chain-limit survives restart, starts no run and does not invoke the resolver", () =>

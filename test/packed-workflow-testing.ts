@@ -37,7 +37,7 @@ await test("global user scenario", async () => {
   assert.equal(bridge.requests.length, 2);
   assert.equal(bridge.requests[1][0], "waitForDecision");
   const review = await reviewByPerson({ subject: { draft: "The packed draft." } });
-  assert.deepEqual({ ...review, subjectDigest: "digest" }, { accepted: false, feedback: "Revise the draft.", commit: null, subjectDigest: "digest" });
+  assert.deepEqual({ ...review, subjectDigest: "digest" }, { accepted: false, feedback: "Revise the draft.", findings: 1, commit: null, subjectDigest: "digest" });
   assert.match(review.subjectDigest, /^sha256:[0-9a-f]{64}$/);
   assert.equal(bridge.requests[2][0], "waitForDecision");
   await sleep({ seconds: 86400 });

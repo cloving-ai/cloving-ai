@@ -1,6 +1,6 @@
 import { commandWaitKey } from "../authority/command-waits.ts";
 import { documentDigest } from "./decision-restore.ts";
-import { parseCommand } from "../authority/commands.ts";
+import { isRecordKey, parseCommand } from "../authority/commands.ts";
 import type { AuthorityState } from "../authority/reducer.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
 import {
@@ -157,8 +157,15 @@ const commandReport: Rule = (command, context) => {
   return unpinned(command, context);
 };
 
+const continuationEffect: Rule = (command, context) =>
+  command.units === 1 && isRecordKey(command.target)
+    ? unpinned(command, context)
+    : { kind: "rejected", reason: "invalid-handoff-request" };
+
 const handoffEffect: Rule = (command, context) => {
   if (command.capability !== "handoff") return unpinned(command, context);
+  if (command.method === "continue")
+    return continuationEffect(command, context);
   const pin = context.state.runs[command.runId]?.workflow ?? "";
   const declaration = context.definitions.get(pin);
   if (!declaration?.handoffs?.includes(String(command.target)))

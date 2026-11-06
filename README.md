@@ -166,7 +166,7 @@ The page opens on the **Floor**. Each workflow is one line with its name, its co
 
 The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
 
-The **Needs you** panel under the floor lists each pending decision and each paused run, with the count of items. A decision has a blue mark, a paused run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
+The **Needs you** panel under the floor lists each pending decision, each paused run, and each failed or blocked run with no continuation, with the count of items. A decision has a blue mark. A paused, failed or blocked run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
 
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
@@ -433,14 +433,15 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has ten tools:
+The server has eleven tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
 - `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
+- `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
 
-Each of the seven tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the eight tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -760,6 +761,32 @@ Merged runs retain `handoff_requested` with `ticketStatus: complete` or `partial
 
 To resume a queue stopped at this limit, stop the service with Control-C, inspect the failures and reconcile the affected issues, then run `cloving start --reset-queue` with the same repository, runtime and queue settings. This clears the failure streak once and preserves tracked commands. Ordinary restarts, including automatic self-updates, preserve the count. Resetting the queue does not change issue labels or retry blocked issues.
 
+### Continue a stopped run
+
+A run can stop on a problem that a person can fix, for example a rejected push. After the fix, continue the run:
+
+```sh
+cloving run continue <run-id>
+cloving run continue <run-id> --from pull-request/github-open-pr
+cloving run continue <run-id> --from implement/claude-turn/2 --bundle current
+```
+
+The command admits a new run of the same workflow with the same input. The new run keeps the cycle of the old run, so it uses the same branch, work tree and pull request. An effect of the new run whose scope (phase, operation, round and key) is the same as a completed effect of the old run gets the old result with the disposition `existing`. The worker does not do that effect again. The failed effect and all effects after it run again. GitHub label effects always run again, so the ticket labels follow the new run. With `--from <phase>/<operation>[/<round>]`, the first visit of that step and all steps after it run again.
+
+The new run uses the kept workflow bundle of the old run. If that bundle is not kept, the command refuses with `pinned-workflow-unavailable`. With `--bundle current`, the new run uses the current workflow, and a step whose scope changed runs again. The reused effects count against the effect limit of the new run.
+
+The old run keeps its state. `cloving status` and the watch page show `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
+
+The service also refuses these continuations:
+
+- A run that ended more than `retention.days` days ago gets `run-retention-expired`. With `retention.days` set to `null`, no run is too old.
+- A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
+- A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
+
+A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
+
+On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
@@ -920,7 +947,7 @@ A workflow is a TypeScript file in the form of `templates/develop/develop.ts`:
 
 - An exported async function with the directive `"use workflow"` as its first statement. The directive needs the compiler of the Workflow SDK, not only TypeScript.
 - The only argument is the input of the run. The declared resolver provides `cycleId`, `repository` and the submitted fields under `input`; a ticket field becomes `{ id, text }`. With `waitForDecision`, the decision returns to the same call.
-- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `waitForDecision` from `cloving/workflows/steps/wait-for-decision`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
+- The step helpers come from the subpaths of `cloving/workflows`: `protectedEffect` from `cloving/workflows/steps/protected-effect`, `waitForDecision` from `cloving/workflows/steps/wait-for-decision`, `loadCycle` from `cloving/workflows/steps/load-cycle`, `handoff` from `cloving/workflows/steps/handoff`, `continueRun` from `cloving/workflows/steps/continue-run`, `waitForRun` from `cloving/workflows/steps/wait-for-run` and `runCommand` from `cloving/workflows/steps/run-command`. The type `CycleOutcome` comes from `cloving/workflows`. An import of `cloving/workflows` starts no service.
 - `protectedEffect` asks the daemon for one effect of a capability, for example a Claude turn. `waitForDecision` opens a decision for a person and waits for the result.
 - The function returns a `CycleOutcome`: `waiting_for_decision`, `handoff_requested` or `blocked`.
 
@@ -1082,7 +1109,7 @@ const review = await reviewByPerson({
 });
 ```
 
-Call it inside a workflow. The result is `{ accepted, feedback, commit, subjectDigest }`; only an approval sets `accepted` to `true`. Feedback contains the decision's answer, or an empty string. A commit subject is `{ commit, target }`, where `commit` is the full 40 or 64 character lowercase commit ID and `target` identifies the run's work tree. To review an existing pull, supply its `commit` together with the run target. A draft subject is `{ draft, commit? }`, where the optional commit identifies its base; the result's `commit` is always `null` for a draft. Drafts must contain text, and commit subjects need a nonempty target.
+Call it inside a workflow. The result is `{ accepted, feedback, findings, commit, subjectDigest }`; only an approval sets `accepted` to `true`. Feedback contains the decision's answer, or an empty string. `findings` is 1 when the decision does not approve and its answer is not empty. Otherwise it is 0. A commit subject is `{ commit, target }`, where `commit` is the full 40 or 64 character lowercase commit ID and `target` identifies the run's work tree. To review an existing pull, supply its `commit` together with the run target. A draft subject is `{ draft, commit? }`, where the optional commit identifies its base; the result's `commit` is always `null` for a draft. Drafts must contain text, and commit subjects need a nonempty target.
 
 The SHA-256 `subjectDigest` identifies the exact subject, including a draft's text and optional base commit. A changed subject opens a different approval. Repeating the same subject within a run reuses its recorded decision. The helper returns that decision in the original call through `waitForDecision`, and is also exported by `cloving/workflows`. Workflow tests supply its decisions through the fake bridge's `decisions` queue; person reviews consume no protected effect budget.
 
@@ -1095,7 +1122,7 @@ const subject = { number: pull.number, commit: pull.commit, target: runTarget };
 const review = await reviewByAgent({ subject: subject, reviewer: { kind: "greptile" } });
 ```
 
-Replacing that call with `reviewByPerson({ subject })` preserves the result type and subject digest. Greptile needs the pull number and immutable commit; drafts can use person or turn review. Only a score of 5/5 sets `accepted: true`. Feedback includes the summary and findings with their file locations. Responses must name the requested pull and commit; malformed or unrelated results reject with `invalid-review-result`. Failed effects reject with the effect's reason.
+Replacing that call with `reviewByPerson({ subject })` preserves the result type and subject digest. Greptile needs the pull number and immutable commit; drafts can use person or turn review. Only a score of 5/5 sets `accepted: true`. Feedback includes the summary and findings with their file locations. `findings` is the number of Greptile findings, and does not count the summary. Responses must name the requested pull and commit; malformed or unrelated results reject with `invalid-review-result`. Failed effects reject with the effect's reason.
 
 `reviewByAgent` uses the existing GitHub `wait-review` worker method and one protected effect unit per distinct subject. Its candidate declaration must include the `github` capability and `methods: { "github": ["wait-review"] }` with a sufficient effect limit. The broker still controls authority and budgets. Both the subpath above and `cloving/workflows` export the helper. Fake scenarios provide worker results in `effects["github wait-review"]`. A turn reviewer uses the same subject and result:
 
@@ -1108,7 +1135,7 @@ const review = await reviewByAgent({
 
 The named profile runs through the existing `claude` capability and `run-turn:checker` method, using that profile's configured harness and restrictions. The declaration must name that exact method and capability; the helper consumes one protected effect unit. The workflow call must contain a literal profile name. Commit reviews use the subject's run target and ask the reviewer to inspect that exact commit. Draft reviews use a separate work tree identified by the draft's subject digest. Repeating a subject with the same profile reuses its operation; changing the subject or profile starts a new review operation.
 
-The report must end with `Review verdict: accept` or `Review verdict: change`. The worker records this verdict separately before truncating the report. Only `accept` sets `accepted: true`; feedback is the report text before the verdict, within the worker's report limits. A missing final verdict returns `accepted: false` and `The review turn has no verdict line.` A failed turn rejects with its effect reason. Fake scenarios provide `{ summary, reviewVerdict }` worker results through `effects["claude run-turn:checker"]`, with `reviewVerdict` set to `"accept"`, `"change"` or `null`.
+The report must end with `Review verdict: accept` or `Review verdict: change`. The worker records this verdict separately before truncating the report. Only `accept` sets `accepted: true`; feedback is the report text before the verdict, within the worker's report limits. `findings` is 1 for a `change` verdict with a report that is not empty. Otherwise it is 0. A missing final verdict returns `accepted: false`, `findings: 0` and `The review turn has no verdict line.` A failed turn rejects with its effect reason. Fake scenarios provide `{ summary, reviewVerdict }` worker results through `effects["claude run-turn:checker"]`, with `reviewVerdict` set to `"accept"`, `"change"` or `null`.
 
 Use `mergeWhenGreen` to merge a pull request when its checks pass:
 
@@ -1121,7 +1148,7 @@ const merge = await mergeWhenGreen({ pull: pull, check: "beforeMerge" });
 
 `check: "beforeMerge"` runs the `checks.beforeMerge` command of the settings before the merge. When that setting is missing, the result is `{ merged: false, reason: "check-not-configured", output: "" }`, and the pull request stays open. `check: null` merges with no local check, also after an update from the default branch. A missing setting never turns the check off. In both cases, CI must pass on the updated head. The review of the pull commit stays valid when the step updates the branch from the default branch.
 
-The result is `{ merged, reason, output }`. After a merge, `merged` is `true` and `reason` is `null`. For `check-failed`, `merge-conflict` and `ci-failed`, `output` holds the check, conflict or CI output for a fix turn. `ci-pending` means that CI did not finish within the wait limit. In queue mode, `merge-queue-removed` and `merge-queue-timeout` tell that the pull request left the merge queue with no merge (see "The GitHub merge queue"). To try the merge again, call the step with a higher `round`, for example `{ pull: pull, check: "beforeMerge", round: 2 }`. `round` is a positive integer and defaults to 1. A call with the same pull, commit and round uses the same operation, so a resumed workflow does not merge twice. Other failures reject with the effect reason, and a malformed result rejects with `invalid-merge-result`. An invalid `pull` or `check` rejects with `invalid-merge-request` before any request.
+The result is `{ merged, reason, output }`. After a merge, `merged` is `true` and `reason` is `null`. For `check-failed`, `merge-conflict` and `ci-failed`, `output` holds the check, conflict or CI output for a fix turn. `ci-pending` means that CI did not finish within the wait limit. In queue mode, `merge-queue-removed` and `merge-queue-timeout` tell that the pull request left the merge queue with no merge (see "The GitHub merge queue"). To try the merge again, call the step with a higher `round`, for example `{ pull: pull, check: "beforeMerge", round: 2 }`. `round` is a positive integer and defaults to 1. A call with the same pull, commit and round uses the same operation, so a resumed workflow does not merge twice. To try a merge that failed with a short git or network failure again in the same round, add a positive integer `retry`, for example `{ pull: pull, check: "beforeMerge", round: 1, retry: 1 }`. Each `retry` value starts a new merge operation for the same commit. When an earlier attempt pushed a merge of the default branch, the new operation uses that head. If that attempt ran no local check and the new call asks for one, the step runs the check on that head before the merge. Other failures reject with the effect reason, and a malformed result rejects with `invalid-merge-result`. An invalid `pull` or `check` rejects with `invalid-merge-request` before any request.
 
 Replace that call with `mergeByPerson({ pull: pull, check: "beforeMerge" })` to let a person decide when the merge starts. The step opens an approval for the pull number and commit. After an approval, it merges with the same check rules and `round`. After a denial, the result is `{ merged: false, reason: "not-approved", output }`, where `output` is the answer of the person, and no merge starts. The approval belongs to the pull commit, so a retry with a higher `round` does not ask again.
 
@@ -1177,7 +1204,7 @@ await test("develop uses the fake worker result", async () => {
 });
 ```
 
-Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `effects.handoff` supplies handoff results, `waits` supplies one run-wait answer for each check, and `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order. A `waits` entry `{ kind: "waiting" }` answers one check with waiting; each other entry is the outcome of the awaited run. A missing run-wait answer gives the outcome `unavailable` with reason `no-scenario-result`. A waiting answer records a sleep until the next check of the normal check schedule, on a clock that starts at 0. Each wait has its own clock. The clock of a wait starts at the lowest whole number of milliseconds, from 0, that no other active wait for the same run uses. A waiting answer at or after the deadline on the clock of the wait ends the wait with `run-wait-timeout`. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
+Each scenario runs in an isolated Node process. `effects` maps `"<capability> <method>"` to result queues; `effects.handoff` supplies handoff results, `effects.continueRun` supplies `continueRun` results, `waits` supplies one run-wait answer for each check, and `decisions` supplies `{ decision, answer }` results for `waitForDecision` in call order. A `waits` entry `{ kind: "waiting" }` answers one check with waiting; each other entry is the outcome of the awaited run. A missing run-wait answer gives the outcome `unavailable` with reason `no-scenario-result`. A waiting answer records a sleep until the next check of the normal check schedule, on a clock that starts at 0. Each wait has its own clock. The clock of a wait starts at the lowest whole number of milliseconds, from 0, that no other active wait for the same run uses. A waiting answer at or after the deadline on the clock of the wait ends the wait with `run-wait-timeout`. A missing `waitForDecision` result throws `no-scenario-result`. Sleep requests are recorded in order and complete immediately in both testing APIs, without consuming the simulated effect budget. An optional `effectLimit` simulates a budget and adds `spent` to the result. Missing effect results return `unavailable`. For tests that import the workflow directly, `using bridge = fakeStepBridge(scenario)` installs the same fake bridge until disposal and exposes `requests` and `spent`. It refuses to replace an active host bridge. The test command resolves public Cloving imports from its own package, including a global installation, without adding a package to the consumer repository.
 
 There are no built-in registrations. Workflow IDs are available to project and user declarations.
 
@@ -1326,6 +1353,21 @@ if (
 `maximumWaitSeconds` must be an integer from 1 to 86400. The result contains `kind`, `reason` and `promotionId`; absent reason or promotion values are `null`. A wait for an unknown run, a run started by another run, or an invalid bound fails with `run-wait-refused`. Expiry fails with `run-wait-timeout`. Waiting spends no effect units. Several handoffs to a workflow without `when-idle` admission create distinct child runs that can each be awaited.
 
 The wait is a loop of short check steps with a durable sleep between them. The first check sets the start time and the deadline. The interval between checks is the time that the wait has used, but not less than 2 seconds and not more than 1 minute. The next check never comes after the deadline. While the awaited run is active, a check makes no step retry, so a wait of many hours does not reach the queue delivery limit of the Workflow SDK. A daemon restart keeps the deadline, includes the downtime in the wait, continues the checks and replays the same terminal outcome. `cloving status` shows condition `waiting-run` and the awaited run ID (`awaitedRunId` in JSON); watch cards show a link labeled “Waiting for run”.
+
+Use `continueRun` to continue a failed or blocked run of the same handoff chain, as `cloving run continue` does:
+
+```typescript
+import { continueRun, handoff, waitForRun } from "cloving/workflows";
+
+const runId = await handoff({ workflowId: "develop", input: {} });
+const outcome = await waitForRun({ runId, maximumWaitSeconds: 3600 });
+if (outcome.kind === "failed") {
+  const next = await continueRun({ runId });
+  await waitForRun({ runId: next, maximumWaitSeconds: 3600 });
+}
+```
+
+The step returns the run ID of the continuation. The optional `from` names a step, as `--from` does. The optional `bundle` is `retained`, the default, or `current`. The step spends one protected-effect unit of the `handoff` capability, so the declaration must list `handoffs`. The service admits the continuation only when the two runs have the same `chainId`. Otherwise the step fails with `continuation-outside-chain`. The continuation keeps the `parentRunId` and `chainId` of the old run, so a parent can wait for it with `waitForRun`. Each refusal of `cloving run continue`, for example `run-active`, fails the step with the same code. Replays use the command ID `continue:<operation ID>` and return the same run ID.
 
 A run that a workflow bundle of an earlier Cloving version started keeps the single wait step of that version. The daemon still answers that step. It uses the same check schedule and deadline, and it tells the step to try again at the next check time. Each try is one queue delivery, so such a wait can still reach the delivery limit.
 
@@ -1479,7 +1521,7 @@ npm pack --ignore-scripts
 
 After a merge or branch update changes `package.json` or `package-lock.json`, rerun `npm ci --ignore-scripts` in the worktree before running checks. Copied `node_modules` can still contain the previous versions; the developer gate rejects a mismatch with the lockfile.
 
-`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and workflow templates; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `waitForDecision`, `handoff`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
+`npm pack` prints the file name of the tarball. Install it into a separate project with `npm install --ignore-scripts --omit=dev /absolute/path/to/TARBALL`, then run `./node_modules/.bin/cloving --version` or `./node_modules/.bin/cloving start`. The package includes the emitted CLI, start program, compiler and workflow templates; startup uses the installed runtime dependencies. The package has no installation hooks. An import of `cloving/workflows` gives the step helpers `loadCycle`, `protectedEffect`, `waitForDecision`, `handoff`, `continueRun`, `waitForRun`, `runCommand`, `sleep` and `waitForCommand`, and starts no service.
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 

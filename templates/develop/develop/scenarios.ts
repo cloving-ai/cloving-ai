@@ -6,6 +6,7 @@ export const selection = {
   accept: "greptile",
   merge: "green",
   partial: "queue",
+  recovery: "person",
 };
 export const input = {
   cycleId: "run-1",

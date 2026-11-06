@@ -167,6 +167,42 @@ await test("CLV-220 a merge retry with a new round starts a new merge operation"
   );
 });
 
+await test("CLV-300 a merge retry number starts a new merge operation in the same round", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      "github merge": [
+        { kind: "failed", operationId: "merge", reason: "git-call-failed" },
+        done,
+      ],
+    },
+  });
+  await assert.rejects(
+    mergeWhenGreen({ pull, check: null, round: 2 }),
+    /git-call-failed/,
+  );
+  const second = await mergeWhenGreen({
+    pull,
+    check: null,
+    round: 2,
+    retry: 3,
+  });
+  assert.equal(second.merged, true);
+  assert.deepEqual(
+    bridge.requests.flatMap((request) =>
+      request[0] === "effect" ? [request[1].scope] : [],
+    ),
+    [
+      { phase: "merge", operation: "merge", round: 2, key: `42:${commit}` },
+      {
+        phase: "merge",
+        operation: "merge",
+        round: 2,
+        key: `42:${commit}:retry-3`,
+      },
+    ],
+  );
+});
+
 for (const result of [
   "{",
   null,
@@ -215,6 +251,9 @@ for (const request of [
   { pull, check: null, round: 0 },
   { pull, check: null, round: 1.5 },
   { pull, check: null, round: "2" },
+  { pull, check: null, retry: 0 },
+  { pull, check: null, retry: 1.5 },
+  { pull, check: null, retry: "1" },
 ])
   await test(`CLV-220 merge steps refuse an invalid request ${JSON.stringify(request)}`, async () => {
     using bridge = fakeStepBridge({});

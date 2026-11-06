@@ -38,6 +38,7 @@ export interface Plan {
   }[];
   readonly labels?: readonly Readonly<Record<string, unknown>>[];
   readonly issues?: readonly Readonly<Record<string, unknown>>[];
+  readonly prs?: readonly Readonly<Record<string, unknown>>[];
   readonly scores: readonly number[];
   readonly headAfterReads?: number;
   readonly mergeRefusals?: number;

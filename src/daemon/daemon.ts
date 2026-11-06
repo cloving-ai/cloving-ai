@@ -43,7 +43,7 @@ import {
   unfinishedPins,
   type CurrentBundle,
 } from "./bundle-sweep.ts";
-import { turnDetailsPlace } from "./turn-details.ts";
+import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
@@ -174,12 +174,17 @@ function controlConnections(settings: DaemonSettings): {
 }
 
 function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
-  return turnDetailsPlace({
+  const place = {
     directory: settings.directory,
     retention: settings.retention ?? defaultRetention,
-    runs: async (runIds) => authorityRuns(await ports)(runIds),
+    runs: async (runIds: readonly string[]) =>
+      authorityRuns(await ports)(runIds),
     now: settings.retentionClock ?? Date.now,
-  });
+  };
+  return {
+    turnDetails: turnDetailsPlace(place),
+    retentionExpired: retentionExpiry(place),
+  };
 }
 
 function rejectedOpening(detail: string): DaemonOpening {
@@ -249,7 +254,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
       ? {}
       : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
     workerHarness: worker.harness,
-    turnDetails: retentionReads(settings, given.promise),
+    ...retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),
     runtimeDirectory: settings.runtimeDirectory,

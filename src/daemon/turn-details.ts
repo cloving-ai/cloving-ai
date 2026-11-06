@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { located } from "./operation-journal.ts";
 import { archiveFolder, type SweepSettings } from "./record-sweep.ts";
 import {
+  retentionExpired,
   turnDetails,
   type RunTurns,
   type TurnDetails,
@@ -56,6 +57,18 @@ export function turnDetailsPlace(
         retention: settings.retention,
         now: settings.now(),
       },
+    );
+  };
+}
+
+export function retentionExpiry(
+  settings: Pick<TurnDetailsSettings, "retention" | "runs" | "now">,
+): (runId: string) => Promise<boolean> {
+  return async (runId) => {
+    const runs = await settings.runs([runId]);
+    return retentionExpired(
+      Object.hasOwn(runs, runId) ? runs[runId] : undefined,
+      { retention: settings.retention, now: settings.now() },
     );
   };
 }

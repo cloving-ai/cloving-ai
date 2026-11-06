@@ -64,6 +64,12 @@ export interface HandoffRequest {
   readonly input: Readonly<Record<string, HandoffValue>>;
 }
 
+export interface ContinueRunRequest {
+  readonly runId: string;
+  readonly from?: string;
+  readonly bundle?: "retained" | "current";
+}
+
 export interface RunWaitRequest {
   readonly runId: string;
   readonly maximumWaitSeconds: number;
@@ -130,6 +136,9 @@ export interface StepBridge {
   readonly gate: (request: GateRequest) => Promise<GateResult>;
   readonly waitForDecision?: (request: GateRequest) => Promise<DecisionWait>;
   readonly handoff?: (request: HandoffRequest) => Promise<ProtectedResult>;
+  readonly continueRun?: (
+    request: ContinueRunRequest,
+  ) => Promise<ProtectedResult>;
   readonly checkRunWait?: (request: RunWaitCheck) => Promise<RunWaitProgress>;
   readonly waitForRun?: (request: RunWaitRequest) => Promise<RunWaitOutcome>;
 }

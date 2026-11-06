@@ -21,7 +21,7 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume and cloving_drop to submit runs and decisions. Each of these tools
+cloving_resume, cloving_drop and cloving_continue to submit runs and decisions. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
@@ -79,11 +79,16 @@ Reports run outcomes, throughput and ended-run costs with seven-day medians and 
 Unsupported facts and unreadable sources are unavailable.
 `,
   run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
+       cloving run continue <run-id> [--from <phase>/<operation>[/<round>]] [--bundle current] [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
 With --ticket, the daemon reads the ticket at admission. A declared ticket field receives { id, text } inside input.
 With --next (the same as --ticket next), ticket workflows select a ready ticket through CLOVING_NEXT_COMMAND.
 Success means a committed receipt. It does not mean completed work.
+Continue admits a new run for a failed run, or for a run that completed blocked.
+The new run keeps the cycle, the branch, the work tree and the pull request of the old run.
+It reuses the completed effects before the failed step, or before the first visit of the --from step.
+It uses the kept workflow bundle of the old run, or the current workflow with --bundle current.
 `,
   status: `Usage: cloving status [<run-id>] [--active] [--limit <n>] [--after <cursor>] [--json]
 

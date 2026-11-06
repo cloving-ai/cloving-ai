@@ -2,12 +2,8 @@ import { parseArgs } from "node:util";
 import { configInvocation, type ConfigInvocation } from "./config-arguments.ts";
 import { repositoryArguments } from "./repository-arguments.ts";
 import { phoneInvocation, type PhoneInvocation } from "./phone-arguments.ts";
-import {
-  isRuntimeCommand,
-  runtimeInvocation,
-  type GivenOption,
-  type RuntimeInvocation,
-} from "./runtime-arguments.ts";
+import { isRuntimeCommand, runtimeInvocation } from "./runtime-arguments.ts";
+import type { GivenOption, RuntimeInvocation } from "./runtime-invocation.ts";
 
 export type Invocation = { readonly repository?: string } & (
   | PhoneInvocation
@@ -64,6 +60,8 @@ const options = {
   after: { type: "string" },
   follow: { type: "boolean" },
   since: { type: "string" },
+  from: { type: "string" },
+  bundle: { type: "string" },
   repository: { type: "string" },
   harness: { type: "string" },
 } as const;

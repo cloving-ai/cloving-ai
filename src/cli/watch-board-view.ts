@@ -196,9 +196,17 @@ export function Card(props: {
 }
 
 export function HandoffLinks(props: {
-  readonly run: Pick<WatchCard, "parentRunId" | "childRunIds" | "awaitedRunId">;
+  readonly run: Pick<
+    WatchCard,
+    | "parentRunId"
+    | "childRunIds"
+    | "awaitedRunId"
+    | "continuedFrom"
+    | "continuedBy"
+  >;
 }): Shown {
   const { parentRunId, childRunIds, awaitedRunId } = props.run;
+  const { continuedFrom, continuedBy } = props.run;
   const links = [
     ...(awaitedRunId == null
       ? []
@@ -207,6 +215,12 @@ export function HandoffLinks(props: {
       ? []
       : [{ label: "Parent run", runId: parentRunId }]),
     ...(childRunIds ?? []).map((runId) => ({ label: "Child run", runId })),
+    ...(continuedFrom === undefined
+      ? []
+      : [{ label: "Continues", runId: continuedFrom }]),
+    ...(continuedBy === undefined
+      ? []
+      : [{ label: "Continued by", runId: continuedBy }]),
   ];
   return links.map(({ label, runId }) =>
     element("a", {

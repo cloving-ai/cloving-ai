@@ -9,9 +9,9 @@ export interface PartialWorkInput {
 export async function reviewPartial(
   input: PartialWorkInput,
 ): Promise<string | null> {
-  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 4)
+  if (!Number.isSafeInteger(input.round) || input.round < 1 || input.round > 6)
     throw new Error("invalid-development-round");
-  if (input.round === 4) return null;
+  if (input.round >= 4) return null;
   const decision = await waitForDecision({
     gateId: `partial:${input.cycleId}:${String(input.round)}`,
     kind: "question",

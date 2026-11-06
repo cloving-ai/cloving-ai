@@ -34,3 +34,37 @@ export async function develop(input: { prompt: string }) {
       "effect-limit",
     ]);
   });
+
+for (const module of [
+  "cloving/workflows",
+  "cloving/workflows/steps/continue-run",
+])
+  await test(`CLV-307 installed ${module} admits continueRun and counts its effect unit`, () => {
+    const source = `import { continueRun } from "${module}";
+export async function develop(input: { runId: string }) {
+  "use workflow";
+  return await continueRun({ runId: input.runId, from: "merge/merge" });
+}`;
+    const facts = analyzeWorkflowCandidate(source);
+    const declaration = {
+      ...candidateDeclaration,
+      workflow: {
+        ...candidateDeclaration.workflow,
+        effectLimit: 1,
+        handoffs: ["B"],
+        input: { maximumBytes: 4096, fields: { runId: { type: "string" } } },
+      },
+    };
+    assert.deepEqual(checkWorkflowCandidate({ declaration, ...facts }), []);
+    assert.equal(facts.analysis.knownCallCount, 1);
+    assert.equal(facts.analysis.knownUnitTotal, 1);
+    const twice = analyzeWorkflowCandidate(
+      source.replace(
+        "return await",
+        "await continueRun({ runId: input.runId }); return await",
+      ),
+    );
+    assert.deepEqual(checkWorkflowCandidate({ declaration, ...twice }), [
+      "effect-limit",
+    ]);
+  });
