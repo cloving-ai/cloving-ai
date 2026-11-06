@@ -2,12 +2,21 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { record, type Fields } from "../protocol.ts";
 import { isCommandId, isRecordKey } from "../authority/commands.ts";
-import type { PendingSlot, ScheduleProgress } from "../schedule-progress.ts";
+import {
+  checkScheduleTiming,
+  type ScheduleTiming,
+} from "../workflow-schedule.ts";
+import type {
+  PendingSlot,
+  ScheduleProgress,
+  ScheduleProgressFields,
+} from "../schedule-progress.ts";
 export type { PendingSlot, ScheduleProgress } from "../schedule-progress.ts";
 
 type ControlFields = "state" | "failuresInRow" | "failedRunIds";
-type StoredProgress = Omit<ScheduleProgress, ControlFields> &
-  Partial<Pick<ScheduleProgress, ControlFields>>;
+type StoredProgress = ScheduleTiming &
+  Omit<ScheduleProgressFields, ControlFields> &
+  Partial<Pick<ScheduleProgressFields, ControlFields>>;
 
 function pendingSlot(value: unknown): value is PendingSlot {
   const fields = record(value);
@@ -20,11 +29,9 @@ function whole(value: unknown): value is number {
 }
 
 function timing(fields: Fields): boolean {
-  const { everySeconds, nextAt, lastSlot } = fields;
+  const { nextAt, lastSlot } = fields;
   return (
-    whole(everySeconds) &&
-    everySeconds >= 60 &&
-    everySeconds <= 86400 &&
+    checkScheduleTiming(fields).kind === "valid" &&
     whole(nextAt) &&
     whole(lastSlot)
   );

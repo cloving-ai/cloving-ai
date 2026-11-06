@@ -1418,23 +1418,58 @@ Each committed opening moves the run's single card to the matching column. Compl
 
 After startup, `cloving status` lists the declared ID. Submit JSON with `cloving run review-run --input input.json`. The function receives `{ cycleId, repository, input }`, where `cycleId` is `task-` followed by 12 characters derived from the command ID, `repository` is the service repository, and `input` retains the checked JSON values. Invalid input is rejected before a run starts. Invalid declarations or duplicate workflow IDs or function names stop startup.
 
-A declared workflow can include an interval schedule:
+A declared workflow can include a schedule. A schedule has one of two shapes. An interval schedule repeats after a fixed number of seconds:
 
 ```json
 "schedule": { "everySeconds": 300, "input": {} }
 ```
 
-`everySeconds` must be a whole number from 60 through 86400, and `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object such as `{"review-queue":{"everySeconds":600,"input":{}}}` to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+`everySeconds` must be a whole number from 60 through 2592000 (30 days).
 
-The first run starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+A calendar schedule runs at a time of day in a named time zone:
+
+```json
+"schedule": {
+  "at": "07:00",
+  "timeZone": "America/Los_Angeles",
+  "weekdays": ["monday"],
+  "input": {}
+}
+```
+
+- `at` is a local time `HH:MM` from `00:00` through `23:59`.
+- `timeZone` is an IANA name, for example `America/Los_Angeles` or `UTC`. A calendar schedule must have it.
+- `weekdays` is an optional list of day names from `monday` through `sunday`, with no duplicates. With no list, the schedule runs each day.
+
+A calendar schedule gets `invalid-schedule-shape` in these conditions:
+
+- It also has `everySeconds`.
+- The `at` text is not `HH:MM` from `00:00` through `23:59`, for example `24:00`.
+- It has no `timeZone`, or it has a `timeZone` or `weekdays` but no `at`.
+- The `weekdays` list is empty, has a duplicate or has a name that is not a day.
+
+The pure check cannot read the time zone data. The daemon checks the time zone when it registers the schedule. It refuses an unknown name, or an offset such as `+05:00`, with `invalid-schedule-time-zone`.
+
+In both shapes, `input` must satisfy the workflow's submission contract, including its byte limit. The resolved input, including the daemon's cycle and repository fields, must also fit the service's 262144-byte document limit. Set `CLOVING_SCHEDULES` to a JSON object to replace a declaration's schedule or schedule an otherwise unscheduled declared workflow. Each value has one of the two shapes, for example `{"review-queue":{"everySeconds":600,"input":{}}}` or `{"review-queue":{"at":"07:00","timeZone":"UTC","weekdays":["monday","thursday"],"input":{}}}`. Only registered declared workflow IDs are accepted. Invalid settings fail startup with `invalid-schedules`, `unknown-schedule-workflow`, `invalid-schedule-interval`, `invalid-schedule-shape`, `invalid-schedule-time-zone` or `invalid-schedule-input`. Invalid declaration files retain the `invalid-workflow-declaration` refusal.
+
+The first run of an interval schedule starts after one interval. Slots retain increasing numbers in private Cloving state (`state/schedules.json`); each submission uses the operator command ID `schedule:<workflowId>:<slot>`. Restart preserves the next boundary and retries an unacknowledged submission with its saved input and command ID. Missed intervals coalesce into the latest due slot rather than a burst of catch-up runs. Changing the interval starts a fresh interval while retaining slot numbers and any active run.
+
+The daemon computes the slots of a calendar schedule from the local calendar of its time zone. The first run starts at the next slot after the daemon registers the schedule. Each run or skip of a calendar schedule adds one to the slot number. When the daemon was stopped during one or more slots, it submits one run when it starts again. The next slot is then the first slot after that start. A change of `at`, `timeZone` or `weekdays`, or a change between the two shapes, computes a new next slot. The change keeps the slot numbers and any active run.
+
+Daylight saving time changes the local clock two times each year. The daemon applies these rules:
+
+- When the clock moves forward, a local time in the skipped hour does not occur on that day. The schedule runs at the first minute after the gap. For example, a schedule at `02:30` in `America/Los_Angeles` runs at 03:00 on 2027-03-14.
+- When the clock moves back, a local time in the repeated hour occurs two times. The schedule runs one time, at the first occurrence. For example, a schedule at `01:30` in `America/Los_Angeles` runs at 01:30 PDT on 2026-11-01, and not again at 01:30 PST.
 
 An earlier scheduled run blocks later scheduled slots while queued, running, waiting for a decision or paused. Each overlap records a `schedule.skipped` event on that earlier run, with `workflowId` and `slot`, without changing its status or observation. Manual runs remain independent. The ticket queue continues to use `CLOVING_QUEUE_SECONDS`.
 
-Use `cloving schedule [--json]` to list workflow IDs, intervals, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
+Use `cloving schedule [--json]` to list workflow IDs, intervals or calendar times, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, or at the next calendar slot, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
 
 `cloving status` shows each schedule after the queue lines, for example `Schedule review-queue: every 300 s, active, next run at 2026-10-14T12:05:00.000Z, 0 failures in a row`. Paused schedules show `paused` without a next run time; stopped schedules show `stopped`, the stop time and the failure count. The watch board shows the same information on the workflow's board and refreshes it on the next poll. Status times use ISO timestamps; watch times use the browser's local date and time.
 
-Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
+A calendar schedule shows its days, its time and its time zone. The next run shows the local time of that time zone with its offset, in status, in `cloving schedule` and on the watch board. For example, `cloving status` shows `Schedule review: Mondays at 07:00 America/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row`. A schedule with no `weekdays` shows `each day`, for example `each day at 07:00 UTC`.
+
+Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. A calendar entry has `at`, `timeZone` and, when set, `weekdays` in place of `everySeconds`. It also has `nextLocal`, the next run as a local ISO time with its offset, or `null` when `nextAt` is `null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
 
 Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. Manual runs have no scheduled mark.
 
