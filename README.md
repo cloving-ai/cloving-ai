@@ -787,6 +787,32 @@ A workflow can continue a run of its own handoff chain with the step `continueRu
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
+### Rescue stuck pull requests
+
+A run can end `blocked` or `failed` while its pull request stays open. The templates `patrol` and `rescue-pr` find such pull requests and repair them. Copy both into your private workflow folder with `cloving templates copy patrol` and `cloving templates copy rescue-pr`.
+
+`patrol` runs every 30 minutes. It reads the operator command `patrol-status` from `CLOVING_COMMANDS`. The command prints a JSON array with one item for each open pull request of Cloving:
+
+```json
+[
+  {
+    "number": 641,
+    "branch": "cloving/task-0123456789ab",
+    "state": "blocked",
+    "active": false,
+    "reason": "merge-conflict",
+    "head": "0123456789abcdef0123456789abcdef01234567",
+    "score": 4,
+    "issue": "acme/demo#627",
+    "ticketStatus": "complete"
+  }
+]
+```
+
+`state` is the state of the last run on the branch. `active` is `true` while a run of Cloving is active on the pull request. `score` is the last review score or `null`. `issue` and `ticketStatus` (`complete` or `partial`, from the last worker report) can be `null`. A candidate has `state` `blocked` or `failed`, `active` `false` and a `cloving/` branch. The point `act` selects **Ask a person first** (the default) or **Hand off at once**. One pass hands off at most four `rescue-pr` runs.
+
+`rescue-pr` takes the pull request number. The GitHub `prepare` method with `{"pullRequest": N}` puts the work tree on the branch of that pull request. A turn merges the default branch, resolves the conflicts and fixes the failed CI or the review findings. Then the run pushes, and the points `accept` and `merge` work as in `develop`. After the merge, the run closes the ticket only when the original worker reported `Ticket status: complete`. The README files of the two templates give the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
