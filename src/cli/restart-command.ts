@@ -1,9 +1,10 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { Fields } from "../protocol.ts";
+import type { Fields, ServiceError } from "../protocol.ts";
 import { send } from "./client.ts";
 import type { RestartInvocation } from "./restart-arguments.ts";
 import { restartedJson, restartedLines } from "./restart-render.ts";
 import {
+  failed,
   identified,
   presented,
   type OutputEnvironment,
@@ -13,6 +14,16 @@ export interface RestartEnvironment extends OutputEnvironment {
   readonly runtimeDirectory: string;
   readonly interrupted: () => Promise<void>;
 }
+
+type Waited =
+  | { readonly kind: "restarted"; readonly after: Fields }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "interrupted" };
+
+const cancelledRestart: ServiceError = {
+  code: "restart-cancelled",
+  detail: "Another command cancelled the restart before it started.",
+};
 
 async function serviceStatus(
   runtimeDirectory: string,
@@ -24,10 +35,20 @@ async function serviceStatus(
   return reply.kind === "result" ? reply.result : undefined;
 }
 
+function settled(
+  now: Fields | undefined,
+  startedAt: unknown,
+): Waited | undefined {
+  if (now === undefined) return undefined;
+  if (now["serviceStartedAt"] !== startedAt)
+    return { kind: "restarted", after: now };
+  return now["restart"] === null ? { kind: "cancelled" } : undefined;
+}
+
 async function restarted(
   environment: RestartEnvironment,
   startedAt: unknown,
-): Promise<Fields | undefined> {
+): Promise<Waited> {
   const stopped = new AbortController();
   const stop = (): void => {
     stopped.abort();
@@ -37,16 +58,19 @@ async function restarted(
     const waited = await delay(250, true, { signal: stopped.signal }).catch(
       () => false,
     );
-    if (!waited) return undefined;
-    const now = await serviceStatus(environment.runtimeDirectory);
-    if (now !== undefined && now["serviceStartedAt"] !== startedAt) return now;
+    if (!waited) return { kind: "interrupted" };
+    const outcome = settled(
+      await serviceStatus(environment.runtimeDirectory),
+      startedAt,
+    );
+    if (outcome !== undefined) return outcome;
   }
 }
 
 function report(
   environment: RestartEnvironment,
   daemons: {
-    readonly before: Fields | undefined;
+    readonly before: Fields;
     readonly after: Fields;
     readonly json: boolean;
   },
@@ -61,33 +85,36 @@ function report(
   );
 }
 
+function requested(invocation: RestartInvocation, commandId: string): Fields {
+  if (invocation.cancel) return { cancel: true, commandId };
+  return {
+    at: invocation.at,
+    commandId,
+    ...(invocation.resumeQueue ? { resumeQueue: true } : {}),
+  };
+}
+
 export async function restartCommand(
   environment: RestartEnvironment,
   invocation: RestartInvocation,
 ): Promise<number> {
-  const { runtimeDirectory } = environment;
   const format = identified(environment, invocation);
-  const { commandId } = format;
-  const asked = async (parameters: Fields) =>
-    presented(environment, {
-      reply: await send(runtimeDirectory, { operation: "restart", parameters }),
-      format,
-    });
-  if (invocation.cancel) return asked({ cancel: true, commandId });
-  const before = await serviceStatus(runtimeDirectory);
-  const shown = await asked({
-    at: invocation.at,
-    commandId,
-    ...(invocation.resumeQueue ? { resumeQueue: true } : {}),
+  const reply = await send(environment.runtimeDirectory, {
+    operation: "restart",
+    parameters: requested(invocation, format.commandId),
   });
-  if (shown !== 0) return shown;
-  const after = await restarted(environment, before?.["serviceStartedAt"]);
-  if (after === undefined) {
+  const shown = presented(environment, { reply, format });
+  if (reply.kind === "error" || invocation.cancel) return shown;
+  const before = reply.result;
+  const waited = await restarted(environment, before["serviceStartedAt"]);
+  if (waited.kind === "interrupted") {
     environment.terminal.error(
       "The restart stays pending. Cancel it with: cloving restart --cancel\n",
     );
     return 130;
   }
-  report(environment, { before, after, json: invocation.json });
+  if (waited.kind === "cancelled")
+    return failed(environment, { error: cancelledRestart, format });
+  report(environment, { before, after: waited.after, json: invocation.json });
   return 0;
 }

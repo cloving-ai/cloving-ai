@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
-import type { RestartMark, RestartPort } from "../src/restart-request.ts";
+import type {
+  RestartCancel,
+  RestartMark,
+  RestartPort,
+} from "../src/restart-request.ts";
 import { call, startedRun, withHarness } from "./service-fixture.ts";
 
 function memoryPort(): RestartPort {
@@ -13,9 +17,9 @@ function memoryPort(): RestartPort {
       return Promise.resolve();
     },
     cancel: () => {
-      const had = mark !== undefined;
+      const state: RestartCancel = mark === undefined ? "none" : "cancelled";
       mark = undefined;
-      return Promise.resolve(had);
+      return Promise.resolve(state);
     },
   };
 }
@@ -36,6 +40,8 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
       parameters: { at: "gap", commandId: "restart-one", resumeQueue: true },
     });
     assert.equal(reply["kind"], "restart", JSON.stringify(reply));
+    assert.equal(reply["serviceCommit"], identity.commit);
+    assert.equal(reply["serviceStartedAt"], identity.startedAt);
     const restart = record(reply["restart"]) ?? {};
     assert.equal(restart["state"], "pending");
     assert.equal(restart["at"], "gap");
@@ -79,7 +85,7 @@ await test("CLV-306 a cancel removes a pending restart and a second cancel finds
 
 await test("CLV-306 the service refuses an invalid restart request and a restart with no restart port", () =>
   withHarness(async (harness) => {
-    await harness.start({ restart: memoryPort(), commit: null });
+    await harness.start({ restart: memoryPort(), ...identity, commit: null });
     for (const parameters of [
       { at: "later", commandId: "restart-one" },
       { at: "gap" },
@@ -103,4 +109,25 @@ await test("CLV-306 a service with no restart port refuses a restart", () =>
     assert.equal(refused["code"], "restart-unavailable");
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.equal(Object.hasOwn(status, "restart"), false);
+  }));
+
+await test("CLV-306 a service with no start time refuses a restart, and a cancel shows a restart that already started", () =>
+  withHarness(async (harness) => {
+    const port: RestartPort = {
+      ...memoryPort(),
+      cancel: () => Promise.resolve("started"),
+    };
+    const unknown = await harness.start({ restart: port, commit: null });
+    const refused = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-one" },
+    });
+    assert.equal(refused["code"], "restart-unavailable");
+    await unknown.close();
+    await harness.start({ restart: port, ...identity });
+    const started = await call(harness, {
+      operation: "restart",
+      parameters: { cancel: true, commandId: "cancel-one" },
+    });
+    assert.deepEqual(started["restart"], { state: "started" });
   }));

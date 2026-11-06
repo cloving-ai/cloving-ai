@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -33,9 +40,40 @@ await test("CLV-306 the daemon keeps a pending restart in a private mark file th
       JSON.parse(await readFile(join(directory, "pending-restart"), "utf8")),
       mark,
     );
-    assert.equal(await marks.cancel(), true);
+    assert.equal(await marks.cancel(), "cancelled");
     assert.equal(await marks.pending(), undefined);
-    assert.equal(await marks.cancel(), false);
+    assert.equal(await marks.cancel(), "none");
+  }));
+
+await test("CLV-306 a restart that the host claimed stays pending and a cancel cannot remove it", () =>
+  withDirectory(async (directory) => {
+    const marks = restartMarks(directory);
+    const mark = {
+      at: "gap",
+      requestedAt: 1_793_000_000_000,
+      commandId: "one",
+      resumeQueue: false,
+    } as const;
+    await marks.request(mark);
+    await rename(
+      join(directory, "pending-restart"),
+      join(directory, "claimed-restart"),
+    );
+    assert.deepEqual(await marks.pending(), mark);
+    assert.equal(await marks.cancel(), "started");
+    assert.deepEqual(await marks.pending(), mark);
+    const newer = {
+      ...mark,
+      commandId: "two",
+      requestedAt: mark.requestedAt + 1,
+    };
+    await marks.request(newer);
+    assert.deepEqual(await marks.pending(), newer);
+    assert.equal(await marks.cancel(), "cancelled");
+    await rm(join(directory, "claimed-restart"));
+    await writeFile(join(directory, "pending-restart"), "{");
+    assert.equal(await marks.cancel(), "none");
+    assert.equal(await marks.pending(), undefined);
   }));
 
 await test("CLV-306 a mark file that the daemon cannot read is no pending restart", () =>

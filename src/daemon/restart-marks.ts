@@ -3,6 +3,7 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { QueueJournal } from "./queue-journal.ts";
 import {
+  restartFiles,
   restartMark,
   restartText,
   type RestartPort,
@@ -14,21 +15,31 @@ function absent(error: unknown): string {
   throw error;
 }
 
+async function markIn(file: string) {
+  return restartMark(await readFile(file, "utf8").catch(absent));
+}
+
 export function restartMarks(directory: string): RestartPort {
-  const file = join(directory, "pending-restart");
-  const pending = async () =>
-    restartMark(await readFile(file, "utf8").catch(absent));
+  const file = join(directory, restartFiles.pending);
+  const claimed = join(directory, restartFiles.claimed);
   return {
-    pending,
+    pending: async () => (await markIn(file)) ?? (await markIn(claimed)),
     request: async (mark) => {
       const temporary = `${file}-${randomUUID()}.tmp`;
       await writeFile(temporary, restartText(mark), { mode: 0o600 });
       await rename(temporary, file);
     },
     cancel: async () => {
-      const had = (await pending()) !== undefined;
-      await rm(file, { force: true });
-      return had;
+      const taken = `${file}-${randomUUID()}.cancelled`;
+      const moved = await rename(file, taken).then(
+        () => true,
+        (error: unknown) => absent(error) !== "",
+      );
+      if (!moved)
+        return (await markIn(claimed)) === undefined ? "none" : "started";
+      const mark = await markIn(taken);
+      await rm(taken, { force: true });
+      return mark === undefined ? "none" : "cancelled";
     },
   };
 }

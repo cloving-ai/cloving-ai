@@ -1,9 +1,21 @@
 import { execFile } from "node:child_process";
-import { readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  link,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { restartMark, type RestartMark } from "../src/restart-request.ts";
+import {
+  restartFiles,
+  restartMark,
+  sameRestart,
+  type RestartMark,
+} from "../src/restart-request.ts";
 import { atGap, workInProgress } from "../src/work-gap.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
@@ -15,18 +27,50 @@ export interface RestartWatch {
   readonly stop: () => Promise<void>;
 }
 
-function absent(error: unknown): string {
-  if (error instanceof Error && "code" in error && error.code === "ENOENT")
-    return "";
+function coded(error: unknown, code: string): boolean {
+  if (error instanceof Error && "code" in error && error.code === code)
+    return true;
   throw error;
+}
+
+function absent(error: unknown): string {
+  coded(error, "ENOENT");
+  return "";
 }
 
 async function pendingRestart(
   directory: string,
 ): Promise<RestartMark | undefined> {
   return restartMark(
-    await readFile(join(directory, "pending-restart"), "utf8").catch(absent),
+    await readFile(join(directory, restartFiles.pending), "utf8").catch(absent),
   );
+}
+
+export async function returnedRestart(directory: string): Promise<void> {
+  const claimed = join(directory, restartFiles.claimed);
+  await link(claimed, join(directory, restartFiles.pending)).catch(
+    (error: unknown) => coded(error, "EEXIST"),
+  );
+  await rm(claimed, { force: true });
+}
+
+export async function claimedRestart(
+  directory: string,
+  checked: RestartMark,
+): Promise<RestartMark | undefined> {
+  const claimed = join(directory, restartFiles.claimed);
+  const moved = await rename(
+    join(directory, restartFiles.pending),
+    claimed,
+  ).then(
+    () => true,
+    (error: unknown) => !coded(error, "ENOENT"),
+  );
+  if (!moved) return undefined;
+  const held = restartMark(await readFile(claimed, "utf8"));
+  if (held !== undefined && sameRestart(held, checked)) return held;
+  await returnedRestart(directory);
+  return undefined;
 }
 
 async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
@@ -42,7 +86,8 @@ async function due(watch: RestartWatch, mark: RestartMark): Promise<boolean> {
 }
 
 export async function clearedRestart(directory: string): Promise<void> {
-  await rm(join(directory, "pending-restart"), { force: true });
+  await rm(join(directory, restartFiles.pending), { force: true });
+  await rm(join(directory, restartFiles.claimed), { force: true });
 }
 
 export async function restartWatch(
@@ -56,8 +101,12 @@ export async function restartWatch(
     const mark = await pendingRestart(watch.directory).catch(() => undefined);
     if (mark === undefined) continue;
     if (!(await due(watch, mark).catch(() => false))) continue;
+    const claimed = await claimedRestart(watch.directory, mark).catch(
+      () => undefined,
+    );
+    if (claimed === undefined) continue;
     await watch.stop();
-    if (mark.resumeQueue)
+    if (claimed.resumeQueue)
       await writeFile(join(watch.directory, "resume-queue"), "", {
         mode: 0o600,
       });

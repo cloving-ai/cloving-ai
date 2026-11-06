@@ -5,9 +5,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { restartText, type RestartTime } from "../src/restart-request.ts";
+import {
+  restartMark,
+  restartText,
+  type RestartTime,
+} from "../src/restart-request.ts";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
-import { productCommit } from "../tools/self-host-restart.ts";
+import {
+  claimedRestart,
+  productCommit,
+  returnedRestart,
+} from "../tools/self-host-restart.ts";
 import { programs } from "./self-host-processes-fixture.ts";
 import { eventually } from "./service-fixture.ts";
 
@@ -130,10 +138,62 @@ await test("CLV-306 a start removes a restart mark that an earlier start left", 
     { daemonMilliseconds: 300, readyPrograms: [] },
     async ({ directory, hosted }) => {
       await writeFile(join(directory, "pending-restart"), mark("now"));
+      await writeFile(join(directory, "claimed-restart"), mark("gap"));
       assert.equal(await hosted(), 0);
       assert.equal(existsSync(join(directory, "pending-restart")), false);
+      assert.equal(existsSync(join(directory, "claimed-restart")), false);
     },
   ));
+
+async function markAt(path: string): Promise<unknown> {
+  return restartMark(await readFile(path, "utf8"));
+}
+
+await test("CLV-306 the host claims only the request that it checked, and a cancel or a new request stops the claim", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
+  try {
+    const pending = join(directory, "pending-restart");
+    const claimed = join(directory, "claimed-restart");
+    const checked = restartMark(mark("gap"));
+    assert.ok(checked);
+    await writeFile(pending, restartText(checked));
+    assert.deepEqual(await claimedRestart(directory, checked), checked);
+    assert.equal(existsSync(pending), false);
+    assert.deepEqual(await markAt(claimed), checked);
+    await rm(claimed);
+    assert.equal(await claimedRestart(directory, checked), undefined);
+    const newer = { ...checked, commandId: "restart-newer", resumeQueue: true };
+    await writeFile(pending, restartText(newer));
+    assert.equal(await claimedRestart(directory, checked), undefined);
+    assert.deepEqual(await markAt(pending), newer);
+    assert.equal(existsSync(claimed), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-306 a returned claim keeps a request that came after the claim", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
+  try {
+    const pending = join(directory, "pending-restart");
+    const claimed = join(directory, "claimed-restart");
+    const [older, later] = [mark("gap"), mark("now")];
+    await writeFile(claimed, older);
+    await writeFile(pending, later);
+    await returnedRestart(directory);
+    assert.equal(existsSync(claimed), false);
+    assert.equal(await readFile(pending, "utf8"), later);
+    await rm(pending);
+    await writeFile(claimed, older);
+    await returnedRestart(directory);
+    assert.equal(existsSync(claimed), false);
+    assert.equal(await readFile(pending, "utf8"), older);
+    await mkdir(claimed);
+    await assert.rejects(returnedRestart(directory));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 await test("CLV-306 the product commit is null outside the top folder of a git checkout", async () => {
   const root = await mkdtemp(join(tmpdir(), "cloving-commit-"));

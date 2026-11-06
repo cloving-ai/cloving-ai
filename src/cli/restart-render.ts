@@ -35,19 +35,24 @@ export function serviceLines(result: Fields): readonly string[] {
   ];
 }
 
+const cancelLines: Readonly<Record<string, string>> = {
+  cancelled: "Restart: cancelled",
+  none: "Restart: none pending",
+  started: "Restart: started, cannot cancel",
+};
+
 export function restartLines(result: Fields): readonly string[] {
   const restart = record(result["restart"]);
-  if (restart?.["state"] === "cancelled") return ["Restart: cancelled"];
-  if (restart?.["state"] === "none") return ["Restart: none pending"];
-  return pendingLines(restart);
+  const cancelled = cancelLines[String(restart?.["state"])];
+  return cancelled === undefined ? pendingLines(restart) : [cancelled];
 }
 
-function commitOf(fields: Fields | undefined): unknown {
-  return fields?.["serviceCommit"] ?? null;
+function commitOf(fields: Fields): unknown {
+  return fields["serviceCommit"] ?? null;
 }
 
 export function restartedLines(
-  before: Fields | undefined,
+  before: Fields,
   after: Fields,
 ): readonly string[] {
   return [
@@ -56,10 +61,7 @@ export function restartedLines(
   ];
 }
 
-export function restartedJson(
-  before: Fields | undefined,
-  after: Fields,
-): Fields {
+export function restartedJson(before: Fields, after: Fields): Fields {
   return {
     kind: "restarted",
     previousCommit: commitOf(before),

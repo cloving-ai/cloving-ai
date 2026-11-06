@@ -24,11 +24,14 @@ await test("CLV-306 the restart text names one run, an unknown commit and a stat
     restartLines({ restart: { state: "pending", activeRuns: 3 } }),
     ["Restart pending: 3 runs active"],
   );
-  assert.deepEqual(restartedLines(undefined, {}), [
+  assert.deepEqual(restartLines({ restart: { state: "started" } }), [
+    "Restart: started, cannot cancel",
+  ]);
+  assert.deepEqual(restartedLines({}, {}), [
     "Restarted: commit unknown -> unknown",
     "Started at: undefined",
   ]);
-  assert.deepEqual(restartedJson(undefined, {}), {
+  assert.deepEqual(restartedJson({}, {}), {
     kind: "restarted",
     previousCommit: null,
     commit: null,

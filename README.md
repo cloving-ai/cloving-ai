@@ -793,9 +793,9 @@ During a wait, `cloving status` shows the reason `git-network-retry` with a text
 
 - `--at gap` is the default. The restart waits for the next gap. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. The queue drain and the self-update use the same rule.
 - `--at now` stops the service at once. Claude and Codex turns resume after the start, as after Control-C.
-- `--cancel` cancels a pending restart.
+- `--cancel` cancels a pending restart. When the restart already started, the cancel prints `Restart: started, cannot cancel`, and the restart continues.
 
-While a restart waits, the queue admits no new run. `cloving status` and the watch page show `Restart pending: 2 runs active`. The command waits for the new service. Then it prints the old commit, the new commit and the start time that the new service reports. Control-C stops the wait, and the restart stays pending. `cloving status --json` shows `serviceCommit`, `serviceStartedAt` and `restart`. The commit is `null` when the product is not the top folder of a git checkout.
+While a restart waits, the queue admits no new run. `cloving status` and the watch page show `Restart pending: 2 runs active`. The reply to the request holds the commit and the start time of the service that accepted it. The command waits for a service with a different start time. Then it prints the old commit, the new commit and the start time that the new service reports. Control-C stops the wait, and the restart stays pending. When another command cancels the restart, the wait ends with `restart-cancelled` and exit status 1. When the connection ends before the reply, the command prints `outcome-unknown`. Then check `cloving status` before you send the request again. `cloving status --json` shows `serviceCommit`, `serviceStartedAt` and `restart`. The commit is `null` when the product is not the top folder of a git checkout.
 
 The restart keeps a drain of the queue and the failure count. `cloving restart --resume-queue` clears the drain at the new start and keeps the failure count. `cloving start --reset-queue` clears the drain and the failure count. The new start keeps the environment of `cloving start`, so an environment value still hides a file value.
 

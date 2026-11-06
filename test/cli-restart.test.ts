@@ -37,7 +37,10 @@ function restartingPort(harness: Harness, running: Running): RestartPort {
       });
       return Promise.resolve();
     },
-    cancel: () => Promise.resolve(running.marks.splice(0).length > 0),
+    cancel: () =>
+      Promise.resolve(
+        running.marks.splice(0).length > 0 ? "cancelled" : "none",
+      ),
   };
 }
 
@@ -151,41 +154,64 @@ await test("CLV-306 cloving restart refuses an unknown time and a cancel with a 
   assert.match(String(commandUsage["restart"]), /--resume-queue/);
 });
 
+async function directRestart(
+  harness: Harness,
+  options: {
+    readonly commandId: string;
+    readonly interrupted: () => Promise<void>;
+  },
+): Promise<{
+  readonly code: number;
+  readonly out: readonly string[];
+  readonly error: readonly string[];
+}> {
+  const out: string[] = [];
+  const error: string[] = [];
+  const code = await restartCommand(
+    {
+      runtimeDirectory: harness.runtimeDirectory,
+      terminal: {
+        out: (text) => out.push(text),
+        error: (text) => error.push(text),
+      },
+      identifier: () => options.commandId,
+      interrupted: options.interrupted,
+    },
+    {
+      kind: "restart",
+      at: "gap",
+      cancel: false,
+      resumeQueue: false,
+      commandId: null,
+      json: false,
+    },
+  );
+  return { code, out, error };
+}
+
+function waitingPort(
+  marks: RestartMark[],
+  afterRequest: () => void = () => undefined,
+): RestartPort {
+  return {
+    pending: () => Promise.resolve(marks.at(-1)),
+    request: (mark) => {
+      marks.push(mark);
+      afterRequest();
+      return Promise.resolve();
+    },
+    cancel: () => Promise.resolve("none"),
+  };
+}
+
 await test("CLV-306 an interrupted wait keeps the restart pending and exits with 130", () =>
   withHarness(async (harness) => {
     const marks: RestartMark[] = [];
-    await harness.start({
-      restart: {
-        pending: () => Promise.resolve(marks.at(-1)),
-        request: (mark) => {
-          marks.push(mark);
-          return Promise.resolve();
-        },
-        cancel: () => Promise.resolve(false),
-      },
-      ...before,
+    await harness.start({ restart: waitingPort(marks), ...before });
+    const { code, out, error } = await directRestart(harness, {
+      commandId: "restart-two",
+      interrupted: () => Promise.resolve(),
     });
-    const out: string[] = [];
-    const error: string[] = [];
-    const code = await restartCommand(
-      {
-        runtimeDirectory: harness.runtimeDirectory,
-        terminal: {
-          out: (text) => out.push(text),
-          error: (text) => error.push(text),
-        },
-        identifier: () => "restart-two",
-        interrupted: () => Promise.resolve(),
-      },
-      {
-        kind: "restart",
-        at: "gap",
-        cancel: false,
-        resumeQueue: false,
-        commandId: null,
-        json: false,
-      },
-    );
     assert.equal(code, 130);
     assert.deepEqual(out, ["Restart pending: 0 runs active\n"]);
     assert.deepEqual(error, [
@@ -196,6 +222,27 @@ await test("CLV-306 an interrupted wait keeps the restart pending and exits with
       marks.map((mark) => mark.commandId),
       ["restart-two"],
     );
+  }));
+
+await test("CLV-306 a cancel from another terminal ends the wait with restart-cancelled", () =>
+  withHarness(async (harness) => {
+    const marks: RestartMark[] = [];
+    await harness.start({
+      restart: waitingPort(marks, () => {
+        setTimeout(() => marks.splice(0), 300);
+      }),
+      ...before,
+    });
+    const { code, out, error } = await directRestart(harness, {
+      commandId: "restart-three",
+      interrupted: () => delay(5000),
+    });
+    assert.deepEqual(error, [
+      "Command ID: restart-three\n",
+      "restart-cancelled: Another command cancelled the restart before it started.\n",
+    ]);
+    assert.equal(code, 1);
+    assert.deepEqual(out, ["Restart pending: 0 runs active\n"]);
   }));
 
 await test("CLV-306 cloving restart prints the refusal of a service that cannot restart", () =>

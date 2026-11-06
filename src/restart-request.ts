@@ -2,6 +2,13 @@ import { record } from "./protocol.ts";
 
 export type RestartTime = "gap" | "now";
 
+export type RestartCancel = "cancelled" | "none" | "started";
+
+export const restartFiles = {
+  pending: "pending-restart",
+  claimed: "claimed-restart",
+} as const;
+
 export interface RestartMark {
   readonly at: RestartTime;
   readonly requestedAt: number;
@@ -12,7 +19,7 @@ export interface RestartMark {
 export interface RestartPort {
   readonly pending: () => Promise<RestartMark | undefined>;
   readonly request: (mark: RestartMark) => Promise<void>;
-  readonly cancel: () => Promise<boolean>;
+  readonly cancel: () => Promise<RestartCancel>;
 }
 
 export function isRestartTime(value: unknown): value is RestartTime {
@@ -41,6 +48,13 @@ export function restartMark(text: string): RestartMark | undefined {
     commandId,
     resumeQueue: fields?.["resumeQueue"] === true,
   };
+}
+
+export function sameRestart(first: RestartMark, second: RestartMark): boolean {
+  return (
+    first.commandId === second.commandId &&
+    first.requestedAt === second.requestedAt
+  );
 }
 
 export function restartText(mark: RestartMark): string {

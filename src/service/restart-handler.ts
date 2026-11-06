@@ -23,8 +23,7 @@ async function pendingFields(
   return { ...mark, activeRuns: await activeRuns(context) };
 }
 
-export async function restartFields(context: ServiceContext): Promise<Fields> {
-  const mark = await context.restart?.pending();
+function identityFields(context: ServiceContext): Fields {
   return {
     ...(context.version === undefined
       ? {}
@@ -33,6 +32,13 @@ export async function restartFields(context: ServiceContext): Promise<Fields> {
     ...(context.startedAt === undefined
       ? {}
       : { serviceStartedAt: context.startedAt }),
+  };
+}
+
+export async function restartFields(context: ServiceContext): Promise<Fields> {
+  const mark = await context.restart?.pending();
+  return {
+    ...identityFields(context),
     ...(context.restart === undefined
       ? {}
       : {
@@ -58,15 +64,13 @@ export async function restartOperation(
   )
     return invalidRequest("The restart request is not valid.");
   const port = context.restart;
-  if (port === undefined)
+  if (port === undefined || context.startedAt === undefined)
     return failed("restart-unavailable", {
       commandId,
       detail: "The service cannot restart. Start it with cloving start.",
     });
   if (cancel === true)
-    return result("restart", {
-      restart: { state: (await port.cancel()) ? "cancelled" : "none" },
-    });
+    return result("restart", { restart: { state: await port.cancel() } });
   if (!isRestartTime(at))
     return invalidRequest("A restart needs --at gap or --at now.");
   const mark: RestartMark = {
@@ -77,6 +81,7 @@ export async function restartOperation(
   };
   await port.request(mark);
   return result("restart", {
+    ...identityFields(context),
     restart: { state: "pending", ...(await pendingFields(context, mark)) },
   });
 }
