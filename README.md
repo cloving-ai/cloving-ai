@@ -803,6 +803,32 @@ A workflow can continue a run of its own handoff chain with the step `continueRu
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
+### Rescue stuck pull requests
+
+A run can end `blocked` or `failed` while its pull request stays open. The templates `patrol` and `rescue-pr` find such pull requests and repair them. Copy both into your private workflow folder with `cloving templates copy patrol` and `cloving templates copy rescue-pr`.
+
+`patrol` runs every 30 minutes. It reads the operator command `patrol-status` from `CLOVING_COMMANDS`. The command prints a JSON array with one item for each open pull request of Cloving:
+
+```json
+[
+  {
+    "number": 641,
+    "branch": "cloving/task-0123456789ab",
+    "state": "blocked",
+    "active": false,
+    "reason": "merge-conflict",
+    "head": "0123456789abcdef0123456789abcdef01234567",
+    "score": 4,
+    "issue": "acme/demo#627",
+    "ticketStatus": "complete"
+  }
+]
+```
+
+`state` is the state of the last run on the branch. `active` is `true` while a run of Cloving is active on the pull request. `score` is the last review score or `null`. `issue` and `ticketStatus` (`complete` or `partial`, from the last worker report) can be `null`. A candidate has `state` `blocked` or `failed`, `active` `false` and a `cloving/` branch. The point `act` selects **Ask a person first** (the default) or **Hand off at once**. One pass hands off at most four `rescue-pr` runs.
+
+`rescue-pr` takes the pull request number. The GitHub `prepare` method with `{"pullRequest": N}` puts the work tree on the branch of that pull request. A turn merges the default branch, resolves the conflicts and fixes the failed CI or the review findings. Then the run pushes, and the points `accept` and `merge` work as in `develop`. After the merge, the run closes the ticket only when the original worker reported `Ticket status: complete`. The README files of the two templates give the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
@@ -863,6 +889,9 @@ During a wait, `cloving status` shows the reason `git-network-retry` with a text
 - `--at gap` is the default. The restart waits for the next gap. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. The queue drain and the self-update use the same rule.
 - `--at now` stops the service at once. Claude and Codex turns resume after the start, as after Control-C. The reply lists the runs with a turn that cannot resume: a turn of another harness, a turn that waits for a retry, or a turn with no recorded session. `--json` shows them in `restart.unresumableRuns`.
 - `--cancel` cancels a pending restart. When the restart already started, the cancel prints `Restart: started, cannot cancel`, and the restart continues.
+- `--update` updates the product checkout before the stop, at the gap or at once. The update fetches the default branch. It needs a fast-forward and a clean tree. Then it merges, runs `npm ci --ignore-scripts` when `package-lock.json` changed, and runs `npm run build`. While the update runs, the queue admits no new run. When a step fails, the command prints `restart-update-failed` with the step and its output, and exits with status 1. The service keeps running on the old commit. When the install or the build fails, the update puts the checkout back on the old commit and installs and builds it again. `--json` shows the step and the output in `step` and `output`. `cloving status --json` shows the newest failure in `restartFailure` until the next start. The service refuses `--update` with `update-unavailable` when the product is not the top folder of a git checkout.
+
+The update and the self-update do not run at the same time. When `cloving start` stops during the update, the update stops its command and puts the checkout back on the old commit. It does not install or build again. The output of `cloving start` shows the failed step and the commands to run before the next start. When `cloving start` stops while the restart stops the service, the service stays stopped and does not start again.
 
 While a restart waits, the queue admits no new run. `cloving status` and the watch page show `Restart pending: 2 runs active`. The reply to the request holds the commit and the start time of the service that accepted it. The command waits for a service with a different start time. Then it prints the old commit, the new commit and the start time that the new service reports. Control-C stops the wait, and the restart stays pending. When another command cancels the restart, the wait ends with `restart-cancelled` and exit status 1. When the connection ends before the reply, the command prints `outcome-unknown`. Then check `cloving status` before you send the request again. `cloving status --json` shows `serviceCommit`, `serviceStartedAt` and `restart`. The commit is `null` when the product is not the top folder of a git checkout.
 
@@ -883,7 +912,7 @@ Use one terminal session for the service that stays open, for example a `tmux` s
    - Make sure that the pull request is merged: `gh pr view PR_NUMBER --json state,mergedAt`.
    - Check the ticket status and issue: `gh issue view ISSUE_NUMBER --json state,body,labels`. Complete work closes the issue; partial work stays open and requeues until the third partial run blocks it.
 5. Update the local `main`: `git switch main`, then `git pull --ff-only`.
-6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Run `npm run build`, then `cloving restart`. The restart waits for the next gap.
+6. When the repository is the Cloving checkout itself, also restart the service, so that it runs the new code. Run `cloving restart --update`. The restart waits for the next gap, updates and builds the checkout, and then restarts.
 7. Go to the next issue.
 
 When a run stops and the pull request stays open, read the review. Fix the work yourself, or write a smaller issue.

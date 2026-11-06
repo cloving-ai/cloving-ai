@@ -130,7 +130,7 @@ const actions = {
       return;
     }
     const merged = pr.state === "MERGED";
-    out({ number, node_id: "PR_" + number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), base: { ref: pr.base, sha: headOf(pr.base) }, head: { sha: merged ? pr.mergedHead : readHead(pr) } });
+    out({ number, node_id: "PR_" + number, state: merged ? "closed" : "open", merged, merge_commit_sha: merged ? pr.mergeCommit : "e".repeat(40), base: { ref: pr.base, sha: headOf(pr.base) }, head: { ref: pr.head, sha: merged ? pr.mergedHead : readHead(pr) } });
   },
   "api graphql pull": () => {
     const pr = queued();

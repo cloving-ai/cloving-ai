@@ -31,7 +31,7 @@ import {
   type Pull,
 } from "./github-operation.ts";
 export type { GithubTiming, MethodSettings } from "./github-operation.ts";
-import { workTree } from "./work-tree.ts";
+import { prepare } from "./github-pull-tree.ts";
 
 const triggerText = "@greptileai";
 const maximumReviewRequests = 3;
@@ -62,6 +62,10 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "no-change",
   "private-path-in-change",
   "review-not-received",
+  "pull-request-claimed",
+  "pull-request-diverged",
+  "pull-request-not-cloving",
+  "pull-request-not-open",
   "work-tree-not-available",
 ]);
 
@@ -77,27 +81,6 @@ function mergeCheck(operation: Operation): MergeCheck | undefined {
   const value = operation.payload["check"];
   if (value === null || value === "beforeMerge") return value;
   throw new Error("invalid-payload");
-}
-
-async function prepare(operation: Operation): Promise<unknown> {
-  const { settings, calls, target, signal } = operation;
-  await calls.git(settings.repository, ["fetch", "--quiet", "origin"]);
-  const base = await defaultBranch(operation);
-  const tree = await workTree({
-    repository: settings.repository,
-    worktrees: settings.worktrees,
-    target,
-    signal,
-    base: `origin/${base}`,
-  }).catch(() => {
-    throw new Error("work-tree-not-available");
-  });
-  return {
-    branch: tree.branch,
-    worktree: tree.path,
-    base,
-    startCommit: tree.startCommit,
-  };
 }
 
 function labels(operation: Operation, name: string): readonly string[] {

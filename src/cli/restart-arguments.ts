@@ -12,6 +12,7 @@ export interface RestartInvocation {
   readonly cancel: boolean;
   readonly resumeQueue: boolean;
   readonly settings: RestartSettings;
+  readonly update: boolean;
   readonly commandId: string | null;
   readonly json: boolean;
 }
@@ -29,7 +30,7 @@ export function restartInvocation(request: {
   const allowed = [
     "command-id",
     "json",
-    ...(cancel ? ["cancel"] : ["at", "resume-queue", "settings"]),
+    ...(cancel ? ["cancel"] : ["at", "resume-queue", "settings", "update"]),
   ];
   if (names.some((name) => !allowed.includes(name))) return "unexpected-option";
   const valueOf = (name: string): string | undefined =>
@@ -49,6 +50,7 @@ export function restartInvocation(request: {
     cancel,
     resumeQueue: names.includes("resume-queue"),
     settings,
+    update: names.includes("update"),
     commandId,
     json: names.includes("json"),
   };

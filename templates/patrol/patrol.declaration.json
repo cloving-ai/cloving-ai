@@ -1,0 +1,14 @@
+{
+  "workflow": {
+    "workflowId": "patrol",
+    "effectLimit": 5,
+    "capabilities": ["command"],
+    "commands": ["patrol-status"],
+    "schedule": { "everySeconds": 1800, "input": {} },
+    "handoffs": ["rescue-pr"],
+    "input": { "maximumBytes": 65536, "fields": {} }
+  },
+  "methods": {
+    "command": ["run:patrol-status"]
+  }
+}

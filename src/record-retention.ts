@@ -40,6 +40,7 @@ export interface TurnFolders {
 }
 
 export const sharedRecordFolders: readonly string[] = [
+  "github/claims",
   "github/targets",
   "journal/runs",
   "journal/targets",

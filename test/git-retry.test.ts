@@ -36,6 +36,7 @@ function scripted(failures: readonly string[], script: Script = {}): Scripted {
       },
     },
     target: "ticket/one",
+    run: { runId: "run-1", status: () => Promise.resolve(undefined) },
     payload: {},
     signal: script.signal ?? new AbortController().signal,
     folder: "folder",
