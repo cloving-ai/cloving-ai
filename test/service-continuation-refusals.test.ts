@@ -168,3 +168,28 @@ await service.close();
       runs: 1,
     });
   }));
+
+await test("CLV-307 the service continues a run for a workflow command only from the same handoff chain", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`${scene}
+writeFileSync("fail-merge", "");
+const service = await hosted({ destination: scripted });
+const runId = await submitted("c-1");
+const other = await submitted("c-2");
+await ended(runId);
+await ended(other);
+rmSync("fail-merge");
+const asking = (run) => "continue:" + JSON.stringify(["cloving-operation", 1, run, "handoff", "continue", null, "k"]);
+const outside = await continued({ runId, commandId: asking(other) });
+const inside = await continued({ runId, commandId: asking(runId) });
+const after = inside.kind === "run-continued" ? await ended(inside.runId) : { state: refusal(inside) };
+print({ outside: refusal(outside), inside: [inside.kind, inside.continuedFrom === runId], after: after.state });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      outside: ["error", "continuation-outside-chain"],
+      inside: ["run-continued", true],
+      after: "completed",
+    });
+  }));

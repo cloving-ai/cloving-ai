@@ -386,12 +386,13 @@ export function isRecordKey(value: unknown): value is string {
   return isIdentifier(value) && !(value in plainRecord);
 }
 
+const operationPrefixes = ["handoff:", "continue:"];
+
 export function isCommandId(value: unknown): value is string {
   if (isRecordKey(value)) return true;
-  return (
-    typeof value === "string" &&
-    value.startsWith("handoff:") &&
-    printable(value.slice(8)) &&
-    operationScope(value.slice(8)) !== null
-  );
+  if (typeof value !== "string") return false;
+  const prefix = operationPrefixes.find((name) => value.startsWith(name));
+  if (prefix === undefined) return false;
+  const operationId = value.slice(prefix.length);
+  return printable(operationId) && operationScope(operationId) !== null;
 }

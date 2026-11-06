@@ -98,3 +98,17 @@ export function handoffChain(
   }
   return { kind: "refused", reason: "unknown-handoff-parent" };
 }
+
+export function chainRefusal(
+  commandId: string,
+  target: { readonly runId: string; readonly origins: RunOrigins },
+): string | undefined {
+  if (!commandId.startsWith("continue:")) return undefined;
+  const requester = operationScope(commandId.slice(9))?.run;
+  const chainId =
+    requester === undefined ? undefined : target.origins[requester]?.chainId;
+  return chainId !== undefined &&
+    target.origins[target.runId]?.chainId === chainId
+    ? undefined
+    : "continuation-outside-chain";
+}
