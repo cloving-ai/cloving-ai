@@ -56,6 +56,7 @@ await test("CLV-273 the queue read and the status show a queue stopped on an err
       workflowId: "develop",
       lanes: 2,
       busy: 0,
+      busyRunIds: [],
       skipped: [],
       state: "stopped",
       stop: { reason: "invalid-ticket-id" },
@@ -63,6 +64,7 @@ await test("CLV-273 the queue read and the status show a queue stopped on an err
       drain: null,
       hold: null,
       holds: [],
+      holdsCutAt: null,
     });
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.deepEqual(status["queue"], queue);

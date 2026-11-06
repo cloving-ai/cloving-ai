@@ -34,6 +34,16 @@ function holdsOf(value: unknown): readonly ReportHold[] | null {
     : null;
 }
 
+function holdHistoryOf(value: unknown): {
+  readonly holds: readonly ReportHold[] | null;
+  readonly holdsCutAt: number | null;
+} {
+  const cutAt = record(value)?.["holdsCutAt"] ?? null;
+  if (cutAt !== null && !(typeof cutAt === "number" && cutAt >= 0))
+    return { holds: null, holdsCutAt: null };
+  return { holds: holdsOf(value), holdsCutAt: cutAt };
+}
+
 async function overview(runtime: string) {
   const reply = await send(runtime, {
     operation: "status",
@@ -43,7 +53,7 @@ async function overview(runtime: string) {
   const workflows = reply.result["workflows"];
   return {
     queue: queueOf(reply.result["queue"]),
-    holds: holdsOf(reply.result["queue"]),
+    ...holdHistoryOf(reply.result["queue"]),
     workflows: Array.isArray(workflows)
       ? workflows.filter((id: unknown): id is string => typeof id === "string")
       : [],
@@ -157,6 +167,7 @@ export async function readReportFlow(
   const settings = await overview(runtime).catch(() => ({
     queue: null,
     holds: null,
+    holdsCutAt: null,
     workflows: [],
   }));
   const runs =

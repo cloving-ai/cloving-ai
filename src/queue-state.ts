@@ -28,6 +28,7 @@ export interface QueueControl {
   readonly hold?: QueueHold;
   readonly lanes?: number;
   readonly holds?: readonly HoldPeriod[];
+  readonly holdsCutAt?: number | null;
 }
 
 export type QueueCommand = "resume" | "drain";
@@ -76,6 +77,7 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
           },
     hold: control.hold ?? null,
     holds: [...(control.holds ?? [])],
+    holdsCutAt: control.holdsCutAt ?? null,
   };
 }
 

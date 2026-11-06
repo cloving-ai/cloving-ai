@@ -34,6 +34,7 @@ export interface ReportFlow {
   } | null;
   readonly runs: readonly ReportFlowRun[] | null;
   readonly holds?: readonly ReportHold[] | null;
+  readonly holdsCutAt?: number | null;
   readonly workflows?: readonly string[];
   readonly skips?:
     | readonly {

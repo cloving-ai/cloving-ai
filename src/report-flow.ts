@@ -46,6 +46,7 @@ function busyShare(input: ReportFlow, window: ReportWindow) {
 function heldHours(flow: ReportFlow | undefined, window: ReportWindow) {
   const holds = flow?.holds;
   if (holds == null) return null;
+  if (window.start < (flow?.holdsCutAt ?? window.start)) return null;
   const spans = holds.map(
     (hold) =>
       Math.min(hold.end ?? window.end, window.end) -

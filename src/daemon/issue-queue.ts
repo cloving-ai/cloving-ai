@@ -340,7 +340,7 @@ export function issueQueue(settings: QueueSettings): {
     holdRecord(settings.directory),
   ]).then(([pending, holds]) => {
     runtime.pending = pending;
-    runtime.holds = holds.periods;
+    runtime.holds = holds;
     return { pending, holds };
   });
   const running = loaded

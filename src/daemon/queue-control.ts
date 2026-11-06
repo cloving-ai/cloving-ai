@@ -13,7 +13,10 @@ export interface QueueRuntime {
   ready?: ReadyList | undefined;
   hold?: QueueHold | undefined;
   readonly limits?: () => QueueLimits;
-  holds?: () => readonly HoldPeriod[];
+  holds?: {
+    readonly periods: () => readonly HoldPeriod[];
+    readonly cutAt: () => number | null;
+  };
   readonly stopping: AbortController;
 }
 
@@ -115,7 +118,9 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
         ...(ready === undefined ? {} : { ready }),
         ...(hold === undefined ? {} : { hold }),
         ...(limits === undefined ? {} : { lanes: limits().lanes }),
-        ...(holds === undefined ? {} : { holds: holds() }),
+        ...(holds === undefined
+          ? {}
+          : { holds: holds.periods(), holdsCutAt: holds.cutAt() }),
       };
     },
     change: (request) => {

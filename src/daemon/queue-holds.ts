@@ -8,11 +8,24 @@ import {
 
 const keptMilliseconds = 30 * 86_400_000;
 const keptPeriods = 1000;
+const seenMilliseconds = 60_000;
 
 export interface HoldRecord {
   readonly periods: () => readonly HoldPeriod[];
+  readonly cutAt: () => number | null;
   readonly note: (hold: QueueHold | undefined) => Promise<void>;
   readonly close: () => Promise<void>;
+}
+
+interface OpenHold {
+  readonly reason: HoldPeriod["reason"];
+  readonly startedAt: number;
+  readonly seenAt: number;
+}
+
+interface SavedHolds {
+  readonly closed: HoldPeriod[];
+  readonly cutAt: number | null;
 }
 
 function invalid(): never {
@@ -27,23 +40,61 @@ function parsed(text: string): unknown {
   }
 }
 
-async function savedPeriods(file: string): Promise<HoldPeriod[]> {
+function closedPeriod(entry: unknown): HoldPeriod {
+  const period = holdPeriodOf(entry);
+  if (period?.endedAt == null) invalid();
+  return period;
+}
+
+function recovered(value: unknown): readonly HoldPeriod[] {
+  if (value === undefined || value === null) return [];
+  if (typeof value !== "object") invalid();
+  const reason: unknown = Reflect.get(value, "reason");
+  const startedAt: unknown = Reflect.get(value, "startedAt");
+  const endedAt: unknown = Reflect.get(value, "seenAt");
+  return [closedPeriod({ reason, startedAt, endedAt })];
+}
+
+function cutOf(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+    return value;
+  return invalid();
+}
+
+async function savedHolds(file: string): Promise<SavedHolds> {
   const text = await readFile(file, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT")
       return '{"periods":[]}';
     throw error;
   });
   const value: unknown = parsed(text);
-  const listed: unknown =
-    value !== null && typeof value === "object"
-      ? Reflect.get(value, "periods")
-      : undefined;
+  if (value === null || typeof value !== "object") invalid();
+  const listed: unknown = Reflect.get(value, "periods");
   if (!Array.isArray(listed)) invalid();
-  return listed.map((entry: unknown) => {
-    const period = holdPeriodOf(entry);
-    if (period?.endedAt == null) invalid();
-    return period;
-  });
+  return {
+    closed: [
+      ...listed.map(closedPeriod),
+      ...recovered(Reflect.get(value, "open")),
+    ],
+    cutAt: cutOf(Reflect.get(value, "cutAt")),
+  };
+}
+
+function trimmed(saved: SavedHolds, since: number): SavedHolds {
+  const ended = (period: HoldPeriod): number => period.endedAt ?? since;
+  const recent = saved.closed.filter((period) => ended(period) >= since);
+  const dropped = [
+    ...saved.closed.filter((period) => ended(period) < since),
+    ...recent.slice(0, -keptPeriods),
+  ];
+  return {
+    closed: recent.slice(-keptPeriods),
+    cutAt:
+      dropped.length === 0
+        ? saved.cutAt
+        : Math.max(saved.cutAt ?? 0, ...dropped.map(ended)),
+  };
 }
 
 export async function holdRecord(
@@ -51,34 +102,52 @@ export async function holdRecord(
   now: () => number = Date.now,
 ): Promise<HoldRecord> {
   const file = join(directory, "queue-holds.json");
-  let closed = await savedPeriods(file);
-  let open: HoldPeriod | undefined;
+  let saved = await savedHolds(file);
+  let open: OpenHold | undefined;
   const save = async (): Promise<void> => {
-    const since = now() - keptMilliseconds;
-    closed = closed
-      .filter((period) => (period.endedAt ?? since) >= since)
-      .slice(-keptPeriods);
-    await writeFile(`${file}.tmp`, JSON.stringify({ periods: closed }) + "\n", {
-      mode: 0o600,
+    saved = trimmed(saved, now() - keptMilliseconds);
+    const text = JSON.stringify({
+      periods: saved.closed,
+      open: open ?? null,
+      cutAt: saved.cutAt,
     });
+    await writeFile(`${file}.tmp`, text + "\n", { mode: 0o600 });
     await rename(`${file}.tmp`, file);
   };
-  const ended = async (): Promise<void> => {
+  const finish = (): void => {
     if (open === undefined) return;
-    closed = [...closed, { ...open, endedAt: now() }];
+    const { reason, startedAt } = open;
+    const closed = [...saved.closed, { reason, startedAt, endedAt: now() }];
+    saved = { ...saved, closed };
     open = undefined;
+  };
+  const seen = async (): Promise<void> => {
+    if (open === undefined || now() - open.seenAt < seenMilliseconds) return;
+    open = { ...open, seenAt: now() };
     await save();
   };
   return {
-    periods: () => (open === undefined ? closed : [...closed, open]),
+    periods: () =>
+      open === undefined
+        ? saved.closed
+        : [
+            ...saved.closed,
+            { reason: open.reason, startedAt: open.startedAt, endedAt: null },
+          ],
+    cutAt: () => saved.cutAt,
     note: async (hold) => {
       const reason =
         hold?.reason === "working-lanes" ? undefined : hold?.reason;
-      if (open !== undefined && open.reason === reason) return;
-      await ended();
+      if (open?.reason === reason) return seen();
+      finish();
       if (reason !== undefined)
-        open = { reason, startedAt: now(), endedAt: null };
+        open = { reason, startedAt: now(), seenAt: now() };
+      await save();
     },
-    close: ended,
+    close: async () => {
+      if (open === undefined) return;
+      finish();
+      await save();
+    },
   };
 }

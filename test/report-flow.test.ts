@@ -265,6 +265,28 @@ await test("CLV-309 the report sums the hours that the queue held runs for load 
     fields(fields(report)["semantics"])["flowHold"],
     "hours-the-queue-held-new-runs-for-load-or-memory-pressure",
   );
+  const holds = [
+    { reason: "load" as const, start: now - 50 * hour, end: now - 49 * hour },
+    { reason: "load" as const, start: now - 2 * hour, end: null },
+  ];
+  const queue = { workflowId: "queue", lanes: 2 };
+  const cut = (holdsCutAt: number) =>
+    fields(
+      fields(
+        loopReport({
+          ...window,
+          completions: [],
+          flow: { queue, runs: [], holds, holdsCutAt },
+        }).metrics,
+      )["flow.loadHoldHours"],
+    );
+  const kept = cut(now - 50 * hour);
+  assert.equal(kept["value"], 2);
+  assert.equal(fields(kept["baseline"])["days"], 1);
+  const dropped = cut(now - 10 * hour);
+  assert.equal(dropped["status"], "unavailable");
+  assert.equal(dropped["value"], null);
+  assert.equal(fields(dropped["baseline"])["days"], 0);
   const unknown = loopReport({
     ...window,
     completions: [],

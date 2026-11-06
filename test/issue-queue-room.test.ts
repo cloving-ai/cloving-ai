@@ -155,10 +155,13 @@ function workingService(state: {
       });
       return reply({ kind: "run-admitted" });
     }
+    const busyRunIds = listed
+      .filter((run) => run["workflowId"] === "develop")
+      .map((run) => String(run["runId"]));
+    const queue = { busy: busyRunIds.length, busyRunIds };
     if (request.parameters["active"] === true)
-      return reply({ runs: listed, next: null });
-    const busy = listed.filter((run) => run["workflowId"] === "develop");
-    return reply({ queue: { busy: busy.length }, runs: [], next: null });
+      return reply({ queue, runs: listed, next: null });
+    return reply({ queue, runs: [], next: null });
   };
 }
 
@@ -205,7 +208,12 @@ await test("CLV-309 working lanes hold a new run until a working run begins to w
     },
     async (scene) => {
       await busyRuns(scene.directory, runs);
-      const hold = await eventually(() => scene.control()?.hold);
+      const hold = await eventually(() => {
+        const held = scene.control()?.hold;
+        return held?.reason === "working-lanes" && held.working === 4
+          ? held
+          : undefined;
+      });
       assert.deepEqual(hold, {
         reason: "working-lanes",
         working: 4,
