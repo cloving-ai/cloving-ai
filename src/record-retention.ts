@@ -81,6 +81,22 @@ export function retentionVerdict(
   return endedBefore(run, limit) && folder.changedAt < limit ? "due" : "kept";
 }
 
+export function treeDue(
+  runs: readonly (StoredRun | undefined)[],
+  context: Pick<RetentionContext, "now" | "days">,
+): boolean {
+  const limit = context.now - context.days * dayMilliseconds;
+  return (
+    runs.length > 0 &&
+    runs.every(
+      (run) =>
+        run !== undefined &&
+        run.status !== "completed" &&
+        endedBefore(run, limit),
+    )
+  );
+}
+
 function endedBefore(run: StoredRun, limit: number): boolean {
   return finished.includes(run.status) && (run.endedAt ?? Number.NaN) < limit;
 }

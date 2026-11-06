@@ -35,6 +35,7 @@ import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
 import { daemonLoops } from "./daemon-loops.ts";
+import { treeSweep } from "./tree-sweep.ts";
 import { authorityRuns, recordRetention } from "./record-sweep.ts";
 import {
   bundleSweep,
@@ -331,6 +332,12 @@ async function retentionLoop(
   return recordRetention({
     ...sweep,
     runs: authorityRuns(ports),
+    trees: treeSweep({
+      ...sweep,
+      runs: authorityRuns(ports),
+      repository: settings.repository,
+      gh: settings.githubCommand ?? ["gh"],
+    }),
     bundles: bundleSweep({
       ...sweep,
       current: resources.current,

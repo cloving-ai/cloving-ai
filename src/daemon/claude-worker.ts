@@ -42,7 +42,7 @@ import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
 import type { TurnSettings } from "../project-settings.ts";
 
 export interface ClaudeWorkerSettings
-  extends Pick<RetrySettings, "retryDelay">, HarnessSettings {
+  extends Pick<RetrySettings, "retryDelay" | "log">, HarnessSettings {
   readonly turnSettings: () => TurnSettings;
   readonly workflowId?: (runId: string) => Promise<string | undefined>;
   readonly repository: string;

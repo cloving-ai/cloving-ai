@@ -11,6 +11,7 @@ import {
   type RetentionSettings,
 } from "../src/record-retention.ts";
 import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
+import { turnVariablesSetting } from "../src/turn-environment.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
@@ -320,6 +321,9 @@ const lanes = queueLanes();
 const readyCommand = readyTicketCommand();
 const queueMilliseconds = queueInterval();
 const retention = retentionSettings(environment);
+const turnVariables = turnVariablesSetting(
+  environment["CLOVING_TURN_ENVIRONMENT"],
+);
 const merging = mergeMode(environment["CLOVING_MERGE_MODE"]);
 const places = {
   repository,
@@ -354,6 +358,7 @@ await launchers(
     queueDailySpendLimitUsd,
     resetQueue: flags.includes("--reset-queue"),
     retention,
+    turnVariables,
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,

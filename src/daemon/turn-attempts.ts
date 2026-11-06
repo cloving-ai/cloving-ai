@@ -28,6 +28,7 @@ export interface RetrySettings {
     milliseconds: number,
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly log?: (line: string) => void;
 }
 
 export interface RetryOptions extends RetrySettings {

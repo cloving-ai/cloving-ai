@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { startTurn } from "../src/daemon/claude-turn.ts";
+import { startTurn, type TurnStart } from "../src/daemon/claude-turn.ts";
 
 const names = [
   "GH_TOKEN",
@@ -177,3 +177,110 @@ alias turn_alias='turn_worker'
     }
   });
 }
+
+const probe = `
+const names = JSON.parse(process.argv[2]);
+const found = names.filter((name) => name in process.env);
+const message = process.argv[1] === "codex"
+  ? { type: "item.completed", item: { type: "agent_message", text: JSON.stringify(found) } }
+  : { type: "result", result: JSON.stringify(found) };
+process.stdout.write(JSON.stringify(message) + "\\n");
+process.stdout.write(JSON.stringify({ type: "turn.completed", status: "success" }) + "\\n");
+`;
+const probed = [
+  "SECRET_TEST_VALUE",
+  "PROJECT_TEST_VALUE",
+  "PROFILE_TEST_VALUE",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "PATH",
+  "HOME",
+  "GH_TOKEN",
+];
+
+async function presentNames(
+  directory: string,
+  start: Pick<TurnStart, "variables" | "environment"> & {
+    readonly worker: "claude" | "codex";
+  },
+): Promise<unknown> {
+  const running = startTurn({
+    ...start,
+    command: [
+      process.execPath,
+      "--input-type=module",
+      "-e",
+      probe,
+      start.worker,
+      JSON.stringify(probed),
+    ],
+    directory,
+    folder: directory,
+    prompt: "Research",
+  });
+  const ended = await running.ended;
+  assert.equal(ended.exitCode, 0);
+  return JSON.parse(String(ended.result?.text));
+}
+
+await test("CLV-310 a turn gets only the base list, its harness login, the profile values and the listed variables", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-turn-allow-"));
+  const saved = { ...process.env };
+  try {
+    process.env["SECRET_TEST_VALUE"] = "operator secret";
+    process.env["PROJECT_TEST_VALUE"] = "project value";
+    process.env["ANTHROPIC_API_KEY"] = "claude login";
+    process.env["OPENAI_API_KEY"] = "codex login";
+    process.env["GH_TOKEN"] = "test-credential";
+    process.env["HOME"] = directory;
+    assert.deepEqual(await presentNames(directory, { worker: "claude" }), [
+      "ANTHROPIC_API_KEY",
+      "PATH",
+      "HOME",
+    ]);
+    assert.deepEqual(
+      await presentNames(directory, {
+        worker: "codex",
+        variables: ["PROJECT_TEST_VALUE", "GH_TOKEN"],
+        environment: { PROFILE_TEST_VALUE: "profile value" },
+      }),
+      [
+        "PROJECT_TEST_VALUE",
+        "PROFILE_TEST_VALUE",
+        "OPENAI_API_KEY",
+        "PATH",
+        "HOME",
+      ],
+    );
+  } finally {
+    process.env = saved;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-310 the value inherit gives a turn the whole daemon environment without GitHub tokens", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-turn-inherit-"));
+  const saved = { ...process.env };
+  try {
+    process.env["SECRET_TEST_VALUE"] = "operator secret";
+    process.env["PROJECT_TEST_VALUE"] = "project value";
+    process.env["ANTHROPIC_API_KEY"] = "claude login";
+    process.env["OPENAI_API_KEY"] = "codex login";
+    process.env["GH_TOKEN"] = "test-credential";
+    process.env["HOME"] = directory;
+    assert.deepEqual(
+      await presentNames(directory, { worker: "codex", variables: "inherit" }),
+      [
+        "SECRET_TEST_VALUE",
+        "PROJECT_TEST_VALUE",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "PATH",
+        "HOME",
+      ],
+    );
+  } finally {
+    process.env = saved;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

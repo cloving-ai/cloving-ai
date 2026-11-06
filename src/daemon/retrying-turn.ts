@@ -8,6 +8,7 @@ import {
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
+import { stopLeftProcesses } from "./worktree-processes.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
@@ -36,6 +37,15 @@ function written(
   return writeRecord(folder, { ...entry, permissions: "private" });
 }
 
+async function leftProcesses(attempts: Attempts): Promise<void> {
+  await stopLeftProcesses({
+    directory: attempts.start.directory,
+    signal: new AbortController().signal,
+    stopMilliseconds: attempts.grace.milliseconds,
+    log: attempts.options.log,
+  }).catch(() => undefined);
+}
+
 function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
   const turn = startTurn(start);
   const stop = () => {
@@ -44,9 +54,11 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
   attempts.stopping.signal.addEventListener("abort", stop, { once: true });
   return {
     ...turn,
-    ended: turn.ended.finally(() => {
-      attempts.stopping.signal.removeEventListener("abort", stop);
-    }),
+    ended: turn.ended
+      .finally(() => leftProcesses(attempts))
+      .finally(() => {
+        attempts.stopping.signal.removeEventListener("abort", stop);
+      }),
   };
 }
 

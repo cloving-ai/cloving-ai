@@ -202,10 +202,12 @@ export async function recordRetention(
   settings: SweepSettings & {
     readonly intervalMilliseconds?: number;
     readonly bundles?: RecordSweep;
+    readonly trees?: RecordSweep;
   },
 ): Promise<RetentionLoop> {
   const records = recordSweep(settings);
   const pass = async () => {
+    await settings.trees?.pass();
     await records.pass();
     await settings.bundles?.pass();
   };

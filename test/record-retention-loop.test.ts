@@ -54,3 +54,21 @@ await test("CLV-270 a pass that fails logs the reason and does not stop the daem
     assert.equal(existsSync(join(scene.root, "journal/a/started.json")), true);
     assert.deepEqual(scene.lines, ["retention: failed (authority-closed)\n"]);
   }));
+
+await test("CLV-310 the retention loop sweeps the work trees before it moves the records", () =>
+  withSweep(async (scene) => {
+    await scene.folder("journal/a", { runId: "done" });
+    const seen: boolean[] = [];
+    const loop = await recordRetention({
+      ...scene.settings(),
+      trees: {
+        pass: () => {
+          seen.push(existsSync(join(scene.root, "journal/a/started.json")));
+          return Promise.resolve();
+        },
+      },
+    });
+    await loop.stop();
+    assert.deepEqual(seen, [true]);
+    assert.equal(existsSync(join(scene.root, "archive/journal/a")), true);
+  }));
