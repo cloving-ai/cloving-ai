@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { git } from "./claude-worker-fixture.ts";
@@ -123,5 +124,57 @@ await test("CLV-305 prepare brings a kept work tree up to the pull request head"
     assert.equal(
       git(join(scene.worktrees, "task-0123456789ab"), ["rev-parse", "HEAD"]),
       later,
+    );
+  }));
+
+await test("CLV-305 prepare refuses an invalid number, a nested branch, a diverged branch and a blocked tree", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker();
+    const prepared = async (payload: unknown) => {
+      const report = await scene.perform(worker, {
+        method: "prepare",
+        payload,
+      });
+      return report.reason;
+    };
+    const invalid = await prepared({ pullRequest: "7" });
+    pushedBranch(scene, "cloving/feature/search");
+    openPull(scene, { head: "cloving/feature/search" });
+    const nested = await prepared({ pullRequest: 7 });
+    pushedBranch(scene);
+    openPull(scene, { head: branch });
+    await prepared({ pullRequest: 7 });
+    const tree = join(scene.worktrees, "task-0123456789ab");
+    committed(tree, { name: "local.ts", text: "3;\n" });
+    git(scene.repository, [
+      "switch",
+      "--quiet",
+      "-c",
+      "other",
+      `origin/${branch}`,
+    ]);
+    committed(scene.repository, { name: "remote.ts", text: "4;\n" });
+    git(scene.repository, [
+      "push",
+      "--quiet",
+      "--force",
+      "origin",
+      `HEAD:refs/heads/${branch}`,
+    ]);
+    git(scene.repository, ["switch", "--quiet", "main"]);
+    const diverged = await prepared({ pullRequest: 7 });
+    pushedBranch(scene, "cloving/task-ba9876543210");
+    openPull(scene, { head: "cloving/task-ba9876543210" });
+    mkdirSync(scene.worktrees, { recursive: true });
+    writeFileSync(join(scene.worktrees, "task-ba9876543210"), "");
+    const blocked = await prepared({ pullRequest: 7 });
+    assert.deepEqual(
+      [invalid, nested, diverged, blocked],
+      [
+        "invalid-payload",
+        "pull-request-not-cloving",
+        "pull-request-diverged",
+        "work-tree-not-available",
+      ],
     );
   }));
