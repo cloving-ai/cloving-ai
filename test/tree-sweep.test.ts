@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
 import { treeSweep } from "../src/daemon/tree-sweep.ts";
+import { treeClaim } from "../src/daemon/work-tree.ts";
+import { endedProcess, ownedClaim } from "./tree-claim-fixture.ts";
 import { day, git, running, withTrees } from "./tree-sweep-fixture.ts";
 
 await test("CLV-310 the sweep removes the work tree, branch and attachments of an old failed or cancelled run with no open pull request", () =>
@@ -279,8 +281,62 @@ process.stdout.write("[]");
       running,
     );
     assert.equal(scene.kept("ticket/started"), true);
-    assert.equal(existsSync(`${path}.removing`), false);
+    assert.equal(
+      existsSync(
+        treeClaim({
+          worktrees: join(scene.state, "worktrees"),
+          target: "ticket/started",
+        }),
+      ),
+      false,
+    );
     assert.deepEqual(scene.lines, [
       "retention: removed 0 work trees, kept 0 with an open pull request, kept 1 in use\n",
+    ]);
+  }));
+
+await test("CLV-310 the sweep keeps a work tree that another target with the same tree name uses", () =>
+  withTrees(async (scene) => {
+    const path = await scene.tree("ticket/shared", [
+      { kind: "journal", runId: "failedOld" },
+    ]);
+    const folder = join(scene.state, "journal", "record-shared");
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      join(folder, "started.json"),
+      JSON.stringify({
+        operationId: JSON.stringify([
+          "cloving-operation",
+          1,
+          "active",
+          "turn",
+          "operation-shared",
+        ]),
+        target: "ticket-shared",
+        worktree: path,
+      }),
+    );
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.kept("ticket/shared"), true);
+    assert.deepEqual(scene.lines, [
+      "retention: removed 0 work trees, kept 0 with an open pull request\n",
+    ]);
+  }));
+
+await test("CLV-310 the sweep clears a claim whose owner process ended and removes the tree", () =>
+  withTrees(async (scene) => {
+    await scene.tree("ticket/abandoned", [
+      { kind: "journal", runId: "failedOld" },
+    ]);
+    const claim = treeClaim({
+      worktrees: join(scene.state, "worktrees"),
+      target: "ticket/abandoned",
+    });
+    await ownedClaim(claim, { processId: endedProcess() });
+    await treeSweep(scene.settings()).pass(running);
+    assert.equal(scene.gone("ticket/abandoned"), true);
+    assert.equal(existsSync(claim), false);
+    assert.deepEqual(scene.lines, [
+      "retention: removed 1 work trees, kept 0 with an open pull request\n",
     ]);
   }));

@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { attachmentFolder } from "./attachments.ts";
 import { calls, type Calls } from "./github-calls.ts";
 import { operationKey, readRecord, writeRecord } from "./operation-journal.ts";
 import { failureReason } from "./record-archive.ts";
 import type { StoppableSweep, SweepSettings } from "./record-sweep.ts";
-import { treeClaim, treePlace } from "./work-tree.ts";
+import { releaseClaim, takeClaim } from "./tree-claims.ts";
+import { treeClaim, treeName, treePlace } from "./work-tree.ts";
 import {
   batchAfter,
   folderRunId,
@@ -43,6 +44,7 @@ interface TargetLists {
 }
 
 interface PresentTree {
+  readonly name: string;
   readonly target: string;
   readonly runIds: ReadonlySet<string>;
   readonly bornAt: number;
@@ -144,8 +146,9 @@ async function presentTree(
 
 async function storedTrees(directory: string): Promise<FoundTrees> {
   const lists = await targetRuns(directory);
-  const present: PresentTree[] = [];
+  const trees = new Map<string, PresentTree>();
   const unreadable: string[] = [];
+  const unreadableNames = new Set<string>();
   for (const [target, entry] of lists.targets) {
     const listUnreadable = lists.unreadable.has(runsName(target));
     const bornAt = await presentTree(directory, {
@@ -154,10 +157,26 @@ async function storedTrees(directory: string): Promise<FoundTrees> {
       unreadable: listUnreadable,
     });
     if (bornAt === undefined) continue;
-    if (listUnreadable) unreadable.push(target);
-    else present.push({ target, runIds: entry.runIds, bornAt });
+    const name = treeName(target);
+    if (listUnreadable) {
+      unreadable.push(target);
+      unreadableNames.add(name);
+    }
+    const known = trees.get(name);
+    trees.set(name, {
+      name,
+      target:
+        known !== undefined && known.target < target ? known.target : target,
+      runIds: new Set([...(known?.runIds ?? []), ...entry.runIds]),
+      bornAt,
+    });
   }
-  return { present, unreadable: unreadable.sort() };
+  return {
+    present: [...trees.values()].filter(
+      ({ name }) => !unreadableNames.has(name),
+    ),
+    unreadable: unreadable.sort(),
+  };
 }
 
 async function startedRecords(directory: string): Promise<unknown[]> {
@@ -234,10 +253,14 @@ async function stillDue(
   check: { readonly tree: PresentTree; readonly days: number },
 ): Promise<boolean> {
   const { tree } = check;
-  const current = (await targetRuns(settings.directory)).targets.get(
-    tree.target,
-  );
-  const runIds = [...(current?.runIds ?? [])];
+  const lists = await targetRuns(settings.directory);
+  const runIds = [
+    ...new Set(
+      [...lists.targets]
+        .filter(([target]) => treeName(target) === tree.name)
+        .flatMap(([, entry]) => [...entry.runIds]),
+    ),
+  ];
   if (
     runIds.length !== tree.runIds.size ||
     runIds.some((runId) => !tree.runIds.has(runId))
@@ -256,16 +279,14 @@ async function claimedRemoval(
     readonly tree: PresentTree;
     readonly days: number;
     readonly tally: Tally;
-    readonly path: string;
   },
 ): Promise<void> {
   const { tree, tally } = request;
-  const claim = treeClaim(request.path);
-  const claimed = await mkdir(claim).then(
-    () => true,
-    () => false,
-  );
-  if (!claimed) {
+  const claim = treeClaim({
+    worktrees: join(settings.directory, "worktrees"),
+    target: tree.target,
+  });
+  if (!(await takeClaim(claim))) {
     tally.inUse += 1;
     return;
   }
@@ -277,7 +298,7 @@ async function claimedRemoval(
     await removedTree(settings, tree.target);
     tally.removed += 1;
   } finally {
-    await rm(claim, { recursive: true, force: true });
+    await releaseClaim(claim);
   }
 }
 
@@ -305,7 +326,7 @@ async function handledTree(
       tally.open += 1;
       return;
     }
-    await claimedRemoval(settings, { ...request, path: place.path });
+    await claimedRemoval(settings, request);
   } catch (error) {
     tally.failures.push(`${target}: ${failureReason(error)}`);
   }
