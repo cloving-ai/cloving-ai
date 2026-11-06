@@ -117,6 +117,10 @@ export async function restartWatch(
       await writeFile(join(watch.directory, "resume-queue"), "", {
         mode: 0o600,
       });
+    if (claimed.settings === "files")
+      await writeFile(join(watch.directory, restartFiles.settings), "files", {
+        mode: 0o600,
+      });
     await clearedRestart(watch.directory);
     return 75;
   }

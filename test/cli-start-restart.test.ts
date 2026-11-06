@@ -51,7 +51,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 let launches = [];
 try { launches = JSON.parse(readFileSync("launches.json", "utf8")); }
 catch (error) { if (error.code !== "ENOENT") throw error; }
-launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER });
+launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE });
+if (process.env.CLOVING_TEST_FILES && launches.length === 1) writeFileSync("restart-settings", "files");
 writeFileSync("launches.json", JSON.stringify(launches));
 const status = ${JSON.stringify(launch.statuses)}[launches.length - 1] ?? 2;
 if (process.env.CLOVING_TEST_SIGNAL && launches.length === 1) {
@@ -73,6 +74,8 @@ interface StartOptions {
   readonly signalOnClose?: string;
   readonly arguments?: readonly string[];
   readonly stallMilliseconds?: number;
+  readonly mergeMode?: string;
+  readonly files?: "first" | "stale";
 }
 
 interface StartObservation {
@@ -81,6 +84,24 @@ interface StartObservation {
   readonly expected: {
     readonly arguments: readonly string[];
     readonly marker: string;
+  };
+}
+
+function startEnvironment(input: {
+  readonly root: string;
+  readonly nodeOptions: string;
+  readonly options: StartOptions;
+}): NodeJS.ProcessEnv {
+  const { root, nodeOptions, options } = input;
+  return {
+    ...process.env,
+    CLOVING_RUNTIME_DIR: join(root, "run"),
+    CLOVING_TEST_MARKER: "preserved",
+    CLOVING_TEST_SIGNAL: options.signal,
+    CLOVING_TEST_SIGNAL_ON_CLOSE: options.signalOnClose,
+    CLOVING_MERGE_MODE: options.mergeMode,
+    CLOVING_TEST_FILES: options.files === "first" ? "1" : undefined,
+    NODE_OPTIONS: nodeOptions,
   };
 }
 
@@ -94,6 +115,8 @@ async function started(
       statuses,
       stallMilliseconds: options.stallMilliseconds ?? 0,
     });
+    if (options.files === "stale")
+      await writeFile(join(root, "restart-settings"), "files");
     const result = spawnSync(
       process.execPath,
       [
@@ -105,14 +128,7 @@ async function started(
       ],
       {
         cwd: root,
-        env: {
-          ...process.env,
-          CLOVING_RUNTIME_DIR: join(root, "run"),
-          CLOVING_TEST_MARKER: "preserved",
-          CLOVING_TEST_SIGNAL: options.signal,
-          CLOVING_TEST_SIGNAL_ON_CLOSE: options.signalOnClose,
-          NODE_OPTIONS: nodeOptions,
-        },
+        env: startEnvironment({ root, nodeOptions, options }),
         encoding: "utf8",
         timeout: testMilliseconds(10000),
       },
@@ -186,4 +202,26 @@ await test("CLV-085 start does not restart exit 1", async () => {
   const result = await started([1]);
   assert.equal(result.status, 1);
   assert.equal(result.launches.length, 1);
+});
+
+await test("CLV-306 a restart from the files starts without the variables that the files can set, also at later restarts", async () => {
+  const result = await started([75, 75, 0], {
+    mergeMode: "queue",
+    files: "first",
+  });
+  assert.equal(result.status, 0);
+  assert.deepEqual(result.launches, [
+    { ...result.expected, mergeMode: "queue" },
+    result.expected,
+    result.expected,
+  ]);
+});
+
+await test("CLV-306 start removes a settings note that no restart of this start wrote", async () => {
+  const result = await started([75, 0], { mergeMode: "queue", files: "stale" });
+  assert.equal(result.status, 0);
+  assert.deepEqual(result.launches, [
+    { ...result.expected, mergeMode: "queue" },
+    { ...result.expected, mergeMode: "queue" },
+  ]);
 });

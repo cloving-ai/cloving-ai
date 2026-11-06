@@ -27,6 +27,10 @@ import {
   runtimeDirectory,
 } from "./cli/runtime-directory.ts";
 import { commandUsage } from "./cli/usage.ts";
+import {
+  clearedSettingsNote,
+  restartEnvironment,
+} from "./cli/start-environment.ts";
 import { stalledExit } from "./cli/thread-pool.ts";
 import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
@@ -148,6 +152,7 @@ interface StartRequest {
   readonly runtime: string;
   readonly argumentsList: readonly string[];
   readonly repository: string | undefined;
+  readonly environment: NodeJS.ProcessEnv;
 }
 
 function startArguments(input: StartRequest): readonly string[] {
@@ -181,6 +186,7 @@ function startArguments(input: StartRequest): readonly string[] {
 }
 
 function toolProcess(input: {
+  readonly environment?: NodeJS.ProcessEnv;
   readonly tool: string;
   readonly argumentsList: readonly string[];
 }): Promise<number> {
@@ -208,7 +214,7 @@ function toolProcess(input: {
         ? ["inherit", "inherit", "inherit", "ipc"]
         : "inherit",
     env: {
-      ...process.env,
+      ...(input.environment ?? process.env),
       PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
     },
   });
@@ -229,6 +235,7 @@ function started(input: StartRequest): Promise<number> {
   return toolProcess({
     tool: "self-host",
     argumentsList: startArguments(input),
+    environment: input.environment,
   });
 }
 
@@ -267,14 +274,24 @@ async function start(): Promise<number> {
     );
     return 1;
   }
-  let status = await started({ runtime, argumentsList: options, repository });
+  await clearedSettingsNote(dirname(runtime));
+  let environment = process.env;
+  let status = await started({
+    runtime,
+    argumentsList: options,
+    repository,
+    environment,
+  });
   const restarting = options.filter((option) => option !== "--reset-queue");
-  while (status === 75)
+  while (status === 75) {
+    environment = await restartEnvironment(dirname(runtime), environment);
     status = await started({
       runtime,
       argumentsList: restarting,
       repository,
+      environment,
     });
+  }
   return status === 0 ? 0 : 1;
 }
 

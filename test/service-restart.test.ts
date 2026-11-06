@@ -39,7 +39,12 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
     const before = Date.now();
     const reply = await call(harness, {
       operation: "restart",
-      parameters: { at: "gap", commandId: "restart-one", resumeQueue: true },
+      parameters: {
+        at: "gap",
+        commandId: "restart-one",
+        resumeQueue: true,
+        settings: "files",
+      },
     });
     assert.equal(reply["kind"], "restart", JSON.stringify(reply));
     assert.equal(reply["serviceCommit"], identity.commit);
@@ -57,6 +62,7 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
       requestedAt,
       commandId: "restart-one",
       resumeQueue: true,
+      settings: "files",
       activeRuns: 1,
     });
     assert.equal(status["serviceVersion"], identity.version);
@@ -124,6 +130,7 @@ await test("CLV-306 the service refuses an invalid restart request and a restart
       { at: "gap" },
       { at: "gap", commandId: "restart-one", cancel: "yes" },
       { at: "gap", commandId: "restart-one", resumeQueue: false },
+      { at: "gap", commandId: "restart-one", settings: "shell" },
     ]) {
       const refused = await call(harness, { operation: "restart", parameters });
       assert.equal(refused["code"], "invalid-request", JSON.stringify(refused));

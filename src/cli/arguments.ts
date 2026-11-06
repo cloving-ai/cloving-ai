@@ -67,6 +67,7 @@ const options = {
   at: { type: "string" },
   cancel: { type: "boolean" },
   "resume-queue": { type: "boolean" },
+  settings: { type: "string" },
 } as const;
 
 type Parsed = ReturnType<

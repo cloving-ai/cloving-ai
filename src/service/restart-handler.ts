@@ -55,16 +55,21 @@ function optionalTrue(value: unknown): boolean {
   return value === undefined || value === true;
 }
 
+function validOptions(parameters: Fields): boolean {
+  const { cancel, resumeQueue, settings } = parameters;
+  return (
+    optionalTrue(cancel) &&
+    optionalTrue(resumeQueue) &&
+    (settings === undefined || settings === "files")
+  );
+}
+
 export async function restartOperation(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
-  const { at, commandId, cancel, resumeQueue } = parameters;
-  if (
-    !isIdentifier(commandId) ||
-    !optionalTrue(cancel) ||
-    !optionalTrue(resumeQueue)
-  )
+  const { at, commandId, cancel, resumeQueue, settings } = parameters;
+  if (!isIdentifier(commandId) || !validOptions(parameters))
     return invalidRequest("The restart request is not valid.");
   const port = context.restart;
   if (port === undefined || context.startedAt === undefined)
@@ -81,6 +86,7 @@ export async function restartOperation(
     requestedAt: Date.now(),
     commandId,
     resumeQueue: resumeQueue === true,
+    ...(settings === "files" ? { settings: "files" } : {}),
   };
   const unresumable =
     at === "now" ? { unresumableRuns: await port.unresumable() } : {};

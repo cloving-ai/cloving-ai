@@ -90,6 +90,8 @@ await test("CLV-306 cloving restart --json prints the pending reply and then the
       "now",
       "--json",
       "--resume-queue",
+      "--settings",
+      "files",
     ]);
     assert.equal(result.status, 0, result.stderr);
     const [pending, restarted] = result.stdout
@@ -110,6 +112,7 @@ await test("CLV-306 cloving restart --json prints the pending reply and then the
     assert.ok(first);
     assert.equal(first.at, "now");
     assert.equal(first.resumeQueue, true);
+    assert.equal(first.settings, "files");
   }));
 
 await test("CLV-306 cloving restart --cancel cancels a pending restart", () =>
@@ -154,6 +157,22 @@ await test("CLV-306 cloving restart refuses an unknown time and a cancel with a 
     "unexpected-option",
   );
   assert.equal(codeOf(["restart", "extra"]), "unexpected-argument");
+  assert.equal(
+    codeOf(["restart", "--settings", "shell"]),
+    "invalid-option-value",
+  );
+  assert.equal(
+    codeOf(["restart", "--cancel", "--settings", "files"]),
+    "unexpected-option",
+  );
+  assert.equal(
+    record(parseInvocation(["restart"]))?.["settings"],
+    "environment",
+  );
+  assert.match(
+    String(commandUsage["restart"]),
+    /--settings environment\|files/,
+  );
   assert.match(String(commandUsage["restart"]), /--at gap\|now/);
   assert.match(String(commandUsage["restart"]), /--resume-queue/);
 });
@@ -186,6 +205,7 @@ async function directRestart(
       at: "gap",
       cancel: false,
       resumeQueue: false,
+      settings: "environment",
       commandId: null,
       json: false,
     },

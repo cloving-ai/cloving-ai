@@ -148,7 +148,7 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
@@ -159,6 +159,7 @@ The command waits for the new service and prints the old commit, the new commit 
 Control-C stops the wait and keeps the restart pending. --cancel cancels a pending restart.
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
+--settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
 `,
   watch: `Usage: cloving watch [--port <n>]
 

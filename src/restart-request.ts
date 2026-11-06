@@ -4,9 +4,12 @@ export type RestartTime = "gap" | "now";
 
 export type RestartCancel = "cancelled" | "none" | "started";
 
+export type RestartSettings = "environment" | "files";
+
 export const restartFiles = {
   request: "pending-restart-",
   claimed: "claimed-restart",
+  settings: "restart-settings",
 } as const;
 
 export interface RestartMark {
@@ -14,6 +17,7 @@ export interface RestartMark {
   readonly requestedAt: number;
   readonly commandId: string;
   readonly resumeQueue: boolean;
+  readonly settings?: "files";
 }
 
 export interface RestartEntry {
@@ -37,6 +41,10 @@ export function isRestartTime(value: unknown): value is RestartTime {
   return value === "gap" || value === "now";
 }
 
+export function isRestartSettings(value: unknown): value is RestartSettings {
+  return value === "environment" || value === "files";
+}
+
 function parsed(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -46,10 +54,8 @@ function parsed(text: string): unknown {
 }
 
 export function restartMark(text: string): RestartMark | undefined {
-  const fields = record(parsed(text));
-  const at = fields?.["at"];
-  const requestedAt = fields?.["requestedAt"];
-  const commandId = fields?.["commandId"];
+  const fields = record(parsed(text)) ?? {};
+  const { at, requestedAt, commandId } = fields;
   if (!isRestartTime(at) || typeof commandId !== "string") return undefined;
   if (typeof requestedAt !== "number" || !Number.isSafeInteger(requestedAt))
     return undefined;
@@ -57,7 +63,8 @@ export function restartMark(text: string): RestartMark | undefined {
     at,
     requestedAt,
     commandId,
-    resumeQueue: fields?.["resumeQueue"] === true,
+    resumeQueue: fields["resumeQueue"] === true,
+    ...(fields["settings"] === "files" ? { settings: "files" as const } : {}),
   };
 }
 

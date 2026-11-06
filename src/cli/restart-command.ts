@@ -91,6 +91,7 @@ function requested(invocation: RestartInvocation, commandId: string): Fields {
     at: invocation.at,
     commandId,
     ...(invocation.resumeQueue ? { resumeQueue: true } : {}),
+    ...(invocation.settings === "files" ? { settings: "files" } : {}),
   };
 }
 

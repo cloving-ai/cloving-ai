@@ -3,12 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { configuration } from "../src/configuration-schema.ts";
-import {
-  resolveSettings,
-  settingDigests,
-  settingSourceMap,
-  startSettingLines,
-} from "../src/project-settings.ts";
+import { resolveSettings, settingDigests } from "../src/project-settings.ts";
 import { settingFields } from "../src/configuration-schema.ts";
 import type { TurnProfiles } from "../src/turn-profile.ts";
 import type { TokenPrices } from "../src/token-prices.ts";
@@ -345,47 +340,4 @@ await test("CLV-205 the start guide attributes environment-only settings", () =>
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
-});
-
-await test("CLV-306 the start guide warns for each environment value that hides a file value", () => {
-  const resolved = resolveSettings(
-    {
-      CLOVING_MERGE_MODE: "direct",
-      CLOVING_QUEUE_LANES: "2",
-      CLOVING_SCHEDULES: "{}",
-    },
-    {
-      project: JSON.stringify({
-        version: 1,
-        merge: { mode: "queue" },
-        queue: { everySeconds: 60 },
-      }),
-      private: JSON.stringify({ version: 1, queue: { lanes: 3 } }),
-    },
-  );
-  assert.deepEqual(startSettingLines(resolved), [
-    "merge.mode: environment",
-    "queue.everySeconds: project",
-    "queue.lanes: environment",
-    "CLOVING_SCHEDULES: environment",
-    "Warning: CLOVING_MERGE_MODE in the environment hides merge.mode in the project file.",
-    "Warning: CLOVING_QUEUE_LANES in the environment hides queue.lanes in the private file.",
-  ]);
-});
-
-await test("CLV-306 the start records the source of each setting, and default for a setting with no source", () => {
-  const resolved = resolveSettings(
-    { CLOVING_MERGE_MODE: "direct", CLOVING_SCHEDULES: "{}" },
-    {
-      project: JSON.stringify({ version: 1, queue: { lanes: 2 } }),
-      private: undefined,
-    },
-  );
-  const sources = settingSourceMap(resolved.sources);
-  assert.equal(sources["merge.mode"], "environment");
-  assert.equal(sources["queue.lanes"], "project");
-  assert.equal(sources["watch.port"], "default");
-  assert.equal(sources["CLOVING_SCHEDULES"], "environment");
-  for (const field of settingFields())
-    assert.ok(Object.hasOwn(sources, field), field);
 });

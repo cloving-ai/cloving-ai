@@ -215,6 +215,23 @@ export function startSettingLines(settings: {
   ];
 }
 
+const harnessNames = ["claude", "codex", "gemini", "grok", "opencode"];
+
+export function withoutFileVariables(
+  environment: Readonly<NodeJS.ProcessEnv>,
+): NodeJS.ProcessEnv {
+  const names = new Set([
+    ...Object.values(settingVariables),
+    ...harnessNames.flatMap((name) =>
+      Object.values(harnessCommandMapping(name)),
+    ),
+    "CLOVING_PROFILES",
+  ]);
+  return Object.fromEntries(
+    Object.entries(environment).filter(([name]) => !names.has(name)),
+  );
+}
+
 export function resolveSettings(
   environment: Readonly<NodeJS.ProcessEnv>,
   files: {

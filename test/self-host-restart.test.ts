@@ -67,13 +67,14 @@ async function withHost(
 
 function mark(
   at: RestartTime,
-  options: { readonly resumeQueue?: true } = {},
+  options: { readonly resumeQueue?: true; readonly settings?: "files" } = {},
 ): string {
   return restartText({
     at,
     requestedAt: Date.now(),
     commandId: `restart-${at}`,
     resumeQueue: options.resumeQueue ?? false,
+    ...(options.settings === undefined ? {} : { settings: options.settings }),
   });
 }
 
@@ -97,6 +98,7 @@ await test("CLV-306 a restart at the next gap waits for the open turn and then s
     await writeFile(join(turn, "result.json"), "{}");
     assert.equal(await hosting, 75);
     assert.equal(existsSync(join(directory, "resume-queue")), false);
+    assert.equal(existsSync(join(directory, "restart-settings")), false);
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGTERM\n",
@@ -113,10 +115,14 @@ await test("CLV-306 a restart now stops the programs at once while a turn is ope
     );
     await writeFile(
       join(directory, "pending-restart-one"),
-      mark("now", { resumeQueue: true }),
+      mark("now", { resumeQueue: true, settings: "files" }),
     );
     assert.equal(await hosting, 75);
     assert.equal(existsSync(join(directory, "resume-queue")), true);
+    assert.equal(
+      await readFile(join(directory, "restart-settings"), "utf8"),
+      "files",
+    );
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGTERM\n",
