@@ -111,6 +111,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "effects": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "chain": { "type": "integer", "minimum": 2, "maximum": 50 }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

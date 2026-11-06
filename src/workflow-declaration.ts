@@ -30,6 +30,7 @@ export type CommandWaits = Readonly<Record<string, CommandWaitDeclaration>>;
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
+  readonly chainLimit?: number;
   readonly capabilities: readonly ("claude" | "github" | "command")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
@@ -283,6 +284,7 @@ export function isWorkflowDeclaration(
     !keys(declaration, [
       "workflowId",
       "effectLimit",
+      "chainLimit",
       "capabilities",
       "input",
       "stages",
@@ -297,11 +299,19 @@ export function isWorkflowDeclaration(
   const { workflowId, effectLimit, capabilities, input } = declaration;
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
-    integer(effectLimit, { minimum: 1, maximum: 100 }) &&
+    integer(effectLimit, { minimum: 1, maximum: 1000 }) &&
+    declaredChainLimit(declaration) &&
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
     declaredOptions(declaration, input)
+  );
+}
+
+function declaredChainLimit(declaration: Fields): boolean {
+  return (
+    !Object.hasOwn(declaration, "chainLimit") ||
+    integer(declaration["chainLimit"], { minimum: 2, maximum: 50 })
   );
 }
 

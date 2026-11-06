@@ -5,6 +5,11 @@ import {
   type WorkflowQueueCode,
   type WorkflowDeclaration,
 } from "./workflow-declaration.ts";
+import {
+  workflowLimitRefusals,
+  type WorkflowLimitCode,
+  type WorkflowLimits,
+} from "./workflow-limits.ts";
 
 export interface CandidateDeclaration {
   readonly workflow: WorkflowDeclaration;
@@ -39,6 +44,7 @@ export type InstalledWorkflowExports = Readonly<
 
 export type WorkflowCandidateCode =
   | WorkflowQueueCode
+  | WorkflowLimitCode
   | "invalid-declaration"
   | "forbidden-import"
   | "missing-export"
@@ -52,6 +58,7 @@ export interface WorkflowCandidateInput {
   readonly declaration: unknown;
   readonly analysis: CandidateAnalysis;
   readonly installedExports: InstalledWorkflowExports;
+  readonly limits?: WorkflowLimits;
 }
 
 const workflowModules = [
@@ -150,10 +157,10 @@ export function checkWorkflowCandidate(
   if (!isCandidateDeclaration(input.declaration))
     return candidateDeclarationRefusals(input.declaration);
   const { analysis, declaration, installedExports } = input;
-  const codes: WorkflowCandidateCode[] = commandWaitRefusals(
-    analysis,
-    declaration,
-  );
+  const codes: WorkflowCandidateCode[] = [
+    ...commandWaitRefusals(analysis, declaration),
+    ...workflowLimitRefusals(declaration.workflow, input.limits),
+  ];
   if (analysis.imports.some((entry) => !allowedImport(entry, analysis)))
     codes.push("forbidden-import");
   if (
@@ -194,8 +201,10 @@ export function checkWorkflowCandidate(
 
 export function candidateDeclarationRefusals(
   value: unknown,
+  limits?: WorkflowLimits,
 ): readonly WorkflowCandidateCode[] {
-  if (isCandidateDeclaration(value)) return [];
+  if (isCandidateDeclaration(value))
+    return workflowLimitRefusals(value.workflow, limits);
   const codes = workflowQueueRefusals(record(value)?.["workflow"]);
   return codes.length > 0 ? codes : ["invalid-declaration"];
 }

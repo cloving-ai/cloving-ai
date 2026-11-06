@@ -87,6 +87,7 @@ export const numberFields = [
   "attempt",
   "limit",
   "effectLimit",
+  "chainLimit",
   "units",
   "recoveryLimit",
   "leaseGeneration",

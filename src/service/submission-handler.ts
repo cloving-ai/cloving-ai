@@ -88,6 +88,14 @@ function effectBudget(workflow: Registered): Fields {
   };
 }
 
+function chainOrigin(admission: Admission): Fields {
+  const { chain, workflow } = admission;
+  if (chain.kind === "handoff")
+    return { parentRunId: chain.parentRunId, chainId: chain.chainId };
+  if (workflow.chainLimit === undefined) return {};
+  return { chainLimit: workflow.chainLimit };
+}
+
 type Usable =
   | { readonly kind: "usable"; readonly workflow: Registered }
   | { readonly kind: "unusable"; readonly reply: Reply };
@@ -197,12 +205,7 @@ async function admit(
       input: documentDigest(input),
       resolver: `${workflow.resolver.id}:${workflow.resolver.version}`,
       ...effectBudget(workflow),
-      ...(admission.chain.kind === "handoff"
-        ? {
-            parentRunId: admission.chain.parentRunId,
-            chainId: admission.chain.chainId,
-          }
-        : {}),
+      ...chainOrigin(admission),
     },
     documents: [normalized, input],
   });
@@ -290,7 +293,7 @@ async function submitted(
     return failed(chain.reason, {
       commandId,
       detail:
-        "A hand-off chain permits at most five runs and requires a recorded parent.",
+        "A hand-off chain permits at most the chain limit of its first run and requires a recorded parent.",
     });
   const found = usable(context.registry.byId(workflowId), workflowId);
   if (found.kind === "unusable") return found.reply;

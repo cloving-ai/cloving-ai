@@ -133,7 +133,7 @@ export const invalidCandidateDeclarations: readonly unknown[] = [
   },
   {
     ...candidateDeclaration,
-    workflow: { ...candidateDeclaration.workflow, effectLimit: 101 },
+    workflow: { ...candidateDeclaration.workflow, effectLimit: 1001 },
   },
   {
     ...candidateDeclaration,

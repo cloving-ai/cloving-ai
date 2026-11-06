@@ -4,7 +4,10 @@ export interface RunOrigin {
   readonly parentRunId: string | null;
   readonly chainId: string;
   readonly continuedFrom?: string;
+  readonly chainLimit?: number;
 }
+
+export const defaultChainLimit = 5;
 
 export type RunOrigins = Readonly<Record<string, RunOrigin>>;
 
@@ -80,6 +83,10 @@ export type HandoffChain =
     }
   | { readonly kind: "refused"; readonly reason: string };
 
+function chainLimitOf(origins: RunOrigins, chainId: string): number {
+  return origins[chainId]?.chainLimit ?? defaultChainLimit;
+}
+
 export function handoffChain(
   commandId: string,
   origins: RunOrigins,
@@ -89,9 +96,10 @@ export function handoffChain(
   const parent = parentRunId === undefined ? undefined : origins[parentRunId];
   if (parent === undefined || parentRunId === undefined)
     return { kind: "refused", reason: "unknown-handoff-parent" };
+  const limit = chainLimitOf(origins, parent.chainId);
   let current: RunOrigin | undefined = parent;
   for (let length = 1; current !== undefined; length += 1) {
-    if (length >= 5) return { kind: "refused", reason: "chain-limit" };
+    if (length >= limit) return { kind: "refused", reason: "chain-limit" };
     if (current.parentRunId === null)
       return { kind: "handoff", parentRunId, chainId: parent.chainId };
     current = origins[current.parentRunId];

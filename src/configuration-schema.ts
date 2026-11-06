@@ -32,6 +32,10 @@ export interface Configuration {
     readonly lanes?: number;
     readonly dailySpendLimitUsd?: number;
   };
+  readonly limits?: {
+    readonly effects?: number;
+    readonly chain?: number;
+  };
   readonly harness?: {
     readonly name?: string;
     readonly turn?: readonly string[];

@@ -22,6 +22,7 @@ import {
   workflowBundleDependencies,
   workflowPackageRoot,
 } from "./workflow-bundle-dependencies.ts";
+import type { WorkflowLimits } from "../src/workflow-limits.ts";
 
 interface ProjectSettings {
   readonly product: string;
@@ -31,6 +32,7 @@ interface ProjectSettings {
   readonly xdgConfigHome?: string | undefined;
   readonly userFolder?: string | undefined;
   readonly recordedProject?: string;
+  readonly limits?: WorkflowLimits;
 }
 
 export interface RegisteredWorkflows {
