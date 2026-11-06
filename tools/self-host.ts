@@ -7,6 +7,7 @@ import {
 } from "../src/harness-defaults.ts";
 import {
   absoluteWorkflowFolder,
+  settingSourceMap,
   startSettingLines,
 } from "../src/project-settings.ts";
 import {
@@ -119,6 +120,7 @@ interface Commands extends HarnessSettings {
   readonly tokenPrices: TokenPrices;
   readonly profiles: TurnProfiles;
   readonly settingDigests: Readonly<Record<string, string>>;
+  readonly settingSources: ReturnType<typeof settingSourceMap>;
   readonly worker: ReturnType<typeof selectedWorker>;
   readonly command: readonly string[];
   readonly ticketCommand: readonly string[] | undefined;
@@ -348,6 +350,7 @@ await launchers(
     shell: environment["SHELL"] ?? "/bin/sh",
     profiles,
     settingDigests: configurationDigests(configuration, profiles),
+    settingSources: settingSourceMap(configuration.sources),
     command,
     ticketCommand,
     nextCommand,

@@ -39,6 +39,9 @@ export async function restartFields(context: ServiceContext): Promise<Fields> {
   const mark = await context.restart?.pending();
   return {
     ...identityFields(context),
+    ...(context.settingSources === undefined
+      ? {}
+      : { settingSources: context.settingSources }),
     ...(context.restart === undefined
       ? {}
       : {

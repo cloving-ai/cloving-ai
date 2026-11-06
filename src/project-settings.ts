@@ -9,6 +9,8 @@ import type { TokenPrices } from "./token-prices.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
+export type RecordedSource = SettingSource | "default";
+
 export const reloadedSettingFields: readonly string[] = [
   "fallbackModels",
   "profiles",
@@ -182,6 +184,20 @@ function hiddenFileValues(given: {
             },
           ],
   );
+}
+
+export function settingSourceMap(
+  sources: Readonly<Record<string, SettingSource>>,
+): Readonly<Record<string, RecordedSource>> {
+  return {
+    ...Object.fromEntries(
+      settingFields().map((field): [string, RecordedSource] => [
+        field,
+        "default",
+      ]),
+    ),
+    ...sources,
+  };
 }
 
 export function startSettingLines(settings: {

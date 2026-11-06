@@ -64,6 +64,17 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
     assert.equal(status["serviceStartedAt"], identity.startedAt);
   }));
 
+await test("CLV-306 the status shows the source of each setting that the start recorded", () =>
+  withHarness(async (harness) => {
+    const settingSources = {
+      "merge.mode": "environment",
+      "queue.lanes": "default",
+    } as const;
+    await harness.start({ ...identity, settingSources });
+    const status = await call(harness, { operation: "status", parameters: {} });
+    assert.deepEqual(status["settingSources"], settingSources);
+  }));
+
 await test("CLV-306 a restart now lists the runs with a turn that cannot resume before it records the request, and a restart at a gap lists none", () =>
   withHarness(async (harness) => {
     await harness.start({ restart: memoryPort(), ...identity });

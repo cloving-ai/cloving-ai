@@ -142,7 +142,7 @@ await test("CLV-204 start from repository A or outside git selects B and prints 
   }
 });
 
-await test("CLV-306 the start guide warns when an environment value hides a project file value", async () => {
+await test("CLV-306 the start guide warns when an environment value hides a project file value, and the status shows the environment source", async () => {
   const work = await scene();
   await mkdir(join(work.repository, ".cloving"));
   await writeFile(
@@ -161,6 +161,14 @@ await test("CLV-306 the start guide warns when an environment value hides a proj
       host.output,
       /^Warning: CLOVING_MERGE_MODE in the environment hides merge\.mode in the project file\.$/m,
     );
+    const client = await execute(
+      process.execPath,
+      [entry, "status", "--repository", work.repository, "--json"],
+      { cwd: work.repository, env: host.environment, timeout: 10000 },
+    );
+    const sources = fields(fields(JSON.parse(client.stdout))["settingSources"]);
+    assert.equal(sources["merge.mode"], "environment");
+    assert.equal(sources["queue.lanes"], "default");
   } finally {
     await stopChildGroup(host.child);
   }

@@ -8,10 +8,12 @@ await test("CLV-306 the daemon status shows the commit and start time, and a res
     const result = await consumer.run(`${queuePrelude}
 const commit = "0123456789abcdef0123456789abcdef01234567";
 const before = Date.now();
-const daemon = await launched({ commit });
+const settingSources = { "merge.mode": "environment", "queue.lanes": "default" };
+const daemon = await launched({ commit, settingSources });
 try {
   const status = await asked("status");
   assert.equal(status.serviceCommit, commit);
+  assert.deepEqual(status.settingSources, settingSources);
   const startedAt = Date.parse(status.serviceStartedAt);
   assert.ok(startedAt >= before && startedAt <= Date.now(), status.serviceStartedAt);
   assert.equal(status.restart, null);

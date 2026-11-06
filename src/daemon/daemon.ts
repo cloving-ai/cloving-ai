@@ -1,5 +1,6 @@
 import {
   adapters,
+  daemonIdentity,
   recoverCommands,
   recoverClaude,
   type Adapters,
@@ -46,7 +47,6 @@ import {
 } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
-import { clovingVersion } from "../cli/toolchain.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
 import { stalledLine } from "../thread-pool-check.ts";
 import {
@@ -251,7 +251,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
   const controls = controlConnections(settings);
   const opening = await startService({
-    ...serviceIdentity(settings),
+    ...daemonIdentity(settings),
     ...controlPorts(controls),
     ...(settings.queueDailySpendLimitUsd === undefined
       ? {}
@@ -295,14 +295,6 @@ function controlPorts(controls: ReturnType<typeof controlConnections>) {
     queue: controls.queues.port,
     threadPool: controls.pool.latest,
     restart: controls.restart,
-  };
-}
-
-function serviceIdentity(settings: DaemonSettings) {
-  return {
-    version: clovingVersion,
-    commit: settings.commit ?? null,
-    startedAt: new Date().toISOString(),
   };
 }
 
