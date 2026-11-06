@@ -27,10 +27,12 @@ const cancelledRestart: ServiceError = {
 
 async function serviceStatus(
   runtimeDirectory: string,
+  signal: AbortSignal,
 ): Promise<Fields | undefined> {
   const reply = await send(runtimeDirectory, {
     operation: "status",
     parameters: { limit: 1 },
+    signal,
   });
   return reply.kind === "result" ? reply.result : undefined;
 }
@@ -59,10 +61,12 @@ async function restarted(
       () => false,
     );
     if (!waited) return { kind: "interrupted" };
-    const outcome = settled(
-      await serviceStatus(environment.runtimeDirectory),
-      startedAt,
+    const now = await serviceStatus(
+      environment.runtimeDirectory,
+      stopped.signal,
     );
+    if (stopped.signal.aborted) return { kind: "interrupted" };
+    const outcome = settled(now, startedAt);
     if (outcome !== undefined) return outcome;
   }
 }

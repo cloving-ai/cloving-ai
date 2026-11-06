@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
+import { createServer, type Socket } from "node:net";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { restartCommand } from "../src/cli/restart-command.ts";
 import { commandUsage } from "../src/cli/usage.ts";
-import { record } from "../src/protocol.ts";
+import { socketAddress } from "../src/broker/socket-address.ts";
+import { parseRequest, record, replyLine } from "../src/protocol.ts";
 import type { RestartMark, RestartPort } from "../src/restart-request.ts";
 import type { Service } from "../src/service/service.ts";
 import { withHarness, type Harness } from "./service-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const before = {
   version: "1.6.0",
@@ -277,4 +281,57 @@ await test("CLV-306 cloving restart prints the refusal of a service that cannot 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /^restart-unavailable: /m);
     assert.equal(result.stdout, "");
+  }));
+
+function silentStatusServer(held: Socket[]) {
+  return createServer((socket) => {
+    let buffered = "";
+    socket.on("data", (chunk: Buffer) => {
+      buffered += chunk.toString();
+      if (!buffered.includes("\n")) return;
+      const parsed = parseRequest(buffered.trim());
+      if (parsed.kind === "request" && parsed.request.operation === "restart") {
+        socket.end(
+          replyLine({
+            kind: "result",
+            result: {
+              serviceStartedAt: before.startedAt,
+              restart: { activeRuns: 0 },
+            },
+          }),
+        );
+        return;
+      }
+      held.push(socket);
+    });
+  });
+}
+
+await test("CLV-306 Control-C ends the wait while a status request gets no answer", () =>
+  withHarness(async (harness) => {
+    const address = socketAddress(
+      join(harness.runtimeDirectory, "control.sock"),
+    );
+    assert.equal(address.kind, "address");
+    const held: Socket[] = [];
+    const server = silentStatusServer(held);
+    await new Promise<void>((ready) => server.listen(address.path, ready));
+    try {
+      const finished = directRestart(harness, {
+        commandId: "restart-silent",
+        interrupted: () => delay(300),
+      }).then((result) => result.code);
+      const outcome = await Promise.race([
+        finished,
+        delay(testMilliseconds(3000)).then(() => "still waiting"),
+      ]);
+      assert.equal(outcome, 130);
+    } finally {
+      for (const socket of held) socket.destroy();
+      await new Promise<void>((closed) =>
+        server.close(() => {
+          closed();
+        }),
+      );
+    }
   }));
