@@ -77,17 +77,26 @@ function textItems(value: unknown): readonly string[] | undefined {
   return items.length === value.length ? items : undefined;
 }
 
+function targeted(value: unknown): value is { readonly target: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "target" in value &&
+    typeof value.target === "string"
+  );
+}
+
 async function storedRuns(directory: string): Promise<TargetLists> {
   const folder = runsFolder(directory);
   const lists: TargetLists = { targets: new Map(), unreadable: new Set() };
   for (const name of await listNames(folder)) {
-    const record: unknown = await readRecord(folder, name).catch(() => ({}));
-    const target: unknown = Reflect.get(Object(record), "target");
-    const listed = textItems(Reflect.get(Object(record), "runIds"));
-    if (typeof target !== "string") {
+    const record = await readRecord(folder, name).catch(() => undefined);
+    if (!targeted(record)) {
       lists.unreadable.add(name);
       continue;
     }
+    const { target } = record;
+    const listed = textItems("runIds" in record ? record.runIds : undefined);
     const runIds = new Set(listed);
     lists.targets.set(target, { runIds, stored: runIds.size });
     if (listed !== undefined) continue;
@@ -173,10 +182,10 @@ async function targetRuns(directory: string): Promise<TargetLists> {
   const lists = await storedRuns(directory);
   const { targets } = lists;
   for (const started of await startedRecords(directory)) {
-    const target: unknown = Reflect.get(Object(started), "target");
     const runId = folderRunId(started);
-    if (typeof target !== "string" || target.startsWith("branch:")) continue;
+    if (!targeted(started) || started.target.startsWith("branch:")) continue;
     if (runId === undefined) continue;
+    const { target } = started;
     const entry = targets.get(target) ?? { runIds: new Set(), stored: 0 };
     entry.runIds.add(runId);
     targets.set(target, entry);

@@ -91,6 +91,7 @@ await test("CLV-310 the sweep skips branch targets, records with no run and reco
       await writeFile(join(scene.state, "journal", name, "started.json"), text);
     };
     await raw("invalid", "{");
+    await raw("empty", "null");
     await raw("no-run", JSON.stringify({ target: "ticket/odd" }));
     await raw(
       "branch",
@@ -165,6 +166,7 @@ await test("CLV-310 the sweep keeps the work trees of run lists that it cannot r
     const folder = join(scene.state, "journal", "trees");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "broken.json"), "{");
+    await writeFile(join(folder, "empty.json"), "null");
     await writeFile(join(folder, "staged.json.staged"), "{");
     await writeFile(
       join(folder, "listed.json"),
