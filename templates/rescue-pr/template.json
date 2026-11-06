@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "name": "rescue-pr",
+  "summary": "Repair a stuck pull request of Cloving: merge the default branch, fix the conflict, the failed CI or the review findings, then accept and merge it as in develop.",
+  "points": [
+    {
+      "id": "accept",
+      "question": "Who accepts the rescued work?",
+      "options": [
+        {
+          "id": "greptile",
+          "label": "Greptile at 5/5",
+          "summary": "Push the rescued branch and wait for Greptile to accept its commit at 5/5.",
+          "change": "In rescue-pr/accept.ts call reviewByAgent({ subject: subject, reviewer: { kind: \"greptile\" } }). rescue-pr/round.ts pushes the branch first and passes its immutable commit and target as subject. Declare github wait-review.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "greptile-review"]
+        },
+        {
+          "id": "person",
+          "label": "A person",
+          "summary": "Wait for a person's approval of the immutable commit. Denial with feedback starts another bounded rescue turn.",
+          "change": "In rescue-pr/accept.ts replace the reviewByAgent import and call with reviewByPerson({ subject: subject }) from cloving/workflows/steps/review-by-person. Remove wait-review from methods.github in rescue-pr.declaration.json. Set selection.accept to person in rescue-pr/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "turn",
+          "label": "A review turn",
+          "summary": "Run the review profile and require its explicit accept verdict.",
+          "change": "In rescue-pr/accept.ts call reviewByAgent({ subject: subject, reviewer: { kind: \"turn\", profile: \"review\" } }). In rescue-pr.declaration.json add run-turn:review to methods.claude, remove wait-review from methods.github, and configure the review profile. Set selection.accept to turn in rescue-pr/scenarios.ts.",
+          "requires": {},
+          "needs": ["default-harness"]
+        }
+      ]
+    },
+    {
+      "id": "merge",
+      "question": "Who merges the accepted work?",
+      "options": [
+        {
+          "id": "green",
+          "label": "Cloving after the checks",
+          "summary": "Merge after acceptance, the beforeMerge check and CI. Give result.output to the next rescue turn on failure.",
+          "change": "Keep mergeWhenGreen({ pull: pull, check: \"beforeMerge\", round: state.round }) after acceptance in rescue-pr/round.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "check-command"]
+        },
+        {
+          "id": "person",
+          "label": "A person approves Cloving's merge",
+          "summary": "Wait for merge approval, then run the beforeMerge check and CI before the merge.",
+          "change": "In rescue-pr/round.ts replace the mergeWhenGreen import and call with mergeByPerson from cloving/workflows/steps/merge-by-person, with the same argument. Set selection.merge to person in rescue-pr/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "check-command"]
+        }
+      ]
+    }
+  ]
+}

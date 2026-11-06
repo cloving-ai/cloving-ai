@@ -8,7 +8,7 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { calls } from "./github-calls.ts";
 import { retriedOperation } from "./git-retry.ts";
-import { operationStopped, payloadOf } from "./github-operation.ts";
+import { activeRun, operationStopped, payloadOf } from "./github-operation.ts";
 import type { ObservationReport } from "../service/worker-port.ts";
 import {
   methodReasons,
@@ -54,11 +54,6 @@ export interface GithubWorker extends Delivery {
 
 const worker = "github";
 const closing = "github-worker-closed";
-const endedRuns: ReadonlySet<string> = new Set([
-  "cancelled",
-  "failed",
-  "completed",
-]);
 const unsettledOperations: ReadonlySet<string> = new Set([
   "dispatch-pending",
   "running",
@@ -127,6 +122,7 @@ async function outcome(
         calls: calls(settings, signal),
         stopCalls: () => calls(settings, AbortSignal.timeout(60_000)),
         target: intent.target,
+        run: { runId: intent.runId, status: settings.runStatus },
         payload,
         signal,
         observe: async ({ notice, ...observation }) =>
@@ -313,8 +309,7 @@ async function unsettled(parts: Parts, kept: Reported): Promise<boolean> {
 
 async function live(parts: Parts, kept: Reported): Promise<boolean> {
   if (!(await unsettled(parts, kept))) return false;
-  const run = await parts.settings.runStatus(kept.runId);
-  return run !== undefined && !endedRuns.has(run);
+  return activeRun(await parts.settings.runStatus(kept.runId));
 }
 
 async function resent(

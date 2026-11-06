@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "patrol",
+  "summary": "Find open pull requests of Cloving whose run ended blocked or failed every 30 minutes and hand at most four of them to rescue-pr.",
+  "points": [
+    {
+      "id": "act",
+      "question": "What happens when the patrol finds stuck pull requests?",
+      "options": [
+        {
+          "id": "ask",
+          "label": "Ask a person first",
+          "summary": "One decision lists the candidates. The person picks the pull requests to rescue. Nothing is handed off before the decision.",
+          "change": "Keep askPerson as pickPulls from patrol/pick.ts in patrol.ts. Keep selection.act as ask in patrol/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "now",
+          "label": "Hand off at once",
+          "summary": "Hand off a rescue for each candidate without a decision, at most four for each pass.",
+          "change": "In patrol.ts replace askPerson as pickPulls with pickAll as pickPulls in the patrol/pick.ts import. Set selection.act to now in patrol/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    }
+  ]
+}
