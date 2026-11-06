@@ -39,6 +39,31 @@ await test("CLV-306 the restart text names one run, an unknown commit and a stat
   });
 });
 
+await test("CLV-306 the reply to a restart now lists the runs with a turn that cannot resume", () => {
+  assert.deepEqual(
+    restartLines({
+      restart: {
+        state: "pending",
+        activeRuns: 2,
+        unresumableRuns: ["run-shell", "run-wait"],
+      },
+    }),
+    [
+      "Restart pending: 2 runs active",
+      "Runs with a turn that cannot resume: run-shell, run-wait",
+    ],
+  );
+  assert.deepEqual(
+    restartLines({
+      restart: { state: "pending", activeRuns: 0, unresumableRuns: [] },
+    }),
+    [
+      "Restart pending: 0 runs active",
+      "Runs with a turn that cannot resume: none",
+    ],
+  );
+});
+
 await test("CLV-306 the moved error text still lists the candidates", () => {
   assert.equal(
     errorText({ code: "ambiguous", detail: "two", candidates: ["a", "b"] }),

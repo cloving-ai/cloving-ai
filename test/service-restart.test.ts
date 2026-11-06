@@ -21,6 +21,8 @@ function memoryPort(): RestartPort {
       mark = undefined;
       return Promise.resolve(state);
     },
+    unresumable: () =>
+      Promise.resolve(mark === undefined ? ["run-shell"] : ["after-request"]),
   };
 }
 
@@ -60,6 +62,26 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
     assert.equal(status["serviceVersion"], identity.version);
     assert.equal(status["serviceCommit"], identity.commit);
     assert.equal(status["serviceStartedAt"], identity.startedAt);
+  }));
+
+await test("CLV-306 a restart now lists the runs with a turn that cannot resume before it records the request, and a restart at a gap lists none", () =>
+  withHarness(async (harness) => {
+    await harness.start({ restart: memoryPort(), ...identity });
+    const now = await call(harness, {
+      operation: "restart",
+      parameters: { at: "now", commandId: "restart-now" },
+    });
+    assert.deepEqual(record(now["restart"])?.["unresumableRuns"], [
+      "run-shell",
+    ]);
+    const gap = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-gap" },
+    });
+    assert.equal(
+      Object.hasOwn(record(gap["restart"]) ?? {}, "unresumableRuns"),
+      false,
+    );
   }));
 
 await test("CLV-306 a cancel removes a pending restart and a second cancel finds none", () =>

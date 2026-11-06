@@ -1,5 +1,6 @@
 import { record, type Fields } from "../protocol.ts";
 import { show } from "./terminal-text.ts";
+import { listing } from "./run-command-render.ts";
 
 export function restartPendingText(restart: Fields): string {
   const count = Number(restart["activeRuns"]);
@@ -41,10 +42,18 @@ const cancelLines: Readonly<Record<string, string>> = {
   started: "Restart: started, cannot cancel",
 };
 
+function unresumableLines(restart: Fields | undefined): readonly string[] {
+  const runs = restart?.["unresumableRuns"];
+  return Array.isArray(runs)
+    ? [`Runs with a turn that cannot resume: ${listing(runs)}`]
+    : [];
+}
+
 export function restartLines(result: Fields): readonly string[] {
   const restart = record(result["restart"]);
   const cancelled = cancelLines[String(restart?.["state"])];
-  return cancelled === undefined ? pendingLines(restart) : [cancelled];
+  if (cancelled !== undefined) return [cancelled];
+  return [...pendingLines(restart), ...unresumableLines(restart)];
 }
 
 function commitOf(fields: Fields): unknown {

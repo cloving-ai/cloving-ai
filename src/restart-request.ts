@@ -30,6 +30,7 @@ export interface RestartPort {
   readonly pending: () => Promise<RestartMark | undefined>;
   readonly request: (mark: RestartMark) => Promise<void>;
   readonly cancel: () => Promise<RestartCancel>;
+  readonly unresumable: () => Promise<readonly string[]>;
 }
 
 export function isRestartTime(value: unknown): value is RestartTime {

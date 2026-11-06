@@ -79,9 +79,15 @@ export async function restartOperation(
     commandId,
     resumeQueue: resumeQueue === true,
   };
+  const unresumable =
+    at === "now" ? { unresumableRuns: await port.unresumable() } : {};
   await port.request(mark);
   return result("restart", {
     ...identityFields(context),
-    restart: { state: "pending", ...(await pendingFields(context, mark)) },
+    restart: {
+      state: "pending",
+      ...(await pendingFields(context, mark)),
+      ...unresumable,
+    },
   });
 }

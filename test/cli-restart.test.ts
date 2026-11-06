@@ -41,6 +41,7 @@ function restartingPort(harness: Harness, running: Running): RestartPort {
       Promise.resolve(
         running.marks.splice(0).length > 0 ? "cancelled" : "none",
       ),
+    unresumable: () => Promise.resolve(["run-shell"]),
   };
 }
 
@@ -96,6 +97,9 @@ await test("CLV-306 cloving restart --json prints the pending reply and then the
       .split("\n")
       .map((line) => record(JSON.parse(line)));
     assert.equal(pending?.["kind"], "restart");
+    assert.deepEqual(record(pending["restart"])?.["unresumableRuns"], [
+      "run-shell",
+    ]);
     assert.deepEqual(restarted, {
       kind: "restarted",
       previousCommit: before.commit,
@@ -201,6 +205,7 @@ function waitingPort(
       return Promise.resolve();
     },
     cancel: () => Promise.resolve("none"),
+    unresumable: () => Promise.resolve([]),
   };
 }
 

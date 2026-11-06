@@ -11,6 +11,7 @@ import {
   type RestartEntry,
   type RestartPort,
 } from "../restart-request.ts";
+import { unresumableRuns } from "./unresumable-turns.ts";
 
 function absent(error: unknown): string {
   if (error instanceof Error && "code" in error && error.code === "ENOENT")
@@ -88,6 +89,7 @@ export function restartMarks(directory: string): RestartPort {
         if (newestRestart(cancelled) !== undefined) return "cancelled";
         return (await markIn(claimed)) === undefined ? "none" : "started";
       }),
+    unresumable: () => unresumableRuns(directory),
   };
 }
 
