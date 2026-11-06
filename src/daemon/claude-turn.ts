@@ -63,6 +63,10 @@ export interface RunningTurn {
   readonly stop: (graceMilliseconds: number) => void;
 }
 
+export interface StartedTurn extends RunningTurn {
+  readonly exited: Promise<void>;
+}
+
 interface Stream {
   failure: { readonly error: unknown } | undefined;
   sessionId: string | null;
@@ -315,7 +319,7 @@ function signalTurn(
   }
 }
 
-export function startTurn(start: TurnStart): RunningTurn {
+export function startTurn(start: TurnStart): StartedTurn {
   const { child, configuration, standardInput } = spawnTurn(start);
   const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
@@ -330,9 +334,18 @@ export function startTurn(start: TurnStart): RunningTurn {
     child.once("error", () => undefined);
     child.once("close", settle);
   });
+  const exited = new Promise<void>((settle) => {
+    child.once("exit", () => {
+      settle();
+    });
+    child.once("close", () => {
+      settle();
+    });
+  });
   const timers: NodeJS.Timeout[] = [];
   return {
     processId: child.pid ?? null,
+    exited,
     ended: closed
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);

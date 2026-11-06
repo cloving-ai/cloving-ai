@@ -57,10 +57,11 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
     turn.stop(attempts.grace.milliseconds);
   };
   attempts.stopping.signal.addEventListener("abort", stop, { once: true });
+  const cleaned = turn.exited.then(() => leftProcesses(attempts, startedAt));
   return {
     ...turn,
     ended: turn.ended
-      .finally(() => leftProcesses(attempts, startedAt))
+      .finally(() => cleaned)
       .finally(() => {
         attempts.stopping.signal.removeEventListener("abort", stop);
       }),
