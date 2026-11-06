@@ -1,5 +1,5 @@
-import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { stepped, type CheckoutCommands } from "./restart-update.ts";
 
 const buildInputs = [
@@ -11,25 +11,13 @@ const buildInputs = [
   "tsconfig.build.json",
 ];
 
+const passedBuild = join("dist", ".restart-build");
+
 function changedAt(file: string): Promise<number> {
   return stat(file).then(
     (status) => status.mtimeMs,
     () => 0,
   );
-}
-
-async function newestOutput(folder: string): Promise<number | undefined> {
-  const entries = await readdir(folder, {
-    recursive: true,
-    withFileTypes: true,
-  }).catch(() => undefined);
-  if (entries === undefined) return undefined;
-  const times = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile())
-      .map((entry) => changedAt(join(entry.parentPath, entry.name))),
-  );
-  return Math.max(0, ...times);
 }
 
 async function newestSource(
@@ -48,9 +36,24 @@ export async function staleBuild(
   checkout: string,
   git: CheckoutCommands["git"],
 ): Promise<boolean> {
-  const built = await newestOutput(join(checkout, "dist"));
-  if (built === undefined) return true;
-  return (await newestSource(checkout, git)) > built;
+  const passed = await changedAt(join(checkout, passedBuild));
+  if (passed === 0) return true;
+  return (await newestSource(checkout, git)) > passed;
+}
+
+async function recordedBuild(
+  checkout: string,
+  commands: CheckoutCommands,
+): Promise<string> {
+  const output = await commands.npm(["run", "build"]);
+  const record = join(checkout, passedBuild);
+  await mkdir(dirname(record), { recursive: true });
+  await writeFile(record, "");
+  return output;
+}
+
+export function forgottenBuild(checkout: string): Promise<void> {
+  return rm(join(checkout, passedBuild), { force: true });
 }
 
 export async function checkedBuild(
@@ -62,6 +65,6 @@ export async function checkedBuild(
   );
   if (stale.kind === "failed") return stale.output;
   if (!stale.value) return undefined;
-  const built = await stepped("build", () => commands.npm(["run", "build"]));
+  const built = await stepped("build", () => recordedBuild(checkout, commands));
   return built.kind === "failed" ? built.output : undefined;
 }

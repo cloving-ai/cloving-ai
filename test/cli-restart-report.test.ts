@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -40,7 +41,10 @@ type Answer = Fields | "down";
 
 interface Scene {
   readonly statuses: readonly Answer[];
-  readonly claimed?: { readonly removedAfter: number };
+  readonly claimed?: {
+    readonly removedAfter: number;
+    readonly hostProcessId: number;
+  };
   readonly invocation?: Partial<RestartInvocation>;
 }
 
@@ -77,7 +81,11 @@ async function scripted(scene: Scene): Promise<{
   const root = await mkdtemp(join(tmpdir(), "cloving-restart-report-"));
   const runtimeDirectory = join(root, "run");
   const claimed = join(dirname(runtimeDirectory), "claimed-restart");
-  if (scene.claimed !== undefined) await writeFile(claimed, "{}");
+  if (scene.claimed !== undefined)
+    await writeFile(
+      claimed,
+      JSON.stringify({ hostProcessId: scene.claimed.hostProcessId }),
+    );
   const { server, requests } = scriptedServer(scene, claimed);
   await mkdir(runtimeDirectory, { mode: 0o700 });
   const address = socketAddress(join(runtimeDirectory, "control.sock"));
@@ -290,9 +298,23 @@ await test("CLV-320 a start that gives no status answer within the limit fails, 
       ...Array<Answer>(12).fill("down"),
       { ...fresh, restart: null, workflows: ["develop", "nightly"] },
     ],
-    claimed: { removedAfter: 12 },
+    claimed: { removedAfter: 12, hostProcessId: process.pid },
   });
   assert.equal(held.code, 0, held.error);
+});
+
+await test("CLV-320 a claim of a start program that no longer runs does not hold the start limit", async () => {
+  const ended = spawnSync(process.execPath, ["--eval", ""]).pid;
+  const abandoned = await scripted({
+    statuses: [waitingOld, "down"],
+    claimed: { removedAfter: 40, hostProcessId: ended },
+  });
+  assert.equal(abandoned.code, 1);
+  assert.match(abandoned.error, /^restart-start-unanswered: /m);
+  const polls = abandoned.requests.filter(
+    (request) => request["operation"] === "status",
+  );
+  assert.ok(polls.length < 12, `${String(polls.length)} status requests`);
 });
 
 await test("CLV-320 cloving restart takes --within as seconds, minutes or hours and refuses other values", () => {

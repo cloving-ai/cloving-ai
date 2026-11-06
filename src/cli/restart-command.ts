@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { record, type Fields, type ServiceError } from "../protocol.ts";
-import { restartFiles } from "../restart-request.ts";
+import { claimHost, restartFiles } from "../restart-request.ts";
 import { send } from "./client.ts";
 import { show } from "./terminal-text.ts";
 import type { RestartInvocation } from "./restart-arguments.ts";
@@ -119,15 +119,26 @@ interface Unanswered {
   since: number | undefined;
 }
 
-function startLimitPassed(
+function hostRunning(processId: number): boolean {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+}
+
+async function claimHeld(runtimeDirectory: string): Promise<boolean> {
+  const claim = join(dirname(runtimeDirectory), restartFiles.claimed);
+  const host = claimHost(await readFile(claim, "utf8").catch(() => ""));
+  return host !== undefined && hostRunning(host);
+}
+
+async function startLimitPassed(
   environment: RestartEnvironment,
   unanswered: Unanswered,
-): boolean {
-  const claimed = join(
-    dirname(environment.runtimeDirectory),
-    restartFiles.claimed,
-  );
-  if (existsSync(claimed)) {
+): Promise<boolean> {
+  if (await claimHeld(environment.runtimeDirectory)) {
     unanswered.since = undefined;
     return false;
   }
@@ -155,7 +166,7 @@ async function polled(
     watched.unanswered.since = undefined;
     return settled(now, watched.waiting);
   }
-  return startLimitPassed(environment, watched.unanswered)
+  return (await startLimitPassed(environment, watched.unanswered))
     ? { kind: "unanswered" }
     : undefined;
 }

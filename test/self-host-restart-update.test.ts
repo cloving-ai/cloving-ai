@@ -16,6 +16,7 @@ import {
 } from "../tools/self-host-restart.ts";
 import {
   fakeNpm,
+  freshDist,
   npmPath,
   updateMark,
   withUpdateHost,
@@ -51,7 +52,7 @@ await test("CLV-320 a restart with an update stops the programs at the gap, then
     assert.equal(await readFile(join(root, "npm-daemon"), "utf8"), "stopped\n");
   }));
 
-await test("CLV-320 a failed build of an update puts the checkout back on the old commit, restarts with exit 75 and keeps the step for the command", () =>
+await test("CLV-320 a failed build of an update puts the checkout back on the old commit, restarts with exit 75, keeps the step for the command and removes the record of the passed build", () =>
   withUpdateHost(async ({ root, directory, git, old, hosted }) => {
     await writeFile(join(root, "build-fails"), "");
     const hosting = hosted();
@@ -74,6 +75,8 @@ await test("CLV-320 a failed build of an update puts the checkout back on the ol
     );
     assert.equal(existsSync(join(directory, "claimed-restart")), false);
     assert.equal(git(["rev-parse", "HEAD"]), old);
+    const checkout = git(["rev-parse", "--show-toplevel"]);
+    assert.equal(existsSync(join(checkout, "dist", ".restart-build")), false);
     assert.equal(
       await readFile(join(root, "npm-calls"), "utf8"),
       "run build\nrun build\n",
@@ -156,6 +159,7 @@ async function checkoutWatch(scene: {
   const bin = await fakeNpm(scene.root);
   const directory = join(scene.root, "host");
   await mkdir(directory, { recursive: true });
+  await freshDist(scene.repository);
   const watching = restartWatch({
     directory,
     runtime: join(directory, "run"),

@@ -12,7 +12,7 @@ export async function fakeNpm(root: string): Promise<string> {
   await writeFile(
     executable,
     `#!${process.execPath}
-import { appendFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 const line = process.argv.slice(2).join(" ");
 appendFileSync(${JSON.stringify(join(root, "npm-calls"))}, line + "\\n");
 appendFileSync(${JSON.stringify(join(root, "npm-daemon"))}, (existsSync(${JSON.stringify(join(root, "daemon-stopped"))}) ? "stopped" : "running") + "\\n");
@@ -27,6 +27,10 @@ if (line === "run build" && existsSync(blocking)) {
 const failing = ${JSON.stringify(join(root, "build-fails"))};
 if (line === "run build" && existsSync(failing)) {
   rmSync(failing);
+  mkdirSync("dist/src", { recursive: true });
+  writeFileSync("dist/src/cli.js", "export const partial = true;\\n");
+  const later = new Date(Date.now() + 86400000);
+  utimesSync("dist/src/cli.js", later, later);
   process.stdout.write("> tsc --project tsconfig.build.json\\n");
   process.stderr.write("error TS2322: Type 'string' is not assignable\\n");
   process.exit(2);
@@ -56,8 +60,11 @@ export async function freshDist(repository: string): Promise<void> {
   await mkdir(join(repository, "dist", "src"), { recursive: true });
   await writeFile(output, "export {};\n");
   await writeFile(join(repository, ".git", "info", "exclude"), "dist\n");
+  const record = join(repository, "dist", ".restart-build");
+  await writeFile(record, "");
   const later = new Date(Date.now() + 60_000);
   await utimes(output, later, later);
+  await utimes(record, later, later);
 }
 
 export async function withUpdateHost(

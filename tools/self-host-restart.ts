@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
+  claimText,
   isRestartRequest,
   newestRestart,
   restartFailureText,
@@ -22,7 +23,7 @@ import {
   type RestartRequest,
 } from "../src/restart-request.ts";
 import { atGap, workInProgress, type Work } from "../src/work-gap.ts";
-import { checkedBuild } from "./restart-build.ts";
+import { checkedBuild, forgottenBuild } from "./restart-build.ts";
 import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
@@ -86,6 +87,15 @@ async function pendingRestart(
   );
 }
 
+async function replaced(
+  directory: string,
+  file: { readonly name: string; readonly text: string },
+): Promise<void> {
+  const temporary = join(directory, `restart-${randomUUID()}.tmp`);
+  await writeFile(temporary, file.text, { mode: 0o600 });
+  await rename(temporary, join(directory, file.name));
+}
+
 export async function claimedRestart(
   directory: string,
   checked: RestartRequest,
@@ -97,7 +107,12 @@ export async function claimedRestart(
     () => true,
     (error: unknown) => !coded(error, "ENOENT"),
   );
-  return moved ? checked.mark : undefined;
+  if (!moved) return undefined;
+  await replaced(directory, {
+    name: restartFiles.claimed,
+    text: claimText(checked.mark, process.pid),
+  });
+  return checked.mark;
 }
 
 async function gapWork(
@@ -145,14 +160,11 @@ async function failureNoted(
   watch: RestartWatch,
   noted: { readonly mark: RestartMark; readonly failure: RestartProblem },
 ): Promise<void> {
-  const temporary = join(watch.directory, `restart-${randomUUID()}.tmp`);
   const { commandId, requestedAt } = noted.mark;
-  await writeFile(
-    temporary,
-    restartFailureText({ commandId, requestedAt, ...noted.failure }),
-    { mode: 0o600 },
-  );
-  await rename(temporary, join(watch.directory, restartFiles.failure));
+  await replaced(watch.directory, {
+    name: restartFiles.failure,
+    text: restartFailureText({ commandId, requestedAt, ...noted.failure }),
+  });
 }
 
 const updateHeadings = {
@@ -167,6 +179,7 @@ async function updateNoted(
   if (mark.update !== true) return;
   const outcome = await updatedCheckout(checkoutCommands(watch));
   if (outcome.kind === "updated") return;
+  if (outcome.kind === "failed") await forgottenBuild(watch.checkout);
   const { step, output } = outcome;
   const heading =
     outcome.kind === "skipped"

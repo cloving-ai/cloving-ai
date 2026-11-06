@@ -16,6 +16,8 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { restartMarks } from "../src/daemon/restart-marks.ts";
 import {
+  claimHost,
+  claimText,
   restartMark,
   restartText,
   type RestartMark,
@@ -174,7 +176,7 @@ async function requestName(directory: string): Promise<string> {
   return String(names[0]);
 }
 
-await test("CLV-306 the host claims only the request file that it checked, and a cancel stops the claim", async () => {
+await test("CLV-306 the host claims only the request file that it checked, names its process in the claim, and a cancel stops the claim", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
   try {
     const marks = restartMarks(directory);
@@ -185,6 +187,7 @@ await test("CLV-306 the host claims only the request file that it checked, and a
     const request = { name: await requestName(directory), mark: checked };
     assert.deepEqual(await claimedRestart(directory, request), checked);
     assert.deepEqual(await markAt(claimed), checked);
+    assert.equal(claimHost(await readFile(claimed, "utf8")), process.pid);
     assert.deepEqual(await marks.pending(), checked);
     assert.equal(await marks.cancel(), "started");
     await rm(claimed);
@@ -229,4 +232,14 @@ await test("CLV-306 the product commit is null outside the top folder of a git c
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+await test("CLV-320 a claim names its start program only with a whole positive process ID", () => {
+  const checked = restartMark(mark("gap"));
+  assert.ok(checked);
+  assert.equal(claimHost(claimText(checked, 4321)), 4321);
+  assert.deepEqual(restartMark(claimText(checked, 4321)), checked);
+  for (const hostProcessId of [0, -1, 1.5, "4321", null])
+    assert.equal(claimHost(JSON.stringify({ hostProcessId })), undefined);
+  assert.equal(claimHost("not json"), undefined);
 });

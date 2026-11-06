@@ -116,6 +116,18 @@ export function restartText(mark: RestartMark): string {
   return `${JSON.stringify(mark)}\n`;
 }
 
+export function claimText(mark: RestartMark, hostProcessId: number): string {
+  return `${JSON.stringify({ ...mark, hostProcessId })}\n`;
+}
+
+export function claimHost(text: string): number | undefined {
+  const hostProcessId = record(parsed(text))?.["hostProcessId"];
+  if (typeof hostProcessId !== "number") return undefined;
+  return Number.isSafeInteger(hostProcessId) && hostProcessId > 0
+    ? hostProcessId
+    : undefined;
+}
+
 export function restartFailure(text: string): RestartFailure | undefined {
   const { commandId, requestedAt, code, step, output } =
     record(parsed(text)) ?? {};

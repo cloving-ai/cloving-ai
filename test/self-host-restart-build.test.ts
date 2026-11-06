@@ -59,7 +59,7 @@ await test("CLV-320 a source file newer than dist makes the restart build before
     assert.equal(await readFile(join(root, "npm-daemon"), "utf8"), "running\n");
   }));
 
-await test("CLV-320 a restart with no dist builds first, and a failed build starts nothing and keeps the daemon running", () =>
+await test("CLV-320 a restart with no dist builds first, a failed build starts nothing and keeps the daemon running, and its output in dist does not count as a passed build", () =>
   withUpdateHost(async ({ root, directory, git, hosted }) => {
     const repository = await trackedSource(git, 0);
     await rm(join(repository, "dist"), { recursive: true });
@@ -82,10 +82,13 @@ await test("CLV-320 a restart with no dist builds first, and a failed build star
     });
     assert.equal(existsSync(join(directory, "claimed-restart")), false);
     assert.equal(existsSync(join(root, "daemon-signals")), false);
+    const passed = join(repository, "dist", ".restart-build");
+    assert.equal(existsSync(passed), false);
     await writeFile(join(directory, "pending-restart-two"), plainMark("again"));
     assert.equal(await hosting, 75);
     assert.equal(
       await readFile(join(root, "npm-calls"), "utf8"),
       "run build\nrun build\n",
     );
+    assert.equal(existsSync(passed), true);
   }));
