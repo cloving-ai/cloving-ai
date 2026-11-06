@@ -61,8 +61,12 @@ import {
 } from "./watch-floor-view.ts";
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
 import {
+  ContinueAction,
   Need,
+  NeedMessage,
   NeedsYou,
+  continuableNeed,
+  continuableRun,
   decisionNeed,
   decisionText,
   needMeta,
@@ -221,8 +225,12 @@ const functions = [
   decisionText,
   decisionNeed,
   stoppedNeed,
+  continuableRun,
+  continuableNeed,
   needsOf,
   needMeta,
+  ContinueAction,
+  NeedMessage,
   Need,
   NeedsYou,
   dollars,

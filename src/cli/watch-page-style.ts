@@ -122,8 +122,10 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .need-title { margin: 0; font-size: 16px; line-height: 1.3; }
 .need-text { margin: 4px 0 2px; }
 .need-meta { margin: 0; color: var(--color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.need-action { flex-shrink: 0; padding: 8px 18px; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }
+.need-message { margin: 4px 0 0; font-size: 13px; }
+.need-action { flex-shrink: 0; padding: 8px 18px; border: 0; cursor: pointer; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }
 .need-action:hover { background: var(--color-line); }
+.need-action:disabled { cursor: progress; opacity: 0.6; }
 .need-decision .need-action { background: var(--color-state-attention); color: var(--on-lamp); }
 .need-decision .need-action:hover { background: color-mix(in srgb, var(--color-state-attention) 85%, #000000); }
 .need-action:focus-visible { clip-path: none; }
