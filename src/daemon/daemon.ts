@@ -140,7 +140,6 @@ export async function startDaemon(
   givenSettings: DaemonSettings,
 ): Promise<DaemonOpening> {
   const repository = await realpath(givenSettings.repository);
-  await clearedTreeClaims(givenSettings.directory);
   const scheduled = scheduledDeclarations(givenSettings, {
     repository,
     documentBytes: serviceLimits.documentBytes,
@@ -271,7 +270,8 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
       effects: { claude: worker, github, handoff, command: commands },
     }),
     effects: { leaseMilliseconds: turnLeaseMilliseconds },
-    host: (ports) => {
+    host: async (ports) => {
+      await clearedTreeClaims(settings.directory);
       given.resolve(ports);
       return hosted(settings, { ports, generations });
     },

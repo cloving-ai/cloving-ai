@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -80,6 +80,29 @@ await test("CLV-074 the daemon refuses a registration whose function has no mani
     });
     assert.equal(existsSync(join(directory, "state")), false);
     assert.equal(existsSync(join(directory, "run")), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-310 a refused daemon start leaves the tree claims of the daemon that owns the state", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-daemon-"));
+  try {
+    const claim = join(directory, "tree-claims", "ticket-held");
+    mkdirSync(claim, { recursive: true });
+    const opening = await startDaemon({
+      directory,
+      runtimeDirectory: join(directory, "run"),
+      repository: directory,
+      manifests: { develop: join(directory, "cloving.workflow.json") },
+      declarations: [declaration],
+      workflows: {},
+      handler: () => Promise.resolve(new Response("")),
+      command: ["true"],
+      concurrency: 1,
+    });
+    assert.equal(opening.kind, "refused");
+    assert.equal(existsSync(claim), true);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
