@@ -179,6 +179,17 @@ await test("CLV-309 the open run scan reads a finished operation only once", () 
     assert.deepEqual([...(await openRuns(journal))], ["late"]);
   }));
 
+await test("CLV-309 a turn whose saved result is a resumable shutdown stays open until its final result", () =>
+  withHarness(async (harness) => {
+    const journal = join(harness.stateDirectory, "journal");
+    await recorded(journal, { key: "resumed", started: { runId: "resumed" } });
+    const result = join(journal, "resumed", "result.json");
+    await writeFile(result, JSON.stringify({ stoppedBy: "daemon-shutdown" }));
+    assert.deepEqual([...(await openRuns(journal))], ["resumed"]);
+    await writeFile(result, JSON.stringify({ outcome: "completed" }));
+    assert.deepEqual([...(await openRuns(journal))], []);
+  }));
+
 await test("CLV-309 the open run scan reads the start of an open operation only once", () =>
   withHarness(async (harness) => {
     const journal = join(harness.stateDirectory, "journal");

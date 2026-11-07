@@ -49,13 +49,21 @@ async function startedRun(folder: string): Promise<string | null | undefined> {
     : null;
 }
 
+async function finalResult(folder: string): Promise<boolean> {
+  if (!(await present(join(folder, "result.json")))) return false;
+  const result = record(
+    await readRecord(folder, "result.json").catch(() => undefined),
+  );
+  return result?.["stoppedBy"] !== "daemon-shutdown";
+}
+
 async function entryOf(
   journal: string,
   entry: { readonly name: string; readonly known: FolderScan },
 ): Promise<Entry> {
   const { name, known } = entry;
   const folder = join(journal, name);
-  if (known.finished.has(name) || (await present(join(folder, "result.json"))))
+  if (known.finished.has(name) || (await finalResult(folder)))
     return { name, finished: true, runId: undefined };
   const runId = known.started.has(name)
     ? known.started.get(name)
