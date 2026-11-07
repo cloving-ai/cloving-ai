@@ -73,3 +73,54 @@ await test("CLV-320 a restart that reaches its deadline with an active run is ca
     await rm(root, { recursive: true, force: true });
   }
 });
+
+await test("CLV-320 a restart past its deadline is removed even when its failure note cannot be saved", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cloving-restart-deadline-"));
+  try {
+    const paths = await programs(root, {
+      statusRuns: [
+        { runId: "run-busy", workflowId: "develop", state: "running" },
+      ],
+    });
+    const directory = join(root, "host");
+    await mkdir(join(directory, "restart-failure", "blocked"), {
+      recursive: true,
+    });
+    const hosting = hostedPrograms({
+      ...paths,
+      repository: root,
+      runtime: join(directory, "run"),
+      directory,
+      watchPort: "off",
+      phoneRelay: "off",
+      updateMilliseconds: undefined,
+      restartMilliseconds: 50,
+    });
+    await eventually(() =>
+      existsSync(join(root, "daemon-ready")) ? true : undefined,
+    );
+    const requestedAt = Date.now();
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      restartText({
+        at: "gap",
+        requestedAt,
+        commandId: "restart-unsaved",
+        resumeQueue: false,
+        deadline: requestedAt + 500,
+      }),
+    );
+    await eventually(async () =>
+      (await readdir(directory)).some((name) =>
+        name.startsWith("pending-restart"),
+      )
+        ? undefined
+        : true,
+    );
+    assert.equal(existsSync(join(root, "daemon-signals")), false);
+    process.emit("SIGTERM");
+    assert.equal(await hosting, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

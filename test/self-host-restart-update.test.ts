@@ -87,6 +87,29 @@ await test("CLV-320 a failed build of an update puts the checkout back on the ol
     );
   }));
 
+await test("CLV-320 a failed rollback build of an update builds the old commit again until it passes, and only then restarts", () =>
+  withUpdateHost(async ({ root, directory, git, old, hosted }) => {
+    await writeFile(join(root, "build-fails-count"), "3");
+    const hosting = hosted();
+    await eventually(() =>
+      existsSync(join(root, "daemon-ready")) ? true : undefined,
+    );
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      updateMark("now", "restart-broken-rollback"),
+    );
+    assert.equal(await hosting, 75);
+    const failure: unknown = JSON.parse(
+      await readFile(join(directory, "restart-failure"), "utf8"),
+    );
+    assert.equal(Reflect.get(Object(failure), "code"), "restart-update-broken");
+    assert.equal(git(["rev-parse", "HEAD"]), old);
+    assert.equal(
+      await readFile(join(root, "npm-calls"), "utf8"),
+      "run build\nrun build\nrun build\nrun build\n",
+    );
+  }));
+
 await test("CLV-320 local changes skip the update, keep the note for the command and restart on the current commit", () =>
   withUpdateHost(async ({ root, directory, git, old, hosted }) => {
     const hosting = hosted();

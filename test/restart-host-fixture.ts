@@ -12,7 +12,7 @@ export async function fakeNpm(root: string): Promise<string> {
   await writeFile(
     executable,
     `#!${process.execPath}
-import { appendFileSync, existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 const line = process.argv.slice(2).join(" ");
 appendFileSync(${JSON.stringify(join(root, "npm-calls"))}, line + "\\n");
 appendFileSync(${JSON.stringify(join(root, "npm-daemon"))}, (existsSync(${JSON.stringify(join(root, "daemon-stopped"))}) ? "stopped" : "running") + "\\n");
@@ -23,6 +23,12 @@ if (line === "run build" && existsSync(blocking)) {
   const release = ${JSON.stringify(join(root, "build-release"))};
   setInterval(() => existsSync(release) && process.exit(0), 20);
   setTimeout(() => process.exit(0), 20000);
+}
+const counted = ${JSON.stringify(join(root, "build-fails-count"))};
+if (line === "run build" && existsSync(counted) && Number(readFileSync(counted, "utf8")) > 0) {
+  writeFileSync(counted, String(Number(readFileSync(counted, "utf8")) - 1));
+  process.stderr.write("error TS2322: the build broke\\n");
+  process.exit(2);
 }
 const failing = ${JSON.stringify(join(root, "build-fails"))};
 if (line === "run build" && existsSync(failing)) {

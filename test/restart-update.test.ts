@@ -163,6 +163,10 @@ function failure(outcome: CheckoutUpdate): readonly [string, string] {
   return outcome.kind === "failed" ? [outcome.step, outcome.output] : ["", ""];
 }
 
+function broken(outcome: CheckoutUpdate): readonly [string, string] {
+  return outcome.kind === "broken" ? [outcome.step, outcome.output] : ["", ""];
+}
+
 await test("CLV-306 an update refuses another branch, a commit that cannot fast-forward and a failed fetch", () =>
   withUpdateRepository(async ({ repository, git, old }) => {
     const calls: string[][] = [];
@@ -211,14 +215,14 @@ await test("CLV-306 a merge that would overwrite an ignored file fails at the me
     assert.deepEqual(calls, []);
   }));
 
-await test("CLV-306 a failed rollback adds its output to the failure of the build", () =>
+await test("CLV-320 a failed rollback is a broken update with the output of the build and the rollback", () =>
   withUpdateRepository(async ({ git, old }) => {
     const outcome = await updatedCheckout({
       git: rejecting(git),
       npm: () => Promise.reject(new Error("build broke")),
       stopping: running,
     });
-    assert.deepEqual(failure(outcome), [
+    assert.deepEqual(broken(outcome), [
       "build",
       `Error: build broke\nThe rollback to ${old} failed: Error: build broke`,
     ]);
@@ -235,7 +239,7 @@ function refusing(
       : rejecting(git)(argumentsList);
 }
 
-await test("CLV-306 a failed status check fails at the clean step, and a failed reset leaves its output in the failure", () =>
+await test("CLV-320 a failed status check fails at the clean step, and a failed reset is a broken update with its output", () =>
   withUpdateRepository(async ({ git, old, target }) => {
     const calls: string[][] = [];
     const [step] = failure(
@@ -252,7 +256,7 @@ await test("CLV-306 a failed status check fails at the clean step, and a failed 
       npm: recordedNpm(calls, ["run build"]),
       stopping: running,
     });
-    assert.deepEqual(failure(outcome), [
+    assert.deepEqual(broken(outcome), [
       "build",
       `run build output\nerror TS2322: Type 'string' is not assignable\nThe rollback to ${old} failed: Error: reset refused`,
     ]);

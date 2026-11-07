@@ -28,7 +28,12 @@ import {
   forgottenBuild,
   rememberedBuild,
 } from "./restart-build.ts";
-import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
+import {
+  checkoutCommands,
+  recoveredCheckout,
+  updatedCheckout,
+  type UpdatePlan,
+} from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
 export type CheckoutLock = (
@@ -161,12 +166,20 @@ async function expired(
   const { mark, name } = waiting.request;
   if (mark.deadline === undefined || Date.now() < mark.deadline) return;
   const output = workLines(waiting.work);
-  await failureNoted(watch, {
+  const unsaved = await failureNoted(watch, {
     mark,
     failure: { code: "restart-deadline", step: "wait", output },
-  });
+  }).then(
+    () => undefined,
+    (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+  );
   await rm(join(watch.directory, name), { force: true });
   process.stderr.write(`Restart cancelled: restart-deadline\n${output}\n`);
+  if (unsaved !== undefined)
+    process.stderr.write(
+      `The note of the cancelled restart was not saved: ${unsaved}\n`,
+    );
 }
 
 async function failureNoted(
@@ -192,7 +205,7 @@ async function updateNoted(
   if (mark.update !== true) return;
   const outcome = await updatedCheckout(checkoutCommands(watch));
   if (outcome.kind === "updated") return rememberedBuild(watch.checkout);
-  if (outcome.kind === "failed") await forgottenBuild(watch.checkout);
+  if (outcome.kind !== "skipped") await forgottenBuild(watch.checkout);
   const { step, output } = outcome;
   const heading =
     outcome.kind === "skipped"
@@ -203,6 +216,25 @@ async function updateNoted(
     mark,
     failure: { code: `restart-update-${outcome.kind}`, step, output },
   });
+  if (outcome.kind === "broken") await rebuiltOld(watch, outcome.plan);
+}
+
+async function rebuiltOld(
+  watch: RestartWatch,
+  plan: UpdatePlan,
+): Promise<void> {
+  const commands = checkoutCommands(watch);
+  for (;;) {
+    const waited = await delay(watch.milliseconds, true, {
+      signal: watch.stopping,
+    }).catch(() => false);
+    if (!waited) return;
+    const rebuilt = await recoveredCheckout(commands, plan);
+    if (rebuilt.kind === "done") return;
+    process.stderr.write(
+      `The old commit ${plan.head} did not build again at step ${rebuilt.step}. The service tries again before the restart.\n${rebuilt.output}\n`,
+    );
+  }
 }
 
 export async function clearedRestart(directory: string): Promise<void> {
