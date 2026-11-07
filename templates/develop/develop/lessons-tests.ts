@@ -71,7 +71,9 @@ export const lessonsTests = [
         prepare.map((request) => request.payload),
         selection.merge === "local" ? [] : [file ? '{"lessons":true}' : "{}"],
       );
-      const turns = effectsOf(bridge.requests, "run-turn");
+      const turns = effectsOf(bridge.requests, "run-turn").filter(
+        (request) => request.scope.phase === "implement",
+      );
       assert.equal(turns.length, 2);
       for (const turn of turns) {
         assert.equal(turn.payload.includes(lessonsText), file);

@@ -60,10 +60,13 @@ export function harnessLoginVariables(worker: string): readonly string[] {
     : [];
 }
 
+const settingTurnVariables: readonly string[] = ["CLOVING_DEMO_TOOL"];
+
 function allowedNames(request: TurnVariableRequest): ReadonlySet<string> {
   const listed = request.variables === "inherit" ? [] : request.variables;
   return new Set([
     ...baseVariables,
+    ...settingTurnVariables,
     ...harnessLoginVariables(request.worker ?? ""),
     ...(listed ?? []),
   ]);

@@ -210,3 +210,17 @@ await test("CLV-227 config set keeps an absolute workflows.folder only in the pr
   assert.equal(relative.status, 2, relative.stdout + relative.stderr);
   assert.match(relative.stderr, /invalid-setting: workflows.folder/);
 });
+
+await test("CLV-315 config set keeps an absolute demo.tool only in the private file", () => {
+  using fixture = configScene();
+  const result = fixture.run(["set", "demo.tool", "/tools/demo-video"]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(fixture.read(fixture.privateFile), {
+    version: 1,
+    demo: { tool: "/tools/demo-video" },
+  });
+  assert.equal(existsSync(fixture.project), false);
+  const relative = fixture.run(["set", "demo.tool", "skills/demo-video"]);
+  assert.equal(relative.status, 2, relative.stdout + relative.stderr);
+  assert.match(relative.stderr, /invalid-setting: demo.tool/);
+});
