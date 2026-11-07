@@ -28,6 +28,7 @@ export interface GithubState {
   readonly calls: readonly (readonly string[])[];
   readonly callTimes: readonly number[];
   readonly triggers: readonly number[];
+  readonly issueComments: readonly Readonly<Record<string, unknown>>[];
 }
 
 export interface Plan {
@@ -38,6 +39,7 @@ export interface Plan {
   }[];
   readonly labels?: readonly Readonly<Record<string, unknown>>[];
   readonly issues?: readonly Readonly<Record<string, unknown>>[];
+  readonly issueComments?: readonly Readonly<Record<string, unknown>>[];
   readonly prs?: readonly Readonly<Record<string, unknown>>[];
   readonly scores: readonly number[];
   readonly headAfterReads?: number;
@@ -184,6 +186,7 @@ function stateOf(file: string): GithubState {
     calls: listOf(fields["calls"]).map((call) => listOf(call).map(String)),
     callTimes: listOf(fields["callTimes"]).map(Number),
     triggers: listOf(fields["triggers"]).map(Number),
+    issueComments: listOf(fields["issueComments"]).map(record),
   };
 }
 
