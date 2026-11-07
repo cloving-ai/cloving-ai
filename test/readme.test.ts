@@ -217,6 +217,7 @@ function readmeFindings(text: string): readonly string[] {
           !settings.has(name) &&
           ![
             "CLOVING_TURN_ID",
+            "CLOVING_CPU_SHARE",
             "CLOVING_ATTACHMENTS_DIRECTORY",
             "CLOVING_RUN_ID",
             "CLOVING_OPERATION_ID",
@@ -357,7 +358,7 @@ await test("CLV-251 the README section after the service settings explains clovi
 
 await test("CLV-253 the help of config and reload and the README name the settings that cloving reload applies", () => {
   const fields =
-    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`? and `?workflows\.folder`?/;
+    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`?, `?workflows\.folder`?, `?queue\.lanes`?, `?queue\.workingLanes`?, `?queue\.maxLoadPerCore`? and `?queue\.maxMemoryPressure`?/;
   for (const text of [configUsage, String(commandUsage["reload"]), readme])
     assert.match(text, fields);
   assert.match(configUsage, /cloving reload/);

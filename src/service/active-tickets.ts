@@ -2,11 +2,35 @@ import { record, type Fields } from "../protocol.ts";
 import { queueStateFields, readyFields } from "../queue-state.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
 import type { ServiceContext } from "./replies.ts";
+import type { Registered } from "./registry.ts";
+
+export function currentLanes(
+  context: ServiceContext,
+  workflow: Registered | undefined,
+): Registered | undefined {
+  const lanes = context.queue?.control()?.lanes;
+  return workflow?.queue === true && lanes !== undefined
+    ? { ...workflow, admission: lanes }
+    : workflow;
+}
+
+interface ActiveRun {
+  readonly runId: string;
+  readonly input: Fields;
+}
 
 export async function activeWorkflow(
   context: ServiceContext,
   workflowId: string,
 ): Promise<Fields[]> {
+  const active = await activeRuns(context, workflowId);
+  return active.map((run) => run.input);
+}
+
+async function activeRuns(
+  context: ServiceContext,
+  workflowId: string,
+): Promise<ActiveRun[]> {
   const workflows = await context.authority.queries.workflowIds();
   const state = await context.authority.state();
   const runs = Object.values(state.runs).filter(
@@ -25,18 +49,22 @@ export async function activeWorkflow(
         !(queued && (await queueRun(context, run.runId)))
       )
         return undefined;
-      return storedTicket(context, state.details[run.runId]?.input);
+      return {
+        runId: run.runId,
+        input: await storedTicket(context, state.details[run.runId]?.input),
+      };
     }),
   );
-  return active.filter((input) => input !== undefined);
+  return active.filter((entry) => entry !== undefined);
 }
 
 export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const workflow = context.registry.workflowIds
-    .map((id) => context.registry.byId(id))
+    .map((id) => currentLanes(context, context.registry.byId(id)))
     .find((workflow) => workflow?.admission !== undefined);
   if (workflow?.admission === undefined) return {};
-  const active = await activeWorkflow(context, workflow.workflowId);
+  const runs = await activeRuns(context, workflow.workflowId);
+  const active = runs.map((run) => run.input);
   const activeTicketIds = active.flatMap((input) =>
     typeof input["ticketId"] === "string" ? [input["ticketId"]] : [],
   );
@@ -54,6 +82,7 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
       ...(await queueSpend(context)),
       lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
       busy: active.length,
+      busyRunIds: runs.map((run) => run.runId),
       skipped,
       ...(control === undefined
         ? {}

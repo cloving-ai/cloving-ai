@@ -73,7 +73,9 @@ export function restartMarks(directory: string): RestartPort {
           join(directory, `${restartFiles.request}${randomUUID()}`),
         );
         await Promise.all(
-          earlier.map((name) => rm(join(directory, name), { force: true })),
+          [...earlier, restartFiles.failure].map((name) =>
+            rm(join(directory, name), { force: true }),
+          ),
         );
       }),
     cancel: () =>

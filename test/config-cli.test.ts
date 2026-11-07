@@ -50,7 +50,7 @@ await test("CLV-206 invalid settings and unknown fields exit 2 without changing 
   fixture.write(fixture.project, { version: 1, queue: { lanes: 2 } });
   const original = readFileSync(fixture.project, "utf8");
   for (const args of [
-    ["set", "queue.lanes", "9"],
+    ["set", "queue.lanes", "17"],
     ["set", "queue.lanes", '"2"', "--json"],
     ["get", "unknown.field", "--json"],
     ["unset", "queue.unknown"],
@@ -64,8 +64,8 @@ await test("CLV-206 invalid settings and unknown fields exit 2 without changing 
     );
   }
   assert.match(
-    fixture.run(["set", "queue.lanes", "9"]).stderr,
-    /invalid-setting: queue.lanes must be from 1 to 4/,
+    fixture.run(["set", "queue.lanes", "17"]).stderr,
+    /invalid-setting: queue.lanes must be from 1 to 16/,
   );
   assert.equal(readFileSync(fixture.project, "utf8"), original);
   assert.equal(existsSync(`${fixture.project}.bak`), false);

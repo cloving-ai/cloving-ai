@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { git, resultOf } from "./claude-worker-fixture.ts";
+import { openWork } from "../src/daemon/working-runs.ts";
+import { git, resultOf, until } from "./claude-worker-fixture.ts";
 import { opened, withGithub } from "./github-worker-fixture.ts";
 import { advancedBase, mergeCalls } from "./github-merge-fixture.ts";
 
@@ -70,4 +71,34 @@ await test("CLV-220 an unknown check name is an invalid payload", () =>
     });
     assert.equal(report.reason, "invalid-payload");
     assert.deepEqual(mergeCalls(scene), []);
+  }));
+
+await test("CLV-309 a merge check marks its run as working while the command runs", () =>
+  withGithub(async (scene) => {
+    const entered = JSON.stringify(join(scene.directory, "entered"));
+    const release = join(scene.directory, "release");
+    const worker = scene.worker({
+      check: [
+        process.execPath,
+        "-e",
+        `const fs = require("node:fs");
+const pause = new Int32Array(new SharedArrayBuffer(4));
+fs.writeFileSync(${entered}, "");
+while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(pause, 0, 0, 20);`,
+      ],
+    });
+    const commit = await opened(scene, worker);
+    advancedBase(scene);
+    const merging = scene.perform(worker, {
+      method: "merge",
+      payload: { number: 1, commit, check: "beforeMerge" },
+    });
+    await until(() => existsSync(join(scene.directory, "entered")));
+    const during = await openWork(scene.directory);
+    writeFileSync(release, "");
+    const report = await merging;
+    assert.equal(report.outcome, "completed", report.reason ?? "");
+    assert.ok(during.working.has("run-1"));
+    assert.ok(during.github.has("run-1"));
+    assert.equal((await openWork(scene.directory)).working.has("run-1"), false);
   }));

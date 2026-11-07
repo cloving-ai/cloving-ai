@@ -8,36 +8,37 @@ export interface WorkReads {
 
 export interface Work {
   readonly activeRuns: number;
+  readonly runIds: readonly string[];
   readonly openTurn: boolean;
   readonly pendingSubmission: boolean;
 }
 
 const ended: readonly string[] = ["completed", "failed", "cancelled"];
 
-function activeOn(page: Fields): number {
+function activeOn(page: Fields): readonly string[] {
   const runs = page["runs"];
   if (!Array.isArray(runs)) throw new Error("invalid-run-list");
-  return runs.filter((value: unknown) => {
+  return runs.flatMap((value: unknown) => {
     const run = record(value);
     if (run === undefined) throw new Error("invalid-run-status");
-    return !ended.includes(String(run["state"]));
-  }).length;
+    return ended.includes(String(run["state"])) ? [] : [String(run["runId"])];
+  });
 }
 
 export async function workInProgress(reads: WorkReads): Promise<Work> {
   const pendingSubmission = await reads.pendingSubmission();
   const openTurn = await reads.openTurn();
-  let activeRuns = 0;
+  const runIds: string[] = [];
   let after: string | null = "";
   do {
     const page = await reads.runPage(after);
-    activeRuns += activeOn(page);
+    runIds.push(...activeOn(page));
     const next = page["next"];
     if (next !== null && (typeof next !== "string" || next <= after))
       throw new Error("invalid-run-page");
     after = next;
   } while (after !== null);
-  return { activeRuns, openTurn, pendingSubmission };
+  return { activeRuns: runIds.length, runIds, openTurn, pendingSubmission };
 }
 
 export function atGap(work: Work): boolean {

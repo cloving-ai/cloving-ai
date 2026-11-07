@@ -32,6 +32,12 @@ import {
 } from "./github-operation.ts";
 export type { GithubTiming, MethodSettings } from "./github-operation.ts";
 import { prepare } from "./github-pull-tree.ts";
+import {
+  recordAnswered,
+  replyThread,
+  resolveThread,
+  reviewThreads,
+} from "./github-review-threads.ts";
 
 const triggerText = "@greptileai";
 const maximumReviewRequests = 3;
@@ -63,6 +69,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "no-change",
   "private-path-in-change",
   "review-not-received",
+  "review-threads-limit",
   "pull-request-claimed",
   "pull-request-diverged",
   "pull-request-not-cloving",
@@ -366,6 +373,10 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["close-pr", closePull],
   ["attach-asset", attachAsset],
   ["wait-review", waitReview],
+  ["review-threads", reviewThreads],
+  ["record-answered", recordAnswered],
+  ["reply-thread", replyThread],
+  ["resolve-thread", resolveThread],
   [
     "merge",
     (operation) =>

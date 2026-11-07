@@ -13,8 +13,18 @@ export interface RestartInvocation {
   readonly resumeQueue: boolean;
   readonly settings: RestartSettings;
   readonly update: boolean;
+  readonly within: number | null;
   readonly commandId: string | null;
   readonly json: boolean;
+}
+
+const units: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600 };
+
+function withinSeconds(text: string | undefined): number | null | undefined {
+  if (text === undefined) return null;
+  const [, count = "", unit = ""] = /^([1-9][0-9]*)([smh])$/.exec(text) ?? [];
+  const seconds = Number(count) * (units[unit] ?? Number.NaN);
+  return seconds <= 2_592_000 ? seconds : undefined;
 }
 
 export function restartInvocation(request: {
@@ -30,7 +40,9 @@ export function restartInvocation(request: {
   const allowed = [
     "command-id",
     "json",
-    ...(cancel ? ["cancel"] : ["at", "resume-queue", "settings", "update"]),
+    ...(cancel
+      ? ["cancel"]
+      : ["at", "resume-queue", "settings", "update", "within"]),
   ];
   if (names.some((name) => !allowed.includes(name))) return "unexpected-option";
   const valueOf = (name: string): string | undefined =>
@@ -38,10 +50,12 @@ export function restartInvocation(request: {
   const at = valueOf("at") ?? "gap";
   const settings = valueOf("settings") ?? "environment";
   const commandId = givenCommandId(request.options);
+  const within = withinSeconds(valueOf("within"));
   if (
     !isRestartTime(at) ||
     !isRestartSettings(settings) ||
-    commandId === undefined
+    commandId === undefined ||
+    within === undefined
   )
     return "invalid-option-value";
   return {
@@ -51,6 +65,7 @@ export function restartInvocation(request: {
     resumeQueue: names.includes("resume-queue"),
     settings,
     update: names.includes("update"),
+    within,
     commandId,
     json: names.includes("json"),
   };

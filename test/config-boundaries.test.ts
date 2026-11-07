@@ -86,7 +86,7 @@ await test("CLV-206 negative JSON values reach schema validation and dash-prefix
   assert.equal(invalid.status, 2);
   assert.match(
     invalid.stdout,
-    /invalid-setting: queue.lanes must be from 1 to 4/,
+    /invalid-setting: queue.lanes must be from 1 to 16/,
   );
   const text = fixture.run(["set", "harness.path", "-custom", "--json"]);
   assert.equal(text.status, 0, text.stderr);

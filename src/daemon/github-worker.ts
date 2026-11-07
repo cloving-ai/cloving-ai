@@ -30,6 +30,7 @@ import {
   type Reported,
   type WorkerReport,
 } from "./operation-journal.ts";
+import { markedCalls } from "./working-runs.ts";
 
 export type { GithubTiming } from "./github-methods.ts";
 
@@ -119,7 +120,7 @@ async function outcome(
       retriedOperation({
         settings,
         folder: run.folder,
-        calls: calls(settings, signal),
+        calls: markedCalls(calls(settings, signal), run.folder),
         stopCalls: () => calls(settings, AbortSignal.timeout(60_000)),
         target: intent.target,
         run: { runId: intent.runId, status: settings.runStatus },

@@ -30,6 +30,7 @@ const names = [
   "cost.medianCompletedTicketUsd",
   "flow.busyLaneShare",
   "flow.idleLaneHoursWithReadyTicket",
+  "flow.loadHoldHours",
   "flow.peakActiveRuns",
   "flow.readyWaitHours.dependency",
   "flow.readyWaitHours.noLane",

@@ -62,7 +62,10 @@ await test("CLV-184 service status and CLI show busy lanes and skipped tickets",
     });
     assert.equal(admitted["kind"], "run-admitted");
     const status = await call(harness, { operation: "status", parameters: {} });
-    assert.deepEqual(status["queue"], queue);
+    assert.deepEqual(status["queue"], {
+      ...queue,
+      busyRunIds: [admitted["runId"]],
+    });
     const text = statusText(status);
     assert.match(text, /Queue: 1 of 4 lanes busy/);
     assert.match(text, /900.*ticket-active/);

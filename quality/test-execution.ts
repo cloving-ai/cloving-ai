@@ -37,6 +37,24 @@ export function parseTestConcurrency(
   return Number(value);
 }
 
+function shareConcurrency(share: string | undefined): string | undefined {
+  if (share === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(share))
+    throw new Error("CLOVING_CPU_SHARE must be a whole number of at least 1");
+  return String(Math.min(16, Number(share)));
+}
+
+export function gateTestConcurrency(
+  environment: Readonly<Record<string, string | undefined>>,
+  cores: number,
+): number {
+  return parseTestConcurrency(
+    environment["CLOVING_TEST_CONCURRENCY"] ??
+      shareConcurrency(environment["CLOVING_CPU_SHARE"]),
+    cores,
+  );
+}
+
 export { parseCheckTimeFactor } from "./command.ts";
 
 export interface TestExecutionOptions {
@@ -166,7 +184,7 @@ export function testCommand(
       }),
       resolve(import.meta.dirname, "test-runner.ts"),
       `--test-reporter=${run.reporter ?? "gate"}`,
-      `--test-concurrency=${String(parseTestConcurrency(process.env["CLOVING_TEST_CONCURRENCY"], availableParallelism()))}`,
+      `--test-concurrency=${String(gateTestConcurrency(process.env, availableParallelism()))}`,
       ...selectTestShard(directory, {
         tests: run.tests,
         durations: run.durations ?? recordedDurations,

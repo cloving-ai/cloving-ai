@@ -15,6 +15,7 @@ export const rescueTemplate = fileURLToPath(
 export const packedPatrolSources = [
   "templates/patrol/patrol.test.ts",
   "templates/patrol/patrol.ts",
+  "templates/patrol/patrol/answer.ts",
   "templates/patrol/patrol/pick.ts",
   "templates/patrol/patrol/rescue.ts",
   "templates/patrol/patrol/scenarios.ts",
@@ -38,7 +39,7 @@ export const rescueSelections = [
   { accept: "turn", merge: "green" },
 ];
 
-function replaced(
+export function replaced(
   files: Record<string, string>,
   edit: {
     readonly path: string;
@@ -51,7 +52,7 @@ function replaced(
   files[prefix + edit.path] = source.replace(edit.from, edit.to);
 }
 
-function selected(
+export function selected(
   files: Record<string, string>,
   edit: { readonly path: string; readonly selection: unknown },
 ): void {
