@@ -11,6 +11,7 @@ import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { mergeStep } from "./github-merge-queue.ts";
 import { commentIssue } from "./github-issue-comment.ts";
+import { listIssues } from "./github-issue-list.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
 import {
   captureDraft,
@@ -64,7 +65,9 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "base-moved",
   "head-not-updated",
   "uncommitted-change",
+  "invalid-github-input",
   "invalid-payload",
+  "issues-limit",
   "lessons-not-a-file",
   "merged-other-commit",
   "no-change",
@@ -369,6 +372,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["label", label],
   ["create-issue", createIssue],
   ["comment-issue", commentIssue],
+  ["issues", listIssues],
   ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],

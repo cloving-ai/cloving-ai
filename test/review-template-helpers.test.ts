@@ -234,12 +234,22 @@ await test("CLV-200 evidence-only links survive posting, approval and the child 
 
 await test("CLV-200 blank and whitespace improvement loops prevent proposals and decisions", async () => {
   const draft = { ...report, proposals: [proposal] };
-  for (const loop of ["", " \t\n", " merge ", null, undefined]) {
+  for (const loop of [
+    "",
+    "Loop: \t",
+    "Loop:  merge \n\nSame loop.",
+    "No loop line.\nLoop: merge",
+    null,
+    undefined,
+  ]) {
     using bridge = fakeStepBridge({
       effects: {
         ...effects(),
-        "command run:improvements": [
-          completed([{ number: 8, ...(loop === undefined ? {} : { loop }) }]),
+        "github issues": [
+          completed([]),
+          completed([
+            { number: 8, ...(loop === undefined ? {} : { body: loop }) },
+          ]),
         ],
         "claude run-turn": [
           completed({ summary: JSON.stringify(draft) }),

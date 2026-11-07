@@ -67,6 +67,7 @@ async function reviewDeclaration(
   );
   assert.ok(isCandidateDeclaration(declaration));
   const github = [
+    "issues",
     ...(selected.post === "privacy" ? ["create-issue"] : []),
     ...(selected.post === "privacy" || selected.next === "idea"
       ? ["label"]

@@ -9,10 +9,10 @@ the two options, apply their import and declaration edits, update `selection` in
 The default schedule runs every 86400 seconds with `{}` input. The scheduler
 skips a slot while the review runs, including its decision and child-run waits.
 Use the scheduled copy as the single daily reviewer; avoid starting parallel
-manual copies. A failed command or invalid JSON blocks the run before any turn,
-report or issue. Unavailable metrics stay unavailable, never zero.
+manual copies. A failed command, a failed issue read or invalid JSON blocks the run
+before any turn, report or issue. Unavailable metrics stay unavailable, never zero.
 
-Set `CLOVING_COMMANDS` to JSON argv arrays for these three read-only commands:
+Set `CLOVING_COMMANDS` to a JSON argv array for the read-only `report` command:
 
 ```json
 {
@@ -22,35 +22,32 @@ Set `CLOVING_COMMANDS` to JSON argv arrays for these three read-only commands:
     "--since",
     "24",
     "--json"
-  ],
-  "reviews": [
-    "<absolute-gh-executable>",
-    "issue",
-    "list",
-    "--state",
-    "all",
-    "--label",
-    "cloving: review",
-    "--limit",
-    "7",
-    "--json",
-    "number,url,body,createdAt"
-  ],
-  "improvements": ["<absolute-improvements-wrapper>"]
+  ]
 }
 ```
 
-Replace the executable placeholders with absolute paths (`command -v cloving`,
-`command -v gh`, and your wrapper's absolute path). Bare executable names are
-refused by command configuration.
+Replace the executable placeholder with the absolute path from `command -v cloving`.
+Bare executable names are refused by command configuration.
 
-`report` runs `cloving report --since 24 --json`. `reviews` supplies the last seven
-review issues as an array, newest first. `improvements` must read all open issues
-with `cloving: improvement` and return an array with `number`, `url`, `body` and
-the stable `loop` identifier for each issue. Use a local read-only wrapper to
-extract that identifier from its body; include the metric, before measurement,
-change date, check date and after evidence in the body. Missing loop identifiers
-prevent further proposals until clarified. Never truncate the open-issue list.
+`report` runs `cloving report --since 24 --json`. A command gets no GitHub login,
+so the review reads the issues through the daemon with the GitHub method `issues`.
+`github issues` with `{"labels": ["cloving: review"], "state": "all", "limit": 7}`
+gives the last seven review issues, newest first. `github issues` with
+`{"labels": ["cloving: improvement"], "state": "open", "limit": 100}` gives the open
+improvement issues. Each issue has `number`, `url`, `title`, `body`, `createdAt` and
+`labels`. The lists have no pull requests. The review blocks with
+`too-many-improvements` when 100 or more improvement issues are open, because the
+list can then be incomplete.
+
+The review reads the stable loop identifier of an improvement from the first body
+line of the form `Loop: <loop>`. The proposal text that `idea-to-issue` gets starts
+with that line. Keep it in the ticket, and include the metric, before measurement,
+change date, check date and after evidence in the body. An improvement without a
+loop line prevents further proposals until clarified.
+
+A copy from an earlier version declares the commands `reviews` and `improvements`
+and keeps that behavior. A `gh` command has no GitHub login, so `cloving doctor`
+warns with `command-gh-no-login`. Copy the template again to use `github issues`.
 
 Before enabling the schedule, add a turn profile for this workflow with
 `maxBudgetUsd` and read-only `allowedTools`. Configure a
@@ -67,10 +64,11 @@ reason. Oversized or incomplete JSON blocks the run before posting.
 
 After the turns, including a failed turn or invalid report, `github discard`
 removes this run's temporary worktree and branch before posting or waiting for a
-decision. Failed cleanup blocks the run. Retain `github` in capabilities and
+decision. Failed cleanup blocks the run. Retain `github` in capabilities, and `issues` and
 `discard` in methods for all options, including `post.result` with `next.nothing`.
 
-Analyze and critique use the same nine rules and all three command outputs.
+Analyze and critique use the same nine rules and all three facts: the `report` output
+and the two issue lists.
 Critique is a separate turn. It removes unsupported claims, lists removals,
 compares every open improvement before and after its change, and gives keep,
 reverse or continue at the check date. The workflow also removes proposals
