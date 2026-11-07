@@ -7,6 +7,7 @@ export const selection = {
   merge: "green",
   partial: "queue",
   recovery: "person",
+  lessons: "file",
 };
 export const input = {
   cycleId: "run-1",
@@ -40,7 +41,7 @@ export function completed(
 
 export function effects() {
   return {
-    "github prepare": [completed({})],
+    "github prepare": [completed({ lessons: { text: "", bytes: 0 } })],
     "github label": [completed({}), completed({})],
     "claude run-turn": [
       completed({ summary: "Implemented.\nTicket status: complete" }),
