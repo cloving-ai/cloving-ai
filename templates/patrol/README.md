@@ -86,7 +86,7 @@ are true:
 The patrol hands off each candidate to `answer-review` with the input
 `pullRequest`, with no decision. One pass hands off at most four answers. A
 failed read skips the pull request. The GitHub method `record-answered` keeps the
-last comment of each thread that a run took. This record stops a second run on
+last comment of each open thread that a run took. This record stops a second run on
 the same comments, also when the last run left a thread without a reply. A thread
 that a run did not take stays a reason for the next run.
 

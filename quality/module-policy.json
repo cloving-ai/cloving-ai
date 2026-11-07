@@ -400,6 +400,7 @@
     "src/daemon/github-pull-tree.ts": "daemon",
     "src/daemon/github-retry.ts": "daemon",
     "src/daemon/github-review-threads.ts": "daemon",
+    "src/daemon/github-thread-pages.ts": "daemon",
     "src/daemon/github-ticket-status.ts": "daemon",
     "src/daemon/github-worker.ts": "daemon",
     "src/daemon/handoff-worker.ts": "daemon",

@@ -2,16 +2,18 @@ import { basename, dirname, join } from "node:path";
 import { repositoryName } from "./github-issue-methods.ts";
 import { issuePrivacy } from "./github-issue-privacy.ts";
 import { field, text, type Operation } from "./github-operation.ts";
+import {
+  commentOf,
+  graphql,
+  nodesOf,
+  openThreads,
+  pullPart,
+  stringOf,
+  type OpenThread,
+  type ReviewComment,
+} from "./github-thread-pages.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 
-const commentFields =
-  "id body createdAt authorAssociation author { login __typename }";
-const threadFields = `id isResolved isOutdated path line root: comments(first: 1) { nodes { ${commentFields} } } recent: comments(last: 10) { nodes { ${commentFields} } }`;
-const threadPage = `reviewThreads(first: 50, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { ${threadFields} } }`;
-const pullVariables =
-  "$owner: String!, $repo: String!, $number: Int!, $cursor: String";
-const threadsQuery = `query(${pullVariables}) { viewer { login } repository(owner: $owner, name: $repo) { pullRequest(number: $number) { state commits(last: 1) { nodes { commit { oid committedDate } } } ${threadPage} comments(last: 100) { nodes { ${commentFields} } } } } }`;
-const threadPageQuery = `query(${pullVariables}) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { ${threadPage} } } }`;
 const repliesQuery =
   "query($thread: ID!) { viewer { login } node(id: $thread) { ... on PullRequestReviewThread { comments(last: 50) { nodes { id body author { login } } } } } }";
 const replyMutation =
@@ -20,30 +22,14 @@ const resolveMutation =
   "mutation($thread: ID!) { resolveReviewThread(input: { threadId: $thread }) { thread { id isResolved } } }";
 
 const nodeId = /^[A-Za-z0-9_=-]{1,128}$/;
-const trustedAssociations: ReadonlySet<string> = new Set([
-  "OWNER",
-  "MEMBER",
-  "COLLABORATOR",
-]);
 
 export const threadLimits = {
-  bodyCharacters: 3_000,
   threadComments: 6,
-  threadPages: 20,
   threadsBytes: 120_000,
   commentsBytes: 30_000,
   replyBytes: 65_536,
   recordedComments: 100,
-  answeredComments: 500,
 };
-
-export interface ReviewComment {
-  readonly id: string;
-  readonly author: string;
-  readonly bot: boolean;
-  readonly body: string;
-  readonly createdAt: string;
-}
 
 export interface ReviewThread {
   readonly id: string;
@@ -60,16 +46,6 @@ interface ThreadContext {
   readonly answered: ReadonlySet<string>;
 }
 
-function nodesOf(value: unknown): readonly unknown[] {
-  const nodes = field(value, "nodes");
-  return Array.isArray(nodes) ? nodes.map((node: unknown) => node) : [];
-}
-
-function stringOf(value: unknown): string {
-  if (typeof value !== "string") throw new Error("github-call-failed");
-  return value;
-}
-
 function numberOf(operation: Operation): number {
   const value = operation.payload["number"];
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1)
@@ -83,36 +59,6 @@ function nodeText(operation: Operation, name: string): string {
   return value;
 }
 
-function graphql(query: string, variables: readonly string[]): string[] {
-  return [
-    "api",
-    "graphql",
-    "-f",
-    `query=${query}`,
-    ...variables.flatMap((variable) => ["-f", variable]),
-  ];
-}
-
-function commentOf(node: unknown, viewer: string): ReviewComment[] {
-  const author = field(node, "author");
-  const login = field(author, "login");
-  const bot = field(author, "__typename") === "Bot";
-  const trusted = trustedAssociations.has(
-    String(field(node, "authorAssociation")),
-  );
-  if (typeof login !== "string") return [];
-  if (!bot && !trusted && login !== viewer) return [];
-  return [
-    {
-      id: stringOf(field(node, "id")),
-      author: login,
-      bot,
-      body: String(field(node, "body")).slice(0, threadLimits.bodyCharacters),
-      createdAt: stringOf(field(node, "createdAt")),
-    },
-  ];
-}
-
 function kept(comments: readonly ReviewComment[]): readonly ReviewComment[] {
   if (comments.length <= threadLimits.threadComments) return comments;
   return comments
@@ -120,20 +66,10 @@ function kept(comments: readonly ReviewComment[]): readonly ReviewComment[] {
     .concat(comments.slice(1 - threadLimits.threadComments));
 }
 
-function threadNodes(node: unknown): readonly unknown[] {
-  const recent = nodesOf(field(node, "recent"));
-  const ids = new Set(recent.map((item) => field(item, "id")));
-  return nodesOf(field(node, "root"))
-    .filter((item) => !ids.has(field(item, "id")))
-    .concat(recent);
-}
-
-function threadOf(node: unknown, context: ThreadContext): ReviewThread[] {
-  if (field(node, "isResolved") !== false) return [];
-  const { viewer } = context;
-  const comments = threadNodes(node).flatMap((item) => commentOf(item, viewer));
+function threadOf(thread: OpenThread, context: ThreadContext): ReviewThread[] {
+  const { node, comments } = thread;
   const last = comments.at(-1);
-  if (last === undefined || last.author === viewer) return [];
+  if (last === undefined || last.author === context.viewer) return [];
   const line = field(node, "line");
   const root = nodesOf(field(node, "root"))[0];
   return [
@@ -184,59 +120,6 @@ function answeredRecord(
   };
 }
 
-async function pullPage(
-  operation: Operation,
-  page: {
-    readonly number: number;
-    readonly query: string;
-    readonly cursor: string | null;
-  },
-): Promise<unknown> {
-  const cursor = page.cursor === null ? [] : ["-f", `cursor=${page.cursor}`];
-  const reply: unknown = JSON.parse(
-    await operation.calls.gh([
-      "api",
-      "graphql",
-      "-f",
-      `query=${page.query}`,
-      "-F",
-      "owner={owner}",
-      "-F",
-      "repo={repo}",
-      "-F",
-      `number=${String(page.number)}`,
-      ...cursor,
-    ]),
-  );
-  return field(reply, "data");
-}
-
-function pullOf(data: unknown): unknown {
-  return field(field(data, "repository"), "pullRequest");
-}
-
-async function reviewThreadNodes(
-  operation: Operation,
-  first: { readonly number: number; readonly pull: unknown },
-): Promise<readonly unknown[]> {
-  const nodes = [...nodesOf(field(first.pull, "reviewThreads"))];
-  let info = field(field(first.pull, "reviewThreads"), "pageInfo");
-  for (let page = 1; field(info, "hasNextPage") === true; page += 1) {
-    if (page >= threadLimits.threadPages)
-      throw new Error("review-threads-limit");
-    const pull = pullOf(
-      await pullPage(operation, {
-        number: first.number,
-        query: threadPageQuery,
-        cursor: stringOf(field(info, "endCursor")),
-      }),
-    );
-    nodes.push(...nodesOf(field(pull, "reviewThreads")));
-    info = field(field(pull, "reviewThreads"), "pageInfo");
-  }
-  return nodes;
-}
-
 async function answeredComments(
   operation: Operation,
   number: number,
@@ -252,13 +135,8 @@ async function answeredComments(
 
 export async function reviewThreads(operation: Operation): Promise<unknown> {
   const number = numberOf(operation);
-  const data = await pullPage(operation, {
-    number,
-    query: threadsQuery,
-    cursor: null,
-  });
-  const viewer = stringOf(field(field(data, "viewer"), "login"));
-  const pull = pullOf(data);
+  const part = await pullPart(operation, number);
+  const { viewer, pull } = part;
   if (field(pull, "state") !== "OPEN") throw new Error("pull-request-not-open");
   const commit = field(nodesOf(field(pull, "commits"))[0], "commit");
   const since = Date.parse(stringOf(field(commit, "committedDate")));
@@ -266,8 +144,8 @@ export async function reviewThreads(operation: Operation): Promise<unknown> {
     viewer,
     answered: new Set(await answeredComments(operation, number)),
   };
-  const threads = (await reviewThreadNodes(operation, { number, pull }))
-    .flatMap((node) => threadOf(node, context))
+  const threads = (await openThreads(operation, part))
+    .flatMap((thread) => threadOf(thread, context))
     .sort((left, right) => Number(left.answered) - Number(right.answered));
   const comments = nodesOf(field(pull, "comments"))
     .flatMap((node) => commentOf(node, viewer))
@@ -308,13 +186,27 @@ function commentIds(operation: Operation): readonly string[] {
   });
 }
 
+async function openComments(
+  operation: Operation,
+  number: number,
+): Promise<ReadonlySet<string>> {
+  const part = await pullPart(operation, number);
+  const context = { viewer: part.viewer, answered: new Set<string>() };
+  return new Set(
+    (await openThreads(operation, part))
+      .flatMap((thread) => threadOf(thread, context))
+      .flatMap((thread) => thread.comments.slice(-1).map((item) => item.id)),
+  );
+}
+
 export async function recordAnswered(operation: Operation): Promise<unknown> {
   const number = numberOf(operation);
   const comments = commentIds(operation);
   const record = answeredRecord(operation, number);
+  const open = await openComments(operation, number);
   const known = await answeredComments(operation, number);
-  const answered = [...new Set(known.concat(comments))].slice(
-    -threadLimits.answeredComments,
+  const answered = [...new Set(known.concat(comments))].filter((id) =>
+    open.has(id),
   );
   await writeRecord(record.folder, {
     name: record.name,

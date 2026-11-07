@@ -18,20 +18,24 @@ to `answer-review` with this input. A person can also start a run with this inpu
    owns.
 2. The GitHub method `review-threads` reads all pages of the review threads
    through the GraphQL field `reviewThreads`. For each thread it reads the first
-   comment and the last 10 comments. It returns the threads that are not resolved
-   and whose last comment is not by the GitHub account of the operator. Each
-   thread has its path, its line, its outdated flag, a bot flag, an `answered`
-   flag and its comments with the author and the time. The author of the first
-   comment sets the bot flag. The `answered` flag is `true` when an earlier run
-   took the last comment of the thread. The threads with `answered` `false` come
-   first. The method also returns the top-level comments of people since the last
-   commit. When no thread is open, the run ends with no turn.
+   comment and the last 10 comments. When the last 10 comments have no comment
+   of a bot, the operator or a member, it reads earlier pages of 50 comments
+   until it finds one. After 10 such pages it fails with `review-threads-limit`.
+   It returns the threads that are not resolved and whose last comment is not by
+   the GitHub account of the operator. Each thread has its path, its line, its
+   outdated flag, a bot flag, an `answered` flag and its comments with the author
+   and the time. The author of the first comment sets the bot flag. The
+   `answered` flag is `true` when an earlier run took the last comment of the
+   thread. The threads with `answered` `false` come first. The method also
+   returns the top-level comments of people since the last commit. When no
+   thread is open, the run ends with no turn.
 3. The run takes at most ten threads with `answered` `false`. When all open
    threads have `answered` `true`, the run takes them again, so that a person can
    start a new run after a blocked run. The GitHub method `record-answered` keeps
-   the last comment of each thread that the run takes. The patrol does not hand
-   off the same comments again. A thread that the run does not take stays open for
-   the next run.
+   the last comment of each thread that the run takes. The record keeps only the
+   last comments of open threads. It has no size limit, so it does not lose an
+   open thread. The patrol does not hand off the same comments again. A thread
+   that the run does not take stays open for the next run.
 4. One turn gets the pull request, the command for its diff, and the threads that
    the run takes, with the labels `T1` to `T10`. For each thread the turn fixes
    the code with a failing test first, or it explains why no change is needed. The
