@@ -17,7 +17,7 @@ import {
   type CheckedResolution,
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
-import { activeWorkflow } from "./active-tickets.ts";
+import { activeWorkflow, currentLanes } from "./active-tickets.ts";
 import { spendLimitRefusal } from "./queue-spend.ts";
 import {
   committed,
@@ -105,7 +105,8 @@ type Usable =
   | { readonly kind: "usable"; readonly workflow: Registered }
   | { readonly kind: "unusable"; readonly reply: Reply };
 
-function usable(workflow: Registered | undefined, workflowId: string): Usable {
+function usable(context: ServiceContext, workflowId: string): Usable {
+  const workflow = currentLanes(context, context.registry.byId(workflowId));
   if (workflow === undefined)
     return {
       kind: "unusable",
@@ -192,7 +193,10 @@ async function admit(
     return unresolved(context, { kind: resolution, commandId });
   if (resolution.kind === "rejected")
     return failed(resolution.code, { commandId, detail: resolution.detail });
-  const limited = capacityRefusal(workflow, admission);
+  const limited = capacityRefusal(
+    currentLanes(context, workflow) ?? workflow,
+    admission,
+  );
   if (limited !== undefined) return limited;
   const { input } = resolution;
   if (Buffer.byteLength(input) > context.documentBytes)
@@ -304,7 +308,7 @@ async function submitted(
       detail:
         "A hand-off chain permits at most the chain limit of its first run and requires a recorded parent.",
     });
-  const found = usable(context.registry.byId(workflowId), workflowId);
+  const found = usable(context, workflowId);
   if (found.kind === "unusable") return found.reply;
   const contract = found.workflow.submission;
   const check = checkSubmission(

@@ -13,7 +13,7 @@ list and get show the effective source and hidden file values. Unconfigured valu
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
 Private files, backups and temporary files have mode 0600.
-cloving reload applies changes of profiles, fallbackModels, tokenPrices and workflows.folder. Other changes require a service restart.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore and queue.maxMemoryPressure. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -148,27 +148,32 @@ Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
 A change of the queue workflow or of a schedule needs a restart.
-It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices and workflows.folder.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore and queue.maxMemoryPressure.
 New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
 --at gap waits for the next gap: no run that has not ended, no open turn and no queue submission. It is the default.
+--within limits the wait for a gap, for example 30m or 6h. The default is 12h. At the deadline, the restart is cancelled.
 While the restart waits, the queue admits no new run. cloving status shows the pending restart.
 --at now stops at once. Claude and Codex turns resume after the start.
-The command waits for the new service and prints the old commit, the new commit and the start time.
+A stale or missing dist builds first. A failed build starts nothing.
+The restart stops the watch server and the relay first. A child that still runs after 60 seconds refuses the restart.
+The start program replaces itself in the same terminal and starts the service again.
+The command waits up to 180 seconds for the new service. It prints the commits, the lanes and each workflow.
+A refused queue workflow or scheduled workflow gives exit status 1.
 Control-C stops the wait and keeps the restart pending. --cancel cancels a pending restart.
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
---update updates the product checkout before the stop, at the gap or at once.
-The update fetches the default branch and needs a fast-forward and a clean tree.
+--update updates the product checkout after the stop. Local changes skip the update.
+The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
-When a step fails, the command prints the step and its output. The service keeps running on the old commit.
+When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
 `,
   watch: `Usage: cloving watch [--port <n>]
 
@@ -197,7 +202,10 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
   CLOVING_READY_COMMAND            A JSON list of a command and its arguments. Requires CLOVING_QUEUE_SECONDS. When the queue starts, and one queue interval after each run ends, the command runs with no added argument and prints a JSON list of the ready tickets. Queue checks do not wait for it. Each item is an object with an id and a readyAt UTC time, such as 2026-11-03T07:30:00Z. The watch page shows the count of ready tickets that are not in work and do not wait for a dependency, and the oldest wait. The setting has no default.
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND when that workflow exists. Unset or no queue workflow means no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
-  CLOVING_QUEUE_LANES              A whole number from 1 to 4; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open.
+  CLOVING_QUEUE_LANES              A whole number from 1 to 16; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open. cloving reload applies a change; fewer lanes stop new starts and do not stop active runs.
+  CLOVING_QUEUE_WORKING_LANES      A whole number from 1 to 16 and not more than CLOVING_QUEUE_LANES. It limits the queue runs in which a turn or a command runs; a run that waits for CI, a review or a person holds a lane but not a working lane. The default is CLOVING_QUEUE_LANES. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
+  CLOVING_QUEUE_MAX_LOAD_PER_CORE  A number from 0.1 to 4; the default is 0.7. The queue starts a run only when the 1-minute load average divided by the available cores is below this limit. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
+  CLOVING_QUEUE_MAX_MEMORY_PRESSURE normal or warn; the default is normal. The queue starts a run only when the memory pressure is at or below this level: on macOS from sysctl kern.memorystatus_vm_pressure_level, on Linux from MemAvailable of /proc/meminfo (warn below 20 percent, critical below 10 percent). Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
   CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS, unless CLOVING_SPEND_SCOPE is all. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.
   CLOVING_SPEND_SCOPE              queue or all; the default is queue. The private or project setting spend.scope sets it. With all, the daily spend limit counts the turns of every workflow and holds the admission of every workflow, and the limit does not need CLOVING_QUEUE_SECONDS.
   CLOVING_LIMIT_EFFECTS            A whole number from 1 to 1000; the default is 100. The private or project setting limits.effects sets it. A declared workflow with an effectLimit above it is refused with effect-limit-above-maximum.

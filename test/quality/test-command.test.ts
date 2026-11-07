@@ -7,6 +7,7 @@ import {
   coverageCommand,
   parseCheckTimeFactor,
   parseTestConcurrency,
+  gateTestConcurrency,
   testCommand,
   testConcurrency,
 } from "../../quality/test-execution.ts";
@@ -223,4 +224,22 @@ await test("CLV-266 rejects malformed and empty shards before execution", () => 
         }),
       /CLOVING_TEST_SHARD|empty test shard/,
     );
+});
+
+await test("CLV-309 the gate takes CLOVING_CPU_SHARE as the default test worker count", () => {
+  assert.equal(gateTestConcurrency({ CLOVING_CPU_SHARE: "4" }, 24), 4);
+  assert.equal(gateTestConcurrency({ CLOVING_CPU_SHARE: "1" }, 24), 1);
+  assert.equal(gateTestConcurrency({ CLOVING_CPU_SHARE: "40" }, 24), 16);
+  assert.equal(
+    gateTestConcurrency(
+      { CLOVING_CPU_SHARE: "4", CLOVING_TEST_CONCURRENCY: "2" },
+      24,
+    ),
+    2,
+  );
+  assert.equal(gateTestConcurrency({}, 3), testConcurrency(3));
+  for (const value of ["0", "", "2.5", "x"])
+    assert.throws(() => gateTestConcurrency({ CLOVING_CPU_SHARE: value }, 3), {
+      message: "CLOVING_CPU_SHARE must be a whole number of at least 1",
+    });
 });

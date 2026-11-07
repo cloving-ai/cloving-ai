@@ -47,8 +47,8 @@ await test("CLV-228 a queue interval without a declared queue workflow starts no
     );
   }));
 
-await test("CLV-184 queue lanes require a queue and a whole number from one to four", async () => {
-  for (const value of ["0", "5", "2.5", "", "NaN", "1e0", "-1"])
+await test("CLV-309 queue lanes require a queue and a whole number from one to sixteen", async () => {
+  for (const value of ["0", "17", "2.5", "", "NaN", "1e0", "-1"])
     assert.match(
       await refused({ CLOVING_QUEUE_LANES: value }),
       /invalid-queue-lanes/,
@@ -59,6 +59,10 @@ await test("CLV-184 queue lanes require a queue and a whole number from one to f
       CLOVING_QUEUE_SECONDS: undefined,
     }),
     /queue-lanes-needs-queue/,
+  );
+  assert.match(
+    await refused({ CLOVING_QUEUE_MAX_LOAD_PER_CORE: "5" }),
+    /The daemon did not start: invalid-queue-max-load-per-core/,
   );
 });
 

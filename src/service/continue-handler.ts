@@ -16,7 +16,7 @@ import {
   result,
   type ServiceContext,
 } from "./replies.ts";
-import { activeWorkflow, laneCount } from "./active-tickets.ts";
+import { activeWorkflow, currentLanes, laneCount } from "./active-tickets.ts";
 import { finishedRefusal } from "./finished-work.ts";
 import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
 import {
@@ -126,7 +126,7 @@ async function lanesRefusal(
   const admission =
     workflowId === undefined
       ? undefined
-      : context.registry.byId(workflowId)?.admission;
+      : currentLanes(context, context.registry.byId(workflowId))?.admission;
   if (workflowId === undefined || admission === undefined) return undefined;
   const lanes = laneCount(admission);
   const busy = (await activeWorkflow(context, workflowId)).length;

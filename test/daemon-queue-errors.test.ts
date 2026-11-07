@@ -147,6 +147,21 @@ await withHarness(async (harness) => {
   }
 });
 
+await test("CLV-309 an invalid command journal stops the queue before it writes a hold record", () => {
+  const stderr = observed(`
+await withHarness(async (harness) => {
+  await writeFile(join(harness.stateDirectory, "queue-commands.json"), "null");
+  const queue = issueQueue({ workflowId: "develop", directory: harness.stateDirectory,
+    runtimeDirectory: harness.runtimeDirectory, intervalMilliseconds: 5 });
+  await queue.stop();
+  await delay(100);
+  const holds = join(harness.stateDirectory, "queue-holds.json");
+  assert.equal(await readFile(holds).then(() => true, () => false), false);
+});
+`);
+  assert.equal(stderr, 'Queue stopped: "invalid-queue-commands"\n');
+});
+
 await test("CLV-084 unreadable command journals stop polling with one diagnostic", () => {
   const stderr = observed(`
 await withHarness(async (harness) => {

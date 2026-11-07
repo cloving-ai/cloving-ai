@@ -1,0 +1,25 @@
+{
+  "workflow": {
+    "workflowId": "answer-review",
+    "effectLimit": 26,
+    "capabilities": ["claude", "github"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "pullRequest": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "github": [
+      "prepare",
+      "review-threads",
+      "record-answered",
+      "open-pr",
+      "reply-thread",
+      "resolve-thread",
+      "wait-review"
+    ]
+  }
+}

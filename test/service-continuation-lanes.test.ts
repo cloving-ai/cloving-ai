@@ -65,6 +65,28 @@ async function stoppedRun(
   return runId;
 }
 
+await test("CLV-321 a continuation counts the queue lanes of the last reload", () =>
+  withQueueSpend(
+    async (scene) => {
+      const stopped = await stoppedRun(scene, "reload-stopped");
+      for (const name of ["reload-first", "reload-second"])
+        await scene.begin(name);
+      const refused = await call(scene.harness, {
+        operation: "continue-run",
+        parameters: {
+          runId: stopped,
+          commandId: "reload-continue",
+          from: "work/turn/1",
+        },
+      });
+      assert.deepEqual(
+        [refused["code"], refused["busy"], refused["lanes"]],
+        ["continuation-lanes-full", 2, 2],
+      );
+    },
+    { limitUsd: 1000, lanes: 4, reloadedLanes: 2 },
+  ));
+
 await test("CLV-321 a continuation waits for a queue admission that holds the last free lane", () =>
   withQueueSpend(
     async (scene) => {

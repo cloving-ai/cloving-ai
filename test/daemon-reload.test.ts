@@ -15,7 +15,7 @@ const write = process.stdout.write.bind(process.stdout);
 process.stdout.write = (chunk, ...rest) => { reloadLines.push(String(chunk)); return write(chunk, ...rest); };
 writeFileSync("reload.mjs", 'import { readFileSync } from "node:fs"; const reply = readFileSync(process.argv[2], "utf8"); process.stdout.write(reply); if (reply.includes("error")) process.exit(1);');
 const reloadCommand = [process.execPath, directory + "/reload.mjs", directory + "/reload.json"];
-const prepared = (fields) => writeFileSync("reload.json", JSON.stringify({ workflows: [], repository: directory, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {} }, settingDigests: {}, ...fields }));
+const prepared = (fields) => writeFileSync("reload.json", JSON.stringify({ workflows: [], repository: directory, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {} }, settingDigests: {}, queueLimits: { lanes: 1, workingLanes: 1 }, ...fields }));
 const answer = (runId, commandId) => asked("decision", { command: "answer", reference: runId + "/bundle-question", text: "Continue.", subjectDigest: digestOf("Continue this bundle?"), expectedRevision: 1, generation: 1, commandId });
 `;
 
@@ -166,7 +166,7 @@ await test("CLV-253 a reload refuses a settings refusal, invalid turn settings a
   withConsumer(workflow, async (consumer) => {
     const result =
       await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
-const daemon = await launched({ bundleDigest, queueMilliseconds: undefined, settingDigests: { profiles: "a", "queue.lanes": "b", "watch.port": "c" }, reloadCommand, loadBundle: loadWorkflowBundle });
+const daemon = await launched({ bundleDigest, queueMilliseconds: undefined, settingDigests: { profiles: "a", "merge.mode": "b", "watch.port": "c" }, reloadCommand, loadBundle: loadWorkflowBundle });
 try {
   const turns = (fields) => ({ turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {}, ...fields } });
   const refusals = [];
@@ -177,6 +177,7 @@ try {
     turns({ profiles: "none" }),
     { settingDigests: { profiles: 1 } },
     { settingDigests: "none" },
+    { queueLimits: null },
     turns({ profiles: { review: { harness: "unknown" } } }),
     turns({ profiles: { review: { harness: "codex" } } }),
   ]) {
@@ -185,12 +186,12 @@ try {
     refusals.push([reply.code, reply.detail]);
   }
   const printed = ["reload-failed", "The reload command printed no workflow bundle."];
-  assert.deepEqual(refusals, [["invalid-config-json", "invalid-config-json: private"], printed, printed, printed, printed, printed, ["harness-no-worker", "harness-no-worker: unknown"], ["harness-no-worker", "harness-no-worker: codex"]]);
-  prepared({ bundleDigest, ...turns({ profiles: { review: { harness: "claude", model: "new" } } }), settingDigests: { profiles: "d", "queue.lanes": "e", "watch.port": "c" } });
+  assert.deepEqual(refusals, [["invalid-config-json", "invalid-config-json: private"], printed, printed, printed, printed, printed, printed, ["harness-no-worker", "harness-no-worker: unknown"], ["harness-no-worker", "harness-no-worker: codex"]]);
+  prepared({ bundleDigest, ...turns({ profiles: { review: { harness: "claude", model: "new" } } }), settingDigests: { profiles: "d", "merge.mode": "e", "watch.port": "c" } });
   const first = await asked("reload");
-  assert.deepEqual([first.status, first.reloadedFields, first.restartFields], ["unchanged", ["profiles"], ["queue.lanes"]]);
+  assert.deepEqual([first.status, first.reloadedFields, first.restartFields], ["unchanged", ["profiles"], ["merge.mode"]]);
   const second = await asked("reload");
-  assert.deepEqual([second.status, second.reloadedFields, second.restartFields], ["unchanged", [], ["queue.lanes"]]);
+  assert.deepEqual([second.status, second.reloadedFields, second.restartFields], ["unchanged", [], ["merge.mode"]]);
 } finally { await daemon.close(); }
 process.exit(0);
 `);

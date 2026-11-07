@@ -27,13 +27,21 @@ await test("CLV-306 a run of a workflow outside the queue that has not ended is 
         "": {
           runs: [
             { workflowId: "develop", state: "completed" },
-            { workflowId: "review-corpus", state: "running" },
+            {
+              runId: "run-active",
+              workflowId: "review-corpus",
+              state: "running",
+            },
           ],
           next: "run-b",
         },
         "run-b": {
           runs: [
-            { workflowId: "develop-prd", state: "waiting" },
+            {
+              runId: "run-waiting",
+              workflowId: "develop-prd",
+              state: "waiting",
+            },
             { workflowId: "develop", state: "failed" },
             { workflowId: "develop", state: "cancelled" },
           ],
@@ -45,6 +53,7 @@ await test("CLV-306 a run of a workflow outside the queue that has not ended is 
   );
   assert.deepEqual(work, {
     activeRuns: 2,
+    runIds: ["run-active", "run-waiting"],
     openTurn: false,
     pendingSubmission: false,
   });

@@ -331,7 +331,7 @@ await test("CLV-266 coverage joins all nine shard artifacts before the required 
   const coverage = job(workflow, "coverage");
   assert.deepEqual(coverage.needs, ["quality_macos", "quality_linux_node"]);
   assert.equal(coverage["runs-on"], "ubuntu-24.04");
-  assert.equal(coverage["timeout-minutes"], 10);
+  assert.equal(coverage["timeout-minutes"], 20);
   assert.equal(coverage.if, "${{ github.event_name == 'pull_request' }}");
   const download = coverage.steps.find((step) =>
     step.uses?.startsWith("actions/download-artifact@"),

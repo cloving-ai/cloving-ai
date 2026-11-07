@@ -10,6 +10,7 @@ import {
 import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { mergeStep } from "./github-merge-queue.ts";
+import { commentIssue } from "./github-issue-comment.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
 import {
   captureDraft,
@@ -32,6 +33,12 @@ import {
 } from "./github-operation.ts";
 export type { GithubTiming, MethodSettings } from "./github-operation.ts";
 import { prepare } from "./github-pull-tree.ts";
+import {
+  recordAnswered,
+  replyThread,
+  resolveThread,
+  reviewThreads,
+} from "./github-review-threads.ts";
 
 const triggerText = "@greptileai";
 const maximumReviewRequests = 3;
@@ -63,6 +70,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "no-change",
   "private-path-in-change",
   "review-not-received",
+  "review-threads-limit",
   "pull-request-claimed",
   "pull-request-diverged",
   "pull-request-not-cloving",
@@ -360,12 +368,17 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["partial-issue", partialIssue],
   ["label", label],
   ["create-issue", createIssue],
+  ["comment-issue", commentIssue],
   ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],
   ["close-pr", closePull],
   ["attach-asset", attachAsset],
   ["wait-review", waitReview],
+  ["review-threads", reviewThreads],
+  ["record-answered", recordAnswered],
+  ["reply-thread", replyThread],
+  ["resolve-thread", resolveThread],
   [
     "merge",
     (operation) =>

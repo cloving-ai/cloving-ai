@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "triage-issue",
+  "summary": "Every 30 minutes, give each new issue from another person a first verdict: a duplicate, a bug, a feature or more information needed, with the reason and an estimated size.",
+  "points": [
+    {
+      "id": "post",
+      "question": "What happens before the triage reply is posted?",
+      "options": [
+        {
+          "id": "person",
+          "label": "A person approves",
+          "summary": "One approval decision shows the verdict and the reply. Nothing is posted before the approval. A denial adds only cloving: triaged.",
+          "change": "Keep askPerson as decidePost from triage-issue/post.ts in triage-issue.ts. Keep selection.post as person in triage-issue/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        },
+        {
+          "id": "now",
+          "label": "Post at once",
+          "summary": "Post the reply and add the labels without a decision.",
+          "change": "In triage-issue.ts replace askPerson as decidePost with postAtOnce as decidePost in the triage-issue/post.ts import. Set selection.post to now in triage-issue/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        }
+      ]
+    }
+  ]
+}

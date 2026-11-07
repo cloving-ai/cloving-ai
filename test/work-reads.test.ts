@@ -48,6 +48,7 @@ await test("CLV-306 the daemon reads an open turn only from a started turn folde
     await writeFile(join(places.directory, "queue-submission"), "");
     assert.deepEqual(await workInProgress(reads), {
       activeRuns: 0,
+      runIds: [],
       openTurn: true,
       pendingSubmission: true,
     });
