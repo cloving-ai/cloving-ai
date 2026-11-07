@@ -48,6 +48,9 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const template = record(developTemplate);
     const points = template?.["points"];
     assert.ok(Array.isArray(points));
+    const answer = record(
+      JSON.parse(readFileSync("templates/answer-review/template.json", "utf8")),
+    );
     const idea = record(
       JSON.parse(readFileSync("templates/idea-to-issue/template.json", "utf8")),
     );
@@ -61,6 +64,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
       JSON.parse(readFileSync("templates/rescue-pr/template.json", "utf8")),
     );
     assert.deepEqual(JSON.parse(result.stdout), [
+      { name: "answer-review", summary: answer?.["summary"], points: 1 },
       {
         name: "develop",
         summary: template?.["summary"],
@@ -74,7 +78,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^develop: .+ \(8 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
+      /^answer-review: .+ \(1 decision points\)\ndevelop: .+ \(8 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
     );
   }));
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { record } from "../src/protocol.ts";
+import { result } from "../src/service/replies.ts";
 import type {
   RestartCancel,
   RestartMark,
@@ -61,6 +62,7 @@ await test("CLV-306 a restart at the next gap stays pending and the status shows
     assert.deepEqual(status["restart"], {
       at: "gap",
       requestedAt,
+      deadline: requestedAt + 43_200_000,
       commandId: "restart-one",
       resumeQueue: true,
       settings: "files",
@@ -178,6 +180,7 @@ await test("CLV-306 a restart with an update keeps the update in the mark, and t
     const failure = {
       commandId: "restart-update",
       requestedAt: 1,
+      code: "restart-update-failed",
       step: "build",
       output: "error TS2322",
     };
@@ -214,4 +217,54 @@ await test("CLV-306 the service refuses an update when the product is not a git 
     assert.equal(invalid["code"], "invalid-request");
     const status = await call(harness, { operation: "status", parameters: {} });
     assert.equal(Object.hasOwn(status, "restartFailure"), false);
+  }));
+
+await test("CLV-320 a restart keeps a deadline from its within seconds, 12 hours by default, and refuses an invalid within", () =>
+  withHarness(async (harness) => {
+    const port = memoryPort();
+    await harness.start({ restart: port, ...identity });
+    await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-within", within: 1800 },
+    });
+    const given = await port.pending();
+    assert.equal(given?.deadline, (given?.requestedAt ?? 0) + 1_800_000);
+    await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-default" },
+    });
+    const plain = await port.pending();
+    assert.equal(plain?.deadline, (plain?.requestedAt ?? 0) + 43_200_000);
+    for (const within of [0, 1.5, "30m", -5, 2_592_001])
+      assert.equal(
+        (
+          await call(harness, {
+            operation: "restart",
+            parameters: { at: "gap", commandId: "restart-bad", within },
+          })
+        )["code"],
+        "invalid-request",
+        String(within),
+      );
+  }));
+
+await test("CLV-320 the restart reply names the queue workflow and the scheduled workflows of the old daemon", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      restart: memoryPort(),
+      ...identity,
+      schedule: () =>
+        Promise.resolve(
+          result("schedules", {
+            schedules: [{ workflowId: "nightly" }, { workflowId: 7 }],
+          }),
+        ),
+    });
+    const reply = await call(harness, {
+      operation: "restart",
+      parameters: { at: "gap", commandId: "restart-watched" },
+    });
+    const restart = record(reply["restart"]);
+    assert.equal(restart?.["queueWorkflowId"], null);
+    assert.deepEqual(restart["scheduledWorkflowIds"], ["nightly"]);
   }));

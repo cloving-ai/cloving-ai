@@ -71,6 +71,7 @@ await test("CLV-306 cloving restart waits for the new daemon and prints both com
         "Restart pending: 0 runs active",
         `Restarted: commit ${before.commit} -> ${after.commit}`,
         `Started at: ${after.startedAt}`,
+        "Workflow develop: admitted",
         "",
       ].join("\n"),
     );
@@ -112,6 +113,9 @@ await test("CLV-306 cloving restart --json prints the pending reply and then the
       previousCommit: before.commit,
       commit: after.commit,
       startedAt: after.startedAt,
+      lanes: null,
+      workflows: ["develop"],
+      workflowRefusals: [],
     });
     const [first] = running.marks;
     assert.ok(first);
@@ -212,6 +216,7 @@ async function directRestart(
       resumeQueue: false,
       settings: "environment",
       update: false,
+      within: null,
       commandId: null,
       json: false,
     },

@@ -18,5 +18,5 @@ await test("CLV-179 the start guide attributes the schedule setting to the envir
     { CLOVING_SCHEDULES: "{}" },
     { project: undefined, private: undefined },
   );
-  assert.equal(sources["CLOVING_SCHEDULES"], "environment");
+  assert.equal(sources["schedules"], "environment");
 });

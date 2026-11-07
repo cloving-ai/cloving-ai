@@ -1,6 +1,7 @@
 import { record, type Fields } from "../protocol.ts";
 import { show } from "./terminal-text.ts";
 import { listing } from "./run-command-render.ts";
+import { workflowRefusals } from "../workflow-refusals.ts";
 
 export function restartPendingText(restart: Fields): string {
   const count = Number(restart["activeRuns"]);
@@ -61,21 +62,104 @@ function commitOf(fields: Fields): string | null {
   return typeof commit === "string" ? commit : null;
 }
 
-export function restartedLines(
-  before: Fields,
-  after: Fields,
-): readonly string[] {
+interface Restarted {
+  readonly before: Fields;
+  readonly after: Fields;
+  readonly update: Fields | undefined;
+}
+
+function admittedIds(after: Fields): readonly string[] {
+  const workflows = after["workflows"];
+  return Array.isArray(workflows)
+    ? workflows.filter((workflow) => typeof workflow === "string")
+    : [];
+}
+
+function lanesOf(after: Fields): unknown {
+  return record(after["queue"])?.["lanes"];
+}
+
+function lanesLines(after: Fields): readonly string[] {
+  const lanes = lanesOf(after);
+  return lanes === undefined ? [] : [`Lanes: ${show(lanes)}`];
+}
+
+function indented(output: unknown): readonly string[] {
+  return show(output)
+    .split("\n")
+    .map((line) => `    ${line}`);
+}
+
+function updateLines(update: Fields | undefined): readonly string[] {
+  if (update?.["code"] !== "restart-update-skipped") return [];
   return [
-    `Restarted: commit ${show(commitOf(before) ?? "unknown")} -> ${show(commitOf(after) ?? "unknown")}`,
-    `Started at: ${show(after["serviceStartedAt"])}`,
+    "Update skipped: the checkout has local changes.",
+    ...indented(update["output"]),
   ];
 }
 
-export function restartedJson(before: Fields, after: Fields): Fields {
+export function restartedLines(restarted: Restarted): readonly string[] {
+  const { before, after } = restarted;
+  return [
+    `Restarted: commit ${show(commitOf(before) ?? "unknown")} -> ${show(commitOf(after) ?? "unknown")}`,
+    `Started at: ${show(after["serviceStartedAt"])}`,
+    ...lanesLines(after),
+    ...admittedIds(after).map(
+      (workflowId) => `Workflow ${show(workflowId)}: admitted`,
+    ),
+    ...workflowRefusals(after["workflowRefusals"]).map(
+      (refusal) =>
+        `Workflow ${show(refusal.label)}: refused: ${refusal.codes.map(show).join(", ")}`,
+    ),
+    ...updateLines(restarted.update),
+  ];
+}
+
+function watchedWorkflows(
+  before: Fields,
+): readonly (readonly [string, string])[] {
+  const restart = record(before["restart"]) ?? {};
+  const queue = restart["queueWorkflowId"];
+  const scheduled = restart["scheduledWorkflowIds"];
+  return [
+    ...(typeof queue === "string" ? [["queue workflow", queue] as const] : []),
+    ...(Array.isArray(scheduled) ? scheduled : [])
+      .filter((workflowId) => typeof workflowId === "string")
+      .map((workflowId) => ["scheduled workflow", workflowId] as const),
+  ];
+}
+
+function refusalCodes(after: Fields, workflowId: string): readonly string[] {
+  const refusals = workflowRefusals(after["workflowRefusals"]);
+  const own =
+    refusals.find((refusal) => refusal.label === `${workflowId}.ts`) ??
+    refusals.find((refusal) => refusal.label === "workflows/");
+  return own?.codes ?? ["workflow-missing"];
+}
+
+export function refusedWorkflowLines(
+  before: Fields,
+  after: Fields,
+): readonly string[] {
+  const admitted = admittedIds(after);
+  return watchedWorkflows(before)
+    .filter(([, workflowId]) => !admitted.includes(workflowId))
+    .map(
+      ([kind, workflowId]) =>
+        `${kind} ${show(workflowId)}: ${refusalCodes(after, workflowId).map(show).join(", ")}`,
+    );
+}
+
+export function restartedJson(restarted: Restarted): Fields {
+  const { before, after, update } = restarted;
   return {
     kind: "restarted",
     previousCommit: commitOf(before),
     commit: commitOf(after),
     startedAt: after["serviceStartedAt"] ?? null,
+    lanes: lanesOf(after) ?? null,
+    workflows: admittedIds(after),
+    workflowRefusals: workflowRefusals(after["workflowRefusals"]),
+    ...(update === undefined ? {} : { update }),
   };
 }

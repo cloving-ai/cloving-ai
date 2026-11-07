@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { errorText } from "../src/cli/error-render.ts";
 import {
+  refusedWorkflowLines,
   restartedJson,
   restartedLines,
   restartLines,
@@ -27,15 +28,19 @@ await test("CLV-306 the restart text names one run, an unknown commit and a stat
   assert.deepEqual(restartLines({ restart: { state: "started" } }), [
     "Restart: started, cannot cancel",
   ]);
-  assert.deepEqual(restartedLines({}, {}), [
+  const empty = { before: {}, after: {}, update: undefined };
+  assert.deepEqual(restartedLines(empty), [
     "Restarted: commit unknown -> unknown",
     "Started at: undefined",
   ]);
-  assert.deepEqual(restartedJson({}, {}), {
+  assert.deepEqual(restartedJson(empty), {
     kind: "restarted",
     previousCommit: null,
     commit: null,
     startedAt: null,
+    lanes: null,
+    workflows: [],
+    workflowRefusals: [],
   });
 });
 
@@ -68,5 +73,39 @@ await test("CLV-306 the moved error text still lists the candidates", () => {
   assert.equal(
     errorText({ code: "ambiguous", detail: "two", candidates: ["a", "b"] }),
     "ambiguous: two\nCandidates: a, b\n",
+  );
+});
+
+await test("CLV-320 a refused watched workflow takes the codes of its file, else of the folder, else workflow-missing", () => {
+  const before = {
+    restart: {
+      queueWorkflowId: "develop",
+      scheduledWorkflowIds: ["nightly", "weekly"],
+    },
+  };
+  assert.deepEqual(
+    refusedWorkflowLines(before, {
+      workflows: ["weekly"],
+      workflowRefusals: [
+        {
+          scope: "user",
+          label: "workflows/",
+          codes: ["invalid-declaration"],
+        },
+      ],
+    }),
+    [
+      "queue workflow develop: invalid-declaration",
+      "scheduled workflow nightly: invalid-declaration",
+    ],
+  );
+  assert.deepEqual(refusedWorkflowLines(before, {}), [
+    "queue workflow develop: workflow-missing",
+    "scheduled workflow nightly: workflow-missing",
+    "scheduled workflow weekly: workflow-missing",
+  ]);
+  assert.deepEqual(
+    refusedWorkflowLines({ restart: { queueWorkflowId: null } }, {}),
+    [],
   );
 });

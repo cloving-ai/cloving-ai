@@ -148,22 +148,27 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
 --at gap waits for the next gap: no run that has not ended, no open turn and no queue submission. It is the default.
+--within limits the wait for a gap, for example 30m or 6h. The default is 12h. At the deadline, the restart is cancelled.
 While the restart waits, the queue admits no new run. cloving status shows the pending restart.
 --at now stops at once. Claude and Codex turns resume after the start.
-The command waits for the new service and prints the old commit, the new commit and the start time.
+A stale or missing dist builds first. A failed build starts nothing.
+The restart stops the watch server and the relay first. A child that still runs after 60 seconds refuses the restart.
+The start program replaces itself in the same terminal and starts the service again.
+The command waits up to 180 seconds for the new service. It prints the commits, the lanes and each workflow.
+A refused queue workflow or scheduled workflow gives exit status 1.
 Control-C stops the wait and keeps the restart pending. --cancel cancels a pending restart.
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
---update updates the product checkout before the stop, at the gap or at once.
-The update fetches the default branch and needs a fast-forward and a clean tree.
+--update updates the product checkout after the stop. Local changes skip the update.
+The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
-When a step fails, the command prints the step and its output. The service keeps running on the old commit.
+When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
 `,
   watch: `Usage: cloving watch [--port <n>]
 
