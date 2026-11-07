@@ -111,7 +111,7 @@ await test("CLV-221 names the nested folder declaration fields in its edits", as
     assert.match(option.change, /workflow\.queue/);
 });
 
-await test("CLV-299 declares all seven decision points and seventeen options", async () => {
+await test("CLV-303 declares all eight decision points and nineteen options", async () => {
   const document = await developManifest();
   assert.deepEqual(
     document.points.map((point) => [
@@ -126,6 +126,7 @@ await test("CLV-299 declares all seven decision points and seventeen options", a
       ["merge", ["green", "person", "local"]],
       ["partial", ["queue", "person"]],
       ["recovery", ["person", "stop"]],
+      ["lessons", ["file", "none"]],
     ],
   );
 });
@@ -225,6 +226,10 @@ await test("CLV-221 requires ticket input and a pull request for queued partial 
     {
       selected: { ...reviewed, accept: "panel" },
       failure: "accept.panel requires merge",
+    },
+    {
+      selected: { ...reviewed, lessons: "file" },
+      failure: "lessons.file requires merge",
     },
   ];
   for (const { selected, failure } of cases)

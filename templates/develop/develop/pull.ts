@@ -7,18 +7,20 @@ import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 import type { DevelopTask, DevelopReport, DevelopFailure } from "./report.ts";
 import { queuePartial } from "./queue-partial.ts";
 import { retryPause, retryScope, shortFailure, stuck } from "./recovery.ts";
+import { lessons, lessonsPayload, lessonsTask } from "./lessons.ts";
 
-export async function preparePull(cycleId: string): Promise<void> {
+export async function preparePull(task: DevelopTask): Promise<DevelopTask> {
   const result = await protectedEffect({
     scope: { phase: "pull-request", operation: "github-prepare", round: 1 },
     capability: "github",
     method: "prepare",
-    target: cycleId,
-    payload: "{}",
+    target: task.cycleId,
+    payload: lessonsPayload(lessons),
     units: 1,
   });
   if (result.kind !== "completed")
     throw new Error(result.reason ?? result.kind);
+  return lessonsTask({ task, mode: lessons, result: result.result });
 }
 
 export async function openPull(request: {

@@ -1,3 +1,5 @@
+import { constants, lstatSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   activeRun,
@@ -11,6 +13,12 @@ import { releaseClaim, takeClaim } from "./tree-claims.ts";
 import { treeClaim, treeName, workTree, type WorkTree } from "./work-tree.ts";
 
 const clovingPrefix = "cloving/";
+
+export const lessonsLimits = {
+  folder: ".cloving",
+  file: "lessons.md",
+  textBytes: 16_384,
+};
 
 async function treeAt(
   operation: Operation,
@@ -30,10 +38,17 @@ async function treeAt(
 
 export async function prepare(operation: Operation): Promise<unknown> {
   const { settings, calls } = operation;
+  const lessons = lessonsRequested(operation);
   await calls.git(settings.repository, ["fetch", "--quiet", "origin"]);
   const base = await defaultBranch(operation);
-  if (Object.hasOwn(operation.payload, "pullRequest"))
-    return await pullTree(operation, base);
+  const prepared = Object.hasOwn(operation.payload, "pullRequest")
+    ? await pullTree(operation, base)
+    : await baseTree(operation, base);
+  if (!lessons) return prepared;
+  return { ...prepared, lessons: await treeLessons(prepared.worktree) };
+}
+
+async function baseTree(operation: Operation, base: string) {
   const tree = await treeAt(operation, {
     target: operation.target,
     base: `origin/${base}`,
@@ -44,6 +59,43 @@ export async function prepare(operation: Operation): Promise<unknown> {
     base,
     startCommit: tree.startCommit,
   };
+}
+
+function lessonsRequested(operation: Operation): boolean {
+  if (!Object.hasOwn(operation.payload, "lessons")) return false;
+  if (operation.payload["lessons"] === true) return true;
+  throw new Error("invalid-payload");
+}
+
+function entryKind(path: string): "missing" | "folder" | "file" | "other" {
+  const entry = lstatSync(path, { throwIfNoEntry: false });
+  if (entry === undefined) return "missing";
+  if (entry.isDirectory()) return "folder";
+  return entry.isFile() ? "file" : "other";
+}
+
+async function treeLessons(
+  tree: string,
+): Promise<{ readonly text: string; readonly bytes: number }> {
+  const folder = join(tree, lessonsLimits.folder);
+  const file = join(folder, lessonsLimits.file);
+  const folderKind = entryKind(folder);
+  if (folderKind === "missing") return { text: "", bytes: 0 };
+  const fileKind = folderKind === "folder" ? entryKind(file) : "other";
+  if (fileKind === "missing") return { text: "", bytes: 0 };
+  if (fileKind !== "file") throw new Error("lessons-not-a-file");
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const buffer = Buffer.alloc(lessonsLimits.textBytes);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const { size } = await handle.stat();
+    return {
+      text: buffer.subarray(0, bytesRead).toString("utf8"),
+      bytes: size,
+    };
+  } finally {
+    await handle.close();
+  }
 }
 
 function pullNumber(operation: Operation): number {
@@ -130,7 +182,7 @@ async function headReached(
   );
 }
 
-async function pullTree(operation: Operation, base: string): Promise<unknown> {
+async function pullTree(operation: Operation, base: string) {
   const pull = await pullHead(operation);
   await claimedPull(operation, pull.target);
   const tree = await treeAt(operation, {

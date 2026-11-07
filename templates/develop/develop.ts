@@ -11,8 +11,7 @@ import { developRound } from "./develop/round.ts";
 
 export async function develop(request: DevelopInput): Promise<CycleOutcome> {
   "use workflow";
-  const input = ticketInput(request);
-  await preparePull(input.cycleId);
+  const input = await preparePull(ticketInput(request));
   const started = await labelTicket(input, { key: "start", round: 1 });
   if (started !== null) return started;
   let endingRound = 1;

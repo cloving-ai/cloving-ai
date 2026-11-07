@@ -1,6 +1,6 @@
 # Develop template decisions
 
-`template.json` describes the seven decisions used by the develop template.
+`template.json` describes the eight decisions used by the develop template.
 The default workflow in `develop.ts` accepts the declared ticket input, selects
 from the queue, opens a pull request, waits for Greptile at 5/5, and calls
 `mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
@@ -97,9 +97,11 @@ selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
 no additional verification, Greptile at 5/5, merge after checks, return
-partial work to the queue, and ask a person for recovery.
+partial work to the queue, ask a person for recovery, and keep a lessons file in
+the repository.
 Selecting `person` at selection, acceptance and partial work, with `local` at
-merge, describes the existing reviewed local-branch process.
+merge and `none` at lessons, describes the existing reviewed local-branch
+process.
 
 The `verify` point defaults to `none`, preserving the current round and
 declaration. Select `red-green` with either `green` or `person` at `merge`.
@@ -298,6 +300,43 @@ merge supports only `"stop"`, because it has no pull request.
 The workflow can read only the reason of a failed effect. For this reason, the
 GitHub worker reports a `gh` call that fails with an HTTP 5xx status as
 `github-network-failed`, and the template tries it again.
+
+## Lessons
+
+The `lessons` point keeps the lessons of earlier runs in the file
+`.cloving/lessons.md` of the repository. The default option `file` reads the
+file into each development turn. The option `none` sets
+`export const lessons = "none" as LessonsMode` in `develop/lessons.ts`. Then no
+turn reads or writes the file.
+
+With `file`, `preparePull` in `develop/pull.ts` sends the GitHub `prepare`
+payload `{"lessons": true}`. The GitHub worker reads `.cloving/lessons.md` in
+the new work tree, which starts at the newest commit of the default branch. It
+returns the first 16384 bytes as `lessons.text` and the file size as
+`lessons.bytes`. A missing file gives an empty text and the size 0. A symbolic
+link at `.cloving` or at the file stops the run with `lessons-not-a-file`.
+`lessonsTask` in `develop/lessons.ts` refuses a result without a valid
+`lessons` object with `invalid-lessons`.
+
+`develop/report.ts` gives the text to each turn of the run, also to
+continuation turns and fix turns. The prompt of `develop/turn.ts` shows the
+text and the size, and it gives the worker these rules:
+
+- Before the last commit, add up to three new lessons from the run. The
+  lessons of earlier rounds of the run count toward the three.
+- Write each lesson on one line in ASD-STE100 Simplified Technical English, in
+  the form `- YYYY-MM-DD TICKET: lesson`.
+- Do not add a lesson that the file already has in the same or a similar form.
+- When the file is larger than 16384 bytes, join similar lessons and remove
+  lessons that no longer apply. Continue until the file is smaller than 16384
+  bytes.
+- Put the lesson changes in the same commit as the other changes.
+
+The lesson changes are part of the pull request, so the review sees them. The
+option `file` requires a pull-request merge option, `green` or `person`. Local
+merge supports only `none`, because it has no `prepare` step.
+
+## Option fields
 
 Each option has an `id`, `label`, `summary`, `change`, `requires` and `needs`.
 `change` describes the step call or declaration edit for the setup agent.
