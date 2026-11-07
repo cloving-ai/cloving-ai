@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
 import { parseInvocation } from "./cli/arguments.ts";
+import { repositoryArguments } from "./cli/repository-arguments.ts";
 import type {
   WatchCommandOutput,
   WatchCommandRunner,
@@ -35,6 +36,7 @@ import { stalledExit } from "./cli/thread-pool.ts";
 import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
 const [command, ...options] = process.argv.slice(2);
+const repositorySelection = repositoryArguments(process.argv.slice(2), {});
 
 function repositoryDirectory(directory: string): string | undefined {
   try {
@@ -185,17 +187,27 @@ function startArguments(input: StartRequest): readonly string[] {
   return [...located, ...argumentsList];
 }
 
-function toolProcess(input: {
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly tool: string;
-  readonly argumentsList: readonly string[];
-}): Promise<number> {
-  const program = join(
-    import.meta.dirname,
-    "..",
-    "tools",
-    `${input.tool}${extname(import.meta.filename)}`,
-  );
+function toolProcess(
+  input: {
+    readonly environment?: NodeJS.ProcessEnv;
+    readonly argumentsList: readonly string[];
+  } & (
+    | { readonly tool: string; readonly executable?: never }
+    | { readonly tool?: never; readonly executable: string }
+  ),
+): Promise<number> {
+  const argumentsList =
+    input.tool === undefined
+      ? [...input.argumentsList]
+      : [
+          join(
+            import.meta.dirname,
+            "..",
+            "tools",
+            `${input.tool}${extname(import.meta.filename)}`,
+          ),
+          ...input.argumentsList,
+        ];
   let stopping = false;
   const interrupt = (): void => {
     stopping = true;
@@ -207,7 +219,7 @@ function toolProcess(input: {
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
-  const child = spawn(process.execPath, [program, ...input.argumentsList], {
+  const child = spawn(input.executable ?? process.execPath, argumentsList, {
     detached: input.tool === "red-green-command",
     stdio:
       input.tool === "red-green-command"
@@ -217,6 +229,11 @@ function toolProcess(input: {
       ...(input.environment ?? process.env),
       PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter),
     },
+  });
+  child.once("error", () => {
+    process.stderr.write(
+      "tool-unavailable: Install cloving-zapier to connect Zapier.\n",
+    );
   });
   return new Promise((settle) => {
     child.once("close", (status) => {
@@ -321,7 +338,23 @@ else if (command === "red-green")
     argumentsList: options,
   });
 else if (command === "start") process.exitCode = await start();
-else {
+else if (
+  typeof repositorySelection !== "string" &&
+  repositorySelection.argumentsList[0] === "integrations"
+) {
+  const repository = repositoryDirectory(
+    repositorySelection.repository ?? process.cwd(),
+  );
+  const runtime = runtimeDirectory(process.env, repository);
+  process.exitCode = await toolProcess({
+    executable: "cloving-zapier",
+    argumentsList: repositorySelection.argumentsList.slice(1),
+    environment: {
+      ...process.env,
+      ...(runtime === undefined ? {} : { CLOVING_RUNTIME_DIR: runtime }),
+    },
+  });
+} else {
   const invocation = parseInvocation(process.argv.slice(2));
   const repository = repositoryDirectory(
     "repository" in invocation
