@@ -1,4 +1,8 @@
-import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
+import {
+  sameIssue,
+  type PrIdentity,
+  type PrObservation,
+} from "./watch-pr-identity.ts";
 import type {
   WatchFinished,
   WatchModel,
@@ -41,11 +45,20 @@ function completedTicket(run: WatchRun): boolean {
   );
 }
 
+function sameTicket(run: WatchRun, later: WatchRun): boolean {
+  if (run.issueIdentity != null || later.issueIdentity != null)
+    return sameIssue(run.issueIdentity, later.issueIdentity);
+  return (
+    run.ticketId !== null &&
+    later.workflowId === run.workflowId &&
+    later.ticketId === run.ticketId
+  );
+}
+
 function laterCompleted(run: WatchRun, runs: readonly WatchRun[]): boolean {
-  if (run.ticketId === null) return false;
   return runs.some(
     (later) =>
-      later.ticketId === run.ticketId &&
+      sameTicket(run, later) &&
       completedTicket(later) &&
       createdAt(later) > createdAt(run),
   );

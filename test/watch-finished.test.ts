@@ -19,6 +19,7 @@ const repository = {
 
 interface StoppedOptions {
   readonly ticketId: string;
+  readonly workflowId?: string;
   readonly state?: string;
   readonly outcome?: string;
   readonly createdMinutes?: number;
@@ -32,6 +33,9 @@ function stoppedRun(
 ): Record<string, unknown> {
   const created = minutesBefore(options.createdMinutes ?? 60);
   const run = boardRun(runId, {
+    ...(options.workflowId === undefined
+      ? {}
+      : { workflowId: options.workflowId }),
     state: options.state ?? "completed",
     outcome: options.outcome ?? "blocked",
     ticketId: options.ticketId,
@@ -136,6 +140,98 @@ await test("CLV-321 Needs you leaves out a failed run of a ticket with a later c
     }),
   ]);
   assert.deepEqual(listed(model, openChecks), ["failed-other"]);
+});
+
+function withIssues(
+  model: WatchModel,
+  issues: Readonly<Record<string, string>>,
+): WatchModel {
+  return {
+    ...model,
+    runs: model.runs.map((run): WatchRun => {
+      const [name, number] = (issues[run.runId] ?? "").split("#");
+      if (name === undefined || number === undefined) return run;
+      return {
+        ...run,
+        issueIdentity: {
+          ...repository,
+          repository: name,
+          number: Number(number),
+        },
+      };
+    }),
+  };
+}
+
+function ticketMatchModel(): WatchModel {
+  const failed = (runId: string, options: Omit<StoppedOptions, "state">) =>
+    stoppedRun(runId, {
+      ...options,
+      state: "failed",
+      createdMinutes: 300,
+      endedMinutes: 240,
+    });
+  const completed = (runId: string, options: StoppedOptions) =>
+    stoppedRun(runId, {
+      ...options,
+      outcome: "handoff_requested",
+      createdMinutes: 200,
+      endedMinutes: 100,
+    });
+  return withIssues(
+    floorModel([
+      failed("failed-issue", { ticketId: "471" }),
+      completed("completed-other-repository", { ticketId: "471" }),
+      failed("failed-shared-issue", { ticketId: "514" }),
+      completed("completed-shared-issue", {
+        ticketId: "rescue-514",
+        workflowId: "idea",
+      }),
+      failed("failed-local", { ticketId: "CLV-1", workflowId: "idea" }),
+      completed("completed-other-workflow", { ticketId: "CLV-1" }),
+      failed("failed-local-same", { ticketId: "CLV-2", workflowId: "idea" }),
+      completed("completed-same-workflow", {
+        ticketId: "CLV-2",
+        workflowId: "idea",
+      }),
+      failed("failed-no-ticket", { ticketId: "", workflowId: "idea" }),
+      completed("completed-no-ticket", { ticketId: "", workflowId: "idea" }),
+      failed("failed-no-issue", { ticketId: "CLV-3" }),
+      completed("completed-with-issue", { ticketId: "CLV-3" }),
+    ]),
+    {
+      "failed-issue": "cloving-ai#471",
+      "completed-other-repository": "cloving-ios#471",
+      "failed-shared-issue": "cloving-ai#514",
+      "completed-shared-issue": "cloving-ai#514",
+      "completed-with-issue": "cloving-ai#603",
+    },
+  );
+}
+
+await test("CLV-321 a later completed run finishes only a run of the same issue or of the same ticket in the same workflow", () => {
+  const shown = finishedModel(ticketMatchModel(), openChecks);
+  assert.deepEqual(
+    needsOf(shown.runs)
+      .map((need) => need.runId)
+      .toSorted(),
+    ["failed-issue", "failed-local", "failed-no-issue", "failed-no-ticket"],
+  );
+  assert.deepEqual(
+    Object.fromEntries(
+      shown.runs
+        .filter((run) => run.state === "failed")
+        .map((run) => [run.runId, run.finished ?? null]),
+    ),
+    {
+      "failed-issue": null,
+      "failed-shared-issue": "later-run-completed",
+      "failed-local": null,
+      "failed-local-same": "later-run-completed",
+      "failed-no-ticket": null,
+      "failed-no-issue": null,
+    },
+  );
 });
 
 function withOutcome(
