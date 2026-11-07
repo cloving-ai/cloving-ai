@@ -33,8 +33,8 @@ export async function askPerson(
   });
 }
 
-export async function afterMerge(
+export function afterMerge(
   request: PublishRequest,
 ): Promise<PublishRequest | CycleOutcome> {
-  return await Promise.resolve(request);
+  return Promise.resolve(request);
 }

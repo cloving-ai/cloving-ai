@@ -29,7 +29,10 @@ duplicate number or a word that is not a number ends the run `blocked` with
    `package.json` and in the lock file. It writes the release notes from the pull
    requests merged since the last tag, and it ends its report with the line
    `Release notes:` and the notes. A report with no notes ends the run `blocked`
-   with `release-notes-missing`.
+   with `release-notes-missing`. The turn reads the changes with
+   `git log --first-parent` on the default branch, so the notes also name
+   squash merges and rebase merges. A turn has no GitHub login, so it does not
+   get the list from GitHub.
 3. `open-pr` pushes the branch and opens the version pull request
    `Release v1.7.0` with the release notes in its body. The point `accept` works
    as in `develop`. Then `mergeWhenGreen` runs the `beforeMerge` check, waits for

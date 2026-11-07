@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeStepBridge } from "cloving/workflows/testing";
+import {
+  fakeStepBridge,
+  type ScenarioRequest,
+} from "cloving/workflows/testing";
 import { release } from "./release.ts";
+import { releaseTask } from "./release/input.ts";
 import { refusalTests } from "./release/refusal-tests.ts";
 import {
   accepted,
@@ -26,6 +30,7 @@ import {
   waitInputs,
   waits,
 } from "./release/scenarios.ts";
+import { versionPrompt } from "./release/version.ts";
 
 const publishPrompt =
   "Publish v1.7.0?\n\nThe version pull request #650 (pull/650) is merged. Approve to push the tag v1.7.0 on its merge commit. The tag CI then publishes the package and creates the release. Deny to stop the release with no tag.";
@@ -296,6 +301,42 @@ await test("CLV-304 a rejected review with feedback starts another version turn"
   assert.match(
     String(second),
     /Address review-changes, then commit the fix\.[\s\S]*\nOutput:\nFix the notes\.$/,
+  );
+});
+
+await test("CLV-304 the version turn lists the first-parent history, so the notes name squash and rebase merges", () => {
+  const prompt = versionPrompt({
+    task: releaseTask(input),
+    base: "main",
+    round: 1,
+    feedback: null,
+  });
+  assert.match(
+    prompt,
+    /git log --first-parent --format=%B <last tag>\.\.origin\/main\. This list holds merge commits, squash merges and rebase merges\./,
+  );
+  assert.doesNotMatch(prompt, /--merges|gh pr list/);
+});
+
+await test("CLV-304 payloads reads JSON payloads and refuses a value outside the JSON type", () => {
+  const sent = (payload: string): ScenarioRequest => [
+    "effect",
+    {
+      scope: { phase: "publish", operation: "push-tag", round: 1 },
+      capability: "command",
+      method: "run:push-tag",
+      target: "release-1",
+      payload,
+      units: 1,
+    },
+  ];
+  assert.deepEqual(
+    payloads([sent("[null, 1]"), sent('{"tag": ["v1.7.0"]}')], "run:push-tag"),
+    [[null, 1], { tag: ["v1.7.0"] }],
+  );
+  assert.throws(
+    () => payloads([sent("[true]")], "run:push-tag"),
+    /invalid-payload/,
   );
 });
 
