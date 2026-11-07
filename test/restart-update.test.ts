@@ -95,22 +95,27 @@ await test("CLV-306 an update runs npm ci --ignore-scripts before the build when
     ]);
   }));
 
-await test("CLV-306 an update refuses a dirty tree, prints the changed files and changes nothing", () =>
+await test("CLV-320 an update skips a dirty tree before the fetch, prints the changed files and changes nothing", () =>
   withUpdateRepository(async ({ repository, git, old }) => {
     await writeFile(join(repository, "notes.txt"), "local work\n");
     const calls: string[][] = [];
+    const commands: string[] = [];
     const outcome = await updatedCheckout({
-      git: rejecting(git),
+      git: (argumentsList) => {
+        commands.push(argumentsList[0] ?? "");
+        return rejecting(git)(argumentsList);
+      },
       npm: recordedNpm(calls),
       stopping: running,
     });
     assert.deepEqual(outcome, {
-      kind: "failed",
+      kind: "skipped",
       step: "clean",
       output: "?? notes.txt",
     });
     assert.equal(git(["rev-parse", "HEAD"]), old);
     assert.deepEqual(calls, []);
+    assert.equal(commands.includes("fetch"), false);
   }));
 
 await test("CLV-306 a failed build puts the checkout back on the old commit, installs and builds it again", () =>
@@ -156,6 +161,10 @@ await test("CLV-306 a failed install puts the checkout back on the old commit an
 
 function failure(outcome: CheckoutUpdate): readonly [string, string] {
   return outcome.kind === "failed" ? [outcome.step, outcome.output] : ["", ""];
+}
+
+function broken(outcome: CheckoutUpdate): readonly [string, string] {
+  return outcome.kind === "broken" ? [outcome.step, outcome.output] : ["", ""];
 }
 
 await test("CLV-306 an update refuses another branch, a commit that cannot fast-forward and a failed fetch", () =>
@@ -206,14 +215,14 @@ await test("CLV-306 a merge that would overwrite an ignored file fails at the me
     assert.deepEqual(calls, []);
   }));
 
-await test("CLV-306 a failed rollback adds its output to the failure of the build", () =>
+await test("CLV-320 a failed rollback is a broken update with the output of the build and the rollback", () =>
   withUpdateRepository(async ({ git, old }) => {
     const outcome = await updatedCheckout({
       git: rejecting(git),
       npm: () => Promise.reject(new Error("build broke")),
       stopping: running,
     });
-    assert.deepEqual(failure(outcome), [
+    assert.deepEqual(broken(outcome), [
       "build",
       `Error: build broke\nThe rollback to ${old} failed: Error: build broke`,
     ]);
@@ -230,7 +239,7 @@ function refusing(
       : rejecting(git)(argumentsList);
 }
 
-await test("CLV-306 a failed status check fails at the clean step, and a failed reset leaves its output in the failure", () =>
+await test("CLV-320 a failed status check fails at the clean step, and a failed reset is a broken update with its output", () =>
   withUpdateRepository(async ({ git, old, target }) => {
     const calls: string[][] = [];
     const [step] = failure(
@@ -247,7 +256,7 @@ await test("CLV-306 a failed status check fails at the clean step, and a failed 
       npm: recordedNpm(calls, ["run build"]),
       stopping: running,
     });
-    assert.deepEqual(failure(outcome), [
+    assert.deepEqual(broken(outcome), [
       "build",
       `run build output\nerror TS2322: Type 'string' is not assignable\nThe rollback to ${old} failed: Error: reset refused`,
     ]);

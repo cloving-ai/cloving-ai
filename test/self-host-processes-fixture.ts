@@ -16,6 +16,7 @@ interface ProgramOptions {
   readonly stuckPrograms?: readonly string[];
   readonly announcedMilliseconds?: number | "never";
   readonly watchExits?: readonly WatchExit[];
+  readonly statusRuns?: readonly Readonly<Record<string, string>>[];
 }
 
 export interface WatchExit {
@@ -69,7 +70,7 @@ ${
     ? `import { createServer } from "node:net";
 import { mkdirSync } from "node:fs";
 mkdirSync(${JSON.stringify(join(root, "host/run"))}, { recursive: true, mode: 0o700 });
-createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok: true, result: { runs: [], next: null } }) + "\\n"))).listen(${JSON.stringify(join(root, "host/run/control.sock"))}).unref();
+createServer(socket => socket.once("data", () => socket.end(JSON.stringify({ ok: true, result: { runs: ${JSON.stringify(options.statusRuns ?? [])}, next: null } }) + "\\n"))).listen(${JSON.stringify(join(root, "host/run/control.sock"))}).unref();
 ${announcement(root, options)}`
     : ""
 }

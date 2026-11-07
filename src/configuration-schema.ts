@@ -1,6 +1,8 @@
 import project from "./project-config.schema.json" with { type: "json" };
 import privateConfig from "./private-config.schema.json" with { type: "json" };
-import { record } from "./protocol.ts";
+import { record, type Fields } from "./protocol.ts";
+import { parseCommands, type LocalCommands } from "./command-settings.ts";
+import { checkScheduleTiming } from "./workflow-schedule.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
@@ -49,6 +51,9 @@ export interface Configuration {
   readonly fallbackModels?: readonly string[];
   readonly tokenPrices?: TokenPrices;
   readonly privateTexts?: readonly string[];
+  readonly commands?: LocalCommands;
+  readonly commandSeconds?: number;
+  readonly schedules?: Readonly<Record<string, Fields>>;
   readonly notify?: { readonly command?: readonly string[] };
   readonly watch?: {
     readonly port?: number | "off";
@@ -117,9 +122,34 @@ function bounds(value: number, { schema, field }: Checked): void {
     invalid(field);
 }
 
+function validCommands(value: unknown): boolean {
+  try {
+    parseCommands(JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validSchedules(value: unknown): boolean {
+  const schedules = record(value);
+  if (schedules === undefined) return false;
+  return Object.values(schedules).every((schedule) => {
+    const fields = record(schedule);
+    return fields !== undefined && checkScheduleTiming(fields).kind === "valid";
+  });
+}
+
+const specialChecks: Readonly<Record<string, (value: unknown) => boolean>> = {
+  "harness.turn": isTurnCommand,
+  commands: validCommands,
+  schedules: validSchedules,
+};
+
 function scalar(value: unknown, checked: Checked): void {
   const { schema, field } = checked;
-  if (field === "harness.turn" && !isTurnCommand(value)) invalid(field);
+  const special = specialChecks[field];
+  if (special !== undefined && !special(value)) invalid(field);
   if ("const" in schema && value !== schema.const) invalid(field);
   if (schema.enum !== undefined && !schema.enum.includes(value)) invalid(field);
   if (schema.type === "string") text(value, checked);

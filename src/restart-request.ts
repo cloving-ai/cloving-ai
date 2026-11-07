@@ -20,13 +20,18 @@ export interface RestartMark {
   readonly resumeQueue: boolean;
   readonly settings?: "files";
   readonly update?: true;
+  readonly deadline?: number;
 }
 
-export interface RestartFailure {
-  readonly commandId: string;
-  readonly requestedAt: number;
+export interface RestartProblem {
+  readonly code: string;
   readonly step: string;
   readonly output: string;
+}
+
+export interface RestartFailure extends RestartProblem {
+  readonly commandId: string;
+  readonly requestedAt: number;
 }
 
 export interface RestartEntry {
@@ -76,6 +81,9 @@ export function restartMark(text: string): RestartMark | undefined {
     resumeQueue: fields["resumeQueue"] === true,
     ...(fields["settings"] === "files" ? { settings: "files" as const } : {}),
     ...(fields["update"] === true ? { update: true as const } : {}),
+    ...(Number.isSafeInteger(fields["deadline"])
+      ? { deadline: Number(fields["deadline"]) }
+      : {}),
   };
 }
 
@@ -108,14 +116,27 @@ export function restartText(mark: RestartMark): string {
   return `${JSON.stringify(mark)}\n`;
 }
 
+export function claimText(mark: RestartMark, hostProcessId: number): string {
+  return `${JSON.stringify({ ...mark, hostProcessId })}\n`;
+}
+
+export function claimHost(text: string): number | undefined {
+  const hostProcessId = record(parsed(text))?.["hostProcessId"];
+  if (typeof hostProcessId !== "number") return undefined;
+  return Number.isSafeInteger(hostProcessId) && hostProcessId > 0
+    ? hostProcessId
+    : undefined;
+}
+
 export function restartFailure(text: string): RestartFailure | undefined {
-  const { commandId, requestedAt, step, output } = record(parsed(text)) ?? {};
-  if (typeof commandId !== "string" || typeof step !== "string")
+  const { commandId, requestedAt, code, step, output } =
+    record(parsed(text)) ?? {};
+  if (typeof commandId !== "string" || typeof code !== "string")
     return undefined;
   if (typeof requestedAt !== "number" || !Number.isSafeInteger(requestedAt))
     return undefined;
-  return typeof output === "string"
-    ? { commandId, requestedAt, step, output }
+  return typeof step === "string" && typeof output === "string"
+    ? { commandId, requestedAt, code, step, output }
     : undefined;
 }
 

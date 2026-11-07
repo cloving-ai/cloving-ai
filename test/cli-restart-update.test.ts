@@ -30,6 +30,7 @@ function failingPort(updating: Updating): RestartPort {
         updating.failure = {
           commandId: mark.commandId,
           requestedAt: mark.requestedAt,
+          code: "restart-update-failed",
           step: "build",
           output: "> tsc\nerror TS2322: broken",
         };
@@ -46,7 +47,13 @@ function failingPort(updating: Updating): RestartPort {
 function earlierFailure(commandId = "restart-earlier"): Updating {
   return {
     marks: [],
-    failure: { commandId, requestedAt: 1, step: "clean", output: "?? a" },
+    failure: {
+      commandId,
+      requestedAt: 1,
+      code: "restart-update-skipped",
+      step: "clean",
+      output: "?? a",
+    },
   };
 }
 

@@ -16,14 +16,29 @@ interface FailedUpdate {
   readonly output: string;
 }
 
+interface SkippedUpdate {
+  readonly kind: "skipped";
+  readonly step: "clean";
+  readonly output: string;
+}
+
+export interface BrokenUpdate {
+  readonly kind: "broken";
+  readonly step: UpdateStep;
+  readonly output: string;
+  readonly plan: UpdatePlan;
+}
+
 export type CheckoutUpdate =
   | { readonly kind: "updated"; readonly from: string; readonly to: string }
-  | FailedUpdate;
+  | SkippedUpdate
+  | FailedUpdate
+  | BrokenUpdate;
 
-type Stepped<Value> =
+export type Stepped<Value> =
   { readonly kind: "done"; readonly value: Value } | FailedUpdate;
 
-interface UpdatePlan {
+export interface UpdatePlan {
   readonly head: string;
   readonly target: string;
   readonly install: boolean;
@@ -46,7 +61,7 @@ function failedAt(step: UpdateStep, output: string): FailedUpdate {
   return { kind: "failed", step, output };
 }
 
-async function stepped<Value>(
+export async function stepped<Value>(
   step: UpdateStep,
   work: () => Promise<Value>,
 ): Promise<Stepped<Value>> {
@@ -105,16 +120,17 @@ async function checkedBranch(
 
 async function updatePlan(
   git: CheckoutCommands["git"],
-): Promise<Stepped<UpdatePlan>> {
+): Promise<Stepped<UpdatePlan> | SkippedUpdate> {
+  const changes = await stepped("clean", () => changedFiles(git));
+  if (changes.kind === "failed") return changes;
+  if (changes.value !== "")
+    return { kind: "skipped", step: "clean", output: changes.value };
   const remote = await checkedBranch(git);
   if (remote.kind === "failed") return remote;
   const commits = await stepped("fast-forward", () =>
     fastForward(git, remote.value),
   );
   if (commits.kind === "failed") return commits;
-  const changes = await stepped("clean", () => changedFiles(git));
-  if (changes.kind === "failed") return changes;
-  if (changes.value !== "") return failedAt("clean", changes.value);
   const [head, target] = commits.value;
   const install = await git([
     "diff",
@@ -158,26 +174,43 @@ function stopped(commands: CheckoutCommands): boolean {
   return commands.stopping.aborted;
 }
 
-async function rollbackNote(
+interface Rollback {
+  readonly again: boolean;
+  readonly note: string;
+}
+
+async function rolledBack(
   commands: CheckoutCommands,
   plan: UpdatePlan,
-): Promise<string> {
+): Promise<Rollback> {
   const reset = await stepped("merge", () =>
     commands.git(["reset", "--keep", plan.head]),
   );
-  if (reset.kind === "failed") return failedRollback(plan, reset.output);
-  if (stopped(commands)) return stoppedNote(plan);
+  if (reset.kind === "failed")
+    return { again: true, note: failedRollback(plan, reset.output) };
+  if (stopped(commands)) return { again: false, note: stoppedNote(plan) };
   const rebuilt = await built(commands, plan);
-  if (rebuilt.kind === "done") return "";
-  if (stopped(commands)) return stoppedNote(plan);
-  return failedRollback(plan, rebuilt.output);
+  if (rebuilt.kind === "done") return { again: false, note: "" };
+  if (stopped(commands)) return { again: false, note: stoppedNote(plan) };
+  return { again: true, note: failedRollback(plan, rebuilt.output) };
+}
+
+export async function recoveredCheckout(
+  commands: CheckoutCommands,
+  plan: UpdatePlan,
+): Promise<Stepped<string>> {
+  const reset = await stepped("merge", () =>
+    commands.git(["reset", "--keep", plan.head]),
+  );
+  if (reset.kind === "failed") return reset;
+  return built(commands, plan);
 }
 
 export async function updatedCheckout(
   commands: CheckoutCommands,
 ): Promise<CheckoutUpdate> {
   const plan = await updatePlan(commands.git);
-  if (plan.kind === "failed") return plan;
+  if (plan.kind !== "done") return plan;
   const { head, target } = plan.value;
   const merged = await stepped("merge", () =>
     commands.git(["merge", "--ff-only", "--no-overwrite-ignore", target]),
@@ -185,8 +218,11 @@ export async function updatedCheckout(
   if (merged.kind === "failed") return merged;
   const done = await built(commands, plan.value);
   if (done.kind === "done") return { kind: "updated", from: head, to: target };
-  const note = await rollbackNote(commands, plan.value);
-  return failedAt(done.step, `${done.output}${note}`);
+  const rollback = await rolledBack(commands, plan.value);
+  const output = `${done.output}${rollback.note}`;
+  if (rollback.again)
+    return { kind: "broken", step: done.step, output, plan: plan.value };
+  return failedAt(done.step, output);
 }
 
 const commandLimits = { git: 120_000, npm: 1_800_000 } as const;

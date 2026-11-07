@@ -48,6 +48,7 @@ import {
 } from "./self-host-project.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
+import { replacedHost } from "./self-host-replace.ts";
 import { productCommit } from "./self-host-restart.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
 import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
@@ -354,7 +355,7 @@ await launchers(
   },
   manifests,
 );
-process.exitCode = await hostedPrograms({
+const hostStatus = await hostedPrograms({
   environment,
   project,
   product,
@@ -365,4 +366,9 @@ process.exitCode = await hostedPrograms({
   updateMilliseconds,
   watchPort: environment["CLOVING_WATCH_PORT"] ?? "3663",
   phoneRelay: environment["CLOVING_PHONE_RELAY"] ?? "on",
+});
+process.exitCode = await replacedHost({
+  directory,
+  runtime,
+  status: hostStatus,
 });
