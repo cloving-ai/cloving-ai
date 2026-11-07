@@ -77,6 +77,7 @@ const listed = [
     ["runId", "from", "bundle", "commandId"],
     ["runId", "commandId"],
   ],
+  ["cloving_dismiss", ["runId", "commandId"], ["runId", "commandId"]],
 ] as const;
 
 await test("CLV-251 mcp handshake lists the three read tools and the eight mutation tools and answers ping", async () => {

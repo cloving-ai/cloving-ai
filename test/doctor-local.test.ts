@@ -42,6 +42,7 @@ const codes = [
   "command-gh-no-login",
   "retention",
   "theme",
+  "demo-tool",
 ];
 
 await test("CLV-207 doctor emits the ordered versioned report and local successes", () =>

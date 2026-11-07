@@ -2,6 +2,31 @@ import { record, type Fields } from "../protocol.ts";
 import { priceOf, usageOf, attemptFields } from "../worker-usage.ts";
 import type { WatchTurn } from "./watch-render.ts";
 
+function count(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+export function budgetsOf(status: Fields) {
+  const budget = record(status["budget"]) ?? {};
+  const chain = record(status["chain"]) ?? {};
+  const position = count(chain["position"]);
+  const chainLimit = count(chain["limit"]);
+  const spendLimitUsd = priceOf(status["spendLimitUsd"]);
+  return {
+    ...(position === null || chainLimit === null
+      ? {}
+      : { chain: { position, limit: chainLimit } }),
+    spent: count(budget["spent"]),
+    limit: count(budget["limit"]),
+    claudeCostUsd: priceOf(status["claudeCostUsd"]),
+    estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
+    ...(status["continuedCostUsd"] === undefined
+      ? {}
+      : { continuedCostUsd: priceOf(status["continuedCostUsd"]) }),
+    ...(spendLimitUsd === null ? {} : { spendLimitUsd }),
+  };
+}
+
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }

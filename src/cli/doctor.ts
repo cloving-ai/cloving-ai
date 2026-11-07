@@ -22,6 +22,7 @@ import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandLoginObservation,
   commandObservation,
+  demoToolObservation,
   mergeModeObservation,
   nodeObservation,
   privateTextsObservation,
@@ -152,6 +153,9 @@ async function repositoryObservations(
   });
   observations["no-workflow"] = workflowObservation(workflowContext);
   const required = requiredDoctorCodes(workflowContext.workflows);
+  observations["demo-tool"] = await demoToolObservation(
+    environment["CLOVING_DEMO_TOOL"],
+  );
   const dependent = await configuredObservations(
     { ...options, environment },
     { prerequisite: workflowContext.prerequisite, project, serviceEnvironment },

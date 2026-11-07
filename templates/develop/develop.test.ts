@@ -5,6 +5,7 @@ import { interruptionTests } from "./develop/interruption-tests.ts";
 import { recoveryOptionTests } from "./develop/recovery-option-tests.ts";
 import { panelTests } from "./develop/panel-tests.ts";
 import { lessonsTests } from "./develop/lessons-tests.ts";
+import { demoTests } from "./develop/demo-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
@@ -18,6 +19,7 @@ for (const scenario of flowTests.concat(refusalTests, recoveryTests))
 for (const scenario of interruptionTests.concat(
   recoveryOptionTests,
   panelTests,
+  demoTests,
 ))
   await test(scenario.name, scenario.run);
 

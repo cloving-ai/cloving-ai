@@ -135,3 +135,68 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.equal(panel(String(served["html"])), fullPanel);
 });
+
+await test("CLV-321 with 3 decisions and 2 stopped runs in Needs you, the header shows 5 need you", () => {
+  const model = floorModel(
+    [
+      floorRun("first", { workflowId: "idea", operation: "write-draft" }),
+      floorRun("second", { workflowId: "idea", operation: "write-draft" }),
+      floorRun("third", { workflowId: "idea", operation: "write-draft" }),
+      mergeRun(20),
+      floorRun("failed", { operation: "github-merge", state: "failed" }),
+    ],
+    {
+      decisions: ["first", "second", "third"].map((runId) =>
+        decisionFor(runId, { minutes: 10 }),
+      ),
+    },
+  );
+  const header =
+    /<span class="header-count needs-you"><strong>5<\/strong> need you<\/span>/;
+  assert.match(page(model), header);
+  assert.match(panel(page(model)), /5 waiting for a person/);
+  const served = played(
+    model,
+    `
+const model = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "";
+replies.push(model);
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  assert.match(String(served["html"]), header);
+});
+
+await test("CLV-321 a stopped run that a direct link reads outside the floor does not count in the header", () => {
+  const [archived] = floorModel([
+    floorRun("old-stopped", { operation: "github-merge", state: "failed" }),
+  ]).runs;
+  assert.ok(archived);
+  const served = played(
+    { ...floorModel([]), archived },
+    `
+const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#run=old-stopped";
+replies.push(model, { run: archived });
+await load();
+const linked = app.inner;
+location.hash = "";
+replies.push(model);
+listeners.hashchange();
+const floor = app.inner;
+await settled();
+console.log(JSON.stringify({ linked, floor, runs: state.model.runs.length }));
+`,
+  );
+  const none =
+    /<span class="header-count needs-you"><strong>0<\/strong> need you<\/span>/;
+  assert.match(
+    String(served["linked"]),
+    /Failed <span class="name">old-stopped/,
+  );
+  assert.match(String(served["linked"]), none);
+  assert.match(String(served["floor"]), none);
+  assert.match(String(served["floor"]), /Nothing needs you/);
+  assert.equal(served["runs"], 0);
+});

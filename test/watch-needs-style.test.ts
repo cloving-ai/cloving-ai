@@ -36,3 +36,8 @@ await test("CLV-307 the Continue button of a stopped run has no border, waits wh
   assert.match(rule(".need-action:disabled"), /cursor: progress; opacity: 0.6/);
   assert.match(rule(".need-message"), /margin: 4px 0 0; font-size: 13px/);
 });
+
+await test("CLV-321 the count of runs with no cost is a small muted line under the spend", () => {
+  assert.match(rule(".today-unknown"), /color: var\(--color-muted\)/);
+  assert.match(rule(".today-unknown"), /font-size: 12px/);
+});

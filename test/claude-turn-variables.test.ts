@@ -10,7 +10,7 @@ function printer(scene: Scene): readonly string[] {
   writeFileSync(
     script,
     `for await (const chunk of process.stdin) String(chunk);
-const names = ["SECRET_TEST_VALUE", "PROJECT_TEST_VALUE"];
+const names = ["SECRET_TEST_VALUE", "PROJECT_TEST_VALUE", "CLOVING_DEMO_TOOL"];
 const env = Object.fromEntries(names.filter((name) => name in process.env).map((name) => [name, process.env[name]]));
 console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify({ env }) }));
 `,
@@ -48,6 +48,18 @@ await test("CLV-310 a worker turn gets a daemon variable of turns.environment", 
   assert.deepEqual(await observed(["PROJECT_TEST_VALUE"]), {
     PROJECT_TEST_VALUE: "project value",
   });
+});
+
+await test("CLV-315 a worker turn gets the demo tool path of the service", async () => {
+  const saved = { ...process.env };
+  process.env["CLOVING_DEMO_TOOL"] = "/tools/demo-video";
+  try {
+    assert.deepEqual(await observed(undefined), {
+      CLOVING_DEMO_TOOL: "/tools/demo-video",
+    });
+  } finally {
+    process.env = saved;
+  }
 });
 
 await test("CLV-310 a worker turn with turns.environment inherit gets the whole environment", async () => {

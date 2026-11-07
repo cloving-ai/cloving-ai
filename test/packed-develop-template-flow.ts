@@ -40,6 +40,9 @@ export async function packedDevelopFlow(packageRoot: string): Promise<void> {
               /verification repairs stop after four/,
             ]
           : []),
+        ...(selected.demo === "record"
+          ? [/two failed demo attempts block the run before the merge/]
+          : []),
       ],
     });
 }

@@ -21,7 +21,7 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume, cloving_drop and cloving_continue to submit runs and decisions. Each of these tools
+cloving_resume, cloving_drop, cloving_continue and cloving_dismiss to submit runs and decisions. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
@@ -133,6 +133,11 @@ Returns a paused run to the state that it paused from.
 
 Cancels the run and its pending dispatch. It keeps the workspace and the evidence.
 `,
+  dismiss: `Usage: cloving dismiss <run-id> [--command-id <id>] [--json]
+
+Records a dismissal of a run that ended failed or blocked. Needs you on the watch page does not list the run.
+The dismissal is an event of the run and stays after a restart. It does not change the run or its files.
+`,
   events: `Usage: cloving events [<run-id>] [--after <sequence>] [--limit <n>] [--follow] [--json]
 
 Prints the committed events after a sequence. With --json, each line is one event.
@@ -211,6 +216,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_RETENTION_DAYS           A whole number of at least 1, or null. The default is 30. The daemon archives or deletes a journal or GitHub record folder of a completed, failed or cancelled run when the end of the run and the newest file of the folder are older than this count of days. It never touches the records of a run that is not finished. It also removes the work tree, the branch and the attachments folder of a run that ended failed or cancelled more than this count of days ago, when the branch has no open pull request. It also removes a workflow bundle when no unfinished run is pinned to it, it is not the current generation, and it was not current during this count of days. The value null keeps all records and workflow bundles. The daemon sweeps once at start, before the watch page starts, and then each hour, with at most 200 folders in each pass.
   CLOVING_RETENTION_ACTION         archive or delete. The default is archive. An archive keeps the relative path of the folder in the archive folder.
   CLOVING_RETENTION_ARCHIVE_FOLDER An absolute folder path, or null for <state>/archive. The folder can be on another volume. When the folder is not available, the sweep moves nothing, logs the reason and tries again in the next hour.
+  CLOVING_DEMO_TOOL                The absolute path of the instruction file or folder of a demo tool. The private setting demo.tool sets it. The service does not read the tool; each turn gets it as CLOVING_DEMO_TOOL, and the demo option of the develop template reads it there.
   CLOVING_TURN_ENVIRONMENT         inherit, or a JSON list of variable names. The default is an empty list. A turn gets only the base variables (PATH, HOME, USER, LOGNAME, SHELL, TERM, TMPDIR, TZ, LANG, LC_ALL, LC_CTYPE and XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME, XDG_STATE_HOME), the login variables of its harness, the profile env and the listed variables. The value inherit gives a turn the whole environment except the GitHub tokens, as before; it stays for one release. The private setting turns.environment sets it.
   CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
   CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
@@ -277,6 +283,7 @@ Commands:
   pause      Stop new dispatch for a run.
   resume     Resume a paused run.
   drop       Cancel a run and keep its files.
+  dismiss    Remove a stopped run from Needs you.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.

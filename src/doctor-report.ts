@@ -23,6 +23,7 @@ export const doctorCodes = [
   "command-gh-no-login",
   "retention",
   "theme",
+  "demo-tool",
 ] as const;
 
 export type DoctorCode = (typeof doctorCodes)[number];
@@ -74,6 +75,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Set a retention period: cloving config set retention.days 30 --private",
   theme:
     "See the refusal codes: cloving themes list; fix the theme folder, or select another theme: cloving config set watch.theme auto",
+  "demo-tool":
+    "Set the absolute path of the instruction file or folder of the demo tool: cloving config set demo.tool /ABSOLUTE/PATH",
 };
 
 export function doctorExitCode(checks: readonly DoctorCheck[]): number {

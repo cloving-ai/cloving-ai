@@ -70,6 +70,15 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
   ["resume", runCommandShape("resume")],
   ["drop", runCommandShape("drop")],
   [
+    "dismiss",
+    {
+      subject: "required",
+      required: [],
+      allowed: () => mutationOptions,
+      build: dismiss,
+    },
+  ],
+  [
     "events",
     {
       subject: "optional",
@@ -288,6 +297,14 @@ function decision(command: DecisionCommand, request: RuntimeRequest): Outcome {
   const binding = { expectedRevision, generation, subjectDigest };
   const json = given(request, "json");
   return { kind: "decision", ...subject, ...binding, commandId, json };
+}
+
+function dismiss(request: RuntimeRequest): Outcome {
+  const runId = key(request.positionals[0]);
+  const commandId = key(valueOf(request, "command-id"));
+  if (typeof runId !== "string" || commandId === invalid)
+    return "invalid-option-value";
+  return { kind: "dismiss", runId, commandId, json: given(request, "json") };
 }
 
 function runCommand(command: RunCommand, request: RuntimeRequest): Outcome {

@@ -89,6 +89,7 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .today-number { display: flex; flex-direction: column; min-width: 0; }
 .today-number strong { font: 700 28px/1.15 var(--font-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .today-yesterday { font-size: 12px; }
+.today-unknown { color: var(--color-muted); font-size: 12px; }
 .today-part { padding: 12px 20px 14px; border-bottom: var(--shape-border) solid var(--color-line); }
 .today-part h3 { margin: 0 0 8px; font-size: 15px; }
 .today-chart { display: block; width: 100%; height: auto; }

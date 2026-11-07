@@ -27,6 +27,16 @@ export function requestInput() {
       };
 }
 
+export const demoTurns =
+  selection.demo === "record"
+    ? [
+        completed({
+          summary: "Recorded.\nDemo status: recorded",
+          demoStatus: "recorded",
+        }),
+      ]
+    : [];
+
 export function scenarioEffects() {
   return {
     ...effects(),
@@ -36,7 +46,8 @@ export function scenarioEffects() {
         commit,
         uncommitted: [],
       }),
-    ],
+    ].concat(demoTurns),
+    "github attach-asset": [completed({ number: 7, url: "https://demo" })],
     "claude run-turn:review": [
       completed({ summary: "Reviewed.", reviewVerdict: "accept" }),
     ],
@@ -66,10 +77,17 @@ export function panelEffects(count: number) {
   );
 }
 
-const limits: Readonly<Record<string, number>> = { panel: 99, "red-green": 93 };
+const limits: Readonly<Record<string, number>> = {
+  panel: 99,
+  "red-green": 93,
+  record: 99,
+};
 
 export const effectLimit =
-  limits[selection.accept] ?? limits[selection.verify] ?? 87;
+  limits[selection.accept] ??
+  limits[selection.verify] ??
+  limits[selection.demo] ??
+  87;
 
 export function completeCalls(): string[] {
   const review: Readonly<Record<string, readonly string[]>> = {
@@ -86,6 +104,7 @@ export function completeCalls(): string[] {
     ["run-turn", "open-pr"],
     selection.verify === "red-green" ? ["run:red-green"] : [],
     reviews,
+    selection.demo === "record" ? ["run-turn", "attach-asset"] : [],
     selection.merge === "person" ? ["approval", "merge"] : ["merge"],
     selection.input === "ticket" ? ["close-issue"] : [],
   );
@@ -124,7 +143,7 @@ export const optionTests = [
         (request) =>
           request[0] === "effect" && request[1].method === "run-turn",
       );
-      assert.equal(turns.length, 1);
+      assert.equal(turns.length, 1 + demoTurns.length);
       assert.ok(
         turns.every(
           (turn) =>
@@ -158,7 +177,7 @@ export const optionTests = [
       });
       scenario["claude run-turn"] =
         selection.partial === "queue"
-          ? [partial]
+          ? [partial].concat(demoTurns)
           : [partial, ...scenario["claude run-turn"]];
       const decisions =
         selection.partial === "person"
@@ -175,7 +194,7 @@ export const optionTests = [
       assert.equal((await develop(requestInput())).kind, "handoff_requested");
       const turns = bridge.requests.filter(
         (request) =>
-          request[0] === "effect" && request[1].method === "run-turn",
+          request[0] === "effect" && request[1].scope.phase === "implement",
       );
       assert.equal(turns.length, selection.partial === "queue" ? 1 : 2);
       assert.deepEqual(
@@ -210,7 +229,43 @@ export const optionTests = [
       assert.equal(updates.length, Number(selection.partial === "queue"));
     },
   },
-].concat(selection.verify === "red-green" ? verificationTests() : []);
+].concat(
+  selection.verify === "red-green" ? verificationTests() : [],
+  selection.demo === "record" ? demoOptionTests() : [],
+);
+
+function demoOptionTests() {
+  return [
+    {
+      name: "CLV-315 two failed demo attempts block the run before the merge",
+      run: async () => {
+        const failed = completed({
+          summary: "Demo status: failed",
+          demoStatus: "failed",
+        });
+        const scenario = scenarioEffects();
+        const developed = scenario["claude run-turn"].slice(0, 1);
+        using bridge = fakeStepBridge({
+          effects: {
+            ...scenario,
+            "claude run-turn": developed.concat([failed, failed]),
+          },
+          decisions: [approved, approved],
+          effectLimit,
+        });
+        assert.deepEqual(await develop(requestInput()), {
+          kind: "blocked",
+          cycleId: input.cycleId,
+          reason: "demo-failed",
+          evidenceId: "demo",
+        });
+        const names = bridge.requests.map(callName);
+        assert.ok(!names.includes("merge") && !names.includes("attach-asset"));
+        assert.equal(names.filter((name) => name === "run-turn").length, 3);
+      },
+    },
+  ];
+}
 
 function verificationTests() {
   return repairTests().concat(passingTests(), unavailableTests(), limitTests());

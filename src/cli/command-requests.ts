@@ -85,6 +85,16 @@ export function runCommandRequest(request: {
   };
 }
 
+export function dismissRequest(request: {
+  readonly runId: string;
+  readonly commandId: string;
+}): ServiceRequest {
+  return {
+    operation: "dismiss-run",
+    parameters: { runId: request.runId, commandId: request.commandId },
+  };
+}
+
 export function readCommandRequest(command: ReadCommand): ServiceRequest {
   const { kind, runId, limit, after, active, follow } = command;
   const parameters =
