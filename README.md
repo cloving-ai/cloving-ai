@@ -32,7 +32,7 @@ The homepage is [cloving.ai](https://cloving.ai). Cloving uses the [MIT license]
 
 ## How a factory works
 
-A factory is a set of workflows that pass work to one another. The table shows each stage of the work, the template that does it and the built-in steps that it uses. The last column shows where a person can decide. When you copy a template, Cloving asks you about each of these decision points.
+A factory is a set of workflows that pass work to one another. The table shows each stage of the work, the template that does it and the built-in steps that it uses. The last column shows where a person can decide. During `cloving init`, the setup agent asks about these decision points. `cloving templates copy` alone keeps the defaults; edit the copied files to change them.
 
 | Stage | Template | What Cloving does | A person can |
 | --- | --- | --- | --- |
