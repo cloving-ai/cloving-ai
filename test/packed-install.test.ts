@@ -17,6 +17,7 @@ import {
   packedPatrolSources,
   packedRescueSources,
 } from "./rescue-template-options-fixture.ts";
+import { packedReleaseSources } from "./release-template-options-fixture.ts";
 import { packedReload } from "./packed-reload.ts";
 import {
   packedIdeaSources,
@@ -109,6 +110,7 @@ async function installed(root: string): Promise<string> {
       packedTemplateSources,
       packedIdeaSources,
       packedPatrolSources,
+      packedReleaseSources,
       packedRescueSources,
       packedReviewSources,
     ),

@@ -1,0 +1,32 @@
+{
+  "workflow": {
+    "workflowId": "release",
+    "effectLimit": 14,
+    "capabilities": ["claude", "command", "github"],
+    "commands": ["push-tag", "release-status"],
+    "commandWaits": {
+      "release-pulls": {
+        "command": "release-status",
+        "maximumWaitSeconds": 604800,
+        "pollEverySeconds": 300
+      },
+      "release-status": {
+        "command": "release-status",
+        "maximumWaitSeconds": 7200,
+        "pollEverySeconds": 60
+      }
+    },
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "version": { "type": "string" },
+        "pullRequests": { "type": "string", "optional": true }
+      }
+    }
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "command": ["run:push-tag"],
+    "github": ["prepare", "open-pr", "wait-review", "merge"]
+  }
+}

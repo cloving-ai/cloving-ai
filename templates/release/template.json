@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "name": "release",
+  "summary": "Release a version of an npm package: wait until the listed pull requests are merged, open and merge a version pull request with release notes, ask before the publish, push the tag v<version> on the merge commit, and wait until the tag CI publishes the version.",
+  "points": [
+    {
+      "id": "accept",
+      "question": "Who accepts the version pull request?",
+      "options": [
+        {
+          "id": "greptile",
+          "label": "Greptile at 5/5",
+          "summary": "Push the version branch and wait for Greptile to accept its commit at 5/5.",
+          "change": "In release/accept.ts call reviewByAgent({ subject: subject, reviewer: { kind: \"greptile\" } }). release/round.ts opens or updates the pull request first and passes its immutable commit and target as subject. Declare github wait-review.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "greptile-review"]
+        },
+        {
+          "id": "person",
+          "label": "A person",
+          "summary": "Wait for a person's approval of the immutable commit. Denial with feedback starts another bounded version turn.",
+          "change": "In release/accept.ts replace the reviewByAgent import and call with reviewByPerson({ subject: subject }) from cloving/workflows/steps/review-by-person. Remove wait-review from methods.github in release.declaration.json. Set selection.accept to person in release/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "turn",
+          "label": "A review turn",
+          "summary": "Run the review profile and require its explicit accept verdict.",
+          "change": "In release/accept.ts call reviewByAgent({ subject: subject, reviewer: { kind: \"turn\", profile: \"review\" } }). In release.declaration.json add run-turn:review to methods.claude, remove wait-review from methods.github, and configure the review profile. Set selection.accept to turn in release/scenarios.ts.",
+          "requires": {},
+          "needs": ["default-harness"]
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "question": "Who approves the publish after the merge?",
+      "options": [
+        {
+          "id": "person",
+          "label": "A person approves",
+          "summary": "After the merge, the decision \"Publish v<version>?\" waits for a person. A denial or an expiry pushes no tag.",
+          "change": "Keep askPerson as approvePublish from release/publish.ts in release.ts. Keep selection.publish as person in release/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "merge",
+          "label": "Publish after the merge",
+          "summary": "Push the tag at once after the merge of the version pull request, with no decision.",
+          "change": "In release.ts replace askPerson as approvePublish with afterMerge as approvePublish in the release/publish.ts import. Set selection.publish to merge in release/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    }
+  ]
+}

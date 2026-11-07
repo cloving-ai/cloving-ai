@@ -81,25 +81,48 @@ export async function configuredPatrolFiles(
   return files;
 }
 
-async function rescueDeclaration(
-  directory: string,
+export function acceptEdits(
+  files: Record<string, string>,
+  edit: { readonly path: string; readonly accept: string },
+): void {
+  const { path, accept } = edit;
+  if (accept === "person") {
+    replaced(files, {
+      path,
+      from: 'import { reviewByAgent } from "cloving/workflows/steps/review-by-agent";',
+      to: 'import { reviewByPerson } from "cloving/workflows/steps/review-by-person";',
+    });
+    replaced(files, {
+      path,
+      from: 'reviewByAgent({\n    subject: subject,\n    reviewer: { kind: "greptile" },\n  })',
+      to: "reviewByPerson({ subject: subject })",
+    });
+  }
+  if (accept === "turn")
+    replaced(files, {
+      path,
+      from: 'reviewer: { kind: "greptile" }',
+      to: 'reviewer: { kind: "turn", profile: "review" }',
+    });
+}
+
+export async function acceptDeclaration(
+  file: string,
   accept: string,
 ): Promise<string> {
-  const declaration: unknown = JSON.parse(
-    await readFile(directory + "/rescue-pr.declaration.json", "utf8"),
-  );
+  const declaration: unknown = JSON.parse(await readFile(file, "utf8"));
   assert.ok(isCandidateDeclaration(declaration));
   const github = declaration.methods["github"] ?? [];
   return JSON.stringify({
     workflow: declaration.workflow,
-    methods: {
+    methods: Object.assign({}, declaration.methods, {
       claude:
         accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"],
       github:
         accept === "greptile"
           ? github
           : github.filter((method) => method !== "wait-review"),
-    },
+    }),
   });
 }
 
@@ -108,24 +131,7 @@ export async function configuredRescueFiles(
   directory: string = rescueTemplate,
 ): Promise<Record<string, string>> {
   const files = await developFiles(directory);
-  if (selection.accept === "person") {
-    replaced(files, {
-      path: "rescue-pr/accept.ts",
-      from: 'import { reviewByAgent } from "cloving/workflows/steps/review-by-agent";',
-      to: 'import { reviewByPerson } from "cloving/workflows/steps/review-by-person";',
-    });
-    replaced(files, {
-      path: "rescue-pr/accept.ts",
-      from: 'reviewByAgent({\n    subject: subject,\n    reviewer: { kind: "greptile" },\n  })',
-      to: "reviewByPerson({ subject: subject })",
-    });
-  }
-  if (selection.accept === "turn")
-    replaced(files, {
-      path: "rescue-pr/accept.ts",
-      from: 'reviewer: { kind: "greptile" }',
-      to: 'reviewer: { kind: "turn", profile: "review" }',
-    });
+  acceptEdits(files, { path: "rescue-pr/accept.ts", accept: selection.accept });
   if (selection.merge === "person")
     for (const [from, to] of [
       ["{ mergeWhenGreen }", "{ mergeByPerson }"],
@@ -134,8 +140,8 @@ export async function configuredRescueFiles(
     ] as const)
       replaced(files, { path: "rescue-pr/round.ts", from, to });
   selected(files, { path: "rescue-pr/scenarios.ts", selection });
-  files[prefix + "rescue-pr.declaration.json"] = await rescueDeclaration(
-    directory,
+  files[prefix + "rescue-pr.declaration.json"] = await acceptDeclaration(
+    directory + "/rescue-pr.declaration.json",
     selection.accept,
   );
   return files;
