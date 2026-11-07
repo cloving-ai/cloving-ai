@@ -17,6 +17,7 @@ import {
   stepFailures,
   thread,
   threads,
+  turn,
 } from "./answer-review/scenarios.ts";
 
 const read = ["prepare", "review-threads", "record-answered", "run-turn"];
@@ -52,7 +53,7 @@ await test("CLV-313 a fix of a bot thread posts one reply that names the commit 
     { number: 641, commit: pushedCommit },
   ]);
   assert.deepEqual(payloads(bridge.requests, "record-answered"), [
-    { number: 641, comment: "C_last" },
+    { number: 641, comments: ["C_PRRT_1"] },
   ]);
   assert.equal(
     reportOf(outcome),
@@ -228,20 +229,70 @@ await test("CLV-313 the turn gets the pull request, its diff and at most ten ope
   );
 });
 
-await test("CLV-313 an invalid turn report blocks before any push or reply", async () => {
-  for (const [summary, commits] of [
-    ["Done.", ["abc1234 Fix"]],
-    ["Thread T1: fixed abc1234", []],
-    ["Thread T1: fixed 1234567", ["abc1234 Fix"]],
-    ["Thread T1: fixed abc", ["abc1234 Fix"]],
+await test("CLV-313 the turn gets the threads that no run took, or all threads when an earlier run took every thread", async () => {
+  const waiting = Array.from({ length: 11 }, (_, index) =>
+    thread(`PRRT_${String(index)}`),
+  );
+  const old = thread("PRRT_old", { answered: true });
+  for (const { list, taken } of [
+    { list: [old].concat(waiting), taken: waiting.slice(0, 10) },
+    { list: [old], taken: [old] },
+  ]) {
+    using bridge = fakeStepBridge({
+      effects: Object.assign(
+        effects({
+          threads: [],
+          summary: taken
+            .map((_, index) => `Thread T${String(index + 1)}: no change Fine.`)
+            .join("\n"),
+        }),
+        { "github review-threads": [threads(list)] },
+      ),
+    });
+    assert.equal((await answerReview(input)).kind, "handoff_requested");
+    assert.deepEqual(payloads(bridge.requests, "record-answered"), [
+      { number: 641, comments: taken.map((item) => `C_${item.id}`) },
+    ]);
+    assert.deepEqual(
+      payloads(bridge.requests, "reply-thread"),
+      taken.map((item) => ({
+        thread: item.id,
+        body: "No change is needed: Fine.",
+      })),
+    );
+  }
+});
+
+await test("CLV-313 an invalid turn report or uncommitted files block the run before any push or reply", async () => {
+  const one = [thread("PRRT_8")];
+  const fix = "Thread T1: fixed abc1234";
+  for (const [list, report, reason] of [
+    [one, { summary: "Done.", commits: ["abc1234 Fix"] }],
+    [one, { summary: fix }],
+    [one, { summary: "Thread T1: fixed 1234567", commits: ["abc1234 Fix"] }],
+    [one, { summary: "Thread T1: fixed abc", commits: ["abc1234 Fix"] }],
+    [one, { summary: "Thread T1: no change Fine.", commits: [1234567] }],
+    [one.concat([thread("PRRT_9")]), { summary: "Thread T1: no change." }],
+    [
+      one,
+      { summary: fix, commits: ["abc1234 Fix"], uncommitted: [" M a.ts"] },
+      "uncommitted-change",
+    ],
+    [
+      one,
+      { summary: fix, commits: ["abc1234 Fix"], uncommitted: null },
+      "uncommitted-change",
+    ],
   ] as const) {
     using bridge = fakeStepBridge({
-      effects: effects({ threads: [thread("PRRT_8")], summary, commits }),
+      effects: Object.assign(effects({ threads: list, summary: "" }), {
+        "claude run-turn": [turn(report)],
+      }),
     });
     assert.deepEqual(await answerReview(input), {
       kind: "blocked",
       cycleId: input.cycleId,
-      reason: "invalid-answer-report",
+      reason: reason ?? "invalid-answer-report",
       evidenceId: "answer",
     });
     assert.deepEqual(methods(bridge.requests), read);
@@ -321,6 +372,7 @@ await test("CLV-313 Never resolve keeps a fixed bot thread open with no effect",
         line: 3,
         outdated: false,
         bot: true,
+        last: "PRRC_1",
         comments: [],
       },
       kind: "fixed",

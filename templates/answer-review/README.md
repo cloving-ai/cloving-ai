@@ -16,18 +16,26 @@ to `answer-review` with this input. A person can also start a run with this inpu
    branch of the pull request. It refuses a pull request that is not open, a
    branch that is not a `cloving/` branch, and a pull request that an active run
    owns.
-2. The GitHub method `review-threads` reads the open review threads through the
-   GraphQL field `reviewThreads`. It returns the threads that are not resolved and
-   whose last comment is not by the GitHub account of the operator. Each thread
-   has its path, its line, its outdated flag, a bot flag and its comments with the
-   author and the time. The method also returns the top-level comments of people
-   since the last commit. When no thread is open, the run ends with no turn.
-3. The GitHub method `record-answered` keeps the newest comment of the read for
-   the pull request. The patrol does not hand off the same comments again.
-4. One turn gets the pull request, the command for its diff, and at most ten open
-   threads with the labels `T1` to `T10`. For each thread the turn fixes the code
-   with a failing test first, or it explains why no change is needed. The turn
-   runs the developer gate and commits. It ends with one line for each thread:
+2. The GitHub method `review-threads` reads all pages of the review threads
+   through the GraphQL field `reviewThreads`. For each thread it reads the first
+   comment and the last 10 comments. It returns the threads that are not resolved
+   and whose last comment is not by the GitHub account of the operator. Each
+   thread has its path, its line, its outdated flag, a bot flag, an `answered`
+   flag and its comments with the author and the time. The author of the first
+   comment sets the bot flag. The `answered` flag is `true` when an earlier run
+   took the last comment of the thread. The threads with `answered` `false` come
+   first. The method also returns the top-level comments of people since the last
+   commit. When no thread is open, the run ends with no turn.
+3. The run takes at most ten threads with `answered` `false`. When all open
+   threads have `answered` `true`, the run takes them again, so that a person can
+   start a new run after a blocked run. The GitHub method `record-answered` keeps
+   the last comment of each thread that the run takes. The patrol does not hand
+   off the same comments again. A thread that the run does not take stays open for
+   the next run.
+4. One turn gets the pull request, the command for its diff, and the threads that
+   the run takes, with the labels `T1` to `T10`. For each thread the turn fixes
+   the code with a failing test first, or it explains why no change is needed. The
+   turn runs the developer gate and commits. It ends with one line for each thread:
 
    ```text
    Thread T1: fixed <short SHA>
@@ -55,9 +63,16 @@ to `answer-review` with this input. A person can also start a run with this inpu
   a local path, a private text, an email address, a mention or a link to an
   issue of another repository is refused, and the run ends `blocked` with the
   privacy reason.
-- A `fixed` line must name a commit that the turn made. A report with no thread
-  line, or with a `fixed` line for an unknown commit, blocks the run before a push
-  or a reply.
+- Each reply ends with a hidden marker of its operation. When the service stops
+  after GitHub accepts a reply, the restarted operation finds the reply by its
+  marker and does not post a second reply.
+- A `fixed` line must name a commit that the turn made. These reports block the
+  run before a push or a reply:
+  - A report with no line for a thread that the turn got.
+  - A report with a `fixed` line for an unknown commit.
+  - A report with a commit entry that is not text.
+  - A report with uncommitted files. The run ends `blocked` with the reason
+    `uncommitted-change`.
 - The workflow reads only the comments of bots, of the operator and of people with
   the association `OWNER`, `MEMBER` or `COLLABORATOR`. A comment of another
   person does not reach the turn and does not start a run.

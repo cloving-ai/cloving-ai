@@ -17,21 +17,33 @@ function reviewOf(result: ProtectedResult): Record<string, unknown> {
   }
 }
 
-function newComments(review: Record<string, unknown>): boolean {
-  const latest = objectOf(review["latest"])["id"];
-  return typeof latest === "string" && review["answered"] !== latest;
+function waitingThread(thread: unknown): boolean {
+  return objectOf(thread)["answered"] === false;
 }
 
 export function reviewWaiting(result: ProtectedResult): boolean {
-  const review = reviewOf(result);
-  const { threads, quietSeconds } = review;
+  const { threads, quietSeconds } = reviewOf(result);
   return (
     Array.isArray(threads) &&
-    threads.length > 0 &&
+    threads.some((thread) => waitingThread(thread)) &&
     typeof quietSeconds === "number" &&
-    quietSeconds >= 300 &&
-    newComments(review)
+    quietSeconds >= 300
   );
+}
+
+export interface ReviewPass {
+  readonly cycleId: string;
+  readonly numbers: readonly number[];
+}
+
+export function passOrder(pass: ReviewPass): readonly number[] {
+  const { numbers } = pass;
+  const sum = Array.from(pass.cycleId).reduce(
+    (total, letter) => total + letter.charCodeAt(0),
+    0,
+  );
+  const offset = numbers.length === 0 ? 0 : sum % numbers.length;
+  return numbers.slice(offset).concat(numbers.slice(0, offset));
 }
 
 export async function readReview(request: {
@@ -62,19 +74,34 @@ export async function answerPull(request: {
   });
 }
 
+export async function answerAt(request: {
+  readonly order: readonly number[];
+  readonly index: number;
+  readonly answered: readonly number[];
+}): Promise<readonly number[]> {
+  const { answered } = request;
+  const number = request.order.at(request.index);
+  if (number === undefined) return answered;
+  const waiting = await readReview({
+    number: number,
+    round: request.index + 1,
+  });
+  if (!waiting || answered.length >= 4) return answered;
+  await answerPull({ number: number });
+  return answered.concat([number]);
+}
+
 export async function answerPulls(
-  numbers: readonly number[],
+  pass: ReviewPass,
 ): Promise<readonly number[]> {
-  const answered: number[] = [];
+  const order = passOrder(pass);
+  let answered: readonly number[] = [];
   for (let index = 0; index < 8; index += 1) {
-    const number = numbers.at(index);
-    if (number !== undefined) {
-      const waiting = await readReview({ number: number, round: index + 1 });
-      if (waiting && answered.length < 4) {
-        await answerPull({ number: number });
-        answered.push(number);
-      }
-    }
+    answered = await answerAt({
+      order: order,
+      index: index,
+      answered: answered,
+    });
   }
   return answered;
 }

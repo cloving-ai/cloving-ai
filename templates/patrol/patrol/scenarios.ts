@@ -27,14 +27,26 @@ export function quiet(number: number, fields: Record<string, unknown> = {}) {
   });
 }
 
+export function reviewThread(thread: {
+  readonly id: string;
+  readonly answered: boolean;
+}) {
+  return {
+    id: thread.id,
+    path: "src/a.ts",
+    line: 3,
+    bot: true,
+    answered: thread.answered,
+  };
+}
+
 export function review(fields: Record<string, unknown> = {}) {
   return completed({
     number: 643,
     head: "c".repeat(40),
-    threads: [{ id: "PRRT_1", path: "src/a.ts", line: 3, bot: true }],
+    threads: [reviewThread({ id: "PRRT_1", answered: false })],
     comments: [],
     latest: { id: "C_2", at: "2026-11-06T10:00:00Z" },
-    answered: null,
     quietSeconds: 600,
     ...fields,
   });

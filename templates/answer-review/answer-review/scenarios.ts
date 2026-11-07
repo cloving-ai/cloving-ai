@@ -30,6 +30,7 @@ export function thread(id: string, fields: Record<string, unknown> = {}) {
     line: 3,
     outdated: false,
     bot: true,
+    answered: false,
     comments: [
       {
         id: `C_${id}`,
@@ -50,17 +51,21 @@ export function threads(list: readonly unknown[], comments: unknown[] = []) {
     threads: list,
     comments,
     latest: { id: "C_last", at: "2026-11-06T10:00:00Z" },
-    answered: null,
     quietSeconds: 600,
   });
 }
 
-export function turn(summary: string, commits: readonly string[] = []) {
+export function turn(report: {
+  readonly summary: string;
+  readonly commits?: readonly unknown[];
+  readonly uncommitted?: unknown;
+}) {
+  const commits = report.commits ?? [];
   return completed({
-    summary,
+    summary: report.summary,
     commit: commits.length === 0 ? head : pushedCommit,
     commits,
-    uncommitted: [],
+    uncommitted: report.uncommitted === undefined ? [] : report.uncommitted,
   });
 }
 
@@ -83,8 +88,12 @@ export function effects(request: {
       }),
     ],
     "github review-threads": [threads(request.threads)],
-    "github record-answered": [completed({ number: 641, comment: "C_last" })],
-    "claude run-turn": [turn(request.summary, request.commits)],
+    "github record-answered": [
+      completed({ number: 641, comments: ["C_last"] }),
+    ],
+    "claude run-turn": [
+      turn({ summary: request.summary, commits: request.commits ?? [] }),
+    ],
     "github open-pr": [
       completed({ number: 641, url: "pull/641", commit: pushedCommit }),
     ],
@@ -164,6 +173,14 @@ export const stepFailures = [
   ],
   [
     { "claude run-turn": [completed({ summary: 1, commits: [] })] },
+    "invalid-answer-report",
+  ],
+  [
+    {
+      "claude run-turn": [
+        completed({ summary: "Thread T1: no change Fine.", commits: "abc" }),
+      ],
+    },
     "invalid-answer-report",
   ],
   [

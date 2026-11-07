@@ -14,6 +14,7 @@ import {
   methods,
   quiet,
   review,
+  reviewThread,
   reviewed,
   status,
   stuck,
@@ -108,7 +109,12 @@ await test("CLV-313 a pull request with an active run, a comment in the last 5 m
       {
         "github review-threads": [
           review({ quietSeconds: 299 }),
-          review({ answered: "C_2" }),
+          review({
+            threads: [
+              reviewThread({ id: "PRRT_1", answered: true }),
+              reviewThread({ id: "PRRT_2", answered: true }),
+            ],
+          }),
           review({ threads: [], latest: null, quietSeconds: null }),
           {
             kind: "failed" as const,
@@ -122,8 +128,10 @@ await test("CLV-313 a pull request with an active run, a comment in the last 5 m
   });
   const outcome = await patrol(input);
   assert.deepEqual(
-    reviewed(bridge.requests),
-    [645, 646, 647, 648, 649].map((number) => ({ number })),
+    reviewed(bridge.requests)
+      .map((value) => JSON.stringify(value))
+      .sort(),
+    [645, 646, 647, 648, 649].map((number) => JSON.stringify({ number })),
   );
   assert.deepEqual(handoffs(bridge.requests), []);
   assert.match(
@@ -132,23 +140,46 @@ await test("CLV-313 a pull request with an active run, a comment in the last 5 m
   );
 });
 
-await test("CLV-313 one pass reads at most eight pull requests and hands off at most four answers", async () => {
+await test("CLV-313 a pull request with one waiting thread among answered threads gets an answer-review handoff", async () => {
   using bridge = fakeStepBridge({
-    effects: Object.assign(
-      status(
-        [651, 652, 653, 654, 655, 656, 657, 658, 659].map((number) =>
-          quiet(number),
-        ),
-      ),
-      { "github review-threads": Array.from({ length: 8 }, () => review()) },
-    ),
+    effects: Object.assign(status([quiet(643)]), {
+      "github review-threads": [
+        review({
+          threads: [
+            reviewThread({ id: "PRRT_1", answered: false }),
+            reviewThread({ id: "PRRT_2", answered: true }),
+          ],
+        }),
+      ],
+    }),
   });
   await patrol(input);
-  assert.equal(reviewed(bridge.requests).length, 8);
-  assert.deepEqual(
-    handoffs(bridge.requests).map((request) => request.input["pullRequest"]),
-    [651, 652, 653, 654],
-  );
+  assert.deepEqual(handoffs(bridge.requests), [
+    { workflowId: "answer-review", input: { pullRequest: 643 } },
+  ]);
+});
+
+await test("CLV-313 one pass reads at most eight pull requests and hands off at most four answers", async () => {
+  const numbers = [651, 652, 653, 654, 655, 656, 657, 658, 659];
+  const passes = [];
+  for (const cycleId of numbers.map((number) => `patrol-${String(number)}`)) {
+    using bridge = fakeStepBridge({
+      effects: Object.assign(status(numbers.map((number) => quiet(number))), {
+        "github review-threads": Array.from({ length: 8 }, () => review()),
+      }),
+    });
+    await patrol({ cycleId, input: {} });
+    const read = reviewed(bridge.requests).map((value) =>
+      JSON.stringify(value),
+    );
+    const handed = handoffs(bridge.requests).map((request) =>
+      JSON.stringify({ number: request.input["pullRequest"] }),
+    );
+    assert.equal(new Set(read).size, 8);
+    assert.deepEqual(handed, read.slice(0, 4));
+    passes.push(read);
+  }
+  assert.equal(new Set(passes.map((read) => read[0])).size, numbers.length);
 });
 
 await test("CLV-305 one pass hands off four of six candidates", async () => {

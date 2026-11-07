@@ -1,78 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { withGithub, type GithubScene } from "./github-worker-fixture.ts";
-
-const head = "c".repeat(40);
-
-function at(minute: number): string {
-  return `2026-11-06T10:${String(minute).padStart(2, "0")}:00Z`;
-}
-
-function comment(
-  id: string,
-  fields: {
-    readonly login: string;
-    readonly minute: number;
-    readonly bot?: boolean;
-    readonly association?: string;
-    readonly body?: string;
-  },
-) {
-  return {
-    id,
-    body: fields.body ?? `Comment ${id}.`,
-    createdAt: at(fields.minute),
-    authorAssociation: fields.association ?? "COLLABORATOR",
-    author: { login: fields.login, __typename: fields.bot ? "Bot" : "User" },
-  };
-}
-
-function thread(
-  id: string,
-  fields: {
-    readonly comments: readonly unknown[];
-    readonly resolved?: boolean;
-    readonly outdated?: boolean;
-    readonly line?: number | null;
-  },
-) {
-  return {
-    id,
-    isResolved: fields.resolved ?? false,
-    isOutdated: fields.outdated ?? false,
-    path: "src/a.ts",
-    line: fields.line === undefined ? 3 : fields.line,
-    comments: { nodes: fields.comments },
-  };
-}
-
-function reviewPull(
-  threads: readonly unknown[],
-  options: {
-    readonly comments?: readonly unknown[];
-    readonly state?: string;
-  } = {},
-) {
-  return {
-    state: options.state ?? "OPEN",
-    commits: { nodes: [{ commit: { oid: head, committedDate: at(10) } }] },
-    reviewThreads: { nodes: threads },
-    comments: { nodes: options.comments ?? [] },
-  };
-}
-
-function parsed(text: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(text);
-  assert.ok(typeof value === "object" && value !== null);
-  return Object.fromEntries(Object.entries(value));
-}
-
-function fieldOf(value: unknown, name: string): unknown {
-  const result: unknown = Reflect.get(Object(value), name);
-  return result;
-}
-
-const greptile = { login: "greptile-apps", bot: true, association: "NONE" };
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { located } from "../src/daemon/operation-journal.ts";
+import { until } from "./claude-worker-fixture.ts";
+import { githubIntent, withGithub } from "./github-worker-fixture.ts";
+import {
+  at,
+  comment,
+  graphqlCalls,
+  greptile,
+  head,
+  listed,
+  parsed,
+  read,
+  reviewPull,
+  thread,
+} from "./github-review-threads-fixture.ts";
 
 const openReview = reviewPull(
   [
@@ -129,6 +73,7 @@ const openResult = {
       line: 3,
       outdated: false,
       bot: true,
+      answered: false,
       comments: [
         {
           id: "PRRC_1",
@@ -145,6 +90,7 @@ const openResult = {
       line: null,
       outdated: true,
       bot: false,
+      answered: false,
       comments: [
         {
           id: "PRRC_2",
@@ -166,29 +112,7 @@ const openResult = {
     },
   ],
   latest: { id: "IC_2", at: at(30) },
-  answered: null,
 };
-
-async function read(
-  scene: GithubScene,
-  worker: ReturnType<GithubScene["worker"]>,
-) {
-  const report = await scene.perform(worker, {
-    method: "review-threads",
-    payload: { number: 7 },
-  });
-  assert.equal(report.outcome, "completed", JSON.stringify(report));
-  return parsed(String(report.result));
-}
-
-function graphqlCalls(scene: GithubScene, word: string) {
-  return scene
-    .state()
-    .calls.filter(
-      (call) =>
-        call[1] === "graphql" && call.some((part) => part.includes(word)),
-    );
-}
 
 await test("CLV-313 review-threads returns the open threads of a bot and a person and drops resolved and answered threads", () =>
   withGithub(async (scene) => {
@@ -217,29 +141,58 @@ await test("CLV-313 review-threads returns the open threads of a bot and a perso
     ]);
   }));
 
-await test("CLV-313 record-answered keeps the last answered comment that review-threads returns", () =>
+await test("CLV-313 record-answered marks each thread whose last comment a run took, and review-threads puts the other threads first", () =>
   withGithub(async (scene) => {
     scene.plan({
       scores: [],
-      reviewPull: reviewPull([
-        thread("PRRT_bot", {
-          comments: [comment("PRRC_1", { ...greptile, minute: 20 })],
-        }),
-      ]),
+      reviewPull: reviewPull(
+        ["PRRT_1", "PRRT_2", "PRRT_3"].map((id, index) =>
+          thread(id, {
+            comments: [comment(`PRRC_${id}`, { ...greptile, minute: index })],
+          }),
+        ),
+      ),
     });
     const worker = scene.worker();
-    const recorded = await scene.perform(worker, {
-      method: "record-answered",
-      payload: { number: 7, comment: "PRRC_1" },
-    });
-    assert.equal(recorded.outcome, "completed", JSON.stringify(recorded));
-    assert.deepEqual(JSON.parse(String(recorded.result)), {
-      number: 7,
-      comment: "PRRC_1",
-    });
-    const result = await read(scene, worker);
-    assert.equal(result["answered"], "PRRC_1");
-    assert.deepEqual(result["latest"], { id: "PRRC_1", at: at(20) });
+    const recorded = [];
+    for (const comments of [["PRRC_PRRT_1"], ["PRRC_PRRT_3", "PRRC_PRRT_1"]]) {
+      const report = await scene.perform(worker, {
+        method: "record-answered",
+        payload: { number: 7, comments },
+      });
+      assert.equal(report.outcome, "completed", JSON.stringify(report));
+      recorded.push(JSON.parse(String(report.result)));
+    }
+    assert.deepEqual(recorded, [
+      { number: 7, comments: ["PRRC_PRRT_1"] },
+      { number: 7, comments: ["PRRC_PRRT_3", "PRRC_PRRT_1"] },
+    ]);
+    const threads = listed((await read(scene, worker))["threads"]);
+    assert.deepEqual(
+      threads.map((item) => [item["id"], item["answered"]]),
+      [
+        ["PRRT_2", false],
+        ["PRRT_1", true],
+        ["PRRT_3", true],
+      ],
+    );
+    const refused = [];
+    for (const payload of [
+      { number: 7, comment: "PRRC_PRRT_1" },
+      { number: 7, comments: [] },
+      { number: 7, comments: ["not a comment"] },
+      { number: 7, comments: Array.from({ length: 101 }, () => "PRRC_1") },
+    ]) {
+      const report = await scene.perform(worker, {
+        method: "record-answered",
+        payload,
+      });
+      refused.push([report.outcome, report.reason]);
+    }
+    assert.deepEqual(
+      refused,
+      Array.from({ length: 4 }, () => ["failed", "invalid-payload"]),
+    );
   }));
 
 await test("CLV-313 review-threads cuts long comments, keeps the result in its byte limit and refuses a closed pull request", () =>
@@ -263,16 +216,13 @@ await test("CLV-313 review-threads cuts long comments, keeps the result in its b
     });
     const worker = scene.worker();
     const result = await read(scene, worker);
-    const threads = result["threads"];
-    assert.ok(Array.isArray(threads));
-    const first: unknown = threads[0];
-    const comments = fieldOf(first, "comments");
-    assert.ok(Array.isArray(comments));
+    const threads = listed(result["threads"]);
+    const comments = listed(threads[0]?.["comments"]);
     assert.deepEqual(
-      comments.map((item: unknown) => fieldOf(item, "id")),
+      comments.map((item) => item["id"]),
       ["PRRC_0_0", "PRRC_0_4", "PRRC_0_5", "PRRC_0_6", "PRRC_0_7", "PRRC_0_8"],
     );
-    assert.equal(String(fieldOf(comments[0], "body")).length, 3_000);
+    assert.equal(String(comments[0]?.["body"]).length, 3_000);
     assert.ok(threads.length > 0 && threads.length < 60);
     assert.ok(Buffer.byteLength(JSON.stringify(threads)) <= 120_000);
     assert.deepEqual(result["latest"], { id: "PRRC_0_8", at: at(28) });
@@ -321,11 +271,12 @@ await test("CLV-313 reply-thread posts one reply through the privacy check, and 
     );
     const replies = graphqlCalls(scene, "addPullRequestReviewThreadReply(");
     assert.equal(replies.length, 1);
+    const { key } = located(scene.journal, reply.operationId);
     assert.deepEqual(replies[0]?.slice(4), [
       "-f",
       "thread=PRRT_bot",
       "-f",
-      "body=Fixed in abc1234.",
+      `body=Fixed in abc1234.\n\n<!-- cloving-reply:${key} -->`,
     ]);
     const resolved = await scene.perform(worker, {
       method: "resolve-thread",
@@ -340,4 +291,61 @@ await test("CLV-313 reply-thread posts one reply through the privacy check, and 
       "-f",
       "thread=PRRT_bot",
     ]);
+  }));
+
+await test("CLV-313 a restarted reply-thread finds its posted reply by the marker and posts no second reply", () =>
+  withGithub(async (scene) => {
+    const { key, folder } = located(scene.journal, "operation-reply");
+    const posted = (reply: {
+      readonly thread: string;
+      readonly id: string;
+      readonly login: string;
+    }) => ({
+      thread: reply.thread,
+      id: reply.id,
+      body: `Fixed in abc1234.\n\n<!-- cloving-reply:${key} -->`,
+      author: { login: reply.login },
+    });
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "started.json"),
+      JSON.stringify({
+        ...githubIntent({
+          operationId: "operation-reply",
+          method: "reply-thread",
+        }),
+        payloadText: JSON.stringify({
+          thread: "PRRT_bot",
+          body: "Fixed in abc1234.",
+        }),
+      }),
+    );
+    scene.plan({
+      scores: [],
+      threadReplies: [
+        posted({ thread: "PRRT_other", id: "PRRC_other", login: "operator" }),
+        posted({ thread: "PRRT_bot", id: "PRRC_copy", login: "mallory" }),
+        posted({ thread: "PRRT_bot", id: "PRRC_posted", login: "operator" }),
+      ],
+    });
+    scene.worker({ privateTexts: ["private organization"] });
+    await until(() =>
+      scene.reports.some((report) => report.operationId === "operation-reply"),
+    );
+    const report = scene.reports.find(
+      (item) => item.operationId === "operation-reply",
+    );
+    assert.equal(report?.outcome, "completed", JSON.stringify(report));
+    assert.deepEqual(JSON.parse(String(report.result)), {
+      thread: "PRRT_bot",
+      comment: "PRRC_posted",
+    });
+    assert.deepEqual(
+      graphqlCalls(scene, "addPullRequestReviewThreadReply("),
+      [],
+    );
+    assert.deepEqual(
+      graphqlCalls(scene, "on PullRequestReviewThread")[0]?.slice(4),
+      ["-f", "thread=PRRT_bot"],
+    );
   }));

@@ -22,13 +22,13 @@ export interface OpenThread {
   readonly line: number | null;
   readonly outdated: boolean;
   readonly bot: boolean;
+  readonly last: string;
   readonly comments: readonly ThreadComment[];
 }
 
 export interface OpenReview {
   readonly threads: readonly OpenThread[];
   readonly comments: readonly ThreadComment[];
-  readonly latest: string | null;
 }
 
 function invalid(): never {
@@ -63,6 +63,7 @@ function commentOf(value: unknown): ThreadComment {
 function threadOf(value: unknown, index: number): OpenThread {
   const thread = fields(value);
   const line = thread["line"];
+  const comments = listOf(thread["comments"]);
   return {
     label: `T${String(index + 1)}`,
     id: textOf(thread["id"]),
@@ -70,18 +71,24 @@ function threadOf(value: unknown, index: number): OpenThread {
     line: typeof line === "number" ? line : null,
     outdated: thread["outdated"] === true,
     bot: thread["bot"] === true,
-    comments: listOf(thread["comments"]).map((comment) => commentOf(comment)),
+    last: textOf(fields(comments.at(-1))["id"]),
+    comments: comments.map((comment) => commentOf(comment)),
   };
 }
 
+function batchOf(threads: readonly unknown[]): readonly unknown[] {
+  const waiting = threads.filter(
+    (thread) => fields(thread)["answered"] !== true,
+  );
+  return (waiting.length > 0 ? waiting : threads).slice(0, threadLimit);
+}
+
 export function reviewOf(value: Record<string, unknown>): OpenReview {
-  const latest = value["latest"];
   return {
-    threads: listOf(value["threads"])
-      .slice(0, threadLimit)
-      .map((thread, index) => threadOf(thread, index)),
+    threads: batchOf(listOf(value["threads"])).map((thread, index) =>
+      threadOf(thread, index),
+    ),
     comments: listOf(value["comments"]).map((comment) => commentOf(comment)),
-    latest: latest === null ? null : textOf(fields(latest)["id"]),
   };
 }
 
@@ -137,7 +144,7 @@ export async function recordAnswer(request: {
     target: request.tree.target,
     payload: JSON.stringify({
       number: request.task.pullRequest,
-      comment: request.review.latest,
+      comments: request.review.threads.map((thread) => thread.last),
     }),
     units: 1,
   });

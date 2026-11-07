@@ -68,6 +68,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "no-change",
   "private-path-in-change",
   "review-not-received",
+  "review-threads-limit",
   "pull-request-claimed",
   "pull-request-diverged",
   "pull-request-not-cloving",

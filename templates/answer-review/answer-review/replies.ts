@@ -80,21 +80,28 @@ export function replyOrder(state: AnswerState): readonly ThreadAnswer[] {
     .concat(answers.filter((answer) => answer.kind === "question"));
 }
 
+export async function answerAt(request: {
+  readonly state: AnswerState;
+  readonly answer: ThreadAnswer | undefined;
+  readonly round: number;
+}): Promise<readonly string[]> {
+  const { state, answer, round } = request;
+  if (answer === undefined) return [];
+  return [await answerThread({ state: state, answer: answer, round: round })];
+}
+
 export async function answerThreads(
   state: AnswerState,
 ): Promise<readonly string[]> {
   const ordered = replyOrder(state);
-  const lines: string[] = [];
+  let lines: readonly string[] = [];
   for (let index = 0; index < 10; index += 1) {
-    const answer = ordered.at(index);
-    if (answer !== undefined) {
-      const line = await answerThread({
-        state: state,
-        answer: answer,
-        round: index + 1,
-      });
-      lines.push(line);
-    }
+    const line = await answerAt({
+      state: state,
+      answer: ordered.at(index),
+      round: index + 1,
+    });
+    lines = lines.concat(line);
   }
   return lines;
 }

@@ -97,18 +97,26 @@ function linesOf(summary: string): Map<string, AnswerLine> {
   return found;
 }
 
-function sameCommit(entry: unknown, text: string): boolean {
-  const short = String(entry).split(" ", 1).join("");
+function sameCommit(entry: string, text: string): boolean {
+  const short = entry.split(" ", 1).join("");
   return /^[0-9a-f]{7,64}$/.test(short) && text.startsWith(short);
 }
 
-function fixedIn(commits: readonly unknown[], text: string): boolean {
+function fixedIn(commits: readonly string[], text: string): boolean {
   return (
     /^[0-9a-f]{7,64}$/.test(text) &&
-    commits.some(
-      (entry) => sameCommit(entry, text) || String(entry).startsWith(text),
-    )
+    commits.some((entry) => sameCommit(entry, text) || entry.startsWith(text))
   );
+}
+
+function commitsOf(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) invalid();
+  return value.map((entry) => (typeof entry === "string" ? entry : invalid()));
+}
+
+function cleanTree(value: unknown): void {
+  if (!Array.isArray(value) || value.length > 0)
+    throw new Error("uncommitted-change");
 }
 
 export function answersOf(request: {
@@ -116,8 +124,10 @@ export function answersOf(request: {
   readonly tree: AnswerTree;
   readonly value: Record<string, unknown>;
 }): AnswerReport {
-  const { summary, commit, commits } = request.value;
-  if (typeof summary !== "string" || !Array.isArray(commits)) invalid();
+  const { summary, commit } = request.value;
+  if (typeof summary !== "string") invalid();
+  const commits = commitsOf(request.value["commits"]);
+  cleanTree(request.value["uncommitted"]);
   const changed = typeof commit === "string" && commit !== request.tree.head;
   const found = linesOf(summary);
   const answers = request.review.threads.flatMap((thread) => {
@@ -127,7 +137,7 @@ export function answersOf(request: {
       : [{ thread, kind: line.kind, text: line.text }];
   });
   if (
-    answers.length === 0 ||
+    answers.length !== request.review.threads.length ||
     answers.some(
       (answer) =>
         answer.kind === "fixed" && !(changed && fixedIn(commits, answer.text)),

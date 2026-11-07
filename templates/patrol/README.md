@@ -73,19 +73,22 @@ worker. Leave it `null` when that line is not available.
 An item with `active` `false`, a `cloving/` branch and a `state` that is not
 `blocked` or `failed` can be a review candidate. For at most eight such items in
 each pass, the patrol reads the pull request with the GitHub method
-`review-threads`. The item is a candidate when all these conditions are true:
+`review-threads`. Each pass starts the reads at a different item of the list. The
+cycle id of the pass selects the first item, so that the patrol also reads the
+items after the first eight. The item is a candidate when all these conditions
+are true:
 
 - The pull request has an open review thread whose last comment is not by the
-  GitHub account of the operator.
+  GitHub account of the operator, and no `answer-review` run took that last
+  comment (`answered` is `false`).
 - No new comment came in the last 5 minutes (`quietSeconds` is 300 or more).
-- The newest comment is not the comment that the GitHub method `record-answered`
-  kept for the last `answer-review` run of the pull request.
 
 The patrol hands off each candidate to `answer-review` with the input
 `pullRequest`, with no decision. One pass hands off at most four answers. A
-failed read skips the pull request. The record of the last answered comment stops
-a second run on the same comments, also when the last run left a thread without a
-reply.
+failed read skips the pull request. The GitHub method `record-answered` keeps the
+last comment of each thread that a run took. This record stops a second run on
+the same comments, also when the last run left a thread without a reply. A thread
+that a run did not take stays a reason for the next run.
 
 ## The `act` point
 

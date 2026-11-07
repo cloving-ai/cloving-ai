@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { repositoryName } from "./github-issue-methods.ts";
 import { issuePrivacy } from "./github-issue-privacy.ts";
 import { field, text, type Operation } from "./github-operation.ts";
@@ -6,12 +6,20 @@ import { readRecord, writeRecord } from "./operation-journal.ts";
 
 const commentFields =
   "id body createdAt authorAssociation author { login __typename }";
-const threadsQuery = `query($owner: String!, $repo: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $repo) { pullRequest(number: $number) { state commits(last: 1) { nodes { commit { oid committedDate } } } reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 100) { nodes { ${commentFields} } } } } comments(last: 100) { nodes { ${commentFields} } } } } }`;
+const threadFields = `id isResolved isOutdated path line root: comments(first: 1) { nodes { ${commentFields} } } recent: comments(last: 10) { nodes { ${commentFields} } }`;
+const threadPage = `reviewThreads(first: 50, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { ${threadFields} } }`;
+const pullVariables =
+  "$owner: String!, $repo: String!, $number: Int!, $cursor: String";
+const threadsQuery = `query(${pullVariables}) { viewer { login } repository(owner: $owner, name: $repo) { pullRequest(number: $number) { state commits(last: 1) { nodes { commit { oid committedDate } } } ${threadPage} comments(last: 100) { nodes { ${commentFields} } } } } }`;
+const threadPageQuery = `query(${pullVariables}) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { ${threadPage} } } }`;
+const repliesQuery =
+  "query($thread: ID!) { viewer { login } node(id: $thread) { ... on PullRequestReviewThread { comments(last: 50) { nodes { id body author { login } } } } } }";
 const replyMutation =
   "mutation($thread: ID!, $body: String!) { addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $thread, body: $body }) { comment { id } } }";
 const resolveMutation =
   "mutation($thread: ID!) { resolveReviewThread(input: { threadId: $thread }) { thread { id isResolved } } }";
 
+const nodeId = /^[A-Za-z0-9_=-]{1,128}$/;
 const trustedAssociations: ReadonlySet<string> = new Set([
   "OWNER",
   "MEMBER",
@@ -21,9 +29,12 @@ const trustedAssociations: ReadonlySet<string> = new Set([
 export const threadLimits = {
   bodyCharacters: 3_000,
   threadComments: 6,
+  threadPages: 20,
   threadsBytes: 120_000,
   commentsBytes: 30_000,
   replyBytes: 65_536,
+  recordedComments: 100,
+  answeredComments: 500,
 };
 
 export interface ReviewComment {
@@ -40,7 +51,13 @@ export interface ReviewThread {
   readonly line: number | null;
   readonly outdated: boolean;
   readonly bot: boolean;
+  readonly answered: boolean;
   readonly comments: readonly ReviewComment[];
+}
+
+interface ThreadContext {
+  readonly viewer: string;
+  readonly answered: ReadonlySet<string>;
 }
 
 function nodesOf(value: unknown): readonly unknown[] {
@@ -62,8 +79,7 @@ function numberOf(operation: Operation): number {
 
 function nodeText(operation: Operation, name: string): string {
   const value = text(operation, name);
-  if (!/^[A-Za-z0-9_=-]{1,128}$/.test(value))
-    throw new Error("invalid-payload");
+  if (!nodeId.test(value)) throw new Error("invalid-payload");
   return value;
 }
 
@@ -104,21 +120,30 @@ function kept(comments: readonly ReviewComment[]): readonly ReviewComment[] {
     .concat(comments.slice(1 - threadLimits.threadComments));
 }
 
-function threadOf(node: unknown, viewer: string): ReviewThread[] {
+function threadNodes(node: unknown): readonly unknown[] {
+  const recent = nodesOf(field(node, "recent"));
+  const ids = new Set(recent.map((item) => field(item, "id")));
+  return nodesOf(field(node, "root"))
+    .filter((item) => !ids.has(field(item, "id")))
+    .concat(recent);
+}
+
+function threadOf(node: unknown, context: ThreadContext): ReviewThread[] {
   if (field(node, "isResolved") !== false) return [];
-  const comments = nodesOf(field(node, "comments")).flatMap((item) =>
-    commentOf(item, viewer),
-  );
+  const { viewer } = context;
+  const comments = threadNodes(node).flatMap((item) => commentOf(item, viewer));
   const last = comments.at(-1);
   if (last === undefined || last.author === viewer) return [];
   const line = field(node, "line");
+  const root = nodesOf(field(node, "root"))[0];
   return [
     {
       id: stringOf(field(node, "id")),
       path: String(field(node, "path")),
       line: typeof line === "number" ? line : null,
       outdated: field(node, "isOutdated") === true,
-      bot: comments[0]?.bot ?? last.bot,
+      bot: field(field(root, "author"), "__typename") === "Bot",
+      answered: context.answered.has(last.id),
       comments: kept(comments),
     },
   ];
@@ -159,40 +184,91 @@ function answeredRecord(
   };
 }
 
-async function reviewPull(
+async function pullPage(
   operation: Operation,
-  number: number,
-): Promise<{ readonly viewer: string; readonly pull: unknown }> {
+  page: {
+    readonly number: number;
+    readonly query: string;
+    readonly cursor: string | null;
+  },
+): Promise<unknown> {
+  const cursor = page.cursor === null ? [] : ["-f", `cursor=${page.cursor}`];
   const reply: unknown = JSON.parse(
     await operation.calls.gh([
       "api",
       "graphql",
       "-f",
-      `query=${threadsQuery}`,
+      `query=${page.query}`,
       "-F",
       "owner={owner}",
       "-F",
       "repo={repo}",
       "-F",
-      `number=${String(number)}`,
+      `number=${String(page.number)}`,
+      ...cursor,
     ]),
   );
-  const data = field(reply, "data");
-  return {
-    viewer: stringOf(field(field(data, "viewer"), "login")),
-    pull: field(field(data, "repository"), "pullRequest"),
-  };
+  return field(reply, "data");
+}
+
+function pullOf(data: unknown): unknown {
+  return field(field(data, "repository"), "pullRequest");
+}
+
+async function reviewThreadNodes(
+  operation: Operation,
+  first: { readonly number: number; readonly pull: unknown },
+): Promise<readonly unknown[]> {
+  const nodes = [...nodesOf(field(first.pull, "reviewThreads"))];
+  let info = field(field(first.pull, "reviewThreads"), "pageInfo");
+  for (let page = 1; field(info, "hasNextPage") === true; page += 1) {
+    if (page >= threadLimits.threadPages)
+      throw new Error("review-threads-limit");
+    const pull = pullOf(
+      await pullPage(operation, {
+        number: first.number,
+        query: threadPageQuery,
+        cursor: stringOf(field(info, "endCursor")),
+      }),
+    );
+    nodes.push(...nodesOf(field(pull, "reviewThreads")));
+    info = field(field(pull, "reviewThreads"), "pageInfo");
+  }
+  return nodes;
+}
+
+async function answeredComments(
+  operation: Operation,
+  number: number,
+): Promise<readonly string[]> {
+  const record = answeredRecord(operation, number);
+  const comments = field(
+    await readRecord(record.folder, record.name),
+    "comments",
+  );
+  if (!Array.isArray(comments)) return [];
+  return comments.filter((item) => typeof item === "string");
 }
 
 export async function reviewThreads(operation: Operation): Promise<unknown> {
   const number = numberOf(operation);
-  const { viewer, pull } = await reviewPull(operation, number);
+  const data = await pullPage(operation, {
+    number,
+    query: threadsQuery,
+    cursor: null,
+  });
+  const viewer = stringOf(field(field(data, "viewer"), "login"));
+  const pull = pullOf(data);
   if (field(pull, "state") !== "OPEN") throw new Error("pull-request-not-open");
   const commit = field(nodesOf(field(pull, "commits"))[0], "commit");
   const since = Date.parse(stringOf(field(commit, "committedDate")));
-  const threads = nodesOf(field(pull, "reviewThreads")).flatMap((node) =>
-    threadOf(node, viewer),
-  );
+  const context = {
+    viewer,
+    answered: new Set(await answeredComments(operation, number)),
+  };
+  const threads = (await reviewThreadNodes(operation, { number, pull }))
+    .flatMap((node) => threadOf(node, context))
+    .sort((left, right) => Number(left.answered) - Number(right.answered));
   const comments = nodesOf(field(pull, "comments"))
     .flatMap((node) => commentOf(node, viewer))
     .filter(
@@ -201,11 +277,6 @@ export async function reviewThreads(operation: Operation): Promise<unknown> {
         item.author !== viewer &&
         Date.parse(item.createdAt) > since,
     );
-  const record = answeredRecord(operation, number);
-  const answered = field(
-    await readRecord(record.folder, record.name),
-    "comment",
-  );
   const latest = latestOf(
     threads.flatMap((thread) => thread.comments.slice(-1)).concat(comments),
   );
@@ -215,7 +286,6 @@ export async function reviewThreads(operation: Operation): Promise<unknown> {
     threads: bounded(threads, threadLimits.threadsBytes),
     comments: bounded(comments, threadLimits.commentsBytes),
     latest,
-    answered: typeof answered === "string" ? answered : null,
     quietSeconds:
       latest === null
         ? null
@@ -223,15 +293,60 @@ export async function reviewThreads(operation: Operation): Promise<unknown> {
   };
 }
 
+function commentIds(operation: Operation): readonly string[] {
+  const comments = operation.payload["comments"];
+  if (
+    !Array.isArray(comments) ||
+    comments.length === 0 ||
+    comments.length > threadLimits.recordedComments
+  )
+    throw new Error("invalid-payload");
+  return comments.map((item) => {
+    if (typeof item !== "string" || !nodeId.test(item))
+      throw new Error("invalid-payload");
+    return item;
+  });
+}
+
 export async function recordAnswered(operation: Operation): Promise<unknown> {
   const number = numberOf(operation);
-  const comment = nodeText(operation, "comment");
+  const comments = commentIds(operation);
   const record = answeredRecord(operation, number);
+  const known = await answeredComments(operation, number);
+  const answered = [...new Set(known.concat(comments))].slice(
+    -threadLimits.answeredComments,
+  );
   await writeRecord(record.folder, {
     name: record.name,
-    value: { pullRequest: number, comment, runId: operation.run.runId },
+    value: {
+      pullRequest: number,
+      comments: answered,
+      runId: operation.run.runId,
+    },
   });
-  return { number, comment };
+  return { number, comments };
+}
+
+async function postedReply(
+  operation: Operation,
+  reply: { readonly thread: string; readonly marker: string },
+): Promise<string | undefined> {
+  const data = field(
+    JSON.parse(
+      await operation.calls.gh(
+        graphql(repliesQuery, [`thread=${reply.thread}`]),
+      ),
+    ),
+    "data",
+  );
+  const viewer = stringOf(field(field(data, "viewer"), "login"));
+  const posted = nodesOf(field(field(data, "node"), "comments")).find(
+    (node) =>
+      field(field(node, "author"), "login") === viewer &&
+      String(field(node, "body")).includes(reply.marker),
+  );
+  const id = field(posted, "id");
+  return typeof id === "string" ? id : undefined;
 }
 
 export async function replyThread(operation: Operation): Promise<unknown> {
@@ -243,9 +358,12 @@ export async function replyThread(operation: Operation): Promise<unknown> {
     await operation.calls.gh(["repo", "view", "--json", "nameWithOwner"]),
   );
   issuePrivacy(body, { settings: operation.settings, repository });
+  const marker = `<!-- cloving-reply:${basename(operation.folder)} -->`;
+  const known = await postedReply(operation, { thread, marker });
+  if (known !== undefined) return { thread, comment: known };
   const reply: unknown = JSON.parse(
     await operation.calls.gh(
-      graphql(replyMutation, [`thread=${thread}`, `body=${body}`]),
+      graphql(replyMutation, [`thread=${thread}`, `body=${body}\n\n${marker}`]),
     ),
   );
   const posted = field(
