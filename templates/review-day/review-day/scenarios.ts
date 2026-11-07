@@ -24,6 +24,24 @@ export const proposal = {
   ],
 };
 
+export const reviewIssue = {
+  number: 12,
+  url: "https://github.com/acme/demo/issues/12",
+  title: "Daily loop review",
+  body: "# Daily loop review",
+  createdAt: "2026-11-06T14:45:00Z",
+  labels: ["cloving: review"],
+};
+
+export const improvementIssue = {
+  number: 8,
+  url: "https://github.com/acme/demo/issues/8",
+  title: "Give the merge check time factor 3",
+  body: "Loop: merge\n\nMeasured change.",
+  createdAt: "2026-11-05T10:00:00Z",
+  labels: ["cloving: improvement"],
+};
+
 export function completed(value: unknown = {}) {
   return {
     kind: "completed" as const,
@@ -38,8 +56,7 @@ export function effects() {
     "command run:report": [
       completed({ metrics: { mergeMinutes: { value: 30, mark: "outside" } } }),
     ],
-    "command run:reviews": [completed([])],
-    "command run:improvements": [completed([])],
+    "github issues": [completed([]), completed([])],
     "claude run-turn": [
       completed({ summary: JSON.stringify(report) }),
       completed({ summary: JSON.stringify(report) }),
