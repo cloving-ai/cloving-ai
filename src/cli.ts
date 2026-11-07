@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
 import { parseInvocation } from "./cli/arguments.ts";
+import { repositoryArguments } from "./cli/repository-arguments.ts";
 import type {
   WatchCommandOutput,
   WatchCommandRunner,
@@ -35,6 +36,7 @@ import { stalledExit } from "./cli/thread-pool.ts";
 import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
 const [command, ...options] = process.argv.slice(2);
+const repositorySelection = repositoryArguments(process.argv.slice(2), {});
 
 function repositoryDirectory(directory: string): string | undefined {
   try {
@@ -336,21 +338,17 @@ else if (command === "red-green")
     argumentsList: options,
   });
 else if (command === "start") process.exitCode = await start();
-else if (command === "integrations") {
-  const parsed = parseArgs({
-    args: options,
-    options: { repository: { type: "string" } },
-    strict: false,
-    allowPositionals: true,
-  });
-  const selected = parsed.values["repository"];
+else if (
+  typeof repositorySelection !== "string" &&
+  repositorySelection.argumentsList[0] === "integrations"
+) {
   const repository = repositoryDirectory(
-    typeof selected === "string" ? selected : process.cwd(),
+    repositorySelection.repository ?? process.cwd(),
   );
   const runtime = runtimeDirectory(process.env, repository);
   process.exitCode = await toolProcess({
     executable: "cloving-zapier",
-    argumentsList: options,
+    argumentsList: repositorySelection.argumentsList.slice(1),
     environment: {
       ...process.env,
       ...(runtime === undefined ? {} : { CLOVING_RUNTIME_DIR: runtime }),
