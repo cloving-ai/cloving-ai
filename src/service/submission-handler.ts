@@ -193,7 +193,10 @@ async function admit(
     return unresolved(context, { kind: resolution, commandId });
   if (resolution.kind === "rejected")
     return failed(resolution.code, { commandId, detail: resolution.detail });
-  const limited = capacityRefusal(workflow, admission);
+  const limited = capacityRefusal(
+    currentLanes(context, workflow) ?? workflow,
+    admission,
+  );
   if (limited !== undefined) return limited;
   const { input } = resolution;
   if (Buffer.byteLength(input) > context.documentBytes)
