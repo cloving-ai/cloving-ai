@@ -5,7 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { testMilliseconds } from "./test-timing.ts";
 
 const entry = join(import.meta.dirname, "../src/cli.ts");
@@ -71,10 +71,30 @@ function withOrigin(root: string, repository: string): string {
   return origin;
 }
 
-const roomyQueue = {
-  CLOVING_QUEUE_MAX_LOAD_PER_CORE: "4",
-  CLOVING_QUEUE_MAX_MEMORY_PRESSURE: "warn",
-};
+const calmHost = `
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import os from "node:os";
+import { promisify } from "node:util";
+const original = childProcess.execFile;
+const promised = original[promisify.custom];
+function execFile(...parameters) { return original(...parameters); }
+execFile[promisify.custom] = (...parameters) =>
+  parameters[0] === "/usr/sbin/sysctl" && parameters[1]?.includes("kern.memorystatus_vm_pressure_level")
+    ? Promise.resolve({ stdout: "1\\n", stderr: "" })
+    : promised(...parameters);
+childProcess.execFile = execFile;
+os.loadavg = () => [0, 0, 0];
+syncBuiltinESMExports();
+`;
+
+function roomyQueue(preload: string): NodeJS.ProcessEnv {
+  return {
+    CLOVING_QUEUE_MAX_LOAD_PER_CORE: "4",
+    CLOVING_QUEUE_MAX_MEMORY_PRESSURE: "warn",
+    NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
+  };
+}
 
 export async function scene(
   script = fakeClaude,
@@ -103,10 +123,12 @@ export async function scene(
   const origin = withOrigin(root, repository);
   await writeFile(join(root, "fake-claude.mjs"), script);
   await writeFile(join(root, "fake-board.mjs"), fakeBoard);
+  await writeFile(join(root, "calm-host.mjs"), calmHost);
   const settings = {
     entryPoint,
     directory,
     repository,
+    calmHost: join(root, "calm-host.mjs"),
     command: [process.execPath, join(root, "fake-claude.mjs")],
     board: [process.execPath, join(root, "fake-board.mjs")],
   };
@@ -158,6 +180,7 @@ async function launched(
     readonly repository: string;
     readonly command: readonly string[];
     readonly board: readonly string[];
+    readonly calmHost: string;
     readonly bound?: string;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly argumentsList?: readonly string[];
@@ -188,7 +211,7 @@ async function launched(
         CLOVING_WATCH_PORT: "off",
         ...(settings.environment?.["CLOVING_QUEUE_SECONDS"] === undefined
           ? {}
-          : roomyQueue),
+          : roomyQueue(settings.calmHost)),
         XDG_CONFIG_HOME: join(settings.directory, "configuration"),
         ...settings.environment,
       },
