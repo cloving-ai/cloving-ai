@@ -7,6 +7,7 @@ import {
   callName,
   completeCalls,
   requestInput,
+  panelEffects,
   scenarioEffects,
 } from "./option-tests.ts";
 
@@ -87,6 +88,7 @@ function limitEffects() {
     ...scenario,
     "claude run-turn": four(scenario["claude run-turn"]),
     "claude run-turn:review": four(scenario["claude run-turn:review"]),
+    ...panelEffects(4),
     "github open-pr": four(scenario["github open-pr"]),
     "github wait-review": four(scenario["github wait-review"]),
     "command run:red-green": four(scenario["command run:red-green"]),

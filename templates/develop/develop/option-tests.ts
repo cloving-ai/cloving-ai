@@ -40,6 +40,7 @@ export function scenarioEffects() {
     "claude run-turn:review": [
       completed({ summary: "Reviewed.", reviewVerdict: "accept" }),
     ],
+    ...panelEffects(1),
     "github partial-issue": [completed({ ticketStatus: "partial" })],
     "command run:red-green": [
       completed({ verdict: "accepted", output: "Passed." }),
@@ -47,19 +48,44 @@ export function scenarioEffects() {
   };
 }
 
+export const panelProfiles = [
+  "review-claude",
+  "review-codex",
+  "review-gemini",
+  "review-synthesis",
+];
+
+export function panelEffects(count: number) {
+  return Object.fromEntries(
+    panelProfiles.map((profile) => [
+      `claude run-turn:${profile}`,
+      Array.from({ length: count }, () =>
+        completed({ summary: "Reviewed.", reviewVerdict: "accept" }),
+      ),
+    ]),
+  );
+}
+
+const limits: Readonly<Record<string, number>> = { panel: 99, "red-green": 93 };
+
+export const effectLimit =
+  limits[selection.accept] ?? limits[selection.verify] ?? 87;
+
 export function completeCalls(): string[] {
-  const review: Readonly<Record<string, string>> = {
-    greptile: "wait-review",
-    person: "approval",
-    turn: "run-turn:review",
+  const review: Readonly<Record<string, readonly string[]>> = {
+    greptile: ["wait-review"],
+    person: ["approval"],
+    turn: ["run-turn:review"],
+    panel: panelProfiles.map((profile) => `run-turn:${profile}`),
   };
-  const acceptance = ["run-turn", review[selection.accept] ?? "unknown-review"];
+  const reviews = review[selection.accept] ?? ["unknown-review"];
+  const acceptance = ["run-turn"].concat(reviews);
   if (selection.merge === "local") return acceptance;
   return ["prepare"].concat(
     selection.input === "ticket" ? ["label"] : [],
     ["run-turn", "open-pr"],
     selection.verify === "red-green" ? ["run:red-green"] : [],
-    [review[selection.accept] ?? "unknown-review"],
+    reviews,
     selection.merge === "person" ? ["approval", "merge"] : ["merge"],
     selection.input === "ticket" ? ["close-issue"] : [],
   );
@@ -80,7 +106,7 @@ export const optionTests = [
       using bridge = fakeStepBridge({
         effects: scenarioEffects(),
         decisions: [approved, approved],
-        effectLimit: selection.verify === "red-green" ? 93 : 87,
+        effectLimit,
       });
       assert.deepEqual(await develop(requestInput()), {
         kind: "handoff_requested",

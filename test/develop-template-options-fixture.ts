@@ -39,6 +39,7 @@ export const completeConfigurations = [
   { ...automatic, merge: "person" },
   { ...reviewed, merge: "green" },
   { ...reviewed, input: "task-text", accept: "turn", merge: "green" },
+  { ...automatic, accept: "panel" },
   { ...automatic, verify: "red-green" },
   { ...automatic, verify: "red-green", merge: "person" },
   {
@@ -102,7 +103,40 @@ function verificationFiles(files: Record<string, string>): void {
   });
 }
 
+const panelEdits = [
+  {
+    from: 'import { acceptWork } from "./accept.ts";',
+    to: 'import { reviewPanel } from "./panel.ts";',
+  },
+  {
+    from: "  type DevelopState,",
+    to: "  type DevelopState,\n  type DevelopReport,",
+  },
+  {
+    from: "await deliverPull({ round, pull });",
+    to: "await deliverPull({ round, pull, state, report });",
+  },
+  {
+    from: "  readonly pull: PullRequest;\n}): Promise<RoundResult | CycleOutcome> {",
+    to: "  readonly pull: PullRequest;\n  readonly state: DevelopState;\n  readonly report: DevelopReport;\n}): Promise<RoundResult | CycleOutcome> {",
+  },
+  {
+    from: "  const review = await acceptWork({\n    target: pull.target,\n    number: pull.number,\n    commit: pull.commit,\n  });",
+    to: '  const review = await reviewPanel({\n    state: request.state,\n    report: request.report,\n    pull: pull,\n    reviewers: ["review-claude", "review-codex", "review-gemini"],\n  });\n  if ("kind" in review) return review;',
+  },
+];
+
+export const panelMethods = [
+  "run-turn:review-claude",
+  "run-turn:review-codex",
+  "run-turn:review-gemini",
+  "run-turn:review-synthesis",
+];
+
 function acceptanceFiles(files: Record<string, string>, accept: string): void {
+  if (accept === "panel")
+    for (const { from, to } of panelEdits)
+      edit(files, { file: "develop/round.ts", from, to });
   if (accept === "person") {
     edit(files, {
       file: "develop/accept.ts",
@@ -242,9 +276,16 @@ function declaration(selected: DevelopSelection): string {
           workflow: { commands: ["red-green"] },
           methods: { command: ["run:red-green"] },
         }
-      : { effectLimit: 87, capabilities: [], workflow: {}, methods: {} };
-  const claude =
-    selected.accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"];
+      : {
+          effectLimit: selected.accept === "panel" ? 99 : 87,
+          capabilities: [],
+          workflow: {},
+          methods: {},
+        };
+  const claude = ["run-turn"].concat(
+    selected.accept === "turn" ? ["run-turn:review"] : [],
+    selected.accept === "panel" ? panelMethods : [],
+  );
   const github = [
     "prepare",
     "label",
