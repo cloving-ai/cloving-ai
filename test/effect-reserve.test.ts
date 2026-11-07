@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered } from "../src/cli/render.ts";
+import { configuration, validateSetting } from "../src/configuration-schema.ts";
 import { effectLeaseLimits, queueLimitsOf } from "../src/queue-room.ts";
 
 await test("CLV-322 the effect capacity is the queue lanes plus the reserve, and the queue limit is the lanes", () => {
@@ -56,4 +57,23 @@ await test("CLV-322 cloving status shows the effect capacity, the queue limit an
     }),
     /Effect leases/,
   );
+});
+
+await test("CLV-322 config set refuses an effect reserve of 9 or -1, and the settings files refuse it with invalid-effect-settings", () => {
+  for (const reserved of [9, -1]) {
+    assert.throws(
+      () => {
+        validateSetting("effects.reserved", reserved);
+      },
+      { message: "invalid-setting: effects.reserved must be from 0 to 8" },
+    );
+    for (const scope of ["project", "private"] as const)
+      assert.throws(
+        () => configuration({ version: 1, effects: { reserved } }, scope),
+        { message: "invalid-effect-settings" },
+      );
+  }
+  assert.doesNotThrow(() => {
+    validateSetting("effects.reserved", 8);
+  });
 });

@@ -99,8 +99,12 @@ const schemas: Readonly<Record<string, Schema>> = {
   private: privateConfig,
 };
 
+const refusalCodes: ReadonlyMap<string, string> = new Map([
+  ["effects.reserved", "invalid-effect-settings"],
+]);
+
 function invalid(field: string): never {
-  throw new Error(`invalid-setting: ${field}`);
+  throw new Error(refusalCodes.get(field) ?? `invalid-setting: ${field}`);
 }
 
 interface Checked {

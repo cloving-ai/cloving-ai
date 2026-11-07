@@ -239,12 +239,9 @@ function queueHold(status: Fields): string {
     : "";
 }
 
-function effectLeases(status: Fields): string {
-  const text = effectLeaseText(status["effectLeases"]);
-  return text === undefined ? "" : `. ${text}`;
-}
-
 function answeredService(status: Fields | undefined): ServiceState {
+  const leases = effectLeaseText(status?.["effectLeases"]);
+  const leaseSuffix = leases === undefined ? "" : `. ${leases}`;
   return {
     observation:
       status === undefined
@@ -254,7 +251,7 @@ function answeredService(status: Fields | undefined): ServiceState {
           }
         : {
             result: "ok",
-            detail: `Service answers from its generated project folder${environmentSettings(status)}${queueHold(status)}${effectLeases(status)}`,
+            detail: `Service answers from its generated project folder${environmentSettings(status)}${queueHold(status)}${leaseSuffix}`,
           },
     status,
   };

@@ -244,7 +244,7 @@ await test("CLV-049 the promotion selects, below the capacity bound, the oldest 
 
 function queueSteps(
   runId: string,
-  extra: Readonly<Record<string, unknown>> = {},
+  extra: { readonly queueLimit?: number } = {},
 ): readonly Readonly<Record<string, unknown>>[] {
   const operationId = operationOf(1, runId);
   return [
