@@ -55,11 +55,12 @@ an idea ─> idea-to-issue ──hand-off──> develop ─> merged pull reques
 ```
 
 - `idea-to-issue` hands the issue that it posts to `develop`. Its other options put the issue in the queue with the label `cloving: ready`, or leave it for you.
+- `goal-to-tickets` plans a large goal as 1 to 12 linked tickets and posts them in dependency order. By default, it puts each ticket with no blocker in the queue with the label `cloving: ready`. Its other options hand the first of these tickets to `develop`, or leave the tickets for you.
 - `review-day` runs on a daily schedule. It hands the improvement that you approve to a copy of `idea-to-issue` with the `next.nothing` option. That copy posts the issue and stops, so you decide when the work goes to `develop`.
 - `review-day` hands work to the workflow ID `idea-to-issue`. To keep both copies of `idea-to-issue`, give the first copy another ID with `cloving templates copy idea-to-issue --id <id>`.
 - The three templates are in the package, and each template has its own tests. A copy is your code. Change it as you want.
 
-Open issues plan more built-in steps. These steps are not built yet: [#622](https://github.com/cloving-ai/cloving-ai/issues/622) plans a goal into linked tickets, [#619](https://github.com/cloving-ai/cloving-ai/issues/619) adds a review panel to `develop`, and [#633](https://github.com/cloving-ai/cloving-ai/issues/633) answers review threads on pull requests that have no run.
+Open issues plan more built-in steps. These steps are not built yet: [#619](https://github.com/cloving-ai/cloving-ai/issues/619) adds a review panel to `develop`, and [#633](https://github.com/cloving-ai/cloving-ai/issues/633) answers review threads on pull requests that have no run.
 
 ### An example of a larger factory
 
@@ -1113,6 +1114,18 @@ The templates `dependency-audit` and `dependency-ticket` watch the published adv
 `dependency-audit` runs each day. It reads the operator command `audit-candidates` from `CLOVING_COMMANDS`. The reference script `dependency-audit/audit-candidates.mts` of the copy gets the GitHub CLI configuration folder of a login as its argument, because an operator command gets no GitHub login from the service. It adds a clean detached work tree of the newest default branch, runs `npm ci --ignore-scripts`, `npm audit --json` and `npm ls --all --json` in it, and removes it. It prints a JSON array with at most 10 packages that have a critical or high advisory. Each package has each advisory ID, severity, title, vulnerable range and patched range, and each install path. The script leaves out each advisory that an open issue with the label `cloving: security` names.
 
 A day with no new critical or high advisory ends `completed` with no turn. Else one turn puts the packages into at most 5 groups, reads the release notes from the installed version to the fixed version, lists each breaking change with the code that uses it (`path:line`), and names the exact change: a new pinned version or an `overrides` entry. For each group, the workflow writes a ticket in the form of the repository, with the advisory table, the install paths, the change, the breaking changes, the rule for the pin and its justification, and the acceptance criteria. The critical groups come first. `create-issue` makes one issue for each run, so the audit hands off one `dependency-ticket` run for each ticket. That run creates the issue and adds the label `cloving: security`. The audit changes no dependency. The README files of the two templates give the details.
+
+### Plan a goal into tickets
+
+The template `goal-to-tickets` splits a large goal into tickets with dependencies before the queue works on them. Copy it with `cloving templates copy goal-to-tickets`. The input is `{"goal": "<text>"}`, with at most 32768 bytes of input JSON.
+
+A research turn reads the code and writes `cloving-goal-plan.md` with 1 to 12 drafts in the ticket format of [Write a ticket for Cloving](#write-a-ticket-for-cloving). Each draft starts with `# Draft N: <title>`. Its `## Dependencies` section names the drafts that must close first with one line `Needs draft N` each. The workflow checks the plan for a dependency cycle. A cycle sends the plan back to the research turn one time, with the cycle in the prompt. A second cycle ends the run `blocked` with `plan-cycle`. A plan that is not 1 to 12 numbered drafts, or that names a draft that does not exist, ends the run with `invalid-plan`.
+
+The point `review` selects **A review turn corrects the plan** (the default) or **I read the plan**. With the review turn, the workflow checks the corrected plan for a cycle again. With **I read the plan**, one approval decision shows the title and the dependencies of each draft, and then the full plan. A denial posts nothing.
+
+The workflow posts the tickets in dependency order with the GitHub method `create-issue`, so each blocker has its number before the tickets that need it. Each `Needs draft N` becomes `Needs #<number>`, the dependency format of [The ticket command](#the-ticket-command). The privacy check of `create-issue` applies to each ticket, so the post requires `privateTexts`. Each post has its own target, so each issue has its own hidden marker, and a replay does not post an issue again.
+
+The point `next` selects **Put the ready tickets in the queue** (the default), **Hand the first ready ticket to develop** or **Do nothing**. A ready ticket has no open blocker. The workflow does not read the state of an existing issue that a draft names with `Needs #<number>`, so such a ticket is not ready. The queue option adds `cloving: ready` only to the ready tickets. The declaration has `effectLimit` 32, which is enough for a plan of 12 tickets after one cycle. The README file of the template gives the details.
 
 ### Queue control
 

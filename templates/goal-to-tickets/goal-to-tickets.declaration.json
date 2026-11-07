@@ -1,0 +1,15 @@
+{
+  "workflow": {
+    "workflowId": "goal-to-tickets",
+    "effectLimit": 32,
+    "capabilities": ["claude", "github"],
+    "input": {
+      "maximumBytes": 32768,
+      "fields": { "goal": { "type": "string" } }
+    }
+  },
+  "methods": {
+    "claude": ["run-turn"],
+    "github": ["prepare", "capture-draft", "create-issue", "label", "discard"]
+  }
+}
