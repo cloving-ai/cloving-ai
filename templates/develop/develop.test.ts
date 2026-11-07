@@ -4,6 +4,7 @@ import { recoveryTests } from "./develop/recovery-tests.ts";
 import { interruptionTests } from "./develop/interruption-tests.ts";
 import { recoveryOptionTests } from "./develop/recovery-option-tests.ts";
 import { panelTests } from "./develop/panel-tests.ts";
+import { lessonsTests } from "./develop/lessons-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
@@ -19,6 +20,8 @@ for (const scenario of interruptionTests.concat(
   panelTests,
 ))
   await test(scenario.name, scenario.run);
+
+for (const scenario of lessonsTests) await test(scenario.name, scenario.run);
 
 await test("CLV-221 invalid partial rounds never dispatch an effect or open a question", async () => {
   using bridge = fakeStepBridge({});

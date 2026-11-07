@@ -4,7 +4,11 @@ import {
   type ProtectedResult,
   type TicketStatus,
 } from "cloving/workflows";
-import { developTurn, type DevelopTurnInput } from "./turn.ts";
+import {
+  developTurn,
+  type DevelopLessons,
+  type DevelopTurnInput,
+} from "./turn.ts";
 
 export interface DevelopInput {
   readonly cycleId: string;
@@ -45,6 +49,7 @@ export interface DevelopTask {
     readonly repository: string;
     readonly number: number;
   } | null;
+  readonly lessons?: DevelopLessons;
 }
 
 function ticketIssue(ticket: string) {
@@ -96,6 +101,7 @@ function turnRequest(
     round: state.round,
     attempt,
     feedback: state.feedback,
+    lessons: state.input.lessons ?? null,
   };
 }
 

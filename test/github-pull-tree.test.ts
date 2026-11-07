@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { git } from "./claude-worker-fixture.ts";
+import { git, resultOf } from "./claude-worker-fixture.ts";
 import {
   committed,
   withGithub,
@@ -53,6 +53,27 @@ await test("CLV-305 prepare with a pull request number makes a work tree on its 
     });
     assert.equal(git(tree, ["rev-parse", "HEAD"]), head);
     assert.equal(git(tree, ["rev-parse", "--abbrev-ref", "HEAD"]), branch);
+  }));
+
+await test("CLV-303 prepare with a pull request number returns the lessons of its branch", () =>
+  withGithub(async (scene) => {
+    const text = "- 2026-11-06 CLV-303: Read the lessons file.\n";
+    mkdirSync(join(scene.repository, ".cloving"), { recursive: true });
+    writeFileSync(join(scene.repository, ".cloving/lessons.md"), text);
+    git(scene.repository, ["add", "."]);
+    git(scene.repository, ["commit", "--quiet", "-m", "Add the lessons"]);
+    git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    openPull(scene, { head: branch });
+    pushedBranch(scene);
+    const report = await scene.perform(scene.worker(), {
+      method: "prepare",
+      payload: { pullRequest: 7, lessons: true },
+    });
+    assert.equal(report.outcome, "completed", JSON.stringify(report));
+    assert.deepEqual(resultOf(report.result)["lessons"], {
+      text,
+      bytes: text.length,
+    });
   }));
 
 await test("CLV-305 prepare refuses a pull request that a person opened or that is not open", () =>

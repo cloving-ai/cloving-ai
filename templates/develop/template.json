@@ -150,7 +150,7 @@
           "id": "local",
           "label": "A person merges the local branch",
           "summary": "Leave the accepted branch for a person to merge by hand. Do not push or open a pull request.",
-          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, preparePull, the start labelTicket call and its check, the blockTicket call and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
+          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, the preparePull call around the input (keep its argument as the input), the start labelTicket call and its check, the blockTicket call and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
           "requires": {
             "accept": ["person", "turn"],
             "partial": ["person"]
@@ -210,6 +210,30 @@
           "label": "Stop as today",
           "summary": "Fail the run on a failed GitHub effect, and stop blocked at the round limit without a question.",
           "change": "In develop/recovery.ts set export const recovery = \"stop\" as \"person\" | \"stop\". The retry, conflict and decision helpers then return the earlier results unchanged.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "lessons",
+      "question": "Do the workers keep a lessons file in the repository?",
+      "options": [
+        {
+          "id": "file",
+          "label": "A lessons file in the repository",
+          "summary": "Each development turn prompt includes .cloving/lessons.md, up to 16 KB. A missing file is the same as an empty file. Before its last commit, a turn can add up to three new lessons, each on one line in ASD-STE100 Simplified Technical English with the date and the ticket. The turn does not add a lesson that the file already has in the same or a similar form. When the file is larger than 16 KB, the turn joins similar lessons and removes lessons that no longer apply. The lesson changes are part of the pull request, so the review sees them.",
+          "change": "Keep export const lessons = \"file\" as LessonsMode in develop/lessons.ts. preparePull in develop/pull.ts then sends the GitHub prepare payload {\"lessons\": true}, keeps the returned text and size in the task, and develop/report.ts gives them to each turn of develop/turn.ts.",
+          "requires": {
+            "merge": ["green", "person"]
+          },
+          "needs": []
+        },
+        {
+          "id": "none",
+          "label": "No lessons",
+          "summary": "No turn reads or writes the lessons file.",
+          "change": "In develop/lessons.ts set export const lessons = \"none\" as LessonsMode. preparePull then sends the GitHub prepare payload {} and the turn prompts do not name the lessons file.",
           "requires": {},
           "needs": []
         }

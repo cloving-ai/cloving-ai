@@ -58,6 +58,7 @@ export const methodReasons: ReadonlySet<string> = new Set([
   "head-not-updated",
   "uncommitted-change",
   "invalid-payload",
+  "lessons-not-a-file",
   "merged-other-commit",
   "no-change",
   "private-path-in-change",

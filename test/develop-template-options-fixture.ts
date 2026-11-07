@@ -9,6 +9,7 @@ export interface DevelopSelection {
   readonly merge: string;
   readonly partial: string;
   readonly recovery: string;
+  readonly lessons: string;
 }
 
 const prefix = "repo/.cloving/workflows/";
@@ -21,6 +22,7 @@ export const automatic = {
   merge: "green",
   partial: "queue",
   recovery: "person",
+  lessons: "file",
 };
 export const reviewed = {
   input: "ticket",
@@ -30,6 +32,7 @@ export const reviewed = {
   merge: "local",
   partial: "person",
   recovery: "stop",
+  lessons: "none",
 };
 export const completeConfigurations = [
   automatic,
@@ -70,16 +73,22 @@ export async function configuredDevelopFiles(
   selected: DevelopSelection,
 ) {
   const files = await developFiles(directory);
-  if (selected.input === "task-text")
-    edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   acceptanceFiles(files, selected.accept);
   deliveryFiles(files, selected);
+  if (selected.input === "task-text")
+    edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   if (selected.verify === "red-green") verificationFiles(files);
   if (selected.recovery === "stop")
     edit(files, {
       file: "develop/recovery.ts",
       from: 'export const recovery = "person" as',
       to: 'export const recovery = "stop" as',
+    });
+  if (selected.lessons === "none")
+    edit(files, {
+      file: "develop/lessons.ts",
+      from: 'export const lessons = "file" as',
+      to: 'export const lessons = "none" as',
     });
   files[prefix + "develop.declaration.json"] = declaration(selected);
   scenarioFiles(files, selected);
@@ -255,8 +264,12 @@ function localFiles(files: Record<string, string>): void {
     from: 'import { developRound } from "./develop/round.ts";',
     to: 'import { localRound as developRound } from "./develop/local.ts";',
   });
+  edit(files, {
+    file: "develop.ts",
+    from: "await preparePull(ticketInput(request))",
+    to: "ticketInput(request)",
+  });
   for (const line of [
-    "  await preparePull(input.cycleId);\n",
     '  const started = await labelTicket(input, { key: "start", round: 1 });\n',
     "  if (started !== null) return started;\n",
     "  let endingRound = 1;\n",

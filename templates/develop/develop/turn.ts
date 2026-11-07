@@ -1,6 +1,11 @@
 import type { ProtectedResult } from "cloving/workflows";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 
+export interface DevelopLessons {
+  readonly text: string;
+  readonly bytes: number;
+}
+
 export interface DevelopTurnInput {
   readonly cycleId: string;
   readonly repository: string;
@@ -13,6 +18,35 @@ export interface DevelopTurnInput {
     readonly output: string;
     readonly remaining: readonly string[];
   } | null;
+  readonly lessons?: DevelopLessons | null;
+}
+
+const lessonsLimit = 16384;
+
+function lessonsSize(lessons: DevelopLessons): string {
+  if (lessons.bytes === 0) return "The file is empty.";
+  if (lessons.bytes <= lessonsLimit)
+    return `The file has ${String(lessons.bytes)} bytes.`;
+  return `The file has ${String(lessons.bytes)} bytes. This is more than the limit of ${String(lessonsLimit)} bytes. The text below is the first ${String(lessonsLimit)} bytes.`;
+}
+
+function lessonsPrompt(lessons: DevelopLessons | null | undefined): string[] {
+  if (lessons === null || lessons === undefined) return [];
+  return [
+    "",
+    "Lessons:",
+    "The file .cloving/lessons.md keeps lessons from earlier runs of this repository. Use these lessons in this task.",
+    "Before your last commit, you can add up to three new lessons from this run to the file:",
+    "- Write each lesson on one line in ASD-STE100 Simplified Technical English, in the form - YYYY-MM-DD TICKET: lesson.",
+    "- Use the date of today. Use the ticket ID from the title of the task, or the GitHub issue reference when the title has no ID.",
+    "- Do not add a lesson that the file already has in the same or a similar form.",
+    "- The lessons that earlier rounds of this run added count toward the three lessons.",
+    `- When the file is larger than ${String(lessonsLimit)} bytes, join similar lessons and remove lessons that no longer apply, until the file is smaller than ${String(lessonsLimit)} bytes.`,
+    "- Put the changes to the file in the same commit as the other changes, so that the review sees them.",
+    "- Add no lesson when this run shows nothing new.",
+    "",
+    lessonsSize(lessons),
+  ].concat(lessons.bytes === 0 ? [] : ["", lessons.text]);
 }
 
 function turnPrompt(input: DevelopTurnInput): string {
@@ -34,10 +68,9 @@ function turnPrompt(input: DevelopTurnInput): string {
     "The branch will become a public pull request. Keep local paths out of tracked files and commit messages.",
     "Report the changes and check results. Finish with Ticket status: complete or Ticket status: partial. For partial work, precede the status with Remaining: and one unfinished item per '- ' line.",
     "List as remaining only work that the task asks for. A check that the repository keeps fail-closed on purpose is not remaining work. A step that the task gives to the operator is not remaining work.",
-    "",
-    "Task:",
-    task,
-  ].join("\n");
+  ]
+    .concat(lessonsPrompt(input.lessons), ["", "Task:", task])
+    .join("\n");
   if (input.feedback === null) return prompt;
   return [
     prompt,
