@@ -10,8 +10,10 @@ import {
   effectRequests,
   effects,
   input,
+  labeledNumbers,
   planText,
   postedTexts,
+  selection,
 } from "./goal-to-tickets/scenarios.ts";
 
 await test("CLV-302 a three-draft plan posts each ticket after its blocker with the real number", async () => {
@@ -35,6 +37,37 @@ await test("CLV-302 a three-draft plan posts each ticket after its blocker with 
   assert.match(String(posted[1]), /^Needs #101$/m);
   assert.match(String(posted[2]), /^Needs #102$/m);
   assert.doesNotMatch(posted.join("\n"), /draft \d/i);
+});
+
+await test("CLV-302 the selected options give the expected decision, review turn, labels and handoff", async () => {
+  using bridge = fakeStepBridge({
+    effects: effects([chain, chain]),
+    decisions: approved,
+  });
+  assert.equal((await goalToTickets(input)).kind, "handoff_requested");
+  assert.equal(
+    bridge.requests.filter((request) => request[0] === "waitForDecision")
+      .length,
+    Number(selection.review === "person"),
+  );
+  assert.equal(
+    effectRequests(bridge.requests, "run-turn").filter(
+      (request) => request.scope.operation === "review",
+    ).length,
+    Number(selection.review === "turn"),
+  );
+  assert.deepEqual(
+    labeledNumbers(bridge.requests),
+    selection.next === "queue" ? [101, 102, 103] : [],
+  );
+  assert.deepEqual(
+    bridge.requests.flatMap((request) =>
+      request[0] === "handoff" ? [request[1]] : [],
+    ),
+    selection.next === "develop"
+      ? [{ workflowId: "develop", input: { ticket: "101" } }]
+      : [],
+  );
 });
 
 await test("CLV-302 a draft with a lower number than its blocker posts after the blocker", async () => {

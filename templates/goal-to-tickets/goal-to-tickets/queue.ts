@@ -16,10 +16,9 @@ export function numbersText(tickets: readonly Ticket[]): string {
 
 export async function labelReady(request: {
   readonly input: GoalInput;
-  readonly ticket: Ticket | undefined;
-}): Promise<readonly Ticket[]> {
+  readonly ticket: Ticket;
+}): Promise<void> {
   const { input, ticket } = request;
-  if (ticket === undefined || !ticket.ready) return [];
   effectResult(
     await protectedEffect({
       capability: "github",
@@ -34,20 +33,20 @@ export async function labelReady(request: {
       }),
     }),
   );
-  return [ticket];
 }
 
 export async function queueReady(
   input: GoalInput,
   tickets: readonly Ticket[],
 ): Promise<CycleOutcome> {
-  let queued: readonly Ticket[] = [];
-  for (let index = 0; index < 12; index += 1)
-    queued = queued.concat(
-      await labelReady({ input: input, ticket: tickets.at(index) }),
-    );
+  for (let index = 0; index < 12; index += 1) {
+    const ticket = tickets.at(index);
+    if (ticket !== undefined)
+      await labelReady({ input: input, ticket: ticket });
+  }
+  const waiting = tickets.filter((ticket) => !ticket.ready);
   return ticketsOutcome(input, {
     tickets: tickets,
-    next: `Put in the queue: ${numbersText(queued)}.`,
+    next: `Put in the queue: ${numbersText(tickets)}. Waiting for a blocker: ${numbersText(waiting)}.`,
   });
 }

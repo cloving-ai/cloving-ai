@@ -70,6 +70,19 @@ export function effectRequests(
   );
 }
 
+export function labeledNumbers(
+  requests: readonly ScenarioRequest[],
+): unknown[] {
+  return effectRequests(requests, "label").map((request) => {
+    const payload: unknown = JSON.parse(request.payload);
+    return typeof payload === "object" &&
+      payload !== null &&
+      "number" in payload
+      ? payload.number
+      : null;
+  });
+}
+
 export function postedTexts(requests: readonly ScenarioRequest[]): string[] {
   return effectRequests(requests, "create-issue").map((request) => {
     const payload: unknown = JSON.parse(request.payload);

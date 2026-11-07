@@ -28,14 +28,23 @@ function ready(number: number) {
   return { number: number, add: ["cloving: ready"], remove: [] };
 }
 
-await test("CLV-302 with Put the ready tickets in the queue, only tickets with no open blocker get the ready label", async () => {
+await test("CLV-302 with Put the ready tickets in the queue, each ticket gets the ready label and the report names the tickets that wait for a blocker", async () => {
   const result = await goalScenario({
     selection: { review: "turn", next: "queue" },
     scenario: { effects: effects([mixed, mixed]) },
   });
   assert.equal(field(result.outcome, "kind"), "handoff_requested");
   assert.match(String(postedTexts(result.requests)[3]), /^Needs #586$/m);
-  assert.deepEqual(labels(result.requests), [ready(101), ready(103)]);
+  assert.deepEqual(labels(result.requests), [
+    ready(101),
+    ready(102),
+    ready(103),
+    ready(104),
+  ]);
+  assert.match(
+    String(field(result.outcome, "report")),
+    /^Put in the queue: #101, #102, #103, #104\. Waiting for a blocker: #102, #104\.$/m,
+  );
   assert.ok(result.requests.every((request) => request[0] !== "handoff"));
 });
 

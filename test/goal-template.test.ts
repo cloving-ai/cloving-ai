@@ -8,6 +8,7 @@ import { folderInput } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { cli } from "./cli-workflows-fixture.ts";
 import { packagedEntry } from "./cli-templates-fixture.ts";
+import { selected } from "./rescue-template-options-fixture.ts";
 import {
   configuredGoalFiles,
   goalSelections,
@@ -96,5 +97,23 @@ for (const selection of goalSelections)
       assert.equal(result.status, 0, result.stdout + result.stderr);
       assert.match(result.stdout, /12 tickets after one cycle/);
       assert.doesNotMatch(result.stdout, /not ok|✖/);
+    });
+  });
+
+for (const selection of [
+  { review: "person", next: "queue" },
+  { review: "turn", next: "nothing" },
+])
+  await test(`CLV-302 a copy with the default imports and the ${selection.review}/${selection.next} selection fails workflows test`, async () => {
+    const files = await configuredGoalFiles({ review: "turn", next: "queue" });
+    selected(files, { path: "goal-to-tickets/scenarios.ts", selection });
+    await withFiles(files, (directory) => {
+      const result = cli(directory, {
+        entry: packagedEntry,
+        args: ["test", "goal-to-tickets"],
+        environment: { NODE_TEST_CONTEXT: undefined },
+      });
+      assert.notEqual(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /✖ CLV-302 the selected options give/);
     });
   });

@@ -102,7 +102,7 @@ await test("CLV-302 a failed handoff with a failed label reports the failed issu
   assert.equal(bridge.requests.length, 2);
 });
 
-await test("CLV-302 Do nothing and a queue with no ready ticket use no effect", async () => {
+await test("CLV-302 Do nothing uses no effect", async () => {
   using bridge = fakeStepBridge({ effects: {} });
   const left = await leaveTickets(input, tickets);
   assert.deepEqual(left, {
@@ -112,12 +112,27 @@ await test("CLV-302 Do nothing and a queue with no ready ticket use no effect", 
     report:
       "Posted 3 tickets:\n#101 Step 101\n#102 Step 102\n#103 Step 103\nThe tickets are left for a person.",
   });
-  const queued = await queueReady(input, [ticket(101, "waiting")]);
-  assert.match(
-    "report" in queued ? queued.report : "",
-    /Put in the queue: none\.$/,
-  );
   assert.deepEqual(bridge.requests, []);
+});
+
+await test("CLV-302 the queue labels a ticket that waits for a blocker, and a plan with no waiting ticket reports none", async () => {
+  using bridge = fakeStepBridge({
+    effects: { "github label": [completed({}), completed({})] },
+  });
+  const waiting = await queueReady(input, [ticket(101, "waiting")]);
+  assert.match(
+    "report" in waiting ? waiting.report : "",
+    /Put in the queue: #101\. Waiting for a blocker: #101\.$/,
+  );
+  const free = await queueReady(input, [ticket(102, "ready")]);
+  assert.match(
+    "report" in free ? free.report : "",
+    /Put in the queue: #102\. Waiting for a blocker: none\.$/,
+  );
+  assert.deepEqual(
+    bridge.requests.map((request) => request[0]),
+    ["effect", "effect"],
+  );
 });
 
 await test("CLV-302 GitHub results that are not completed objects stop the run with a stable reason", () => {

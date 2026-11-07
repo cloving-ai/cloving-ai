@@ -57,9 +57,10 @@ tickets.
 
 ## What happens next
 
-- `next.queue` (the default) adds `cloving: ready` to each posted ticket with no
-  blocker. A ticket that needs a draft of the plan or an existing issue gets no
-  label, because its blocker can be open.
+- `next.queue` (the default) adds `cloving: ready` to each posted ticket. The
+  queue of Cloving starts a ticket only when each issue in its
+  `Needs #<number>` lines is closed, so the tickets start in dependency order.
+  The report names the tickets that wait for a blocker.
 - `next.develop` hands the first ticket with no blocker to the repository
   workflow `develop`. Set `targetWorkflow` in `goal-to-tickets/develop.ts` and
   `workflow.handoffs` in the declaration to the same workflow ID. If the handoff
@@ -75,5 +76,6 @@ the posted numbers in the post order, and the report lists each ticket.
 The declaration has `effectLimit` 32. A plan of 12 tickets uses at most 32
 effects: 1 prepare, 2 research turns with 2 reads of the plan, 1 review turn with
 1 read, 1 discard, 12 posts and 12 labels. Update `selection` in
-`goal-to-tickets/scenarios.ts` to match your choices, so the copied tests check
-the expected behavior.
+`goal-to-tickets/scenarios.ts` to match your choices. The copied tests use it to
+check the decision, the review turn, the labels and the handoff, so a copy with
+other imports fails `cloving workflows test`.

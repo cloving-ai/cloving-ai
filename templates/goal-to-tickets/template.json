@@ -32,7 +32,7 @@
         {
           "id": "queue",
           "label": "Put the ready tickets in the queue",
-          "summary": "Add cloving: ready to each posted ticket that has no blocker. A ticket that needs another ticket of the plan or an existing issue gets no label.",
+          "summary": "Add cloving: ready to each posted ticket. The queue starts a ticket only when each issue in its Needs lines is closed, so the tickets start in dependency order.",
           "change": "Keep queueReady as nextTickets from goal-to-tickets/queue.ts in goal-to-tickets.ts. Keep selection.next as queue in goal-to-tickets/scenarios.ts.",
           "requires": {},
           "needs": ["gh-login", "github-origin", "private-texts"]

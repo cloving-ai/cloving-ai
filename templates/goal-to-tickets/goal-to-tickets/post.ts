@@ -39,28 +39,17 @@ export async function postDraft(request: PostRequest): Promise<Ticket> {
   };
 }
 
-export async function postAt(request: {
-  readonly input: GoalInput;
-  readonly draft: Draft | undefined;
-  readonly tickets: readonly Ticket[];
-}): Promise<readonly Ticket[]> {
-  const { input, draft, tickets } = request;
-  if (draft === undefined) return [];
-  return [await postDraft({ input: input, draft: draft, tickets: tickets })];
-}
-
 export async function postPlan(
   input: GoalInput,
   plan: PlannedGoal,
 ): Promise<readonly Ticket[]> {
   let tickets: readonly Ticket[] = [];
-  for (let index = 0; index < 12; index += 1)
-    tickets = tickets.concat(
-      await postAt({
-        input: input,
-        draft: plan.order.at(index),
-        tickets: tickets,
-      }),
-    );
+  for (let index = 0; index < 12; index += 1) {
+    const draft = plan.order.at(index);
+    if (draft !== undefined)
+      tickets = tickets.concat(
+        await postDraft({ input: input, draft: draft, tickets: tickets }),
+      );
+  }
   return tickets;
 }

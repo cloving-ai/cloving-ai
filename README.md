@@ -55,7 +55,7 @@ an idea ─> idea-to-issue ──hand-off──> develop ─> merged pull reques
 ```
 
 - `idea-to-issue` hands the issue that it posts to `develop`. Its other options put the issue in the queue with the label `cloving: ready`, or leave it for you.
-- `goal-to-tickets` plans a large goal as 1 to 12 linked tickets and posts them in dependency order. By default, it puts each ticket with no blocker in the queue with the label `cloving: ready`. Its other options hand the first of these tickets to `develop`, or leave the tickets for you.
+- `goal-to-tickets` plans a large goal as 1 to 12 linked tickets and posts them in dependency order. By default, it adds the label `cloving: ready` to each ticket, and the queue starts each ticket after its blockers close. Its other options hand the first ticket with no blocker to `develop`, or leave the tickets for you.
 - `review-day` runs on a daily schedule. It hands the improvement that you approve to a copy of `idea-to-issue` with the `next.nothing` option. That copy posts the issue and stops, so you decide when the work goes to `develop`.
 - `review-day` hands work to the workflow ID `idea-to-issue`. To keep both copies of `idea-to-issue`, give the first copy another ID with `cloving templates copy idea-to-issue --id <id>`.
 - The three templates are in the package, and each template has its own tests. A copy is your code. Change it as you want.
@@ -1125,7 +1125,7 @@ The point `review` selects **A review turn corrects the plan** (the default) or 
 
 The workflow posts the tickets in dependency order with the GitHub method `create-issue`, so each blocker has its number before the tickets that need it. Each `Needs draft N` becomes `Needs #<number>`, the dependency format of [The ticket command](#the-ticket-command). The privacy check of `create-issue` applies to each ticket, so the post requires `privateTexts`. Each post has its own target, so each issue has its own hidden marker, and a replay does not post an issue again.
 
-The point `next` selects **Put the ready tickets in the queue** (the default), **Hand the first ready ticket to develop** or **Do nothing**. A ready ticket has no open blocker. The workflow does not read the state of an existing issue that a draft names with `Needs #<number>`, so such a ticket is not ready. The queue option adds `cloving: ready` only to the ready tickets. The declaration has `effectLimit` 32, which is enough for a plan of 12 tickets after one cycle. The README file of the template gives the details.
+The point `next` selects **Put the ready tickets in the queue** (the default), **Hand the first ready ticket to develop** or **Do nothing**. The queue option adds `cloving: ready` to each posted ticket. The queue starts a ticket only when each issue in its `Needs #<number>` lines is closed, so the tickets start in dependency order. The report names the tickets that wait for a blocker. The develop option hands the first ready ticket to `develop`. A ready ticket has no blocker. The workflow does not read the state of an existing issue that a draft names with `Needs #<number>`, so such a ticket is not ready. The declaration has `effectLimit` 32, which is enough for a plan of 12 tickets after one cycle. The README file of the template gives the details.
 
 ### Queue control
 
