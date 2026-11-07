@@ -173,11 +173,11 @@ function admitted(
     chosen: [],
   };
   return oldest.reduce<Room>((room, operation) => {
-    const queue = effects.queueRuns.includes(operation.runId) ? 1 : 0;
-    if (room.free < 1 || room.queueFree < queue) return room;
+    const queue = effects.queueRuns.includes(operation.runId);
+    if (room.free < 1 || (queue && room.queueFree < 1)) return room;
     return {
       free: room.free - 1,
-      queueFree: room.queueFree - queue,
+      queueFree: queue ? room.queueFree - 1 : room.queueFree,
       chosen: [...room.chosen, operation],
     };
   }, start).chosen;

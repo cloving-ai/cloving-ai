@@ -210,7 +210,7 @@ function running(input: StatusInput): Assessment {
   const effect = uncertainEffect(input.effects);
   if (effect !== undefined) return effect;
   if (blocked(input.operations)) return unavailablePin;
-  return leaseWait(input.effects) ?? workflowFailure(input) ?? observed(input);
+  return workflowFailure(input) ?? leaseWait(input.effects) ?? observed(input);
 }
 
 function observed(input: StatusInput): Assessment {

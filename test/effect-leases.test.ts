@@ -317,3 +317,20 @@ await test("CLV-322 the promotion skips queue operations at the queue limit and 
   assert.deepEqual(ids({ capacity: 6, queueLimit: 3 }), ["q-1", "q-2", "s-1"]);
   assert.deepEqual(ids({ capacity: 2, queueLimit: 3 }), ["q-1"]);
 });
+
+await test("CLV-322 after a lane reduction below the held queue leases, the promotion still selects an operation of another run for a free lease", () => {
+  const waiting = applied([
+    ...["q-0", "q-1"].flatMap((runId) => queueSteps(runId, { queueLimit: 2 })),
+    ...["q-2", "s-1"].flatMap((runId) => queueSteps(runId).slice(0, 3)),
+  ]).state;
+  const state = {
+    ...waiting,
+    effects: { ...waiting.effects, queueRuns: ["q-0", "q-1", "q-2"] },
+  };
+  assert.deepEqual(
+    promotions(state, { capacity: 3, queueLimit: 1 }).map(
+      (operation) => operation.runId,
+    ),
+    ["s-1"],
+  );
+});
