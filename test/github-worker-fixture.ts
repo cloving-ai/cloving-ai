@@ -52,6 +52,7 @@ export interface Plan {
   readonly holds?: readonly string[];
   readonly failureText?: string;
   readonly issuePages?: readonly (readonly unknown[])[];
+  readonly issueRows?: readonly Readonly<Record<string, unknown>>[];
   readonly issueEditAfterRead?: Readonly<Record<string, unknown>>;
   readonly waitForTrigger?: boolean;
   readonly reviewReadMilliseconds?: number;

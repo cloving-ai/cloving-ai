@@ -39,6 +39,7 @@ const codes = [
   "queue-interval",
   "private-texts",
   "turn-environment",
+  "command-gh-no-login",
   "retention",
   "theme",
 ];

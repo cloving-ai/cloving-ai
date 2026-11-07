@@ -20,6 +20,7 @@ import { themeObservation } from "./doctor-theme.ts";
 import { turnEnvironmentObservation } from "./doctor-turns.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
+  commandLoginObservation,
   commandObservation,
   mergeModeObservation,
   nodeObservation,
@@ -114,6 +115,9 @@ async function repositoryObservations(
     environment["CLOVING_MERGE_MODE"],
   );
   observations["turn-environment"] = turnEnvironmentObservation(environment);
+  observations["command-gh-no-login"] = commandLoginObservation(
+    environment["CLOVING_COMMANDS"],
+  );
   observations["theme"] = settingsValid
     ? await themeObservation({ repository, environment })
     : { result: "skip", detail: "Settings files are invalid" };

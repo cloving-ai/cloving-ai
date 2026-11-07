@@ -1,4 +1,5 @@
 import type { ProtectedResult } from "cloving/workflows";
+import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 import { runCommand } from "cloving/workflows/steps/run-command";
 
 export interface ReviewInput {
@@ -19,7 +20,7 @@ export function fields(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value));
 }
 
-function commandJson(result: ProtectedResult): unknown {
+function effectJson(result: ProtectedResult): unknown {
   const text = effectText(result);
   try {
     const value: unknown = JSON.parse(text);
@@ -34,36 +35,64 @@ function issues(value: unknown): readonly Record<string, unknown>[] {
   return value.map((issue: unknown) => fields(issue));
 }
 
-export async function reviewFacts() {
-  const input: Readonly<Record<string, never>> = {};
+function improvement(issue: Record<string, unknown>): Record<string, unknown> {
+  const body = typeof issue["body"] === "string" ? issue["body"] : "";
+  const line = /^Loop:[ \t]*(\S.*)$/m.exec(body);
+  return Object.assign({}, issue, { loop: line?.[1]?.trim() ?? null });
+}
+
+export async function readIssues(
+  input: ReviewInput,
+  read: {
+    readonly operation: "reviews" | "improvements";
+    readonly label: string;
+    readonly state: "all" | "open";
+    readonly limit: number;
+  },
+) {
+  return issues(
+    effectJson(
+      await protectedEffect({
+        capability: "github",
+        method: "issues",
+        target: input.cycleId,
+        units: 1,
+        scope: { phase: "review-day", operation: read.operation, round: 1 },
+        payload: JSON.stringify({
+          labels: [read.label],
+          state: read.state,
+          limit: read.limit,
+        }),
+      }),
+    ),
+  );
+}
+
+export async function reviewFacts(input: ReviewInput) {
+  const empty: Readonly<Record<string, never>> = {};
   const report = fields(
-    commandJson(
+    effectJson(
       await runCommand({
         scope: { phase: "review-day", operation: "report", round: 1 },
         name: "report",
-        input: input,
+        input: empty,
       }),
     ),
   );
-  const reviews = issues(
-    commandJson(
-      await runCommand({
-        scope: { phase: "review-day", operation: "reviews", round: 1 },
-        name: "reviews",
-        input: input,
-      }),
-    ),
-  );
-  const improvements = issues(
-    commandJson(
-      await runCommand({
-        scope: { phase: "review-day", operation: "improvements", round: 1 },
-        name: "improvements",
-        input: input,
-      }),
-    ),
-  );
-  return { report, reviews, improvements };
+  const reviews = await readIssues(input, {
+    operation: "reviews",
+    label: "cloving: review",
+    state: "all",
+    limit: 7,
+  });
+  const open = await readIssues(input, {
+    operation: "improvements",
+    label: "cloving: improvement",
+    state: "open",
+    limit: 100,
+  });
+  if (open.length >= 100) throw new Error("too-many-improvements");
+  return { report, reviews, improvements: open.map(improvement) };
 }
 
 export type ReviewFacts = Awaited<ReturnType<typeof reviewFacts>>;
