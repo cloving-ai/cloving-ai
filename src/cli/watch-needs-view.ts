@@ -19,6 +19,7 @@ export interface ContinueControls {
   readonly busy: readonly string[];
   readonly messages: Readonly<Record<string, string>>;
   readonly onContinue: (runId: string) => void;
+  readonly onDismiss: (runId: string) => void;
 }
 
 export function decisionText(type: string): string {
@@ -60,7 +61,7 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
 }
 
 export function continuableRun(run: WatchRun): boolean {
-  if (run.continuedBy !== undefined) return false;
+  if (run.continuedBy !== undefined || run.finished !== undefined) return false;
   if (run.state === "failed") return true;
   return run.state === "completed" && run.outcome === "blocked";
 }
@@ -85,12 +86,13 @@ export function needsOf(runs: readonly WatchRun[]): WatchNeed[] {
     const time = Date.parse(need.since ?? "");
     return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
   };
+  const floor = runs.filter((run) => run.linked !== true);
   return [
-    ...runs.flatMap((run) =>
+    ...floor.flatMap((run) =>
       run.decisions.map((decision) => decisionNeed(run, decision)),
     ),
-    ...runs.filter((run) => run.state === "paused").map(stoppedNeed),
-    ...runs.filter(continuableRun).map(continuableNeed),
+    ...floor.filter((run) => run.state === "paused").map(stoppedNeed),
+    ...floor.filter(continuableRun).map(continuableNeed),
   ].toSorted((first, second) => waited(first) - waited(second));
 }
 
@@ -113,6 +115,23 @@ export function ContinueAction(props: {
       continuing.onContinue(need.runId);
     },
     children: "Continue",
+  });
+}
+
+export function DismissAction(props: {
+  readonly need: WatchNeed;
+  readonly continuing: ContinueControls | undefined;
+}): Shown {
+  const { need, continuing } = props;
+  if (need.continuable !== true || continuing === undefined) return null;
+  return element("button", {
+    type: "button",
+    class: "need-action need-dismiss",
+    ...(continuing.busy.includes(need.runId) ? { disabled: true } : {}),
+    onClick: () => {
+      continuing.onDismiss(need.runId);
+    },
+    children: "Dismiss",
   });
 }
 
@@ -149,6 +168,7 @@ export function Need(props: {
         ],
       }),
       component(ContinueAction, { need, continuing }),
+      component(DismissAction, { need, continuing }),
       element("a", {
         class: "need-action",
         href: watchHash({ workflowId: null, runId: need.runId }),

@@ -1,19 +1,30 @@
 import type { Fields } from "../protocol.ts";
-import type { DailyNumbers } from "../report-days.ts";
+import type { DailyNumbers, KnownSpend } from "../report-days.ts";
 import { component, element, type Shown } from "./watch-element.ts";
-import type { WatchModel } from "./watch-render.ts";
+import { counted, type WatchModel } from "./watch-render.ts";
 import { wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export function dollars(value: number | null): string {
   return value === null ? "unknown" : `$${value.toFixed(2)}`;
 }
 
+export function spentText(spend: KnownSpend): string {
+  const known = dollars(spend.costUsd);
+  return spend.unknownCostRuns === 0 ? known : `at least ${known}`;
+}
+
+export function unknownCostText(spend: KnownSpend): string | undefined {
+  if (spend.unknownCostRuns === 0) return undefined;
+  return `${counted(spend.unknownCostRuns, "run")} with no cost`;
+}
+
 export function TodayNumber(props: {
   readonly value: string;
   readonly label: string;
   readonly yesterday?: string;
+  readonly note?: string | undefined;
 }): Shown {
-  const { value, label, yesterday } = props;
+  const { value, label, yesterday, note } = props;
   return element("div", {
     class: "today-number",
     children: [
@@ -22,6 +33,9 @@ export function TodayNumber(props: {
       yesterday === undefined
         ? null
         : element("span", { class: "today-yesterday", children: yesterday }),
+      note === undefined
+        ? null
+        : element("span", { class: "today-unknown", children: note }),
     ],
   });
 }
@@ -37,9 +51,10 @@ export function TodayNumbers(props: { readonly today: DailyNumbers }): Shown {
         yesterday: `${String(today.yesterday.completed)} yesterday`,
       }),
       component(TodayNumber, {
-        value: dollars(today.costUsd),
+        value: spentText(today),
         label: "spent",
-        yesterday: `${dollars(today.yesterday.costUsd)} yesterday`,
+        yesterday: `${spentText(today.yesterday)} yesterday`,
+        note: unknownCostText(today),
       }),
       component(TodayNumber, {
         value:
@@ -121,7 +136,7 @@ export function WorkflowTable(props: {
             children: [
               element("th", { scope: "row", children: row.workflowId }),
               element("td", { children: String(row.completed) }),
-              element("td", { children: dollars(row.costUsd) }),
+              element("td", { children: spentText(row) }),
             ],
           }),
         ),

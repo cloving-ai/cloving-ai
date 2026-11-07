@@ -385,13 +385,27 @@ On start, Cloving keeps the old default runtime path only when all retained work
 
 The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
 
-The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
+The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of items in the **Needs you** panel. This count includes the decisions and the stopped runs. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
 
 The **Needs you** panel under the floor lists each pending decision, each paused run, and each failed or blocked run with no continuation, with the count of items. A decision has a blue mark. A paused, failed or blocked run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
 
+The panel leaves out a failed or blocked run when its work is finished:
+
+- the GitHub issue of its ticket is closed;
+- its pull request is merged;
+- a later run of the same ticket completed with a handoff, with no `Ticket status: partial` and no failed issue update;
+- it ended more than `retention.days` ago;
+- a person dismissed it.
+
+With watch actions on, each failed or blocked run in the panel has a **Dismiss** button. The button sends the same command as `cloving dismiss <run-id>`. The service records the dismissal as the event `run.dismissed` of the run, so the run stays out of the panel after a restart. A dismissal does not change the state, the files or the pull request of the run. When the run did not end, the service refuses the dismissal with `run-active`.
+
+The header count and the panel use only the runs of the floor. When a link opens an older run, that run does not change the count.
+
+The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
+
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
-A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. A cost shows as unknown when the cost of one of its runs is not known.
+A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. The cost is the sum of the known run costs. When the cost of a run is not known, the cost shows as "at least $129.93", and a line under it shows the count, for example "4 runs with no cost". The rows of the table show their cost in the same way. The cost per completed run is the known cost of the day divided by the count of completed runs with a known cost.
 
 Below the floor, the **Completed today** shelf shows the count of runs that completed today, and one tile for each run, the newest first. The shelf uses the same day as the Today panel. A blocked run has no tile. A tile shows the ticket number, the pull request number, the title in at most two lines, the workflow, the time from start to end and the cost. The left edge of a tile has the color of the line of its workflow. When the run attached a video (`.mp4` or `.webm`) with the GitHub method `attach-asset`, the tile also shows **Play demo** with a small frame of the video. Select it to play the video in a player on the page. Press Esc or click outside the player to close it. The shelf scrolls sideways when the tiles do not fit. With no completed run, the shelf shows "No run completed today."
 
@@ -654,15 +668,16 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has eleven tools:
+The server has twelve tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
 - `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
+- `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
 
-Each of the eight tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -1029,15 +1044,27 @@ The new run uses the kept workflow bundle of the old run. If that bundle is not 
 
 The old run keeps its state. `cloving status` and the watch page show `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
 
+A reused effect keeps the recorded cost of its turn in the old run. The new run counts only the cost of its own turns. `cloving status` and the run detail of the watch page show the cost of the own turns, and on a separate line the cost of the continued turns, for example `Cost of the continued turns: 19.17 USD (counted in the earlier run)`. In the status JSON, the field `continuedCostUsd` has that cost, and each reused turn in `workerTurns` has `reused: true`. `cloving report` and the Today panel count only the own turns of a run.
+
 The service also refuses these continuations:
 
 - A run that ended more than `retention.days` days ago gets `run-retention-expired`. With `retention.days` set to `null`, no run is too old.
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
+- A run whose ticket issue is closed gets `continuation-ticket-closed`, and a run whose pull request is merged gets `continuation-pull-request-merged`. The service reads the issue of the `GitHub issue:` line of the ticket and the pull request that the run opened with the GitHub command of the service. When a read fails, the service does not refuse. The watch page shows no **Continue** button for such a run, because **Needs you** leaves it out.
+- A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
 - A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
 
-A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
+A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. The service checks the lanes and admits a continuation of a queue run one request at a time, together with the queue admissions of the same workflow. So two requests at the same time cannot both take the last free lane. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+
+To remove a stopped run from **Needs you** with no continuation, dismiss it:
+
+```sh
+cloving dismiss <run-id>
+```
+
+The **Dismiss** button of the item sends the same command. The MCP tool `cloving_dismiss` does the same. `cloving events <run-id>` shows the dismissal as `run.dismissed`.
 
 ### Rescue stuck pull requests
 

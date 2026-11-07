@@ -1,6 +1,7 @@
 import {
   decisionRequest,
   readCommandReply,
+  dismissRequest,
   readCommandRequest,
   runCommandRequest,
   runRequest,
@@ -40,6 +41,7 @@ export interface CommandEnvironment {
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
   readonly watchThemes?: WatchThemeSettings;
+  readonly retentionDays?: number | null;
   readonly client?: string;
   readonly workingDirectory: string;
   readonly terminal: Terminal;
@@ -221,6 +223,20 @@ function runCommand(
   });
 }
 
+function dismiss(
+  environment: Located,
+  invocation: Invoked<"dismiss">,
+): Promise<number> {
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: dismissRequest({
+      runId: invocation.runId,
+      commandId: format.commandId,
+    }),
+  });
+}
+
 async function events(
   environment: Located,
   invocation: Invoked<"events">,
@@ -273,13 +289,14 @@ export function runtimeCommand(
   const placed = { ...environment, runtimeDirectory };
   if (invocation.kind === "restart") return restartCommand(placed, invocation);
   if (invocation.kind === "watch") return watch(placed, invocation);
+  if (invocation.kind === "dismiss") return dismiss(placed, invocation);
   return located(invocation, placed);
 }
 
 function located(
   invocation: Exclude<
     RuntimeInvocation,
-    { kind: "command-help" | "restart" | "watch" }
+    { kind: "command-help" | "restart" | "watch" | "dismiss" }
   >,
   environment: Located,
 ): Promise<number> {
@@ -331,6 +348,9 @@ function watch(
     ...(environment.watchThemes === undefined
       ? {}
       : { themes: environment.watchThemes }),
+    ...(environment.retentionDays === undefined
+      ? {}
+      : { retentionDays: environment.retentionDays }),
     runtimeDirectory: environment.runtimeDirectory,
     port: invocation.port ?? defaultWatchPort,
     client: environment.client ?? "cloving",

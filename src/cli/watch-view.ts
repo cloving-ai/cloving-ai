@@ -5,6 +5,7 @@ import type { PhoneControls } from "./watch-phone-view.ts";
 import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
 import {
+  continuedCostText,
   priceText,
   spendLimitText,
   usageText,
@@ -134,6 +135,25 @@ export function Review(props: {
   });
 }
 
+export function RunTotals(props: { readonly run: WatchRun }): Shown {
+  const { run } = props;
+  return element("section", {
+    class: "run-usage",
+    children: [
+      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
+      element("p", { children: usageText(run.usage) }),
+      element("p", {
+        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
+      }),
+      run.continuedCostUsd === undefined
+        ? null
+        : element("p", {
+            children: continuedCostText(run.continuedCostUsd),
+          }),
+    ],
+  });
+}
+
 export function Run(props: Timed & { readonly copying: Copying }): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
@@ -166,16 +186,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
     component(HandoffLinks, { run }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
-    element("section", {
-      class: "run-usage",
-      children: [
-        element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-        element("p", { children: usageText(run.usage) }),
-        element("p", {
-          children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-        }),
-      ],
-    }),
+    component(RunTotals, { run }),
     component(Phases, { phases: run.phases, now }),
     component(PullRequest, { run }),
     (run.ciReruns ?? []).map((rerun) =>
