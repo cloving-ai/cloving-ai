@@ -50,13 +50,26 @@ folder names only the account.
 
 The script does these steps:
 
-1. It reads the default branch from `refs/remotes/origin/HEAD` and fetches it.
-2. It adds a clean detached work tree of that branch in a new temporary folder.
-3. It runs `npm ci --ignore-scripts --no-audit --no-fund`, then
+1. It removes the folders and the work trees of earlier audits whose process
+   ended. The command time limit or a stop ends an audit with `SIGKILL`, so
+   that audit cannot remove its own files.
+2. It reads the current default branch of the remote `origin` with
+   `git ls-remote --symref origin HEAD`, not from the local
+   `refs/remotes/origin/HEAD`, and fetches that branch.
+3. It adds a clean detached work tree of that branch in a new temporary folder
+   `cloving-audit-<process ID>-<random text>`.
+4. It runs `npm ci --ignore-scripts --no-audit --no-fund`, then
    `npm audit --json` (report version 2) and `npm ls --all --json` in that tree.
-4. It reads all pages of the open issues with the label `cloving: security`
+5. It reads all pages of the open issues with the label `cloving: security`
    through `gh api`.
-5. It removes the work tree and the temporary folder, also after a failure.
+6. It removes the work tree and the temporary folder, also after a failure.
+
+In step 1, the folder name gives the process ID of the audit. The script removes
+each folder `cloving-audit-<process ID>-<random text>` of the system temporary
+folder, and each work tree `cloving-audit-<process ID>-<random text>/tree` of the
+repository, when no process has that ID. The folder of an audit that still runs
+stays. A remote that names no default branch stops the audit with the message
+`The remote origin names no default branch.`
 
 The script prints one JSON array with at most 10 packages:
 

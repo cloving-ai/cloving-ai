@@ -1,16 +1,38 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { auditOutput, commandFailure } from "./audit-run.mts";
 
+function alive(processId: number): boolean {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return !(
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
+  }
+}
+
 const executed = promisify(execFile);
-const folder = await mkdtemp(join(tmpdir(), "cloving-audit-"));
+const temporary = tmpdir();
+const folder = await mkdtemp(
+  join(temporary, `cloving-audit-${String(process.pid)}-`),
+);
 const output = await auditOutput({
   repository: process.cwd(),
   folder,
   commandArguments: process.argv.slice(2),
+  alive,
+  temporary: {
+    names: () => readdir(temporary),
+    remove: (name) =>
+      rm(join(temporary, name), { recursive: true, force: true }),
+  },
   run: (call) =>
     executed(call.file, call.args, {
       cwd: call.cwd,

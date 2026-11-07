@@ -18,6 +18,11 @@ export interface AuditSystem {
   readonly folder: string;
   readonly commandArguments: readonly string[];
   readonly run: (call: CommandCall) => Promise<CommandEnd>;
+  readonly alive: (processId: number) => boolean;
+  readonly temporary: {
+    readonly names: () => Promise<readonly string[]>;
+    readonly remove: (name: string) => Promise<void>;
+  };
 }
 
 interface AuditAccess {
@@ -112,6 +117,38 @@ function loginFolder(commandArguments: readonly string[]): string {
   return folder;
 }
 
+function abandoned(
+  name: string,
+  alive: (processId: number) => boolean,
+): boolean {
+  const processId = /^cloving-audit-([1-9][0-9]*)-[^/]+$/.exec(name)?.[1];
+  return processId !== undefined && !alive(Number(processId));
+}
+
+type Git = (args: readonly string[]) => Promise<string>;
+
+async function removeAbandoned(system: AuditSystem, git: Git): Promise<void> {
+  const folders = (await system.temporary.names()).filter((name) =>
+    abandoned(name, system.alive),
+  );
+  for (const name of folders) await system.temporary.remove(name);
+  const trees = (await git(["worktree", "list", "--porcelain"]))
+    .split("\n")
+    .filter((line) => line.startsWith("worktree ") && line.endsWith("/tree"))
+    .map((line) => line.slice("worktree ".length))
+    .filter((tree) => abandoned(tree.split("/").at(-2) ?? "", system.alive));
+  for (const tree of trees)
+    await git(["worktree", "remove", "--force", "--force", tree]);
+}
+
+async function defaultBranch(git: Git): Promise<string> {
+  const remote = await git(["ls-remote", "--symref", "origin", "HEAD"]);
+  const branch = /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(remote)?.[1];
+  if (branch === undefined)
+    throw new Error("The remote origin names no default branch.");
+  return branch;
+}
+
 async function auditedTree(
   system: AuditSystem,
 ): Promise<readonly AuditCandidate[]> {
@@ -119,20 +156,21 @@ async function auditedTree(
     system,
     login: { GH_CONFIG_DIR: loginFolder(system.commandArguments) },
   };
-  const git = (args: readonly string[]) =>
+  const git: Git = (args) =>
     output(system, {
       file: "git",
       args,
       cwd: system.repository,
       environment: access.login,
     });
-  const head = await git([
-    "symbolic-ref",
-    "--short",
-    "refs/remotes/origin/HEAD",
+  await removeAbandoned(system, git);
+  const branch = await defaultBranch(git);
+  await git([
+    "fetch",
+    "--quiet",
+    "origin",
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
   ]);
-  const branch = head.trim().replace(/^origin\//, "");
-  await git(["fetch", "--quiet", "origin", branch]);
   const tree = `${system.folder}/tree`;
   await git([
     "worktree",

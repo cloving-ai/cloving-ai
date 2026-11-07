@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -8,7 +8,9 @@ import {
   threeSeverities,
 } from "./dependency-audit-fixture.ts";
 import {
+  abandonedTree,
   loggedCalls,
+  moveRemoteDefault,
   runAudit,
   withAuditRepository,
   worktrees,
@@ -45,6 +47,7 @@ await test("CLV-318 audit-candidates prints the critical and the high advisory o
       );
       const tree = calls[0]?.cwd ?? "";
       assert.ok(tree.startsWith(place.temporary), tree);
+      assert.match(tree, /\/cloving-audit-[1-9][0-9]*-[^/]+\/tree$/);
       for (const call of calls.slice(0, 3)) {
         assert.equal(call.cwd, tree);
         assert.equal(call.lock, "newest lock\n");
@@ -98,5 +101,43 @@ await test("CLV-318 a failed npm ci prints no candidates, ends with code 1 and r
       );
       assert.deepEqual(worktrees(place), [`worktree ${place.repository}`]);
       assert.deepEqual(await readdir(place.temporary), []);
+    },
+  ));
+
+await test("CLV-318 audit-candidates audits the default branch of the remote after the old default branch is gone", () =>
+  withAuditRepository(
+    { audit: threeSeverities, tree: installTree, issues: [[]] },
+    async (place) => {
+      await moveRemoteDefault(place, "trunk lock\n");
+      const result = await runAudit(place, [place.login]);
+      assert.equal(result.status, 0, result.stderr);
+      const calls = await loggedCalls(place);
+      assert.equal(calls[0]?.lock, "trunk lock\n");
+      assert.deepEqual(worktrees(place), [`worktree ${place.repository}`]);
+    },
+  ));
+
+await test("CLV-318 audit-candidates removes the folders and the work trees of earlier audits whose process ended", () =>
+  withAuditRepository(
+    { audit: threeSeverities, tree: installTree, issues: [[]] },
+    async (place) => {
+      await abandonedTree(
+        place,
+        join(place.temporary, "cloving-audit-2147483647-old", "tree"),
+      );
+      await mkdir(
+        join(place.temporary, "cloving-audit-2147483646-gone", "tree"),
+        { recursive: true },
+      );
+      const live = `cloving-audit-${String(process.pid)}-live`;
+      for (const name of [live, "other"])
+        await mkdir(join(place.temporary, name));
+      const result = await runAudit(place, [place.login]);
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(worktrees(place), [`worktree ${place.repository}`]);
+      assert.deepEqual((await readdir(place.temporary)).sort(), [
+        live,
+        "other",
+      ]);
     },
   ));

@@ -171,6 +171,37 @@ export async function loggedCalls(
     });
 }
 
+export async function moveRemoteDefault(
+  place: AuditPlace,
+  lock: string,
+): Promise<void> {
+  const seed = join(place.root, "seed");
+  await writeFile(join(seed, "package-lock.json"), lock);
+  git(seed, ["commit", "--quiet", "--all", "-m", lock]);
+  git(seed, ["push", "--quiet", "origin", "HEAD:trunk"]);
+  git(join(place.root, "origin.git"), [
+    "symbolic-ref",
+    "HEAD",
+    "refs/heads/trunk",
+  ]);
+  git(seed, ["push", "--quiet", "origin", "--delete", "main"]);
+}
+
+export async function abandonedTree(
+  place: AuditPlace,
+  tree: string,
+): Promise<void> {
+  git(place.repository, [
+    "worktree",
+    "add",
+    "--quiet",
+    "--detach",
+    tree,
+    "origin/main",
+  ]);
+  await mkdir(join(tree, "node_modules", "minimist"), { recursive: true });
+}
+
 export function worktrees(place: AuditPlace): readonly string[] {
   return git(place.repository, ["worktree", "list", "--porcelain"])
     .split("\n")
