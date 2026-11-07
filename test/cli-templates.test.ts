@@ -57,10 +57,22 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const patrol = record(
       JSON.parse(readFileSync("templates/patrol/template.json", "utf8")),
     );
+    const audit = record(
+      JSON.parse(
+        readFileSync("templates/dependency-audit/template.json", "utf8"),
+      ),
+    );
+    const ticket = record(
+      JSON.parse(
+        readFileSync("templates/dependency-ticket/template.json", "utf8"),
+      ),
+    );
     const rescue = record(
       JSON.parse(readFileSync("templates/rescue-pr/template.json", "utf8")),
     );
     assert.deepEqual(JSON.parse(result.stdout), [
+      { name: "dependency-audit", summary: audit?.["summary"], points: 0 },
+      { name: "dependency-ticket", summary: ticket?.["summary"], points: 0 },
       {
         name: "develop",
         summary: template?.["summary"],
@@ -74,7 +86,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^develop: .+ \(8 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
+      /^dependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(8 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\n$/,
     );
   }));
 

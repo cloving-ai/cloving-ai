@@ -833,6 +833,14 @@ A run can end `blocked` or `failed` while its pull request stays open. The templ
 
 `rescue-pr` takes the pull request number. The GitHub `prepare` method with `{"pullRequest": N}` puts the work tree on the branch of that pull request. A turn merges the default branch, resolves the conflicts and fixes the failed CI or the review findings. Then the run pushes, and the points `accept` and `merge` work as in `develop`. After the merge, the run closes the ticket only when the original worker reported `Ticket status: complete`. The README files of the two templates give the details.
 
+### Audit dependencies
+
+The templates `dependency-audit` and `dependency-ticket` watch the published advisories of the installed npm packages. Copy both into your private workflow folder with `cloving templates copy dependency-audit` and `cloving templates copy dependency-ticket`.
+
+`dependency-audit` runs each day. It reads the operator command `audit-candidates` from `CLOVING_COMMANDS`. The reference script `dependency-audit/audit-candidates.mts` of the copy adds a clean detached work tree of the newest default branch, runs `npm ci --ignore-scripts`, `npm audit --json` and `npm ls --all --json` in it, and removes it. It prints a JSON array with at most 10 packages that have a critical or high advisory. Each package has each advisory ID, severity, title, vulnerable range and patched range, and each install path. The script leaves out each advisory that an open issue with the label `cloving: security` names.
+
+A day with no new critical or high advisory ends `completed` with no turn. Else one turn puts the packages into at most 5 groups, reads the release notes from the installed version to the fixed version, lists each breaking change with the code that uses it (`path:line`), and names the exact change: a new pinned version or an `overrides` entry. For each group, the workflow writes a ticket in the form of the repository, with the advisory table, the install paths, the change, the breaking changes, the rule for the pin and its justification, and the acceptance criteria. The critical groups come first. `create-issue` makes one issue for each run, so the audit hands off one `dependency-ticket` run for each ticket. That run creates the issue and adds the label `cloving: security`. The audit changes no dependency. The README files of the two templates give the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.

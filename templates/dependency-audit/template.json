@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "dependency-audit",
+  "summary": "Audit the installed npm packages of the default branch each day and hand off at most five dependency-ticket runs for the new critical and high advisories, each with the exact upgrade and its breaking changes.",
+  "points": []
+}
