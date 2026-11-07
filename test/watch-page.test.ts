@@ -79,6 +79,7 @@ await test("CLV-016 the watch page document has the components, a script that ge
       '"actions/phone/" + action',
       '"actions/queue"',
       '"actions/continue"',
+      '"actions/dismiss"',
       '"data.json?runId=" + encodeURIComponent(runId)',
       '"data.json"',
     ],

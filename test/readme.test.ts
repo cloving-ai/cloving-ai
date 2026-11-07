@@ -148,14 +148,13 @@ await test("CLV-076 the README starts with the three exact lines of the product 
 });
 
 await test("CLV-227 self-development uses a private develop copy with a Greptile review and an automatic merge", () => {
-  const working = readme
-    .split("## Cloving\n")[1]
-    ?.split("What works now:\n")[1]
-    ?.split("What does not work yet:\n")[0];
-  assert.ok(working);
+  const results = readme
+    .split("## Results reported by the creator\n")[1]
+    ?.split("\n## ")[0];
+  assert.ok(results);
   assert.match(
-    working,
-    /^- Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge\.$/m,
+    results,
+    /^Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge\./m,
   );
   const continuous = readme
     .split("## Continuous process\n")[1]
@@ -173,9 +172,15 @@ await test("CLV-227 self-development uses a private develop copy with a Greptile
 });
 
 const sections = [
-  "Cloving",
-  "Install",
+  "How a factory works",
   "First run",
+  "Make the factory yours",
+  "Use Cloving in a team",
+  "Results reported by the creator",
+  "Limits",
+  "Reference",
+  "Install",
+  "Run the service",
   "Daily development",
   "Continuous process",
   "Prompts for a coding agent",
@@ -248,7 +253,7 @@ const valid = [
   "",
 ].join("\n\n");
 
-await test("CLV-073 the README names only known settings and commands, has no path in the home folder of a named user, and has the eight sections in order", () => {
+await test("CLV-073 the README names only known settings and commands, has no path in the home folder of a named user, and has its sections in order", () => {
   assert.deepEqual(readmeFindings(readme), []);
 });
 
@@ -294,12 +299,16 @@ await test("CLV-073 the README checks reject sections that are missing or in a d
     .replace("## Install", "## Swap")
     .replace("## First run", "## Install")
     .replace("## Swap", "## First run");
-  const later = sections.slice(3).map((name) => `## ${name}`);
+  const exchange = new Map([
+    ["Install", "First run"],
+    ["First run", "Install"],
+  ]);
+  const exchanged = sections.map((name) => `## ${exchange.get(name) ?? name}`);
   assert.deepEqual(readmeFindings(swapped), [
-    `sections: ${["# Cloving", "## Cloving", "## First run", "## Install", ...later].join(", ")}`,
+    `sections: ${["# Cloving", ...exchanged].join(", ")}`,
   ]);
   assert.deepEqual(readmeFindings(valid.replace("# Cloving\n\n", "")), [
-    `sections: ${["## Cloving", "## Install", "## First run", ...later].join(", ")}`,
+    `sections: ${sections.map((name) => `## ${name}`).join(", ")}`,
   ]);
 });
 

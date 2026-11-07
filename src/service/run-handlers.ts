@@ -226,6 +226,9 @@ function full(view: ShownRun & WorkerTotals): Fields {
     lastConfirmedObservation: view.lastConfirmedObservation,
     recovery: view.recovery,
     claudeCostUsd: view.claudeCostUsd,
+    ...(view.continuedCostUsd === undefined
+      ? {}
+      : { continuedCostUsd: view.continuedCostUsd }),
     estimatedCostUsd: view.estimatedCostUsd,
     usage: view.usage,
     workerTurns: view.workerTurns,
@@ -297,7 +300,7 @@ export async function status(
   const view = await viewOf(context, { snapshot: current, runId: named });
   if (view === undefined)
     return failed("unknown-run", { detail: `No run has the ID ${named}.` });
-  const totals = await usageTotals(context, view.runId);
+  const totals = await usageTotals(context, view);
   return result("run-status", {
     run: {
       ...full({ ...view, ...totals }),

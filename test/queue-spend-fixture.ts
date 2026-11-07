@@ -3,6 +3,7 @@ import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
 import type { Fields } from "../src/protocol.ts";
+import type { QueuePort } from "../src/queue-state.ts";
 import type { Service } from "../src/service/service.ts";
 import type { Resolver } from "../src/service/registry.ts";
 import { fakeDestination } from "./effect-fixture.ts";
@@ -19,12 +20,30 @@ interface SpendSettings {
   readonly issueResolver?: Resolver;
   readonly spendScope?: "all";
   readonly runSpendLimitUsd?: number;
+  readonly lanes?: number;
+  readonly reloadedLanes?: number;
 }
 
 function scopeOf(settings: SpendSettings): { readonly spendScope?: "all" } {
   return settings.spendScope === undefined
     ? {}
     : { spendScope: settings.spendScope };
+}
+
+function reloadOf(settings: SpendSettings): { readonly queue?: QueuePort } {
+  const lanes = settings.reloadedLanes;
+  if (lanes === undefined) return {};
+  return {
+    queue: {
+      control: () => ({
+        failedRunIds: [],
+        drain: undefined,
+        error: undefined,
+        lanes,
+      }),
+      change: () => Promise.resolve({ kind: "changed" }),
+    },
+  };
 }
 
 export async function withQueueSpend(
@@ -62,6 +81,7 @@ async function spendScene(harness: Harness, settings: SpendSettings) {
   const resolution = { wait: Promise.resolve() };
   const options = {
     ...scopeOf(settings),
+    ...reloadOf(settings),
     ...spendOptions(harness, {
       ...settings,
       clock,
@@ -144,8 +164,8 @@ function spendOptions(harness: Harness, state: SpendState) {
   const registration = {
     ...harness.registration,
     workflowId: workflow.workflowId,
-    queue: workflow.queue ?? false,
-    admission: 2,
+    queue: state.reloadedLanes !== undefined || (workflow.queue ?? false),
+    admission: state.lanes ?? 2,
     effectLimit: 20,
     manifest: {
       ...harness.registration.manifest,

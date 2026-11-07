@@ -137,8 +137,9 @@ export function reportCost(runId: string, run: Fields | undefined): ReportCost {
   const ticket = runTicket(run);
   if (!Array.isArray(turns) || !settledSpending(run))
     return { runId, ...ticket, turns: null };
-  const parsed = turns.map((value: unknown) => {
+  const parsed = turns.flatMap((value: unknown) => {
     const turn = record(value);
+    if (turn?.["reused"] === true) return [];
     const operationId = turn?.["operationId"];
     const costUsd = turn?.["costUsd"];
     return typeof operationId === "string" &&
@@ -146,8 +147,8 @@ export function reportCost(runId: string, run: Fields | undefined): ReportCost {
         (typeof costUsd === "number" &&
           Number.isFinite(costUsd) &&
           costUsd >= 0))
-      ? { operationId, costUsd }
-      : null;
+      ? [{ operationId, costUsd }]
+      : [null];
   });
   return {
     runId,

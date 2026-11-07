@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "dependency-ticket",
+  "summary": "Create one issue with the label cloving: security from the ticket text that dependency-audit hands off.",
+  "points": []
+}

@@ -86,7 +86,11 @@ function limitEffects() {
     Array.from({ length: 4 }, () => list[0] ?? completed(null));
   return {
     ...scenario,
-    "claude run-turn": four(scenario["claude run-turn"]),
+    "claude run-turn": Array.from(
+      { length: 4 },
+      () => scenario["claude run-turn"],
+    ).flat(),
+    "github attach-asset": four(scenario["github attach-asset"]),
     "claude run-turn:review": four(scenario["claude run-turn:review"]),
     ...panelEffects(4),
     "github open-pr": four(scenario["github open-pr"]),

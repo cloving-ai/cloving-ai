@@ -46,6 +46,40 @@ await test("CLV-123 the worker preserves ticket status and remaining items befor
     }
   }));
 
+await test("CLV-315 the worker keeps the final demo status before the summary limit", () =>
+  withScene(async (scene) => {
+    const cases = [
+      {
+        report: `${"語".repeat(40_000)}\nDemo status: recorded\n`,
+        status: "recorded",
+      },
+      {
+        report: "The scene did not start.\nDemo status: failed",
+        status: "failed",
+      },
+      { report: "Demo status: recorded\nThe frames are wrong.", status: null },
+      { report: "Implemented.\nTicket status: complete", status: null },
+    ];
+    for (const [index, entry] of cases.entries()) {
+      writeFileSync(join(scene.directory, "turns.log.reply"), entry.report);
+      await scene
+        .worker("fixed-reply")
+        .deliver(
+          intent({ operationId: `demo-${String(index)}` }),
+          new AbortController().signal,
+        );
+      await until(() => scene.reports.length === index + 1);
+      const report = scene.reports[index];
+      assert.equal(report?.outcome, "completed");
+      const result = resultOf(report.result);
+      assert.equal(result["demoStatus"] ?? null, entry.status);
+      assert.equal(Object.hasOwn(result, "demoStatus"), entry.status !== null);
+      assert.ok(String(result["summary"]).length <= 16_000);
+    }
+    const long = resultOf(scene.reports[0]?.result);
+    assert.equal(String(long["summary"]).includes("Demo status:"), false);
+  }));
+
 await test("CLV-123 oversized remaining fields fail visibly with bounded cost data instead of an oversized result", () =>
   withScene(async (scene) => {
     writeFileSync(

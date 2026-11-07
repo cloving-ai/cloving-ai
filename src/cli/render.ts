@@ -1,5 +1,6 @@
 import { shownCommandWaits, commandWaitText } from "./command-waits.ts";
 import {
+  continuedCostText,
   priceText,
   queueSpendLines,
   spendLimitText,
@@ -31,6 +32,7 @@ import {
   receiptLines,
   runCommandLines,
   runContinuedLines,
+  runDismissedLines,
 } from "./run-command-render.ts";
 export { oneLine } from "./terminal-text.ts";
 export { errorText } from "./error-render.ts";
@@ -262,6 +264,9 @@ export function runStatus(result: Fields): readonly string[] {
     `Last confirmed observation: ${observation(part(run, "lastConfirmedObservation"))}`,
     `Recovery: ${show(part(recovery, "attempts"))} of ${show(part(recovery, "limit") ?? "no limit")}`,
     `Cost${suffix}: ${priceText(part(run, "claudeCostUsd"), part(run, "estimatedCostUsd"))}${spendLimitText(part(run, "spendLimitUsd"))}`,
+    ...[continuedCostText(part(run, "continuedCostUsd"))].filter(
+      (line) => line !== null,
+    ),
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
     ...turnDetailsLines(part(run, "turnDetails")),
@@ -362,6 +367,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["decision-recorded", decisionRecorded],
   ["run-command", runCommandLines],
   ["run-continued", runContinuedLines],
+  ["run-dismissed", runDismissedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],

@@ -10,6 +10,7 @@ export interface WorkerUsage {
 }
 
 export interface WorkerTurnUsage {
+  readonly reused?: true;
   readonly model?: string;
   readonly summary?: string;
   readonly harness?: string;
@@ -49,6 +50,7 @@ export function modelUsageOf(
 }
 
 export interface WorkerTotals {
+  readonly continuedCostUsd?: number | null;
   readonly estimatedCostUsd: number | null;
   readonly workerTurns: readonly WorkerTurnUsage[];
   readonly usage: WorkerUsage;
@@ -133,13 +135,16 @@ export function sumPrices(values: readonly (number | null)[]): number | null {
 export function workerTotals(
   workerTurns: readonly WorkerTurnUsage[],
 ): WorkerTotals {
+  const own = workerTurns.filter((turn) => turn.reused !== true);
+  const reused = workerTurns.filter((turn) => turn.reused === true);
   return {
     workerTurns,
-    usage: sumUsage(workerTurns.map((turn) => turn.usage)),
-    claudeCostUsd: sumPrices(workerTurns.map((turn) => turn.costUsd)),
-    estimatedCostUsd: sumPrices(
-      workerTurns.map((turn) => turn.estimatedCostUsd),
-    ),
+    usage: sumUsage(own.map((turn) => turn.usage)),
+    claudeCostUsd: sumPrices(own.map((turn) => turn.costUsd)),
+    estimatedCostUsd: sumPrices(own.map((turn) => turn.estimatedCostUsd)),
+    ...(reused.length === 0
+      ? {}
+      : { continuedCostUsd: sumPrices(reused.map((turn) => turn.costUsd)) }),
   };
 }
 

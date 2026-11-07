@@ -55,6 +55,7 @@ export const eventTypes = [
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "run.dismissed",
   "run.observed",
   "step.dispatched",
   "effect.requested",
@@ -95,6 +96,7 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "complete-run": "run.completed",
   "fail-run": "run.failed",
   "cancel-run": "run.cancelled",
+  "dismiss-run": "run.dismissed",
   "report-observation": "run.observed",
   "record-dispatch": "step.dispatched",
   "request-effect": "effect.requested",
@@ -185,6 +187,7 @@ export type AuthorityCommand = {
 export type Move = Exclude<
   EventType,
   | "run.created"
+  | "run.dismissed"
   | "step.dispatched"
   | "gate.wait-registered"
   | "run.observed"

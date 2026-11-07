@@ -3,6 +3,7 @@ import { record } from "../protocol.ts";
 import { restartPendingText } from "./restart-render.ts";
 import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
+import { needsOf } from "./watch-needs-view.ts";
 import { clockTime, type WatchModel } from "./watch-render.ts";
 import {
   countText,
@@ -105,10 +106,7 @@ export function HeaderCounts(props: { readonly model: WatchModel }): Shown {
     (total, workflow) => total + workflow.activeCount,
     0,
   );
-  const needed = workflows
-    .flatMap((workflow) => workflow.stations)
-    .flatMap((station) => station.tokens)
-    .filter((token) => ["needs-you", "stopped"].includes(token.lamp)).length;
+  const needed = needsOf(props.model.runs).length;
   return [
     element("span", {
       class: "header-count",

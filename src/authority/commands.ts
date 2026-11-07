@@ -124,6 +124,7 @@ const shapes: Readonly<Record<string, Shape>> = {
   },
   "fail-run": revised,
   "cancel-run": revised,
+  "dismiss-run": { required: [] },
   "report-observation": {
     required: ["condition", "reason"],
     optional: [

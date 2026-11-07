@@ -405,6 +405,16 @@
       },
       "additionalProperties": false
     },
+    "demo": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "pattern": "^/[^\\u0000]*$"
+        }
+      },
+      "additionalProperties": false
+    },
     "turns": {
       "type": "object",
       "properties": {

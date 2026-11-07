@@ -25,5 +25,5 @@ await test("CLV-209 init help documents selection without requiring a repository
 await test("CLV-209 README First run starts with init and replaces the manual setup prompt", async () => {
   const text = await readFile("README.md", "utf8");
   assert.doesNotMatch(text, /Set up Cloving for a repository/);
-  assert.match(text, /## First run\n\n```sh\ncloving init\n```/);
+  assert.match(text, /## First run\n\n```sh\nnpx cloving init\n```/);
 });

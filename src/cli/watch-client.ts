@@ -73,18 +73,20 @@ function continueMessage(reply) {
   if (reply.error) return reply.error.code + ": " + reply.error.detail;
   return "Run " + reply.runId + " continues this run.";
 }
-async function continuePost(runId) {
+function dismissMessage(reply) {
+  if (reply.error) return reply.error.code + ": " + reply.error.detail;
+  return "The run is dismissed.";
+}
+function runRequest(runId) {
+  return { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body: JSON.stringify({ runId }) };
+}
+async function runPost(runId, post) {
   if (state.continueBusy.includes(runId)) return;
   state.continueBusy = [...state.continueBusy, runId];
   draw();
   let message;
   try {
-    const response = await fetch("actions/continue", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-cloving-token": actionToken },
-      body: JSON.stringify({ runId }),
-    });
-    message = response.ok ? continueMessage(await response.json()) : "The watch page refused the request. Refresh the page.";
+    message = await post();
   } catch {
     message = "The watch tool does not answer.";
   }
@@ -92,9 +94,22 @@ async function continuePost(runId) {
   state.continueMessages = { ...state.continueMessages, [runId]: message };
   await load();
 }
+const refusedRequest = "The watch page refused the request. Refresh the page.";
+function continuePost(runId) {
+  return runPost(runId, async () => {
+    const response = await fetch("actions/continue", runRequest(runId));
+    return response.ok ? continueMessage(await response.json()) : refusedRequest;
+  });
+}
+function dismissPost(runId) {
+  return runPost(runId, async () => {
+    const response = await fetch("actions/dismiss", runRequest(runId));
+    return response.ok ? dismissMessage(await response.json()) : refusedRequest;
+  });
+}
 function continueControls() {
   if (actionToken === null) return undefined;
-  return { busy: state.continueBusy, messages: state.continueMessages, onContinue: continuePost };
+  return { busy: state.continueBusy, messages: state.continueMessages, onContinue: continuePost, onDismiss: dismissPost };
 }
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
@@ -141,7 +156,7 @@ async function withSelectedRun(model) {
   if (!detail.ok) throw new Error("watch-run-not-available");
   const { run } = await detail.json();
   if (run?.runId !== runId) throw new Error("watch-run-mismatch");
-  return { ...model, runs: [...model.runs, run] };
+  return { ...model, runs: [...model.runs, { ...run, linked: true }] };
 }
 async function load() {
   state.again = state.loading;

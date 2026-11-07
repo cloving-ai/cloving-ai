@@ -24,6 +24,7 @@ import {
   type Reduction,
 } from "./reduction-state.ts";
 import {
+  terminal,
   transition,
   type AuthorityEvent,
   type AuthorityState,
@@ -59,6 +60,11 @@ function closed(type: "run.cancelled" | "run.failed"): Handler {
         .map((gate) => settled(gate, outcome)),
     });
   };
+}
+
+function dismissed(state: AuthorityState, recorded: Recorded): Reduction {
+  if (!terminal.includes(recorded.run.status)) return invalid("run-active");
+  return applied(state, recorded);
 }
 
 function observation(state: AuthorityState, recorded: Recorded): Reduction {
@@ -156,6 +162,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   "run.completed": moved("run.completed"),
   "run.cancelled": closed("run.cancelled"),
   "run.failed": closed("run.failed"),
+  "run.dismissed": dismissed,
   "run.observed": observation,
   "gate.opened": opened,
   "gate.wait-registered": registered,

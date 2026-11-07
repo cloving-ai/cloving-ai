@@ -16,10 +16,15 @@ import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
 import type { EffectLeaseSource } from "../queue-room.ts";
 
+export interface GithubReader {
+  readonly read: (path: string) => Promise<unknown>;
+}
+
 export interface ServiceReads {
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
   readonly retentionExpired?: (runId: string) => Promise<boolean>;
+  readonly githubRead?: GithubReader;
   readonly threadPool?: () => ThreadPoolCheck | undefined;
   readonly effectLeases?: EffectLeaseSource;
 }
@@ -74,6 +79,7 @@ export function queryMetadata(
   | "workerHarness"
   | "turnDetails"
   | "retentionExpired"
+  | "githubRead"
   | "threadPool"
   | "effectLeases"
   | "commandEffects"
@@ -95,6 +101,9 @@ export function queryMetadata(
     ...(options.retentionExpired === undefined
       ? {}
       : { retentionExpired: options.retentionExpired }),
+    ...(options.githubRead === undefined
+      ? {}
+      : { githubRead: options.githubRead }),
     ...(options.commandEffects === undefined
       ? {}
       : { commandEffects: options.commandEffects }),
