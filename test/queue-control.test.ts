@@ -151,6 +151,23 @@ await test("CLV-273 a queue that stopped on an error shows the reason and refuse
   );
 });
 
+await test("CLV-309 the queue control shows the hold periods and the end of the dropped periods", () =>
+  withDirectory(async (directory) => {
+    const periods = [{ reason: "load" as const, startedAt: 7, endedAt: null }];
+    const port = queueControlPort({
+      pending: await queueJournal(directory),
+      error: undefined,
+      stopping: new AbortController(),
+      holds: { periods: () => periods, cutAt: () => 5 },
+    });
+    const control = port.control();
+    assert.deepEqual(control?.holds, periods);
+    assert.equal(control.holdsCutAt, 5);
+    assert.equal(queueStateFields(control, 0)["holdsCutAt"], 5);
+    const unheld = { failedRunIds: [], drain: undefined, error: undefined };
+    assert.equal(queueStateFields(unheld, 0)["holdsCutAt"], null);
+  }));
+
 await test("CLV-273 an error stop takes precedence over a drain and a drain over a failure stop", () => {
   const drain = { startedAt: 1, drainedAt: null };
   const failedRunIds = ["one", "two", "three"];

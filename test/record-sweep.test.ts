@@ -133,6 +133,19 @@ await test("CLV-305 a pass leaves the pull request claims of the GitHub journal 
     ]);
   }));
 
+await test("CLV-313 a pass leaves the answered review records of the GitHub journal out of the sweep", () =>
+  withSweep(async (scene) => {
+    await scene.folder("github/a", { runId: "done" });
+    const answered = join(scene.root, "github/answered/pull-7.json");
+    await mkdir(join(answered, ".."), { recursive: true });
+    await writeFile(answered, "{}");
+    await scene.sweep().pass();
+    assert.equal(existsSync(answered), true);
+    assert.deepEqual(scene.lines, [
+      "retention: archived 1, kept 0, skipped 0 (active runs), unreadable 0\n",
+    ]);
+  }));
+
 await test("CLV-300 a pass leaves the saved merge heads of the GitHub journal out of the sweep", () =>
   withSweep(async (scene) => {
     await scene.folder("github/a", { runId: "done" });

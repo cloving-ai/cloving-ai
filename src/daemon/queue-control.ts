@@ -1,3 +1,4 @@
+import type { HoldPeriod, QueueHold, QueueLimits } from "../queue-room.ts";
 import type {
   QueueChange,
   QueueCommand,
@@ -10,6 +11,12 @@ export interface QueueRuntime {
   pending: QueueJournal | undefined;
   error: string | undefined;
   ready?: ReadyList | undefined;
+  hold?: QueueHold | undefined;
+  readonly limits?: () => QueueLimits;
+  holds?: {
+    readonly periods: () => readonly HoldPeriod[];
+    readonly cutAt: () => number | null;
+  };
   readonly stopping: AbortController;
 }
 
@@ -102,13 +109,18 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
   let changing: Promise<unknown> = Promise.resolve();
   return {
     control: () => {
-      const { pending, error, ready } = runtime;
+      const { pending, error, ready, hold, limits, holds } = runtime;
       if (pending === undefined && error === undefined) return undefined;
       return {
         failedRunIds: [...(pending?.failures ?? [])],
         drain: pending?.drain,
         error,
         ...(ready === undefined ? {} : { ready }),
+        ...(hold === undefined ? {} : { hold }),
+        ...(limits === undefined ? {} : { lanes: limits().lanes }),
+        ...(holds === undefined
+          ? {}
+          : { holds: holds.periods(), holdsCutAt: holds.cutAt() }),
       };
     },
     change: (request) => {

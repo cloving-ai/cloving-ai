@@ -26,6 +26,8 @@ export interface SettingEntry extends ValueSource {
 const defaults: Readonly<Record<string, SettingValue>> = {
   "merge.mode": "direct",
   "queue.lanes": 1,
+  "queue.maxLoadPerCore": 0.7,
+  "queue.maxMemoryPressure": "normal",
   "limits.effects": defaultWorkflowLimits.effects,
   "limits.chain": defaultWorkflowLimits.chain,
   "spend.scope": "queue",

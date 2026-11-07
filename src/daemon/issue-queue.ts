@@ -1,6 +1,6 @@
 import { queueStatus, spendNotice } from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../cli/client.ts";
@@ -12,7 +12,13 @@ import { atGap, workInProgress } from "../work-gap.ts";
 import { daemonWorkReads } from "./work-reads.ts";
 import { restartHold, startedQueue } from "./restart-marks.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
+import { updateHold } from "./queue-update-hold.ts";
 import { clearContinuedFailures, handedOff } from "./queue-continuations.ts";
+import { roomGate, type RoomGate } from "./queue-room-gate.ts";
+import { holdRecord, type HoldRecord } from "./queue-holds.ts";
+import { waitingRuns } from "./working-runs.ts";
+import { hostSignals } from "./host-signals.ts";
+import type { HostSignals, QueueLimits } from "../queue-room.ts";
 import {
   queueControlPort,
   queueStopped,
@@ -23,10 +29,15 @@ interface QueueSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly intervalMilliseconds: number;
-  readonly lanes?: number;
+  readonly limits?: () => QueueLimits;
   readonly resetQueue?: boolean;
   readonly readyCommand?: readonly string[];
   readonly workflowId: string;
+  readonly signals?: () => Promise<HostSignals>;
+}
+
+function limitsOf(settings: QueueSettings): QueueLimits {
+  return settings.limits?.() ?? { lanes: 1, workingLanes: 1 };
 }
 
 function terminal(run: Fields): boolean {
@@ -195,58 +206,6 @@ async function submit(
   await pending.save();
 }
 
-async function pendingUpdate(directory: string): Promise<string | undefined> {
-  return readFile(join(directory, "pending-self-update"), "utf8").catch(
-    (error: unknown) => {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        return undefined;
-      throw error;
-    },
-  );
-}
-
-async function holdStarted(
-  pending: QueueJournal,
-  observed: { readonly mark: string; readonly activeRuns: number },
-): Promise<number> {
-  const { mark, activeRuns } = observed;
-  const timestamp = Number(mark);
-  if (!Number.isFinite(timestamp) || timestamp <= 0)
-    throw new Error("invalid-pending-self-update");
-  if (pending.selfUpdateHold?.mark !== mark || activeRuns > 0) {
-    pending.selfUpdateHold = { mark, startedAt: Date.now() };
-    await pending.save();
-  }
-  return pending.selfUpdateHold.startedAt;
-}
-
-function updateHold(
-  directory: string,
-  pending: QueueJournal,
-): (activeRuns?: number) => Promise<boolean> {
-  let notice: string | undefined;
-  return async (activeRuns = 0) => {
-    const mark = await pendingUpdate(directory);
-    if (mark === undefined && pending.selfUpdateHold !== undefined) {
-      pending.selfUpdateHold = undefined;
-      await pending.save();
-    }
-    if (mark === undefined) {
-      notice = undefined;
-      return false;
-    }
-    const startedAt = await holdStarted(pending, { mark, activeRuns });
-    const holding = activeRuns > 0 || Date.now() - startedAt < 30 * 60 * 1000;
-    const line = holding
-      ? "Queue holding for pending self-update\n"
-      : "Queue continuing after pending self-update time limit\n";
-    const key = mark + line;
-    if (notice !== key) process.stderr.write(line);
-    notice = key;
-    return holding;
-  };
-}
-
 async function admission(
   settings: QueueSettings,
   attempt: {
@@ -286,6 +245,7 @@ interface CycleChecks {
   readonly stop: (pending: QueueJournal) => boolean;
   readonly notice: (status: { readonly holding: boolean }) => boolean;
   readonly update: (activeRuns?: number) => Promise<boolean>;
+  readonly room: RoomGate;
 }
 
 async function admissible(
@@ -295,23 +255,29 @@ async function admissible(
   const { pending, stop } = checks;
   await clearContinuedFailures(settings.runtimeDirectory, pending);
   const pendingRuns = stop(pending) ? 0 : await completed(settings, pending);
-  if (stop(pending) && pending.drain === undefined) return false;
+  if (stop(pending) && pending.drain === undefined) return checks.room.clear();
   await drained(settings, pending);
   const status = await queueStatus(settings);
-  if (stop(pending) || pending.drain !== undefined) return false;
+  if (stop(pending) || pending.drain !== undefined) return checks.room.clear();
   const spend = checks.notice(status);
   const updating = await checks.update(status.busy);
-  const lanes = settings.lanes ?? 1;
-  if (Math.max(pendingRuns, status.busy) >= lanes || status.busy < pendingRuns)
-    return false;
-  return !updating && !spend;
+  const { lanes } = limitsOf(settings);
+  const full =
+    Math.max(pendingRuns, status.busy) >= lanes || status.busy < pendingRuns;
+  return full || updating || spend
+    ? checks.room.clear()
+    : checks.room.open(status.busy);
 }
 
 async function cycle(
   settings: QueueSettings,
-  run: { readonly signal: AbortSignal; readonly pending: QueueJournal },
+  run: {
+    readonly signal: AbortSignal;
+    readonly pending: QueueJournal;
+    readonly room: RoomGate;
+  },
 ): Promise<void> {
-  const { signal, pending } = run;
+  const { signal, pending, room } = run;
   await startedQueue(settings, pending);
   const selfUpdate = updateHold(settings.directory, pending);
   const restart = restartHold(settings.directory);
@@ -334,11 +300,28 @@ async function cycle(
       () => undefined,
     );
     if (stopped()) return;
-    if (!(await admissible(settings, { pending, stop, notice, update })))
+    if (!(await admissible(settings, { pending, stop, notice, update, room })))
       continue;
     if (stopped()) return;
     await admission(settings, { pending, holding, signal });
   }
+}
+
+function queueRoom(
+  settings: QueueSettings,
+  parts: { readonly runtime: QueueRuntime; readonly holds: HoldRecord },
+): RoomGate {
+  return roomGate(
+    {
+      limits: () => limitsOf(settings),
+      signals: settings.signals ?? hostSignals(),
+      waiting: () => waitingRuns(settings),
+    },
+    async (hold) => {
+      parts.runtime.hold = hold;
+      await parts.holds.note(hold);
+    },
+  );
 }
 
 export function issueQueue(settings: QueueSettings): {
@@ -350,15 +333,22 @@ export function issueQueue(settings: QueueSettings): {
     pending: undefined,
     error: undefined,
     stopping: new AbortController(),
+    limits: () => limitsOf(settings),
   };
-  const loaded = queueJournal(settings.directory).then((pending) => {
+  const loaded = queueJournal(settings.directory).then(async (pending) => {
+    const holds = await holdRecord(settings.directory);
     runtime.pending = pending;
-    return pending;
+    runtime.holds = holds;
+    return { pending, holds };
   });
   const running = loaded
-    .then((pending) =>
+    .then(({ pending, holds }) =>
       Promise.all([
-        cycle(settings, { signal: runtime.stopping.signal, pending }),
+        cycle(settings, {
+          signal: runtime.stopping.signal,
+          pending,
+          room: queueRoom(settings, { runtime, holds }),
+        }).finally(holds.close),
         readyRefreshes(settings.readyCommand, {
           signal: runtime.stopping.signal,
           intervalMilliseconds: settings.intervalMilliseconds,
