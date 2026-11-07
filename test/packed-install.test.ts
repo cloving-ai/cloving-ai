@@ -19,6 +19,7 @@ import {
 } from "./rescue-template-options-fixture.ts";
 import { packedReleaseSources } from "./release-template-options-fixture.ts";
 import { packedReload } from "./packed-reload.ts";
+import { packedTriageSources } from "./triage-template-fixture.ts";
 import {
   packedIdeaSources,
   packedIdeaTemplate,
@@ -113,6 +114,7 @@ async function installed(root: string): Promise<string> {
       packedReleaseSources,
       packedRescueSources,
       packedReviewSources,
+      packedTriageSources,
     ),
   );
   assert.deepEqual(

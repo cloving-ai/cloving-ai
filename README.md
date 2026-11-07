@@ -860,6 +860,12 @@ The command wait `release-pulls` checks the listed pull requests until all are m
 
 The workflow holds no secret and no publish credential. The CI publish job publishes the package. The README file of the template gives the input and the output of the operator commands `push-tag` and `release-status`.
 
+### Triage new issues
+
+The template `triage-issue` gives each new issue from another person a first verdict. Copy it into your private workflow folder with `cloving templates copy triage-issue`. Its default schedule runs every 30 minutes. A pass reads the operator command `triage-candidates` from `CLOVING_COMMANDS`. The command prints a JSON array such as `[{"number": 639}]`. A candidate is an open issue without the label `cloving: triaged`, opened by an account that is not in the operator list, with no new post for 10 minutes. The template includes the reference script `triage-issue/triage-candidates.mts`, which takes the operator logins as arguments and prints at most four candidates.
+
+The pass hands off one `triage-issue` run with `{"issue": N}` for each candidate, and waits for each run. One turn reads the issue, searches the open and closed issues and the code on the default branch, and ends with one verdict line: `Triage: duplicate #<number>`, `Triage: bug <size>`, `Triage: feature <size>` or `Triage: needs-information`. The size is `small`, `medium` or `large`. The point `post` selects **A person approves** (the default) or **Post at once**. The GitHub method `comment-issue` takes `{"number": N, "body": "<text>"}` and posts the body as one comment with the privacy check of an issue body, so it requires `privateTexts`. The comment ends with a marker of the operation, so a replay finds the comment and does not post again. Then the run adds `cloving: triaged` and the label of the verdict. A denied approval adds only `cloving: triaged`. The workflow never closes an issue and never adds `cloving: ready`. The README file of the template gives the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
