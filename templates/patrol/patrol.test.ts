@@ -196,6 +196,26 @@ await test("CLV-305 one pass hands off four of six candidates", async () => {
   );
 });
 
+await test("CLV-313 review answers go out before the rescue decision of a stuck pull request", async () => {
+  using bridge = fakeStepBridge({
+    effects: Object.assign(status([stuck(641), quiet(643)]), {
+      "github review-threads": [review()],
+    }),
+    decisions: [{ decision: "denied", answer: null }],
+  });
+  const outcome = await patrol(input);
+  assert.equal(outcome.kind, "handoff_requested");
+  assert.deepEqual(methods(bridge.requests).slice(0, 3), [
+    "run:patrol-status",
+    "review-threads",
+    "handoff",
+  ]);
+  assert.deepEqual(handoffs(bridge.requests)[0], {
+    workflowId: "answer-review",
+    input: { pullRequest: 643 },
+  });
+});
+
 await test("CLV-305 Ask a person first hands off nothing before the decision", async () => {
   for (const decision of [
     { decision: "denied" as const, answer: "1" },

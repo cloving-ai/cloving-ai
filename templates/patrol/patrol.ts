@@ -12,12 +12,12 @@ export async function patrol(input: PatrolInput): Promise<CycleOutcome> {
   "use workflow";
   try {
     const status = await patrolStatus();
-    const picked = await pickPulls({ input: input, pulls: status.stuck });
-    const rescued = await rescuePulls(picked);
     const answered = await answerPulls({
       cycleId: input.cycleId,
       numbers: status.open,
     });
+    const picked = await pickPulls({ input: input, pulls: status.stuck });
+    const rescued = await rescuePulls(picked);
     return {
       kind: "handoff_requested",
       cycleId: input.cycleId,
