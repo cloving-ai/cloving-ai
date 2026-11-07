@@ -829,6 +829,7 @@
     "test/cli-fixture.ts": "test",
     "test/cli-init-prompt.test.ts": "test",
     "test/cli-init.test.ts": "test",
+    "test/cli-integrations.test.ts": "test",
     "test/cli-invocation.test.ts": "test",
     "test/cli-mcp-decisions.test.ts": "test",
     "test/cli-mcp-errors.test.ts": "test",
