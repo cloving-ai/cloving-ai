@@ -1,3 +1,4 @@
+import type { IssueState } from "./watch-finished.ts";
 import type { WatchPullRequest } from "./watch-render.ts";
 import {
   prArguments,
@@ -15,6 +16,7 @@ import {
 export interface PrObserver {
   readonly repository?: PrRepository | null;
   readonly observe: (pullRequest: WatchPullRequest) => PrObservation | null;
+  readonly issueState?: (issue: PrIdentity) => IssueState;
   readonly close: () => void;
 }
 

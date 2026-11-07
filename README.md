@@ -164,9 +164,18 @@ On start, Cloving keeps the old default runtime path only when all retained work
 
 The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
 
-The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
+The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of items in the **Needs you** panel. This count includes the decisions and the stopped runs. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
 
 The **Needs you** panel under the floor lists each pending decision, each paused run, and each failed or blocked run with no continuation, with the count of items. A decision has a blue mark. A paused, failed or blocked run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
+
+The panel leaves out a failed or blocked run when its work is finished:
+
+- the GitHub issue of its ticket is closed;
+- its pull request is merged;
+- a later run of the same ticket completed with a handoff;
+- it ended more than `retention.days` ago.
+
+The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
 
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 

@@ -6,6 +6,7 @@ import {
 } from "./watch-actions.ts";
 import { watchApiChange, watchApiReply } from "./watch-api.ts";
 import { observedBoard } from "./watch-pr-board.ts";
+import { finishedModel, type IssueState } from "./watch-finished.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { continueAction } from "./watch-continue.ts";
@@ -59,6 +60,7 @@ export interface WatchSettings {
   readonly pullRequests?: WatchPrSettings;
   readonly themes?: WatchThemeSettings;
   readonly runtimeDirectory: string;
+  readonly retentionDays?: number | null;
   readonly replyMilliseconds?: number;
   readonly threadPool?: ThreadPoolSettings;
   readonly port: number;
@@ -81,6 +83,7 @@ interface Watch {
   readonly github: Map<string, GithubRecords>;
 }
 
+const unknownIssue = (): IssueState => "unknown";
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 const pageChange = (): string => "data: change\n\n";
@@ -179,7 +182,17 @@ async function snapshot(
     turns: journal,
     githubRecords: github,
   });
-  const shown = runId === null ? observedBoard(model, watch.observer) : model;
+  const shown =
+    runId === null
+      ? observedBoard(
+          finishedModel(model, {
+            issue: watch.observer.issueState ?? unknownIssue,
+            pullRequest: watch.observer.observe,
+            retentionDays: watch.settings.retentionDays ?? null,
+          }),
+          watch.observer,
+        )
+      : model;
   return {
     ...shown,
     cardForms:

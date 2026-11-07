@@ -1,5 +1,6 @@
 import type { WatchCommandRunner } from "./watch-pr-command.ts";
 import { prRepository } from "./watch-pr-identity.ts";
+import { issueObserver } from "./watch-issue-observer.ts";
 import { prObserver, type PrObserver } from "./watch-pr-observer.ts";
 
 export interface WatchPrSettings {
@@ -50,10 +51,19 @@ export async function watchPrObserver(
       close: () => undefined,
     };
   const repository = output?.status === 0 ? prRepository(output.stdout) : null;
-  return prObserver({
-    repository,
+  const reads = {
     directory: directory ?? "",
     command,
     execute: settings.execute,
-  });
+  };
+  const pulls = prObserver({ ...reads, repository });
+  const issues = issueObserver(reads);
+  return {
+    ...pulls,
+    issueState: issues.state,
+    close: () => {
+      pulls.close();
+      issues.close();
+    },
+  };
 }

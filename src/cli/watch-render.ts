@@ -163,7 +163,14 @@ export interface WatchTile {
   readonly demo: string | null;
 }
 
+export type WatchFinished =
+  | "ticket-closed"
+  | "pull-request-merged"
+  | "later-run-completed"
+  | "retention-expired";
+
 export interface WatchRun {
+  readonly finished?: WatchFinished;
   readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
   readonly commandWaits?: readonly CommandWaitView[];
