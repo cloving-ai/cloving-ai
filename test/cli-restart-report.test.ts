@@ -261,6 +261,40 @@ await test("CLV-320 a failed update after the restart prints the start report an
   );
 });
 
+await test("CLV-320 a broken update that the service recovered prints the failed step and exits 1", async () => {
+  const result = await scripted({
+    statuses: [
+      waitingOld,
+      "down",
+      {
+        ...old,
+        serviceStartedAt: fresh.serviceStartedAt,
+        restart: null,
+        workflows: ["develop", "nightly"],
+        queue: { workflowId: "develop", lanes: 4 },
+        restartFailure: {
+          commandId: "restart-report",
+          requestedAt,
+          code: "restart-update-broken",
+          step: "build",
+          output: "error TS2322: broken",
+        },
+      },
+    ],
+    invocation: { update: true },
+  });
+  assert.equal(result.code, 1);
+  assert.equal(
+    result.error,
+    [
+      "Command ID: restart-report",
+      `restart-update-broken: The update stopped at step build, and the first rollback failed too. The service built the old commit again and restarted on commit ${old.serviceCommit}.`,
+      "    error TS2322: broken",
+      "",
+    ].join("\n"),
+  );
+});
+
 await test("CLV-320 skipped update after the restart prints the local changes and exits 0", async () => {
   const result = await scripted({
     statuses: [

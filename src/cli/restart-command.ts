@@ -195,6 +195,31 @@ async function restarted(
   }
 }
 
+const updateFailures: Readonly<Record<string, string>> = {
+  "restart-update-failed": "The checkout went back, and the service restarted",
+  "restart-update-broken":
+    "and the first rollback failed too. The service built the old commit again and restarted",
+};
+
+function updateErrors(
+  update: Fields | undefined,
+  after: Fields,
+): readonly ServiceError[] {
+  const code = update?.["code"];
+  if (update === undefined || typeof code !== "string") return [];
+  const what = updateFailures[code];
+  if (what === undefined) return [];
+  const stop = code === "restart-update-broken" ? "," : ".";
+  return [
+    {
+      code,
+      detail: `The update stopped at step ${show(update["step"])}${stop} ${what} on commit ${show(after["serviceCommit"] ?? "unknown")}.\n${show(update["output"])}`,
+      step: update["step"],
+      output: update["output"],
+    },
+  ];
+}
+
 function startErrors(daemons: {
   readonly before: Fields;
   readonly after: Fields;
@@ -203,16 +228,7 @@ function startErrors(daemons: {
   const { before, after, update } = daemons;
   const refused = refusedWorkflowLines(before, after);
   return [
-    ...(update?.["code"] === "restart-update-failed"
-      ? [
-          {
-            code: "restart-update-failed",
-            detail: `The update stopped at step ${show(update["step"])}. The checkout went back, and the service restarted on commit ${show(after["serviceCommit"] ?? "unknown")}.\n${show(update["output"])}`,
-            step: update["step"],
-            output: update["output"],
-          },
-        ]
-      : []),
+    ...updateErrors(update, after),
     ...(refused.length > 0
       ? [
           {
