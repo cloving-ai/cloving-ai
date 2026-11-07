@@ -55,6 +55,32 @@ await test("CLV-306 the start records the source of each setting, and default fo
     assert.ok(Object.hasOwn(sources, field), field);
 });
 
+await test("CLV-315 the private demo.tool setting gives the service CLOVING_DEMO_TOOL", () => {
+  const resolved = resolveSettings(
+    {},
+    {
+      project: undefined,
+      private: JSON.stringify({ version: 1, demo: { tool: "/tools/demo" } }),
+    },
+  );
+  assert.equal(resolved.environment["CLOVING_DEMO_TOOL"], "/tools/demo");
+  assert.equal(resolved.sources["demo.tool"], "private");
+  assert.throws(
+    () =>
+      resolveSettings(
+        {},
+        {
+          project: JSON.stringify({
+            version: 1,
+            demo: { tool: "/tools/demo" },
+          }),
+          private: undefined,
+        },
+      ),
+    /private-setting-in-project-file: demo/,
+  );
+});
+
 await test("CLV-306 a start from the files drops each variable that a settings file can set", () => {
   assert.deepEqual(
     withoutFileVariables({

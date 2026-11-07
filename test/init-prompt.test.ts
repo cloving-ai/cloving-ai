@@ -22,7 +22,7 @@ const facts: InitPromptFacts = {
 await test("CLV-303 setup walks through the lessons decision with the other develop points", () => {
   assert.match(
     initPrompt(facts),
-    /all eight points: input, select, verify, accept, merge, partial, recovery and lessons/,
+    /all nine points: input, select, verify, accept, merge, partial, recovery, lessons and demo/,
   );
 });
 

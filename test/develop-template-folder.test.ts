@@ -10,6 +10,7 @@ import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
 import {
   configuredDevelopFiles,
   completeConfigurations,
+  type DevelopSelection,
 } from "./develop-template-options-fixture.ts";
 
 await test("CLV-221 the executable default passes folder admission", async () => {
@@ -27,6 +28,16 @@ await test("CLV-221 the executable default passes folder admission", async () =>
     assert.equal(declaration.workflow.queue, true);
   });
 });
+
+function expectedLimit(selected: DevelopSelection): number {
+  if (selected.accept === "panel" || selected.demo === "record") return 99;
+  return selected.verify === "red-green" ? 93 : 87;
+}
+
+function expectedAttachment(selected: DevelopSelection) {
+  if (selected.merge === "local") return undefined;
+  return selected.demo === "record" ? ["attach-asset"] : [];
+}
 
 for (const selected of completeConfigurations)
   await test(`CLV-221 complete configuration ${Object.values(selected).join("/")} passes folder admission`, async () => {
@@ -54,15 +65,16 @@ for (const selected of completeConfigurations)
             : ["claude", "github"]
           ).concat(selected.verify === "red-green" ? ["command"] : []),
         );
-        assert.equal(
-          declaration.workflow.effectLimit,
-          ({ panel: 99 } as Readonly<Record<string, number>>)[
-            selected.accept
-          ] ?? (selected.verify === "red-green" ? 93 : 87),
-        );
+        assert.equal(declaration.workflow.effectLimit, expectedLimit(selected));
         assert.deepEqual(
           declaration.workflow.commands,
           selected.verify === "red-green" ? ["red-green"] : undefined,
+        );
+        assert.deepEqual(
+          declaration.methods["github"]?.filter(
+            (method) => method === "attach-asset",
+          ),
+          expectedAttachment(selected),
         );
         assert.deepEqual(
           declaration.methods["command"],
