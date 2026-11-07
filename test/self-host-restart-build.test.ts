@@ -4,7 +4,8 @@ import { mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { restartMark, restartText } from "../src/restart-request.ts";
-import { withUpdateHost } from "./restart-host-fixture.ts";
+import { staleBuild } from "../tools/restart-build.ts";
+import { updateMark, withUpdateHost } from "./restart-host-fixture.ts";
 import { eventually } from "./service-fixture.ts";
 
 function plainMark(commandId: string): string {
@@ -91,4 +92,42 @@ await test("CLV-320 a restart with no dist builds first, a failed build starts n
       "run build\nrun build\n",
     );
     assert.equal(existsSync(passed), true);
+  }));
+
+await test("CLV-320 a passed build of an update records the build, so the merged sources do not make the next restart build again", () =>
+  withUpdateHost(async ({ root, directory, git, old, target, hosted }) => {
+    const checkout = git(["rev-parse", "--show-toplevel"]);
+    git(["reset", "-q", "--hard", target]);
+    await mkdir(join(checkout, "src"));
+    await writeFile(join(checkout, "src", "cli.ts"), "export {};\n");
+    git(["add", "src/cli.ts"]);
+    git(["commit", "-qm", "Source"]);
+    const merged = git(["rev-parse", "HEAD"]);
+    git(["push", "-q", "origin", "main"]);
+    git(["reset", "-q", "--hard", old]);
+    const sources = new Date(Date.now() - 120_000);
+    await utimes(join(checkout, "package-lock.json"), sources, sources);
+    const recorded = new Date(Date.now() - 60_000);
+    const record = join(checkout, "dist", ".restart-build");
+    await utimes(record, recorded, recorded);
+    const hosting = hosted();
+    await eventually(() =>
+      existsSync(join(root, "daemon-ready")) ? true : undefined,
+    );
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      updateMark("now", "restart-recorded"),
+    );
+    assert.equal(await hosting, 75);
+    assert.equal(git(["rev-parse", "HEAD"]), merged);
+    assert.equal(
+      await readFile(join(root, "npm-calls"), "utf8"),
+      "run build\n",
+    );
+    assert.equal(
+      await staleBuild(checkout, (argumentsList) =>
+        Promise.resolve(git(argumentsList)),
+      ),
+      false,
+    );
   }));

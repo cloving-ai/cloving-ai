@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import {
+import filesystem, {
   mkdir,
   mkdtemp,
   readdir,
@@ -10,9 +10,10 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { restartMarks } from "../src/daemon/restart-marks.ts";
 import {
@@ -220,6 +221,43 @@ await test("CLV-306 a host claim of a request that the daemon replaced changes n
     assert.equal((await stat(directory)).mtimeMs, past.getTime());
     assert.deepEqual(await marks.pending(), newer);
   } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-320 a claim that the host cannot write puts the request back with no other file, so a cancel still stops it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-claim-"));
+  const write = filesystem.writeFile;
+  try {
+    const marks = restartMarks(directory);
+    const checked = restartMark(mark("gap"));
+    assert.ok(checked);
+    await marks.request(checked);
+    const name = await requestName(directory);
+    const text = await readFile(join(directory, name), "utf8");
+    mock.method(
+      filesystem,
+      "writeFile",
+      async (file: Parameters<typeof write>[0]) => {
+        await write(file, "");
+        throw Object.assign(new Error("no space left on device"), {
+          code: "ENOSPC",
+        });
+      },
+    );
+    syncBuiltinESMExports();
+    await assert.rejects(claimedRestart(directory, { name, mark: checked }), {
+      code: "ENOSPC",
+    });
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    assert.deepEqual(await readdir(directory), [name]);
+    assert.equal(await readFile(join(directory, name), "utf8"), text);
+    assert.deepEqual(await marks.pending(), checked);
+    assert.equal(await marks.cancel(), "cancelled");
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
     await rm(directory, { recursive: true, force: true });
   }
 });

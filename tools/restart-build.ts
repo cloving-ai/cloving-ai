@@ -41,14 +41,18 @@ export async function staleBuild(
   return (await newestSource(checkout, git)) > passed;
 }
 
+export async function rememberedBuild(checkout: string): Promise<void> {
+  const record = join(checkout, passedBuild);
+  await mkdir(dirname(record), { recursive: true });
+  await writeFile(record, "");
+}
+
 async function recordedBuild(
   checkout: string,
   commands: CheckoutCommands,
 ): Promise<string> {
   const output = await commands.npm(["run", "build"]);
-  const record = join(checkout, passedBuild);
-  await mkdir(dirname(record), { recursive: true });
-  await writeFile(record, "");
+  await rememberedBuild(checkout);
   return output;
 }
 

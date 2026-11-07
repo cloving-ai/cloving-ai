@@ -23,7 +23,11 @@ import {
   type RestartRequest,
 } from "../src/restart-request.ts";
 import { atGap, workInProgress, type Work } from "../src/work-gap.ts";
-import { checkedBuild, forgottenBuild } from "./restart-build.ts";
+import {
+  checkedBuild,
+  forgottenBuild,
+  rememberedBuild,
+} from "./restart-build.ts";
 import { checkoutCommands, updatedCheckout } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
 
@@ -92,26 +96,35 @@ async function replaced(
   file: { readonly name: string; readonly text: string },
 ): Promise<void> {
   const temporary = join(directory, `restart-${randomUUID()}.tmp`);
-  await writeFile(temporary, file.text, { mode: 0o600 });
-  await rename(temporary, join(directory, file.name));
+  try {
+    await writeFile(temporary, file.text, { mode: 0o600 });
+    await rename(temporary, join(directory, file.name));
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
 }
 
 export async function claimedRestart(
   directory: string,
   checked: RestartRequest,
 ): Promise<RestartMark | undefined> {
-  const moved = await rename(
-    join(directory, checked.name),
-    join(directory, restartFiles.claimed),
-  ).then(
+  const request = join(directory, checked.name);
+  const claim = join(directory, restartFiles.claimed);
+  const moved = await rename(request, claim).then(
     () => true,
     (error: unknown) => !coded(error, "ENOENT"),
   );
   if (!moved) return undefined;
-  await replaced(directory, {
-    name: restartFiles.claimed,
-    text: claimText(checked.mark, process.pid),
-  });
+  try {
+    await replaced(directory, {
+      name: restartFiles.claimed,
+      text: claimText(checked.mark, process.pid),
+    });
+  } catch (error) {
+    await rename(claim, request);
+    throw error;
+  }
   return checked.mark;
 }
 
@@ -178,7 +191,7 @@ async function updateNoted(
 ): Promise<void> {
   if (mark.update !== true) return;
   const outcome = await updatedCheckout(checkoutCommands(watch));
-  if (outcome.kind === "updated") return;
+  if (outcome.kind === "updated") return rememberedBuild(watch.checkout);
   if (outcome.kind === "failed") await forgottenBuild(watch.checkout);
   const { step, output } = outcome;
   const heading =
