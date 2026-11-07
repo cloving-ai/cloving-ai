@@ -261,7 +261,7 @@
             "accept": ["greptile", "person", "turn"],
             "merge": ["green", "person"]
           },
-          "needs": ["demo-tool"]
+          "needs": ["demo-tool", "private-texts"]
         }
       ]
     }

@@ -377,9 +377,10 @@ The setting is private, so the path does not go into the repository. The
 service gives the path to each turn in the variable `CLOVING_DEMO_TOOL`. A
 change of the setting needs a service restart.
 
-The `record` option needs the `demo-tool` check of `cloving doctor`. The check
-is optional, because a workflow that only uploads a file with `attach-asset`
-needs no demo tool. During the `cloving init-prompt` setup, each need of a
+The `record` option needs the `demo-tool` and `private-texts` checks of
+`cloving doctor`. `attach-asset` refuses an upload with `private-texts-not-set`
+when no private text is set. The `demo-tool` check is optional, because a
+workflow that only uploads a file with `attach-asset` needs no demo tool. During the `cloving init-prompt` setup, each need of a
 selected option must give `ok`. The check gives `skip` when `demo.tool` is not
 set. It fails when the value is not an absolute path, or names a file or
 folder that Cloving cannot read.

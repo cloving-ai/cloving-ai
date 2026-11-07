@@ -43,7 +43,7 @@ await test("CLV-315 attach-asset alone does not make demo-tool required, and the
       point?.options.map((option) => [option.id, option.needs]),
       [
         ["none", []],
-        ["record", ["demo-tool"]],
+        ["record", ["demo-tool", "private-texts"]],
       ],
     );
   }));
