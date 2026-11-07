@@ -1,14 +1,15 @@
 {
   "workflow": {
     "workflowId": "patrol",
-    "effectLimit": 5,
-    "capabilities": ["command"],
+    "effectLimit": 21,
+    "capabilities": ["command", "github"],
     "commands": ["patrol-status"],
     "schedule": { "everySeconds": 1800, "input": {} },
-    "handoffs": ["rescue-pr"],
+    "handoffs": ["rescue-pr", "answer-review"],
     "input": { "maximumBytes": 65536, "fields": {} }
   },
   "methods": {
-    "command": ["run:patrol-status"]
+    "command": ["run:patrol-status"],
+    "github": ["review-threads"]
   }
 }

@@ -4,7 +4,7 @@ import { fakeStepBridge } from "cloving/workflows/testing";
 import { patrol } from "./patrol.ts";
 import { askPerson, pickAll } from "./patrol/pick.ts";
 import { rescuePulls } from "./patrol/rescue.ts";
-import { stuckPulls } from "./patrol/status.ts";
+import { patrolStatus } from "./patrol/status.ts";
 import {
   answers,
   asked,
@@ -12,6 +12,10 @@ import {
   handoffs,
   input,
   methods,
+  quiet,
+  review,
+  reviewThread,
+  reviewed,
   status,
   stuck,
 } from "./patrol/scenarios.ts";
@@ -42,23 +46,140 @@ await test("CLV-305 a stuck pull request with a merge conflict and no active run
 
 await test("CLV-305 Hand off at once gives a merge conflict to rescue-pr without a decision", async () => {
   using bridge = fakeStepBridge({ effects: status([stuck(641)]) });
-  const pulls = await stuckPulls();
+  const pulls = (await patrolStatus()).stuck;
   await rescuePulls(await pickAll({ input: input, pulls: pulls }));
   assert.deepEqual(methods(bridge.requests), ["run:patrol-status", "handoff"]);
 });
 
 await test("CLV-305 a pull request with an active run, a person's branch or a finished run is never a candidate", async () => {
   using bridge = fakeStepBridge({
-    effects: status([
-      stuck(641, { active: true }),
-      stuck(642, { branch: "feature/search" }),
-      stuck(643, { state: "completed", reason: null, head: null }),
-    ]),
+    effects: Object.assign(
+      status([
+        stuck(641, { active: true }),
+        stuck(642, { branch: "feature/search" }),
+        quiet(643),
+      ]),
+      { "github review-threads": [review({ threads: [] })] },
+    ),
     decisions: answers("all"),
   });
   const outcome = await patrol(input);
   assert.equal(outcome.kind, "handoff_requested");
-  assert.deepEqual(methods(bridge.requests), ["run:patrol-status"]);
+  assert.deepEqual(methods(bridge.requests), [
+    "run:patrol-status",
+    "review-threads",
+  ]);
+});
+
+await test("CLV-313 a quiet pull request with an open review thread and no active run gets an answer-review handoff", async () => {
+  using bridge = fakeStepBridge({
+    effects: Object.assign(status([stuck(641, { active: true }), quiet(643)]), {
+      "github review-threads": [review()],
+    }),
+  });
+  const outcome = await patrol(input);
+  assert.equal(outcome.kind, "handoff_requested");
+  assert.deepEqual(methods(bridge.requests), [
+    "run:patrol-status",
+    "review-threads",
+    "handoff",
+  ]);
+  assert.deepEqual(reviewed(bridge.requests), [{ number: 643 }]);
+  assert.deepEqual(handoffs(bridge.requests), [
+    { workflowId: "answer-review", input: { pullRequest: 643 } },
+  ]);
+  assert.match(
+    String(Reflect.get(outcome, "report")),
+    /Review answers: #643\./,
+  );
+});
+
+await test("CLV-313 a pull request with an active run, a comment in the last 5 minutes, answered comments or no open thread is not a review candidate", async () => {
+  using bridge = fakeStepBridge({
+    effects: Object.assign(
+      status([
+        quiet(643, { active: true }),
+        quiet(644, { branch: "feature/search" }),
+        quiet(645),
+        quiet(646),
+        quiet(647),
+        quiet(648),
+        quiet(649),
+      ]),
+      {
+        "github review-threads": [
+          review({ quietSeconds: 299 }),
+          review({
+            threads: [
+              reviewThread({ id: "PRRT_1", answered: true }),
+              reviewThread({ id: "PRRT_2", answered: true }),
+            ],
+          }),
+          review({ threads: [], latest: null, quietSeconds: null }),
+          {
+            kind: "failed" as const,
+            operationId: "r",
+            reason: "pull-request-not-open",
+          },
+          completed("not a review"),
+        ],
+      },
+    ),
+  });
+  const outcome = await patrol(input);
+  assert.deepEqual(
+    reviewed(bridge.requests)
+      .map((value) => JSON.stringify(value))
+      .sort(),
+    [645, 646, 647, 648, 649].map((number) => JSON.stringify({ number })),
+  );
+  assert.deepEqual(handoffs(bridge.requests), []);
+  assert.match(
+    String(Reflect.get(outcome, "report")),
+    /Review answers: none\./,
+  );
+});
+
+await test("CLV-313 a pull request with one waiting thread among answered threads gets an answer-review handoff", async () => {
+  using bridge = fakeStepBridge({
+    effects: Object.assign(status([quiet(643)]), {
+      "github review-threads": [
+        review({
+          threads: [
+            reviewThread({ id: "PRRT_1", answered: false }),
+            reviewThread({ id: "PRRT_2", answered: true }),
+          ],
+        }),
+      ],
+    }),
+  });
+  await patrol(input);
+  assert.deepEqual(handoffs(bridge.requests), [
+    { workflowId: "answer-review", input: { pullRequest: 643 } },
+  ]);
+});
+
+await test("CLV-313 one pass reads at most eight pull requests and hands off at most four answers", async () => {
+  const numbers = [651, 652, 653, 654, 655, 656, 657, 658, 659];
+  const passes = [];
+  for (const cycleId of numbers.map((number) => `patrol-${String(number)}`)) {
+    using bridge = fakeStepBridge({
+      effects: Object.assign(status(numbers.map((number) => quiet(number))), {
+        "github review-threads": Array.from({ length: 8 }, () => review()),
+      }),
+    });
+    await patrol({ cycleId, input: {} });
+    const read = reviewed(bridge.requests).map((value) =>
+      JSON.stringify(value),
+    );
+    const handed = handoffs(bridge.requests).map((request) =>
+      JSON.stringify({ number: request.input["pullRequest"] }),
+    );
+    assert.equal(new Set(read).size, 8);
+    assert.deepEqual(handed, read.slice(0, 4));
+    passes.push(read);
+  }
+  assert.equal(new Set(passes.map((read) => read[0])).size, numbers.length);
 });
 
 await test("CLV-305 one pass hands off four of six candidates", async () => {
@@ -75,6 +196,26 @@ await test("CLV-305 one pass hands off four of six candidates", async () => {
   );
 });
 
+await test("CLV-313 review answers go out before the rescue decision of a stuck pull request", async () => {
+  using bridge = fakeStepBridge({
+    effects: Object.assign(status([stuck(641), quiet(643)]), {
+      "github review-threads": [review()],
+    }),
+    decisions: [{ decision: "denied", answer: null }],
+  });
+  const outcome = await patrol(input);
+  assert.equal(outcome.kind, "handoff_requested");
+  assert.deepEqual(methods(bridge.requests).slice(0, 3), [
+    "run:patrol-status",
+    "review-threads",
+    "handoff",
+  ]);
+  assert.deepEqual(handoffs(bridge.requests)[0], {
+    workflowId: "answer-review",
+    input: { pullRequest: 643 },
+  });
+});
+
 await test("CLV-305 Ask a person first hands off nothing before the decision", async () => {
   for (const decision of [
     { decision: "denied" as const, answer: "1" },
@@ -88,7 +229,10 @@ await test("CLV-305 Ask a person first hands off nothing before the decision", a
       effects: status([stuck(641), stuck(642, { state: "failed" })]),
       decisions: [decision],
     });
-    const picked = await askPerson({ input: input, pulls: await stuckPulls() });
+    const picked = await askPerson({
+      input: input,
+      pulls: (await patrolStatus()).stuck,
+    });
     await rescuePulls(picked);
     assert.deepEqual(methods(bridge.requests), [
       "run:patrol-status",
@@ -102,7 +246,10 @@ await test("CLV-305 the decision lists every candidate and the person picks the 
     effects: status([stuck(641), stuck(642, { state: "failed", score: null })]),
     decisions: [{ decision: "answered", answer: "2" }],
   });
-  const picked = await askPerson({ input: input, pulls: await stuckPulls() });
+  const picked = await askPerson({
+    input: input,
+    pulls: (await patrolStatus()).stuck,
+  });
   await rescuePulls(picked);
   const prompt = bridge.requests.flatMap((request) =>
     request[0] === "waitForDecision" ? [request[1].prompt] : [],

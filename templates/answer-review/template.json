@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "answer-review",
+  "summary": "Answer the open review threads of one pull request of Cloving that no run owns: fix what a comment asks for, reply once to each thread, and resolve a thread only when its rule allows it.",
+  "points": [
+    {
+      "id": "resolve",
+      "question": "When does the workflow resolve a review thread?",
+      "options": [
+        {
+          "id": "bot-fix",
+          "label": "Resolve bot threads after a fix",
+          "summary": "Resolve a thread of a bot after its fix is pushed. Never resolve a thread of a person: that person resolves it.",
+          "change": "Keep resolveAfterFix as resolveThread from answer-review/resolve.ts in answer-review/replies.ts. Keep selection.resolve as bot-fix in answer-review/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "greptile-review"]
+        },
+        {
+          "id": "never",
+          "label": "Never resolve",
+          "summary": "Reply to each thread and leave every thread open for its author.",
+          "change": "In answer-review/replies.ts replace resolveAfterFix as resolveThread with neverResolve as resolveThread in the answer-review/resolve.ts import. Set selection.resolve to never in answer-review/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "greptile-review"]
+        }
+      ]
+    }
+  ]
+}
