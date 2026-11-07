@@ -812,6 +812,7 @@ The service also refuses these continuations:
 
 - A run that ended more than `retention.days` days ago gets `run-retention-expired`. With `retention.days` set to `null`, no run is too old.
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
+- A run whose ticket issue is closed gets `continuation-ticket-closed`, and a run whose pull request is merged gets `continuation-pull-request-merged`. The service reads the issue of the `GitHub issue:` line of the ticket and the pull request that the run opened with the GitHub command of the service. When a read fails, the service does not refuse. The watch page shows no **Continue** button for such a run, because **Needs you** leaves it out.
 - A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
 - A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
 

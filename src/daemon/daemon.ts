@@ -49,6 +49,7 @@ import {
   type CurrentBundle,
 } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
+import { githubReader } from "./github-read.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
 import { stalledLine } from "../thread-pool-check.ts";
@@ -190,6 +191,7 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
   return {
     turnDetails: turnDetailsPlace(place),
     retentionExpired: retentionExpiry(place),
+    githubRead: githubReader(settings),
   };
 }
 

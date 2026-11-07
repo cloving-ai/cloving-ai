@@ -117,6 +117,7 @@ const hosted = async (overrides = {}) => {
     workflows: overrides.registrations ?? [{ ...fakeRegistration([]), effectLimit: Number(process.env.EFFECT_LIMIT ?? "5") }],
     retainedWorkflows: overrides.retainedWorkflows,
     retentionExpired: overrides.retentionExpired,
+    githubRead: overrides.githubRead,
     delivery,
     effects: overrides.effects,
     clock: overrides.clock,

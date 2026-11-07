@@ -17,6 +17,7 @@ import {
   type ServiceContext,
 } from "./replies.ts";
 import { activeWorkflow, laneCount } from "./active-tickets.ts";
+import { finishedRefusal } from "./finished-work.ts";
 import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
 import { runIdentity } from "./submission-handler.ts";
 
@@ -183,6 +184,10 @@ async function refusal(
     (await statusRefusal(context, subject)) ??
     continuedRefusal(request, origins) ??
     (await retentionRefusal(context, request)) ??
+    (await finishedRefusal(context, {
+      runId: request.runId,
+      identity: identity(request),
+    })) ??
     (await spendRefusal(context, request)) ??
     (await lanesRefusal(context, request))
   );
