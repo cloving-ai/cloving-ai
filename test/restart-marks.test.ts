@@ -227,6 +227,7 @@ await test("CLV-306 the daemon reads the failure of an update that the host wrot
     const failure = {
       commandId: "one",
       requestedAt: 1_000,
+      code: "restart-update-failed",
       step: "build",
       output: "broken",
     };
@@ -237,8 +238,34 @@ await test("CLV-306 the daemon reads the failure of an update that the host wrot
     assert.equal(await marks.failure(), undefined);
     await writeFile(file, JSON.stringify({ ...failure, step: 2 }));
     assert.equal(await marks.failure(), undefined);
+    await writeFile(file, JSON.stringify({ ...failure, code: undefined }));
+    assert.equal(await marks.failure(), undefined);
     for (const requestedAt of [undefined, 1.5, "1000"]) {
       await writeFile(file, JSON.stringify({ ...failure, requestedAt }));
       assert.equal(await marks.failure(), undefined);
     }
+  }));
+
+await test("CLV-320 a new restart request removes the failure note of an earlier restart", () =>
+  withDirectory(async (directory) => {
+    const marks = restartMarks(directory);
+    const file = join(directory, "restart-failure");
+    await writeFile(
+      file,
+      JSON.stringify({
+        commandId: "earlier",
+        requestedAt: 1_000,
+        code: "restart-update-skipped",
+        step: "clean",
+        output: "?? notes.txt",
+      }),
+    );
+    await marks.request({
+      at: "gap",
+      requestedAt: 2_000,
+      commandId: "later",
+      resumeQueue: false,
+    });
+    assert.equal(await marks.failure(), undefined);
+    assert.equal((await marks.pending())?.commandId, "later");
   }));

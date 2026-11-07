@@ -8,12 +8,14 @@ import type { SettingChanges } from "../service/workflow-reload.ts";
 import { parseFallbackModels, parseTokenPrices } from "../token-prices.ts";
 import { isProfilesFile, type TurnProfiles } from "../turn-profile.ts";
 import { checkedProfiles } from "./worker-profile.ts";
+import { queueLimitsOf, type QueueLimits } from "../queue-room.ts";
 
 export type SettingDigests = Readonly<Record<string, string>>;
 
 export interface ReloadedSettings {
   readonly turnSettings: TurnSettings;
   readonly settingDigests: SettingDigests;
+  readonly queueLimits: QueueLimits;
 }
 
 export interface TurnSettingsSource {
@@ -65,9 +67,12 @@ export function reloadedSettings(
 ): ReloadedSettings | undefined {
   const turnSettings = turnSettingsOf(output?.["turnSettings"]);
   const settingDigests = digestsOf(output?.["settingDigests"]);
-  return turnSettings === undefined || settingDigests === undefined
+  const queueLimits = queueLimitsOf(output?.["queueLimits"]);
+  return turnSettings === undefined ||
+    settingDigests === undefined ||
+    queueLimits === undefined
     ? undefined
-    : { turnSettings, settingDigests };
+    : { turnSettings, settingDigests, queueLimits };
 }
 
 export function settingChanges(

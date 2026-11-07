@@ -39,6 +39,27 @@ const reviewedNow = (pr) => {
   state.latest[pr.number] = head;
   if (score < 5) state.reviewComments.push({ pr: pr.number, user: { login: "greptile-apps[bot]" }, path: "src/change.ts", line: score, original_commit_id: head, body: "Finding of the review with the score " + score + "." });
 };
+const counted = (pattern) => Number(pattern.exec(query)?.[1] ?? 0);
+const commentPage = (nodes, end, size) => {
+  const start = Math.max(0, end - size);
+  return { pageInfo: { hasPreviousPage: start > 0, startCursor: String(start) }, nodes: nodes.slice(start, end) };
+};
+const threadNode = ({ comments, ...node }) => ({
+  ...node,
+  comments: { nodes: comments.nodes.slice(0, counted(/(?<!root: )comments\\(first: (\\d+)\\)/)) },
+  root: { nodes: comments.nodes.slice(0, counted(/root: comments\\(first: (\\d+)\\)/)) },
+  recent: commentPage(comments.nodes, comments.nodes.length, counted(/recent: comments\\(last: (\\d+)\\)/)),
+});
+const earlierPage = () => {
+  const thread = state.reviewPull.reviewThreads.nodes.find((item) => item.id === variable("thread"));
+  return { node: { comments: commentPage(thread.comments.nodes, Number(variable("cursor")), counted(/comments\\(last: (\\d+), before:/)) } };
+};
+const threadPage = () => {
+  const nodes = state.reviewPull.reviewThreads.nodes;
+  const after = Number(variable("cursor") ?? 0);
+  const end = after + counted(/reviewThreads\\(first: (\\d+)/);
+  return { ...state.reviewPull, reviewThreads: { pageInfo: { hasNextPage: end < nodes.length, endCursor: String(end) }, nodes: nodes.slice(after, end).map(threadNode) } };
+};
 const actions = {
   "label create": () => {
     const repository = option("--repo");
@@ -165,6 +186,15 @@ const actions = {
     pr.queuePolls = 0;
     out({ data: { enqueuePullRequest: { mergeQueueEntry: pr.queue } } });
   },
+  "api graphql threads": () => out({ data: { viewer: { login: "operator" }, repository: { pullRequest: threadPage() } } }),
+  "api graphql earlier": () => out({ data: earlierPage() }),
+  "api graphql replies": () => out({ data: { viewer: { login: "operator" }, node: { comments: { nodes: (state.threadReplies ?? []).filter((item) => item.thread === variable("thread")) } } } }),
+  "api graphql reply": () => {
+    const id = "PRRC_reply" + state.calls.length;
+    state.threadReplies = [...(state.threadReplies ?? []), { thread: variable("thread"), id, body: variable("body"), author: { login: "operator" } }];
+    out({ data: { addPullRequestReviewThreadReply: { comment: { id } } } });
+  },
+  "api graphql resolve": () => out({ data: { resolveReviewThread: { thread: { id: variable("thread"), isResolved: true } } } }),
   "api graphql dequeue": () => {
     const pr = queued();
     pr.queue = null;
@@ -195,7 +225,8 @@ const actions = {
 };
 const kind = path.includes("/actions/workflows?") ? "workflows" : path.includes("/attempts/") ? "attempt-jobs" : path.includes("/actions/runs?") ? "workflow-runs" : /[/]actions[/]runs[/]\\d+$/.test(path) ? "workflow-run" : path.includes("/check-runs") ? "check-runs" : /[/]issues[/]\\d+$/.test(path) ? "issue" : path.includes("/issues?") ? "issues" : path.endsWith("/merge") ? "merge" : path.includes("/git/refs/") ? "refs" : /[/]pulls[/]\\d+$/.test(path) ? "pull" : path.includes("/pulls/") ? "review" : "comments";
 const query = variable("query") ?? "";
-const mutation = ["enqueue", "dequeue"].find((word) => query.includes(word + "PullRequest(")) ?? "pull";
+const graphqlNames = { "enqueuePullRequest(": "enqueue", "dequeuePullRequest(": "dequeue", "reviewThreads(": "threads", "addPullRequestReviewThreadReply(": "reply", "resolveReviewThread(": "resolve", "before: $cursor": "earlier", "on PullRequestReviewThread": "replies" };
+const mutation = Object.entries(graphqlNames).find(([word]) => query.includes(word))?.[1] ?? "pull";
 const name = args[1] === "graphql" ? "api graphql " + mutation : args[0] === "api" ? "api " + (option("-X") ?? "GET") + " " + kind : args[0] + " " + args[1];
 if (name === "api GET comments" && state.reviewReadMilliseconds)
   await new Promise(resolve => setTimeout(resolve, state.reviewReadMilliseconds));

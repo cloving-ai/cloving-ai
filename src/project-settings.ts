@@ -6,6 +6,8 @@ import {
 } from "./configuration-schema.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
+import type { LocalCommands } from "./command-settings.ts";
+import type { Fields } from "./protocol.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
@@ -14,6 +16,10 @@ export type RecordedSource = SettingSource | "default";
 export const reloadedSettingFields: readonly string[] = [
   "fallbackModels",
   "profiles",
+  "queue.lanes",
+  "queue.maxLoadPerCore",
+  "queue.maxMemoryPressure",
+  "queue.workingLanes",
   "tokenPrices",
   "workflows.folder",
 ];
@@ -31,7 +37,9 @@ export type SettingValue =
   | readonly string[]
   | TurnProfiles
   | TokenPrices
-  | RedGreenSettings;
+  | RedGreenSettings
+  | LocalCommands
+  | Readonly<Record<string, Fields>>;
 
 export const settingVariables: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
@@ -43,6 +51,9 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "tickets.readyCommand": "CLOVING_READY_COMMAND",
   "queue.everySeconds": "CLOVING_QUEUE_SECONDS",
   "queue.lanes": "CLOVING_QUEUE_LANES",
+  "queue.workingLanes": "CLOVING_QUEUE_WORKING_LANES",
+  "queue.maxLoadPerCore": "CLOVING_QUEUE_MAX_LOAD_PER_CORE",
+  "queue.maxMemoryPressure": "CLOVING_QUEUE_MAX_MEMORY_PRESSURE",
   "queue.dailySpendLimitUsd": "CLOVING_QUEUE_DAILY_SPEND_USD",
   "limits.effects": "CLOVING_LIMIT_EFFECTS",
   "limits.chain": "CLOVING_LIMIT_CHAIN",
@@ -62,6 +73,9 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "retention.action": "CLOVING_RETENTION_ACTION",
   "retention.archiveFolder": "CLOVING_RETENTION_ARCHIVE_FOLDER",
   "turns.environment": "CLOVING_TURN_ENVIRONMENT",
+  commands: "CLOVING_COMMANDS",
+  commandSeconds: "CLOVING_COMMAND_SECONDS",
+  schedules: "CLOVING_SCHEDULES",
 };
 
 const environmentOnly = [
@@ -69,9 +83,6 @@ const environmentOnly = [
   "CLOVING_OWNERSHIP_LEASE_SECONDS",
   "CLOVING_HOST_BOUND",
   "CLOVING_WATCH_REPOSITORY",
-  "CLOVING_COMMANDS",
-  "CLOVING_COMMAND_SECONDS",
-  "CLOVING_SCHEDULES",
   "CLOVING_PHONE_RELAY",
   "CLOVING_RELAY_ORIGIN",
 ];
@@ -141,6 +152,9 @@ export function configurationValues(
     fallbackModels: values.fallbackModels,
     tokenPrices: values.tokenPrices,
     privateTexts: values.privateTexts,
+    commands: values.commands,
+    commandSeconds: values.commandSeconds,
+    schedules: values.schedules,
   };
   for (const [name, value] of Object.entries(direct))
     if (value !== undefined) entries.push([name, value]);

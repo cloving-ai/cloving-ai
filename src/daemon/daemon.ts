@@ -34,24 +34,20 @@ import { commandEffects } from "./command-journal.ts";
 import { worldDirectory } from "./host-environment.ts";
 import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
-import { scheduleConnection } from "./schedule-control.ts";
 import { queueConnection } from "./queue-control.ts";
+import { scheduleConnection } from "./schedule-control.ts";
+import { queueLimitsSource, type QueueLimitsSource } from "./queue-limits.ts";
 import { restartMarks } from "./restart-marks.ts";
 import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
 import { clearedTreeClaims } from "./tree-claims.ts";
-import { treeSweep } from "./tree-sweep.ts";
-import { authorityRuns, recordRetention } from "./record-sweep.ts";
-import {
-  bundleSweep,
-  currentBundle,
-  unfinishedPins,
-  type CurrentBundle,
-} from "./bundle-sweep.ts";
+import { authorityRuns } from "./record-sweep.ts";
+import { currentBundle, type CurrentBundle } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
 import { stalledLine } from "../thread-pool-check.ts";
+import { retentionLoop } from "./daemon-retention.ts";
 import {
   daemonRegistrations,
   queueWorkflowId,
@@ -159,9 +155,11 @@ function controlConnections(settings: DaemonSettings): {
   readonly current: CurrentBundle;
   readonly pool: ThreadPoolWatch;
   readonly restart: RestartPort;
+  readonly queueLimitSource: QueueLimitsSource;
 } {
   return {
     restart: restartMarks(settings.directory),
+    queueLimitSource: queueLimitsSource(settings),
     schedules: scheduleConnection(),
     queues: queueConnection(),
     pool: threadPoolWatch({
@@ -176,6 +174,15 @@ function controlConnections(settings: DaemonSettings): {
       now: settings.retentionClock ?? Date.now,
       log: (line) => process.stderr.write(line),
     }),
+  };
+}
+
+function controlPorts(controls: ReturnType<typeof controlConnections>) {
+  return {
+    schedule: controls.schedules.request,
+    queue: controls.queues.port,
+    threadPool: controls.pool.latest,
+    restart: controls.restart,
   };
 }
 
@@ -208,11 +215,12 @@ function workflowOptions(
   parts: {
     readonly generations: ReturnType<typeof workflowGenerations>;
     readonly turnSettings: Adapters["turnSettings"];
+    readonly queueLimitSource: QueueLimitsSource;
     readonly current: CurrentBundle;
   },
 ) {
   const { reloadCommand, loadBundle } = settings;
-  const { generations, turnSettings, current } = parts;
+  const { generations, turnSettings, queueLimitSource, current } = parts;
   return {
     workflowBundles: {
       directory: join(settings.directory, "workflow-bundles"),
@@ -233,6 +241,7 @@ function workflowOptions(
               loadBundle,
               generations,
               turnSettings,
+              queueLimitSource,
             }),
           ),
         }),
@@ -291,15 +300,6 @@ type Workers = Pick<Adapters, "worker" | "github" | "commands"> & {
   readonly pool: ThreadPoolWatch;
 };
 
-function controlPorts(controls: ReturnType<typeof controlConnections>) {
-  return {
-    schedule: controls.schedules.request,
-    queue: controls.queues.port,
-    threadPool: controls.pool.latest,
-    restart: controls.restart,
-  };
-}
-
 async function recoverWorkers(
   resources: Workers & { readonly service: Service },
   ports: Promise<HostPorts>,
@@ -326,46 +326,13 @@ async function closeWorkers(resources: Workers): Promise<void> {
   ]);
 }
 
-async function retentionLoop(
-  settings: DaemonSettings,
-  resources: {
-    readonly current: CurrentBundle;
-    readonly ports: Promise<HostPorts>;
-  },
-) {
-  const ports = await resources.ports;
-  const sweep = {
-    directory: settings.directory,
-    retention: settings.retention ?? defaultRetention,
-    now: settings.retentionClock ?? Date.now,
-    log: (line: string) => process.stderr.write(line),
-  };
-  return recordRetention({
-    ...sweep,
-    runs: authorityRuns(ports),
-    trees: treeSweep({
-      ...sweep,
-      runs: authorityRuns(ports),
-      repository: settings.repository,
-      gh: settings.githubCommand ?? ["gh"],
-    }),
-    bundles: bundleSweep({
-      ...sweep,
-      current: resources.current,
-      pinned: unfinishedPins({
-        state: ports.state,
-        manifest: ports.workflow.manifest,
-      }),
-    }),
-  });
-}
-
 async function runningDaemon(
   settings: DaemonSettings,
   resources: {
     readonly service: Service;
     readonly schedules: ReturnType<typeof scheduleConnection>;
     readonly queues: ReturnType<typeof queueConnection>;
+    readonly queueLimitSource: QueueLimitsSource;
     readonly current: CurrentBundle;
     readonly ports: Promise<HostPorts>;
   } & Workers,
@@ -377,6 +344,7 @@ async function runningDaemon(
     ...settings,
     scheduleConnection: resources.schedules,
     queueConnection: resources.queues,
+    queueLimits: resources.queueLimitSource.current,
     submit: service.worker.submit,
     queueWorkflowId: queueWorkflowId(settings),
   }).catch(async (error: unknown) => {

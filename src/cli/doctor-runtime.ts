@@ -231,6 +231,13 @@ function environmentSettings(status: Fields): string {
     : `. Settings from the environment: ${fields.join(", ")}`;
 }
 
+function queueHold(status: Fields): string {
+  const hold = record(record(status["queue"])?.["hold"])?.["text"];
+  return typeof hold === "string"
+    ? `. Queue ${hold.replace(/^Held/, "held")}`
+    : "";
+}
+
 function answeredService(status: Fields | undefined): ServiceState {
   return {
     observation:
@@ -241,7 +248,7 @@ function answeredService(status: Fields | undefined): ServiceState {
           }
         : {
             result: "ok",
-            detail: `Service answers from its generated project folder${environmentSettings(status)}`,
+            detail: `Service answers from its generated project folder${environmentSettings(status)}${queueHold(status)}`,
           },
     status,
   };

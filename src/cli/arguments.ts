@@ -69,6 +69,7 @@ const options = {
   "resume-queue": { type: "boolean" },
   settings: { type: "string" },
   update: { type: "boolean" },
+  within: { type: "string" },
 } as const;
 
 type Parsed = ReturnType<

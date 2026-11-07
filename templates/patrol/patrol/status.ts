@@ -44,7 +44,7 @@ function listed(text: string): readonly Record<string, unknown>[] {
   return value.map((item: unknown) => fields(item));
 }
 
-function candidate(pull: Record<string, unknown>): boolean {
+function checked(pull: Record<string, unknown>): Record<string, unknown> {
   const { number, branch, state, active } = pull;
   if (
     typeof number !== "number" ||
@@ -55,11 +55,17 @@ function candidate(pull: Record<string, unknown>): boolean {
     typeof active !== "boolean"
   )
     invalid();
+  return pull;
+}
+
+function idle(pull: Record<string, unknown>): boolean {
   return (
-    !active &&
-    branch.startsWith("cloving/") &&
-    ["blocked", "failed"].includes(state)
+    pull["active"] === false && String(pull["branch"]).startsWith("cloving/")
   );
+}
+
+function candidate(pull: Record<string, unknown>): boolean {
+  return idle(pull) && ["blocked", "failed"].includes(String(pull["state"]));
 }
 
 function optional(value: unknown, pattern: RegExp): string | null {
@@ -98,7 +104,12 @@ function stuckPull(pull: Record<string, unknown>): StuckPull {
   };
 }
 
-export async function stuckPulls(): Promise<readonly StuckPull[]> {
+export interface PatrolStatus {
+  readonly stuck: readonly StuckPull[];
+  readonly open: readonly number[];
+}
+
+export async function patrolStatus(): Promise<PatrolStatus> {
   const input: Readonly<Record<string, never>> = {};
   const text = statusText(
     await runCommand({
@@ -107,7 +118,13 @@ export async function stuckPulls(): Promise<readonly StuckPull[]> {
       input: input,
     }),
   );
-  return listed(text)
-    .filter((pull) => candidate(pull))
-    .map((pull) => stuckPull(pull));
+  const pulls = listed(text).map((pull) => checked(pull));
+  return {
+    stuck: pulls
+      .filter((pull) => candidate(pull))
+      .map((pull) => stuckPull(pull)),
+    open: pulls
+      .filter((pull) => idle(pull) && !candidate(pull))
+      .map((pull) => Number(pull["number"])),
+  };
 }

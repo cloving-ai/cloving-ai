@@ -1,19 +1,28 @@
 import type { CycleOutcome } from "cloving/workflows";
-import { stuckPulls, type PatrolInput } from "./patrol/status.ts";
+import { patrolStatus, type PatrolInput } from "./patrol/status.ts";
 import { askPerson as pickPulls } from "./patrol/pick.ts";
 import { rescuePulls } from "./patrol/rescue.ts";
+import { answerPulls } from "./patrol/answer.ts";
+
+function numbers(pulls: readonly number[]): string {
+  return pulls.map((pull) => `#${String(pull)}`).join(", ") || "none";
+}
 
 export async function patrol(input: PatrolInput): Promise<CycleOutcome> {
   "use workflow";
   try {
-    const pulls = await stuckPulls();
-    const picked = await pickPulls({ input: input, pulls: pulls });
+    const status = await patrolStatus();
+    const answered = await answerPulls({
+      cycleId: input.cycleId,
+      numbers: status.open,
+    });
+    const picked = await pickPulls({ input: input, pulls: status.stuck });
     const rescued = await rescuePulls(picked);
     return {
       kind: "handoff_requested",
       cycleId: input.cycleId,
       promotionId: "patrol",
-      report: `Stuck pull requests: ${String(pulls.length)}. Rescues: ${rescued.map((pull) => `#${String(pull.number)}`).join(", ") || "none"}.`,
+      report: `Stuck pull requests: ${String(status.stuck.length)}. Rescues: ${numbers(rescued.map((pull) => pull.number))}. Review answers: ${numbers(answered)}.`,
     };
   } catch (error) {
     return {

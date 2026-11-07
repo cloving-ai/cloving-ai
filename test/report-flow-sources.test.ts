@@ -144,6 +144,37 @@ await test("CLV-244 malformed identity batches leave workflow identity unknown",
   }
 });
 
+await test("CLV-309 daemon flow reads the hold periods and the end of the dropped periods", async () => {
+  const holds = [{ reason: "memory", startedAt: 10, endedAt: 20 }];
+  for (const [queue, expected] of [
+    [
+      { workflowId: "queue", lanes: 2, holds, holdsCutAt: 5 },
+      { holds: [{ reason: "memory", start: 10, end: 20 }], holdsCutAt: 5 },
+    ],
+    [
+      { workflowId: "queue", lanes: 2, holds, holdsCutAt: "early" },
+      { holds: null, holdsCutAt: null },
+    ],
+  ] as const)
+    await withReportSource(
+      (request) =>
+        request.parameters["metadata"] === undefined
+          ? { kind: "result", result: { queue } }
+          : reportReply([], [])(request),
+      async (harness) => {
+        const result = await readReportFlow(harness.runtimeDirectory, {
+          start: 0,
+          completions: [],
+          events: [],
+        });
+        assert.deepEqual(
+          { holds: result.holds, holdsCutAt: result.holdsCutAt },
+          expected,
+        );
+      },
+    );
+});
+
 await test("CLV-244 daemon flow reads workflow skips and rejects invalid run intervals", async () => {
   await withReportSource(
     (request) =>

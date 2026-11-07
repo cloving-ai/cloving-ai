@@ -4,6 +4,22 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { configScene } from "./config-cli-fixture.ts";
 
+function queueNotices(
+  fixture: ReturnType<typeof configScene>,
+  env: Readonly<Record<string, string>>,
+): void {
+  for (const [field, value] of [
+    ["queue.lanes", "2"],
+    ["queue.workingLanes", "1"],
+    ["queue.maxLoadPerCore", "0.9"],
+    ["queue.maxMemoryPressure", "warn"],
+  ] as const) {
+    const queued = fixture.run(["set", field, value, "--json"], env);
+    assert.equal(queued.status, 0, queued.stderr);
+    assert.match(queued.stdout, /Run cloving reload to use the new value\./);
+  }
+}
+
 await test("CLV-206 changes explain restart behavior and higher-priority sources with a running service", async () => {
   using fixture = configScene();
   const server = net.createServer((socket) => socket.destroy());
@@ -22,7 +38,10 @@ await test("CLV-206 changes explain restart behavior and higher-priority sources
   };
   assert.ok(listening);
   const env = { CLOVING_RUNTIME_DIR: fixture.root };
-  const effective = fixture.run(["set", "queue.lanes", "2", "--json"], env);
+  const effective = fixture.run(
+    ["set", "queue.everySeconds", "20", "--json"],
+    env,
+  );
   assert.equal(effective.status, 0, effective.stderr);
   assert.match(effective.stdout, /Restart the service to use the new value\./);
   const reloadable = fixture.run(
@@ -31,22 +50,29 @@ await test("CLV-206 changes explain restart behavior and higher-priority sources
   );
   assert.equal(reloadable.status, 0, reloadable.stderr);
   assert.match(reloadable.stdout, /Run cloving reload to use the new value\./);
-  fixture.write(fixture.privateFile, { version: 1, queue: { lanes: 3 } });
-  const hidden = fixture.run(["set", "queue.lanes", "1"], env);
+  queueNotices(fixture, env);
+  fixture.write(fixture.privateFile, {
+    version: 1,
+    queue: { everySeconds: 30 },
+  });
+  const hidden = fixture.run(["set", "queue.everySeconds", "40"], env);
   assert.equal(hidden.status, 0, hidden.stderr);
   assert.match(
     hidden.stdout,
     /private.*restart keeps the value of that source/is,
   );
-  const environment = fixture.run(["unset", "queue.lanes", "--json"], {
+  const environment = fixture.run(["unset", "queue.everySeconds", "--json"], {
     ...env,
-    CLOVING_QUEUE_LANES: "4",
+    CLOVING_QUEUE_SECONDS: "50",
   });
   assert.equal(environment.status, 0, environment.stderr);
   assert.match(
     environment.stdout,
     /environment.*restart keeps the value of that source/is,
   );
-  const unmasked = fixture.run(["unset", "queue.lanes", "--private"], env);
+  const unmasked = fixture.run(
+    ["unset", "queue.everySeconds", "--private"],
+    env,
+  );
   assert.match(unmasked.stdout, /Restart the service to use the new value\./);
 });

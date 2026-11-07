@@ -1,12 +1,7 @@
-import {
-  execFile,
-  spawn,
-  type ChildProcess,
-  type StdioOptions,
-} from "node:child_process";
+import { execFile } from "node:child_process";
 import { addAbortListener } from "node:events";
 import { rm } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { selfUpdater } from "./self-update.ts";
@@ -17,93 +12,18 @@ import {
   restartWatch,
   type RestartWatch,
 } from "./self-host-restart.ts";
+import {
+  childrenStop,
+  hostedChildren,
+  stopped,
+  watchAfterStart,
+  type HostProcesses,
+} from "./self-host-children.ts";
 
-export interface HostProcesses {
-  readonly environment?: Readonly<NodeJS.ProcessEnv>;
-  readonly project: string;
-  readonly product: string;
-  readonly runtime: string;
-  readonly directory: string;
-  readonly repository: string;
-  readonly checkout?: string;
-  readonly watchPort: string;
-  readonly phoneRelay: string;
-  readonly updateMilliseconds: number | undefined;
-  readonly restartMilliseconds?: number;
-  readonly stopMilliseconds?: number;
-  readonly watchRestart?: WatchRestartPolicy;
-}
-
-export interface WatchRestartPolicy {
-  readonly delayMilliseconds: number;
-  readonly fastMilliseconds: number;
-  readonly limit: number;
-  readonly windowMilliseconds: number;
-}
-
-const watchRestartPolicy: WatchRestartPolicy = {
-  delayMilliseconds: 1000,
-  fastMilliseconds: 60_000,
-  limit: 5,
-  windowMilliseconds: 600_000,
-};
-
-interface Program {
-  readonly name: string;
-  readonly child: ChildProcess;
-  readonly ended: Promise<number>;
-}
-
-function launched(
-  argumentsList: readonly string[],
-  settings: {
-    readonly name: string;
-    readonly directory: string;
-    readonly environment: NodeJS.ProcessEnv;
-    readonly stdio?: StdioOptions;
-  },
-): Program {
-  const child = spawn(process.execPath, argumentsList, {
-    cwd: settings.directory,
-    env: settings.environment,
-    stdio: settings.stdio ?? "inherit",
-  });
-  const ended = new Promise<number>((settle, reject) => {
-    child.once("error", reject);
-    child.once("close", (status) => {
-      settle(status ?? 1);
-    });
-  });
-  return { name: settings.name, child, ended };
-}
-
-async function stopped(
-  programs: readonly Program[],
-  milliseconds: number,
-): Promise<void> {
-  for (const program of programs)
-    if (
-      !program.child.killed &&
-      program.child.exitCode === null &&
-      program.child.signalCode === null
-    )
-      program.child.kill("SIGTERM");
-  await Promise.all(
-    programs.map(async (program) => {
-      const timer = setTimeout(() => {
-        if (program.child.kill("SIGKILL"))
-          process.stderr.write(
-            `Cloving stopped the ${program.name} child with SIGKILL after ${String(milliseconds / 1000)} s\n`,
-          );
-      }, milliseconds);
-      try {
-        await program.ended;
-      } finally {
-        clearTimeout(timer);
-      }
-    }),
-  );
-}
+export type {
+  HostProcesses,
+  WatchRestartPolicy,
+} from "./self-host-children.ts";
 
 function updatingGit(settings: HostProcesses, stopping: AbortSignal) {
   const git = promisify(execFile);
@@ -179,6 +99,7 @@ async function hostWatches(
   lifecycle: {
     readonly stopping: AbortController;
     readonly stop: () => Promise<void>;
+    readonly stopChildren: () => Promise<readonly string[]>;
   },
 ): Promise<number | undefined> {
   const watches = {
@@ -190,6 +111,7 @@ async function hostWatches(
     polled(settings, watches),
     restartWatch({
       ...watches,
+      stopChildren: lifecycle.stopChildren,
       directory: settings.directory,
       runtime: settings.runtime,
       checkout: settings.checkout ?? settings.product,
@@ -200,157 +122,19 @@ async function hostWatches(
   return restarted ?? updated;
 }
 
-function productChild(
-  settings: HostProcesses,
-  argumentsList: readonly [string, ...string[]],
-): Program {
-  const [program, ...rest] = argumentsList;
-  return launched(
-    [
-      join(settings.product, `src/${program}${extname(import.meta.filename)}`),
-      ...rest,
-    ],
-    {
-      name: program === "cli" ? "watch" : program,
-      directory: settings.product,
-      environment: {
-        ...(settings.environment ?? process.env),
-        CLOVING_RUNTIME_DIR: settings.runtime,
-        CLOVING_WATCH_REPOSITORY: settings.repository,
-      },
-    },
-  );
-}
-
-interface Hosted {
-  readonly daemon: Program;
-  readonly programs: Program[];
-}
-
-function hostedChildren(settings: HostProcesses): Hosted {
-  const daemon = launched([join(settings.project, "start.mjs")], {
-    name: "daemon",
-    directory: settings.project,
-    environment: settings.environment ?? process.env,
-    stdio: ["inherit", "inherit", "inherit", "ipc"],
-  });
-  const relay =
-    settings.phoneRelay === "off" ? [] : [productChild(settings, ["relay"])];
-  return { daemon, programs: [daemon, ...relay] };
-}
-
-function daemonStart(daemon: Program): Promise<"started" | "ended"> {
-  return new Promise((settle) => {
-    daemon.child.once("message", () => {
-      settle("started");
-    });
-    daemon.ended.then(
-      () => {
-        settle("ended");
-      },
-      () => {
-        settle("ended");
-      },
-    );
-  });
-}
-
-interface WatchRestarts {
-  readonly policy: WatchRestartPolicy;
-  readonly restartedAt: number[];
-  fastExits: number;
-}
-
-function restartDelay(
-  restarts: WatchRestarts,
-  exit: { readonly code: number; readonly lifetime: number },
-): number | undefined {
-  const { policy, restartedAt } = restarts;
-  const now = performance.now();
-  const recent = restartedAt.filter(
-    (time) => now - time < policy.windowMilliseconds,
-  );
-  restartedAt.splice(0, restartedAt.length, ...recent);
-  if (recent.length >= policy.limit) {
-    process.stderr.write(
-      `watch-restart-stopped code=${String(exit.code)} reason=restart-limit restarts=${String(policy.limit)} window=${String(policy.windowMilliseconds)}ms\n`,
-    );
-    return undefined;
-  }
-  restarts.fastExits =
-    exit.lifetime < policy.fastMilliseconds ? restarts.fastExits + 1 : 0;
-  return policy.delayMilliseconds * 2 ** Math.max(restarts.fastExits - 1, 0);
-}
-
-async function watchRuns(
-  settings: HostProcesses,
-  hosting: Hosted & {
-    readonly stopped: () => boolean;
-    readonly stopping: AbortSignal;
-  },
-): Promise<void> {
-  const restarts: WatchRestarts = {
-    policy: settings.watchRestart ?? watchRestartPolicy,
-    restartedAt: [],
-    fastExits: 0,
-  };
-  for (;;) {
-    if (hosting.stopped()) return;
-    const startedAt = performance.now();
-    const watch = productChild(settings, [
-      "cli",
-      "watch",
-      "--port",
-      settings.watchPort,
-    ]);
-    hosting.programs.splice(1, 0, watch);
-    const code = await watch.ended;
-    hosting.programs.splice(hosting.programs.indexOf(watch), 1);
-    if (hosting.stopped()) return;
-    const wait = restartDelay(restarts, {
-      code,
-      lifetime: performance.now() - startedAt,
-    });
-    if (wait === undefined) return;
-    if (!(await waited(wait, hosting.stopping))) return;
-    restarts.restartedAt.push(performance.now());
-    process.stderr.write(
-      `watch-restart code=${String(code)} delay=${String(wait)}ms\n`,
-    );
-  }
-}
-
-async function waited(
-  milliseconds: number,
-  signal: AbortSignal,
-): Promise<boolean> {
-  return delay(milliseconds, true, { signal }).catch(() => false);
-}
-
-async function watchAfterStart(
-  settings: HostProcesses,
-  hosting: Hosted & {
-    readonly stopped: () => boolean;
-    readonly stopping: AbortSignal;
-  },
-): Promise<void> {
-  if (settings.watchPort === "off") return;
-  const start = await daemonStart(hosting.daemon);
-  if (start === "ended") return;
-  await watchRuns(settings, hosting);
-}
-
 export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   await clearedRestart(settings.directory);
   const { daemon, programs } = hostedChildren(settings);
   const stopping = new AbortController();
   let updating = false;
   let shutdown: Promise<void> | undefined;
+  const pause = childrenStop(settings, { daemon, programs });
   const watching = watchAfterStart(settings, {
     daemon,
     programs,
     stopping: stopping.signal,
     stopped: () => shutdown !== undefined || stopping.signal.aborted,
+    held: pause.held,
   });
   const stop = (): Promise<void> =>
     (shutdown ??= stopped(programs, settings.stopMilliseconds ?? 60000));
@@ -369,6 +153,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   process.on("SIGTERM", terminate);
   const polling = hostWatches(settings, {
     stopping,
+    stopChildren: pause.stop,
     stop: async () => {
       updating = true;
       await stop();
@@ -386,6 +171,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   } finally {
     stopping.abort();
     await stop();
+    pause.end();
     await watching;
     await polling;
     process.off("SIGINT", interrupt);

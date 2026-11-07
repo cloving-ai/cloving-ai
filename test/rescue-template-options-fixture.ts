@@ -15,6 +15,7 @@ export const rescueTemplate = fileURLToPath(
 export const packedPatrolSources = [
   "templates/patrol/patrol.test.ts",
   "templates/patrol/patrol.ts",
+  "templates/patrol/patrol/answer.ts",
   "templates/patrol/patrol/pick.ts",
   "templates/patrol/patrol/rescue.ts",
   "templates/patrol/patrol/scenarios.ts",

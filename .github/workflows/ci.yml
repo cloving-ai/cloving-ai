@@ -180,7 +180,7 @@
     },
     "coverage": {
       "runs-on": "ubuntu-24.04",
-      "timeout-minutes": 10,
+      "timeout-minutes": 20,
       "needs": [
         "quality_macos",
         "quality_linux_node"

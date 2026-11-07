@@ -1,5 +1,5 @@
 import { terminal } from "../authority/transitions.ts";
-import type { Fields, Reply } from "../protocol.ts";
+import { record, type Fields, type Reply } from "../protocol.ts";
 import {
   isRestartTime,
   type RestartMark,
@@ -18,6 +18,24 @@ async function activeRuns(context: ServiceContext): Promise<number> {
   return Object.values(state.runs).filter(
     (run) => !terminal.includes(run.status),
   ).length;
+}
+
+async function watchedFields(context: ServiceContext): Promise<Fields> {
+  const queue = context.registry.workflowIds
+    .map((workflowId) => context.registry.byId(workflowId))
+    .find((workflow) => workflow?.admission !== undefined);
+  const listed = await context.schedule?.({ action: "list" });
+  const schedules =
+    listed?.kind === "result" && Array.isArray(listed.result["schedules"])
+      ? listed.result["schedules"]
+      : [];
+  return {
+    queueWorkflowId: queue?.workflowId ?? null,
+    scheduledWorkflowIds: schedules.flatMap((schedule: unknown) => {
+      const workflowId = record(schedule)?.["workflowId"];
+      return typeof workflowId === "string" ? [workflowId] : [];
+    }),
+  };
 }
 
 async function pendingFields(
@@ -61,11 +79,23 @@ function optionalTrue(value: unknown): boolean {
   return value === undefined || value === true;
 }
 
+export const restartWithin = { seconds: 43_200, limit: 2_592_000 } as const;
+
+function validWithin(within: unknown): boolean {
+  return (
+    within === undefined ||
+    (Number.isSafeInteger(within) &&
+      Number(within) >= 1 &&
+      Number(within) <= restartWithin.limit)
+  );
+}
+
 function validOptions(parameters: Fields): boolean {
-  const { cancel, resumeQueue, settings, update } = parameters;
+  const { cancel, resumeQueue, settings, update, within } = parameters;
   return (
     [cancel, resumeQueue, update].every(optionalTrue) &&
-    (settings === undefined || settings === "files")
+    (settings === undefined || settings === "files") &&
+    validWithin(within)
   );
 }
 
@@ -73,9 +103,12 @@ function requestedMark(
   parameters: Fields & { readonly at: RestartTime; readonly commandId: string },
 ): RestartMark {
   const { resumeQueue, settings, update } = parameters;
+  const requestedAt = Date.now();
+  const within = Number(parameters["within"] ?? restartWithin.seconds);
   return {
     at: parameters.at,
-    requestedAt: Date.now(),
+    requestedAt,
+    deadline: requestedAt + within * 1000,
     commandId: parameters.commandId,
     resumeQueue: resumeQueue === true,
     ...(settings === "files" ? { settings: "files" } : {}),
@@ -116,6 +149,7 @@ export async function restartOperation(
       state: "pending",
       ...(await pendingFields(context, mark)),
       ...unresumable,
+      ...(await watchedFields(context)),
     },
   });
 }
