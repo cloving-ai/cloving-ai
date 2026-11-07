@@ -12,8 +12,19 @@ import {
 
 const branch = "cloving/task-0123456789ab";
 
-function pushedBranch(scene: GithubScene, name: string = branch): string {
+function writtenLessons(tree: string, text: string): void {
+  mkdirSync(join(tree, ".cloving"), { recursive: true });
+  writeFileSync(join(tree, ".cloving/lessons.md"), text);
+}
+
+function pushedBranch(
+  scene: GithubScene,
+  options: { readonly name?: string; readonly lessons?: string } = {},
+): string {
+  const name = options.name ?? branch;
   git(scene.repository, ["switch", "--quiet", "-c", name]);
+  if (options.lessons !== undefined)
+    writtenLessons(scene.repository, options.lessons);
   const head = committed(scene.repository, { name: "stuck.ts", text: "1;\n" });
   git(scene.repository, ["push", "--quiet", "origin", name]);
   git(scene.repository, ["switch", "--quiet", "main"]);
@@ -57,14 +68,15 @@ await test("CLV-305 prepare with a pull request number makes a work tree on its 
 
 await test("CLV-303 prepare with a pull request number returns the lessons of its branch", () =>
   withGithub(async (scene) => {
-    const text = "- 2026-11-06 CLV-303: Read the lessons file.\n";
-    mkdirSync(join(scene.repository, ".cloving"), { recursive: true });
-    writeFileSync(join(scene.repository, ".cloving/lessons.md"), text);
-    git(scene.repository, ["add", "."]);
-    git(scene.repository, ["commit", "--quiet", "-m", "Add the lessons"]);
+    writtenLessons(
+      scene.repository,
+      "- 2026-11-05 CLV-302: Keep the lessons of main.\n",
+    );
+    committed(scene.repository, { name: "main.ts", text: "0;\n" });
     git(scene.repository, ["push", "--quiet", "origin", "main"]);
+    const text = "- 2026-11-06 CLV-303: Read the lessons of the branch.\n";
     openPull(scene, { head: branch });
-    pushedBranch(scene);
+    pushedBranch(scene, { lessons: text });
     const report = await scene.perform(scene.worker(), {
       method: "prepare",
       payload: { pullRequest: 7, lessons: true },
@@ -72,14 +84,14 @@ await test("CLV-303 prepare with a pull request number returns the lessons of it
     assert.equal(report.outcome, "completed", JSON.stringify(report));
     assert.deepEqual(resultOf(report.result)["lessons"], {
       text,
-      bytes: text.length,
+      bytes: Buffer.byteLength(text),
     });
   }));
 
 await test("CLV-305 prepare refuses a pull request that a person opened or that is not open", () =>
   withGithub(async (scene) => {
     const worker = scene.worker();
-    pushedBranch(scene, "feature/search");
+    pushedBranch(scene, { name: "feature/search" });
     openPull(scene, { head: "feature/search" });
     const person = await scene.perform(worker, {
       method: "prepare",
@@ -239,7 +251,7 @@ await test("CLV-305 prepare refuses an invalid number, a nested branch, a diverg
       return report.reason;
     };
     const invalid = await prepared({ pullRequest: "7" });
-    pushedBranch(scene, "cloving/feature/search");
+    pushedBranch(scene, { name: "cloving/feature/search" });
     openPull(scene, { head: "cloving/feature/search" });
     const nested = await prepared({ pullRequest: 7 });
     pushedBranch(scene);
@@ -264,7 +276,7 @@ await test("CLV-305 prepare refuses an invalid number, a nested branch, a diverg
     ]);
     git(scene.repository, ["switch", "--quiet", "main"]);
     const diverged = await prepared({ pullRequest: 7 });
-    pushedBranch(scene, "cloving/task-ba9876543210");
+    pushedBranch(scene, { name: "cloving/task-ba9876543210" });
     openPull(scene, { head: "cloving/task-ba9876543210" });
     mkdirSync(scene.worktrees, { recursive: true });
     writeFileSync(join(scene.worktrees, "task-ba9876543210"), "");
