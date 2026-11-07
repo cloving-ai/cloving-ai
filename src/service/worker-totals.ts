@@ -8,14 +8,33 @@ import {
   type WorkerTotals,
   type WorkerTurnUsage,
 } from "../worker-usage.ts";
+import type { OperationView } from "../broker/actor/effect-queries.ts";
 import type { ServiceContext } from "./replies.ts";
+
+function deliveryKey(operation: OperationView): string {
+  return JSON.stringify([operation.receipt, operation.result]);
+}
+
+async function continuedDeliveries(
+  context: ServiceContext,
+  continuedFrom: string | undefined,
+): Promise<ReadonlySet<string>> {
+  if (continuedFrom === undefined) return new Set();
+  const operations = await context.authority.effects.operations(continuedFrom);
+  return new Set(
+    operations
+      .filter((operation) => operation.result !== null)
+      .map(deliveryKey),
+  );
+}
 
 export async function usageTotals(
   context: ServiceContext,
-  runId: string,
+  run: { readonly runId: string; readonly continuedFrom?: string },
 ): Promise<WorkerTotals> {
   const { effects, queries } = context.authority;
-  const operations = (await effects.operations(runId)).filter(
+  const continued = await continuedDeliveries(context, run.continuedFrom);
+  const operations = (await effects.operations(run.runId)).filter(
     (operation) =>
       operation.capability === "claude" &&
       ["completed", "failed", "stopped", "cancelled"].includes(
@@ -36,6 +55,7 @@ export async function usageTotals(
       report["harness"] ??
       (await context.workerHarness?.(operation.operationId));
     turns.push({
+      ...(continued.has(deliveryKey(operation)) ? { reused: true } : {}),
       ...(typeof model === "string" ? { model } : {}),
       ...(typeof summary === "string" ? { summary } : {}),
       ...(typeof harness === "string" ? { harness } : {}),

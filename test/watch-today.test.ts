@@ -25,7 +25,11 @@ await test("CLV-289 the numbers of the day count the runs that ended today, yest
   assert.equal(today.stopped, 1);
   assert.equal(today.costUsd, 25);
   assert.equal(today.costPerCompletedRunUsd, 25 / 3);
-  assert.deepEqual(today.yesterday, { completed: 1, costUsd: 8 });
+  assert.deepEqual(today.yesterday, {
+    completed: 1,
+    costUsd: 8,
+    unknownCostRuns: 0,
+  });
   assert.deepEqual(today.days, [
     { date: "2026-10-29", completed: 0 },
     { date: "2026-10-30", completed: 0 },
@@ -36,9 +40,14 @@ await test("CLV-289 the numbers of the day count the runs that ended today, yest
     { date: "2026-11-04", completed: 3 },
   ]);
   assert.deepEqual(today.workflows, [
-    { workflowId: "develop-issue", completed: 2, costUsd: 24.5 },
-    { workflowId: "idea", completed: 1, costUsd: 0.5 },
-    { workflowId: "review-day", completed: 0, costUsd: 0 },
+    {
+      workflowId: "develop-issue",
+      completed: 2,
+      costUsd: 24.5,
+      unknownCostRuns: 0,
+    },
+    { workflowId: "idea", completed: 1, costUsd: 0.5, unknownCostRuns: 0 },
+    { workflowId: "review-day", completed: 0, costUsd: 0, unknownCostRuns: 0 },
   ]);
 });
 
@@ -75,7 +84,7 @@ await test("CLV-289 the numbers of the day are the numbers of cloving report for
   );
 });
 
-await test("CLV-289 an unknown run cost makes the cost of its day and its workflow unknown", () => {
+await test("CLV-321 an unknown run cost leaves the known spend of its day and its workflow, with a count of runs with no cost", () => {
   const runs = [
     ...threeDayRuns(),
     endedRun("today-unknown", {
@@ -87,18 +96,61 @@ await test("CLV-289 an unknown run cost makes the cost of its day and its workfl
   ];
   const today = todayOf({ now, runs, workflows });
   assert.equal(today.completed, 4);
-  assert.equal(today.costUsd, null);
-  assert.equal(today.costPerCompletedRunUsd, null);
+  assert.equal(today.costUsd, 25);
+  assert.equal(today.unknownCostRuns, 1);
+  assert.equal(today.costPerCompletedRunUsd, 25 / 3);
   assert.deepEqual(today.workflows[1], {
     workflowId: "idea",
     completed: 2,
-    costUsd: null,
+    costUsd: 0.5,
+    unknownCostRuns: 1,
   });
   assert.deepEqual(today.workflows[0], {
     workflowId: "develop-issue",
     completed: 2,
     costUsd: 24.5,
+    unknownCostRuns: 0,
   });
+});
+
+await test("CLV-321 with completed runs of 10.00 and 5.00 USD and one run with no cost, Today has 15.00 USD, 1 run with no cost and 7.50 USD for each completed run", () => {
+  const runs = [
+    endedRun("ten", { end: "completed", at: localTime(4, 9), costs: [10] }),
+    endedRun("five", { end: "completed", at: localTime(4, 10), costs: [5] }),
+    endedRun("none", { end: "completed", at: localTime(4, 11) }),
+  ].map((run) =>
+    run.status["runId"] === "none"
+      ? { ...run, status: { ...run.status, workerTurns: undefined } }
+      : run,
+  );
+  const today = todayOf({ now, runs, workflows: ["develop-issue"] });
+  assert.equal(today.completed, 3);
+  assert.equal(today.costUsd, 15);
+  assert.equal(today.unknownCostRuns, 1);
+  assert.equal(today.costPerCompletedRunUsd, 7.5);
+});
+
+await test("CLV-321 a continuation counts only the cost of its own turns in Today", () => {
+  const continued = endedRun("continuation", {
+    end: "completed",
+    at: localTime(4, 9),
+  });
+  const runs = [
+    {
+      ...continued,
+      status: {
+        ...continued.status,
+        continuedFrom: "original",
+        workerTurns: [
+          { operationId: "original-turn", costUsd: 19.17, reused: true },
+          { operationId: "own-turn", costUsd: 2 },
+        ],
+      },
+    },
+  ];
+  const today = todayOf({ now, runs, workflows: ["develop-issue"] });
+  assert.equal(today.costUsd, 2);
+  assert.equal(today.costPerCompletedRunUsd, 2);
 });
 
 await test("CLV-289 a day with no completed run has no cost per completed run, and a run of an unregistered workflow gets its own row", () => {
@@ -116,8 +168,13 @@ await test("CLV-289 a day with no completed run has no cost per completed run, a
   assert.equal(today.costUsd, 1.5);
   assert.equal(today.costPerCompletedRunUsd, null);
   assert.deepEqual(today.workflows, [
-    { workflowId: "develop-issue", completed: 0, costUsd: 0 },
-    { workflowId: "removed", completed: 0, costUsd: 1.5 },
+    {
+      workflowId: "develop-issue",
+      completed: 0,
+      costUsd: 0,
+      unknownCostRuns: 0,
+    },
+    { workflowId: "removed", completed: 0, costUsd: 1.5, unknownCostRuns: 0 },
   ]);
 });
 
@@ -217,8 +274,13 @@ await test("CLV-289 the watch data has the numbers of the day from the runs of t
     assert.equal(today.costUsd, 12);
     assert.equal(today.costPerCompletedRunUsd, 12);
     assert.deepEqual(today.workflows, [
-      { workflowId: "develop-issue", completed: 1, costUsd: 10 },
-      { workflowId: "idea", completed: 0, costUsd: 2 },
+      {
+        workflowId: "develop-issue",
+        completed: 1,
+        costUsd: 10,
+        unknownCostRuns: 0,
+      },
+      { workflowId: "idea", completed: 0, costUsd: 2, unknownCostRuns: 0 },
     ]);
     const data = await watchData(watch.address);
     assert.deepEqual(

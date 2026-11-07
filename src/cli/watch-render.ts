@@ -184,6 +184,7 @@ export interface WatchRun {
   readonly childRunIds?: readonly string[];
   readonly continuedFrom?: string;
   readonly continuedBy?: string;
+  readonly continuedCostUsd?: number | null;
   readonly mergeProof?: PrIdentity | null;
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";

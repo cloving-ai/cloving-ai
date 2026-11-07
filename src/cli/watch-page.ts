@@ -30,6 +30,7 @@ import {
 } from "./watch-phone-view.ts";
 import { priceOf, tokenCount, usageOf } from "../worker-usage.ts";
 import {
+  continuedCostText,
   priceText,
   queueSpendLines,
   spendLimitText,
@@ -84,6 +85,8 @@ import {
   TodayNumbers,
   WorkflowTable,
   dollars,
+  spentText,
+  unknownCostText,
 } from "./watch-today-view.ts";
 import {
   Board,
@@ -141,6 +144,7 @@ import {
   Review,
   RefusedWorkflows,
   Run,
+  RunTotals,
 } from "./watch-view.ts";
 import {
   Brand,
@@ -194,6 +198,7 @@ const functions = [
   tokenCount,
   usageOf,
   priceText,
+  continuedCostText,
   queueSpendLines,
   spendLimitText,
   usageText,
@@ -240,6 +245,8 @@ const functions = [
   Need,
   NeedsYou,
   dollars,
+  spentText,
+  unknownCostText,
   TodayNumber,
   TodayNumbers,
   DayChart,
@@ -272,6 +279,7 @@ const functions = [
   PullRequest,
   Review,
   Run,
+  RunTotals,
   timeLeft,
   refusalText,
   phoneButton,
