@@ -8,6 +8,7 @@ export const selection = {
   partial: "queue",
   recovery: "person",
   lessons: "file",
+  demo: "none",
 };
 export const input = {
   cycleId: "run-1",

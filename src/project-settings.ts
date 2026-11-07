@@ -76,6 +76,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   commands: "CLOVING_COMMANDS",
   commandSeconds: "CLOVING_COMMAND_SECONDS",
   schedules: "CLOVING_SCHEDULES",
+  "demo.tool": "CLOVING_DEMO_TOOL",
 };
 
 const environmentOnly = [
@@ -141,6 +142,7 @@ export function configurationValues(
     workflows: values.workflows,
     retention: values.retention,
     turns: values.turns,
+    demo: values.demo,
   };
   for (const [name, group] of Object.entries(groups)) {
     if (group === undefined) continue;

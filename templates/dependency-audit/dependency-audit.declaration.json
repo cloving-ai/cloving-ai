@@ -1,0 +1,16 @@
+{
+  "workflow": {
+    "workflowId": "dependency-audit",
+    "effectLimit": 9,
+    "capabilities": ["command", "claude", "github"],
+    "commands": ["audit-candidates"],
+    "schedule": { "everySeconds": 86400, "input": {} },
+    "handoffs": ["dependency-ticket"],
+    "input": { "maximumBytes": 65536, "fields": {} }
+  },
+  "methods": {
+    "command": ["run:audit-candidates"],
+    "claude": ["run-turn"],
+    "github": ["prepare", "discard"]
+  }
+}
