@@ -54,17 +54,6 @@ function draftOf(heading: Heading, lines: readonly string[]): Draft {
   };
 }
 
-function draftAt(
-  lines: readonly string[],
-  place: { readonly starts: readonly number[]; readonly index: number },
-): Draft {
-  const start = place.starts.at(place.index) ?? 0;
-  const heading = headingOf(lines.at(start) ?? "");
-  if (heading?.number !== place.index + 1) throw new Error("invalid-plan");
-  const end = place.starts.at(place.index + 1) ?? lines.length;
-  return draftOf(heading, lines.slice(start + 1, end));
-}
-
 export function planDrafts(text: string): readonly Draft[] {
   const lines = text.split(/\r?\n/);
   const starts = lines.flatMap((line, index) =>
@@ -77,9 +66,12 @@ export function planDrafts(text: string): readonly Draft[] {
     lines.slice(0, first).some((line) => line.trim() !== "")
   )
     throw new Error("invalid-plan");
-  const drafts = starts.map((_, index) =>
-    draftAt(lines, { starts: starts, index: index }),
-  );
+  const drafts = starts.map((start, index) => {
+    const heading = headingOf(lines.at(start) ?? "");
+    if (heading?.number !== index + 1) throw new Error("invalid-plan");
+    const end = starts.at(index + 1) ?? lines.length;
+    return draftOf(heading, lines.slice(start + 1, end));
+  });
   if (
     drafts.some((draft) =>
       draft.blockers.some((blocker) => blocker > drafts.length),

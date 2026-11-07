@@ -57,10 +57,6 @@ export function resultFields(text: string): Readonly<Record<string, unknown>> {
   return Object.fromEntries(Object.entries(value));
 }
 
-function ticketLine(ticket: Ticket): string {
-  return `#${String(ticket.number)} ${ticket.title}`;
-}
-
 export function ticketsOutcome(
   input: GoalInput,
   request: { readonly tickets: readonly Ticket[]; readonly next: string },
@@ -73,7 +69,10 @@ export function ticketsOutcome(
       .concat(tickets.map((ticket) => String(ticket.number)))
       .join("-"),
     report: [`Posted ${String(tickets.length)} tickets:`]
-      .concat(tickets.map(ticketLine), [next])
+      .concat(
+        tickets.map((ticket) => `#${String(ticket.number)} ${ticket.title}`),
+        [next],
+      )
       .join("\n"),
   };
 }
