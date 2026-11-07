@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   installTree,
@@ -18,7 +19,7 @@ await test("CLV-318 audit-candidates prints the critical and the high advisory o
   withAuditRepository(
     { audit: threeSeverities, tree: installTree, issues: [[]] },
     async (place) => {
-      const result = runAudit(place);
+      const result = await runAudit(place, [place.login]);
       assert.equal(result.status, 0, result.stderr);
       const printed: unknown = JSON.parse(result.stdout);
       assert.ok(Array.isArray(printed));
@@ -50,6 +51,12 @@ await test("CLV-318 audit-candidates prints the critical and the high advisory o
         assert.equal(call.status, "## HEAD (no branch)\n");
       }
       assert.equal(calls[3]?.cwd, place.repository);
+      assert.equal(calls[3].github, place.login);
+      for (const call of calls.slice(0, 3))
+        assert.ok(
+          call.github?.startsWith(join(place.command, "gh-config-")),
+          call.github ?? "no folder",
+        );
       assert.deepEqual(worktrees(place), [`worktree ${place.repository}`]);
       assert.deepEqual(await readdir(place.temporary), []);
     },
@@ -62,8 +69,8 @@ await test("CLV-318 audit-candidates leaves out an advisory that an open securit
       tree: installTree,
       issues: [[{ number: 9, title: "Fix minimist", body: minimist.url }]],
     },
-    (place) => {
-      const result = runAudit(place);
+    async (place) => {
+      const result = await runAudit(place, [place.login]);
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /"name": "undici"/);
       assert.doesNotMatch(result.stdout, /minimist/);
@@ -82,7 +89,7 @@ await test("CLV-318 a failed npm ci prints no candidates, ends with code 1 and r
       },
     },
     async (place) => {
-      const result = runAudit(place);
+      const result = await runAudit(place, [place.login]);
       assert.equal(result.status, 1);
       assert.equal(result.stdout, "");
       assert.equal(

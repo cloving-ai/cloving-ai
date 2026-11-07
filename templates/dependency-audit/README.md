@@ -23,7 +23,8 @@ The copy has the reference script `dependency-audit/audit-candidates.mts`. Set
 {
   "audit-candidates": [
     "<absolute-node-executable>",
-    "<absolute-workflow-folder>/dependency-audit/audit-candidates.mts"
+    "<absolute-workflow-folder>/dependency-audit/audit-candidates.mts",
+    "<absolute-github-cli-folder>"
   ]
 }
 ```
@@ -32,6 +33,20 @@ Replace the placeholders with absolute paths. Bare executable names are refused
 by command configuration. The script runs `git`, `npm` and `gh` from `PATH` in
 the folder of the service, which is the repository. `npm ci` can take some
 minutes, so set `CLOVING_COMMAND_SECONDS` to a sufficient time, for example 900.
+
+The service gives an operator command no GitHub token variable and an empty
+`GH_CONFIG_DIR`, as it does for a turn. Thus the last array item is the GitHub CLI
+configuration folder of a login that can read the issues of the repository. The
+script sets `GH_CONFIG_DIR` to this folder only for its `git` and `gh` calls.
+Thus `git fetch` can also use `gh` as its credential helper. The `npm` calls
+keep the empty folder. Without exactly one absolute folder, the script runs no
+command, prints nothing to standard output and ends with code 1.
+
+To make a folder for this command alone, run
+`GH_CONFIG_DIR=<absolute-github-cli-folder> gh auth login` one time. A token
+that can read the contents and the issues of the repository is sufficient. On a
+computer with a system keyring, `gh` keeps the token in the keyring, and the
+folder names only the account.
 
 The script does these steps:
 

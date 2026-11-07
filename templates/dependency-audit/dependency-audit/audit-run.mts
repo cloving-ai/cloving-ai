@@ -4,6 +4,7 @@ export interface CommandCall {
   readonly file: "git" | "npm" | "gh";
   readonly args: readonly string[];
   readonly cwd: string;
+  readonly environment: Readonly<Record<string, string>>;
 }
 
 export interface CommandEnd {
@@ -15,7 +16,13 @@ export interface CommandEnd {
 export interface AuditSystem {
   readonly repository: string;
   readonly folder: string;
+  readonly commandArguments: readonly string[];
   readonly run: (call: CommandCall) => Promise<CommandEnd>;
+}
+
+interface AuditAccess {
+  readonly system: AuditSystem;
+  readonly login: Readonly<Record<string, string>>;
 }
 
 export interface AuditOutput {
@@ -23,6 +30,9 @@ export interface AuditOutput {
   readonly stderr: string;
   readonly exitCode: number;
 }
+
+const usage =
+  "Give the absolute path of a GitHub CLI configuration folder as the only argument.";
 
 export const securityIssues =
   "repos/{owner}/{repo}/issues?state=open&labels=cloving%3A%20security&per_page=100";
@@ -64,34 +74,58 @@ function json(text: string, source: string): unknown {
 }
 
 async function treeCandidates(
-  system: AuditSystem,
+  access: AuditAccess,
   tree: string,
 ): Promise<readonly AuditCandidate[]> {
   const npm = (args: readonly string[]) =>
-    output(system, { file: "npm", args, cwd: tree, codes: [0, 1] });
-  await output(system, {
+    output(access.system, {
+      file: "npm",
+      args,
+      cwd: tree,
+      environment: {},
+      codes: [0, 1],
+    });
+  await output(access.system, {
     file: "npm",
     args: ["ci", "--ignore-scripts", "--no-audit", "--no-fund"],
     cwd: tree,
+    environment: {},
   });
   const audit = json(await npm(["audit", "--json"]), "npm audit");
   const installed = json(await npm(["ls", "--all", "--json"]), "npm ls");
   const issues = json(
-    await output(system, {
+    await output(access.system, {
       file: "gh",
       args: ["api", "--paginate", "--slurp", securityIssues],
-      cwd: system.repository,
+      cwd: access.system.repository,
+      environment: access.login,
     }),
     "gh",
   );
   return auditCandidates({ audit, tree: installed, issues });
 }
 
+function loginFolder(commandArguments: readonly string[]): string {
+  const [folder, ...others] = commandArguments;
+  if (folder === undefined || !folder.startsWith("/") || others.length > 0)
+    throw new Error(usage);
+  return folder;
+}
+
 async function auditedTree(
   system: AuditSystem,
 ): Promise<readonly AuditCandidate[]> {
+  const access = {
+    system,
+    login: { GH_CONFIG_DIR: loginFolder(system.commandArguments) },
+  };
   const git = (args: readonly string[]) =>
-    output(system, { file: "git", args, cwd: system.repository });
+    output(system, {
+      file: "git",
+      args,
+      cwd: system.repository,
+      environment: access.login,
+    });
   const head = await git([
     "symbolic-ref",
     "--short",
@@ -109,7 +143,7 @@ async function auditedTree(
     `origin/${branch}`,
   ]);
   try {
-    return await treeCandidates(system, tree);
+    return await treeCandidates(access, tree);
   } finally {
     await git(["worktree", "remove", "--force", tree]);
   }

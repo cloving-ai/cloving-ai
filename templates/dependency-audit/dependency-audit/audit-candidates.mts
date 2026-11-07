@@ -10,9 +10,11 @@ const folder = await mkdtemp(join(tmpdir(), "cloving-audit-"));
 const output = await auditOutput({
   repository: process.cwd(),
   folder,
+  commandArguments: process.argv.slice(2),
   run: (call) =>
     executed(call.file, call.args, {
       cwd: call.cwd,
+      env: { ...process.env, ...call.environment },
       encoding: "utf8",
       maxBuffer: 256 * 1024 * 1024,
     }).then(

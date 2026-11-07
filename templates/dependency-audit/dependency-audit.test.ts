@@ -220,6 +220,12 @@ await test("CLV-318 one ticket holds the packages that one upgrade fixes and nam
     twoPackages[0],
     Object.assign({}, twoPackages[1], {
       effects: ["@workflow/core"],
+      fixAvailable: {
+        name: "workflow",
+        version: "2.0.6",
+        isSemVerMajor: true,
+        note: "x",
+      },
       paths: ["workflow@1.2.0 > @workflow/core@5.0.2 > undici@7.18.0"],
       pathCount: 4,
     }),
@@ -256,6 +262,11 @@ await test("CLV-318 one ticket holds the packages that one upgrade fixes and nam
     ),
   );
   assert.ok(prompt(bridge.requests).includes('"effects":["@workflow/core"]'));
+  assert.ok(
+    prompt(bridge.requests).includes(
+      '"fixAvailable":{"name":"workflow","version":"2.0.6","isSemVerMajor":true}',
+    ),
+  );
 });
 
 for (const scenario of refusalTests) await test(scenario.name, scenario.run);

@@ -1,7 +1,8 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { withFiles } from "./quality/files-fixture.ts";
+import { startCommand } from "../src/daemon/command-process.ts";
 
 export const auditScript =
   "templates/dependency-audit/dependency-audit/audit-candidates.mts";
@@ -18,24 +19,27 @@ export interface LoggedCall {
   readonly cwd: string;
   readonly lock: string | null;
   readonly status: string;
+  readonly github: string | null;
 }
 
 const fakeCommand = `#!/usr/bin/env -S -u NODE_V8_COVERAGE ${process.execPath}
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
 const state = JSON.parse(readFileSync(process.env.FAKE_AUDIT_STATE, "utf8"));
 const command = [basename(process.argv[1]), ...process.argv.slice(2)].join(" ");
 const status = spawnSync("git", ["status", "--porcelain", "--branch"], { encoding: "utf8" }).stdout;
 const lock = existsSync("package-lock.json") ? readFileSync("package-lock.json", "utf8") : null;
-appendFileSync(process.env.FAKE_AUDIT_LOG, JSON.stringify({ command, cwd: process.cwd(), lock, status }) + "\\n");
+const github = process.env.GH_CONFIG_DIR ?? null;
+appendFileSync(process.env.FAKE_AUDIT_LOG, JSON.stringify({ command, cwd: process.cwd(), lock, status, github }) + "\\n");
+const login = basename(process.argv[1]) !== "gh" || existsSync(join(github ?? "", "hosts.yml"));
 const outputs = {
   "npm ci --ignore-scripts --no-audit --no-fund": ["", 0],
   "npm audit --json": [JSON.stringify(state.audit), 1],
   "npm ls --all --json": [JSON.stringify(state.tree), 0],
   "gh api --paginate --slurp repos/{owner}/{repo}/issues?state=open&labels=cloving%3A%20security&per_page=100": [JSON.stringify(state.issues), 0],
 };
-const failure = state.failures?.[command];
+const failure = login ? state.failures?.[command] : "You are not logged into any GitHub hosts. To log in, run: gh auth login";
 const [stdout, code] = failure === undefined ? outputs[command] ?? ["", 2] : ["", 1];
 process.stdout.write(stdout);
 process.stderr.write(failure === undefined ? "" : failure + "\\n");
@@ -73,13 +77,21 @@ export interface AuditPlace {
   readonly root: string;
   readonly repository: string;
   readonly temporary: string;
+  readonly login: string;
+  readonly command: string;
 }
 
 export function withAuditRepository<Result>(
   state: FakeAudit,
   inspect: (place: AuditPlace) => Promise<Result> | Result,
 ): Promise<Result> {
-  return withFiles({ "bin/.keep": "", "tmp/.keep": "" }, async (root) => {
+  const files = {
+    "bin/.keep": "",
+    "tmp/.keep": "",
+    "login/hosts.yml": "github.com:\n  user: operator\n",
+    "command/.keep": "",
+  };
+  return withFiles(files, async (root) => {
     git(root, [
       "init",
       "--quiet",
@@ -101,34 +113,43 @@ export function withAuditRepository<Result>(
       root,
       repository: join(root, "repository"),
       temporary: join(root, "tmp", "audit"),
+      login: join(root, "login"),
+      command: join(root, "command"),
     });
   });
 }
 
-export function runAudit(place: AuditPlace): {
+export async function runAudit(
+  place: AuditPlace,
+  commandArguments: readonly string[],
+): Promise<{
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
-} {
-  const result = spawnSync(
-    process.execPath,
-    [join(import.meta.dirname, "..", auditScript)],
-    {
-      cwd: place.repository,
-      encoding: "utf8",
-      env: Object.assign({}, process.env, {
-        PATH: `${join(place.root, "bin")}${delimiter}${process.env["PATH"] ?? ""}`,
-        TMPDIR: place.temporary,
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        FAKE_AUDIT_STATE: join(place.root, "state.json"),
-        FAKE_AUDIT_LOG: join(place.root, "calls.log"),
-      }),
-    },
-  );
+}> {
+  const ended = await startCommand({
+    command: [
+      "/usr/bin/env",
+      `PATH=${join(place.root, "bin")}${delimiter}${process.env["PATH"] ?? ""}`,
+      `TMPDIR=${place.temporary}`,
+      "GIT_CONFIG_GLOBAL=/dev/null",
+      `FAKE_AUDIT_STATE=${join(place.root, "state.json")}`,
+      `FAKE_AUDIT_LOG=${join(place.root, "calls.log")}`,
+      process.execPath,
+      join(import.meta.dirname, "..", auditScript),
+      ...commandArguments,
+    ],
+    directory: place.repository,
+    folder: place.command,
+    payload: "{}",
+    runId: "run-1",
+    operationId: "operation-1",
+    seconds: 120,
+  }).ended;
   return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    status: ended.exitCode,
+    stdout: ended.stdout,
+    stderr: await readFile(join(place.command, "command.stderr.log"), "utf8"),
   };
 }
 
@@ -144,7 +165,7 @@ export async function loggedCalls(
       if (typeof value !== "object" || value === null)
         throw new Error("invalid log line");
       return Object.assign(
-        { command: "", cwd: "", lock: null, status: "" },
+        { command: "", cwd: "", lock: null, status: "", github: null },
         value,
       );
     });

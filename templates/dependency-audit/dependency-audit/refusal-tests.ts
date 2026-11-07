@@ -104,6 +104,30 @@ const candidateRefusals = [
     "invalid-audit-candidates",
   ],
   [
+    completed([
+      candidate("minimist", {
+        fixAvailable: { version: "0.5.6", isSemVerMajor: false },
+      }),
+    ]),
+    "invalid-audit-candidates",
+  ],
+  [
+    completed([
+      candidate("minimist", {
+        fixAvailable: { name: "mkdirp", version: 7, isSemVerMajor: false },
+      }),
+    ]),
+    "invalid-audit-candidates",
+  ],
+  [
+    completed([
+      candidate("minimist", {
+        fixAvailable: { name: "mkdirp", version: "0.5.6" },
+      }),
+    ]),
+    "invalid-audit-candidates",
+  ],
+  [
     completed([candidate("minimist", { range: "x".repeat(201) })]),
     "invalid-audit-candidates",
   ],

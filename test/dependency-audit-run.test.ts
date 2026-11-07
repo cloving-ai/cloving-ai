@@ -29,11 +29,14 @@ function ended(stdout: string, code: unknown = 0): CommandEnd {
 
 function system(answers: Readonly<Record<string, CommandEnd | string>> = {}): {
   readonly calls: string[];
+  readonly environments: string[];
   readonly run: (call: CommandCall) => Promise<CommandEnd>;
   readonly repository: string;
   readonly folder: string;
+  readonly commandArguments: readonly string[];
 } {
   const calls: string[] = [];
+  const environments: string[] = [];
   const defaults: Readonly<Record<string, CommandEnd>> = {
     "git symbolic-ref --short refs/remotes/origin/HEAD":
       ended("origin/trunk\n"),
@@ -43,11 +46,14 @@ function system(answers: Readonly<Record<string, CommandEnd | string>> = {}): {
   };
   return {
     calls,
+    environments,
     repository: "/work/repository",
     folder: "/work/audit",
+    commandArguments: ["/work/github"],
     run: async (call) => {
       const command = `${call.file} ${call.args.join(" ")}`;
       calls.push(`${call.cwd}: ${command}`);
+      environments.push(`${call.file} ${JSON.stringify(call.environment)}`);
       const answer = answers[command] ?? defaults[command] ?? ended("");
       if (typeof answer === "string") throw new Error(answer);
       return await Promise.resolve(answer);
@@ -71,6 +77,39 @@ await test("CLV-318 the audit runs in a clean detached work tree of the newest d
     `/work/repository: ${issuesCall}`,
     "/work/repository: git worktree remove --force /work/audit/tree",
   ]);
+});
+
+await test("CLV-318 the audit gives the GitHub CLI configuration folder of its argument to git and gh, not to npm", async () => {
+  const machine = system();
+  assert.equal((await auditOutput(machine)).exitCode, 0);
+  const login = '{"GH_CONFIG_DIR":"/work/github"}';
+  assert.deepEqual(machine.environments, [
+    `git ${login}`,
+    `git ${login}`,
+    `git ${login}`,
+    "npm {}",
+    "npm {}",
+    "npm {}",
+    `gh ${login}`,
+    `git ${login}`,
+  ]);
+});
+
+await test("CLV-318 the audit needs the absolute path of a GitHub CLI configuration folder as its only argument", async () => {
+  for (const commandArguments of [
+    [],
+    ["github"],
+    ["/work/github", "/work/other"],
+  ]) {
+    const machine = { ...system(), commandArguments };
+    assert.deepEqual(await auditOutput(machine), {
+      stdout: "",
+      stderr:
+        "Give the absolute path of a GitHub CLI configuration folder as the only argument.\n",
+      exitCode: 1,
+    });
+    assert.deepEqual(machine.calls, []);
+  }
 });
 
 await test("CLV-318 the audit prints the open-ticket filter result", async () => {

@@ -25,6 +25,14 @@ export interface Advisory {
   readonly patchedRange: string | null;
 }
 
+export type Fix =
+  | boolean
+  | {
+      readonly name: string;
+      readonly version: string;
+      readonly isSemVerMajor: boolean;
+    };
+
 export interface Candidate {
   readonly name: string;
   readonly severity: Severity;
@@ -32,7 +40,7 @@ export interface Candidate {
   readonly range: string;
   readonly versions: readonly string[];
   readonly effects: readonly string[];
-  readonly fixAvailable: unknown;
+  readonly fixAvailable: Fix;
   readonly advisories: readonly Advisory[];
   readonly paths: readonly string[];
   readonly pathCount: number;
@@ -75,6 +83,22 @@ function names(value: unknown): readonly string[] {
   );
 }
 
+function fixOf(value: unknown): Fix {
+  if (typeof value === "boolean") return value;
+  const fix = fields(value, bad);
+  const isSemVerMajor = fix["isSemVerMajor"];
+  if (typeof isSemVerMajor !== "boolean") failure(bad);
+  return {
+    name: line(fix["name"], {
+      reason: bad,
+      pattern: packageName,
+      maximum: 214,
+    }),
+    version: text(fix["version"], 100),
+    isSemVerMajor,
+  };
+}
+
 function counted(item: Readonly<Record<string, unknown>>) {
   const paths = items(item["paths"], {
     reason: bad,
@@ -94,9 +118,7 @@ function counted(item: Readonly<Record<string, unknown>>) {
 function candidateOf(value: unknown): Candidate {
   const item = fields(value, bad);
   const direct = item["direct"];
-  const fixAvailable = item["fixAvailable"];
   if (typeof direct !== "boolean") failure(bad);
-  if (typeof fixAvailable !== "boolean") fields(fixAvailable, bad);
   const { paths, pathCount } = counted(item);
   return {
     name: line(item["name"], {
@@ -113,7 +135,7 @@ function candidateOf(value: unknown): Candidate {
       maximum: 20,
     }).map((version) => text(version, 100)),
     effects: names(item["effects"]),
-    fixAvailable,
+    fixAvailable: fixOf(item["fixAvailable"]),
     advisories: items(item["advisories"], {
       reason: bad,
       minimum: 1,
