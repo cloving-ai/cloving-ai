@@ -95,6 +95,10 @@ with `gh issue list`, and searches the code of the work tree. A turn gets no
 GitHub token from the service, so give the harness read access to the issues, as
 for the turns of `rescue-pr`.
 
+The run removes the work tree and its branch after the turn, before an approval.
+It also removes them when the prepare or the turn fails. Thus a failed run leaves
+no work tree for a later pass.
+
 The last message of the turn is the reply, then one verdict line. The reply gives
 the reason and the evidence as `path:line` or the issue link. For
 `needs-information`, the reply gives the exact questions. The verdict line is

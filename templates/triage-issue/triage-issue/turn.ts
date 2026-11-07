@@ -34,27 +34,31 @@ function summaryOf(text: string): string {
 }
 
 export async function triageTurn(task: TriageTask): Promise<Triage> {
-  resultText(
-    await protectedEffect({
-      capability: "github",
-      method: "prepare",
-      scope: { phase: "triage", operation: "prepare", round: 1 },
-      target: task.cycleId,
-      units: 1,
-      payload: "{}",
-    }),
-  );
-  const report = resultText(
-    await protectedEffect({
-      capability: "claude",
-      method: "run-turn",
-      scope: { phase: "triage", operation: "turn", round: 1 },
-      target: task.cycleId,
-      units: 1,
-      payload: triagePrompt(task),
-    }),
-  );
-  return triageOf(task, summaryOf(report));
+  try {
+    resultText(
+      await protectedEffect({
+        capability: "github",
+        method: "prepare",
+        scope: { phase: "triage", operation: "prepare", round: 1 },
+        target: task.cycleId,
+        units: 1,
+        payload: "{}",
+      }),
+    );
+    const report = resultText(
+      await protectedEffect({
+        capability: "claude",
+        method: "run-turn",
+        scope: { phase: "triage", operation: "turn", round: 1 },
+        target: task.cycleId,
+        units: 1,
+        payload: triagePrompt(task),
+      }),
+    );
+    return triageOf(task, summaryOf(report));
+  } finally {
+    await discardTree(task);
+  }
 }
 
 export async function discardTree(task: TriageTask): Promise<void> {

@@ -30,7 +30,7 @@ function postedComment(url: string, number: number): PostedComment {
 function urlPage(line: string): readonly unknown[] {
   const page: unknown = JSON.parse(line);
   if (!Array.isArray(page)) throw new Error("github-call-failed");
-  return page.map((url: unknown) => url);
+  return page;
 }
 
 async function knownComment(

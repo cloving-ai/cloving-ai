@@ -71,10 +71,9 @@ await test("CLV-319 a duplicate verdict posts a reply that links the closed issu
   const outcome = await triageIssue(issue);
   assert.deepEqual(
     methods(bridge.requests),
-    ["prepare", "run-turn"].concat(asked(), [
+    ["prepare", "run-turn", "discard"].concat(asked(), [
       "comment-issue",
       "label",
-      "discard",
     ]),
   );
   assert.match(turnPrompt(bridge.requests), /issue #639/);
@@ -166,10 +165,9 @@ await test("CLV-319 a reply with a local path is refused and the run ends blocke
   });
   assert.deepEqual(
     methods(bridge.requests),
-    ["prepare", "run-turn"].concat(asked(), [
+    ["prepare", "run-turn", "discard"].concat(asked(), [
       "comment-issue",
       "label",
-      "discard",
     ]),
   );
   assert.deepEqual(payloads(bridge.requests, "label"), [
@@ -190,7 +188,7 @@ await test("CLV-319 a post that fails for another reason adds no label and block
   });
   assert.deepEqual(
     methods(bridge.requests),
-    ["prepare", "run-turn"].concat(asked(), ["comment-issue"]),
+    ["prepare", "run-turn", "discard"].concat(asked(), ["comment-issue"]),
   );
 });
 
@@ -210,7 +208,11 @@ await test("CLV-319 a turn without one valid verdict line or without a reply blo
       evidenceId: "triage-issue",
       reason,
     });
-    assert.deepEqual(methods(bridge.requests), ["prepare", "run-turn"]);
+    assert.deepEqual(methods(bridge.requests), [
+      "prepare",
+      "run-turn",
+      "discard",
+    ]);
   }
 });
 
@@ -264,26 +266,35 @@ await test("CLV-319 a failed or invalid candidates answer blocks the pass before
   }
 });
 
-await test("CLV-319 a failed prepare or a turn report without a summary blocks the run", async () => {
+await test("CLV-319 a failed prepare, a failed turn or a turn report without a summary blocks the run and discards the work tree", async () => {
   for (const [effects, reason, called] of [
     [
-      { "github prepare": [failed("work-tree-not-available")] },
+      Object.assign(triageEffects(duplicateSummary), {
+        "github prepare": [failed("work-tree-not-available")],
+      }),
       "work-tree-not-available",
-      ["prepare"],
+      ["prepare", "discard"],
+    ],
+    [
+      Object.assign(triageEffects(duplicateSummary), {
+        "claude run-turn": [failed("turn-failed")],
+      }),
+      "turn-failed",
+      ["prepare", "run-turn", "discard"],
     ],
     [
       Object.assign(triageEffects(duplicateSummary), {
         "claude run-turn": [completed({ result: "no summary" })],
       }),
       "invalid-triage-report",
-      ["prepare", "run-turn"],
+      ["prepare", "run-turn", "discard"],
     ],
     [
       Object.assign(triageEffects(duplicateSummary), {
         "claude run-turn": [{ ...completed(null), result: "{" }],
       }),
       "triage-failed",
-      ["prepare", "run-turn"],
+      ["prepare", "run-turn", "discard"],
     ],
   ] as const) {
     using bridge = fakeStepBridge({ effects });
