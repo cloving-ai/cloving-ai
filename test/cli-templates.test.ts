@@ -41,6 +41,12 @@ await test("CLV-227 the built CLI exposes the template copy command", () =>
     assert.match(result.stdout, /cloving templates copy <name>/);
   }));
 
+function summaryOf(name: string): unknown {
+  return record(
+    JSON.parse(readFileSync(`templates/${name}/template.json`, "utf8")),
+  )?.["summary"];
+}
+
 await test("CLV-223 templates list gives each template with its summary and point count", () =>
   withFiles(repository, (root) => {
     const result = templates(root, ["list", "--json"]);
@@ -48,48 +54,28 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const template = record(developTemplate);
     const points = template?.["points"];
     assert.ok(Array.isArray(points));
-    const answer = record(
-      JSON.parse(readFileSync("templates/answer-review/template.json", "utf8")),
-    );
-    const idea = record(
-      JSON.parse(readFileSync("templates/idea-to-issue/template.json", "utf8")),
-    );
-    const review = record(
-      JSON.parse(readFileSync("templates/review-day/template.json", "utf8")),
-    );
-    const patrol = record(
-      JSON.parse(readFileSync("templates/patrol/template.json", "utf8")),
-    );
-    const audit = record(
-      JSON.parse(
-        readFileSync("templates/dependency-audit/template.json", "utf8"),
-      ),
-    );
-    const ticket = record(
-      JSON.parse(
-        readFileSync("templates/dependency-ticket/template.json", "utf8"),
-      ),
-    );
-    const rescue = record(
-      JSON.parse(readFileSync("templates/rescue-pr/template.json", "utf8")),
-    );
-    const triage = record(
-      JSON.parse(readFileSync("templates/triage-issue/template.json", "utf8")),
-    );
     assert.deepEqual(JSON.parse(result.stdout), [
-      { name: "answer-review", summary: answer?.["summary"], points: 1 },
-      { name: "dependency-audit", summary: audit?.["summary"], points: 0 },
-      { name: "dependency-ticket", summary: ticket?.["summary"], points: 0 },
+      { name: "answer-review", summary: summaryOf("answer-review"), points: 1 },
+      {
+        name: "dependency-audit",
+        summary: summaryOf("dependency-audit"),
+        points: 0,
+      },
+      {
+        name: "dependency-ticket",
+        summary: summaryOf("dependency-ticket"),
+        points: 0,
+      },
       {
         name: "develop",
         summary: template?.["summary"],
         points: points.length,
       },
-      { name: "idea-to-issue", summary: idea?.["summary"], points: 3 },
-      { name: "patrol", summary: patrol?.["summary"], points: 1 },
-      { name: "rescue-pr", summary: rescue?.["summary"], points: 2 },
-      { name: "review-day", summary: review?.["summary"], points: 2 },
-      { name: "triage-issue", summary: triage?.["summary"], points: 1 },
+      { name: "idea-to-issue", summary: summaryOf("idea-to-issue"), points: 3 },
+      { name: "patrol", summary: summaryOf("patrol"), points: 1 },
+      { name: "rescue-pr", summary: summaryOf("rescue-pr"), points: 2 },
+      { name: "review-day", summary: summaryOf("review-day"), points: 2 },
+      { name: "triage-issue", summary: summaryOf("triage-issue"), points: 1 },
     ]);
     const human = templates(root, ["list"]);
     assert.match(
