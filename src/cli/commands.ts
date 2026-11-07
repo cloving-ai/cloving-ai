@@ -40,6 +40,7 @@ export interface CommandEnvironment {
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
   readonly watchThemes?: WatchThemeSettings;
+  readonly retentionDays?: number | null;
   readonly client?: string;
   readonly workingDirectory: string;
   readonly terminal: Terminal;
@@ -331,6 +332,9 @@ function watch(
     ...(environment.watchThemes === undefined
       ? {}
       : { themes: environment.watchThemes }),
+    ...(environment.retentionDays === undefined
+      ? {}
+      : { retentionDays: environment.retentionDays }),
     runtimeDirectory: environment.runtimeDirectory,
     port: invocation.port ?? defaultWatchPort,
     client: environment.client ?? "cloving",

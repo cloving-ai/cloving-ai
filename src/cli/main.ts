@@ -23,6 +23,7 @@ import {
   validateUsage,
 } from "./usage.ts";
 import { validateWorkflow, type ValidationReport } from "./validate.ts";
+import { retentionSettings } from "../record-retention.ts";
 
 const helpTexts = {
   help: usage,
@@ -157,6 +158,16 @@ const terminal = {
   error: (text: string) => process.stderr.write(text),
 };
 
+function watchRetentionDays(
+  environment: Readonly<NodeJS.ProcessEnv>,
+): number | null {
+  try {
+    return retentionSettings(environment).days;
+  } catch {
+    return null;
+  }
+}
+
 function watchSettings(input: {
   readonly watchPr: WatchPrSettings | undefined;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
@@ -165,11 +176,13 @@ function watchSettings(input: {
   readonly watchActions?: string;
   readonly watchPr?: WatchPrSettings;
   readonly watchThemes: WatchThemeSettings;
+  readonly retentionDays: number | null;
 } {
   const { watchPr, environment } = input;
   const watchActions = environment["CLOVING_WATCH_ACTIONS"];
   return {
     ...(watchActions === undefined ? {} : { watchActions }),
+    retentionDays: watchRetentionDays(environment),
     ...(watchPr === undefined ? {} : { watchPr }),
     watchThemes: {
       setting: environment["CLOVING_WATCH_THEME"] ?? "auto",

@@ -135,3 +135,35 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.equal(panel(String(served["html"])), fullPanel);
 });
+
+await test("CLV-321 with 3 decisions and 2 stopped runs in Needs you, the header shows 5 need you", () => {
+  const model = floorModel(
+    [
+      floorRun("first", { workflowId: "idea", operation: "write-draft" }),
+      floorRun("second", { workflowId: "idea", operation: "write-draft" }),
+      floorRun("third", { workflowId: "idea", operation: "write-draft" }),
+      mergeRun(20),
+      floorRun("failed", { operation: "github-merge", state: "failed" }),
+    ],
+    {
+      decisions: ["first", "second", "third"].map((runId) =>
+        decisionFor(runId, { minutes: 10 }),
+      ),
+    },
+  );
+  const header =
+    /<span class="header-count needs-you"><strong>5<\/strong> need you<\/span>/;
+  assert.match(page(model), header);
+  assert.match(panel(page(model)), /5 waiting for a person/);
+  const served = played(
+    model,
+    `
+const model = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "";
+replies.push(model);
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  assert.match(String(served["html"]), header);
+});

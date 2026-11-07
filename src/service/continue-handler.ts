@@ -16,6 +16,8 @@ import {
   result,
   type ServiceContext,
 } from "./replies.ts";
+import { activeWorkflow, laneCount } from "./active-tickets.ts";
+import { finishedRefusal } from "./finished-work.ts";
 import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
 import { runIdentity } from "./submission-handler.ts";
 
@@ -110,6 +112,29 @@ async function retentionRefusal(
   });
 }
 
+async function lanesRefusal(
+  context: ServiceContext,
+  request: ContinueRequest,
+): Promise<Reply | undefined> {
+  const workflowId = (
+    await context.authority.queries.workflowIds([request.runId])
+  )[request.runId];
+  const admission =
+    workflowId === undefined
+      ? undefined
+      : context.registry.byId(workflowId)?.admission;
+  if (workflowId === undefined || admission === undefined) return undefined;
+  const lanes = laneCount(admission);
+  const busy = (await activeWorkflow(context, workflowId)).length;
+  if (busy < lanes) return undefined;
+  return failed("continuation-lanes-full", {
+    ...identity(request),
+    busy,
+    lanes,
+    detail: `${String(busy)} of ${String(lanes)} lanes are busy. Continue the run when a lane is free.`,
+  });
+}
+
 async function spendRefusal(
   context: ServiceContext,
   request: ContinueRequest,
@@ -159,7 +184,12 @@ async function refusal(
     (await statusRefusal(context, subject)) ??
     continuedRefusal(request, origins) ??
     (await retentionRefusal(context, request)) ??
-    (await spendRefusal(context, request))
+    (await finishedRefusal(context, {
+      runId: request.runId,
+      identity: identity(request),
+    })) ??
+    (await spendRefusal(context, request)) ??
+    (await lanesRefusal(context, request))
   );
 }
 

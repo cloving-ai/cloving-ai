@@ -31,6 +31,10 @@ export async function activeWorkflow(
   return active.filter((input) => input !== undefined);
 }
 
+export function laneCount(admission: "when-idle" | number): number {
+  return admission === "when-idle" ? 1 : admission;
+}
+
 export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const workflow = context.registry.workflowIds
     .map((id) => context.registry.byId(id))
@@ -52,7 +56,7 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     queue: {
       workflowId: workflow.workflowId,
       ...(await queueSpend(context)),
-      lanes: workflow.admission === "when-idle" ? 1 : workflow.admission,
+      lanes: laneCount(workflow.admission),
       busy: active.length,
       skipped,
       ...(control === undefined

@@ -44,6 +44,13 @@ await test("CLV-129 configured local origin validates a local merge before any G
   );
 });
 
+function merged(runs: readonly unknown[]): readonly unknown[] {
+  return runs.map((run) => ({
+    ...fields(run),
+    finished: "pull-request-merged",
+  }));
+}
+
 await test("CLV-093 CLI board returns while configured GitHub waits and a later load sees its merge without local writes or events", async () => {
   const stopped = stoppedPrRun();
   const replies = watchReplies({
@@ -94,7 +101,7 @@ await test("CLV-093 CLI board returns while configured GitHub waits and a later 
       const run = fields(items(later["runs"])[0]);
       assert.equal(run["state"], "completed");
       assert.deepEqual(run["outcome"], "blocked");
-      assert.deepEqual(items(first["runs"]), items(later["runs"]));
+      assert.deepEqual(items(later["runs"]), merged(items(first["runs"])));
       assert.equal(await readFile(journal, "utf8"), before);
       assert.ok(
         replies.requests.every((request) =>

@@ -60,7 +60,7 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
 }
 
 export function continuableRun(run: WatchRun): boolean {
-  if (run.continuedBy !== undefined) return false;
+  if (run.continuedBy !== undefined || run.finished !== undefined) return false;
   if (run.state === "failed") return true;
   return run.state === "completed" && run.outcome === "blocked";
 }
