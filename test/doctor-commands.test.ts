@@ -21,7 +21,7 @@ await test("CLV-323 doctor warns with command-gh-no-login for each command that 
     );
     assert.equal(
       shown["fix"],
-      "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label. Or give the command its own GH_CONFIG_DIR",
+      "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label",
     );
     assert.equal(output.status, 0);
   }));

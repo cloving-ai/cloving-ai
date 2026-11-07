@@ -69,7 +69,7 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
   "turn-environment": `Give a turn a variable that the project needs: cloving config set turns.environment '["NAME"]' --private`,
   "command-gh-no-login":
-    "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label. Or give the command its own GH_CONFIG_DIR",
+    "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label",
   retention:
     "Set a retention period: cloving config set retention.days 30 --private",
   theme:
