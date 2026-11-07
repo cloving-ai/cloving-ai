@@ -52,7 +52,9 @@ The script does these steps:
 
 1. It removes the folders and the work trees of earlier audits whose process
    ended. The command time limit or a stop ends an audit with `SIGKILL`, so
-   that audit cannot remove its own files.
+   that audit cannot remove its own files. A folder that it cannot remove, for
+   example the folder of another user in a shared `/tmp`, stays. The script
+   writes its name and the error on standard error and goes on with the audit.
 2. It reads the current default branch of the remote `origin` with
    `git ls-remote --symref origin HEAD`, not from the local
    `refs/remotes/origin/HEAD`, and fetches that branch.

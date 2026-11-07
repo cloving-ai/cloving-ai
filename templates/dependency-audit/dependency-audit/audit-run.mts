@@ -127,11 +127,30 @@ function abandoned(
 
 type Git = (args: readonly string[]) => Promise<string>;
 
-async function removeAbandoned(system: AuditSystem, git: Git): Promise<void> {
+async function keptFolder(
+  system: AuditSystem,
+  name: string,
+): Promise<string | undefined> {
+  try {
+    await system.temporary.remove(name);
+    return undefined;
+  } catch (error) {
+    return `Kept the folder ${name} of an earlier audit: ${String(error).replace(/^Error: /, "")}`;
+  }
+}
+
+async function removeAbandoned(
+  system: AuditSystem,
+  git: Git,
+): Promise<readonly string[]> {
   const folders = (await system.temporary.names()).filter((name) =>
     abandoned(name, system.alive),
   );
-  for (const name of folders) await system.temporary.remove(name);
+  const notes: string[] = [];
+  for (const name of folders) {
+    const note = await keptFolder(system, name);
+    if (note !== undefined) notes.push(note);
+  }
   const trees = (await git(["worktree", "list", "--porcelain"]))
     .split("\n")
     .filter((line) => line.startsWith("worktree ") && line.endsWith("/tree"))
@@ -139,6 +158,7 @@ async function removeAbandoned(system: AuditSystem, git: Git): Promise<void> {
     .filter((tree) => abandoned(tree.split("/").at(-2) ?? "", system.alive));
   for (const tree of trees)
     await git(["worktree", "remove", "--force", "--force", tree]);
+  return notes;
 }
 
 async function defaultBranch(git: Git): Promise<string> {
@@ -149,9 +169,12 @@ async function defaultBranch(git: Git): Promise<string> {
   return branch;
 }
 
-async function auditedTree(
-  system: AuditSystem,
-): Promise<readonly AuditCandidate[]> {
+interface AuditedTree {
+  readonly candidates: readonly AuditCandidate[];
+  readonly notes: readonly string[];
+}
+
+async function auditedTree(system: AuditSystem): Promise<AuditedTree> {
   const access = {
     system,
     login: { GH_CONFIG_DIR: loginFolder(system.commandArguments) },
@@ -163,7 +186,7 @@ async function auditedTree(
       cwd: system.repository,
       environment: access.login,
     });
-  await removeAbandoned(system, git);
+  const notes = await removeAbandoned(system, git);
   const branch = await defaultBranch(git);
   await git([
     "fetch",
@@ -181,7 +204,7 @@ async function auditedTree(
     `origin/${branch}`,
   ]);
   try {
-    return await treeCandidates(access, tree);
+    return { candidates: await treeCandidates(access, tree), notes };
   } finally {
     await git(["worktree", "remove", "--force", tree]);
   }
@@ -189,10 +212,10 @@ async function auditedTree(
 
 export async function auditOutput(system: AuditSystem): Promise<AuditOutput> {
   try {
-    const candidates = await auditedTree(system);
+    const audited = await auditedTree(system);
     return {
-      stdout: `${JSON.stringify(candidates, null, 2)}\n`,
-      stderr: "",
+      stdout: `${JSON.stringify(audited.candidates, null, 2)}\n`,
+      stderr: audited.notes.map((note) => `${note}\n`).join(""),
       exitCode: 0,
     };
   } catch (error) {

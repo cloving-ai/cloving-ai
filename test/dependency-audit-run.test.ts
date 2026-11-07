@@ -305,6 +305,38 @@ await test("CLV-318 a failed removal of an abandoned work tree stops the audit b
   assert.equal(machine.calls.length, 2);
 });
 
+await test("CLV-318 a folder of an earlier audit that cannot be removed is reported and the audit goes on", async () => {
+  const base = system({}, [
+    "cloving-audit-7-a1b2c3",
+    "cloving-audit-11-y7z8a9",
+  ]);
+  const refused = new Set(["cloving-audit-7-a1b2c3"]);
+  const machine: FakeSystem = {
+    ...base,
+    temporary: {
+      names: base.temporary.names,
+      remove: (name) =>
+        refused.has(name)
+          ? Promise.reject(
+              new Error(`EACCES: permission denied, rmdir '/tmp/${name}'`),
+            )
+          : base.temporary.remove(name),
+    },
+  };
+  const output = await auditOutput(machine);
+  assert.equal(output.exitCode, 0);
+  assert.equal(
+    output.stderr,
+    "Kept the folder cloving-audit-7-a1b2c3 of an earlier audit: EACCES: permission denied, rmdir '/tmp/cloving-audit-7-a1b2c3'\n",
+  );
+  assert.deepEqual(
+    names(output.stdout),
+    names((await auditOutput(system())).stdout),
+  );
+  assert.deepEqual(base.removed, ["cloving-audit-11-y7z8a9"]);
+  assert.ok(base.calls.includes(`/work/repository: ${fetchCall}`));
+});
+
 await test("CLV-318 a rejected command gives its exit code, its output and its error text", () => {
   assert.deepEqual(
     commandFailure(
