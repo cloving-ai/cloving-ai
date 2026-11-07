@@ -54,7 +54,7 @@ await test("CLV-309 the hold record keeps load and memory hold periods across a 
         endedAt: 40 * day + 2500,
       },
     ]);
-    assert.equal(second.cutAt(), null);
+    assert.equal(second.cutAt(), 40 * day);
     clock.now += 31 * day;
     await second.note(undefined);
     await second.note(load);
@@ -140,7 +140,17 @@ await test("CLV-309 the hold record refuses a hold file that is not valid", () =
     const empty = await holdRecord(folder);
     await empty.close();
     assert.deepEqual(empty.periods(), []);
-    await assert.rejects(readFile(join(folder, "queue-holds.json"), "utf8"), {
-      code: "ENOENT",
-    });
+  }));
+
+await test("CLV-309 a new hold record saves its start, so no hold history comes before it", () =>
+  withFolder(async (folder) => {
+    const first = await holdRecord(folder, () => 40 * day);
+    assert.equal(first.cutAt(), 40 * day);
+    const saved: unknown = JSON.parse(
+      await readFile(join(folder, "queue-holds.json"), "utf8"),
+    );
+    assert.deepEqual(saved, { periods: [], open: null, cutAt: 40 * day });
+    const restarted = await holdRecord(folder, () => 41 * day);
+    assert.equal(restarted.cutAt(), 40 * day);
+    assert.deepEqual(restarted.periods(), []);
   }));

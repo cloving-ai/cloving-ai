@@ -1,8 +1,8 @@
 import { availableParallelism } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { cpuShare } from "../queue-room.ts";
 import { attachmentEnvironment } from "./attachments.ts";
-import { openRuns } from "./working-runs.ts";
+import { openWork } from "./working-runs.ts";
 
 export async function turnStartEnvironment(
   settings: { readonly worktrees: string },
@@ -13,11 +13,8 @@ export async function turnStartEnvironment(
   },
 ): Promise<Readonly<Record<string, string>>> {
   const state = dirname(settings.worktrees);
-  const [turns, commands] = await Promise.all([
-    openRuns(join(state, "journal")),
-    openRuns(join(state, "commands")),
-  ]);
-  const working = new Set([...turns, ...commands, start.intent.runId]).size;
+  const { working: open } = await openWork(state);
+  const working = new Set([...open, start.intent.runId]).size;
   const cores = start.cores ?? availableParallelism();
   return {
     ...(await attachmentEnvironment(settings, start)),

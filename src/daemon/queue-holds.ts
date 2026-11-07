@@ -62,12 +62,13 @@ function cutOf(value: unknown): number | null {
   return invalid();
 }
 
-async function savedHolds(file: string): Promise<SavedHolds> {
+async function savedHolds(file: string): Promise<SavedHolds | undefined> {
   const text = await readFile(file, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return '{"periods":[]}';
+      return undefined;
     throw error;
   });
+  if (text === undefined) return undefined;
   const value: unknown = parsed(text);
   if (value === null || typeof value !== "object") invalid();
   const listed: unknown = Reflect.get(value, "periods");
@@ -102,7 +103,8 @@ export async function holdRecord(
   now: () => number = Date.now,
 ): Promise<HoldRecord> {
   const file = join(directory, "queue-holds.json");
-  let saved = await savedHolds(file);
+  const found = await savedHolds(file);
+  let saved = found ?? { closed: [], cutAt: now() };
   let open: OpenHold | undefined;
   const save = async (): Promise<void> => {
     saved = trimmed(saved, now() - keptMilliseconds);
@@ -114,6 +116,7 @@ export async function holdRecord(
     await writeFile(`${file}.tmp`, text + "\n", { mode: 0o600 });
     await rename(`${file}.tmp`, file);
   };
+  if (found === undefined) await save();
   const finish = (): void => {
     if (open === undefined) return;
     const { reason, startedAt } = open;

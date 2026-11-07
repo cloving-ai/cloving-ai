@@ -3,7 +3,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { Fields } from "../src/protocol.ts";
-import { openRuns, waitingRuns } from "../src/daemon/working-runs.ts";
+import {
+  markedCalls,
+  openRuns,
+  waitingRuns,
+} from "../src/daemon/working-runs.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { withHarness } from "./service-fixture.ts";
 
@@ -173,4 +177,69 @@ await test("CLV-309 the open run scan reads a finished operation only once", () 
     await writeFile(join(journal, "open", "result.json"), "{}");
     await recorded(journal, { key: "late", started: { runId: "late" } });
     assert.deepEqual([...(await openRuns(journal))], ["late"]);
+  }));
+
+await test("CLV-309 the open run scan reads the start of an open operation only once", () =>
+  withHarness(async (harness) => {
+    const journal = join(harness.stateDirectory, "journal");
+    await recorded(journal, { key: "open", started: { runId: "open" } });
+    await recorded(journal, { key: "plain", started: {} });
+    await mkdir(join(journal, "new"), { recursive: true });
+    assert.deepEqual([...(await openRuns(journal))], ["open"]);
+    await writeFile(join(journal, "open", "started.json"), "not JSON");
+    await writeFile(join(journal, "plain", "started.json"), "not JSON");
+    await writeFile(
+      join(journal, "new", "started.json"),
+      JSON.stringify({ runId: "new" }),
+    );
+    assert.deepEqual([...(await openRuns(journal))].toSorted(), [
+      "new",
+      "open",
+    ]);
+  }));
+
+await test("CLV-309 a run that runs a local merge check is working, not waiting for CI", () =>
+  withHarness(async (harness) => {
+    const directory = harness.stateDirectory;
+    await recorded(join(directory, "github"), {
+      key: "merge",
+      started: { runId: "merge" },
+    });
+    const release = Promise.withResolvers<string>();
+    const entered = Promise.withResolvers<undefined>();
+    const checks = markedCalls(
+      {
+        gh: () => Promise.resolve(""),
+        git: () => Promise.resolve(""),
+        run: (command) => {
+          entered.resolve(undefined);
+          return command[0] === "pass"
+            ? release.promise
+            : Promise.reject(new Error("check-failed"));
+        },
+      },
+      join(directory, "github", "merge"),
+    );
+    const listener = await listen({
+      path: join(harness.runtimeDirectory, "control.sock"),
+      handle: pagedService([[run("merge")]], ["merge"]),
+      limits: { idleMilliseconds: 5000 },
+    });
+    const waiting = () =>
+      waitingRuns({ directory, runtimeDirectory: harness.runtimeDirectory });
+    try {
+      assert.equal(await waiting(), 1);
+      const checked = checks.run(["pass"], directory);
+      await entered.promise;
+      assert.equal(await waiting(), 0);
+      release.resolve("passed");
+      assert.equal(await checked, "passed");
+      assert.equal(await waiting(), 1);
+      await assert.rejects(checks.run(["fail"], directory), {
+        message: "check-failed",
+      });
+      assert.equal(await waiting(), 1);
+    } finally {
+      await listener.close();
+    }
   }));

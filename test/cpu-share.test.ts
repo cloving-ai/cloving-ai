@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { cpuShare } from "../src/queue-room.ts";
 import { turnStartEnvironment } from "../src/daemon/turn-variables.ts";
+import { markedCalls } from "../src/daemon/working-runs.ts";
 
 await test("CLV-309 the share of the cores is the cores divided by the working runs, at least 1", () => {
   assert.equal(cpuShare(12, 3), 4);
@@ -52,6 +53,46 @@ await test("CLV-309 each turn gets CLOVING_CPU_SHARE from the working runs and i
       host["CLOVING_CPU_SHARE"],
       String(cpuShare(availableParallelism(), 3)),
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-309 a run in a local merge check takes a share of the cores, a run that waits for CI does not", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cpu-share-"));
+  try {
+    for (const runId of ["check", "ci"]) {
+      await mkdir(join(root, "github", runId), { recursive: true });
+      await writeFile(
+        join(root, "github", runId, "started.json"),
+        JSON.stringify({ runId }),
+      );
+    }
+    const release = Promise.withResolvers<string>();
+    const entered = Promise.withResolvers<undefined>();
+    const checked = markedCalls(
+      {
+        gh: () => Promise.resolve(""),
+        git: () => Promise.resolve(""),
+        run: () => {
+          entered.resolve(undefined);
+          return release.promise;
+        },
+      },
+      join(root, "github", "check"),
+    ).run(["check"], root);
+    await entered.promise;
+    const environment = await turnStartEnvironment(
+      { worktrees: join(root, "worktrees") },
+      {
+        intent: { target: "repository:main", runId: "turn" },
+        profile: {},
+        cores: 12,
+      },
+    );
+    release.resolve("passed");
+    await checked;
+    assert.equal(environment["CLOVING_CPU_SHARE"], "6");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

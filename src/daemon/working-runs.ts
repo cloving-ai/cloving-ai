@@ -1,11 +1,30 @@
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { send } from "../cli/client.ts";
 import { operationScope } from "../operation-identity.ts";
 import { record, type Fields } from "../protocol.ts";
-import { readRecord } from "./operation-journal.ts";
+import type { Calls } from "./github-calls.ts";
+import { readRecord, writeRecord } from "./operation-journal.ts";
 
-const finishedEntries = new Map<string, ReadonlySet<string>>();
+interface FolderScan {
+  readonly finished: ReadonlySet<string>;
+  readonly started: ReadonlyMap<string, string | null>;
+}
+
+interface Entry {
+  readonly name: string;
+  readonly finished: boolean;
+  readonly runId: string | null | undefined;
+}
+
+export interface OpenWork {
+  readonly working: ReadonlySet<string>;
+  readonly github: ReadonlySet<string>;
+}
+
+const checkRecord = "checking.json";
+const scans = new Map<string, FolderScan>();
+const noScan: FolderScan = { finished: new Set(), started: new Map() };
 
 function noEntries(error: unknown): readonly string[] {
   if (error instanceof Error && "code" in error && error.code === "ENOENT")
@@ -13,43 +32,105 @@ function noEntries(error: unknown): readonly string[] {
   throw error;
 }
 
-async function finished(folder: string): Promise<boolean> {
-  return access(join(folder, "result.json")).then(
+async function present(path: string): Promise<boolean> {
+  return access(path).then(
     () => true,
     () => false,
   );
 }
 
-async function startedRun(folder: string): Promise<string | undefined> {
+async function startedRun(folder: string): Promise<string | null | undefined> {
   const started = record(await readRecord(folder, "started.json"));
   if (started === undefined) return undefined;
   const { runId, operationId } = started;
   if (typeof runId === "string") return runId;
   return typeof operationId === "string"
-    ? (operationScope(operationId)?.run ?? undefined)
-    : undefined;
+    ? (operationScope(operationId)?.run ?? null)
+    : null;
+}
+
+async function entryOf(
+  journal: string,
+  entry: { readonly name: string; readonly known: FolderScan },
+): Promise<Entry> {
+  const { name, known } = entry;
+  const folder = join(journal, name);
+  if (known.finished.has(name) || (await present(join(folder, "result.json"))))
+    return { name, finished: true, runId: undefined };
+  const runId = known.started.has(name)
+    ? known.started.get(name)
+    : await startedRun(folder);
+  return { name, finished: false, runId };
+}
+
+async function openEntries(
+  journal: string,
+): Promise<ReadonlyMap<string, string>> {
+  const names = await readdir(journal).catch(noEntries);
+  const known = scans.get(journal) ?? noScan;
+  const entries = await Promise.all(
+    names.map((name) => entryOf(journal, { name, known })),
+  );
+  const open = entries.filter((entry) => !entry.finished);
+  scans.set(journal, {
+    finished: new Set(
+      entries.filter((entry) => entry.finished).map(({ name }) => name),
+    ),
+    started: new Map(
+      open.flatMap(({ name, runId }) =>
+        runId === undefined ? [] : [[name, runId] as const],
+      ),
+    ),
+  });
+  return new Map(
+    open.flatMap(({ name, runId }) =>
+      typeof runId === "string" ? [[name, runId] as const] : [],
+    ),
+  );
 }
 
 export async function openRuns(journal: string): Promise<ReadonlySet<string>> {
-  const names = await readdir(journal).catch(noEntries);
-  const known = finishedEntries.get(journal);
-  const entries = await Promise.all(
-    names.map(async (name) => ({
-      name,
-      finished:
-        known?.has(name) === true || (await finished(join(journal, name))),
-    })),
+  return new Set((await openEntries(journal)).values());
+}
+
+export function markedCalls(calls: Calls, folder: string): Calls {
+  return {
+    ...calls,
+    run: async (command, directory) => {
+      await writeRecord(folder, {
+        name: checkRecord,
+        value: { startedAt: new Date().toISOString() },
+      });
+      try {
+        return await calls.run(command, directory);
+      } finally {
+        await rm(join(folder, checkRecord), { force: true });
+      }
+    },
+  };
+}
+
+export async function openWork(directory: string): Promise<OpenWork> {
+  const [turns, commands, github] = await Promise.all([
+    openEntries(join(directory, "journal")),
+    openEntries(join(directory, "commands")),
+    openEntries(join(directory, "github")),
+  ]);
+  const checks = await Promise.all(
+    [...github].map(async ([name, runId]) =>
+      (await present(join(directory, "github", name, checkRecord)))
+        ? [runId]
+        : [],
+    ),
   );
-  finishedEntries.set(
-    journal,
-    new Set(entries.filter((entry) => entry.finished).map(({ name }) => name)),
-  );
-  const runs = await Promise.all(
-    entries
-      .filter((entry) => !entry.finished)
-      .map(({ name }) => startedRun(join(journal, name))),
-  );
-  return new Set(runs.filter((run) => run !== undefined));
+  return {
+    working: new Set([
+      ...turns.values(),
+      ...commands.values(),
+      ...checks.flat(),
+    ]),
+    github: new Set(github.values()),
+  };
 }
 
 function busyRunIdsOf(value: unknown): ReadonlySet<string> {
@@ -105,18 +186,13 @@ export async function waitingRuns(settings: {
   readonly directory: string;
   readonly runtimeDirectory: string;
 }): Promise<number> {
-  const [turns, commands, github] = await Promise.all(
-    ["journal", "commands", "github"].map((folder) =>
-      openRuns(join(settings.directory, folder)),
-    ),
-  );
+  const work = await openWork(settings.directory);
   const runs = await busyRuns(settings.runtimeDirectory);
   return runs.filter((run) => {
     const runId = String(run["runId"]);
-    if (turns?.has(runId) === true || commands?.has(runId) === true)
-      return false;
+    if (work.working.has(runId)) return false;
     return (
-      github?.has(runId) === true ||
+      work.github.has(runId) ||
       waitsForPerson(run) ||
       typeof run["awaitedRunId"] === "string"
     );

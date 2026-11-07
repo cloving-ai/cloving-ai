@@ -335,10 +335,8 @@ export function issueQueue(settings: QueueSettings): {
     stopping: new AbortController(),
     limits: () => limitsOf(settings),
   };
-  const loaded = Promise.all([
-    queueJournal(settings.directory),
-    holdRecord(settings.directory),
-  ]).then(([pending, holds]) => {
+  const loaded = queueJournal(settings.directory).then(async (pending) => {
+    const holds = await holdRecord(settings.directory);
     runtime.pending = pending;
     runtime.holds = holds;
     return { pending, holds };

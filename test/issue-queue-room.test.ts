@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { writeRecord } from "../src/daemon/operation-journal.ts";
 import type { Fields, Reply } from "../src/protocol.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import type { Handle } from "../src/service/transport.ts";
@@ -132,11 +133,10 @@ async function opened(
   folder: string,
   entry: { readonly key: string; readonly runId: string },
 ): Promise<void> {
-  await mkdir(join(folder, entry.key), { recursive: true });
-  await writeFile(
-    join(folder, entry.key, "started.json"),
-    JSON.stringify({ runId: entry.runId, operationId: "operation" }),
-  );
+  await writeRecord(join(folder, entry.key), {
+    name: "started.json",
+    value: { runId: entry.runId, operationId: "operation" },
+  });
 }
 
 function workingService(state: {
