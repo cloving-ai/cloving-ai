@@ -3,6 +3,16 @@ import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fakeStepBridge } from "cloving/workflows/testing";
+import { dependencyAudit } from "../templates/dependency-audit/dependency-audit.ts";
+import {
+  advisory,
+  candidate,
+  effects,
+  group,
+  input,
+  tickets,
+} from "../templates/dependency-audit/dependency-audit/scenarios.ts";
 import { treeOf, withGithub } from "./github-worker-fixture.ts";
 
 const examples = [
@@ -46,6 +56,9 @@ const examples = [
   "name@example.com",
   "@private-user",
   "`@private-user`",
+  "Thanks @private-user.",
+  "(@private-user)",
+  "@private-user's work",
   "[person](https://github.com/@private-user)",
   "https://github.com/other/repository/issues/12",
   "https://github.com/other/repository/pull/12",
@@ -121,7 +134,7 @@ await test("CLV-075 permits npm scopes, one-part routes, public sources and loca
     await scene.perform(worker, { method: "prepare", payload: {} });
     writeFileSync(
       join(treeOf(scene), "draft.md"),
-      "# Public PRD\nUse @workflow/builders and /events. See #12, acme/demo#12, https://github.com/acme/demo/issues/12 and [sources](https://example.com/docs/costs(foo(bar))). [brackets] [unfinished ",
+      "# Public PRD\nUse @workflow/builders, @sqlite.org/sqlite-wasm, `@sqlite.org/sqlite-wasm`, @my_scope/tool and /events. See #12, acme/demo#12, https://github.com/acme/demo/issues/12 and [sources](https://example.com/docs/costs(foo(bar))). [brackets] [unfinished ",
     );
     const result = await scene.perform(worker, {
       method: "create-issue",
@@ -129,6 +142,35 @@ await test("CLV-075 permits npm scopes, one-part routes, public sources and loca
     });
     assert.equal(result.outcome, "completed", JSON.stringify(result));
   }));
+
+await test("CLV-318 an audit ticket for a scope with a dot passes the privacy check of create-issue", async () => {
+  const name = "@sqlite.org/sqlite-wasm";
+  using bridge = fakeStepBridge({
+    effects: effects(
+      [
+        candidate(name, {
+          advisories: [advisory("GHSA-sqlt-aaaa-bbbb")],
+          paths: [`parent@3.0.0 > ${name}@1.0.0`],
+        }),
+      ],
+      { groups: [group([name])] },
+    ),
+    effectLimit: 9,
+  });
+  await dependencyAudit(input);
+  const [text] = tickets(bridge.requests);
+  assert.match(String(text), /@sqlite\.org\/sqlite-wasm/);
+  await withGithub(async (scene) => {
+    const worker = scene.worker({ privateTexts: ["Private Organization"] });
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    writeFileSync(join(treeOf(scene), "draft.md"), String(text));
+    const result = await scene.perform(worker, {
+      method: "create-issue",
+      payload: { draft: "draft.md" },
+    });
+    assert.equal(result.outcome, "completed", JSON.stringify(result));
+  });
+});
 
 await test("CLV-075 requires the operator list independently of the home folder", () =>
   withGithub(async (scene) => {

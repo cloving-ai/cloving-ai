@@ -1,0 +1,14 @@
+{
+  "workflow": {
+    "workflowId": "dependency-ticket",
+    "effectLimit": 2,
+    "capabilities": ["github"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": { "text": { "type": "string" } }
+    }
+  },
+  "methods": {
+    "github": ["create-issue", "label"]
+  }
+}

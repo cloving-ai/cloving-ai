@@ -103,8 +103,8 @@ function unsafeLinks(text: string): boolean {
 }
 
 function mentions(text: string): boolean {
-  return [...text.matchAll(/(?:^|[^\w@])@([a-z\d][a-z\d-]*)(\/)?/gi)].some(
-    (match) => match[2] !== "/",
+  return /(?:^|[^\w@])@(?=([a-z\d][a-z\d-]*))\1(?!\/)(?=\.+\W|\.+$|[^\w.]|$)/im.test(
+    text,
   );
 }
 
@@ -128,7 +128,7 @@ function privateText(
   return (
     options.texts.some((item) => lowered.includes(item.toLowerCase())) ||
     /gh[pousr]_|github_pat_|sk-ant-|-----BEGIN/i.test(text) ||
-    /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[a-z]{2,}/i.test(text) ||
+    /[\w.!#$%&'*+/=?^{|}~-]+@[\w.-]+\.[a-z]{2,}/i.test(text) ||
     mentions(text) ||
     paths(text) ||
     unsafeLinks(text) ||
