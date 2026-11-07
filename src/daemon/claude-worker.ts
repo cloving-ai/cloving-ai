@@ -1,5 +1,5 @@
 import { turnHarness, type HarnessSettings } from "../harness-defaults.ts";
-import { attachmentEnvironment } from "./attachments.ts";
+import { turnStartEnvironment } from "./turn-variables.ts";
 import { profileCommand, type TurnProfile } from "../turn-profile.ts";
 import type {
   AdapterOutcome,
@@ -208,7 +208,7 @@ async function begun(
       ...harness,
       resultBytes: claudeLimits.resultBytes,
       command: profileCommand(harness.command, start.profile),
-      environment: await attachmentEnvironment(parts.settings, start),
+      environment: await turnStartEnvironment(parts.settings, start),
       turnId: `${intent.runId}-${key}`,
       directory: tree.path,
       folder,

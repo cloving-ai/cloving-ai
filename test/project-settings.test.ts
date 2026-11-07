@@ -12,7 +12,15 @@ const mappedSettings = [
   ["project", "tickets.nextCommand", "CLOVING_NEXT_COMMAND", ["next"]],
   ["project", "tickets.readyCommand", "CLOVING_READY_COMMAND", ["ready"]],
   ["project", "queue.everySeconds", "CLOVING_QUEUE_SECONDS", 20],
-  ["project", "queue.lanes", "CLOVING_QUEUE_LANES", 2],
+  ["project", "queue.lanes", "CLOVING_QUEUE_LANES", 16],
+  ["project", "queue.workingLanes", "CLOVING_QUEUE_WORKING_LANES", 3],
+  ["project", "queue.maxLoadPerCore", "CLOVING_QUEUE_MAX_LOAD_PER_CORE", 0.9],
+  [
+    "private",
+    "queue.maxMemoryPressure",
+    "CLOVING_QUEUE_MAX_MEMORY_PRESSURE",
+    "warn",
+  ],
   ["project", "queue.dailySpendLimitUsd", "CLOVING_QUEUE_DAILY_SPEND_USD", 20],
   [
     "private",

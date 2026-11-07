@@ -20,6 +20,7 @@ await test("CLV-262 historical bundled issue runs retain queue lanes, skipped ti
       );
       const queue = record((await scene.status())["queue"]);
       assert.equal(queue?.["busy"], 1);
+      assert.deepEqual(queue["busyRunIds"], [legacy]);
       assert.deepEqual(queue["skipped"], [
         { ticketId: "900", reason: "ticket-active" },
       ]);
@@ -36,7 +37,9 @@ await test("CLV-262 historical bundled issue runs retain queue lanes, skipped ti
         "ticket-active",
       );
       await scene.finish(legacy);
-      assert.equal(record((await scene.status())["queue"])?.["busy"], 0);
+      const finished = record((await scene.status())["queue"]);
+      assert.equal(finished?.["busy"], 0);
+      assert.deepEqual(finished["busyRunIds"], []);
       assert.equal(
         (await call(scene.harness, queueRequest("next-issue")))["code"],
         "queue-spend-limit",

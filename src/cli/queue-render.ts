@@ -13,6 +13,11 @@ export function queueHeadline(queue: Fields): string {
   return `Queue: ${state}${visible(queue["busy"])} of ${visible(queue["lanes"])} lanes busy`;
 }
 
+function holdLines(queue: Fields): readonly string[] {
+  const hold = record(queue["hold"])?.["text"];
+  return typeof hold === "string" ? [visible(hold)] : [];
+}
+
 export function queueStateLines(queue: Fields): readonly string[] {
   const reason = record(queue["stop"])?.["reason"];
   const failed = queue["failedRunIds"];
@@ -20,6 +25,7 @@ export function queueStateLines(queue: Fields): readonly string[] {
   const started = instant(drain?.["startedAt"]);
   const drained = instant(drain?.["drainedAt"]);
   return [
+    ...holdLines(queue),
     ...(reason === undefined ? [] : [`Stop reason: ${visible(reason)}`]),
     ...(Array.isArray(failed) && failed.length > 0
       ? [`Failed runs in a row: ${failed.map(visible).join(", ")}`]

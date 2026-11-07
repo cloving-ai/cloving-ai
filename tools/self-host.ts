@@ -19,7 +19,7 @@ import { turnVariablesSetting } from "../src/turn-environment.ts";
 import {
   listedSetting,
   queueInterval,
-  queueLanes,
+  queueLimits,
   queueSpendLimit,
   spendScope,
   readyTicketCommand,
@@ -55,6 +55,7 @@ import { adoptRuntimeDirectory } from "./self-host-runtime.ts";
 import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 import { checkSubmission } from "../src/submission.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+import type { QueueLimits } from "../src/queue-room.ts";
 import { workflowLimits } from "../src/workflow-limits.ts";
 
 const product = resolve(import.meta.dirname, "..");
@@ -147,6 +148,7 @@ interface Commands extends HarnessSettings {
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
   readonly queueLanes: number;
+  readonly queueLimits: QueueLimits;
   readonly queueDailySpendLimitUsd: number | undefined;
   readonly spendScope: "queue" | "all";
   readonly resetQueue: boolean;
@@ -284,7 +286,7 @@ const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueDailySpendLimitUsd = queueSpendLimit(environment);
 const scope = spendScope(environment);
-const lanes = queueLanes(environment);
+const queueRoom = queueLimits(environment);
 const readyCommand = readyTicketCommand(environment);
 const queueMilliseconds = queueInterval(environment);
 const retention = retentionSettings(environment);
@@ -324,7 +326,8 @@ await launchers(
     nextCommand,
     readyCommand,
     queueMilliseconds,
-    queueLanes: lanes,
+    queueLanes: queueRoom.lanes,
+    queueLimits: queueRoom,
     queueDailySpendLimitUsd,
     spendScope: scope,
     resetQueue: flags.includes("--reset-queue"),

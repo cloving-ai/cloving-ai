@@ -48,7 +48,19 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /30.*3600.*stops the daemon.*package-lock.json.*operator/,
   ],
   ["CLOVING_TICKET_COMMAND", /JSON list/],
-  ["CLOVING_QUEUE_LANES", /1.*4.*default is 1.*CLOVING_QUEUE_SECONDS/],
+  ["CLOVING_QUEUE_LANES", /1.*16.*default is 1.*CLOVING_QUEUE_SECONDS/],
+  [
+    "CLOVING_QUEUE_WORKING_LANES",
+    /1.*16.*CLOVING_QUEUE_LANES.*turn or a command.*CI, a review or a person.*default is CLOVING_QUEUE_LANES.*cloving reload/,
+  ],
+  [
+    "CLOVING_QUEUE_MAX_LOAD_PER_CORE",
+    /0\.1.*4.*default is 0\.7.*1-minute load average.*cores.*cloving reload/,
+  ],
+  [
+    "CLOVING_QUEUE_MAX_MEMORY_PRESSURE",
+    /normal or warn.*default is normal.*sysctl.*MemAvailable.*cloving reload/,
+  ],
   [
     "CLOVING_QUEUE_DAILY_SPEND_USD",
     /positive finite.*USD.*CLOVING_QUEUE_SECONDS.*85 percent.*24 hours.*no spend limit/,
@@ -136,7 +148,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 34);
+  assert.equal(names.length, 37);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

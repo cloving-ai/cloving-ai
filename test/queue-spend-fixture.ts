@@ -79,7 +79,7 @@ async function spendScene(harness: Harness, settings: SpendSettings) {
       workflowId: workflow.workflowId,
       directory: harness.stateDirectory,
       runtimeDirectory: harness.runtimeDirectory,
-      lanes: 2,
+      limits: () => ({ lanes: 2, workingLanes: 2 }),
       intervalMilliseconds: 5,
     });
   };
