@@ -115,6 +115,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /inherit, or a JSON list of variable names\. The default is an empty list\..*login variables of its harness.*one release/,
   ],
   [
+    "CLOVING_DEMO_TOOL",
+    /absolute path of the instruction file or folder of a demo tool.*private setting demo\.tool.*each turn gets it/,
+  ],
+  [
     "CLOVING_MERGE_MODE",
     /direct or queue.*default is direct.*merge queue rule/,
   ],

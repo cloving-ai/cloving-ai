@@ -1,5 +1,5 @@
 import { access, constants, stat } from "node:fs/promises";
-import { delimiter, resolve } from "node:path";
+import { delimiter, isAbsolute, resolve } from "node:path";
 import type { DoctorObservation } from "../doctor-report.ts";
 import { mergeMode, mergeModeRefusal } from "../merge-mode.ts";
 import { supportedNode, supportedNodes } from "./toolchain.ts";
@@ -80,6 +80,33 @@ export async function commandObservation(
     result: path === undefined ? "fail" : "ok",
     detail: `${JSON.stringify(command)} from ${location.directory}; ${path ?? "program is not executable"}. Availability now does not guarantee an untracked file exists in a later worktree`,
   };
+}
+
+export async function demoToolObservation(
+  tool: string | undefined,
+  workflows: { readonly used: boolean },
+): Promise<DoctorObservation> {
+  if (tool === undefined)
+    return workflows.used
+      ? {
+          result: "fail",
+          detail: "demo.tool is not set, and a workflow declares attach-asset",
+        }
+      : {
+          result: "skip",
+          detail: "demo.tool is not set, and no workflow declares attach-asset",
+        };
+  if (!isAbsolute(tool))
+    return { result: "fail", detail: "demo.tool must be an absolute path" };
+  try {
+    await access(tool, constants.R_OK);
+    return { result: "ok", detail: `demo.tool ${tool} is readable` };
+  } catch {
+    return {
+      result: "fail",
+      detail: `demo.tool ${tool} is missing or unreadable`,
+    };
+  }
 }
 
 export function queueObservation(text: string | undefined): DoctorObservation {

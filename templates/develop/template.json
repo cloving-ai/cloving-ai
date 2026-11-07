@@ -238,6 +238,32 @@
           "needs": []
         }
       ]
+    },
+    {
+      "id": "demo",
+      "question": "Does the workflow record a demo video of the change?",
+      "options": [
+        {
+          "id": "none",
+          "label": "No demo",
+          "summary": "The run records no demo video and uploads no file.",
+          "change": "Leave develop/round.ts and the declaration unchanged for the demo.",
+          "requires": {},
+          "needs": []
+        },
+        {
+          "id": "record",
+          "label": "Record a demo before the merge",
+          "summary": "After the review accepts the work and before the merge, a turn in the work tree of the run reads the demo tool in demo.tool and records a video of at most 60 seconds into $CLOVING_ATTACHMENTS_DIRECTORY/demo.mp4. A change with no visible surface gets a terminal scene that runs its new tests or commands. The turn changes no tracked file, publishes nothing, and ends with Demo status: recorded or Demo status: failed. attach-asset then puts the video in the pull request description with a line that names the commit. A failed turn gets one more turn with the failure text, and a failed upload gets one more upload. Two failures end the run blocked with demo-failed, and no merge starts.",
+          "change": "In develop/round.ts import recordDemo from develop/demo.ts, and import the type DevelopTask from develop/report.ts. In developRound call deliverPull({ input, round, pull }), and add input: DevelopTask to its request. In deliverPull, after the check of review.accepted and before the merge, add const demo = await recordDemo({ input: request.input, round: round, pull: pull }); if (demo !== null) return demo;. In develop.declaration.json add attach-asset to methods.github and set workflow.effectLimit to 99. Set the private setting demo.tool to the absolute path of the instruction file or folder of the demo tool.",
+          "requires": {
+            "verify": ["none"],
+            "accept": ["greptile", "person", "turn"],
+            "merge": ["green", "person"]
+          },
+          "needs": ["demo-tool"]
+        }
+      ]
     }
   ]
 }

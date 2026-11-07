@@ -62,6 +62,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "retention.action": "CLOVING_RETENTION_ACTION",
   "retention.archiveFolder": "CLOVING_RETENTION_ARCHIVE_FOLDER",
   "turns.environment": "CLOVING_TURN_ENVIRONMENT",
+  "demo.tool": "CLOVING_DEMO_TOOL",
 };
 
 const environmentOnly = [
@@ -130,6 +131,7 @@ export function configurationValues(
     workflows: values.workflows,
     retention: values.retention,
     turns: values.turns,
+    demo: values.demo,
   };
   for (const [name, group] of Object.entries(groups)) {
     if (group === undefined) continue;

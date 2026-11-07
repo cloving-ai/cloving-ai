@@ -22,6 +22,7 @@ export const doctorCodes = [
   "turn-environment",
   "retention",
   "theme",
+  "demo-tool",
 ] as const;
 
 export type DoctorCode = (typeof doctorCodes)[number];
@@ -71,6 +72,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Set a retention period: cloving config set retention.days 30 --private",
   theme:
     "See the refusal codes: cloving themes list; fix the theme folder, or select another theme: cloving config set watch.theme auto",
+  "demo-tool":
+    "Set the absolute path of the instruction file or folder of the demo tool: cloving config set demo.tool /ABSOLUTE/PATH",
 };
 
 export function doctorExitCode(checks: readonly DoctorCheck[]): number {
@@ -85,6 +88,7 @@ export interface DoctorWorkflow {
   readonly workflowId: string;
   readonly capabilities: readonly string[];
   readonly input?: SubmissionContract;
+  readonly methods?: Readonly<Record<string, readonly string[]>>;
 }
 
 export function requiredDoctorCodes(
@@ -108,5 +112,11 @@ export function requiredDoctorCodes(
   }
   if (workflows.some((workflow) => hasTicketField(workflow.input)))
     codes.add("ticket-command");
+  if (
+    workflows.some((workflow) =>
+      workflow.methods?.["github"]?.includes("attach-asset"),
+    )
+  )
+    codes.add("demo-tool");
   return [...codes];
 }

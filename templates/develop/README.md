@@ -1,6 +1,6 @@
 # Develop template decisions
 
-`template.json` describes the eight decisions used by the develop template.
+`template.json` describes the nine decisions used by the develop template.
 The default workflow in `develop.ts` accepts the declared ticket input, selects
 from the queue, opens a pull request, waits for Greptile at 5/5, and calls
 `mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
@@ -34,7 +34,7 @@ point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
 `optionTests as flowTests`, then run every `flowTests` scenario. Keep the shared
 turn, partial-helper and interruption tests. `develop/interruption-tests.ts`
 follows the selected point IDs, so it tests each configuration. Package tests apply each source edit, validate
-its requirements, and test eleven complete configurations through the folder
+its requirements, and test thirteen complete configurations through the folder
 loader and the installed package, covering every option.
 
 `develop/next-ticket.mts` and `develop/ready-tickets.mts` are reference scripts
@@ -97,8 +97,8 @@ selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
 no additional verification, Greptile at 5/5, merge after checks, return
-partial work to the queue, ask a person for recovery, and keep a lessons file in
-the repository.
+partial work to the queue, ask a person for recovery, keep a lessons file in
+the repository, and record no demo.
 Selecting `person` at selection, acceptance and partial work, with `local` at
 merge and `none` at lessons, describes the existing reviewed local-branch
 process.
@@ -335,6 +335,115 @@ text and the size, and it gives the worker these rules:
 The lesson changes are part of the pull request, so the review sees them. The
 option `file` requires a pull-request merge option, `green` or `person`. Local
 merge supports only `none`, because it has no `prepare` step.
+
+## Demo
+
+The `demo` point records a demo video of the change before the merge. The
+default option `none` records no video and uploads no file. The option
+`record` adds a demo step to `deliverPull` in `develop/round.ts`. The step runs
+after the review accepts the work and before the merge. A round that stops
+before the review records no demo, for example partial work with the partial
+option `person`.
+
+To select the demo, edit `develop/round.ts`:
+
+- Import `recordDemo` from `develop/demo.ts`, and import the type
+  `DevelopTask` from `develop/report.ts`.
+- In `developRound`, call `deliverPull({ input, round, pull })`. Add
+  `input: DevelopTask` to the request of `deliverPull`.
+- In `deliverPull`, after the check of `review.accepted` and before the merge,
+  add the lines below.
+
+```typescript
+const demo = await recordDemo({ input: request.input, round: round, pull: pull });
+if (demo !== null) return demo;
+```
+
+In `develop.declaration.json`, add `attach-asset` to `methods.github`, and set
+`workflow.effectLimit` to 99. Set `selection.demo` to `"record"` in
+`develop/scenarios.ts` and run the option tests.
+
+### The demo tool
+
+The template contains no demo tool. Use a tool of your own, for example a
+skill folder with a `SKILL.md` file. Set its absolute path in the private
+setting `demo.tool`:
+
+```sh
+cloving config set demo.tool /ABSOLUTE/PATH/demo-video
+```
+
+The setting is private, so the path does not go into the repository. The
+service gives the path to each turn in the variable `CLOVING_DEMO_TOOL`. A
+change of the setting needs a service restart. The `demo-tool` check of
+`cloving doctor` is required when a workflow declares `attach-asset`. The
+check fails when `demo.tool` is not set, is not an absolute path, or names a
+file or folder that Cloving cannot read.
+
+### The demo turn
+
+The demo turn runs in the work tree of the run. Its prompt names the pull
+request, its commit and the ticket, and it gives the worker these rules:
+
+- Read the instruction file of the tool in `CLOVING_DEMO_TOOL` first, and
+  follow its rules.
+- Remove an earlier video, then write the video to
+  `$CLOVING_ATTACHMENTS_DIRECTORY/demo.mp4`.
+- Show what the change does in at most 60 seconds. For a change with no
+  visible surface, record a terminal scene that runs the new or changed tests
+  or commands.
+- Keep the video smaller than 10 MB, and keep local paths and private data out
+  of it.
+- Read the contact sheet of the video, and record again until each frame is
+  correct.
+- Do not change, commit or push tracked files, and do not publish anything.
+- End the report with `Demo status: recorded` or `Demo status: failed`.
+
+Only a report with the last line `Demo status: recorded` gives a recorded
+demo.
+
+### The upload
+
+After a recorded demo, the GitHub method `attach-asset` puts `demo.mp4` in the
+description of the pull request with `place: "description"`. The text above
+the video names the commit, for example
+`Demo video of commit 1a2b3c4. A Cloving turn recorded it.` A demo of a later
+round replaces the video of the earlier round. The watch page shows the video
+as the demo of the run.
+
+`attach-asset` refuses a file larger than 100 MB with `attachment-too-large`.
+GitHub has its own limits for a video in a description: 10 MB on a free plan
+and 100 MB on a paid plan. The description place makes no release asset. With
+the place `comment`, the method uploads a release asset, and GitHub limits
+each release asset to 2 GiB. On a public repository, the video is public.
+Anyone can see and download it, also after the pull request closes.
+
+### Retries and stops
+
+- A failed demo turn, a result without a report, or a report without the
+  recorded line gets one more turn. The prompt of that turn ends with the
+  failure text: the report of the first turn, or the reason of the failed
+  turn.
+- A failed upload gets one more upload of the same video, with no new turn.
+- A second failure ends the round `blocked` with the reason `demo-failed` and
+  the evidence `demo`. No merge starts, and the workflow adds
+  `cloving: blocked` to the GitHub issue of the ticket.
+
+The demo turns have the scope
+`{ phase: "demo", operation: "claude-turn", round, key }`. The uploads have
+the operation `github-attach`. The key is `attempt-1` or `attempt-2`.
+
+### Effect limit of the demo
+
+The limit of 99 is the static count of the demo workflow: the 81 effects of
+the default workflow and 3 demo effects in each of the six rounds. A round
+uses at most two demo turns and one upload, or one demo turn and two uploads.
+Two demo turns and two uploads in each round would need 105 effects, which is
+more than the operator maximum of 100. For this reason, a failed upload gets a
+second upload, not a new turn. The panel and the `red-green` option also add
+effects. Thus the demo requires the `verify` option `none` and an `accept`
+option other than `panel`. The demo needs a pull request, so it also requires
+the `merge` option `green` or `person`.
 
 ## Option fields
 

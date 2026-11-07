@@ -10,6 +10,7 @@ export interface DevelopSelection {
   readonly partial: string;
   readonly recovery: string;
   readonly lessons: string;
+  readonly demo: string;
 }
 
 const prefix = "repo/.cloving/workflows/";
@@ -23,6 +24,7 @@ export const automatic = {
   partial: "queue",
   recovery: "person",
   lessons: "file",
+  demo: "none",
 };
 export const reviewed = {
   input: "ticket",
@@ -33,6 +35,7 @@ export const reviewed = {
   partial: "person",
   recovery: "stop",
   lessons: "none",
+  demo: "none",
 };
 export const completeConfigurations = [
   automatic,
@@ -45,6 +48,8 @@ export const completeConfigurations = [
   { ...automatic, accept: "panel" },
   { ...automatic, verify: "red-green" },
   { ...automatic, verify: "red-green", merge: "person" },
+  { ...automatic, demo: "record" },
+  { ...automatic, accept: "turn", merge: "person", demo: "record" },
   {
     ...reviewed,
     input: "task-text",
@@ -78,6 +83,9 @@ export async function configuredDevelopFiles(
   if (selected.input === "task-text")
     edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   if (selected.verify === "red-green") verificationFiles(files);
+  if (selected.demo === "record")
+    for (const { from, to } of demoEdits)
+      edit(files, { file: "develop/round.ts", from, to });
   if (selected.recovery === "stop")
     edit(files, {
       file: "develop/recovery.ts",
@@ -111,6 +119,29 @@ function verificationFiles(files: Record<string, string>): void {
     return { merged: false, reason: verification.reason, output: verification.output };`,
   });
 }
+
+const demoEdits = [
+  {
+    from: 'import { openPull, finishPull } from "./pull.ts";',
+    to: 'import { recordDemo } from "./demo.ts";\nimport { openPull, finishPull } from "./pull.ts";',
+  },
+  {
+    from: "  type RoundResult,",
+    to: "  type RoundResult,\n  type DevelopTask,",
+  },
+  {
+    from: "await deliverPull({ round, pull",
+    to: "await deliverPull({ input, round, pull",
+  },
+  {
+    from: "  readonly pull: PullRequest;\n",
+    to: "  readonly pull: PullRequest;\n  readonly input: DevelopTask;\n",
+  },
+  {
+    from: "  try {\n    return await ",
+    to: "  const demo = await recordDemo({ input: request.input, round: round, pull: pull });\n  if (demo !== null) return demo;\n  try {\n    return await ",
+  },
+];
 
 const panelEdits = [
   {
@@ -279,6 +310,16 @@ function localFiles(files: Record<string, string>): void {
     edit(files, { file: "develop.ts", from: line, to: "" });
 }
 
+function defaultLimit(selected: DevelopSelection): number {
+  return selected.accept === "panel" || selected.demo === "record" ? 99 : 87;
+}
+
+function reviewAndDemoMethods(selected: DevelopSelection): string[] {
+  return (selected.accept === "greptile" ? ["wait-review"] : []).concat(
+    selected.demo === "record" ? ["attach-asset"] : [],
+  );
+}
+
 function declaration(selected: DevelopSelection): string {
   const local = selected.merge === "local";
   const verification =
@@ -290,7 +331,7 @@ function declaration(selected: DevelopSelection): string {
           methods: { command: ["run:red-green"] },
         }
       : {
-          effectLimit: selected.accept === "panel" ? 99 : 87,
+          effectLimit: defaultLimit(selected),
           capabilities: [],
           workflow: {},
           methods: {},
@@ -308,7 +349,7 @@ function declaration(selected: DevelopSelection): string {
     "partial-issue",
     "close-pr",
   ];
-  if (selected.accept === "greptile") github.push("wait-review");
+  github.push(...reviewAndDemoMethods(selected));
   return JSON.stringify({
     workflow: {
       workflowId: "develop",

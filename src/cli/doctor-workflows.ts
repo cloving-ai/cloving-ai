@@ -59,7 +59,11 @@ export async function doctorWorkflows(
         continue;
       }
       if (isCandidateDeclaration(declaration))
-        discovered.push({ scope, ...declaration.workflow });
+        discovered.push({
+          scope,
+          ...declaration.workflow,
+          methods: declaration.methods,
+        });
     }
   }
   return discovered;
