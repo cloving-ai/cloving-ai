@@ -114,7 +114,19 @@ const actions = {
   },
   "pr comment": () => { state.triggers.push(Number(args[2])); },
   "pr close": () => { state.prs.find((item) => item.number === Number(args[2])).state = "CLOSED"; },
+  "issue comment": () => {
+    const comments = state.issueComments ?? [];
+    const created = { id: comments.length + 1, issue: Number(args[2]), body: option("--body") };
+    created.html_url = "https://github.com/acme/demo/issues/" + created.issue + "#issuecomment-" + created.id;
+    state.issueComments = [...comments, created];
+    out(created.html_url);
+  },
   "api GET comments": () => {
+    if (option("--jq")) {
+      const marker = JSON.parse(option("--jq").match(/contains\\((".*")\\)/)[1]);
+      out(JSON.stringify((state.issueComments ?? []).filter((comment) => comment.issue === number && comment.body.includes(marker)).map((comment) => comment.html_url)));
+      return;
+    }
     const pr = state.prs.find((item) => item.number === number);
     reviewedNow(pr);
     const head = state.latest[number];

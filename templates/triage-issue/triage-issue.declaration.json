@@ -1,0 +1,21 @@
+{
+  "workflow": {
+    "workflowId": "triage-issue",
+    "effectLimit": 12,
+    "capabilities": ["command", "claude", "github"],
+    "commands": ["triage-candidates"],
+    "schedule": { "everySeconds": 1800, "input": {} },
+    "handoffs": ["triage-issue"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": {
+        "issue": { "type": "integer", "minimum": 1, "optional": true }
+      }
+    }
+  },
+  "methods": {
+    "command": ["run:triage-candidates"],
+    "claude": ["run-turn"],
+    "github": ["prepare", "comment-issue", "label", "discard"]
+  }
+}

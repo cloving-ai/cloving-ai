@@ -38,7 +38,7 @@ export const rescueSelections = [
   { accept: "turn", merge: "green" },
 ];
 
-function replaced(
+export function replaced(
   files: Record<string, string>,
   edit: {
     readonly path: string;
@@ -51,7 +51,7 @@ function replaced(
   files[prefix + edit.path] = source.replace(edit.from, edit.to);
 }
 
-function selected(
+export function selected(
   files: Record<string, string>,
   edit: { readonly path: string; readonly selection: unknown },
 ): void {

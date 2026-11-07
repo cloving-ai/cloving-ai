@@ -10,6 +10,7 @@ import {
 import { attachAsset } from "./github-attach.ts";
 import { closeIssue, partialIssue } from "./github-ticket-status.ts";
 import { mergeStep } from "./github-merge-queue.ts";
+import { commentIssue } from "./github-issue-comment.ts";
 import type { MergeCheck } from "./github-merge-call.ts";
 import {
   captureDraft,
@@ -360,6 +361,7 @@ export const methods: ReadonlyMap<string, Method> = new Map([
   ["partial-issue", partialIssue],
   ["label", label],
   ["create-issue", createIssue],
+  ["comment-issue", commentIssue],
   ["capture-draft", captureDraft],
   ["discard", discard],
   ["open-pr", openPull],
