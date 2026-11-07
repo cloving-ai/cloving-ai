@@ -163,7 +163,16 @@ export interface WatchTile {
   readonly demo: string | null;
 }
 
+export type WatchFinished =
+  | "dismissed"
+  | "ticket-closed"
+  | "pull-request-merged"
+  | "later-run-completed"
+  | "retention-expired";
+
 export interface WatchRun {
+  readonly finished?: WatchFinished;
+  readonly linked?: true;
   readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
   readonly commandWaits?: readonly CommandWaitView[];
@@ -177,6 +186,7 @@ export interface WatchRun {
   readonly childRunIds?: readonly string[];
   readonly continuedFrom?: string;
   readonly continuedBy?: string;
+  readonly continuedCostUsd?: number | null;
   readonly mergeProof?: PrIdentity | null;
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";

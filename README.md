@@ -6,29 +6,254 @@ Build a software factory with simple TypeScript for your project, and your proje
 
 The end of vibe coding. This is agentic engineering.
 
-A workflow file in TypeScript is the factory. It sets the steps: a worker turn in a work tree, a pull request, a review and a merge. Cloving keeps the state of each run and a record of each step. A GitHub step continues after a restart of the service. A worker turn in work stops at a restart. Cloving builds itself through a private copy of the `develop` template for this repository.
+Cloving lets you build a personal software factory from connected workflows. A workflow is a TypeScript file in your repository or in a private folder. Workflows plan, implement, review, revise and ship work. They stop for a person at each decision point that you select.
 
-## Cloving
+Cloving runs the coding agent that you already use. It has native workers for Claude Code, Codex, Cursor Agent, Gemini CLI, Grok and opencode. Another command-line agent can work through a one-shot command form. Cloving keeps the state of each run and a record of each step on your computer.
 
-Cloving is a local durable development workflow service in TypeScript. You give it a ticket or the text of a task. A Claude Code worker does the work on a new git branch in its own work tree. Then you, or a review on GitHub, decide about the work. The service records each run, each event and each decision on your computer.
+Workflows can hand work to one another. The output of one workflow can become the input of the next, and a loop can bring results back as new work. You set the part of each person in the factory. A step can belong to you, to an agent or to Cloving after its checks.
 
-This pre-release has one supervised slice: a service for one git repository, a workflow host, a Claude Code worker, a GitHub worker and review rounds. `cloving --help` lists the commands.
+The aim is not only faster code. The aim is less time to drive an agent harness, and more time for the work that needs a person: to select priorities, to shape solutions and to validate results.
 
-What works now:
+```sh
+npx cloving init
+```
 
-- `cloving start` starts the service for one git repository, with the workflow host, the Claude worker and a watch page.
-- `cloving start` registers workflows from repository `.cloving/workflows/` and user `cloving/workflows/` folders (see "Develop a workflow").
-- The `develop` template supports ticket or task-text input and human or automatic review.
-- The default `develop` template uses Greptile review and merges at the confidence score 5/5, with no human approval.
-- Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge.
-- The watch page shows the runs, the events and the work of the worker as it occurs.
+Run this command in a git repository. [First run](#first-run) gives the requirements and tells what the command does.
 
-- `cloving init-prompt` lists local chat-store metadata without reading chat contents. Its setup instructions ask for consent before the agent counts repeated work and samples chats to suggest linked workflows.
+- [How a factory works](#how-a-factory-works)
+- [First run](#first-run)
+- [Make the factory yours](#make-the-factory-yours)
+- [Use Cloving in a team](#use-cloving-in-a-team)
+- [Results reported by the creator](#results-reported-by-the-creator)
+- [Limits](#limits)
+- [Reference](#reference)
 
-What does not work yet:
+The homepage is [cloving.ai](https://cloving.ai). Cloving uses the [MIT license](LICENSE).
 
-- The Claude worker is not confined. It runs as the current user.
-- An approval does not merge the branch. You merge the branch yourself.
+## How a factory works
+
+A factory is a set of workflows that pass work to one another. The table shows each stage of the work, the template that does it and the built-in steps that it uses. The last column shows where a person can decide. During `cloving init`, the setup agent asks about these decision points. `cloving templates copy` alone keeps the defaults; edit the copied files to change them.
+
+| Stage | Template | What Cloving does | A person can |
+| --- | --- | --- | --- |
+| Plan | `idea-to-issue` | An agent turn researches an idea and writes a draft issue. A review turn or a person checks the draft. Cloving posts the issue. | Read the draft. Approve the post. |
+| Implement | `develop` | An agent turn works on a new branch in its own git work tree. | Select the ticket. |
+| Review | `develop` | A code review app scores the pull request (Greptile at 5/5 in the default), a review turn of your agent reviews it, or a person reviews it. | Accept the work, or deny it with feedback. |
+| Revise | `develop` | The review findings and the output of a failed check, merge conflict or CI run go to the next agent turn. | Tell the agent what to do with partial work. |
+| Ship | `develop` | Cloving merges the pull request after the checks and CI pass. Other options wait for your approval, or leave the branch for you. | Approve the merge, or merge the branch yourself. |
+| Feedback | `review-day` | Each day, Cloving runs `cloving report` and your read-only commands. One agent turn analyzes the evidence and a second turn critiques it. Cloving posts the report as an issue. | Approve one improvement, or none. |
+
+### The templates connect
+
+```text
+an idea ─> idea-to-issue ──hand-off──> develop ─> merged pull request
+                                                         │
+                                                  cloving report
+                                                         v
+  an issue that waits <── idea-to-issue <── one improvement ── review-day
+  for you to queue it     (posts only)      that you approve   (each day)
+```
+
+- `idea-to-issue` hands the issue that it posts to `develop`. Its other options put the issue in the queue with the label `cloving: ready`, or leave it for you.
+- `review-day` runs on a daily schedule. It hands the improvement that you approve to a copy of `idea-to-issue` with the `next.nothing` option. That copy posts the issue and stops, so you decide when the work goes to `develop`.
+- `review-day` hands work to the workflow ID `idea-to-issue`. To keep both copies of `idea-to-issue`, give the first copy another ID with `cloving templates copy idea-to-issue --id <id>`.
+- The three templates are in the package, and each template has its own tests. A copy is your code. Change it as you want.
+
+Open issues plan more built-in steps. These steps are not built yet: [#622](https://github.com/cloving-ai/cloving-ai/issues/622) plans a goal into linked tickets, [#619](https://github.com/cloving-ai/cloving-ai/issues/619) adds a review panel to `develop`, and [#633](https://github.com/cloving-ai/cloving-ai/issues/633) answers review threads on pull requests that have no run.
+
+### An example of a larger factory
+
+> This example is illustrative. Its workflows do not ship with Cloving. You can write them with the same built-in steps.
+
+1. A scheduled `triage` workflow reads new requests through a command that you supply. It asks you which request to plan.
+2. `idea-to-issue` researches the request and posts an issue.
+3. A `size-ticket` workflow decides if the issue is small. A large issue goes back to the plan stage as smaller issues.
+4. `develop` implements, reviews, revises and merges each small issue.
+5. A `review-requests` workflow reviews the pull requests of your teammates and asks you before it posts (see [Use Cloving in a team](#use-cloving-in-a-team)).
+6. `review-day` reads the results and proposes the next improvement.
+
+The creator of Cloving uses a private factory of 12 connected workflows. It takes work from a feature idea to a merged merge request. Its workflows are not public.
+
+### Where you stay in control
+
+- A decision point is a step that waits for a person: `waitForDecision`, `reviewByPerson` or `mergeByPerson`. The run waits for your answer, also across restarts of the service.
+- An approval belongs to one exact commit or draft. A changed commit or draft opens a new approval.
+- `cloving questions` lists the open decisions with the complete commands to answer them: `cloving approve`, `cloving deny --text "FEEDBACK"` and `cloving answer`. The watch page shows the same commands. An MCP client can answer through the Cloving tools.
+- The defaults of `develop` are hands off: the queue selects the ticket, Greptile accepts the work at 5/5 and Cloving merges after the checks. Select the person options at the points where you want to decide.
+- Read the diff before you approve.
+
+## First run
+
+```sh
+npx cloving init
+```
+
+Run the command in a git repository. You need these items:
+
+- macOS or Linux on arm64 or x64. Windows is not supported.
+- Node.js and npm in the ranges of `package.json` (see [Install](#install)).
+- A git repository.
+- A coding agent on the search path, with its login: `claude`, `codex`, `cursor-agent`, `gemini`, `grok` or `opencode`. Another agent needs a one-shot command form.
+- For workflows that use GitHub: the `gh` command with a login, and an `origin` remote on GitHub or GitHub Enterprise. Cloving supports no other code host.
+
+The command does these steps:
+
+1. It asks which coding agent to use for setup.
+2. It saves that agent in your private settings for this repository, outside the repository.
+3. It starts the agent in your terminal with the first message ``run `cloving init-prompt` ``. The agent can use the `cloving` command in that session.
+
+`cloving init-prompt` gives the agent the facts of the repository and the setup steps. The agent then works with you, one question at a time:
+
+1. It runs `cloving doctor` and fixes the failed checks with you.
+2. It asks for the ticket source, the check command and your private texts.
+3. It can look at your local agent chats to find work that you repeat. It asks for your consent first. The chat text that it reads goes to the provider of that agent. This is one way to find your first workflows. You can also select a template directly.
+4. It copies a template and asks about each decision point.
+5. It runs the workflow tests and shows the diff of `.cloving/` before it asks about a commit.
+6. It prints the start command and the first run command. It does not start the service or submit a run. It makes no GitHub write without a yes from you.
+
+`cloving init --harness <name or path>` skips the agent question. A name with both a file and a shell entry needs an explicit path or `--harness shell:<name>`. A later `cloving init` lists your current default first. The agent stays attached to your terminal, uses its normal permissions and returns its exit status when the session ends.
+
+### A first useful run
+
+For a first run, select these options of `develop`:
+
+- input: **A task text**
+- select: **A person**
+- verify: **No additional verification**
+- accept: **A person**
+- merge: **A person merges the local branch**
+- partial: **A person decides**
+
+With these options, Cloving does not push, open a pull request or merge. You see the work of the agent before it goes to GitHub. The agent still sends your code to the provider of its model, as it does without Cloving.
+
+Start the service in one terminal:
+
+```sh
+cloving start
+```
+
+Submit a small task in a second terminal:
+
+```sh
+cloving run develop --prompt "Add a test for the date parser"
+cloving questions
+```
+
+Open `http://127.0.0.1:3663/` to watch the run. The run stops at your review of the commit of the agent. Read the diff of that commit. Then copy one of the commands that `cloving questions` prints:
+
+- `cloving approve ...` completes the run. Merge the branch yourself.
+- `cloving deny ... --text "FEEDBACK"` sends your feedback to the agent for another round.
+
+When you trust a step, change it to a hands-off option. Ask the setup agent again with `cloving init`, or edit the copy yourself. Then run `cloving workflows test develop` and `cloving reload`.
+
+### Keep the `cloving` command
+
+`npx` puts `cloving` on the search path only for the agent session that `cloving init` starts. In a new terminal, use `npx cloving start`, or install the command:
+
+```sh
+npm install --global cloving --ignore-scripts
+```
+
+`npx` runs the install scripts of three dependencies: `esbuild`, `@swc/core` and the optional `cbor-extract`. To install with no scripts, run the command above first. Then run `cloving init`.
+
+## Make the factory yours
+
+### Start from a template
+
+```sh
+cloving templates list
+cloving templates show develop
+cloving templates copy develop
+cloving workflows test develop
+```
+
+`cloving templates copy` writes the workflow file, its helper folder, its declaration and its test into `.cloving/workflows/`. `--id <workflow-id>` makes a copy with another ID. The first option at each decision point is the hands-off default. `cloving templates show <name> --json` lists each option with the source edit that it needs.
+
+A workflow in `.cloving/workflows/` belongs to the repository, and you can commit it. A workflow in your user folder stays private. By default, the user folder is `~/.config/cloving/workflows/`. The private setting `workflows.folder` selects a different folder.
+
+### Change a workflow
+
+A workflow is an exported async function with the `"use workflow"` directive. A `<name>.declaration.json` file beside it names the capabilities, methods, hand-off targets, commands and effect limit of the workflow. Cloving checks and compiles each workflow before it registers it. The steps come from `cloving/workflows`:
+
+| Step | What it does |
+| --- | --- |
+| `protectedEffect` | Asks Cloving for one effect, for example an agent turn or a GitHub operation. |
+| `waitForDecision` | Opens a decision for a person and waits for the answer. |
+| `reviewByAgent`, `reviewByPerson` | Get a review of an exact commit or draft from Greptile, a review turn or a person. |
+| `mergeWhenGreen`, `mergeByPerson` | Merge a pull request after the checks and CI pass, with or without your approval. |
+| `runCommand`, `waitForCommand` | Run a command that you configure, one time or as a durable wait. |
+| `handoff`, `waitForRun` | Start a run of a declared workflow, and wait for its outcome. |
+| `sleep` | Pause the workflow for a number of seconds. |
+
+A turn profile sets the agent, the model and the environment of one kind of turn. For Claude Code, a profile can also set the spend limit and the allowed tools. A read-only review turn is one example. Your workflow code also sets the number of rounds, the effect limit and each decision point.
+
+Run `cloving workflows test <workflow-id>` after each change. Run `cloving reload` to use the change in a service that runs. A change of the queue workflow or of a schedule needs a restart. [Develop a workflow](#develop-a-workflow) gives the full contract.
+
+### Connect workflows
+
+- `handoff({ workflowId, input })` starts a run of another workflow. The target must be in the `handoffs` list of the declaration. The target checks the input with its normal input contract.
+- `waitForRun({ runId, maximumWaitSeconds })` waits for the outcome of a run that this run started. The workflow can select its next step from that outcome, for example from its `promotionId`.
+- A chain of hand-offs has at most five runs. The first run of the chain counts. Cloving records the parent and the chain of each run, and the watch page links them.
+- A `schedule` in the declaration starts a workflow at a fixed interval. `review-day` uses a schedule.
+- A workflow with `"queue": true` takes ready tickets from your tracker through your commands, in up to four lanes.
+- The label `cloving: ready` can connect workflows through GitHub. `idea-to-issue` can add it, and your next-ticket command can select the issues that have it.
+
+## Use Cloving in a team
+
+Engineers on teams at large technology companies use Cloving every day. Some of these teams use their factories to review one another's work. Each engineer runs a personal factory on a personal computer. The factories meet on GitHub and through the commands that each engineer configures.
+
+**Built in:**
+
+- Commit shared workflows and checks in `.cloving/` of the repository: `.cloving/workflows/` and `.cloving/config.json`. The project file sets fields such as `checks.beforeMerge`, `checks.required` and `merge.mode`.
+- Each engineer keeps the agent, the profiles, the private texts and the notify command in a private settings file outside the repository.
+- `merge.mode: "queue"` merges through the GitHub merge queue of a shared default branch.
+- Pull requests, issues and the `cloving:` labels are visible to the team on GitHub.
+- Cloving refuses a push or post that contains the path of your home folder or a text from `privateTexts`.
+
+**Your own workflow:** Cloving has no built-in step that posts a review on the pull request of a teammate. You can write a workflow for it with built-in steps:
+
+1. A `schedule` starts the workflow, for example each hour.
+2. `runCommand` runs a command that you supply. The command lists the pull requests that wait for your review and prints their changes.
+3. `reviewByAgent` with a turn reviewer runs your review profile on that text as a draft.
+4. `reviewByPerson` shows you the exact review text. Nothing posts without your approval.
+5. `runCommand` runs a second command that you supply, which posts the approved text.
+
+Commands run without your GitHub login, as agent turns do. A command that reads from or writes to GitHub must supply its own credentials. A workflow can also wait for the review of a teammate: `waitForCommand` can poll a read-only status command for up to 30 days.
+
+**Not built:** Cloving has no shared team service, team dashboard or shared priority system. Each service runs for one repository on one computer, and its watch page listens only on the loopback address. No step changes skills or prompts automatically from feedback.
+
+## Results reported by the creator
+
+The creator of Cloving compared a personal factory with the creator's earlier agentic engineering process. The baseline is that agentic process, not code written by hand. The creator reports these changes:
+
+- Active time to drive the harness for each merge request: 47 minutes before, 6 minutes after. This is about 87% less. It is not the total engineering time.
+- Token cost for each merge request: 40% less.
+- Throughput of merge requests: 5 times as high.
+
+These are the observations of one person. They are not from a controlled study, and they do not measure code quality. Your results can be different.
+
+Cloving develops itself through `develop`, a private copy of the develop template, with a Greptile review and an automatic merge. The pull requests of this repository from branches that start with `cloving/task-` come from that workflow.
+
+## Limits
+
+- **The agents are not confined.** Each turn runs as the current user in its work tree, with no approval prompts. A turn can read other files and credentials on the computer.
+- **GitHub credentials.** Agent turns and configured commands get an empty GitHub CLI configuration folder and no GitHub token variables. This is not a sandbox. Cloving pushes, posts and merges with your `gh` login and git credentials.
+- **Public text.** In a public repository, the text of a pull request or issue is public. The privacy check refuses the path of your home folder and the texts of `privateTexts`. A private name that is not on the list can still pass.
+- **Cost.** The default Claude Code command has a spend limit of 5 USD for each attempt of a turn. A retry starts a new attempt with its own limit. Cloving sets no spend limit for the other agents. A run can have many turns, and its workflow code sets the number of rounds. `queue.dailySpendLimitUsd` holds new queue runs at 85% of a daily limit, but runs in work continue.
+- **Recovery after a restart.** Workflow state, decisions, hand-offs, schedules, waits and the queue continue after a restart of the service. A GitHub step continues, and its record prevents a second merge. When Cloving cannot tell if a post completed, the result is `post-uncertain`. Check GitHub before you try again.
+- **Agent turns after a restart.** A Claude Code or Codex turn in work resumes its recorded session, at most two times for each turn. A turn of another agent, or a turn with no recorded session, cannot resume. It ends with `claude-turn-interrupted`, and `develop` starts the turn again one time in the same work tree.
+- **Commands after a restart.** A command in work does not start again. It fails with `command-interrupted`, because it can have written data.
+- **One computer, one code host.** A service runs for one repository on one computer. GitHub and GitHub Enterprise are the only supported code hosts.
+
+## Reference
+
+- [Install](#install): platforms, Node.js ranges, global and checkout installs, repository settings and `cloving doctor`.
+- [Run the service](#run-the-service): `cloving start`, the runtime folders, the watch page and its read API, themes, MCP clients, phones and `cloving report`.
+- [Daily development](#daily-development): reloads, the ticket command, the queue, the agent workers, turn profiles, the pull requests of `develop`, queue control and the GitHub merge queue.
+- [Continuous process](#continuous-process): one ticket after the next with `develop`.
+- [Prompts for a coding agent](#prompts-for-a-coding-agent): prompts for a continuous process and for tickets.
+- [Develop a workflow](#develop-a-workflow): the workflow contract, the steps, declarations, commands, hand-offs, stages, schedules and kept bundles.
+- [Development of Cloving](#development-of-cloving): checks and tests for contributors.
 
 ## Install
 
@@ -37,10 +262,10 @@ Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges 
 A run needs these tools:
 
 - `git`.
-- The `claude` command of Claude Code on the search path. The Claude worker runs it as the current user.
+- The command of a supported coding agent on the search path (see [First run](#first-run)). The worker runs it as the current user.
 - For workflows that use GitHub: the `gh` command with a login. Workflows that select Greptile review also need Greptile on the repository. The worker uses the `gh` login and the git credentials of the current user.
 
-Install the executable from npm:
+`npx cloving init` runs the package with no installation (see [Keep the `cloving` command](#keep-the-cloving-command)). Install the executable from npm to keep the command:
 
 ```sh
 npm install --global cloving --ignore-scripts
@@ -100,7 +325,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`. For each environment value that hides a file value, the start guide prints a warning, for example `Warning: CLOVING_MERGE_MODE in the environment hides merge.mode in the private file.` At each start, the service records the source of each setting: `environment`, `private`, `project` or `default`. `cloving status --json` shows them in `settingSources`, and the `service` check of `cloving doctor` names the settings that come from the environment.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes`, `queue.workingLanes`, `queue.maxLoadPerCore`, `queue.maxMemoryPressure`, `queue.dailySpendLimitUsd`, `spend.scope`, `limits.effects` and `limits.chain`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action`, `retention.archiveFolder`, `turns.environment`, `commands`, `commandSeconds` and `schedules`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. The memory pressure limit is `"normal"` or `"warn"`. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The turn environment is a list of variable names, or `"inherit"`; the default is an empty list (see "What a turn can reach"). The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue"). The operator maximums `limits.effects` (1 to 1000, default 100, `CLOVING_LIMIT_EFFECTS`) and `limits.chain` (2 to 50, default 5, `CLOVING_LIMIT_CHAIN`) bound what a workflow declaration can ask for. A change of these maximums needs a service restart.
+The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes`, `queue.workingLanes`, `queue.maxLoadPerCore`, `queue.maxMemoryPressure`, `queue.dailySpendLimitUsd`, `spend.scope`, `limits.effects` and `limits.chain`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action`, `retention.archiveFolder`, `turns.environment`, `commands`, `commandSeconds`, `schedules` and `demo.tool`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. The memory pressure limit is `"normal"` or `"warn"`. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The turn environment is a list of variable names, or `"inherit"`; the default is an empty list (see "What a turn can reach"). The demo tool `demo.tool` is the absolute path of the instruction file or folder of a demo tool; it has no default (see the demo option in `templates/develop/README.md`). The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue"). The operator maximums `limits.effects` (1 to 1000, default 100, `CLOVING_LIMIT_EFFECTS`) and `limits.chain` (2 to 50, default 5, `CLOVING_LIMIT_CHAIN`) bound what a workflow declaration can ask for. A change of these maximums needs a service restart.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -140,21 +365,17 @@ The optional `retention` check shows the size and the folder count of `journal/`
 
 The optional `turn-environment` check names the variables of the environment of `cloving doctor` that a turn does not get. It shows the names only, never the values. It does not name the `CLOVING_*` settings, `GH_CONFIG_DIR` or the GitHub token variables, because a turn never got them from the service. When a project needs a variable from the list, add its name to `turns.environment`. The check gives `warn` when `turns.environment` is `"inherit"`. An invalid value fails the check and names the variable.
 
+The optional `demo-tool` check reads the private setting `demo.tool` (`CLOVING_DEMO_TOOL`). The `record` option of the `demo` point of the `develop` template lists this check in its `needs`, so the `cloving init-prompt` setup requires `ok` for it with that option. The GitHub method `attach-asset` alone does not need a demo tool. The check gives `skip` when the setting is not set. It fails when the setting is not an absolute path, or names a file or folder that Cloving cannot read.
+
 Doctor probes harness versions and effective executable paths without running a turn. Shell scripts and simple `node script` wrappers receive `--version` from the repository folder; unsupported launcher arguments fail the probe. GitHub login and reads use the origin's host, including GitHub Enterprise. GitHub calls are reads limited to ten seconds each; a service probe waits at most five seconds. Recent Greptile activity does not establish that a usable review is available, and missing activity does not prove the app is absent.
 
-## First run
+## Run the service
 
-```sh
-cloving init
-```
-
-Run this in your git repository. Choose the agent harness for setup; Cloving saves it in your private repository settings and opens the agent with ``run `cloving init-prompt` `` as its first message. The agent walks through setup, a first run and a first ticket with you.
-
-Use `cloving init --harness <name or path>` to skip the question. A name with both a file and a shell entry needs an explicit path or `--harness shell:<name>`. A later `cloving init` lists your current default first. The harness stays attached to your terminal, uses its normal permissions and returns its exit status when the session ends.
+[First run](#first-run) tells how `cloving init` sets up a repository.
 
 ### The service and its settings
 
-`cloving start` starts one Cloving service for the git repository of the current directory, with the workflow host, the Claude worker and the watch page. `--repository` selects a different repository. Stop the service with Control-C. A stop of the service stops a turn in work; submit that ticket again.
+`cloving start` starts one Cloving service for the git repository of the current directory, with the workflow host, the agent workers and the watch page. `--repository` selects a different repository. Stop the service with Control-C. A stop of the service stops a turn in work. After the next start, a Claude Code or Codex turn resumes its session, and `develop` starts a turn of another agent again (see [Limits](#limits)).
 
 Each repository has its own default runtime directory: `<root>/cloving/<name>-<id>/run`. The root is `XDG_RUNTIME_DIR`, then `XDG_STATE_HOME`, then `~/.local/state`. The name keeps only letters, digits, `-` and `_` from the git top-level folder name, up to 24 characters. The ID is the first eight hexadecimal characters of the SHA-256 digest of that folder's real path. Commands in the repository find its service automatically; outside it, use `--repository <directory>` or `CLOVING_RUNTIME_DIR`. The start guide prints commands with the service repository already selected. `CLOVING_RUNTIME_DIR` overrides both the recorded adoption and the default for clients and start.
 
@@ -164,13 +385,27 @@ On start, Cloving keeps the old default runtime path only when all retained work
 
 The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
 
-The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of runs that need you. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
+The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of items in the **Needs you** panel. This count includes the decisions and the stopped runs. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
 
 The **Needs you** panel under the floor lists each pending decision, each paused run, and each failed or blocked run with no continuation, with the count of items. A decision has a blue mark. A paused, failed or blocked run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. The item that waited longest is first. **Answer** opens the run with its decision form. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
 
+The panel leaves out a failed or blocked run when its work is finished:
+
+- the GitHub issue of its ticket is closed;
+- its pull request is merged;
+- a later run of the same ticket completed with a handoff, with no `Ticket status: partial` and no failed issue update;
+- it ended more than `retention.days` ago;
+- a person dismissed it.
+
+With watch actions on, each failed or blocked run in the panel has a **Dismiss** button. The button sends the same command as `cloving dismiss <run-id>`. The service records the dismissal as the event `run.dismissed` of the run, so the run stays out of the panel after a restart. A dismissal does not change the state, the files or the pull request of the run. When the run did not end, the service refuses the dismissal with `run-active`.
+
+The header count and the panel use only the runs of the floor. When a link opens an older run, that run does not change the count.
+
+The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
+
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
-A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. A cost shows as unknown when the cost of one of its runs is not known.
+A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. The cost is the sum of the known run costs. When the cost of a run is not known, the cost shows as "at least $129.93", and a line under it shows the count, for example "4 runs with no cost". The rows of the table show their cost in the same way. The cost per completed run is the known cost of the day divided by the count of completed runs with a known cost.
 
 Below the floor, the **Completed today** shelf shows the count of runs that completed today, and one tile for each run, the newest first. The shelf uses the same day as the Today panel. A blocked run has no tile. A tile shows the ticket number, the pull request number, the title in at most two lines, the workflow, the time from start to end and the cost. The left edge of a tile has the color of the line of its workflow. When the run attached a video (`.mp4` or `.webm`) with the GitHub method `attach-asset`, the tile also shows **Play demo** with a small frame of the video. Select it to play the video in a player on the page. Press Esc or click outside the player to close it. The shelf scrolls sideways when the tiles do not fit. With no completed run, the shelf shows "No run completed today."
 
@@ -433,15 +668,16 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has eleven tools:
+The server has twelve tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
 - `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
+- `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
 
-Each of the eight tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -566,7 +802,7 @@ A turn gets only these variables of the service environment:
 - The `env` values of its profile.
 - The variables that the private setting `turns.environment` names.
 
-Cloving also sets `CLOVING_TURN_ID`, `CLOVING_ATTACHMENTS_DIRECTORY` and an empty `GH_CONFIG_DIR`. A turn never gets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. A turn does not get the other variables, for example `SSH_AUTH_SOCK`, cloud keys or other secrets of the shell that started the service. A shell harness starts a login shell, and the startup files of that shell can set more variables. A harness that signs commits with an SSH agent needs `SSH_AUTH_SOCK` in `turns.environment`. Run `cloving doctor` to see the names that a turn does not get.
+Cloving also sets `CLOVING_TURN_ID`, `CLOVING_ATTACHMENTS_DIRECTORY` and an empty `GH_CONFIG_DIR`. When the private setting `demo.tool` is set, a turn also gets its value in `CLOVING_DEMO_TOOL`. A turn never gets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`. A turn does not get the other variables, for example `SSH_AUTH_SOCK`, cloud keys or other secrets of the shell that started the service. A shell harness starts a login shell, and the startup files of that shell can set more variables. A harness that signs commits with an SSH agent needs `SSH_AUTH_SOCK` in `turns.environment`. Run `cloving doctor` to see the names that a turn does not get.
 
 For one release, `turns.environment` can have the value `"inherit"`. Then a turn gets the whole service environment except the GitHub tokens, as in earlier versions. A later release removes this value. Commands of `CLOVING_COMMANDS` keep the whole service environment.
 
@@ -774,7 +1010,7 @@ The default `develop` template uses automatic review without an approval. The Gi
 
 When the ticket names a GitHub issue, the workflow adds `cloving: in progress` after preparing the work tree and removes `cloving: ready` and `cloving: blocked`. A blocked run adds `cloving: blocked` and removes `cloving: in progress`. A failed label operation throws and can fail the template run. Cloving creates the labels it adds or removes with the fixed color `ededed`; existing labels have their color and description reset by `gh label create --force`.
 
-The last worker report must end with exactly one line: `Ticket status: complete` or `Ticket status: partial`. A partial report must put `Remaining:` immediately before a list with one `- ` item per line, followed by the status line. The worker records the parsed status and remaining items before shortening the summary, so summary limits cannot remove those fields. If the preserved fields exceed the result byte limit, the turn fails with `claude-result-too-large` and retains bounded cost metadata; the full report stays in the private turn log. Older recorded turns still use summary parsing. Missing, repeated, unknown or malformed status reports count as partial with the remaining item "The worker report has no ticket status line."
+The last worker report must end with exactly one line: `Ticket status: complete` or `Ticket status: partial`. A partial report must put `Remaining:` immediately before a list with one `- ` item per line, followed by the status line. The worker records the parsed status and remaining items before shortening the summary, so summary limits cannot remove those fields. If the preserved fields exceed the result byte limit, the turn fails with `claude-result-too-large` and retains bounded cost metadata; the full report stays in the private turn log. Older recorded turns still use summary parsing. Missing, repeated, unknown or malformed status reports count as partial with the remaining item "The worker report has no ticket status line." When the last line of a report is `Demo status: recorded` or `Demo status: failed`, the worker also keeps that status in the field `demoStatus` before it shortens the summary. The demo option of the `develop` template reads this field.
 
 After a merge, a protected GitHub operation updates the issue body and labels. Complete work closes the issue with reason `completed` and adds "Completed in pull request #M." to `## Cloving status`. Partial work keeps the issue open and appends `- Pull request #M: partial. Remaining: ...` to that section at the end of the body, preserving earlier partial lines and other body text. Items are separated by semicolons. The issue privacy check runs before new remaining text is written; a refusal uses "Remaining work is in the private run report." instead. No issue comment is posted. Status writes add and remove only workflow labels, preserving unrelated label edits. Before a body write, Cloving rereads the issue and refuses a changed body with `github-issue-conflict`; the merged outcome records `issueUpdate: failed`. GitHub does not support conditional PATCH requests for this endpoint, so this check cannot make the read and write atomic.
 
@@ -808,15 +1044,27 @@ The new run uses the kept workflow bundle of the old run. If that bundle is not 
 
 The old run keeps its state. `cloving status` and the watch page show `Continued by: <new run>` on the old run and `Continues: <old run>` on the new run. Only a run that is `failed`, or `completed` with the outcome `blocked`, can continue. The service refuses an active run with `run-active`, a dropped run with `run-cancelled`, a completed run that is not blocked with `run-not-blocked`, and a run that already has a continuation with `run-already-continued`. A blocked run has no failed step, so it needs `--from`; without it, the service refuses with `continuation-step-required`.
 
+A reused effect keeps the recorded cost of its turn in the old run. The new run counts only the cost of its own turns. `cloving status` and the run detail of the watch page show the cost of the own turns, and on a separate line the cost of the continued turns, for example `Cost of the continued turns: 19.17 USD (counted in the earlier run)`. In the status JSON, the field `continuedCostUsd` has that cost, and each reused turn in `workerTurns` has `reused: true`. `cloving report` and the Today panel count only the own turns of a run.
+
 The service also refuses these continuations:
 
 - A run that ended more than `retention.days` days ago gets `run-retention-expired`. With `retention.days` set to `null`, no run is too old.
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
+- A run whose ticket issue is closed gets `continuation-ticket-closed`, and a run whose pull request is merged gets `continuation-pull-request-merged`. The service reads the issue of the `GitHub issue:` line of the ticket and the pull request that the run opened with the GitHub command of the service. When a read fails, the service does not refuse. The watch page shows no **Continue** button for such a run, because **Needs you** leaves it out.
+- A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
 - A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
 
-A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
+A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. The service checks the lanes and admits a continuation of a queue run one request at a time, together with the queue admissions of the same workflow. So two requests at the same time cannot both take the last free lane. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+
+To remove a stopped run from **Needs you** with no continuation, dismiss it:
+
+```sh
+cloving dismiss <run-id>
+```
+
+The **Dismiss** button of the item sends the same command. The MCP tool `cloving_dismiss` does the same. `cloving events <run-id>` shows the dismissal as `run.dismissed`.
 
 ### Rescue stuck pull requests
 
@@ -865,6 +1113,14 @@ The workflow holds no secret and no publish credential. The CI publish job publi
 The template `triage-issue` gives each new issue from another person a first verdict. Copy it into your private workflow folder with `cloving templates copy triage-issue`. Its default schedule runs every 30 minutes. A pass reads the operator command `triage-candidates` from `CLOVING_COMMANDS`. The command prints a JSON array such as `[{"number": 639}]`. A candidate is an open issue without the label `cloving: triaged`, opened by an account that is not in the operator list, with no new post for 10 minutes. The template includes the reference script `triage-issue/triage-candidates.mts`, which takes the operator logins as arguments and prints at most four candidates.
 
 The pass hands off one `triage-issue` run with `{"issue": N}` for each candidate, and waits for each run. One turn reads the issue, searches the open and closed issues and the code on the default branch, and ends with one verdict line: `Triage: duplicate #<number>`, `Triage: bug <size>`, `Triage: feature <size>` or `Triage: needs-information`. The size is `small`, `medium` or `large`. The point `post` selects **A person approves** (the default) or **Post at once**. The GitHub method `comment-issue` takes `{"number": N, "body": "<text>"}` and posts the body as one comment with the privacy check of an issue body, so it requires `privateTexts`. The comment ends with a marker of the operation, so a replay finds the comment and does not post again. Then the run adds `cloving: triaged` and the label of the verdict. A denied approval adds only `cloving: triaged`. The workflow never closes an issue and never adds `cloving: ready`. The README file of the template gives the details.
+
+### Audit dependencies
+
+The templates `dependency-audit` and `dependency-ticket` watch the published advisories of the installed npm packages. Copy both into your private workflow folder with `cloving templates copy dependency-audit` and `cloving templates copy dependency-ticket`.
+
+`dependency-audit` runs each day. It reads the operator command `audit-candidates` from `CLOVING_COMMANDS`. The reference script `dependency-audit/audit-candidates.mts` of the copy gets the GitHub CLI configuration folder of a login as its argument, because an operator command gets no GitHub login from the service. It adds a clean detached work tree of the newest default branch, runs `npm ci --ignore-scripts`, `npm audit --json` and `npm ls --all --json` in it, and removes it. It prints a JSON array with at most 10 packages that have a critical or high advisory. Each package has each advisory ID, severity, title, vulnerable range and patched range, and each install path. The script leaves out each advisory that an open issue with the label `cloving: security` names.
+
+A day with no new critical or high advisory ends `completed` with no turn. Else one turn puts the packages into at most 5 groups, reads the release notes from the installed version to the fixed version, lists each breaking change with the code that uses it (`path:line`), and names the exact change: a new pinned version or an `overrides` entry. For each group, the workflow writes a ticket in the form of the repository, with the advisory table, the install paths, the change, the breaking changes, the rule for the pin and its justification, and the acceptance criteria. The critical groups come first. `create-issue` makes one issue for each run, so the audit hands off one `dependency-ticket` run for each ticket. That run creates the issue and adds the label `cloving: security`. The audit changes no dependency. The README files of the two templates give the details.
 
 ### Queue control
 

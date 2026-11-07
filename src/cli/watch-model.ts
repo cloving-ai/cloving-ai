@@ -8,7 +8,7 @@ import {
 } from "../workflow-refusals.ts";
 import { isTicketStatus } from "../ticket-status.ts";
 import { isPromotionId } from "../workflow-contracts.ts";
-import { priceFields, statusTurns } from "./watch-usage.ts";
+import { budgetsOf, priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf, attemptFields } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type {
@@ -270,24 +270,6 @@ function outcomeOf(
     ...(isPromotionId(promotionId) ? { promotionId } : {}),
     ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
     ...(issueUpdate === "failed" ? { issueUpdate } : {}),
-  };
-}
-
-function budgetsOf(status: Readonly<Record<string, unknown>>) {
-  const budget = record(status["budget"]);
-  const chain = record(status["chain"]);
-  const position = count(chain["position"]);
-  const chainLimit = count(chain["limit"]);
-  const spendLimitUsd = priceOf(status["spendLimitUsd"]);
-  return {
-    ...(position === null || chainLimit === null
-      ? {}
-      : { chain: { position, limit: chainLimit } }),
-    spent: count(budget["spent"]),
-    limit: count(budget["limit"]),
-    claudeCostUsd: priceOf(status["claudeCostUsd"]),
-    estimatedCostUsd: priceOf(status["estimatedCostUsd"]),
-    ...(spendLimitUsd === null ? {} : { spendLimitUsd }),
   };
 }
 

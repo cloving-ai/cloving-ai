@@ -17,6 +17,11 @@ export function priceText(value: unknown, estimate?: unknown): string {
   })} USD`;
 }
 
+export function continuedCostText(value: unknown): string | null {
+  if (value === undefined) return null;
+  return `Cost of the continued turns: ${priceText(value)} (counted in the earlier run)`;
+}
+
 export function spendLimitText(value: unknown): string {
   return priceOf(value) === null ? "" : ` (spend limit ${priceText(value)})`;
 }

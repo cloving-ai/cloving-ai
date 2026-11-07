@@ -15,6 +15,7 @@ const controls: ContinueControls = {
   busy: [],
   messages: {},
   onContinue: () => undefined,
+  onDismiss: () => undefined,
 };
 
 function stoppedRun(
@@ -92,6 +93,7 @@ await test("CLV-307 Needs you lists a failed run and a blocked run with no conti
   });
   assert.deepEqual(
     found(waiting, "button")
+      .filter((button) => button["class"] === "need-action need-continue")
       .map((button) => button["disabled"])
       .toSorted(),
     [true, undefined],

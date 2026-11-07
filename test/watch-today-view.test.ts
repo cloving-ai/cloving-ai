@@ -13,8 +13,9 @@ const today: DailyNumbers = {
   completed: 3,
   stopped: 1,
   costUsd: 25,
+  unknownCostRuns: 0,
   costPerCompletedRunUsd: 25 / 3,
-  yesterday: { completed: 1, costUsd: 8 },
+  yesterday: { completed: 1, costUsd: 8, unknownCostRuns: 0 },
   days: [
     { date: "2026-10-29", completed: 0 },
     { date: "2026-10-30", completed: 0 },
@@ -25,9 +26,14 @@ const today: DailyNumbers = {
     { date: "2026-11-04", completed: 3 },
   ],
   workflows: [
-    { workflowId: "develop-issue", completed: 2, costUsd: 24.5 },
-    { workflowId: "idea", completed: 1, costUsd: 0.5 },
-    { workflowId: "review-day", completed: 0, costUsd: null },
+    {
+      workflowId: "develop-issue",
+      completed: 2,
+      costUsd: 24.5,
+      unknownCostRuns: 0,
+    },
+    { workflowId: "idea", completed: 1, costUsd: 0.5, unknownCostRuns: 0 },
+    { workflowId: "review-day", completed: 0, costUsd: 0, unknownCostRuns: 0 },
   ],
 };
 
@@ -65,26 +71,65 @@ await test("CLV-289 the Today panel shows the completed runs, the cost, the cost
   );
 });
 
-await test("CLV-289 a cost that is not known shows as unknown, and a day with no completed run shows no cost per completed run", () => {
+await test("CLV-321 with runs that have no cost, the Today panel and the lines show the known spend as at least, with the count of runs with no cost", () => {
   const html = panel(
     todayModel({
       today: {
         ...today,
-        completed: 0,
-        costUsd: null,
-        costPerCompletedRunUsd: null,
-        yesterday: { completed: 0, costUsd: null },
+        costUsd: 129.93,
+        unknownCostRuns: 4,
+        costPerCompletedRunUsd: 43.31,
+        yesterday: { completed: 1, costUsd: 8, unknownCostRuns: 1 },
+        workflows: [
+          {
+            workflowId: "develop-issue",
+            completed: 2,
+            costUsd: 120,
+            unknownCostRuns: 3,
+          },
+          {
+            workflowId: "idea",
+            completed: 1,
+            costUsd: 9.93,
+            unknownCostRuns: 1,
+          },
+        ],
       },
     }),
   );
   assert.match(
     html,
-    /<strong>unknown<\/strong><span class="today-label">spent<\/span><span class="today-yesterday">unknown yesterday<\/span>/,
+    /<div class="today-number"><strong>at least \$129\.93<\/strong><span class="today-label">spent<\/span><span class="today-yesterday">at least \$8\.00 yesterday<\/span><span class="today-unknown">4 runs with no cost<\/span><\/div>/,
+  );
+  assert.match(
+    html,
+    /<strong>\$43\.31<\/strong><span class="today-label">per completed run<\/span>/,
+  );
+  assert.match(
+    html,
+    /<th scope="row">develop-issue<\/th><td>2<\/td><td>at least \$120\.00<\/td>/,
+  );
+  assert.match(
+    html,
+    /<th scope="row">idea<\/th><td>1<\/td><td>at least \$9\.93<\/td>/,
+  );
+});
+
+await test("CLV-289 a day with no completed run shows no cost per completed run", () => {
+  const html = panel(
+    todayModel({
+      today: {
+        ...today,
+        completed: 0,
+        costPerCompletedRunUsd: null,
+      },
+    }),
   );
   assert.match(
     html,
     /<strong>-<\/strong><span class="today-label">per completed run<\/span>/,
   );
+  assert.doesNotMatch(html, /today-unknown|at least/);
 });
 
 await test("CLV-289 the chart shows seven bars with the completed runs of each day, today last", () => {
@@ -113,7 +158,7 @@ await test("CLV-289 the table has one row for each workflow with its completed r
   const html = panel(todayModel());
   assert.match(
     html,
-    /<h3>By line<\/h3><table class="today-table"><thead><tr><th scope="col">Line<\/th><th scope="col">Done<\/th><th scope="col">Spent<\/th><\/tr><\/thead><tbody><tr><th scope="row">develop-issue<\/th><td>2<\/td><td>\$24\.50<\/td><\/tr><tr><th scope="row">idea<\/th><td>1<\/td><td>\$0\.50<\/td><\/tr><tr><th scope="row">review-day<\/th><td>0<\/td><td>unknown<\/td><\/tr><\/tbody><\/table>/,
+    /<h3>By line<\/h3><table class="today-table"><thead><tr><th scope="col">Line<\/th><th scope="col">Done<\/th><th scope="col">Spent<\/th><\/tr><\/thead><tbody><tr><th scope="row">develop-issue<\/th><td>2<\/td><td>\$24\.50<\/td><\/tr><tr><th scope="row">idea<\/th><td>1<\/td><td>\$0\.50<\/td><\/tr><tr><th scope="row">review-day<\/th><td>0<\/td><td>\$0\.00<\/td><\/tr><\/tbody><\/table>/,
   );
 });
 

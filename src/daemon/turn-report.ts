@@ -14,9 +14,20 @@ type ReportFields = Changes &
     readonly ticketStatus: TicketStatus;
     readonly summary: string;
     readonly reviewVerdict: ReviewVerdict | null;
+    readonly demoStatus?: DemoStatus;
     readonly worktree: string;
     readonly estimatedCostUsd: number | null;
   };
+
+type DemoStatus = "recorded" | "failed";
+
+function demoStatus(text: string): { readonly demoStatus?: DemoStatus } {
+  const trimmed = text.trimEnd();
+  const line = trimmed.slice(trimmed.lastIndexOf("\n") + 1).trim();
+  if (line === "Demo status: recorded") return { demoStatus: "recorded" };
+  if (line === "Demo status: failed") return { demoStatus: "failed" };
+  return {};
+}
 
 interface ReportLimits {
   readonly summaryCharacters: number;
@@ -95,6 +106,7 @@ export async function turnReport(
         result.reviewVerdict === undefined
           ? review.reviewVerdict
           : result.reviewVerdict,
+      ...demoStatus(result.text),
       summary:
         harness.output === "text"
           ? feedback.slice(-limits.summaryCharacters)

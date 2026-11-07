@@ -9,18 +9,26 @@ import {
   type WatchActions,
 } from "./watch-actions.ts";
 
-export async function continueAction(
+type RunAction = (
   actions: WatchActions,
   request: IncomingMessage,
-): Promise<string | null> {
-  if (!actionAllowed(actions, request)) return null;
-  const runId = record(await actionBody(request))?.["runId"];
-  if (!isRecordKey(runId)) return null;
-  const reply = await send(actions.runtimeDirectory, {
-    operation: "continue-run",
-    parameters: { runId, commandId: randomUUID() },
-  });
-  return JSON.stringify(
-    reply.kind === "result" ? reply.result : { error: reply.error },
-  );
+) => Promise<string | null>;
+
+function runAction(operation: "continue-run" | "dismiss-run"): RunAction {
+  return async (actions, request) => {
+    if (!actionAllowed(actions, request)) return null;
+    const runId = record(await actionBody(request))?.["runId"];
+    if (!isRecordKey(runId)) return null;
+    const reply = await send(actions.runtimeDirectory, {
+      operation,
+      parameters: { runId, commandId: randomUUID() },
+    });
+    return JSON.stringify(
+      reply.kind === "result" ? reply.result : { error: reply.error },
+    );
+  };
 }
+
+export const continueAction = runAction("continue-run");
+
+export const dismissAction = runAction("dismiss-run");

@@ -14,14 +14,22 @@ const today: DailyNumbers = {
   completed: 3,
   stopped: 1,
   costUsd: 25,
+  unknownCostRuns: 0,
   costPerCompletedRunUsd: 25 / 3,
-  yesterday: { completed: 1, costUsd: 8 },
+  yesterday: { completed: 1, costUsd: 8, unknownCostRuns: 0 },
   days: [
     { date: "2026-11-02", completed: 1 },
     { date: "2026-11-03", completed: 1 },
     { date: "2026-11-04", completed: 3 },
   ],
-  workflows: [{ workflowId: "develop-issue", completed: 3, costUsd: 25 }],
+  workflows: [
+    {
+      workflowId: "develop-issue",
+      completed: 3,
+      costUsd: 25,
+      unknownCostRuns: 0,
+    },
+  ],
 };
 
 export function workshopModel(): WatchModel {

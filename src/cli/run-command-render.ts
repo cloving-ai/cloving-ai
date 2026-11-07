@@ -40,6 +40,13 @@ export function runContinuedLines(result: Fields): readonly string[] {
   ];
 }
 
+export function runDismissedLines(result: Fields): readonly string[] {
+  return [
+    `Run ${show(result["runId"])} is dismissed. Needs you does not list it.`,
+    ...receiptLines(result),
+  ];
+}
+
 export function continuationLines(run: unknown): readonly string[] {
   const continuedFrom = part(run, "continuedFrom");
   const continuedBy = part(run, "continuedBy");

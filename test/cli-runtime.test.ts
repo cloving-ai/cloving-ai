@@ -27,6 +27,7 @@ const commands = [
   "pause",
   "resume",
   "drop",
+  "dismiss",
   "events",
   "watch",
   "start",

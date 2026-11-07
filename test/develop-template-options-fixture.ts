@@ -10,6 +10,7 @@ export interface DevelopSelection {
   readonly partial: string;
   readonly recovery: string;
   readonly lessons: string;
+  readonly demo: string;
 }
 
 const prefix = "repo/.cloving/workflows/";
@@ -23,6 +24,7 @@ export const automatic = {
   partial: "queue",
   recovery: "person",
   lessons: "file",
+  demo: "none",
 };
 export const reviewed = {
   input: "ticket",
@@ -33,6 +35,7 @@ export const reviewed = {
   partial: "person",
   recovery: "stop",
   lessons: "none",
+  demo: "none",
 };
 export const completeConfigurations = [
   automatic,
@@ -45,6 +48,8 @@ export const completeConfigurations = [
   { ...automatic, accept: "panel" },
   { ...automatic, verify: "red-green" },
   { ...automatic, verify: "red-green", merge: "person" },
+  { ...automatic, demo: "record" },
+  { ...automatic, accept: "turn", merge: "person", demo: "record" },
   {
     ...reviewed,
     input: "task-text",
@@ -91,6 +96,8 @@ export async function configuredDevelopFiles(
       to: 'export const lessons = "none" as',
     });
   files[prefix + "develop.declaration.json"] = declaration(selected);
+  if (selected.demo === "record")
+    for (const change of demoEdits) edit(files, change);
   scenarioFiles(files, selected);
   return files;
 }
@@ -111,6 +118,44 @@ function verificationFiles(files: Record<string, string>): void {
     return { merged: false, reason: verification.reason, output: verification.output };`,
   });
 }
+
+const demoEdits = [
+  {
+    file: "develop/round.ts",
+    from: 'import { openPull, finishPull } from "./pull.ts";',
+    to: 'import { recordDemo } from "./demo.ts";\nimport { openPull, finishPull } from "./pull.ts";',
+  },
+  {
+    file: "develop/round.ts",
+    from: "  type RoundResult,",
+    to: "  type RoundResult,\n  type DevelopTask,",
+  },
+  {
+    file: "develop/round.ts",
+    from: "await deliverPull({ round, pull",
+    to: "await deliverPull({ input, round, pull",
+  },
+  {
+    file: "develop/round.ts",
+    from: "  readonly pull: PullRequest;\n",
+    to: "  readonly pull: PullRequest;\n  readonly input: DevelopTask;\n",
+  },
+  {
+    file: "develop/round.ts",
+    from: "  try {\n    return await ",
+    to: "  const demo = await recordDemo({ input: request.input, round: round, pull: pull });\n  if (demo !== null) return demo;\n  try {\n    return await ",
+  },
+  {
+    file: "develop.declaration.json",
+    from: '"close-pr"',
+    to: '"close-pr","attach-asset"',
+  },
+  {
+    file: "develop.declaration.json",
+    from: '"effectLimit":87',
+    to: '"effectLimit":99',
+  },
+];
 
 const panelEdits = [
   {

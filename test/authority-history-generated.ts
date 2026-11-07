@@ -164,6 +164,7 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
     { kind: "complete-run", expectedRevision: revision },
     { kind: "cancel-run", expectedRevision: revision },
     { kind: "fail-run", expectedRevision: revision },
+    { kind: "dismiss-run" },
   ];
 }
 
@@ -184,7 +185,7 @@ export function generatedHistory(seed: number): readonly AuthorityEvent[] {
       choice: next(12),
     });
     const selection =
-      index < 16 ? index % 2 : next(proposed.length - (index < 450 ? 3 : 0));
+      index < 16 ? index % 2 : next(proposed.length - (index < 450 ? 4 : 0));
     const command = {
       ...proposed[selection],
       runId,

@@ -72,6 +72,7 @@ export interface Configuration {
     readonly archiveFolder?: string | null;
   };
   readonly turns?: { readonly environment?: TurnVariables };
+  readonly demo?: { readonly tool?: string };
 }
 
 interface Schema {
