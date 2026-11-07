@@ -9,6 +9,7 @@ import {
 } from "./project-configuration.ts";
 import { preparedBundle } from "./self-host-project.ts";
 import { queueLimits } from "./self-host-queue.ts";
+import { workflowLimits, type WorkflowLimits } from "../src/workflow-limits.ts";
 
 const settings = record(JSON.parse(String(process.argv[2]))) ?? {};
 
@@ -22,6 +23,18 @@ function required(name: string): string {
   if (value === undefined)
     throw new Error(`The reload program needs the start setting ${name}.`);
   return value;
+}
+
+function limitText(value: unknown): string | undefined {
+  return typeof value === "number" ? String(value) : undefined;
+}
+
+function startLimits(): WorkflowLimits {
+  const limits = record(settings["limits"]);
+  return workflowLimits({
+    CLOVING_LIMIT_EFFECTS: limitText(limits?.["effects"]),
+    CLOVING_LIMIT_CHAIN: limitText(limits?.["chain"]),
+  });
 }
 
 function startEnvironment(): NodeJS.ProcessEnv {
@@ -86,6 +99,7 @@ async function reloadedBundle(directory: string) {
       home: required("home"),
       xdgConfigHome: optional("xdgConfigHome"),
       userFolder,
+      limits: startLimits(),
     });
     const bundle = join(directory, "workflow-bundles", prepared.bundleDigest);
     return {

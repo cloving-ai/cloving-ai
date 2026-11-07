@@ -30,6 +30,8 @@ export type CommandWaits = Readonly<Record<string, CommandWaitDeclaration>>;
 export interface WorkflowDeclaration {
   readonly workflowId: string;
   readonly effectLimit: number;
+  readonly chainLimit?: number;
+  readonly spendLimitUsd?: number;
   readonly capabilities: readonly ("claude" | "github" | "command")[];
   readonly input: SubmissionContract;
   readonly stages?: readonly WorkflowStage[];
@@ -283,6 +285,8 @@ export function isWorkflowDeclaration(
     !keys(declaration, [
       "workflowId",
       "effectLimit",
+      "chainLimit",
+      "spendLimitUsd",
       "capabilities",
       "input",
       "stages",
@@ -297,11 +301,22 @@ export function isWorkflowDeclaration(
   const { workflowId, effectLimit, capabilities, input } = declaration;
   return (
     matches(workflowId, /^[A-Za-z0-9-]{1,64}$/) &&
-    integer(effectLimit, { minimum: 1, maximum: 100 }) &&
+    integer(effectLimit, { minimum: 1, maximum: 1000 }) &&
+    declaredBudgets(declaration) &&
     isCapabilities(capabilities) &&
     declaredCommands(declaration, capabilities) &&
     isInput(input) &&
     declaredOptions(declaration, input)
+  );
+}
+
+function declaredBudgets(declaration: Fields): boolean {
+  const spend = declaration["spendLimitUsd"];
+  return (
+    (!Object.hasOwn(declaration, "chainLimit") ||
+      integer(declaration["chainLimit"], { minimum: 2, maximum: 50 })) &&
+    (!Object.hasOwn(declaration, "spendLimitUsd") ||
+      (typeof spend === "number" && Number.isFinite(spend) && spend > 0))
   );
 }
 

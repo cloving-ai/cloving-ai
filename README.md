@@ -100,7 +100,7 @@ For a project-local tarball installation, use `./node_modules/.bin/cloving` wher
 
 Each file requires `"version": 1`. Environment settings override private settings, which override project settings, which override built-in defaults. The start guide names each configured field's source: `environment`, `private` or `project`. For each environment value that hides a file value, the start guide prints a warning, for example `Warning: CLOVING_MERGE_MODE in the environment hides merge.mode in the private file.` At each start, the service records the source of each setting: `environment`, `private`, `project` or `default`. `cloving status --json` shows them in `settingSources`, and the `service` check of `cloving doctor` names the settings that come from the environment.
 
-The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes`, `queue.workingLanes`, `queue.maxLoadPerCore`, `queue.maxMemoryPressure` and `queue.dailySpendLimitUsd`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action`, `retention.archiveFolder` and `turns.environment`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. The memory pressure limit is `"normal"` or `"warn"`. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The turn environment is a list of variable names, or `"inherit"`; the default is an empty list (see "What a turn can reach"). The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue").
+The project file supports `checks.beforeMerge`, `checks.required`, `checks.redGreen`, `merge.mode`, `tickets.command`, `tickets.nextCommand`, `tickets.readyCommand`, `queue.everySeconds`, `queue.lanes`, `queue.workingLanes`, `queue.maxLoadPerCore`, `queue.maxMemoryPressure`, `queue.dailySpendLimitUsd`, `spend.scope`, `limits.effects` and `limits.chain`. The private file supports these same fields plus `harness.name`, `harness.kind`, `harness.path`, `harness.command`, `harness.turn`, `harness.output`, `profiles`, `fallbackModels`, `tokenPrices`, `privateTexts`, `notify.command`, `watch.port`, `watch.actions`, `watch.theme`, `selfUpdate.everySeconds`, `github.command`, `workflows.folder`, `retention.days`, `retention.action`, `retention.archiveFolder` and `turns.environment`. Commands are arrays of arguments; seconds, lanes, spend limits and ports are numbers. The memory pressure limit is `"normal"` or `"warn"`. A watch port can also be `"off"`; watch actions are `"on"` or `"off"`. A watch theme is a theme name or `"auto"`; the default is `"auto"` (see "Themes of the watch page"). The retention days are a whole number of at least 1, or `null` to keep all records and workflow bundles; the default is 30. The retention action is `"archive"` or `"delete"`; the default is `"archive"`. The archive folder is an absolute path, or `null` for the `archive` folder in the state folder. The turn environment is a list of variable names, or `"inherit"`; the default is an empty list (see "What a turn can reach"). The merge mode is `"direct"` or `"queue"`; the default is `"direct"` (see "The GitHub merge queue"). The operator maximums `limits.effects` (1 to 1000, default 100, `CLOVING_LIMIT_EFFECTS`) and `limits.chain` (2 to 50, default 5, `CLOVING_LIMIT_CHAIN`) bound what a workflow declaration can ask for. A change of these maximums needs a service restart.
 
 For example, a shared `.cloving/config.json` can contain:
 
@@ -614,7 +614,9 @@ CLOVING_TICKET_COMMAND='["github-ticket"]' cloving start
 
 Set `CLOVING_QUEUE_SECONDS` to a whole number from 10 to 3600 to poll for ready tickets. The queue starts the declared workflow with `"queue": true` and requires both ticket commands when that workflow exists. If no workflow declares it, no queue starts, even when the interval is set. `CLOVING_QUEUE_LANES` sets the number of simultaneous runs, from 1 to 16, and requires `CLOVING_QUEUE_SECONDS`; its default is 1. For example, `CLOVING_QUEUE_LANES=4` admits at most one new ticket each cycle until four lanes are busy. Each run has its own branch and work tree. Manual submissions to the queue workflow share this limit and receive `workflow-active` when all lanes are busy. A ticket already being developed receives `ticket-active`. After a restart that moves the queue to another workflow, active runs of earlier queue workflows still occupy lanes and exclude their tickets.
 
-Set `queue.dailySpendLimitUsd` in project or private configuration, or `CLOVING_QUEUE_DAILY_SPEND_USD`, to a positive finite USD limit. It requires `CLOVING_QUEUE_SECONDS`. At 85 percent of this limit, the queue holds new runs until spend falls below the threshold. Spend covers worker turns of queue workflows settled in the last 24 hours, using each reported price or its token-price estimate. Runs in work continue, so spend can exceed the limit. Status and watch show spend, the limit, unknown costs and turns in work. Unknown costs are never counted as zero; when every settled turn has unknown cost, they show `Price not known`. The window and hold are reconstructed from stored settlements after restart. Runs of other workflows do not count.
+Set `queue.dailySpendLimitUsd` in project or private configuration, or `CLOVING_QUEUE_DAILY_SPEND_USD`, to a positive finite USD limit. It requires `CLOVING_QUEUE_SECONDS`. At 85 percent of this limit, the queue holds new runs until spend falls below the threshold. Spend covers worker turns of queue workflows settled in the last 24 hours, using each reported price or its token-price estimate. Runs in work continue, so spend can exceed the limit. Status and watch show spend, the limit, unknown costs and turns in work. Unknown costs are never counted as zero; when every settled turn has unknown cost, they show `Price not known`. The window and hold are reconstructed from stored settlements after restart. Runs of other workflows do not count, unless `spend.scope` is `all`. Set `spend.scope` in project or private configuration, or `CLOVING_SPEND_SCOPE`, to `queue` (the default) or `all`. With `all`, the spend counts the worker turns of every workflow, and the hold refuses the admission of every workflow with `queue-spend-limit`, also a manual run. The daily limit then does not need `CLOVING_QUEUE_SECONDS`.
+
+A workflow declaration can also set `spendLimitUsd`, a number above 0, as the spend limit of each of its runs. The admission of a run records the limit, so a reload does not change it, and a continuation of the run keeps it. The recorded cost of a run is the sum of the reported price of each ended turn, or its estimate. Turns with no known price do not count. When the recorded cost has reached the limit, the authority refuses each new turn effect of the run with `spend-limit`, and the workflow receives `{ kind: "refused", reason: "spend-limit" }`. The authority reads the limit and the recorded cost in the same step that decides the effect, so a turn that ends just before the request counts. It does not use a cost that the request gives. A turn in work continues, so the cost can pass the limit. `cloving status <runId>` shows the limit after the cost, as `Cost: 1.20 USD (spend limit 1.00 USD)` in text and `spendLimitUsd` in JSON. The watch run detail shows the same text. A turn effect that the authority refused does not count as a turn in the cost of the run.
 
 The optional declaration field `queue` is a boolean. `"queue": true` requires a field named `ticket` with `"type": "ticket"` (`queue-needs-ticket-field`), and every other input field must be optional (`queue-input-incomplete`). Two queue declarations stop startup with `queue-workflow-conflict`. `cloving doctor` requires `next-command` and `queue-interval` whenever a declared workflow takes the queue.
 
@@ -627,6 +629,22 @@ gh issue list --label ready --limit 1000 --json number,createdAt --jq 'map({id: 
 Before enabling more than one lane, update the next-ticket command to honor `CLOVING_SKIP_TICKETS`. Cloving sets this environment variable to space-separated IDs of active tickets and tickets waiting for dependencies. The command must never print an ID from that list. It should print nothing when no eligible ticket remains. The service also checks selected tickets before admission.
 
 In the ticket text returned by `CLOVING_TICKET_COMMAND`, each `#N` in a sentence starting with **Needs** inside `## Dependencies` is a hard dependency. For example, `Needs #123 and #124.` waits until both GitHub issues close. Other references and sections do not create dependencies. Cloving reads dependency state with `CLOVING_GH_COMMAND` (default `gh`); an unavailable or invalid response prevents admission. An open dependency returns `ticket-dependency-open` and puts the ticket in the skip list. Waiting tickets are checked again each cycle with a free lane, so a closed dependency makes its ticket eligible again.
+
+A ticket names its blockers in a `## Dependencies` section, with one line `Needs #<number>` for each blocker:
+
+```markdown
+## Dependencies
+
+Needs #586
+Needs #590
+```
+
+The `develop` template has two reference scripts for GitHub issues that honor this section. `cloving templates copy develop` puts them in the helper folder of the copy and prints the settings that use them:
+
+- `develop/next-ticket.mts` is for `tickets.nextCommand`. It prints the oldest open issue with the `cloving: ready` label whose blockers are all closed. It never prints an ID from `CLOVING_SKIP_TICKETS`.
+- `develop/ready-tickets.mts` is for `tickets.readyCommand`. It prints the same issues as a JSON list of `id` and `readyAt`. The ready time is the later of the time when the issue was opened and the time when its last blocker closed.
+
+The scripts find blockers with the same `Needs` rule as the service. They run `gh` in the current folder of the service, and `gh` finds the repository from that folder. They read all pages of ready issues, so no limit hides an old issue. A pull request with the `cloving: ready` label is not a ticket. An issue in a dependency cycle is never printed. The script writes a line for each cycle that it finds to standard error, for example `Dependency cycle: #4 -> #5 -> #4`. Each issue in a cycle is in one or more of these lines. A blocker that does not exist counts as open, and the warning names it, for example `Missing blocker: #3 needs #99, which does not exist`. When a `gh` call fails, the script prints no ticket, writes the cause and ends with the code 1.
 
 The queue starts a new run only when the machine has room:
 
@@ -798,6 +816,32 @@ A workflow can continue a run of its own handoff chain with the step `continueRu
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
+### Rescue stuck pull requests
+
+A run can end `blocked` or `failed` while its pull request stays open. The templates `patrol` and `rescue-pr` find such pull requests and repair them. Copy both into your private workflow folder with `cloving templates copy patrol` and `cloving templates copy rescue-pr`.
+
+`patrol` runs every 30 minutes. It reads the operator command `patrol-status` from `CLOVING_COMMANDS`. The command prints a JSON array with one item for each open pull request of Cloving:
+
+```json
+[
+  {
+    "number": 641,
+    "branch": "cloving/task-0123456789ab",
+    "state": "blocked",
+    "active": false,
+    "reason": "merge-conflict",
+    "head": "0123456789abcdef0123456789abcdef01234567",
+    "score": 4,
+    "issue": "acme/demo#627",
+    "ticketStatus": "complete"
+  }
+]
+```
+
+`state` is the state of the last run on the branch. `active` is `true` while a run of Cloving is active on the pull request. `score` is the last review score or `null`. `issue` and `ticketStatus` (`complete` or `partial`, from the last worker report) can be `null`. A candidate has `state` `blocked` or `failed`, `active` `false` and a `cloving/` branch. The point `act` selects **Ask a person first** (the default) or **Hand off at once**. One pass hands off at most four `rescue-pr` runs.
+
+`rescue-pr` takes the pull request number. The GitHub `prepare` method with `{"pullRequest": N}` puts the work tree on the branch of that pull request. A turn merges the default branch, resolves the conflicts and fixes the failed CI or the review findings. Then the run pushes, and the points `accept` and `merge` work as in `develop`. After the merge, the run closes the ticket only when the original worker reported `Ticket status: complete`. The README files of the two templates give the details.
+
 ### Queue control
 
 The operator controls the queue of a running service with three commands. Each command uses the service protocol, and `--json` prints one JSON object.
@@ -868,7 +912,7 @@ The restart keeps a drain of the queue and the failure count. `cloving restart -
 
 ## Continuous process
 
-In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
+In a continuous process, Cloving develops one ticket after the next with `develop`. Keep the workflow outside this public repository. In a private repository, run `cloving templates copy develop`. From the Cloving repository, set `cloving config set workflows.folder "$WORKFLOW_FOLDER"`, where `WORKFLOW_FOLDER` is the absolute folder containing that copy, and restart the service. Before the restart, also run the two `cloving config set` commands that the copy printed. Then the queue selects tickets with the reference ticket scripts, which honor ticket dependencies. The setting stays in the operator’s private settings file. Do not commit a workflow copy here.
 
 The unmodified template takes a ticket, selects from the queue (`"queue": true`), accepts Greptile at 5/5, lets Cloving merge after the checks, and returns partial tickets to the queue. Configure the ticket command, next-ticket command and queue interval in the operator’s settings. The queue starts only the declared queue workflow, `develop`.
 
@@ -953,6 +997,8 @@ GitHub issue: OWNER/REPOSITORY#NUMBER
   A numbered list. A test can check each criterion.
 ## First tests
   The first tests to write. Each test fails before the change.
+## Dependencies
+  Only when other tickets must close first. One line "Needs #NUMBER" for each of these tickets.
 
 Rules:
 - One ticket has one behavior. If the work needs more than one pull request, split the ticket.
@@ -1205,6 +1251,8 @@ The package contains workflow templates. `cloving templates list` shows each tem
 
 `cloving templates copy <name>` writes the workflow file, its helper folder, its declaration and its test into `.cloving/workflows/` of the current repository (or of `--repository <directory>`), and prints the decision points and the next command `cloving workflows test <workflow-id>`. The declaration of the copy names its template in the field `template`. `--id <workflow-id>` gives the copy another workflow ID: the command renames the files, the helper folder, the workflow ID and the exported function, and changes the imports and the test references. The ID uses lowercase letters, digits and single hyphens and starts with a letter; another ID fails with `invalid-workflow-id`. A copy writes no file when a workflow file or folder of that ID is already present, and fails with `workflow-exists`. The command writes the files into a temporary folder first, and then puts each file in place; after a failure, it removes the files that it put in place. When two workflows of the project and user folders have `"queue": true` after a copy, the command prints `queue-workflow-conflict`; select "a person" for the select point of one copy.
 
+The optional `scripts` list of `template.json` names script files of the template. Each item has the `file` and the `setting` that uses it. After a copy, the command prints one `cloving config set <setting> '["node","<path>"]' --private` command for each script, with the absolute path of the copied file. Run these commands in the repository of the service. With `--json`, the output has `settings`, a list of `{ setting, command }`. The `develop` template lists its two ticket scripts there.
+
 Tests can import `runScenario` from `cloving/workflows/testing`:
 
 ```typescript
@@ -1267,7 +1315,7 @@ The declaration has two fields: `workflow` contains the workflow declaration, an
 }
 ```
 
-The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–100; capabilities contain one or more of `claude`, `github` and `command`. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, booleans, or tickets. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
+The ID accepts 1–64 letters, digits or hyphens. The effect limit is 1–1000, and registration refuses a limit above the operator maximum `limits.effects` with `effect-limit-above-maximum`. The optional `chainLimit` is 2–50, and registration refuses a limit above `limits.chain` with `chain-limit-above-maximum`. The optional `spendLimitUsd` is a number above 0 (see the spend limits under "The ticket command"). Capabilities contain one or more of `claude`, `github` and `command`. The input byte limit is 1–1048576, subject to the service's own limit. Fields accept nonempty strings, integers with optional inclusive bounds, booleans, or tickets. Fields are required unless `optional` is `true`; unknown fields are rejected. Bounds apply only to integers.
 
 A declaration can have one `"ticket": { "type": "ticket" }` field, named `ticket`. Submit its ID as a string. When it is the only required field, use `cloving run <workflow-id> --ticket 312` or `--next`. You can also use `--input ticket.json` with `{"ticket":"312"}`; include every other required field in that file. At admission, the daemon reads the configured ticket command and replaces the ID with `{ "id": "312", "text": "# ..." }` inside the workflow's `input`. `--next` selects the ID through the configured next command. Missing sources keep the `ticket-source-not-configured` and `next-source-not-configured` refusals. The `Needs #N` dependency rule and `ticket-active` refusal apply as for `develop`. Active tickets are checked within each workflow, so different workflows can work on the same ticket. Doctor requires `ticket-command` for these declarations, and the watch form labels the field **Ticket ID**.
 
@@ -1360,7 +1408,7 @@ const runId = await handoff({
 
 The step returns the target run ID after admission through the operator submission path. It spends one protected-effect unit. The caller’s pinned `handoffs` list must include the target; otherwise the step fails with `handoff-not-declared`. The target validates and resolves the input through its normal submission contract. Refusal fails with `handoff-input-refused` and admits no target run. If the target returns `workflow-active`, the worker makes at most ten attempts, one second apart, then fails with `handoff-start-timeout`. The worker retains the active-target refusal count across restarts. Replays reuse command ID `handoff:<operation ID>` and return the same run ID; separate step calls have distinct operation IDs. After a lost submission reply, recovery replays that same command ID only while the source run, lease, budget and workflow pin still permit dispatch. Status checks and stop never start a target run.
 
-Hand-offs record `parentRunId` and `chainId` (the first run's ID) in the new run's admission. A chain permits at most five runs, including the first; attempting a sixth fails with `chain-limit` and starts no run. This fixed limit follows ancestry, so separate children of the same parent do not consume each other's chain length. The records and limit survive service restarts. `cloving status` shows the parent, chain and child run IDs in text and JSON; watch cards link to parent and child runs across workflows.
+Hand-offs record `parentRunId` and `chainId` (the first run's ID) in the new run's admission. The first run of a chain decides the chain limit for the whole chain: its declared `chainLimit`, or five runs when it declares none. When `limits.chain` is below five, a workflow without `chainLimit` gets `limits.chain`. The limit includes the first run. A continuation of a run keeps the chain limit of that run, also with `--bundle current`. A hand-off past the limit fails with `chain-limit` and starts no run. The admission of the first run records the limit, so a reload does not change it. The limit follows ancestry, so separate children of the same parent do not consume each other's chain length. The records and limit survive service restarts. `cloving status` shows the parent, chain and child run IDs in text and JSON; watch cards link to parent and child runs across workflows. The status of one run also shows its position in the chain and the chain limit, as `Chain position: run 2 of 8` in text and `chain: { position, limit }` in JSON. The watch run detail shows the same position beside the effect budget.
 
 Use `waitForRun` to await the outcome of a run that the current run started with `handoff`:
 
@@ -1554,6 +1602,7 @@ Only admitted project and user workflows are registered. A refused neighbor does
 | `forbidden-import`, `missing-export` | Import outside the public helper surface, or an unavailable named export. |
 | `unsupported-source`, `dynamic-effect`, `direct-effect` | Unsupported source form, a nonliteral effect request, or a direct effect outside helpers. |
 | `undeclared-effect`, `effect-limit` | Requested method absent from the declaration, or statically known work exceeding the limit. |
+| `effect-limit-above-maximum`, `chain-limit-above-maximum` | A declared `effectLimit` or `chainLimit` above the operator maximum `limits.effects` or `limits.chain`. |
 | `workflow-conflict` | Conflicting basename, workflow ID or function name across project and user files. |
 | `unsafe-workflow-path`, `workflow-read-failed`, `workflow-source-changed` | Unsafe file or folder path, unreadable input, or input changed during capture. |
 | `compile-failed` | Candidate analysis or SDK compilation could not complete. |

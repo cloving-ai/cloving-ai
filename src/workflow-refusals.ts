@@ -17,6 +17,8 @@ const refusalCodes = new Set([
   "dynamic-effect",
   "undeclared-effect",
   "effect-limit",
+  "effect-limit-above-maximum",
+  "chain-limit-above-maximum",
   "direct-effect",
   "workflow-conflict",
   "unsafe-workflow-path",

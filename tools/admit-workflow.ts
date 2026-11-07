@@ -24,6 +24,7 @@ import {
   type CandidatePackageOptions,
 } from "./workflow-candidate-program.ts";
 import { analyzeWorkflowCandidate } from "./workflow-candidate-source.ts";
+import type { WorkflowLimits } from "../src/workflow-limits.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
 
 export type WorkflowCandidateAdmission =
@@ -38,11 +39,12 @@ export async function admitWorkflowCandidate(
     readonly source: string;
     readonly declaration: unknown;
     readonly helpers?: Readonly<Record<string, string>>;
+    readonly limits?: WorkflowLimits;
   },
   installed: CandidatePackageOptions = {},
 ): Promise<WorkflowCandidateAdmission> {
   const { source, declaration } = input;
-  const refusal = candidateDeclarationRefusals(declaration);
+  const refusal = candidateDeclarationRefusals(declaration, input.limits);
   if (refusal.length > 0) return { kind: "refused", codes: refusal };
   if (Buffer.from(source, "utf8").toString("utf8") !== source)
     return { kind: "refused", codes: ["unsupported-source"] };
@@ -50,7 +52,11 @@ export async function admitWorkflowCandidate(
     const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
     const helpers = input.helpers ?? {};
     const facts = analyzeWorkflowCandidate(source, { packageRoot, helpers });
-    const codes = checkWorkflowCandidate({ declaration, ...facts });
+    const codes = checkWorkflowCandidate({
+      declaration,
+      ...facts,
+      ...(input.limits === undefined ? {} : { limits: input.limits }),
+    });
     if (codes.length > 0) return { kind: "refused", codes };
     return await compiledCandidate({ source, helpers, packageRoot });
   } catch {

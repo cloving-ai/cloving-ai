@@ -73,6 +73,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly queueLimits?: QueueLimits;
   readonly hostSignals?: () => Promise<HostSignals>;
   readonly queueDailySpendLimitUsd?: number;
+  readonly spendScope?: "queue" | "all";
   readonly resetQueue?: boolean;
   readonly githubCommand?: readonly string[];
   readonly requiredChecks?: readonly string[] | null;

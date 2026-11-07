@@ -12,6 +12,10 @@ import {
   packedTemplateSources,
 } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
+import {
+  packedPatrolSources,
+  packedRescueSources,
+} from "./rescue-template-options-fixture.ts";
 import { packedReload } from "./packed-reload.ts";
 import {
   packedIdeaSources,
@@ -99,8 +103,13 @@ async function installed(root: string): Promise<string> {
     [],
   );
   assert.deepEqual(
-    paths.filter((path) => path.endsWith(".ts") && !path.endsWith(".d.ts")),
-    packedTemplateSources.concat(packedIdeaSources, packedReviewSources),
+    paths.filter((path) => /(?<!\.d)\.m?ts$/.test(path)),
+    packedTemplateSources.concat(
+      packedIdeaSources,
+      packedPatrolSources,
+      packedRescueSources,
+      packedReviewSources,
+    ),
   );
   assert.deepEqual(
     paths.filter((path) =>

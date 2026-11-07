@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import ts from "typescript";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
+import type { WorkflowLimits } from "../src/workflow-limits.ts";
 import {
   isCandidateDeclaration,
   type CandidateDeclaration,
@@ -30,6 +31,7 @@ export interface WorkflowFolderInput {
   readonly home: string;
   readonly xdgConfigHome?: string | undefined;
   readonly userFolder?: string | undefined;
+  readonly limits?: WorkflowLimits;
 }
 
 interface WorkflowLabel {
@@ -318,6 +320,7 @@ export async function loadWorkflowFolders(
         source: snapshot.source,
         declaration: parsedDeclaration(snapshot.declaration),
         helpers: snapshot.helpers,
+        ...(input.limits === undefined ? {} : { limits: input.limits }),
       },
       installed,
     );

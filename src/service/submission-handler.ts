@@ -81,11 +81,24 @@ function replayed(
 }
 
 function effectBudget(workflow: Registered): Fields {
-  if (workflow.effectLimit === undefined) return {};
+  const spend =
+    workflow.spendLimitUsd === undefined
+      ? {}
+      : { spendLimitUsd: workflow.spendLimitUsd };
+  if (workflow.effectLimit === undefined) return spend;
   return {
     effectLimit: workflow.effectLimit,
     capabilities: executionCapabilities(workflow.manifest),
+    ...spend,
   };
+}
+
+function chainOrigin(admission: Admission): Fields {
+  const { chain, workflow } = admission;
+  if (chain.kind === "handoff")
+    return { parentRunId: chain.parentRunId, chainId: chain.chainId };
+  if (workflow.chainLimit === undefined) return {};
+  return { chainLimit: workflow.chainLimit };
 }
 
 type Usable =
@@ -198,12 +211,7 @@ async function admit(
       input: documentDigest(input),
       resolver: `${workflow.resolver.id}:${workflow.resolver.version}`,
       ...effectBudget(workflow),
-      ...(admission.chain.kind === "handoff"
-        ? {
-            parentRunId: admission.chain.parentRunId,
-            chainId: admission.chain.chainId,
-          }
-        : {}),
+      ...chainOrigin(admission),
     },
     documents: [normalized, input],
   });
@@ -220,7 +228,11 @@ async function spendRefusal(
   context: ServiceContext,
   admission: Admission,
 ): Promise<Reply | undefined> {
-  if (admission.workflow.manifest.queue !== true) return undefined;
+  if (
+    admission.workflow.manifest.queue !== true &&
+    context.spendScope !== "all"
+  )
+    return undefined;
   return spendLimitRefusal(context, { commandId: admission.commandId });
 }
 
@@ -291,7 +303,7 @@ async function submitted(
     return failed(chain.reason, {
       commandId,
       detail:
-        "A hand-off chain permits at most five runs and requires a recorded parent.",
+        "A hand-off chain permits at most the chain limit of its first run and requires a recorded parent.",
     });
   const found = usable(context, workflowId);
   if (found.kind === "unusable") return found.reply;

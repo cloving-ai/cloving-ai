@@ -14,16 +14,26 @@ import {
   type Harness,
 } from "./service-fixture.ts";
 
+interface SpendSettings {
+  readonly limitUsd?: number;
+  readonly issueResolver?: Resolver;
+  readonly spendScope?: "all";
+  readonly runSpendLimitUsd?: number;
+}
+
+function scopeOf(settings: SpendSettings): { readonly spendScope?: "all" } {
+  return settings.spendScope === undefined
+    ? {}
+    : { spendScope: settings.spendScope };
+}
+
 export async function withQueueSpend(
   body: (
     scene: Awaited<ReturnType<typeof spendScene>> & {
       readonly messages: string[];
     },
   ) => Promise<void>,
-  settings: {
-    readonly limitUsd?: number;
-    readonly issueResolver?: Resolver;
-  } = {},
+  settings: SpendSettings = {},
 ): Promise<void> {
   await withHarness(async (harness) => {
     const scene = await spendScene(harness, settings);
@@ -45,25 +55,21 @@ export async function withQueueSpend(
   });
 }
 
-async function spendScene(
-  harness: Harness,
-  settings: { readonly limitUsd?: number; readonly issueResolver?: Resolver },
-) {
+async function spendScene(harness: Harness, settings: SpendSettings) {
   const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
   const clock = { now: "2026-10-10T12:00:00.000Z" };
   const counts = { admissions: 0, clockReads: 0 };
   const resolution = { wait: Promise.resolve() };
-  const options = spendOptions(harness, {
-    clock,
-    counts,
-    limitUsd: settings.limitUsd ?? 20,
-    issueResolver: settings.issueResolver ?? {
-      ...harness.registration.resolver,
-      id: "declared-input",
-    },
-    resolution,
-    workflow,
-  });
+  const options = {
+    ...scopeOf(settings),
+    ...spendOptions(harness, {
+      ...settings,
+      clock,
+      counts,
+      resolution,
+      workflow,
+    }),
+  };
   let service = await harness.start(options);
   let queue: ReturnType<typeof issueQueue> | undefined;
   const status = () =>
@@ -106,13 +112,30 @@ async function spendScene(
   };
 }
 
-interface SpendState {
+interface SpendState extends SpendSettings {
   readonly clock: { now: string };
   readonly counts: { admissions: number; clockReads: number };
-  readonly limitUsd: number;
   readonly resolution: { wait: Promise<void> };
   readonly workflow: WorkflowDeclaration;
-  readonly issueResolver: Resolver;
+}
+
+function manualRegistrations(harness: Harness, state: SpendState) {
+  return ["manual", "develop-issue"].map((workflowId) => ({
+    ...harness.registration,
+    workflowId,
+    resolver: state.issueResolver ?? {
+      ...harness.registration.resolver,
+      id: "declared-input",
+    },
+    effectLimit: 20,
+    ...(state.runSpendLimitUsd === undefined
+      ? {}
+      : { spendLimitUsd: state.runSpendLimitUsd }),
+    manifest: {
+      ...harness.registration.manifest,
+      capabilities: ["claude"],
+    },
+  }));
 }
 
 function spendOptions(harness: Harness, state: SpendState) {
@@ -155,16 +178,7 @@ function spendOptions(harness: Harness, state: SpendState) {
         workflowId: "queued",
         manifest: { ...registration.manifest, queue: true },
       },
-      ...["manual", "develop-issue"].map((workflowId) => ({
-        ...harness.registration,
-        workflowId,
-        resolver: state.issueResolver,
-        effectLimit: 20,
-        manifest: {
-          ...harness.registration.manifest,
-          capabilities: ["claude"],
-        },
-      })),
+      ...manualRegistrations(harness, state),
     ],
     delivery: destination.delivery,
     effects: { leaseMilliseconds: 4 * 3_600_000 },
@@ -172,7 +186,7 @@ function spendOptions(harness: Harness, state: SpendState) {
       counts.clockReads += 1;
       return clock.now;
     },
-    queueDailySpendLimitUsd: state.limitUsd,
+    queueDailySpendLimitUsd: state.limitUsd ?? 20,
   };
 }
 
@@ -253,12 +267,8 @@ async function turn(
   await report(given.report);
 }
 
-async function pendingTurn(
-  service: Service,
-  given: { readonly runId: string; readonly round: number },
-) {
-  const { runId, round } = given;
-  const request = {
+export function turnRequest(runId: string, round: number) {
+  return {
     runId,
     commandId: `${runId}-turn-${String(round)}`,
     scope: { phase: "work", operation: "turn", round },
@@ -268,6 +278,14 @@ async function pendingTurn(
     payload: "Work",
     units: 1,
   };
+}
+
+async function pendingTurn(
+  service: Service,
+  given: { readonly runId: string; readonly round: number },
+) {
+  const { runId, round } = given;
+  const request = turnRequest(runId, round);
   const reply = await service.worker.requestEffect(request);
   assert.ok(reply.operation);
   const operationId = reply.operation.operationId;

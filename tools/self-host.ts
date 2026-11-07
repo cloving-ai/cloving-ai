@@ -21,6 +21,7 @@ import {
   queueInterval,
   queueLimits,
   queueSpendLimit,
+  spendScope,
   readyTicketCommand,
 } from "./self-host-queue.ts";
 import {
@@ -54,6 +55,7 @@ import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 import { checkSubmission } from "../src/submission.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 import type { QueueLimits } from "../src/queue-room.ts";
+import { workflowLimits } from "../src/workflow-limits.ts";
 
 const product = resolve(import.meta.dirname, "..");
 const flags = process.argv.slice(2);
@@ -147,6 +149,7 @@ interface Commands extends HarnessSettings {
   readonly queueLanes: number;
   readonly queueLimits: QueueLimits;
   readonly queueDailySpendLimitUsd: number | undefined;
+  readonly spendScope: "queue" | "all";
   readonly resetQueue: boolean;
   readonly retention: RetentionSettings;
   readonly reloadCommand: readonly string[];
@@ -281,7 +284,8 @@ const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
 const queueDailySpendLimitUsd = queueSpendLimit(environment);
-const limits = queueLimits(environment);
+const scope = spendScope(environment);
+const queueRoom = queueLimits(environment);
 const readyCommand = readyTicketCommand(environment);
 const queueMilliseconds = queueInterval(environment);
 const retention = retentionSettings(environment);
@@ -294,9 +298,11 @@ const places = {
   home: homedir(),
   xdgConfigHome: environment["XDG_CONFIG_HOME"],
 };
+const limits = workflowLimits(environment);
 const folders = {
   ...places,
   userFolder: absoluteWorkflowFolder(environment["CLOVING_WORKFLOW_FOLDER"]),
+  limits,
 };
 const profilesPath = environment["CLOVING_PROFILES"];
 const manifests = await preparedProject({ product, project, ...folders });
@@ -319,9 +325,10 @@ await launchers(
     nextCommand,
     readyCommand,
     queueMilliseconds,
-    queueLanes: limits.lanes,
-    queueLimits: limits,
+    queueLanes: queueRoom.lanes,
+    queueLimits: queueRoom,
     queueDailySpendLimitUsd,
+    spendScope: scope,
     resetQueue: flags.includes("--reset-queue"),
     retention,
     turnVariables,
@@ -338,6 +345,7 @@ await launchers(
       JSON.stringify({
         directory,
         ...places,
+        limits,
         ...(profilesPath === undefined
           ? {}
           : { profilesFile: resolve(profilesPath) }),

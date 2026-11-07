@@ -24,6 +24,7 @@ import {
   type Service,
   type ServiceHost,
 } from "../service/service.ts";
+import { spendSettings } from "../service/replies.ts";
 import {
   workflowGenerations,
   prepareWorkflowGenerations,
@@ -264,9 +265,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const opening = await startService({
     ...daemonIdentity(settings),
     ...controlPorts(controls),
-    ...(settings.queueDailySpendLimitUsd === undefined
-      ? {}
-      : { queueDailySpendLimitUsd: settings.queueDailySpendLimitUsd }),
+    ...spendSettings(settings),
     workerHarness: worker.harness,
     ...retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),

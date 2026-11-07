@@ -6,7 +6,7 @@ import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import { record } from "../src/protocol.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
 import { projectConfiguration, projectRoot } from "./project-configuration.ts";
-import { copyTemplate } from "./template-copy.ts";
+import { copyTemplate, type ScriptSetting } from "./template-copy.ts";
 import {
   exportedFunctions,
   readTemplate,
@@ -136,17 +136,27 @@ async function copied(
         template: input.name,
         files: result.files,
         queueWorkflows: queued,
+        settings: result.settings,
       }) + "\n",
     );
   else
     process.stdout.write(
-      `Copied the template ${input.name} to .cloving/workflows as the workflow ${input.id}.\nDecision points:\n${pointText(result.template.points)}Next: cloving workflows test ${input.id}\n`,
+      `Copied the template ${input.name} to .cloving/workflows as the workflow ${input.id}.\nDecision points:\n${pointText(result.template.points)}${settingText(result.settings)}Next: cloving workflows test ${input.id}\n`,
     );
   if (queued.length > 1)
     process.stderr.write(
       `queue-workflow-conflict: ${queued.join(", ")} have "queue": true. Select "a person" for the select point of one copy: remove workflow.queue from its declaration.\n`,
     );
   return 0;
+}
+
+function settingText(settings: readonly ScriptSetting[]): string {
+  if (settings.length === 0) return "";
+  const lines = settings.map(
+    ({ setting, command }) =>
+      `  cloving config set ${setting} '${JSON.stringify(command).replaceAll("'", "'\\''")}' --private\n`,
+  );
+  return `Settings for the copied scripts:\n${lines.join("")}`;
 }
 
 function pointText(points: readonly unknown[]): string {

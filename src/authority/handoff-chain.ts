@@ -4,7 +4,10 @@ export interface RunOrigin {
   readonly parentRunId: string | null;
   readonly chainId: string;
   readonly continuedFrom?: string;
+  readonly chainLimit?: number;
 }
+
+export const defaultChainLimit = 5;
 
 export type RunOrigins = Readonly<Record<string, RunOrigin>>;
 
@@ -58,6 +61,27 @@ export function runLinks(
   );
 }
 
+export interface ChainPlace {
+  readonly position: number;
+  readonly limit: number;
+}
+
+export function chainPlace(
+  origins: Readonly<Record<string, RunOrigin>>,
+  runId: string,
+): ChainPlace {
+  const ancestors = new Set<string>([runId]);
+  let parent = origins[runId]?.parentRunId ?? null;
+  while (parent !== null && !ancestors.has(parent)) {
+    ancestors.add(parent);
+    parent = origins[parent]?.parentRunId ?? null;
+  }
+  return {
+    position: ancestors.size,
+    limit: chainLimitOf(origins, origins[runId]?.chainId ?? runId),
+  };
+}
+
 export function childRuns(
   origins: RunOrigins,
 ): Readonly<Record<string, readonly string[]>> {
@@ -80,6 +104,10 @@ export type HandoffChain =
     }
   | { readonly kind: "refused"; readonly reason: string };
 
+function chainLimitOf(origins: RunOrigins, chainId: string): number {
+  return origins[chainId]?.chainLimit ?? defaultChainLimit;
+}
+
 export function handoffChain(
   commandId: string,
   origins: RunOrigins,
@@ -89,9 +117,10 @@ export function handoffChain(
   const parent = parentRunId === undefined ? undefined : origins[parentRunId];
   if (parent === undefined || parentRunId === undefined)
     return { kind: "refused", reason: "unknown-handoff-parent" };
+  const limit = chainLimitOf(origins, parent.chainId);
   let current: RunOrigin | undefined = parent;
   for (let length = 1; current !== undefined; length += 1) {
-    if (length >= 5) return { kind: "refused", reason: "chain-limit" };
+    if (length >= limit) return { kind: "refused", reason: "chain-limit" };
     if (current.parentRunId === null)
       return { kind: "handoff", parentRunId, chainId: parent.chainId };
     current = origins[current.parentRunId];

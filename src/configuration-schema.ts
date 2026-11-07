@@ -35,6 +35,11 @@ export interface Configuration {
     readonly maxMemoryPressure?: "normal" | "warn";
     readonly dailySpendLimitUsd?: number;
   };
+  readonly limits?: {
+    readonly effects?: number;
+    readonly chain?: number;
+  };
+  readonly spend?: { readonly scope?: "queue" | "all" };
   readonly harness?: {
     readonly name?: string;
     readonly turn?: readonly string[];

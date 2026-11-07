@@ -75,7 +75,11 @@ export interface GithubScene {
   readonly gh: (parts: readonly string[]) => string;
   readonly perform: (
     worker: GithubWorker,
-    call: { readonly method: string; readonly payload: unknown },
+    call: {
+      readonly method: string;
+      readonly payload: unknown;
+      readonly runId?: string;
+    },
   ) => Promise<WorkerReport>;
 }
 
@@ -246,6 +250,7 @@ async function performed(
     operationId,
     method: run.call.method,
     payload: digest,
+    runId: run.call.runId ?? "run-1",
   });
   await run.worker.deliver(given, new AbortController().signal);
   await until(() => reports.some((item) => item.operationId === operationId));

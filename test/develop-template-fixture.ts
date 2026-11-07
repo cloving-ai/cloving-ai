@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { doctorCodes } from "../src/doctor-report.ts";
 import { record } from "../src/protocol.ts";
+import type { TemplateScript } from "../tools/template-files.ts";
 import { packedDevelopTurn } from "./packed-develop-template-turn.ts";
 import { packedDevelopFlow } from "./packed-develop-template-flow.ts";
 
@@ -16,11 +17,13 @@ export const packedTemplateSources = [
   "templates/develop/develop/flow-tests.ts",
   "templates/develop/develop/interruption-tests.ts",
   "templates/develop/develop/local.ts",
+  "templates/develop/develop/next-ticket.mts",
   "templates/develop/develop/option-tests.ts",
   "templates/develop/develop/partial-choice.ts",
   "templates/develop/develop/partial.ts",
   "templates/develop/develop/pull.ts",
   "templates/develop/develop/queue-partial.ts",
+  "templates/develop/develop/ready-tickets.mts",
   "templates/develop/develop/recovery-option-tests.ts",
   "templates/develop/develop/recovery-scenarios.ts",
   "templates/develop/develop/recovery-tests.ts",
@@ -30,6 +33,7 @@ export const packedTemplateSources = [
   "templates/develop/develop/report.ts",
   "templates/develop/develop/round.ts",
   "templates/develop/develop/scenarios.ts",
+  "templates/develop/develop/ticket-queue.mts",
   "templates/develop/develop/turn.ts",
 ];
 
@@ -53,6 +57,7 @@ export interface TemplateManifest {
   readonly name: string;
   readonly summary: string;
   readonly points: readonly TemplatePoint[];
+  readonly scripts: readonly TemplateScript[];
 }
 
 function text(value: unknown): string {
@@ -96,6 +101,17 @@ function option(value: unknown): TemplateOption {
   };
 }
 
+function scripts(value: unknown): readonly TemplateScript[] {
+  if (value === undefined) return [];
+  assert.ok(Array.isArray(value));
+  return value.map((item) => {
+    const fields = record(item);
+    assert.ok(fields);
+    assert.deepEqual(Object.keys(fields).sort(), ["file", "setting"]);
+    return { file: text(fields["file"]), setting: text(fields["setting"]) };
+  });
+}
+
 function point(value: unknown): TemplatePoint {
   const fields = record(value);
   assert.ok(fields);
@@ -114,12 +130,12 @@ function point(value: unknown): TemplatePoint {
 export function manifest(value: unknown): TemplateManifest {
   const fields = record(value);
   assert.ok(fields);
-  assert.deepEqual(Object.keys(fields).sort(), [
-    "name",
-    "points",
-    "summary",
-    "version",
-  ]);
+  assert.deepEqual(
+    Object.keys(fields)
+      .filter((key) => key !== "scripts")
+      .sort(),
+    ["name", "points", "summary", "version"],
+  );
   assert.equal(fields["version"], 1);
   const points: unknown = fields["points"];
   assert.ok(Array.isArray(points) && points.length > 0);
@@ -130,6 +146,7 @@ export function manifest(value: unknown): TemplateManifest {
     name: text(fields["name"]),
     summary: text(fields["summary"]),
     points: parsed,
+    scripts: scripts(fields["scripts"]),
   };
   references(result);
   return result;

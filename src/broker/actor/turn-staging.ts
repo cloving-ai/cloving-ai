@@ -9,6 +9,7 @@ import {
   type Reconciling,
   type Step,
 } from "./effect-plan.ts";
+import type { RunSpend } from "./spend-turn.ts";
 import { stopIntents, type ClosedRow } from "./stop-plan.ts";
 import type { Stopping } from "./stop-turn.ts";
 import { draft, type ChangeDraft, type Row } from "./turn-draft.ts";
@@ -22,6 +23,7 @@ export interface TurnState {
   readonly runId: string;
   readonly created: readonly EffectIntent[];
   readonly documents: ReadonlySet<string>;
+  readonly spend?: RunSpend;
 }
 
 export interface Document {

@@ -1,3 +1,5 @@
+import { record, type Fields } from "./protocol.ts";
+
 export type RetryKind = "capacity" | "network";
 
 export interface WorkerUsage {
@@ -57,6 +59,19 @@ export function priceOf(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : null;
+}
+
+export function reportFields(text: string | undefined): Fields {
+  try {
+    return record(JSON.parse(text ?? "null")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function reportedPrice(text: string | undefined): number | null {
+  const report = reportFields(text);
+  return priceOf(report["costUsd"]) ?? priceOf(report["estimatedCostUsd"]);
 }
 
 export function tokenCount(value: unknown): number | null {

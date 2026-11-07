@@ -2,6 +2,10 @@
   "version": 1,
   "name": "develop",
   "summary": "Develop a ticket or task with explicit choices for selection, verification, acceptance, merge and partial work. The first option at each point is the hands-off default.",
+  "scripts": [
+    { "file": "develop/next-ticket.mts", "setting": "tickets.nextCommand" },
+    { "file": "develop/ready-tickets.mts", "setting": "tickets.readyCommand" }
+  ],
   "points": [
     {
       "id": "input",
