@@ -26,6 +26,7 @@ export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly schedule?: SchedulePort;
   readonly queue?: QueuePort;
   readonly queueDailySpendLimitUsd?: number;
+  readonly spendScope?: "queue" | "all";
   readonly commandEffects?: CommandEffects;
   readonly authority: Authority;
   readonly registry: Registry;
@@ -42,12 +43,26 @@ export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly changed?: ChangeSignal["next"];
 }
 
+export function spendSettings(
+  options: Pick<ServiceContext, "queueDailySpendLimitUsd" | "spendScope">,
+): Pick<ServiceContext, "queueDailySpendLimitUsd" | "spendScope"> {
+  return {
+    ...(options.queueDailySpendLimitUsd === undefined
+      ? {}
+      : { queueDailySpendLimitUsd: options.queueDailySpendLimitUsd }),
+    ...(options.spendScope === undefined
+      ? {}
+      : { spendScope: options.spendScope }),
+  };
+}
+
 export function queryMetadata(
   options: ServiceReads &
     ServiceIdentity & {
       readonly schedule?: SchedulePort;
       readonly queue?: QueuePort;
       readonly queueDailySpendLimitUsd?: number;
+      readonly spendScope?: "queue" | "all";
       readonly commandEffects?: CommandEffects;
     },
 ): Pick<
@@ -60,15 +75,14 @@ export function queryMetadata(
   | "threadPool"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
+  | "spendScope"
   | keyof ServiceIdentity
 > {
   return {
     ...serviceIdentity(options),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queue === undefined ? {} : { queue: options.queue }),
-    ...(options.queueDailySpendLimitUsd === undefined
-      ? {}
-      : { queueDailySpendLimitUsd: options.queueDailySpendLimitUsd }),
+    ...spendSettings(options),
     ...(options.workerHarness === undefined
       ? {}
       : { workerHarness: options.workerHarness }),

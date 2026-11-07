@@ -4,10 +4,16 @@ import {
   scheduledMetadata,
   metadataOf,
   outcomeOf,
+  submittedInput,
   ticketMetadataPage,
   workflowMetadata,
 } from "./run-metadata.ts";
-import { linksOf, type RunLinks } from "../authority/handoff-chain.ts";
+import {
+  chainPlace,
+  linksOf,
+  type ChainPlace,
+  type RunLinks,
+} from "../authority/handoff-chain.ts";
 import { terminal } from "../authority/transitions.ts";
 import {
   runView,
@@ -21,7 +27,7 @@ import type {
   OperationView,
   StoredState,
 } from "../broker/actor/authority.ts";
-import { record, type Fields, type Reply } from "../protocol.ts";
+import type { Fields, Reply } from "../protocol.ts";
 import {
   committed,
   failed,
@@ -42,6 +48,7 @@ import { queueOverview } from "./active-tickets.ts";
 import { queueRunStatuses } from "./queue-runs.ts";
 import { workflowFields } from "./workflow-reload.ts";
 import { restartFields } from "./restart-handler.ts";
+import { pinnedSpendLimit } from "./run-spend.ts";
 
 interface ListPage {
   readonly after: string;
@@ -137,6 +144,7 @@ type ShownRun = RunView &
     readonly latestAt: string | null;
     readonly unresolvedEffects: readonly string[];
     readonly feedback: readonly Fields[];
+    readonly chain: ChainPlace;
   };
 
 async function viewOf(
@@ -181,6 +189,7 @@ async function viewOf(
     })),
     commandOperations: effects.commandOperations,
     ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
+    chain: chainPlace(scope.snapshot.links, run.runId),
     input: await submittedInput(context, details?.submission),
     workflowId,
     latestAt: times[run.runId] ?? null,
@@ -219,23 +228,13 @@ function full(view: ShownRun & WorkerTotals): Fields {
     usage: view.usage,
     workerTurns: view.workerTurns,
     budget: view.budget,
+    chain: view.chain,
     effects: view.effects,
     nextAction: view.nextAction,
     nextActionAt: view.nextActionAt,
     humanInputCanHelp: view.humanInputCanHelp,
     feedback: view.feedback,
   };
-}
-
-async function submittedInput(
-  context: ServiceContext,
-  digest: string | null | undefined,
-): Promise<Fields | null> {
-  const document = digest
-    ? await context.authority.queries.document(digest)
-    : undefined;
-  const request = record(JSON.parse(document ?? "null"));
-  return record(request?.["submission"]) ?? null;
 }
 
 async function listed(
@@ -299,6 +298,7 @@ export async function status(
   return result("run-status", {
     run: {
       ...full({ ...view, ...totals }),
+      spendLimitUsd: (await pinnedSpendLimit(context, view.runId)) ?? null,
       ...(await turnDetailsOf(context, { runId: view.runId, totals })),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),

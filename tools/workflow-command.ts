@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import { workflowTestLoader } from "./workflow-test-loader.ts";
 import { preparedProject } from "./self-host-project.ts";
 import type { WorkflowListing } from "./workflow-folders.ts";
+import { workflowLimits } from "../src/workflow-limits.ts";
 
 const usage =
   "Usage: cloving workflows list [--json] [--repository <directory>]\n       cloving workflows test [<id>] [--repository <directory>]\n";
@@ -48,6 +49,10 @@ export async function workflowCommand(
   const temporary = await mkdtemp(join(tmpdir(), "cloving-workflows-"));
   try {
     const repository = resolve(selected.repository ?? process.cwd());
+    const { environment } = await projectConfiguration(
+      await projectRoot(repository),
+      process.env,
+    );
     const result = await preparedProject({
       product: resolve(import.meta.dirname, ".."),
       project: join(temporary, "project"),
@@ -55,9 +60,9 @@ export async function workflowCommand(
       home: homedir(),
       xdgConfigHome: process.env["XDG_CONFIG_HOME"],
       userFolder: absoluteWorkflowFolder(
-        (await projectConfiguration(await projectRoot(repository), process.env))
-          .environment["CLOVING_WORKFLOW_FOLDER"],
+        environment["CLOVING_WORKFLOW_FOLDER"],
       ),
+      limits: workflowLimits(environment),
     });
     if (selected.command === "test")
       return await testWorkflows(result.workflows, {

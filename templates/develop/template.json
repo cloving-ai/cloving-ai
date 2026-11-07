@@ -2,6 +2,10 @@
   "version": 1,
   "name": "develop",
   "summary": "Develop a ticket or task with explicit choices for selection, verification, acceptance, merge and partial work. The first option at each point is the hands-off default.",
+  "scripts": [
+    { "file": "develop/next-ticket.mts", "setting": "tickets.nextCommand" },
+    { "file": "develop/ready-tickets.mts", "setting": "tickets.readyCommand" }
+  ],
   "points": [
     {
       "id": "input",
@@ -108,6 +112,17 @@
           "change": "In develop/accept.ts call reviewByAgent({ subject, reviewer: { kind: \"turn\", profile: \"review\" } }). For local merge replace reviewByPerson in develop/local.ts with that same call and its import. Declare claude run-turn:review and configure the review profile. Remove github wait-review from the declaration.",
           "requires": {},
           "needs": ["default-harness"]
+        },
+        {
+          "id": "panel",
+          "label": "A panel of review turns",
+          "summary": "Run two or three review turns with the profiles review-claude, review-codex and review-gemini, each with its own harness. A synthesizer turn with the profile review-synthesis combines their reports, drops the findings that the current change already fixes, and gives the verdict. A change verdict starts a fix round with the synthesized findings.",
+          "change": "In develop/round.ts replace the acceptWork import with import { reviewPanel } from \"./panel.ts\". Pass state and report from developRound to deliverPull, and add state: DevelopState and report: DevelopReport to its request; import the type DevelopReport from develop/report.ts. In deliverPull replace the acceptWork call with reviewPanel({ state: request.state, report: request.report, pull: pull, reviewers: [\"review-claude\", \"review-codex\", \"review-gemini\"] }) and return a blocked outcome at once: if (\"kind\" in review) return review. For two reviewers remove one name from reviewers. Remove github wait-review from the declaration, add claude run-turn:review-claude, run-turn:review-codex, run-turn:review-gemini and run-turn:review-synthesis, and set workflow.effectLimit to 99. Configure the four profiles.",
+          "requires": {
+            "verify": ["none"],
+            "merge": ["green", "person"]
+          },
+          "needs": ["harnesses"]
         }
       ]
     },

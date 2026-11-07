@@ -10,13 +10,22 @@ export function queueLanes(environment: Environment): number {
   return Number(value);
 }
 
+export function spendScope(environment: Environment): "queue" | "all" {
+  const value = environment["CLOVING_SPEND_SCOPE"] ?? "queue";
+  if (value === "queue" || value === "all") return value;
+  throw new Error("The daemon did not start: invalid-spend-scope");
+}
+
 export function queueSpendLimit(environment: Environment): number | undefined {
   const value = environment["CLOVING_QUEUE_DAILY_SPEND_USD"];
   if (value === undefined) return undefined;
   const limit = Number(value);
   if (!Number.isFinite(limit) || limit <= 0)
     throw new Error("The daemon did not start: invalid-queue-spend-limit");
-  if (environment["CLOVING_QUEUE_SECONDS"] === undefined)
+  if (
+    environment["CLOVING_QUEUE_SECONDS"] === undefined &&
+    spendScope(environment) === "queue"
+  )
     throw new Error("The daemon did not start: queue-spend-limit-needs-queue");
   return limit;
 }

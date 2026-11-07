@@ -56,7 +56,9 @@ for (const selected of completeConfigurations)
         );
         assert.equal(
           declaration.workflow.effectLimit,
-          selected.verify === "red-green" ? 93 : 87,
+          ({ panel: 99 } as Readonly<Record<string, number>>)[
+            selected.accept
+          ] ?? (selected.verify === "red-green" ? 93 : 87),
         );
         assert.deepEqual(
           declaration.workflow.commands,
