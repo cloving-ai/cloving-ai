@@ -1,6 +1,6 @@
 # Develop template decisions
 
-`template.json` describes the seven decisions used by the develop template.
+`template.json` describes the eight decisions used by the develop template.
 The default workflow in `develop.ts` accepts the declared ticket input, selects
 from the queue, opens a pull request, waits for Greptile at 5/5, and calls
 `mergeWhenGreen` with `check: "beforeMerge"`. Its declaration and helper files
@@ -34,7 +34,7 @@ point IDs in `develop/scenarios.ts`. For an edited copy, replace the default
 `optionTests as flowTests`, then run every `flowTests` scenario. Keep the shared
 turn, partial-helper and interruption tests. `develop/interruption-tests.ts`
 follows the selected point IDs, so it tests each configuration. Package tests apply each source edit, validate
-its requirements, and test ten complete configurations through the folder
+its requirements, and test eleven complete configurations through the folder
 loader and the installed package, covering every option.
 
 `develop/next-ticket.mts` and `develop/ready-tickets.mts` are reference scripts
@@ -97,9 +97,11 @@ selecting an issue to label, close or return to the queue.
 
 The first option of each point is the default: ticket input, queue selection,
 no additional verification, Greptile at 5/5, merge after checks, return
-partial work to the queue, and ask a person for recovery.
+partial work to the queue, ask a person for recovery, and keep a lessons file in
+the repository.
 Selecting `person` at selection, acceptance and partial work, with `local` at
-merge, describes the existing reviewed local-branch process.
+merge and `none` at lessons, describes the existing reviewed local-branch
+process.
 
 The `verify` point defaults to `none`, preserving the current round and
 declaration. Select `red-green` with either `green` or `person` at `merge`.
@@ -163,6 +165,101 @@ preparation and test runs. Optional `assertionPattern` and `skipPattern`
 override the defaults for non-terminal `node --test` output. See the package
 README's `cloving red-green` documentation for the tool's complete contract.
 
+## Review panel
+
+The `panel` option of the `accept` point replaces the single reviewer with a
+panel. `reviewPanel` in `develop/panel.ts` runs one review turn for each profile
+in `reviewers`, then one synthesizer turn with the profile `review-synthesis`.
+The list in the option is `review-claude`, `review-codex` and `review-gemini`.
+Remove one name to use two reviewers. A list with fewer than two different
+names stops the run with `invalid-review-panel`.
+
+Each reviewer turn gets the same subject:
+
+- The ticket text.
+- The pull request number and its commit, with the command
+  `git diff origin/HEAD...<commit>` for the diff.
+- The findings of the earlier round and their reason. In round 1, a line tells
+  the reviewer that there are no earlier findings.
+- The fix notes of the current round, from the report of its development turn.
+
+Each report must end with `Review verdict: accept` or `Review verdict: change`.
+The synthesizer turn gets the same subject and all reviewer reports. It lists
+the findings that it keeps and the findings that it drops, with one reason for
+each. It drops each finding that the current change already fixes. Its verdict
+is the verdict of the panel:
+
+- `accept` goes to the merge step.
+- `change` starts a fix round. The fix turn gets the synthesizer report as its
+  findings, as with the `turn` option.
+- A synthesizer report without a verdict line has no findings, so the
+  `recovery` point asks a person.
+
+A reviewer turn that fails, or a result without a report, does not stop the
+panel. The synthesizer gets one line that names that reviewer and its reason,
+and it works with the reports that remain. When no reviewer report remains,
+the synthesizer does not run, and the round ends `blocked` with the reason
+`review-panel-unavailable`. A failed synthesizer turn ends the round in the
+same way. A pull-request workflow then adds `cloving: blocked` to the GitHub
+issue of the ticket.
+
+To select the panel, edit `develop/round.ts`. Import `reviewPanel` from
+`develop/panel.ts` in place of `acceptWork`, and import the type
+`DevelopReport` from `develop/report.ts`. In `developRound`, call
+`deliverPull({ round, pull, state, report })`, and add `state: DevelopState`
+and `report: DevelopReport` to the request of `deliverPull`. In
+`deliverPull`, replace the call of `acceptWork` with:
+
+```typescript
+const review = await reviewPanel({
+  state: request.state,
+  report: request.report,
+  pull: pull,
+  reviewers: ["review-claude", "review-codex", "review-gemini"],
+});
+if ("kind" in review) return review;
+```
+
+In `develop.declaration.json`, remove `wait-review` from `methods.github`. Add
+`run-turn:review-claude`, `run-turn:review-codex`, `run-turn:review-gemini` and
+`run-turn:review-synthesis` to `methods.claude`. Keep all four methods for two
+reviewers too, because `develop/panel.ts` keeps its three reviewer calls. Set
+`workflow.effectLimit` to 99. Set `selection.accept` to `"panel"` in
+`develop/scenarios.ts` and run the option tests.
+
+The limit of 99 is the static count of the panel workflow: 5 effects before
+the first round, 15 effects in each of the six rounds, and 4 effects for the
+blocked label. A round has two development turns, four `open-pr` attempts,
+four review turns, four merge attempts, and one close of the issue or of the
+pull request. `developRound` calls `finishPull` and `recover` in the two
+branches of one conditional expression, so the count includes only one of the
+two in each round. The `red-green` option adds 6 effects, which is more than
+the operator maximum of 100. For this reason, the panel requires the `verify`
+option `none`. The panel reviews a pull request, so it also requires the
+`merge` option `green` or `person`.
+
+Each profile of the panel names its own harness. Set `CLOVING_PROFILES` to a
+file such as the one below, or put the same `profiles` map in the private
+settings file. Install each harness that a profile names. `cloving doctor`
+shows the harnesses that it finds in its `harnesses` check.
+
+```json
+{
+  "profiles": {
+    "review-claude": { "harness": "claude" },
+    "review-codex": { "harness": "codex" },
+    "review-gemini": { "harness": "gemini" },
+    "review-synthesis": { "harness": "claude" }
+  }
+}
+```
+
+For two reviewers, configure two reviewer profiles and `review-synthesis`, and
+remove the third name from `reviewers`. A reviewer name that has no profile
+gives a turn that fails with `unknown-profile`. The panel then works without
+that reviewer. A profile can also set `model` or `env`; the package README
+describes all profile fields.
+
 ## Recovery
 
 `develop/recovery.ts` sets `recovery` to `"person"` or `"stop"`. The default
@@ -203,6 +300,43 @@ merge supports only `"stop"`, because it has no pull request.
 The workflow can read only the reason of a failed effect. For this reason, the
 GitHub worker reports a `gh` call that fails with an HTTP 5xx status as
 `github-network-failed`, and the template tries it again.
+
+## Lessons
+
+The `lessons` point keeps the lessons of earlier runs in the file
+`.cloving/lessons.md` of the repository. The default option `file` reads the
+file into each development turn. The option `none` sets
+`export const lessons = "none" as LessonsMode` in `develop/lessons.ts`. Then no
+turn reads or writes the file.
+
+With `file`, `preparePull` in `develop/pull.ts` sends the GitHub `prepare`
+payload `{"lessons": true}`. The GitHub worker reads `.cloving/lessons.md` in
+the new work tree, which starts at the newest commit of the default branch. It
+returns the first 16384 bytes as `lessons.text` and the file size as
+`lessons.bytes`. A missing file gives an empty text and the size 0. A symbolic
+link at `.cloving` or at the file stops the run with `lessons-not-a-file`.
+`lessonsTask` in `develop/lessons.ts` refuses a result without a valid
+`lessons` object with `invalid-lessons`.
+
+`develop/report.ts` gives the text to each turn of the run, also to
+continuation turns and fix turns. The prompt of `develop/turn.ts` shows the
+text and the size, and it gives the worker these rules:
+
+- Before the last commit, add up to three new lessons from the run. The
+  lessons of earlier rounds of the run count toward the three.
+- Write each lesson on one line in ASD-STE100 Simplified Technical English, in
+  the form `- YYYY-MM-DD TICKET: lesson`.
+- Do not add a lesson that the file already has in the same or a similar form.
+- When the file is larger than 16384 bytes, join similar lessons and remove
+  lessons that no longer apply. Continue until the file is smaller than 16384
+  bytes.
+- Put the lesson changes in the same commit as the other changes.
+
+The lesson changes are part of the pull request, so the review sees them. The
+option `file` requires a pull-request merge option, `green` or `person`. Local
+merge supports only `none`, because it has no `prepare` step.
+
+## Option fields
 
 Each option has an `id`, `label`, `summary`, `change`, `requires` and `needs`.
 `change` describes the step call or declaration edit for the setup agent.

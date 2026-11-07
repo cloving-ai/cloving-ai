@@ -9,6 +9,7 @@ export interface DevelopSelection {
   readonly merge: string;
   readonly partial: string;
   readonly recovery: string;
+  readonly lessons: string;
 }
 
 const prefix = "repo/.cloving/workflows/";
@@ -21,6 +22,7 @@ export const automatic = {
   merge: "green",
   partial: "queue",
   recovery: "person",
+  lessons: "file",
 };
 export const reviewed = {
   input: "ticket",
@@ -30,6 +32,7 @@ export const reviewed = {
   merge: "local",
   partial: "person",
   recovery: "stop",
+  lessons: "none",
 };
 export const completeConfigurations = [
   automatic,
@@ -39,6 +42,7 @@ export const completeConfigurations = [
   { ...automatic, merge: "person" },
   { ...reviewed, merge: "green" },
   { ...reviewed, input: "task-text", accept: "turn", merge: "green" },
+  { ...automatic, accept: "panel" },
   { ...automatic, verify: "red-green" },
   { ...automatic, verify: "red-green", merge: "person" },
   {
@@ -69,16 +73,22 @@ export async function configuredDevelopFiles(
   selected: DevelopSelection,
 ) {
   const files = await developFiles(directory);
-  if (selected.input === "task-text")
-    edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   acceptanceFiles(files, selected.accept);
   deliveryFiles(files, selected);
+  if (selected.input === "task-text")
+    edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   if (selected.verify === "red-green") verificationFiles(files);
   if (selected.recovery === "stop")
     edit(files, {
       file: "develop/recovery.ts",
       from: 'export const recovery = "person" as',
       to: 'export const recovery = "stop" as',
+    });
+  if (selected.lessons === "none")
+    edit(files, {
+      file: "develop/lessons.ts",
+      from: 'export const lessons = "file" as',
+      to: 'export const lessons = "none" as',
     });
   files[prefix + "develop.declaration.json"] = declaration(selected);
   scenarioFiles(files, selected);
@@ -102,7 +112,40 @@ function verificationFiles(files: Record<string, string>): void {
   });
 }
 
+const panelEdits = [
+  {
+    from: 'import { acceptWork } from "./accept.ts";',
+    to: 'import { reviewPanel } from "./panel.ts";',
+  },
+  {
+    from: "  type DevelopState,",
+    to: "  type DevelopState,\n  type DevelopReport,",
+  },
+  {
+    from: "await deliverPull({ round, pull });",
+    to: "await deliverPull({ round, pull, state, report });",
+  },
+  {
+    from: "  readonly pull: PullRequest;\n}): Promise<RoundResult | CycleOutcome> {",
+    to: "  readonly pull: PullRequest;\n  readonly state: DevelopState;\n  readonly report: DevelopReport;\n}): Promise<RoundResult | CycleOutcome> {",
+  },
+  {
+    from: "  const review = await acceptWork({\n    target: pull.target,\n    number: pull.number,\n    commit: pull.commit,\n  });",
+    to: '  const review = await reviewPanel({\n    state: request.state,\n    report: request.report,\n    pull: pull,\n    reviewers: ["review-claude", "review-codex", "review-gemini"],\n  });\n  if ("kind" in review) return review;',
+  },
+];
+
+export const panelMethods = [
+  "run-turn:review-claude",
+  "run-turn:review-codex",
+  "run-turn:review-gemini",
+  "run-turn:review-synthesis",
+];
+
 function acceptanceFiles(files: Record<string, string>, accept: string): void {
+  if (accept === "panel")
+    for (const { from, to } of panelEdits)
+      edit(files, { file: "develop/round.ts", from, to });
   if (accept === "person") {
     edit(files, {
       file: "develop/accept.ts",
@@ -221,8 +264,12 @@ function localFiles(files: Record<string, string>): void {
     from: 'import { developRound } from "./develop/round.ts";',
     to: 'import { localRound as developRound } from "./develop/local.ts";',
   });
+  edit(files, {
+    file: "develop.ts",
+    from: "await preparePull(ticketInput(request))",
+    to: "ticketInput(request)",
+  });
   for (const line of [
-    "  await preparePull(input.cycleId);\n",
     '  const started = await labelTicket(input, { key: "start", round: 1 });\n',
     "  if (started !== null) return started;\n",
     "  let endingRound = 1;\n",
@@ -242,9 +289,16 @@ function declaration(selected: DevelopSelection): string {
           workflow: { commands: ["red-green"] },
           methods: { command: ["run:red-green"] },
         }
-      : { effectLimit: 87, capabilities: [], workflow: {}, methods: {} };
-  const claude =
-    selected.accept === "turn" ? ["run-turn", "run-turn:review"] : ["run-turn"];
+      : {
+          effectLimit: selected.accept === "panel" ? 99 : 87,
+          capabilities: [],
+          workflow: {},
+          methods: {},
+        };
+  const claude = ["run-turn"].concat(
+    selected.accept === "turn" ? ["run-turn:review"] : [],
+    selected.accept === "panel" ? panelMethods : [],
+  );
   const github = [
     "prepare",
     "label",

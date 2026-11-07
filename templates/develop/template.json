@@ -112,6 +112,17 @@
           "change": "In develop/accept.ts call reviewByAgent({ subject, reviewer: { kind: \"turn\", profile: \"review\" } }). For local merge replace reviewByPerson in develop/local.ts with that same call and its import. Declare claude run-turn:review and configure the review profile. Remove github wait-review from the declaration.",
           "requires": {},
           "needs": ["default-harness"]
+        },
+        {
+          "id": "panel",
+          "label": "A panel of review turns",
+          "summary": "Run two or three review turns with the profiles review-claude, review-codex and review-gemini, each with its own harness. A synthesizer turn with the profile review-synthesis combines their reports, drops the findings that the current change already fixes, and gives the verdict. A change verdict starts a fix round with the synthesized findings.",
+          "change": "In develop/round.ts replace the acceptWork import with import { reviewPanel } from \"./panel.ts\". Pass state and report from developRound to deliverPull, and add state: DevelopState and report: DevelopReport to its request; import the type DevelopReport from develop/report.ts. In deliverPull replace the acceptWork call with reviewPanel({ state: request.state, report: request.report, pull: pull, reviewers: [\"review-claude\", \"review-codex\", \"review-gemini\"] }) and return a blocked outcome at once: if (\"kind\" in review) return review. For two reviewers remove one name from reviewers. Remove github wait-review from the declaration, add claude run-turn:review-claude, run-turn:review-codex, run-turn:review-gemini and run-turn:review-synthesis, and set workflow.effectLimit to 99. Configure the four profiles.",
+          "requires": {
+            "verify": ["none"],
+            "merge": ["green", "person"]
+          },
+          "needs": ["harnesses"]
         }
       ]
     },
@@ -139,7 +150,7 @@
           "id": "local",
           "label": "A person merges the local branch",
           "summary": "Leave the accepted branch for a person to merge by hand. Do not push or open a pull request.",
-          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, preparePull, the start labelTicket call and its check, the blockTicket call and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
+          "change": "In develop.ts import localRound as developRound from develop/local.ts. Remove the develop/pull.ts import, the preparePull call around the input (keep its argument as the input), the start labelTicket call and its check, the blockTicket call and endingRound. The local round reviews the worker report commit, then returns the local branch outcome. Declare only claude capabilities and run-turn methods; include run-turn:review when selected. Do not push or open a pull request.",
           "requires": {
             "accept": ["person", "turn"],
             "partial": ["person"]
@@ -199,6 +210,30 @@
           "label": "Stop as today",
           "summary": "Fail the run on a failed GitHub effect, and stop blocked at the round limit without a question.",
           "change": "In develop/recovery.ts set export const recovery = \"stop\" as \"person\" | \"stop\". The retry, conflict and decision helpers then return the earlier results unchanged.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "lessons",
+      "question": "Do the workers keep a lessons file in the repository?",
+      "options": [
+        {
+          "id": "file",
+          "label": "A lessons file in the repository",
+          "summary": "Each development turn prompt includes .cloving/lessons.md, up to 16 KB. A missing file is the same as an empty file. Before its last commit, a turn can add up to three new lessons, each on one line in ASD-STE100 Simplified Technical English with the date and the ticket. The turn does not add a lesson that the file already has in the same or a similar form. When the file is larger than 16 KB, the turn joins similar lessons and removes lessons that no longer apply. The lesson changes are part of the pull request, so the review sees them.",
+          "change": "Keep export const lessons = \"file\" as LessonsMode in develop/lessons.ts. preparePull in develop/pull.ts then sends the GitHub prepare payload {\"lessons\": true}, keeps the returned text and size in the task, and develop/report.ts gives them to each turn of develop/turn.ts.",
+          "requires": {
+            "merge": ["green", "person"]
+          },
+          "needs": []
+        },
+        {
+          "id": "none",
+          "label": "No lessons",
+          "summary": "No turn reads or writes the lessons file.",
+          "change": "In develop/lessons.ts set export const lessons = \"none\" as LessonsMode. preparePull then sends the GitHub prepare payload {} and the turn prompts do not name the lessons file.",
           "requires": {},
           "needs": []
         }

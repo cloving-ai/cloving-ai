@@ -35,6 +35,33 @@ export async function writeDeclaredWorkflow(
   return declaration;
 }
 
+function localSource(source: string, input: "prompt" | undefined): string {
+  return source
+    .replace("await preparePull(ticketInput(request))", "ticketInput(request)")
+    .replaceAll(
+      "ticketInput",
+      input === "prompt" ? "promptInput" : "ticketInput",
+    )
+    .replace(
+      'import { preparePull, labelTicket, blockTicket } from "./develop/pull.ts";\n',
+      "",
+    )
+    .replace(
+      'import { developRound } from "./develop/round.ts";',
+      'import { localRound as developRound } from "./develop/local.ts";',
+    )
+    .replace(
+      '  const started = await labelTicket(input, { key: "start", round: 1 });\n  if (started !== null) return started;\n',
+      "",
+    )
+    .replace("  let endingRound = 1;\n", "")
+    .replace("        endingRound = round;\n", "")
+    .replace(
+      '  if (failure !== null || outcome?.kind === "blocked")\n    failure = await blockTicket(input, { round: endingRound, failure });\n',
+      "",
+    );
+}
+
 export async function writeLocalWorkflow(
   repository: string,
   options: { readonly input?: "prompt" } = {},
@@ -44,30 +71,7 @@ export async function writeLocalWorkflow(
   const source = await readFile(join(folder, "develop.ts"), "utf8");
   await writeFile(
     join(folder, "develop.ts"),
-    source
-      .replaceAll(
-        "ticketInput",
-        options.input === "prompt" ? "promptInput" : "ticketInput",
-      )
-      .replace(
-        'import { preparePull, labelTicket, blockTicket } from "./develop/pull.ts";\n',
-        "",
-      )
-      .replace(
-        'import { developRound } from "./develop/round.ts";',
-        'import { localRound as developRound } from "./develop/local.ts";',
-      )
-      .replace("  await preparePull(input.cycleId);\n", "")
-      .replace(
-        '  const started = await labelTicket(input, { key: "start", round: 1 });\n  if (started !== null) return started;\n',
-        "",
-      )
-      .replace("  let endingRound = 1;\n", "")
-      .replace("        endingRound = round;\n", "")
-      .replace(
-        '  if (failure !== null || outcome?.kind === "blocked")\n    failure = await blockTicket(input, { round: endingRound, failure });\n',
-        "",
-      ),
+    localSource(source, options.input),
   );
   const file = join(folder, "develop.declaration.json");
   const declaration: unknown = JSON.parse(await readFile(file, "utf8"));

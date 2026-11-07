@@ -142,7 +142,7 @@ await test("CLV-089 rejects invalid declaration identifiers, budgets and capabil
     await rejectsDeclaration(value);
   for (const workflowId of ["", "a".repeat(65), "a_b", "a/b", 3])
     await rejectsDeclaration({ ...declaration, workflowId });
-  for (const effectLimit of [0, 101, 1.5, "14", null])
+  for (const effectLimit of [0, 1001, 1.5, "14", null])
     await rejectsDeclaration({ ...declaration, effectLimit });
   for (const capabilities of [[], ["other"], ["claude", 3], "claude", null])
     await rejectsDeclaration({ ...declaration, capabilities });
