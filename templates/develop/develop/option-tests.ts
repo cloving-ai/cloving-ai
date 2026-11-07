@@ -29,7 +29,12 @@ export function requestInput() {
 
 export const demoTurns =
   selection.demo === "record"
-    ? [completed({ summary: "Recorded.\nDemo status: recorded" })]
+    ? [
+        completed({
+          summary: "Recorded.\nDemo status: recorded",
+          demoStatus: "recorded",
+        }),
+      ]
     : [];
 
 export function scenarioEffects() {
@@ -234,7 +239,10 @@ function demoOptionTests() {
     {
       name: "CLV-315 two failed demo attempts block the run before the merge",
       run: async () => {
-        const failed = completed({ summary: "Demo status: failed" });
+        const failed = completed({
+          summary: "Demo status: failed",
+          demoStatus: "failed",
+        });
         const scenario = scenarioEffects();
         const developed = scenario["claude run-turn"].slice(0, 1);
         using bridge = fakeStepBridge({

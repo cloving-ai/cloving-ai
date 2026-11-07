@@ -84,18 +84,13 @@ export async function commandObservation(
 
 export async function demoToolObservation(
   tool: string | undefined,
-  workflows: { readonly used: boolean },
 ): Promise<DoctorObservation> {
   if (tool === undefined)
-    return workflows.used
-      ? {
-          result: "fail",
-          detail: "demo.tool is not set, and a workflow declares attach-asset",
-        }
-      : {
-          result: "skip",
-          detail: "demo.tool is not set, and no workflow declares attach-asset",
-        };
+    return {
+      result: "skip",
+      detail:
+        "demo.tool is not set. The record option of the develop demo point needs it.",
+    };
   if (!isAbsolute(tool))
     return { result: "fail", detail: "demo.tool must be an absolute path" };
   try {

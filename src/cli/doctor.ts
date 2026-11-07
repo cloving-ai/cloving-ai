@@ -151,7 +151,6 @@ async function repositoryObservations(
   const required = requiredDoctorCodes(workflowContext.workflows);
   observations["demo-tool"] = await demoToolObservation(
     environment["CLOVING_DEMO_TOOL"],
-    { used: required.includes("demo-tool") },
   );
   const dependent = await configuredObservations(
     { ...options, environment },

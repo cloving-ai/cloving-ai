@@ -13,7 +13,10 @@ const demo = {
   round: 2,
   pull: { number: 7, url: "pull/7", commit, target: input.cycleId },
 };
-const recorded = completed({ summary: "Recorded.\nDemo status: recorded\n" });
+const recorded = completed({
+  summary: "Recorded.\nDemo status: recorded\n",
+  demoStatus: "recorded",
+});
 const attached = completed({ number: 7, url: "https://github.com/acme/demo" });
 const uploadFailed: ProtectedResult = {
   kind: "failed",
@@ -81,6 +84,24 @@ export const demoTests = [
         round: 2,
         key: "attempt-1",
       });
+    },
+  },
+  {
+    name: "CLV-315 the kept demo status decides when the summary limit cut the last line",
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: {
+          "claude run-turn": [
+            completed({ summary: "語".repeat(16_000), demoStatus: "recorded" }),
+          ],
+          "github attach-asset": [attached],
+        },
+      });
+      assert.equal(await recordDemo(demo), null);
+      assert.deepEqual(steps(bridge.requests), [
+        "run-turn attempt-1",
+        "attach-asset attempt-1",
+      ]);
     },
   },
   {

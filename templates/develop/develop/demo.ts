@@ -58,15 +58,11 @@ export function demoFailure(result: ProtectedResult): string | null {
   if (result.kind !== "completed")
     return `The demo turn ended ${result.reason ?? result.kind}.`;
   const value: unknown = JSON.parse(result.result ?? "null");
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("summary" in value) ||
-    typeof value.summary !== "string"
-  )
+  if (typeof value !== "object" || value === null)
     return "The demo turn gave no report.";
-  const last = value.summary.trimEnd().split("\n").at(-1);
-  if (last?.trim() === "Demo status: recorded") return null;
+  if ("demoStatus" in value && value.demoStatus === "recorded") return null;
+  if (!("summary" in value) || typeof value.summary !== "string")
+    return "The demo turn gave no report.";
   return value.summary;
 }
 

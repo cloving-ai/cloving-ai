@@ -83,9 +83,6 @@ export async function configuredDevelopFiles(
   if (selected.input === "task-text")
     edit(files, { file: "develop.ts", from: "ticketInput", to: "promptInput" });
   if (selected.verify === "red-green") verificationFiles(files);
-  if (selected.demo === "record")
-    for (const { from, to } of demoEdits)
-      edit(files, { file: "develop/round.ts", from, to });
   if (selected.recovery === "stop")
     edit(files, {
       file: "develop/recovery.ts",
@@ -99,6 +96,8 @@ export async function configuredDevelopFiles(
       to: 'export const lessons = "none" as',
     });
   files[prefix + "develop.declaration.json"] = declaration(selected);
+  if (selected.demo === "record")
+    for (const change of demoEdits) edit(files, change);
   scenarioFiles(files, selected);
   return files;
 }
@@ -122,24 +121,39 @@ function verificationFiles(files: Record<string, string>): void {
 
 const demoEdits = [
   {
+    file: "develop/round.ts",
     from: 'import { openPull, finishPull } from "./pull.ts";',
     to: 'import { recordDemo } from "./demo.ts";\nimport { openPull, finishPull } from "./pull.ts";',
   },
   {
+    file: "develop/round.ts",
     from: "  type RoundResult,",
     to: "  type RoundResult,\n  type DevelopTask,",
   },
   {
+    file: "develop/round.ts",
     from: "await deliverPull({ round, pull",
     to: "await deliverPull({ input, round, pull",
   },
   {
+    file: "develop/round.ts",
     from: "  readonly pull: PullRequest;\n",
     to: "  readonly pull: PullRequest;\n  readonly input: DevelopTask;\n",
   },
   {
+    file: "develop/round.ts",
     from: "  try {\n    return await ",
     to: "  const demo = await recordDemo({ input: request.input, round: round, pull: pull });\n  if (demo !== null) return demo;\n  try {\n    return await ",
+  },
+  {
+    file: "develop.declaration.json",
+    from: '"close-pr"',
+    to: '"close-pr","attach-asset"',
+  },
+  {
+    file: "develop.declaration.json",
+    from: '"effectLimit":87',
+    to: '"effectLimit":99',
   },
 ];
 
@@ -310,16 +324,6 @@ function localFiles(files: Record<string, string>): void {
     edit(files, { file: "develop.ts", from: line, to: "" });
 }
 
-function defaultLimit(selected: DevelopSelection): number {
-  return selected.accept === "panel" || selected.demo === "record" ? 99 : 87;
-}
-
-function reviewAndDemoMethods(selected: DevelopSelection): string[] {
-  return (selected.accept === "greptile" ? ["wait-review"] : []).concat(
-    selected.demo === "record" ? ["attach-asset"] : [],
-  );
-}
-
 function declaration(selected: DevelopSelection): string {
   const local = selected.merge === "local";
   const verification =
@@ -331,7 +335,7 @@ function declaration(selected: DevelopSelection): string {
           methods: { command: ["run:red-green"] },
         }
       : {
-          effectLimit: defaultLimit(selected),
+          effectLimit: selected.accept === "panel" ? 99 : 87,
           capabilities: [],
           workflow: {},
           methods: {},
@@ -349,7 +353,7 @@ function declaration(selected: DevelopSelection): string {
     "partial-issue",
     "close-pr",
   ];
-  github.push(...reviewAndDemoMethods(selected));
+  if (selected.accept === "greptile") github.push("wait-review");
   return JSON.stringify({
     workflow: {
       workflowId: "develop",

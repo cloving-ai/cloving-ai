@@ -375,10 +375,14 @@ cloving config set demo.tool /ABSOLUTE/PATH/demo-video
 
 The setting is private, so the path does not go into the repository. The
 service gives the path to each turn in the variable `CLOVING_DEMO_TOOL`. A
-change of the setting needs a service restart. The `demo-tool` check of
-`cloving doctor` is required when a workflow declares `attach-asset`. The
-check fails when `demo.tool` is not set, is not an absolute path, or names a
-file or folder that Cloving cannot read.
+change of the setting needs a service restart.
+
+The `record` option needs the `demo-tool` check of `cloving doctor`. The check
+is optional, because a workflow that only uploads a file with `attach-asset`
+needs no demo tool. During the `cloving init-prompt` setup, each need of a
+selected option must give `ok`. The check gives `skip` when `demo.tool` is not
+set. It fails when the value is not an absolute path, or names a file or
+folder that Cloving cannot read.
 
 ### The demo turn
 
@@ -399,8 +403,11 @@ request, its commit and the ticket, and it gives the worker these rules:
 - Do not change, commit or push tracked files, and do not publish anything.
 - End the report with `Demo status: recorded` or `Demo status: failed`.
 
-Only a report with the last line `Demo status: recorded` gives a recorded
-demo.
+Before the worker shortens the summary of a report, it keeps the last line
+`Demo status: recorded` or `Demo status: failed` in the field `demoStatus` of
+the turn result. A long report keeps its status in this field. Only
+`demoStatus: "recorded"` gives a recorded demo. Test scenarios give
+`{ summary, demoStatus }` as the result of a demo turn.
 
 ### The upload
 
@@ -420,10 +427,10 @@ Anyone can see and download it, also after the pull request closes.
 
 ### Retries and stops
 
-- A failed demo turn, a result without a report, or a report without the
-  recorded line gets one more turn. The prompt of that turn ends with the
-  failure text: the report of the first turn, or the reason of the failed
-  turn.
+- A failed demo turn, a result without a report, or a report without
+  `demoStatus: "recorded"` gets one more turn. The prompt of that turn ends
+  with the failure text: the report of the first turn, or the reason of the
+  failed turn.
 - A failed upload gets one more upload of the same video, with no new turn.
 - A second failure ends the round `blocked` with the reason `demo-failed` and
   the evidence `demo`. No merge starts, and the workflow adds

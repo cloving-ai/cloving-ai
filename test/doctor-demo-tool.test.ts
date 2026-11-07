@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { doctorWorkflows } from "../src/cli/doctor-workflows.ts";
-import { requiredDoctorCodes } from "../src/doctor-report.ts";
+import { developManifest } from "./develop-template-fixture.ts";
 import { check, withDoctor, type DoctorScene } from "./doctor-fixture.ts";
+
+const unset =
+  "demo.tool is not set. The record option of the develop demo point needs it.";
 
 async function demoWorkflow(scene: DoctorScene, github: readonly string[]) {
   const folder = join(scene.repository, ".cloving/workflows");
@@ -24,29 +26,35 @@ async function demoWorkflow(scene: DoctorScene, github: readonly string[]) {
   );
 }
 
-await test("CLV-315 a workflow that declares attach-asset makes demo-tool required", () =>
+await test("CLV-315 attach-asset alone does not make demo-tool required, and the record option needs it", () =>
   withDoctor(async (scene) => {
-    await demoWorkflow(scene, ["open-pr", "attach-asset"]);
-    const workflows = await doctorWorkflows(
-      scene.repository,
-      scene.environment,
+    for (const github of [["open-pr"], ["open-pr", "attach-asset"]]) {
+      await demoWorkflow(scene, github);
+      const shown = check(await scene.report(), "demo-tool");
+      assert.deepEqual(
+        [shown["result"], shown["required"], shown["detail"]],
+        ["skip", false, unset],
+      );
+    }
+    const point = (await developManifest()).points.find(
+      (entry) => entry.id === "demo",
     );
-    assert.ok(requiredDoctorCodes(workflows).includes("demo-tool"));
-    assert.ok(
-      !requiredDoctorCodes([
-        { scope: "user", workflowId: "other", capabilities: ["github"] },
-      ]).includes("demo-tool"),
+    assert.deepEqual(
+      point?.options.map((option) => [option.id, option.needs]),
+      [
+        ["none", []],
+        ["record", ["demo-tool"]],
+      ],
     );
   }));
 
-await test("CLV-315 doctor reports a missing, relative or unreadable demo.tool for a demo workflow", () =>
+await test("CLV-315 doctor reports a relative, missing or unreadable demo.tool", () =>
   withDoctor(async (scene) => {
     await demoWorkflow(scene, ["attach-asset"]);
     const unreadable = join(scene.root, "unreadable.md");
     await writeFile(unreadable, "Secret steps.");
     await chmod(unreadable, 0o000);
     const cases = [
-      [undefined, "demo.tool is not set, and a workflow declares attach-asset"],
       ["skills/demo", "demo.tool must be an absolute path"],
       [
         join(scene.root, "missing"),
@@ -55,16 +63,15 @@ await test("CLV-315 doctor reports a missing, relative or unreadable demo.tool f
       [unreadable, `demo.tool ${unreadable} is missing or unreadable`],
     ] as const;
     for (const [tool, detail] of cases) {
-      const output = await scene.report(
-        tool === undefined ? {} : { CLOVING_DEMO_TOOL: tool },
+      const shown = check(
+        await scene.report({ CLOVING_DEMO_TOOL: tool }),
+        "demo-tool",
       );
-      const shown = check(output, "demo-tool");
       assert.deepEqual(
         [shown["result"], shown["required"], shown["detail"]],
-        ["fail", true, detail],
+        ["fail", false, detail],
       );
       assert.match(String(shown["fix"]), /cloving config set demo\.tool /);
-      assert.equal(output.status, 1);
     }
   }));
 
@@ -84,18 +91,4 @@ await test("CLV-315 doctor accepts a readable demo.tool file or folder", () =>
         ["ok", `demo.tool ${tool} is readable`],
       );
     }
-  }));
-
-await test("CLV-315 doctor skips demo-tool when no workflow declares attach-asset", () =>
-  withDoctor(async (scene) => {
-    await demoWorkflow(scene, ["open-pr"]);
-    const shown = check(await scene.report(), "demo-tool");
-    assert.deepEqual(
-      [shown["result"], shown["required"], shown["detail"]],
-      [
-        "skip",
-        false,
-        "demo.tool is not set, and no workflow declares attach-asset",
-      ],
-    );
   }));

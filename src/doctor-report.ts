@@ -88,7 +88,6 @@ export interface DoctorWorkflow {
   readonly workflowId: string;
   readonly capabilities: readonly string[];
   readonly input?: SubmissionContract;
-  readonly methods?: Readonly<Record<string, readonly string[]>>;
 }
 
 export function requiredDoctorCodes(
@@ -112,11 +111,5 @@ export function requiredDoctorCodes(
   }
   if (workflows.some((workflow) => hasTicketField(workflow.input)))
     codes.add("ticket-command");
-  if (
-    workflows.some((workflow) =>
-      workflow.methods?.["github"]?.includes("attach-asset"),
-    )
-  )
-    codes.add("demo-tool");
   return [...codes];
 }

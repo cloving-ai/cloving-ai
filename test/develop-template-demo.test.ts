@@ -30,9 +30,11 @@ const developed: ProtectedResult = completed({
 });
 const recorded = completed({
   summary: "Recorded 42 seconds.\nDemo status: recorded",
+  demoStatus: "recorded",
 });
 const failedDemo = completed({
   summary: "The scene did not start.\nDemo status: failed",
+  demoStatus: "failed",
 });
 const attached = completed({ number: 7, url: "https://github.com/acme/demo" });
 const uploadFailed: ProtectedResult = {
