@@ -14,6 +14,7 @@ export type SettingSource = "environment" | "private" | "project";
 export type RecordedSource = SettingSource | "default";
 
 export const reloadedSettingFields: readonly string[] = [
+  "effects.reserved",
   "fallbackModels",
   "profiles",
   "queue.lanes",
@@ -58,6 +59,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "limits.effects": "CLOVING_LIMIT_EFFECTS",
   "limits.chain": "CLOVING_LIMIT_CHAIN",
   "spend.scope": "CLOVING_SPEND_SCOPE",
+  "effects.reserved": "CLOVING_EFFECT_RESERVED",
   "harness.name": "CLOVING_WORKER",
   fallbackModels: "CLOVING_FALLBACK_MODELS",
   tokenPrices: "CLOVING_TOKEN_PRICES",
@@ -132,6 +134,7 @@ export function configurationValues(
     tickets: values.tickets,
     queue: values.queue,
     limits: values.limits,
+    effects: values.effects,
     spend: values.spend,
     harness: values.harness,
     notify: values.notify,

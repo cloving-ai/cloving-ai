@@ -16,7 +16,11 @@ import {
   scheduleLines,
 } from "./schedule-render.ts";
 import { show, oneLine, visible } from "./terminal-text.ts";
-import { queueHeadline, queueStateLines } from "./queue-render.ts";
+import {
+  effectLeaseText,
+  queueHeadline,
+  queueStateLines,
+} from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import { restartLines, serviceLines } from "./restart-render.ts";
@@ -124,6 +128,9 @@ function runList(result: Fields): readonly string[] {
     ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...refusalLines(result["workflowRefusals"]),
     ...threadPoolLines(result["threadPool"]),
+    ...[effectLeaseText(result["effectLeases"])].filter(
+      (line) => line !== undefined,
+    ),
     "Runs:",
     ...(lines.length === 0 ? ["  none"] : lines),
     ...(typeof hiddenRuns === "number" && hiddenRuns > 0

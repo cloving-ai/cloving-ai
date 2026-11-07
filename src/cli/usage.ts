@@ -13,7 +13,7 @@ list and get show the effective source and hidden file values. Unconfigured valu
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
 Private files, backups and temporary files have mode 0600.
-cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore and queue.maxMemoryPressure. Other changes require a service restart.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -143,7 +143,7 @@ Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
 A change of the queue workflow or of a schedule needs a restart.
-It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore and queue.maxMemoryPressure.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
 New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
@@ -199,6 +199,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND when that workflow exists. Unset or no queue workflow means no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
   CLOVING_QUEUE_LANES              A whole number from 1 to 16; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open. cloving reload applies a change; fewer lanes stop new starts and do not stop active runs.
   CLOVING_QUEUE_WORKING_LANES      A whole number from 1 to 16 and not more than CLOVING_QUEUE_LANES. It limits the queue runs in which a turn or a command runs; a run that waits for CI, a review or a person holds a lane but not a working lane. The default is CLOVING_QUEUE_LANES. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
+  CLOVING_EFFECT_RESERVED          A whole number from 0 to 8; the default is 2. The broker keeps this count of effect leases for runs that are not queue runs. The effect capacity is CLOVING_QUEUE_LANES plus this reserve, and queue runs together hold at most CLOVING_QUEUE_LANES leases. Other values stop the start with invalid-effect-settings. cloving reload applies a change.
   CLOVING_QUEUE_MAX_LOAD_PER_CORE  A number from 0.1 to 4; the default is 0.7. The queue starts a run only when the 1-minute load average divided by the available cores is below this limit. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
   CLOVING_QUEUE_MAX_MEMORY_PRESSURE normal or warn; the default is normal. The queue starts a run only when the memory pressure is at or below this level: on macOS from sysctl kern.memorystatus_vm_pressure_level, on Linux from MemAvailable of /proc/meminfo (warn below 20 percent, critical below 10 percent). Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
   CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS, unless CLOVING_SPEND_SCOPE is all. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.

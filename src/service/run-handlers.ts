@@ -37,6 +37,7 @@ import {
   rejection,
   result,
   threadPoolField,
+  effectLeaseField,
   wholeNumber,
   type ServiceContext,
 } from "./replies.ts";
@@ -130,6 +131,7 @@ async function effectInput(
       leaseGeneration: operation.leaseGeneration,
       attempts: operation.attempts,
       limit: operation.recoveryLimit,
+      waitingSince: operation.waitingSince,
     })),
     effectEvidence: await effects.evidence(runId),
   };
@@ -260,6 +262,7 @@ async function listed(
     next: identifiers.length > shown.length ? (shown.at(-1) ?? null) : null,
     worldReports: context.worldReports?.() ?? [],
     ...threadPoolField(context),
+    ...effectLeaseField(context),
   });
 }
 

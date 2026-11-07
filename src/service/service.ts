@@ -264,6 +264,9 @@ export async function startService(
     timing: timing.authority,
     available: registry.available,
     ...(options.effects === undefined ? {} : { effects: options.effects }),
+    ...(options.effectLeases === undefined
+      ? {}
+      : { leaseLimits: options.effectLeases.current }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   if (opening.kind === "refused") return opening;

@@ -89,3 +89,16 @@ await test("CLV-309 the new queue limits need a queue interval", () => {
       message: `The daemon did not start: ${code}`,
     });
 });
+
+await test("CLV-322 the effect reserve takes a whole number from 0 to 8 with or without a queue", () => {
+  assert.equal(queueLimits({ CLOVING_EFFECT_RESERVED: "0" }).reserved, 0);
+  assert.equal(
+    queueLimits({ ...queue, CLOVING_EFFECT_RESERVED: "8" }).reserved,
+    8,
+  );
+  assert.equal(queueLimits({}).reserved, undefined);
+  for (const value of ["9", "-1", "2.5", "", "1e1", "two"])
+    assert.throws(() => queueLimits({ CLOVING_EFFECT_RESERVED: value }), {
+      message: "The daemon did not start: invalid-effect-settings",
+    });
+});

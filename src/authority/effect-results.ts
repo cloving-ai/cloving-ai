@@ -44,6 +44,9 @@ function released(effects: EffectState, operation: Operation): EffectState {
             [lease.resourceKey]: { ...lease, state: "released" },
           },
     holding: effects.holding - (isHolding(operation) ? 1 : 0),
+    queueLeases: effects.queueLeases.filter(
+      (operationId) => operationId !== operation.operationId,
+    ),
   };
 }
 

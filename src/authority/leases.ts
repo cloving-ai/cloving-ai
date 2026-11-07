@@ -30,6 +30,20 @@ export function current(
   );
 }
 
+function queued(event: EffectContext["event"]): boolean {
+  return event.payload["queueLimit"] !== undefined;
+}
+
+function capacityRefusal(
+  effects: EffectState,
+  event: EffectContext["event"],
+): string | undefined {
+  if (effects.holding >= count(event, "capacity")) return "capacity-exceeded";
+  if (queued(event) && effects.queueLeases.length >= count(event, "queueLimit"))
+    return "queue-capacity-exceeded";
+  return undefined;
+}
+
 function grantRefusal(
   effects: EffectState,
   grant: EffectContext & { readonly operation: Operation },
@@ -41,10 +55,9 @@ function grantRefusal(
   if (lease !== undefined && lease.state !== "released") return "resource-held";
   if (count(event, "leaseGeneration") !== (lease?.generation ?? 0) + 1)
     return "stale-lease-generation";
-  if (effects.holding >= count(event, "capacity")) return "capacity-exceeded";
   if (!isAfter(field(event, "expiresAt"), event.recordedAt))
     return "invalid-lease-expiry";
-  return undefined;
+  return capacityRefusal(effects, event);
 }
 
 export function granted(
@@ -75,6 +88,9 @@ export function granted(
       }),
       leases: { ...effects.leases, [lease.resourceKey]: lease },
       holding: effects.holding + 1,
+      queueLeases: queued(event)
+        ? [...effects.queueLeases, operation.operationId]
+        : effects.queueLeases,
     },
     added: [operation.operationId],
   };
@@ -132,9 +148,44 @@ function free(effects: EffectState, leaseKey: string): boolean {
   return lease === undefined || lease.state === "released";
 }
 
+export interface LeaseLimits {
+  readonly capacity: number;
+  readonly queueLimit: number;
+}
+
+interface Room {
+  readonly free: number;
+  readonly queueFree: number;
+  readonly chosen: readonly Operation[];
+}
+
+function admitted(
+  effects: EffectState,
+  waiting: {
+    readonly oldest: readonly Operation[];
+    readonly limits: LeaseLimits;
+  },
+): readonly Operation[] {
+  const { oldest, limits } = waiting;
+  const start: Room = {
+    free: limits.capacity - effects.holding,
+    queueFree: limits.queueLimit - effects.queueLeases.length,
+    chosen: [],
+  };
+  return oldest.reduce<Room>((room, operation) => {
+    const queue = effects.queueRuns.includes(operation.runId) ? 1 : 0;
+    if (room.free < 1 || room.queueFree < queue) return room;
+    return {
+      free: room.free - 1,
+      queueFree: room.queueFree - queue,
+      chosen: [...room.chosen, operation],
+    };
+  }, start).chosen;
+}
+
 export function promotions(
   state: Promotable,
-  bound: number,
+  limits: LeaseLimits,
 ): readonly Operation[] {
   const { effects, runs } = state;
   const waiting = Object.values(effects.operations)
@@ -155,5 +206,5 @@ export function promotions(
     keys.add(operation.leaseKey);
     return first;
   });
-  return oldest.slice(0, Math.max(0, bound - effects.holding));
+  return admitted(effects, { oldest, limits });
 }

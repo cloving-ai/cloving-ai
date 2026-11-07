@@ -52,7 +52,7 @@ function byText<Row>(
 }
 
 export function effectRows(
-  effects: EffectState,
+  effects: Pick<EffectState, "budgets" | "operations" | "leases" | "stops">,
   evidence: readonly Evidence[],
 ): EffectRows {
   return {
@@ -114,7 +114,8 @@ export function storedBudget(row: BudgetRow): RunBudget {
 export type StoredEffects = Pick<
   EffectRows,
   "budgets" | "operations" | "leases" | "stops"
-> & { readonly holding: number };
+> &
+  Pick<EffectState, "holding" | "queueLeases" | "queueRuns">;
 
 export function storedEffects(rows: StoredEffects): EffectState {
   return {
@@ -128,6 +129,8 @@ export function storedEffects(rows: StoredEffects): EffectState {
       rows.leases.map((row) => [row.resourceKey, storedLease(row)]),
     ),
     holding: rows.holding,
+    queueLeases: rows.queueLeases,
+    queueRuns: rows.queueRuns,
     stops: Object.fromEntries(
       rows.stops.map((row) => [
         row.operationId,

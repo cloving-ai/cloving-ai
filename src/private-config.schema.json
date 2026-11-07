@@ -140,6 +140,13 @@
       },
       "additionalProperties": false
     },
+    "effects": {
+      "type": "object",
+      "properties": {
+        "reserved": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
     "harness": {
       "type": "object",
       "properties": {

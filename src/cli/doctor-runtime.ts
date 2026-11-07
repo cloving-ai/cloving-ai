@@ -3,6 +3,7 @@ import { dirname, extname, join, relative, resolve } from "node:path";
 import { socketAddress } from "../broker/socket-address.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import { record, type Fields } from "../protocol.ts";
+import { effectLeaseText } from "./queue-render.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import {
   adoptionRecordPath,
@@ -238,6 +239,11 @@ function queueHold(status: Fields): string {
     : "";
 }
 
+function effectLeases(status: Fields): string {
+  const text = effectLeaseText(status["effectLeases"]);
+  return text === undefined ? "" : `. ${text}`;
+}
+
 function answeredService(status: Fields | undefined): ServiceState {
   return {
     observation:
@@ -248,7 +254,7 @@ function answeredService(status: Fields | undefined): ServiceState {
           }
         : {
             result: "ok",
-            detail: `Service answers from its generated project folder${environmentSettings(status)}${queueHold(status)}`,
+            detail: `Service answers from its generated project folder${environmentSettings(status)}${queueHold(status)}${effectLeases(status)}`,
           },
     status,
   };

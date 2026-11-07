@@ -52,8 +52,16 @@ function maxMemoryPressure(environment: Environment) {
   return value;
 }
 
+function effectReserved(environment: Environment): number | undefined {
+  const value = environment["CLOVING_EFFECT_RESERVED"];
+  if (value === undefined) return undefined;
+  if (!/^[0-8]$/.test(value)) refusedStart("invalid-effect-settings");
+  return Number(value);
+}
+
 export function queueLimits(environment: Environment): QueueLimits {
   const lanes = queueLanes(environment);
+  const reserved = effectReserved(environment);
   return {
     lanes,
     workingLanes: workingLanes(environment, lanes),
@@ -61,6 +69,7 @@ export function queueLimits(environment: Environment): QueueLimits {
       maxLoadPerCore: maxLoadPerCore(environment),
       maxMemoryPressure: maxMemoryPressure(environment),
     },
+    ...(reserved === undefined ? {} : { reserved }),
   };
 }
 

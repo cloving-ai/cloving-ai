@@ -29,6 +29,7 @@ export const authorityTiming: AuthorityTiming = {
 
 export interface EffectSettings {
   readonly capacity: number;
+  readonly queueLimit: number;
   readonly leaseMilliseconds: number;
   readonly adapterMilliseconds: number;
   readonly resultBytes: number;
@@ -43,6 +44,7 @@ export interface PlanSettings extends EffectSettings {
 
 export const effectSettings: PlanSettings = {
   capacity: 4,
+  queueLimit: 4,
   leaseMilliseconds: 600_000,
   adapterMilliseconds: 30_000,
   resultBytes: 262_144,
@@ -52,19 +54,22 @@ export const effectSettings: PlanSettings = {
   stopSupported: false,
 };
 
-const maximumCapacity = 8;
+const maximumCapacity = 24;
 
 export function effectConfiguration(options: {
   readonly effects?: Partial<EffectSettings>;
   readonly delivery?: { readonly stop?: unknown };
 }): PlanSettings {
+  const capacity = options.effects?.capacity ?? effectSettings.capacity;
   const settings = {
     ...effectSettings,
+    queueLimit: capacity,
     ...options.effects,
     stopSupported: options.delivery?.stop !== undefined,
   };
   const positive = [
     settings.capacity,
+    settings.queueLimit,
     settings.leaseMilliseconds,
     settings.adapterMilliseconds,
     settings.resultBytes,
@@ -74,6 +79,7 @@ export function effectConfiguration(options: {
   ].every((value) => Number.isInteger(value) && value >= 1);
   const bounded =
     settings.capacity <= maximumCapacity &&
+    settings.queueLimit <= settings.capacity &&
     settings.recoveryLimit <= recoveryBound;
   if (!positive || !bounded) throw new Error("invalid-effect-settings");
   return settings;
