@@ -8,6 +8,51 @@ import { promisify } from "node:util";
 import { withFiles } from "./quality/files-fixture.ts";
 import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
 
+await test("encrypted MCP setup and remote stdio delegate to the MCP bridge with literal arguments", async () => {
+  await withFiles({}, async (directory) => {
+    const executable = join(directory, "cloving-mcp");
+    await writeFile(
+      executable,
+      `#!${process.execPath}\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\n`,
+    );
+    await chmod(executable, 0o700);
+    for (const argumentsList of [
+      ["integrations", "connect", "mcp", "--workflow", "develop"],
+      ["integrations", "pair", "mcp", "--name", "a literal name; $()"],
+      ["mcp", "--connection", "my-studio"],
+    ]) {
+      const reply = await promisify(execFile)(
+        process.execPath,
+        [resolve("src/cli.ts"), ...argumentsList],
+        {
+          cwd: directory,
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env["PATH"] ?? ""}`,
+          },
+        },
+      );
+      assert.deepEqual(JSON.parse(reply.stdout), argumentsList.slice(1));
+    }
+    for (const argumentsList of [
+      ["--repository", directory, "mcp", "--connection", "my-studio"],
+      ["mcp", "--repository", directory, "--connection", "my-studio"],
+    ]) {
+      const reply = await promisify(execFile)(
+        process.execPath,
+        [resolve("src/cli.ts"), ...argumentsList],
+        {
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env["PATH"] ?? ""}`,
+          },
+        },
+      );
+      assert.deepEqual(JSON.parse(reply.stdout), ["--connection", "my-studio"]);
+    }
+  });
+});
+
 await test("Zapier integration commands delegate with the selected local runtime and literal arguments", async () => {
   await withFiles({}, async (directory) => {
     const executable = join(directory, "cloving-zapier");
