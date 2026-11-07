@@ -812,6 +812,7 @@ The service also refuses these continuations:
 
 - A run that ended more than `retention.days` days ago gets `run-retention-expired`. With `retention.days` set to `null`, no run is too old.
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
+- A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
 - A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
 
 A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.

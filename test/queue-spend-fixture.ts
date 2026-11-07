@@ -19,6 +19,7 @@ interface SpendSettings {
   readonly issueResolver?: Resolver;
   readonly spendScope?: "all";
   readonly runSpendLimitUsd?: number;
+  readonly lanes?: number;
 }
 
 function scopeOf(settings: SpendSettings): { readonly spendScope?: "all" } {
@@ -145,7 +146,7 @@ function spendOptions(harness: Harness, state: SpendState) {
     ...harness.registration,
     workflowId: workflow.workflowId,
     queue: workflow.queue ?? false,
-    admission: 2,
+    admission: state.lanes ?? 2,
     effectLimit: 20,
     manifest: {
       ...harness.registration.manifest,
