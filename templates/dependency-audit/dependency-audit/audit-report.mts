@@ -28,6 +28,7 @@ export interface AuditCandidate {
   readonly effects: readonly string[];
   readonly fixAvailable: Fix;
   readonly advisories: readonly AuditAdvisory[];
+  readonly advisoryCount: number;
   readonly paths: readonly string[];
   readonly pathCount: number;
 }
@@ -41,7 +42,20 @@ interface Installed {
 
 type Fields = Readonly<Record<string, unknown>>;
 
-export const auditLimits = { packages: 10, paths: 20 };
+export const auditLimits = {
+  packages: 10,
+  paths: 20,
+  pathLength: 500,
+  advisories: 20,
+  versions: 20,
+  effects: 50,
+};
+
+function shortened(path: string): string {
+  return path.length <= auditLimits.pathLength
+    ? path
+    : `${path.slice(0, auditLimits.pathLength - 1)}…`;
+}
 
 function unexpected(source: string): Error {
   return new Error(`${source} printed an unexpected report.`);
@@ -166,13 +180,24 @@ function candidateOf(
       : "high",
     direct,
     range,
-    versions: [...new Set(places.map((item) => item.version))].sort(),
-    effects: list(vulnerability["effects"], "npm audit").map((item) =>
-      text(item, "npm audit"),
-    ),
+    versions: [...new Set(places.map((item) => item.version))]
+      .sort()
+      .slice(0, auditLimits.versions),
+    effects: list(vulnerability["effects"], "npm audit")
+      .map((item) => text(item, "npm audit"))
+      .slice(0, auditLimits.effects),
     fixAvailable: fixOf(vulnerability["fixAvailable"]),
-    advisories: unique,
-    paths: places.slice(0, auditLimits.paths).map((item) => item.path),
+    advisories: unique
+      .toSorted(
+        (left, right) =>
+          Number(left.severity !== "critical") -
+          Number(right.severity !== "critical"),
+      )
+      .slice(0, auditLimits.advisories),
+    advisoryCount: unique.length,
+    paths: places
+      .slice(0, auditLimits.paths)
+      .map((item) => shortened(item.path)),
     pathCount: places.length,
   };
 }

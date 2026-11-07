@@ -59,6 +59,18 @@ function title(plan: TicketPlan, names: string): string {
   return `# ${verb} ${plan.change.package} to ${plan.change.to} for the ${plan.severity} advisories of ${names}`;
 }
 
+function leftOut(plan: TicketPlan): readonly string[] {
+  const lines = plan.packages.flatMap((item) => {
+    const more = item.advisoryCount - item.advisories.length;
+    return more > 0
+      ? [
+          `- ${String(more)} more ${more === 1 ? "advisory" : "advisories"} of ${item.name} ${more === 1 ? "is" : "are"} not in the table. Run \`npm audit --json\` to see ${more === 1 ? "it" : "them"}.`,
+        ]
+      : [];
+  });
+  return lines.length === 0 ? [] : [""].concat(lines);
+}
+
 function problem(plan: TicketPlan): readonly string[] {
   return [
     "## Problem",
@@ -71,6 +83,7 @@ function problem(plan: TicketPlan): readonly string[] {
     plan.packages.flatMap((item) =>
       item.advisories.map((advisory) => advisoryRow(advisory, item.name)),
     ),
+    leftOut(plan),
     ["", "These paths install the packages (`npm ls --all`):", ""],
     plan.packages.flatMap((item) => pathLines(item)),
   );

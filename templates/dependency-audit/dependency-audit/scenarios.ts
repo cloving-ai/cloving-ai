@@ -26,6 +26,9 @@ export function candidate(
   name: string,
   fields: Readonly<Record<string, unknown>> = {},
 ) {
+  const advisories = fields["advisories"] ?? [
+    advisory(`GHSA-${name.padEnd(4, "x").slice(0, 4)}-aaaa-bbbb`),
+  ];
   return {
     name,
     severity: "high",
@@ -34,7 +37,8 @@ export function candidate(
     versions: ["1.0.0"],
     effects: [],
     fixAvailable: true,
-    advisories: [advisory(`GHSA-${name.padEnd(4, "x").slice(0, 4)}-aaaa-bbbb`)],
+    advisories,
+    advisoryCount: Array.isArray(advisories) ? advisories.length : 0,
     paths: [`parent@3.0.0 > ${name}@1.0.0`],
     pathCount: 1,
     ...fields,

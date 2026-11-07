@@ -42,6 +42,7 @@ export interface Candidate {
   readonly effects: readonly string[];
   readonly fixAvailable: Fix;
   readonly advisories: readonly Advisory[];
+  readonly advisoryCount: number;
   readonly paths: readonly string[];
   readonly pathCount: number;
 }
@@ -99,6 +100,16 @@ function fixOf(value: unknown): Fix {
   };
 }
 
+function countOf(value: unknown, listed: number): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < listed
+  )
+    failure(bad);
+  return value;
+}
+
 function counted(item: Readonly<Record<string, unknown>>) {
   const paths = items(item["paths"], {
     reason: bad,
@@ -120,6 +131,11 @@ function candidateOf(value: unknown): Candidate {
   const direct = item["direct"];
   if (typeof direct !== "boolean") failure(bad);
   const { paths, pathCount } = counted(item);
+  const advisories = items(item["advisories"], {
+    reason: bad,
+    minimum: 1,
+    maximum: 20,
+  }).map((advisory) => advisoryOf(advisory));
   return {
     name: line(item["name"], {
       reason: bad,
@@ -136,11 +152,8 @@ function candidateOf(value: unknown): Candidate {
     }).map((version) => text(version, 100)),
     effects: names(item["effects"]),
     fixAvailable: fixOf(item["fixAvailable"]),
-    advisories: items(item["advisories"], {
-      reason: bad,
-      minimum: 1,
-      maximum: 20,
-    }).map((advisory) => advisoryOf(advisory)),
+    advisories,
+    advisoryCount: countOf(item["advisoryCount"], advisories.length),
     paths,
     pathCount,
   };

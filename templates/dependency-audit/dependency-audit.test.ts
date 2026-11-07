@@ -159,6 +159,23 @@ await test("CLV-318 a group with no breaking change says so and lists no sources
   );
 });
 
+await test("CLV-318 a ticket names the advisories that the table leaves out", async () => {
+  using bridge = fakeStepBridge({
+    effects: effects([candidate("minimist", { advisoryCount: 23 })], {
+      groups: [group(["minimist"])],
+    }),
+    effectLimit: 9,
+  });
+  await dependencyAudit(input);
+  const [ticket = ""] = tickets(bridge.requests);
+  assert.ok(
+    ticket.includes(
+      "\n\n- 22 more advisories of minimist are not in the table. Run `npm audit --json` to see them.\n",
+    ),
+    ticket,
+  );
+});
+
 await test("CLV-318 the turn gets the candidates as data and the rules of the plan", async () => {
   using bridge = fakeStepBridge({
     effects: effects(twoPackages, { groups: [group(["undici"])] }),

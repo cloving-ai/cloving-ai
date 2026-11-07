@@ -99,24 +99,26 @@ The script prints one JSON array with at most 10 packages:
         "patchedRange": ">=0.2.4"
       }
     ],
+    "advisoryCount": 1,
     "paths": ["mkdirp@0.5.1 > minimist@0.2.1"],
     "pathCount": 1
   }
 ]
 ```
 
-| Field          | Value                                                                                         |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `name`         | The package that has the advisory.                                                            |
-| `severity`     | `critical` when one of its advisories is critical, else `high`.                               |
-| `direct`       | `true` when `package.json` names the package.                                                 |
-| `range`        | The vulnerable versions of the package, from `npm audit`.                                     |
-| `versions`     | The installed versions in that range.                                                         |
-| `effects`      | The packages that depend on the package, from `npm audit`.                                    |
-| `fixAvailable` | The fix of `npm audit`: `true`, `false`, or the package and version of the fix.               |
-| `advisories`   | Each critical or high advisory: ID, severity, title, URL, vulnerable range and patched range. |
-| `paths`        | At most 20 install paths of a vulnerable version from `npm ls --all`, the shortest first.     |
-| `pathCount`    | The number of all install paths of a vulnerable version.                                      |
+| Field           | Value                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | The package that has the advisory.                                                                                                  |
+| `severity`      | `critical` when one of its advisories is critical, else `high`.                                                                     |
+| `direct`        | `true` when `package.json` names the package.                                                                                       |
+| `range`         | The vulnerable versions of the package, from `npm audit`.                                                                           |
+| `versions`      | At most 20 installed versions in that range.                                                                                        |
+| `effects`       | At most 50 packages that depend on the package, from `npm audit`.                                                                   |
+| `fixAvailable`  | The fix of `npm audit`: `true`, `false`, or the package and version of the fix.                                                     |
+| `advisories`    | At most 20 critical or high advisories, the critical ones first: ID, severity, title, URL, vulnerable range and patched range.      |
+| `advisoryCount` | The number of all critical or high advisories of the package. The ticket names the advisories that the table leaves out.            |
+| `paths`         | At most 20 install paths of a vulnerable version from `npm ls --all`, the shortest first. The script cuts a path at 500 characters. |
+| `pathCount`     | The number of all install paths of a vulnerable version.                                                                            |
 
 The advisory ID is the GitHub advisory ID from the URL, or the npm advisory
 number when the URL has no GitHub advisory ID. The patched range is each version

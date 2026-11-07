@@ -9,6 +9,9 @@ import {
   vulnerability,
 } from "./dependency-audit-fixture.ts";
 import { auditCandidates } from "../templates/dependency-audit/dependency-audit/audit-report.mts";
+import { fakeStepBridge } from "cloving/workflows/testing";
+import { auditCandidates as parsedCandidates } from "../templates/dependency-audit/dependency-audit/candidates.ts";
+import { completed } from "../templates/dependency-audit/dependency-audit/scenarios.ts";
 
 await test("CLV-318 the candidates keep the critical and the high advisory and leave out the moderate one", () => {
   const candidates = auditCandidates({
@@ -35,6 +38,7 @@ await test("CLV-318 the candidates keep the critical and the high advisory and l
           patchedRange: ">=0.2.4",
         },
       ],
+      advisoryCount: 1,
       paths: ["mkdirp@0.5.1 > minimist@0.2.1"],
       pathCount: 1,
     },
@@ -56,6 +60,7 @@ await test("CLV-318 the candidates keep the critical and the high advisory and l
           patchedRange: "<7.18.0 || >=7.30.1",
         },
       ],
+      advisoryCount: 1,
       paths: ["workflow@1.2.0 > @workflow/core@5.0.2 > undici@7.18.0"],
       pathCount: 1,
     },
@@ -291,6 +296,75 @@ const unexpectedReports = [
   [{ issues: [[{ body: "GHSA-xvch-5gv4-984h" }]] }, /gh printed/],
   [{ issues: [[{ title: "Upgrade", body: 7 }]] }, /gh printed/],
 ] as const;
+
+await test("CLV-318 the candidates stay inside the limits of the workflow parser and count every advisory", async () => {
+  const via = Array.from({ length: 25 }, (_, index) =>
+    advisory({
+      id: `GHSA-${String(index).padStart(4, "a")}-aaaa-bbbb`,
+      source: 2000 + index,
+      name: "minimist",
+      severity: index >= 22 ? "critical" : "high",
+      title: `Advisory ${String(index)}`,
+      range: "<1.0.0",
+    }),
+  );
+  const parents = Object.fromEntries(
+    Array.from({ length: 25 }, (_, index) => [
+      `parent-${String(index).padStart(2, "0")}`,
+      {
+        version: "1.0.0",
+        dependencies: { minimist: { version: `0.0.${String(index + 1)}` } },
+      },
+    ]),
+  );
+  const [candidate] = auditCandidates({
+    audit: auditReport({
+      minimist: vulnerability("minimist", {
+        severity: "critical",
+        via,
+        range: "<1.0.0",
+        effects: Array.from(
+          { length: 60 },
+          (_, index) => `effect-${String(index).padStart(2, "0")}`,
+        ),
+      }),
+    }),
+    tree: { name: "demo", dependencies: parents },
+    issues: [],
+  });
+  assert.equal(candidate?.advisories.length, 20);
+  assert.equal(candidate.advisoryCount, 25);
+  assert.deepEqual(
+    candidate.advisories.slice(0, 3).map((item) => item.severity),
+    ["critical", "critical", "critical"],
+  );
+  assert.equal(candidate.versions.length, 20);
+  assert.equal(candidate.effects.length, 50);
+  using bridge = fakeStepBridge({
+    effects: { "command run:audit-candidates": [completed([candidate])] },
+  });
+  const [parsed] = await parsedCandidates();
+  assert.equal(parsed?.advisoryCount, 25);
+  assert.equal(bridge.requests.length, 1);
+});
+
+await test("CLV-318 an install path longer than the parser limit is cut to 500 characters", () => {
+  const names = ["a", "b", "c"].map((letter) => letter.repeat(214));
+  const chain = names.reduceRight<Readonly<Record<string, unknown>>>(
+    (inner, name) => ({ [name]: { version: "1.0.0", dependencies: inner } }),
+    { minimist: { version: "0.2.1" } },
+  );
+  const [candidate] = auditCandidates({
+    audit: threeSeverities,
+    tree: { name: "demo", dependencies: chain },
+    issues: [],
+  });
+  assert.equal(candidate?.pathCount, 1);
+  const [path = ""] = candidate.paths;
+  const [first = ""] = names;
+  assert.equal(path.length, 500);
+  assert.ok(path.startsWith(`${first}@1.0.0 > `));
+});
 
 await test("CLV-318 an unexpected npm audit, npm ls or gh report throws", () => {
   for (const [reports, message] of unexpectedReports)
