@@ -5,6 +5,8 @@ import {
   type FinishedChecks,
 } from "../src/cli/watch-finished.ts";
 import { needsOf } from "../src/cli/watch-needs-view.ts";
+import { record } from "../src/protocol.ts";
+import { items } from "./service-fixture.ts";
 import type { WatchModel, WatchRun } from "../src/cli/watch-render.ts";
 import { boardRun } from "./watch-board-fixture.ts";
 import { floorModel, minutesBefore } from "./watch-floor-fixture.ts";
@@ -136,6 +138,46 @@ await test("CLV-321 Needs you leaves out a failed run of a ticket with a later c
   assert.deepEqual(listed(model, openChecks), ["failed-other"]);
 });
 
+function withOutcome(
+  run: ReturnType<typeof stoppedRun>,
+  fields: Readonly<Record<string, string>>,
+): ReturnType<typeof stoppedRun> {
+  const status = record(run["status"]) ?? {};
+  return {
+    ...run,
+    status: { ...status, outcome: { ...record(status["outcome"]), ...fields } },
+  };
+}
+
+await test("CLV-321 a later run with partial work or a failed issue update does not finish the ticket", () => {
+  const later = (runId: string, ticketId: string) =>
+    stoppedRun(runId, {
+      ticketId,
+      outcome: "handoff_requested",
+      createdMinutes: 200,
+      endedMinutes: 100,
+    });
+  const first = (runId: string, ticketId: string) =>
+    stoppedRun(runId, {
+      ticketId,
+      state: "failed",
+      createdMinutes: 300,
+      endedMinutes: 240,
+    });
+  const model = floorModel([
+    first("failed-partial", "309"),
+    withOutcome(later("partial-later", "309"), { ticketStatus: "partial" }),
+    first("failed-update", "313"),
+    withOutcome(later("update-later", "313"), { issueUpdate: "failed" }),
+    first("failed-complete", "320"),
+    withOutcome(later("complete-later", "320"), { ticketStatus: "complete" }),
+  ]);
+  assert.deepEqual(listed(model, openChecks).toSorted(), [
+    "failed-partial",
+    "failed-update",
+  ]);
+});
+
 await test("CLV-321 Needs you leaves out a stopped run that ended more than the retention days ago", () => {
   const model = floorModel([
     stoppedRun("old-run", {
@@ -179,5 +221,45 @@ await test("CLV-321 a run with a continuation or no stop reads no ticket and no 
   assert.deepEqual(
     shown.runs.map((run) => run.finished ?? null),
     [null, null],
+  );
+});
+
+await test("CLV-321 a dismissed run leaves Needs you and reads no ticket and no pull request", () => {
+  const reads: string[] = [];
+  const dismissed = stoppedRun("dismissed", {
+    ticketId: "175",
+    state: "failed",
+  });
+  const model = floorModel([
+    {
+      ...dismissed,
+      events: [
+        ...items(dismissed["events"]),
+        { sequence: 3, recordedAt: minutesBefore(5), type: "run.dismissed" },
+      ],
+    },
+    stoppedRun("kept", { ticketId: "176", state: "failed" }),
+  ]);
+  const shown = finishedModel(withTickets(model), {
+    issue: (issue) => {
+      reads.push(`issue ${String(issue.number)}`);
+      return "open";
+    },
+    pullRequest: (pull) => {
+      reads.push(`pull ${String(pull.number)}`);
+      return { status: "unmerged" };
+    },
+    retentionDays: null,
+  });
+  assert.deepEqual(reads, ["issue 176", "pull 276"]);
+  assert.deepEqual(
+    Object.fromEntries(
+      shown.runs.map((run) => [run.runId, run.finished ?? null]),
+    ),
+    { dismissed: "dismissed", kept: null },
+  );
+  assert.deepEqual(
+    needsOf(shown.runs).map((need) => need.runId),
+    ["kept"],
   );
 });

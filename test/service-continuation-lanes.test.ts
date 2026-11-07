@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../src/protocol.ts";
-import { call } from "./service-fixture.ts";
+import { call, eventually } from "./service-fixture.ts";
 import { withQueueSpend } from "./queue-spend-fixture.ts";
 
 await test("CLV-321 with 4 of 4 lanes busy, a continuation of a queue run is refused with continuation-lanes-full", () =>
@@ -40,6 +41,69 @@ await test("CLV-321 with 4 of 4 lanes busy, a continuation of a queue run is ref
       assert.match(String(refused["detail"]), /4 of 4 lanes are busy/);
       await scene.finish(String(busy[0]));
       assert.equal((await continued())["kind"], "run-continued");
+    },
+    { limitUsd: 1000, lanes: 4 },
+  ));
+
+async function stoppedRun(
+  scene: Parameters<Parameters<typeof withQueueSpend>[0]>[0],
+  name: string,
+): Promise<string> {
+  const runId = await scene.begin(name);
+  await scene.turn(runId, { costUsd: 1 });
+  const shown = await call(scene.harness, {
+    operation: "status",
+    parameters: { runId },
+  });
+  const failed = await scene.worker().submit({
+    kind: "fail-run",
+    commandId: `${name}-fail`,
+    runId,
+    expectedRevision: Number(record(shown["run"])?.["revision"]),
+  });
+  assert.equal(failed.kind, "accepted");
+  return runId;
+}
+
+await test("CLV-321 a continuation waits for a queue admission that holds the last free lane", () =>
+  withQueueSpend(
+    async (scene) => {
+      const stopped = await stoppedRun(scene, "stopped-first");
+      for (const name of ["busy-first", "busy-second", "busy-third"])
+        await scene.begin(name);
+      const admissions = scene.counts.admissions;
+      let release = (): void => undefined;
+      scene.resolution.wait = new Promise((resolve) => {
+        release = resolve;
+      });
+      const admitted = call(scene.harness, {
+        operation: "run",
+        parameters: {
+          workflowId: scene.registrations[0]?.workflowId,
+          source: "prompt",
+          submission: { ticket: "next" },
+          commandId: "queue-next",
+        },
+      });
+      await eventually(() =>
+        scene.counts.admissions > admissions ? true : undefined,
+      );
+      const continued = call(scene.harness, {
+        operation: "continue-run",
+        parameters: {
+          runId: stopped,
+          commandId: "held-continue",
+          from: "work/turn/1",
+        },
+      });
+      await Promise.race([continued, delay(1000)]);
+      release();
+      assert.equal((await admitted)["kind"], "run-admitted");
+      const refused = await continued;
+      assert.deepEqual(
+        [refused["code"], refused["busy"], refused["lanes"]],
+        ["continuation-lanes-full", 4, 4],
+      );
     },
     { limitUsd: 1000, lanes: 4 },
   ));

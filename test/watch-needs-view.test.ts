@@ -167,3 +167,36 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.match(String(served["html"]), header);
 });
+
+await test("CLV-321 a stopped run that a direct link reads outside the floor does not count in the header", () => {
+  const [archived] = floorModel([
+    floorRun("old-stopped", { operation: "github-merge", state: "failed" }),
+  ]).runs;
+  assert.ok(archived);
+  const served = played(
+    { ...floorModel([]), archived },
+    `
+const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#run=old-stopped";
+replies.push(model, { run: archived });
+await load();
+const linked = app.inner;
+location.hash = "";
+replies.push(model);
+listeners.hashchange();
+const floor = app.inner;
+await settled();
+console.log(JSON.stringify({ linked, floor, runs: state.model.runs.length }));
+`,
+  );
+  const none =
+    /<span class="header-count needs-you"><strong>0<\/strong> need you<\/span>/;
+  assert.match(
+    String(served["linked"]),
+    /Failed <span class="name">old-stopped/,
+  );
+  assert.match(String(served["linked"]), none);
+  assert.match(String(served["floor"]), none);
+  assert.match(String(served["floor"]), /Nothing needs you/);
+  assert.equal(served["runs"], 0);
+});

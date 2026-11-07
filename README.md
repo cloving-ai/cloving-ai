@@ -172,8 +172,13 @@ The panel leaves out a failed or blocked run when its work is finished:
 
 - the GitHub issue of its ticket is closed;
 - its pull request is merged;
-- a later run of the same ticket completed with a handoff;
-- it ended more than `retention.days` ago.
+- a later run of the same ticket completed with a handoff, with no `Ticket status: partial` and no failed issue update;
+- it ended more than `retention.days` ago;
+- a person dismissed it.
+
+With watch actions on, each failed or blocked run in the panel has a **Dismiss** button. The button sends the same command as `cloving dismiss <run-id>`. The service records the dismissal as the event `run.dismissed` of the run, so the run stays out of the panel after a restart. A dismissal does not change the state, the files or the pull request of the run. When the run did not end, the service refuses the dismissal with `run-active`.
+
+The header count and the panel use only the runs of the floor. When a link opens an older run, that run does not change the count.
 
 The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
 
@@ -442,15 +447,16 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has eleven tools:
+The server has twelve tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
 - `cloving_answer`, `cloving_approve` and `cloving_deny` record a decision. Read `reference`, `expectedRevision`, `generation` and `subjectDigest` from `cloving_questions`.
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
+- `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
 
-Each of the eight tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -816,9 +822,17 @@ The service also refuses these continuations:
 - A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
 - A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
 
-A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
+A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. The service checks the lanes and admits a continuation of a queue run one request at a time, together with the queue admissions of the same workflow. So two requests at the same time cannot both take the last free lane. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
 
 On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+
+To remove a stopped run from **Needs you** with no continuation, dismiss it:
+
+```sh
+cloving dismiss <run-id>
+```
+
+The **Dismiss** button of the item sends the same command. The MCP tool `cloving_dismiss` does the same. `cloving events <run-id>` shows the dismissal as `run.dismissed`.
 
 ### Rescue stuck pull requests
 

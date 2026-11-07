@@ -19,6 +19,12 @@ export type RuntimeInvocation =
   | RestartInvocation
   | { readonly kind: "report"; readonly since: number; readonly json: boolean }
   | { readonly kind: "reload"; readonly json: boolean }
+  | {
+      readonly kind: "dismiss";
+      readonly runId: string;
+      readonly commandId: string | null;
+      readonly json: boolean;
+    }
   | { readonly kind: "command-help"; readonly command: string }
   | {
       readonly kind: "run";

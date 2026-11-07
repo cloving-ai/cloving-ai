@@ -21,7 +21,7 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume, cloving_drop and cloving_continue to submit runs and decisions. Each of these tools
+cloving_resume, cloving_drop, cloving_continue and cloving_dismiss to submit runs and decisions. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
@@ -132,6 +132,11 @@ Returns a paused run to the state that it paused from.
   drop: `Usage: cloving drop <run-id> --expected-revision <n> [--command-id <id>] [--json]
 
 Cancels the run and its pending dispatch. It keeps the workspace and the evidence.
+`,
+  dismiss: `Usage: cloving dismiss <run-id> [--command-id <id>] [--json]
+
+Records a dismissal of a run that ended failed or blocked. Needs you on the watch page does not list the run.
+The dismissal is an event of the run and stays after a restart. It does not change the run or its files.
 `,
   events: `Usage: cloving events [<run-id>] [--after <sequence>] [--limit <n>] [--follow] [--json]
 
@@ -269,6 +274,7 @@ Commands:
   pause      Stop new dispatch for a run.
   resume     Resume a paused run.
   drop       Cancel a run and keep its files.
+  dismiss    Remove a stopped run from Needs you.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.

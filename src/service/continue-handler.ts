@@ -19,7 +19,11 @@ import {
 import { activeWorkflow, laneCount } from "./active-tickets.ts";
 import { finishedRefusal } from "./finished-work.ts";
 import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
-import { runIdentity } from "./submission-handler.ts";
+import {
+  admissionKeys,
+  runIdentity,
+  type AdmissionLock,
+} from "./submission-handler.ts";
 
 interface ContinueRequest {
   readonly runId: string;
@@ -349,4 +353,23 @@ export async function continueRun(
       : await context.authority.queries.receipt(run.admissionCommandId);
   if (admission === undefined) return unavailable(request);
   return continued(context, { request, run, command: admission.command });
+}
+
+export function continueHandler(
+  context: ServiceContext,
+  lock: AdmissionLock,
+): (parameters: Fields) => Promise<Reply> {
+  return async (parameters) => {
+    const runId = String(parameters["runId"]);
+    const commandId = String(parameters["commandId"]);
+    const workflowId = (await context.authority.queries.workflowIds([runId]))[
+      runId
+    ];
+    return lock(
+      workflowId === undefined
+        ? [`command:${commandId}`]
+        : admissionKeys(context, { commandId, workflowId }),
+      () => continueRun(context, parameters),
+    );
+  };
 }

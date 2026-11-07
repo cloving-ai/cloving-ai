@@ -339,19 +339,14 @@ async function submitted(
   });
 }
 
-export function submissionHandler(
-  context: ServiceContext,
-): (parameters: Fields) => Promise<Reply> {
+export type AdmissionLock = (
+  keys: readonly string[],
+  next: () => Promise<Reply>,
+) => Promise<Reply>;
+
+export function admissionLock(): AdmissionLock {
   const pending = new Map<string, Promise<Reply>>();
-  return (parameters) => {
-    const keys = [`command:${String(parameters["commandId"])}`];
-    const workflowId = String(parameters["workflowId"]);
-    if (
-      hasTicketField(context.registry.byId(workflowId)?.submission) ||
-      context.registry.byId(workflowId)?.admission !== undefined
-    )
-      keys.push(`workflow:${workflowId}`);
-    const next = (): Promise<Reply> => submitted(context, parameters);
+  return (keys, next) => {
     const previous = keys
       .map((key) => pending.get(key))
       .filter((reply) => reply !== undefined);
@@ -364,4 +359,32 @@ export function submissionHandler(
     reply.then(settled, settled);
     return reply;
   };
+}
+
+export function admissionKeys(
+  context: ServiceContext,
+  admission: { readonly commandId: string; readonly workflowId: string },
+): string[] {
+  const { workflowId } = admission;
+  const workflow = context.registry.byId(workflowId);
+  const shared =
+    hasTicketField(workflow?.submission) || workflow?.admission !== undefined;
+  return [
+    `command:${admission.commandId}`,
+    ...(shared ? [`workflow:${workflowId}`] : []),
+  ];
+}
+
+export function submissionHandler(
+  context: ServiceContext,
+  lock: AdmissionLock = admissionLock(),
+): (parameters: Fields) => Promise<Reply> {
+  return (parameters) =>
+    lock(
+      admissionKeys(context, {
+        commandId: String(parameters["commandId"]),
+        workflowId: String(parameters["workflowId"]),
+      }),
+      () => submitted(context, parameters),
+    );
 }

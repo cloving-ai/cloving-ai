@@ -164,6 +164,7 @@ export interface WatchTile {
 }
 
 export type WatchFinished =
+  | "dismissed"
   | "ticket-closed"
   | "pull-request-merged"
   | "later-run-completed"
@@ -171,6 +172,7 @@ export type WatchFinished =
 
 export interface WatchRun {
   readonly finished?: WatchFinished;
+  readonly linked?: true;
   readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
   readonly commandWaits?: readonly CommandWaitView[];

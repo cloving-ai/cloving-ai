@@ -66,6 +66,7 @@ import {
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
 import {
   ContinueAction,
+  DismissAction,
   Need,
   NeedMessage,
   NeedsYou,
@@ -241,6 +242,7 @@ const functions = [
   needsOf,
   needMeta,
   ContinueAction,
+  DismissAction,
   NeedMessage,
   Need,
   NeedsYou,

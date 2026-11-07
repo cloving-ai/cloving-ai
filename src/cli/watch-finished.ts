@@ -32,13 +32,21 @@ function createdAt(run: WatchRun): string {
   return run.events[0]?.recordedAt ?? "";
 }
 
+function completedTicket(run: WatchRun): boolean {
+  return (
+    run.state === "completed" &&
+    run.outcome === "handoff_requested" &&
+    run.ticketStatus !== "partial" &&
+    run.issueUpdate !== "failed"
+  );
+}
+
 function laterCompleted(run: WatchRun, runs: readonly WatchRun[]): boolean {
   if (run.ticketId === null) return false;
   return runs.some(
     (later) =>
       later.ticketId === run.ticketId &&
-      later.state === "completed" &&
-      later.outcome === "handoff_requested" &&
+      completedTicket(later) &&
       createdAt(later) > createdAt(run),
   );
 }
@@ -64,6 +72,8 @@ export function finishedOf(
   context: FinishedContext,
 ): WatchFinished | null {
   if (!stoppedWork(run)) return null;
+  if (run.events.some((event) => event.type === "run.dismissed"))
+    return "dismissed";
   if (laterCompleted(run, context.runs)) return "later-run-completed";
   if (expired(run, context)) return "retention-expired";
   if (

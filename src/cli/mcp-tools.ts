@@ -10,6 +10,7 @@ import {
   commandJson,
   decisionRequest,
   readCommandReply,
+  dismissRequest,
   readCommandRequest,
   runCommandRequest,
   runRequest,
@@ -249,6 +250,18 @@ const continueTool: Tool = {
     ),
 };
 
+const dismissTool: Tool = {
+  name: "cloving_dismiss",
+  description: `Dismiss a failed run, or a run that completed blocked, so that Needs you on the watch page does not list it. The dismissal is an event of the run. ${repeat}`,
+  arguments: { runId: key, commandId: key },
+  required: ["runId", "commandId"],
+  annotations: mutation,
+  call: (values) =>
+    mutationCall(values, (commandId) =>
+      dismissRequest({ runId: String(values["runId"]), commandId }),
+    ),
+};
+
 const tools: readonly Tool[] = [
   read("status", { runId: key, limit, after: identifier }),
   read("questions", { runId: key }),
@@ -278,6 +291,7 @@ const tools: readonly Tool[] = [
   runCommand("resume"),
   runCommand("drop"),
   continueTool,
+  dismissTool,
 ];
 
 function listing(tool: Tool): Fields {

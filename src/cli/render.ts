@@ -28,6 +28,7 @@ import {
   receiptLines,
   runCommandLines,
   runContinuedLines,
+  runDismissedLines,
 } from "./run-command-render.ts";
 export { oneLine } from "./terminal-text.ts";
 export { errorText } from "./error-render.ts";
@@ -359,6 +360,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["decision-recorded", decisionRecorded],
   ["run-command", runCommandLines],
   ["run-continued", runContinuedLines],
+  ["run-dismissed", runDismissedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
