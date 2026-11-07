@@ -9,9 +9,11 @@ import { fileTickets } from "./dependency-audit/tickets.ts";
 
 function auditReport(
   candidates: readonly Candidate[],
-  filed: readonly TicketPlan[],
+  requested: readonly TicketPlan[],
 ): string {
-  const names = filed.flatMap((plan) => plan.packages.map((item) => item.name));
+  const names = requested.flatMap((plan) =>
+    plan.packages.map((item) => item.name),
+  );
   const left = candidates
     .filter((item) => !names.includes(item.name))
     .map((item) => item.name);
@@ -19,7 +21,7 @@ function auditReport(
     (count, item) => count + item.advisories.length,
     0,
   );
-  return `Advisories: ${String(advisories)} in ${String(candidates.length)} packages. Tickets: ${String(filed.length)} (${names.join(", ")}). Left for a later audit: ${left.join(", ") || "none"}.`;
+  return `Advisories: ${String(advisories)} in ${String(candidates.length)} packages. Ticket runs requested: ${String(requested.length)} (${names.join(", ")}). Left for a later audit: ${left.join(", ") || "none"}.`;
 }
 
 export async function dependencyAudit(
@@ -36,12 +38,12 @@ export async function dependencyAudit(
         report: "No new critical or high advisory.",
       };
     const plans = await planTickets({ input: input, candidates: candidates });
-    const filed = await fileTickets(plans);
+    const requested = await fileTickets(plans);
     return {
       kind: "handoff_requested",
       cycleId: input.cycleId,
       promotionId: "dependency-audit",
-      report: auditReport(candidates, filed),
+      report: auditReport(candidates, requested),
     };
   } catch (error) {
     return {

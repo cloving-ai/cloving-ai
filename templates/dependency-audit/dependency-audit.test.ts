@@ -49,7 +49,7 @@ await test("CLV-318 a turn result with 2 groups hands off 2 tickets and each nam
     cycleId: input.cycleId,
     promotionId: "dependency-audit",
     report:
-      "Advisories: 3 in 2 packages. Tickets: 2 (minimist, undici). Left for a later audit: none.",
+      "Advisories: 3 in 2 packages. Ticket runs requested: 2 (minimist, undici). Left for a later audit: none.",
   });
   assert.deepEqual(methods(bridge.requests), [
     "run:audit-candidates",
@@ -155,7 +155,7 @@ await test("CLV-318 a group with no breaking change says so and lists no sources
   assert.ok(text.includes("## Sources\n\nNone.\n"));
   assert.equal(
     outcome.kind === "handoff_requested" ? outcome.report : "",
-    "Advisories: 3 in 2 packages. Tickets: 1 (undici). Left for a later audit: minimist.",
+    "Advisories: 3 in 2 packages. Ticket runs requested: 1 (undici). Left for a later audit: minimist.",
   );
 });
 
@@ -211,7 +211,7 @@ await test("CLV-318 7 groups hand off 5 tickets and the critical groups come fir
   );
   assert.equal(
     outcome.kind === "handoff_requested" ? outcome.report : "",
-    "Advisories: 7 in 7 packages. Tickets: 5 (charlie, foxtrot, alpha, bravo, delta). Left for a later audit: echo, golf.",
+    "Advisories: 7 in 7 packages. Ticket runs requested: 5 (charlie, foxtrot, alpha, bravo, delta). Left for a later audit: echo, golf.",
   );
 });
 
