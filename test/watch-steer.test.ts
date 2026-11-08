@@ -171,6 +171,20 @@ await test("CLV-327 the Steer form has a note field and the check box Send to th
     "close",
   ]);
   assert.deepEqual(buttons(shown).slice(-2), ["Send", "Cancel"]);
+  const busy = page(model, {
+    selected: "run=run-a",
+    steering: { ...controls([], "run-a"), busy: ["run-a"] },
+  });
+  assert.deepEqual(
+    found(busy, "button").map((button) => [
+      button["children"],
+      button["disabled"],
+    ]),
+    [
+      ["Send", true],
+      ["Cancel", undefined],
+    ],
+  );
 });
 
 function answered(requests: ServiceRequest[]) {

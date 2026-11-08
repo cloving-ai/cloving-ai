@@ -164,3 +164,22 @@ await service.close();
       },
     ]);
   }));
+
+await test("CLV-327 a steer note with now waits for the next turn when the service has no turn steering, and a request with a now that is not true or false is not valid", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`${servicePrelude}
+writeFileSync("hold-effect", "");
+const service = await hosted();
+const runId = await submitted("c-1");
+await until(() => lines("destination.log").length === 1);
+const queuedReply = await asked("steer-run", { runId, commandId: "s-1", note: "A note.", now: true });
+const invalid = await asked("steer-run", { runId, commandId: "s-2", note: "A note.", now: "yes" });
+rmSync("hold-effect");
+print({ queued: [queuedReply.delivery, queuedReply.reason], invalid: invalid.error?.code ?? invalid.code });
+await service.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines, [
+      { queued: ["queued", "no-open-turn"], invalid: "invalid-request" },
+    ]);
+  }));
