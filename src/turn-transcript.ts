@@ -42,10 +42,12 @@ export const transcriptLimits = { entries: 200, bytes: 262_144 } as const;
 
 const encoder = new TextEncoder();
 
-function completeLines(text: string, open: boolean): readonly string[] {
-  const lines = text.split("\n");
+function completeLines(
+  source: Pick<TranscriptSource, "text" | "open">,
+): readonly string[] {
+  const lines = source.text.split("\n");
   const last = lines.pop() ?? "";
-  return open || last === "" ? lines : [...lines, last];
+  return source.open || last === "" ? lines : [...lines, last];
 }
 
 function attemptDraft(
@@ -89,7 +91,7 @@ function entryOf(
 export function transcriptEntries(source: TranscriptSource): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   let attempt = 1;
-  for (const line of completeLines(source.text, source.open)) {
+  for (const line of completeLines(source)) {
     const boundary = line.trim() === "";
     if (boundary) attempt += 1;
     const drafts = boundary

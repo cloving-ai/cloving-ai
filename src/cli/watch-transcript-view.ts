@@ -26,7 +26,7 @@ export interface TranscriptBox {
 
 export interface TranscriptControls {
   readonly view: (target: TranscriptTarget) => TranscriptView;
-  readonly onToggle: (target: TranscriptTarget, shown: boolean) => void;
+  readonly onToggle: (target: TranscriptTarget) => void;
   readonly onScroll: (operationId: string, box: TranscriptBox) => void;
   readonly onJump: (target: TranscriptTarget) => void;
   readonly onEarlier: (target: TranscriptTarget) => void;
@@ -182,7 +182,7 @@ export function Transcript(props: {
     type: "button",
     class: "transcript-toggle",
     onClick: () => {
-      controls?.onToggle(target, view?.shown !== true);
+      controls?.onToggle(target);
     },
     children: view?.shown === true ? "Hide" : "Show",
   });

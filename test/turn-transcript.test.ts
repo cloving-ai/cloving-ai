@@ -24,7 +24,7 @@ const claudeTurn = lines(
     input: { command: "npm test", description: "Run the tests" },
   }),
   { type: "tool_progress", tool_name: "Bash", elapsed_time_seconds: 1 },
-  toolResult("1 test failed", true),
+  toolResult("1 test failed", { error: true }),
   {
     type: "system",
     subtype: "task_started",
@@ -72,7 +72,7 @@ await test("CLV-329 an open turn leaves out its last line until the line is comp
   const complete = lines(assistant({ type: "text", text: "First." }));
   const partial = `${complete}{"type":"assistant","mess`;
   assert.deepEqual(
-    read(partial, true).map((found) => found.text),
+    read(partial, { open: true }).map((found) => found.text),
     ["First."],
   );
   assert.deepEqual(

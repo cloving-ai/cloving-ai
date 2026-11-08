@@ -14,7 +14,10 @@ export function assistant(...content: readonly unknown[]) {
   return { type: "assistant", message: { content } };
 }
 
-export function toolResult(content: unknown, error = false) {
+export function toolResult(
+  content: unknown,
+  mark: { readonly error?: true } = {},
+) {
   return {
     type: "user",
     message: {
@@ -23,7 +26,7 @@ export function toolResult(content: unknown, error = false) {
           type: "tool_result",
           tool_use_id: "tool-1",
           content,
-          is_error: error,
+          is_error: mark.error === true,
         },
       ],
     },
@@ -45,6 +48,14 @@ export function entry(
   };
 }
 
-export function read(text: string, open = false): TranscriptEntry[] {
-  return transcriptEntries({ text, open, attempts: [], privateTexts: [] });
+export function read(
+  text: string,
+  options: { readonly open?: true } = {},
+): TranscriptEntry[] {
+  return transcriptEntries({
+    text,
+    open: options.open === true,
+    attempts: [],
+    privateTexts: [],
+  });
 }

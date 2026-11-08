@@ -109,10 +109,10 @@ function transcriptControls() {
       if (shown) transcriptOpened(item, target.operationId);
       return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen };
     },
-    onToggle(target, shown) {
+    onToggle(target) {
       const item = transcriptItem(target);
-      item.shown = shown;
-      if (!shown) transcriptClosed(item);
+      item.shown = !(item.shown ?? target.wanted);
+      if (!item.shown) transcriptClosed(item);
       draw();
     },
     onScroll(operationId, box) {
