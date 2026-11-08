@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "docs-drift",
+  "summary": "Audit the docs against the code of the default branch each Monday and file at most five issues with the label cloving: docs, one for each doc that drifted, each with a table of the statements that no longer match the code and the path:line evidence.",
+  "points": []
+}

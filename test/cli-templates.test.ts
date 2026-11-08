@@ -71,6 +71,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
         summary: template?.["summary"],
         points: points.length,
       },
+      { name: "docs-drift", summary: summaryOf("docs-drift"), points: 0 },
       {
         name: "goal-to-tickets",
         summary: summaryOf("goal-to-tickets"),
@@ -87,7 +88,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrelease: .+ \(2 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-checks: .+ \(0 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
+      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ndocs-drift: .+ \(0 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrelease: .+ \(2 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-checks: .+ \(0 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
     );
   }));
 
@@ -204,6 +205,43 @@ await test("CLV-316 templates copy with an id hands a self handoff to the copy a
       entry: packagedEntry,
     });
     assert.equal(tested.status, 0, tested.stdout + tested.stderr);
+  }));
+
+await test("CLV-317 templates copy with an id points the handoffs of a template to itself at the copy", () =>
+  withFiles(repository, async (root) => {
+    const folder = join(root, "repo/.cloving/workflows");
+    const copies = [
+      ["docs-drift", "site-docs", "tickets.ts"],
+      ["triage-issue", "site-triage", "pass.ts"],
+      ["patrol", "site-patrol", "rescue.ts"],
+    ] as const;
+    for (const [name, id] of copies)
+      assert.equal(templates(root, ["copy", name, "--id", id]).status, 0);
+    const handoffs = async (id: string) =>
+      record(
+        record(
+          JSON.parse(
+            await readFile(join(folder, `${id}.declaration.json`), "utf8"),
+          ),
+        )?.["workflow"],
+      )?.["handoffs"];
+    assert.deepEqual(await handoffs("site-docs"), ["site-docs"]);
+    assert.deepEqual(await handoffs("site-triage"), ["site-triage"]);
+    assert.deepEqual(await handoffs("site-patrol"), [
+      "rescue-pr",
+      "answer-review",
+    ]);
+    for (const [name, id, helper] of copies)
+      assert.match(
+        await readFile(join(folder, id, helper), "utf8"),
+        name === "patrol"
+          ? /workflowId: "rescue-pr"/
+          : new RegExp(`workflowId: "${id}"`),
+      );
+    for (const id of ["site-docs", "site-triage"]) {
+      const tested = cli(root, { args: ["test", id], entry: packagedEntry });
+      assert.equal(tested.status, 0, tested.stdout + tested.stderr);
+    }
   }));
 
 await test("CLV-223 templates commands refuse unknown templates and invalid ids", () =>
