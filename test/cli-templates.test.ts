@@ -170,6 +170,41 @@ await test("CLV-223 templates copy with an id renames the files, the workflow an
     assert.equal(tested.status, 0, tested.stdout + tested.stderr);
   }));
 
+await test("CLV-316 templates copy with an id hands a self handoff to the copy and keeps a handoff to another workflow", () =>
+  withFiles(repository, async (root) => {
+    const folder = join(root, "repo/.cloving/workflows");
+    for (const [name, id] of [
+      ["review-checks", "weekly-checks"],
+      ["patrol", "site-patrol"],
+    ] as const)
+      assert.equal(templates(root, ["copy", name, "--id", id]).status, 0);
+    const declared = async (id: string) =>
+      record(
+        record(
+          JSON.parse(
+            await readFile(join(folder, `${id}.declaration.json`), "utf8"),
+          ),
+        )?.["workflow"],
+      )?.["handoffs"];
+    assert.deepEqual(await declared("weekly-checks"), ["weekly-checks"]);
+    assert.deepEqual(await declared("site-patrol"), [
+      "rescue-pr",
+      "answer-review",
+    ]);
+    const tickets = join(folder, "weekly-checks/tickets.ts");
+    assert.match(
+      await readFile(tickets, "utf8"),
+      /workflowId: "weekly-checks"/,
+    );
+    const scenarios = join(folder, "weekly-checks/scenarios.ts");
+    assert.doesNotMatch(await readFile(scenarios, "utf8"), /"review-checks"/);
+    const tested = cli(root, {
+      args: ["test", "weekly-checks"],
+      entry: packagedEntry,
+    });
+    assert.equal(tested.status, 0, tested.stdout + tested.stderr);
+  }));
+
 await test("CLV-223 templates commands refuse unknown templates and invalid ids", () =>
   withFiles(repository, (root) => {
     const unknown = templates(root, ["copy", "missing"]);

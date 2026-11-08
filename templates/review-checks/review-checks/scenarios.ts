@@ -107,20 +107,46 @@ export function recordedDecisions(
       typeof value === "object" && value !== null && "decisions" in value
         ? value.decisions
         : [];
-    return (Array.isArray(listed) ? listed : []).map((item: unknown) =>
-      JSON.stringify(item).replace(
-        /^\{"name":"([^"]+)".*"decision":"([^"]+)".*$/,
-        "$1 $2",
-      ),
-    );
+    return (Array.isArray(listed) ? listed : []).map((item: unknown) => {
+      if (
+        typeof item !== "object" ||
+        item === null ||
+        !("name" in item) ||
+        typeof item.name !== "string" ||
+        !("decision" in item) ||
+        typeof item.decision !== "string"
+      )
+        throw new Error("invalid-recorded-decision");
+      return `${item.name} ${item.decision}`;
+    });
   });
 }
+
+const self = { workflowId: "review-checks" };
 
 export function tickets(requests: readonly ScenarioRequest[]): string[] {
   return requests.flatMap((request) => {
     if (request[0] !== "handoff") return [];
     const text = request[1].input["text"];
-    return typeof text === "string" ? [text] : [];
+    return request[1].workflowId === self.workflowId && typeof text === "string"
+      ? [text]
+      : [];
+  });
+}
+
+export function busyFacts() {
+  const long = (pullRequest: number, thread: number) =>
+    Object.assign(comment(pullRequest, thread), { text: "é".repeat(2000) });
+  return facts({
+    comments: Array.from({ length: 200 }, (_, index) =>
+      long(641 + (index % 2), index + 1),
+    ),
+    decisions: Array.from({ length: 300 }, (_, index) => ({
+      name: `shape-${String(index)}`,
+      shape: "s".repeat(600),
+      decision: "defer",
+      links: [link(600, index + 1)],
+    })),
   });
 }
 
@@ -230,6 +256,20 @@ export const refusals = [
     "discard",
   ],
   [{ facts: [] }, "invalid-review-comments", "run:review-comments"],
+  [
+    {
+      facts: facts({
+        lintRules: Object.fromEntries(
+          Array.from({ length: 400 }, (_, index) => [
+            `${"r".repeat(190)}-${String(index)}`,
+            "off",
+          ]),
+        ),
+      }),
+    },
+    "check-facts-too-large",
+    "run:review-comments",
+  ],
   [
     { facts: facts({ comments: {} }) },
     "invalid-review-comments",

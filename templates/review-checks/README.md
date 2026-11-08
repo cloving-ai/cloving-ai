@@ -127,7 +127,20 @@ A week with fewer than 3 comments, or with comments on fewer than 2 pull
 requests, ends `completed` with no turn and no question.
 
 Else the `prepare` method gives a clean work tree of the newest default branch,
-and one turn reads the facts as untrusted data. The turn does these steps:
+and one turn reads the facts as untrusted data.
+
+A turn request has at most 65536 bytes. When the facts are larger, the turn
+gets this part of them:
+
+- The newest earlier decisions that fit in one quarter of the free bytes.
+- The first open tickets that fit in one quarter of the free bytes.
+- The first comments that fit in the remaining bytes.
+
+The workflow checks each suggestion against all facts. When the facts with no
+comments, tickets and decisions are larger than the limit, the run blocks with
+`check-facts-too-large` before `prepare`.
+
+The turn does these steps:
 
 1. It keeps a comment only when a deterministic check of the source can find
    its problem. It leaves out questions, praise, design choices, missing tests
@@ -190,8 +203,9 @@ so the same suggestions can come back the next week.
 ## The tickets
 
 `create-issue` makes one issue for each run, because its duplicate marker uses
-the target of the run. Thus the pass hands off one `review-checks` run for each
-accepted suggestion, at most 5, with the input `{"text": "<ticket>"}`. That run
+the target of the run. Thus the pass hands off one run of the same workflow for
+each accepted suggestion, at most 5, with the input `{"text": "<ticket>"}`. A
+copy made with `--id <id>` hands off to `<id>`. That run
 creates the issue with `create-issue` and adds the label `cloving: check`. The
 privacy check of `create-issue` applies, so the run requires `privateTexts`.
 

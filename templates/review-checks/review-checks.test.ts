@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { reviewChecks } from "./review-checks.ts";
 import {
+  busyFacts,
   comment,
   completed,
   effects,
@@ -275,6 +276,28 @@ await test("CLV-316 the turn gets the rules and the facts, and the question list
     ),
   );
   assert.deepEqual(tickets(bridge.requests), []);
+});
+
+await test("CLV-316 a busy week keeps the turn request within 65536 bytes with the first comments and the newest decisions", async () => {
+  const busy = busyFacts();
+  using bridge = fakeStepBridge({
+    effects: effects(busy, [
+      suggestion({ links: [link(641, 1), link(642, 2), link(641, 3)] }),
+    ]),
+    decisions: [{ decision: "answered", answer: "accept" }],
+    effectLimit: 12,
+  });
+  const outcome = await reviewChecks(input);
+  assert.ok(outcome.kind === "handoff_requested");
+  assert.match(outcome.report ?? "", /Accepted: 1 \(await-in-loop\)/);
+  const [turnPrompt = ""] = prompts(bridge.requests);
+  assert.ok(Buffer.byteLength(turnPrompt) <= 65536);
+  assert.ok(Buffer.byteLength(turnPrompt) > 60000);
+  assert.ok(turnPrompt.includes(JSON.stringify(busy.comments[0])));
+  assert.ok(!turnPrompt.includes(JSON.stringify(busy.comments[199])));
+  assert.ok(turnPrompt.includes('"name":"shape-299"'));
+  assert.ok(!turnPrompt.includes('"name":"shape-0"'));
+  assert.equal(tickets(bridge.requests).length, 1);
 });
 
 await test("CLV-316 the ticket has the PRD form, the check line, the scope and the count command", async () => {
