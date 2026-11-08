@@ -281,7 +281,8 @@ await test("CLV-317 the turn gets the candidates as data and the rules of the au
     "path:line",
     "Do not guess",
     "most rows first",
-    "48000 characters",
+    "15000 characters",
+    "keep the docs with the most rows",
     "code comments",
     JSON.stringify(candidates),
   ])

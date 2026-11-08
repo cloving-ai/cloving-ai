@@ -63,10 +63,12 @@ function driftOf(value: unknown, docs: Set<string>): Drift {
   return { doc, rows };
 }
 
+const resultCharacters = 15000;
+
 export function driftOfResult(result: string, scan: Scan): readonly Drift[] {
   const summary = record(jsonValue(result, bad), bad)["summary"];
   if (typeof summary !== "string") failure(bad);
-  if (summary.length > 48000) failure("drift-result-too-large");
+  if (summary.length > resultCharacters) failure("drift-result-too-large");
   const docs = new Set(scan.candidates.map((item) => item.doc));
   const found = list(record(jsonValue(summary, bad), bad)["docs"], {
     reason: bad,
@@ -86,7 +88,7 @@ export function auditPrompt(scan: Scan): string {
     "Give evidence only from the code that you read. When you cannot name a path:line, leave the row out. Do not guess.",
     "Put the docs with the most rows first. Leave out each doc that matches the code. Do not write local paths, email addresses or mentions.",
     'Return only a JSON object in your final summary: {"docs": [{"doc": doc path, "rows": [{"line": number, "says": text, "code": text, "evidence": "path:line", "commit": commit ID, "fix": text}]}]}.',
-    "Return at most 48000 characters of serialized JSON. Do not add prose or fences.",
+    `Return at most ${String(resultCharacters)} characters of serialized JSON. When the rows do not fit, keep the docs with the most rows and leave out the others. Do not add prose or fences.`,
     JSON.stringify(scan),
   ].join("\n\n");
 }

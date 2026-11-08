@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { docsDrift } from "../docs-drift.ts";
+import { ticketText } from "./ticket.ts";
 import {
   candidate,
   commit,
@@ -148,7 +149,7 @@ const turnRefusals: readonly (readonly [unknown, string])[] = [
   [{ kind: "failed", operationId: "t", reason: "turn-failed" }, "turn-failed"],
   [completed({ summary: 7 }), "invalid-drift-result"],
   [completed({ summary: "not json" }), "invalid-drift-result"],
-  [completed({ summary: "x".repeat(48001) }), "drift-result-too-large"],
+  [completed({ summary: "x".repeat(15001) }), "drift-result-too-large"],
   [turn({ docs: {} }), "invalid-drift-result"],
   [
     turn({ docs: [{ doc: "OTHER.md", rows: [row()] }] }),
@@ -287,35 +288,18 @@ refusalTests.push({
 });
 
 refusalTests.push({
-  name: "CLV-317 a ticket above 48000 bytes blocks the run before the first handoff and the record",
-  run: async () => {
-    using bridge = fakeStepBridge({
-      effects: effects(scan(one), {
-        docs: [
-          {
-            doc: "README.md",
-            rows: Array.from({ length: 30 }, (_, index) =>
-              row({
-                line: index + 1,
-                says: "é".repeat(500),
-                code: "é".repeat(500),
-              }),
-            ),
-          },
-        ],
-      }),
+  name: "CLV-317 a ticket above 48000 bytes is refused before the post",
+  run: () => {
+    const drift = {
+      doc: "README.md",
+      rows: Array.from({ length: 30 }, (_, index) =>
+        row({ line: index + 1, says: "é".repeat(500), code: "é".repeat(500) }),
+      ),
+    };
+    assert.throws(() => ticketText(drift, "a".repeat(40)), {
+      message: "drift-ticket-too-large",
     });
-    const outcome = await docsDrift(input);
-    assert.equal(
-      outcome.kind === "blocked" ? outcome.reason : "",
-      "drift-ticket-too-large",
-    );
-    assert.deepEqual(methods(bridge.requests), [
-      "run:docs-candidates",
-      "prepare",
-      "run-turn",
-      "discard",
-    ]);
+    return Promise.resolve();
   },
 });
 

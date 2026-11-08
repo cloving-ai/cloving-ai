@@ -174,8 +174,10 @@ that does not match the code, it writes one row:
 - the commit that changed that line;
 - the change of the doc that makes the row match the code.
 
-The turn returns JSON of at most 48000 characters in its final summary. After
-the turn, also after a failure, the `discard` method removes the work tree.
+The turn returns JSON of at most 15000 characters in its final summary, because
+the Claude worker keeps only 16000 characters of a summary. When the rows do not
+fit, the turn keeps the docs with the most rows. After the turn, also after a
+failure, the `discard` method removes the work tree.
 
 Before the turn, the workflow compares the branch of the work tree with the
 `branch` of the candidates. The `prepare` method uses the local `origin/HEAD`.
@@ -199,7 +201,7 @@ The workflow checks the result. A row whose evidence is not a relative
 hexadecimal ID shows as `not known`. A doc with no row left did not drift. A doc
 that is not a candidate, a doc that is in the result two times, or a row with a
 bad line number or text blocks the run with `invalid-drift-result`. A summary
-above 48000 characters blocks it with `drift-result-too-large`.
+above 15000 characters blocks it with `drift-result-too-large`.
 
 ## The tickets
 
