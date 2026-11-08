@@ -366,6 +366,8 @@ The optional `retention` check shows the size and the folder count of `journal/`
 
 The optional `turn-environment` check names the variables of the environment of `cloving doctor` that a turn does not get. It shows the names only, never the values. It does not name the `CLOVING_*` settings, `GH_CONFIG_DIR` or the GitHub token variables, because a turn never got them from the service. When a project needs a variable from the list, add its name to `turns.environment`. The check gives `warn` when `turns.environment` is `"inherit"`. An invalid value fails the check and names the variable.
 
+The optional `turn-runners` check reads the profiles of `CLOVING_PROFILES`, or else of the private settings file. For each `seatbelt` runner, it runs `srt --version`, or `runner.command` with `--version`. For each `container` runner, it runs `ENGINE --version`, `ENGINE image inspect IMAGE` and a test mount `ENGINE run --rm -v REPOSITORY:REPOSITORY:ro IMAGE test -d REPOSITORY`. The check fails and names the profile when a command is not found, the image is not found or the test mount fails. A profiles file that the check cannot read or that is not valid fails the check.
+
 The optional `command-gh-no-login` check gives `warn` when an entry of `CLOVING_COMMANDS` has an executable with the file name `gh`, and names each such entry. A command gets no GitHub login, so its `gh` calls fail. The fix names the methods of the `github` capability that a workflow can use instead. An invalid `CLOVING_COMMANDS` fails the check and names the variable.
 
 The optional `demo-tool` check reads the private setting `demo.tool` (`CLOVING_DEMO_TOOL`). The `record` option of the `demo` point of the `develop` template lists this check in its `needs`, so the `cloving init-prompt` setup requires `ok` for it with that option. The GitHub method `attach-asset` alone does not need a demo tool. The check gives `skip` when the setting is not set. It fails when the setting is not an absolute path, or names a file or folder that Cloving cannot read.
@@ -657,6 +659,12 @@ A text word is plain text of 1 to 60 characters, with no control characters and 
 
 `cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
 
+To use a workflow computer from a harness on another machine, install the `cloving-zapier` integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
+
+Configure the harness to launch `cloving-mcp --connection studio`, or `cloving mcp --connection studio`. The pairing command prints a complete configuration. Private keys stay at the endpoints, and cloving.ai carries encrypted messages. The bridge requires a harness that can launch a local MCP process. The `cloving.ai/mcp` page explains setup; it is not a URL-only MCP endpoint.
+
+Remote access starts with workflow discovery, workflow starts, status, questions, and events. To grant additional tools, add `--allow-control`, `--allow-answer`, or `--allow-approvals` when connecting the workflow computer. Only explicitly selected workflows are accessible. Remove a grant with `cloving integrations remove mcp CONNECTION_ID`; unpair a saved harness credential with `cloving integrations unpair mcp --name studio`.
+
 Register the server in Claude Code:
 
 ```sh
@@ -796,7 +804,7 @@ Claude turns have web research tools by default, an empty GitHub CLI configurati
 
 ### What a turn can reach
 
-A turn runs on the host as the operator user. It is not a sandbox and not a container. A later ticket adds sandboxed runners.
+A turn runs on the host as the operator user, unless its profile sets a runner. Then the turn runs in a sandbox or a container. See [Turn runners](#turn-runners).
 
 A turn gets only these variables of the service environment:
 
@@ -821,6 +829,68 @@ When a turn ends, Cloving stops each process whose current folder is in the work
 `cloving status --active` lists only the runs that are not `completed`, `failed` or `cancelled`. It uses the same order and format as `cloving status`. The service selects the active runs before it builds a run view. Thus it makes no view query for a finished run. The number of queries does not change with the number of finished runs, but the service still reads the stored state of each run. `--active` works with `--json`, `--limit` and `--after`. With `--json`, one request returns one page of active runs and its `next` cursor.
 
 `cloving status RUN_ID --json` includes `run.input`, and `cloving status --json` includes `input` on each listed run. It is the normalized submission admitted with the run, such as `{"ticket":"297"}` for a ticket workflow or the submitted fields of another declared workflow. It survives service restarts and excludes resolver-added ticket text and repository paths. Older runs without a stored submission show `null`. The text status of one run shows `Input:` as compact JSON, limited to the first 200 characters with `…` appended when longer. Terminal control and hidden format characters are escaped.
+
+### Turn runners
+
+A profile can set `runner`. The runner tells where the turns of the profile run. With each runner, the work tree, the commits and the journal files `started.json`, `turn.jsonl`, `turn.stderr.log` and `result.json` stay the same. The service writes the journal files from the output of the turn, so watch, report and resume work as with `host`.
+
+```json
+{
+  "profiles": {
+    "boxed": {
+      "runner": {
+        "kind": "seatbelt",
+        "network": ["api.anthropic.com", "registry.npmjs.org", "github.com"]
+      }
+    },
+    "contained": {
+      "runner": {
+        "kind": "container",
+        "engine": "docker",
+        "image": "cloving-turn:1"
+      }
+    }
+  }
+}
+```
+
+- `host` is the default. The turn runs as a process of the operator user.
+- `seatbelt` runs the turn under `srt`, the Anthropic sandbox runtime. `command` is the path of `srt`, with the default `srt`. `network` is the list of hosts that the turn can reach. An entry can start with `*.` or end with `:PORT`. The list starts empty, so a turn with no list has no network.
+- `container` runs the turn in a container of `image`. `engine` is the command of the container engine, for example `docker` or `podman`. The two fields are necessary.
+
+A `seatbelt` turn can write only to these folders:
+
+- The work tree.
+- The attachments folder.
+- A temp folder of the turn. `srt` gives it in `TMPDIR`, and Cloving removes it when the turn ends.
+- The git common folder of the repository, so that the turn can commit. The turn cannot write to `hooks` and `config` in it.
+
+The turn can read all files, which includes the main checkout. The harness, the gate and each command of the turn run in the sandbox. All network traffic goes through the proxy of `srt`, which refuses each host that is not in `network`. Put the model API host of the harness in `network`, for example `api.anthropic.com` for Claude. On macOS, Docker and git over SSH do not work in the sandbox. The sandbox also refuses writes of the harness to its own state folder in the home folder, for example `~/.claude`. Make sure that the harness can run with this limit before you set the runner on a profile.
+
+A `container` turn starts `ENGINE run --rm -i` with these mounts:
+
+- The work tree and the git common folder, each at the same absolute path. Thus the `.git` file of the work tree points to a real folder.
+- `hooks` and `config` of the git common folder, read-only.
+- The attachments folder.
+- The volume `cloving-modules-<work tree name>-<digest>` on `node_modules` of the work tree. The digest is the first 16 hexadecimal digits of the SHA-256 of the work tree path. Thus the packages do not go through the slow bind mount, and two repositories with the same work tree name do not share packages.
+
+The engine command gets the environment of the service and the turn variables. Thus `DOCKER_HOST`, `DOCKER_CONTEXT` and `DOCKER_CONFIG` select the same engine as for `cloving doctor`. The container gets only the turn variables with `-e NAME`. It does not get `PATH`, `HOME`, `SHELL`, `TMPDIR`, `USER`, `LOGNAME`, `GH_CONFIG_DIR` or the `XDG_*` variables, because they name places on the host. Git in the container gets `safe.directory=*`, because the files of a mount can have a different owner in the container. A Linux VM cannot read the macOS keychain. Thus the harness login must come from a token variable, for example `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude. The image must have `sh`, `git` and the harness. Cloving names the container `cloving-<turn ID>-<time>` and removes it with `ENGINE rm -f` when the turn ends. If the service stops before the turn ends, remove the container with `ENGINE rm -f`.
+
+Before the harness starts, the runner checks that the turn can write to the git common folder. If it cannot, the runner writes the line `runner-git-readonly` to standard error and stops with exit code 78. Then the turn ends with the refusal `runner-git-readonly` and has no harness result, with each harness. These engines and settings work:
+
+- Docker Desktop and Podman share the home folder with write access by default.
+- Lima shares the home folder read-only by default. Set `writable: true` on that mount. Colima uses a Lima VM, so check the `mounts` of its configuration.
+- The repository and the state folder must both be in a folder that the engine VM shares with write access.
+
+Cloving uses the options `run`, `--rm`, `-i`, `--name`, `-v`, `-w` and `-e` of the Docker command line. Podman accepts the same options. For another engine, for example Apple `container`, make sure that it accepts `-e NAME` with no value.
+
+| Runner | Added start time | File speed | Network rules | License |
+| --- | --- | --- | --- | --- |
+| `host` | None | Native | None | Not applicable |
+| `seatbelt` | About 0.2 s for `srt` | Native | Only the hosts in `network` | `srt`: Apache-2.0, beta |
+| `container` | About 0.25 s for `docker run` with a local image. The first pull of an image takes longer. | Bind mounts go through the VM and are slower. `node_modules` stays on a volume. | The network of the engine. No host list. | Docker Desktop: a paid plan for a company with 250 or more people or $10M or more in revenue. Colima: MIT. Lima: Apache-2.0. Podman: Apache-2.0. Apple `container`: Apache-2.0, Apple silicon and macOS 26 only. |
+
+The start times are from an Apple M2 Ultra with Docker Engine 29.
 
 ### The ticket command
 
@@ -987,7 +1057,7 @@ Set `CLOVING_PROFILES` to a file such as:
 }
 ```
 
-A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional. `harness`, `env` and `workflows` work with each harness. Native workers also accept `model`; a generic worker refuses it with `profile-model-not-supported`. `model` replaces existing `-m`, `--model` or `--model=` options, or adds one model option. Only `allowedTools`, `permissionMode` and `maxBudgetUsd` require Claude; using them with another harness gives `profile-needs-claude`. Unspecified fields keep the selected worker's defaults. Flags after `--` remain unchanged.
+A workflow selects a profile with a `protectedEffect` request for capability `claude` and method `run-turn:checker` or `run-turn:fixer`. Profile names contain 1–119 ASCII letters, digits, hyphens or underscores. All fields are optional. `harness`, `env`, `workflows` and `runner` work with each harness. See [Turn runners](#turn-runners). Native workers also accept `model`; a generic worker refuses it with `profile-model-not-supported`. `model` replaces existing `-m`, `--model` or `--model=` options, or adds one model option. Only `allowedTools`, `permissionMode` and `maxBudgetUsd` require Claude; using them with another harness gives `profile-needs-claude`. Unspecified fields keep the selected worker's defaults. Flags after `--` remain unchanged.
 
 `workflows` restricts a profile to the service's registered workflow IDs; omitting it allows every workflow. Each turn receives its run ID and journal operation key joined with a hyphen in `CLOVING_TURN_ID`. That value replaces each `{turn}` in profile environment values. Variables added by one profile do not carry into the next turn. The four GitHub token variables and `GH_CONFIG_DIR` are forbidden in profiles; turns retain an empty GitHub configuration directory. Invalid files stop startup with `invalid-profiles`. Turns refuse unknown profiles with `unknown-profile` and disallowed workflows with `profile-not-allowed`.
 
@@ -1106,6 +1176,14 @@ The template `answer-review` answers the open review threads of one pull request
 The GitHub method `review-threads` reads all pages of threads and returns the threads that are not resolved and whose last comment is not by the GitHub account of the operator, and the top-level comments of people since the last commit. The author of the first comment of a thread decides if it is a thread of a bot. Only the comments of bots, of the operator and of people with the association `OWNER`, `MEMBER` or `COLLABORATOR` count. When other comments fill the last 10 comments of a thread, the method reads earlier pages of the thread until it finds a comment that counts. One turn fixes the code with a failing test first, or explains why no change is needed, and ends with one line for each thread: `Thread T1: fixed <short SHA>`, `Thread T1: no change <reason>` or `Thread T1: question <text>`. The run pushes the new commits, and the GitHub method `reply-thread` posts one reply to each thread through the same privacy check as an issue body. A hidden marker in each reply stops a second reply after a restart. A question opens a decision, and the reply has the answer of the person. The point `resolve` selects **Resolve bot threads after a fix** (the default) or **Never resolve**. The run never resolves a thread of a person. After a push, `wait-review` asks for a new Greptile review. The run does not merge.
 
 `patrol` also reads the open pull requests with no active run whose last run did not end `blocked` or `failed`. A pull request with an open thread and no new comment for 5 minutes gets an `answer-review` run. The GitHub method `record-answered` keeps the last comment of each open thread that a run took, so the patrol does not start a second run on the same comments. A thread that a run did not take gets the next run.
+
+### Release a version
+
+The template `release` releases a version of an npm package as a durable workflow. Copy it into your private workflow folder with `cloving templates copy release`. The input is `{"version": "1.7.0", "pullRequests": "641, 643"}`, and `pullRequests` is optional.
+
+The command wait `release-pulls` checks the listed pull requests until all are merged, for at most 7 days. A pull request that closed with no merge, or a pull request that is not merged in time, ends the run `blocked`. Then a turn sets the version in `package.json` and in the lock file, and writes the release notes from the pull requests merged since the last tag. The version pull request goes through `open-pr`, the point `accept` (as in `develop`) and `mergeWhenGreen`. The point `publish` selects **A person approves** (the default), with the decision `Publish v1.7.0?`, or **Publish after the merge**. A denied decision pushes no tag. The operator command `push-tag` pushes the tag `v1.7.0` on the merge commit. The command wait `release-status` checks the tag CI and the package registry until the version is published. A failed tag CI ends the run `blocked` with the CI output. A published version ends the run `handoff_requested` with the promotion `v1.7.0`.
+
+The workflow holds no secret and no publish credential. The CI publish job publishes the package. The README file of the template gives the input and the output of the operator commands `push-tag` and `release-status`.
 
 ### Triage new issues
 

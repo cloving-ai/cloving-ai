@@ -7,8 +7,8 @@ import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
 import { packedDevelopTemplate } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
 import { packedReload } from "./packed-reload.ts";
+import { packedSources } from "./packed-sources.ts";
 import { packedIdeaTemplate } from "./packed-idea-template.ts";
-import { packedTemplateFiles } from "./packed-template-sources.ts";
 import {
   operatorFiles,
   operatorRefusals,
@@ -92,7 +92,7 @@ async function installed(root: string): Promise<string> {
   );
   assert.deepEqual(
     paths.filter((path) => /(?<!\.d)\.m?ts$/.test(path)),
-    packedTemplateFiles,
+    packedSources,
   );
   assert.deepEqual(
     paths.filter((path) =>

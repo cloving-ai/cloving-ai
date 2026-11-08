@@ -232,7 +232,7 @@ function toolProcess(
   });
   child.once("error", () => {
     process.stderr.write(
-      "tool-unavailable: Install cloving-zapier to connect Zapier.\n",
+      `tool-unavailable: Install the cloving-zapier integration package (${input.executable ?? input.tool}).\n`,
     );
   });
   return new Promise((settle) => {
@@ -340,14 +340,22 @@ else if (command === "red-green")
 else if (command === "start") process.exitCode = await start();
 else if (
   typeof repositorySelection !== "string" &&
-  repositorySelection.argumentsList[0] === "integrations"
+  (repositorySelection.argumentsList[0] === "integrations" ||
+    (repositorySelection.argumentsList[0] === "mcp" &&
+      repositorySelection.argumentsList.some((option) =>
+        /^--connection(?:=|$)/.test(option),
+      )))
 ) {
   const repository = repositoryDirectory(
     repositorySelection.repository ?? process.cwd(),
   );
   const runtime = runtimeDirectory(process.env, repository);
   process.exitCode = await toolProcess({
-    executable: "cloving-zapier",
+    executable:
+      repositorySelection.argumentsList[0] === "mcp" ||
+      repositorySelection.argumentsList[2] === "mcp"
+        ? "cloving-mcp"
+        : "cloving-zapier",
     argumentsList: repositorySelection.argumentsList.slice(1),
     environment: {
       ...process.env,
