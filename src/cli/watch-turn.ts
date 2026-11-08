@@ -217,3 +217,28 @@ export function PullRequest(props: { readonly run: WatchRun }): Shown {
     ],
   });
 }
+
+export function Review(props: {
+  readonly run: WatchRun;
+  readonly round: number;
+}): Shown {
+  const { run, round } = props;
+  const decisionId = `${run.runId}/review-${String(round)}`;
+  const denied = run.feedback.find((item) => item.decisionId === decisionId);
+  if (denied !== undefined)
+    return element("section", {
+      class: "review denied",
+      children: [
+        element("h3", { children: `Review ${String(round)} · denied` }),
+        element("p", { children: denied.text }),
+      ],
+    });
+  if (!run.decisions.some((item) => item.decisionId === decisionId))
+    return null;
+  return element("section", {
+    class: "review pending",
+    children: element("h3", {
+      children: `Review ${String(round)} · waits for your decision`,
+    }),
+  });
+}
