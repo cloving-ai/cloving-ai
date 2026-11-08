@@ -78,6 +78,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
       },
       { name: "idea-to-issue", summary: summaryOf("idea-to-issue"), points: 3 },
       { name: "patrol", summary: summaryOf("patrol"), points: 1 },
+      { name: "release", summary: summaryOf("release"), points: 2 },
       { name: "rescue-pr", summary: summaryOf("rescue-pr"), points: 2 },
       { name: "review-day", summary: summaryOf("review-day"), points: 2 },
       { name: "triage-issue", summary: summaryOf("triage-issue"), points: 1 },
@@ -85,7 +86,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
+      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrelease: .+ \(2 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
     );
   }));
 

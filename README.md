@@ -659,6 +659,12 @@ A text word is plain text of 1 to 60 characters, with no control characters and 
 
 `cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
 
+To use a workflow computer from a harness on another machine, install the `cloving-zapier` integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
+
+Configure the harness to launch `cloving-mcp --connection studio`, or `cloving mcp --connection studio`. The pairing command prints a complete configuration. Private keys stay at the endpoints, and cloving.ai carries encrypted messages. The bridge requires a harness that can launch a local MCP process. The `cloving.ai/mcp` page explains setup; it is not a URL-only MCP endpoint.
+
+Remote access starts with workflow discovery, workflow starts, status, questions, and events. To grant additional tools, add `--allow-control`, `--allow-answer`, or `--allow-approvals` when connecting the workflow computer. Only explicitly selected workflows are accessible. Remove a grant with `cloving integrations remove mcp CONNECTION_ID`; unpair a saved harness credential with `cloving integrations unpair mcp --name studio`.
+
 Register the server in Claude Code:
 
 ```sh
@@ -1170,6 +1176,14 @@ The template `answer-review` answers the open review threads of one pull request
 The GitHub method `review-threads` reads all pages of threads and returns the threads that are not resolved and whose last comment is not by the GitHub account of the operator, and the top-level comments of people since the last commit. The author of the first comment of a thread decides if it is a thread of a bot. Only the comments of bots, of the operator and of people with the association `OWNER`, `MEMBER` or `COLLABORATOR` count. When other comments fill the last 10 comments of a thread, the method reads earlier pages of the thread until it finds a comment that counts. One turn fixes the code with a failing test first, or explains why no change is needed, and ends with one line for each thread: `Thread T1: fixed <short SHA>`, `Thread T1: no change <reason>` or `Thread T1: question <text>`. The run pushes the new commits, and the GitHub method `reply-thread` posts one reply to each thread through the same privacy check as an issue body. A hidden marker in each reply stops a second reply after a restart. A question opens a decision, and the reply has the answer of the person. The point `resolve` selects **Resolve bot threads after a fix** (the default) or **Never resolve**. The run never resolves a thread of a person. After a push, `wait-review` asks for a new Greptile review. The run does not merge.
 
 `patrol` also reads the open pull requests with no active run whose last run did not end `blocked` or `failed`. A pull request with an open thread and no new comment for 5 minutes gets an `answer-review` run. The GitHub method `record-answered` keeps the last comment of each open thread that a run took, so the patrol does not start a second run on the same comments. A thread that a run did not take gets the next run.
+
+### Release a version
+
+The template `release` releases a version of an npm package as a durable workflow. Copy it into your private workflow folder with `cloving templates copy release`. The input is `{"version": "1.7.0", "pullRequests": "641, 643"}`, and `pullRequests` is optional.
+
+The command wait `release-pulls` checks the listed pull requests until all are merged, for at most 7 days. A pull request that closed with no merge, or a pull request that is not merged in time, ends the run `blocked`. Then a turn sets the version in `package.json` and in the lock file, and writes the release notes from the pull requests merged since the last tag. The version pull request goes through `open-pr`, the point `accept` (as in `develop`) and `mergeWhenGreen`. The point `publish` selects **A person approves** (the default), with the decision `Publish v1.7.0?`, or **Publish after the merge**. A denied decision pushes no tag. The operator command `push-tag` pushes the tag `v1.7.0` on the merge commit. The command wait `release-status` checks the tag CI and the package registry until the version is published. A failed tag CI ends the run `blocked` with the CI output. A published version ends the run `handoff_requested` with the promotion `v1.7.0`.
+
+The workflow holds no secret and no publish credential. The CI publish job publishes the package. The README file of the template gives the input and the output of the operator commands `push-tag` and `release-status`.
 
 ### Triage new issues
 
