@@ -4,9 +4,8 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { TurnSettings } from "../project-settings.ts";
-import type { RunningTurn } from "./claude-turn.ts";
 import type { Located, WorkerReport } from "./operation-journal.ts";
-import type { RetrySettings } from "./retrying-turn.ts";
+import type { RetriedTurn, RetrySettings } from "./retrying-turn.ts";
 import type { NoteDesk, NotePort } from "./turn-notes.ts";
 import type { WorkTree } from "./work-tree.ts";
 
@@ -32,7 +31,8 @@ export const claudeLimits = {
 
 export interface Active {
   readonly worker: string;
-  readonly turn: Promise<RunningTurn>;
+  readonly intent: Pick<ProtectedIntent, "runId" | "operationId">;
+  readonly turn: Promise<RetriedTurn>;
   readonly concluded: Promise<void>;
   readonly stopping: {
     requested: boolean;

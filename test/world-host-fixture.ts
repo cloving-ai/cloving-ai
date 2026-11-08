@@ -119,6 +119,7 @@ const hosted = async (overrides = {}) => {
     retentionExpired: overrides.retentionExpired,
     turnDetails: overrides.turnDetails,
     noteReceipts: overrides.noteReceipts,
+    turnSteering: overrides.turnSteering,
     githubRead: overrides.githubRead,
     delivery,
     effects: overrides.effects,

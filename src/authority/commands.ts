@@ -71,7 +71,9 @@ const shapes: Readonly<Record<string, Shape>> = {
   },
   "note-run": {
     required: ["noteId", "note", "source"],
-    validators: { source: (value) => value === "continue" },
+    validators: {
+      source: (value) => value === "continue" || value === "steer",
+    },
   },
   "mark-started": revised,
   "open-gate": {

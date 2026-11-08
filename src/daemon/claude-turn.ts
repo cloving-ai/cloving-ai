@@ -15,7 +15,7 @@ import {
   type Worker,
   type StreamResult,
 } from "./claude-stream.ts";
-import { usageOf, type RetryKind } from "../worker-usage.ts";
+import { usageOf, type ResumeReason, type RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 import { commandModel } from "../token-prices.ts";
@@ -30,7 +30,7 @@ import {
 
 export interface TurnEnd {
   readonly retryKind?: RetryKind | null;
-  readonly resumedAfter?: "daemon-restart";
+  readonly resumedAfter?: ResumeReason;
   readonly reason?: string;
   readonly detail?: string;
   readonly stopped?: boolean;

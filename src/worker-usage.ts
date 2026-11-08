@@ -21,8 +21,10 @@ export interface WorkerTurnUsage {
   readonly costUsd: number | null;
 }
 
+export type ResumeReason = "daemon-restart" | "steer";
+
 export interface WorkerAttemptUsage {
-  readonly resumedAfter?: "daemon-restart";
+  readonly resumedAfter?: ResumeReason;
   readonly models?: readonly WorkerModelUsage[];
   readonly retryKind?: RetryKind | null;
   readonly attempt: number;

@@ -20,6 +20,7 @@ import {
 import { nativeHarness } from "../harness-defaults.ts";
 import { profileCommand } from "../turn-profile.ts";
 import type { TurnResume } from "./claude-recovery.ts";
+import { steeredMetadata, type Steering } from "./turn-steering.ts";
 
 export interface RetrySettings {
   readonly tokenPrices?: TokenPrices;
@@ -47,6 +48,13 @@ export interface Attempts {
   readonly stopping: AbortController;
   readonly grace: { milliseconds: number };
   readonly ends: TurnEnd[];
+  readonly steering: Steering;
+}
+
+export function attemptMetadata(
+  attempts: Attempts,
+): Readonly<Record<string, unknown>> {
+  return steeredMetadata(attempts.options.metadata, attempts.steering);
 }
 
 export function total(values: readonly (number | null)[]): number | null {

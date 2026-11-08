@@ -79,6 +79,15 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
     },
   ],
   [
+    "steer",
+    {
+      subject: "required",
+      required: ["text"],
+      allowed: () => ["text", "now", ...mutationOptions],
+      build: steer,
+    },
+  ],
+  [
     "events",
     {
       subject: "optional",
@@ -305,6 +314,21 @@ function dismiss(request: RuntimeRequest): Outcome {
   if (typeof runId !== "string" || commandId === invalid)
     return "invalid-option-value";
   return { kind: "dismiss", runId, commandId, json: given(request, "json") };
+}
+
+function steer(request: RuntimeRequest): Outcome {
+  const runId = key(request.positionals[0]);
+  const commandId = key(valueOf(request, "command-id"));
+  if (typeof runId !== "string" || commandId === invalid)
+    return "invalid-option-value";
+  return {
+    kind: "steer",
+    runId,
+    text: valueOf(request, "text") ?? "",
+    now: given(request, "now"),
+    commandId,
+    json: given(request, "json"),
+  };
 }
 
 function runCommand(command: RunCommand, request: RuntimeRequest): Outcome {

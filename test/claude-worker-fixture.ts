@@ -47,7 +47,7 @@ const session = process.argv.includes("--resume") ? process.argv[process.argv.in
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: session, num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
 const held = () => new Promise(() => { setInterval(() => undefined, 1000); });
-print({ type: "system", subtype: "init", session_id: session });
+if (mode !== "sessionless") print({ type: "system", subtype: "init", session_id: session });
 print({ type: "assistant", text: "the word \\"result\\" is in this line" });
 process.stdout.write("this line is no JSON text and has the word \\"result\\"\\n");
 const modes = {
@@ -103,6 +103,8 @@ const modes = {
   wreck: () => { rmSync(".git"); result({}); },
   unterminated: () => process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "no line end" })),
   hold: held,
+  sessionless: held,
+  "codex-session": () => { print({ type: "thread.started", thread_id: "thread-1" }); return held(); },
   "ignore-term": held,
 };
 function capacityTurn() {
