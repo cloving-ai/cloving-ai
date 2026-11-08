@@ -71,12 +71,12 @@ async function startedAt(member: WorkspaceMember): Promise<string | undefined> {
   return typeof started === "string" ? started : undefined;
 }
 
-async function memberAtGap(member: WorkspaceMember): Promise<boolean> {
+function memberAtGap(member: WorkspaceMember): Promise<boolean> {
   const reads = daemonWorkReads({
     directory: dirname(member.runtime),
     runtimeDirectory: member.runtime,
   });
-  return atGap(await workInProgress(reads));
+  return workInProgress(reads).then(atGap, () => false);
 }
 
 async function commonGap(

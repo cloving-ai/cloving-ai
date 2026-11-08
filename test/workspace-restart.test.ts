@@ -26,6 +26,7 @@ interface FakeMember {
   startedAt: string;
   gapReads: number;
   refuses: boolean;
+  down: boolean;
 }
 
 const result = (fields: Fields): Promise<Reply> =>
@@ -49,6 +50,11 @@ function handled(member: FakeMember, request: ServiceRequest): Promise<Reply> {
     return result({ kind: "restart" });
   }
   if (request.parameters["after"] !== undefined) member.gapReads += 1;
+  if (member.down)
+    return Promise.resolve({
+      kind: "error",
+      error: { code: "authority-unavailable", detail: "Down." },
+    });
   return result({
     kind: "run-list",
     runs: member.active ? [{ runId: "run-1", state: "running" }] : [],
@@ -70,6 +76,7 @@ async function fakeMember(folder: string, name: string): Promise<FakeMember> {
     startedAt: `${name}-start`,
     gapReads: 0,
     refuses: false,
+    down: false,
     listener: await listen({
       path: join(runtime, "control.sock"),
       handle: (request) => handled(member, request),
@@ -208,4 +215,18 @@ await test("CLV-312 a repeated workspace restart with the same command ID joins 
     await eventually(() => (alpha.gapReads > reads ? true : undefined));
     await close();
     assert.equal((await stopped).kind, "error");
+  }));
+
+await test("CLV-312 a workspace restart keeps waiting while a repository does not answer the gap read", () =>
+  withSupervisor(async ({ folder, members }) => {
+    const [, beta] = members;
+    assert.ok(beta !== undefined);
+    const before = await restarted(folder, { commandId: "before" });
+    assert.equal(before.kind, "result");
+    beta.down = true;
+    const reads = beta.gapReads;
+    const reply = restarted(folder, { commandId: "while-down", at: "gap" });
+    await eventually(() => (beta.gapReads >= reads + 2 ? true : undefined));
+    beta.down = false;
+    assert.equal((await reply).kind, "result");
   }));
