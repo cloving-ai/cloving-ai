@@ -1,0 +1,210 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import { startSelection } from "../src/cli/start-arguments.ts";
+import {
+  workspaceStart,
+  type WorkspaceHost,
+  type WorkspaceStart,
+} from "../src/cli/workspace-start.ts";
+
+const root = realpathSync(mkdtempSync(join(tmpdir(), "cloving-workspace-")));
+process.on("exit", () => {
+  rmSync(root, { recursive: true, force: true });
+});
+const alpha = join(root, "alpha");
+const beta = join(root, "beta");
+await mkdir(alpha);
+await mkdir(beta);
+
+interface Started {
+  readonly status: number;
+  readonly printed: string;
+  readonly refused: string;
+  readonly hosts: readonly WorkspaceHost[];
+}
+
+async function started(input: {
+  readonly workspace: unknown;
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly repositories?: Readonly<Record<string, string>>;
+  readonly hosted?: WorkspaceStart["hosted"];
+}): Promise<Started> {
+  const configuration = mkdtempSync(join(root, "configuration-"));
+  if (input.workspace !== undefined) {
+    await mkdir(join(configuration, "cloving"));
+    await writeFile(
+      join(configuration, "cloving/workspace.json"),
+      typeof input.workspace === "string"
+        ? input.workspace
+        : JSON.stringify(input.workspace),
+    );
+  }
+  const output = { printed: "", refused: "" };
+  const hosts: WorkspaceHost[] = [];
+  const repositories = input.repositories ?? { [alpha]: alpha, [beta]: beta };
+  const status = await workspaceStart({
+    options: ["--reset-queue"],
+    environment: {
+      XDG_CONFIG_HOME: configuration,
+      XDG_STATE_HOME: join(root, "state"),
+      ...input.environment,
+    },
+    home: root,
+    repositoryDirectory: (directory) => repositories[directory],
+    hosted: (host) => {
+      hosts.push(host);
+      return input.hosted?.(host) ?? Promise.resolve(0);
+    },
+    print: (text) => {
+      output.printed += text;
+    },
+    refuse: (text) => {
+      output.refused += text;
+    },
+  });
+  return { status, ...output, hosts };
+}
+
+const pair = {
+  version: 1,
+  repositories: [
+    { path: alpha, name: "alpha" },
+    { path: beta, name: "beta" },
+  ],
+};
+
+await test("CLV-312 a workspace start refuses a missing or invalid workspace file before it starts a daemon", async () => {
+  const missing = await started({ workspace: undefined });
+  assert.equal(missing.status, 1);
+  assert.match(
+    missing.refused,
+    /^workspace-missing: Cloving cannot read \/.*\/cloving\/workspace\.json\. Write the workspace file first\. See cloving start --help\.\n$/,
+  );
+  const invalid = await started({ workspace: "{" });
+  assert.equal(invalid.status, 1);
+  assert.equal(invalid.refused, "invalid-workspace: the file is not JSON.\n");
+  assert.deepEqual([...missing.hosts, ...invalid.hosts], []);
+  assert.equal(missing.printed + invalid.printed, "");
+});
+
+await test("CLV-312 a workspace start refuses unknown, duplicate and runtime-sharing repositories", async () => {
+  const unknown = await started({
+    workspace: pair,
+    repositories: { [alpha]: alpha },
+  });
+  assert.equal(
+    unknown.refused,
+    `workspace-repository-unknown: beta: ${beta} is not a git repository.\n`,
+  );
+  const duplicate = await started({
+    workspace: pair,
+    repositories: { [alpha]: alpha, [beta]: alpha },
+  });
+  assert.equal(
+    duplicate.refused,
+    `workspace-repository-duplicate: alpha and beta name the same repository ${alpha}.\n`,
+  );
+  const shared = await started({
+    workspace: pair,
+    environment: { CLOVING_RUNTIME_DIR: join(root, "shared") },
+  });
+  assert.equal(
+    shared.refused,
+    `workspace-runtime-shared: alpha and beta use the same runtime directory ${join(root, "shared")}. Unset CLOVING_RUNTIME_DIR.\n`,
+  );
+  const homeless = await started({
+    workspace: pair,
+    environment: { XDG_STATE_HOME: undefined },
+  });
+  assert.equal(
+    homeless.refused,
+    "workspace-runtime-unknown: Set HOME, XDG_STATE_HOME or XDG_RUNTIME_DIR.\n",
+  );
+  for (const result of [unknown, duplicate, shared, homeless]) {
+    assert.equal(result.status, 1);
+    assert.deepEqual(result.hosts, []);
+  }
+});
+
+await test("CLV-312 each repository gets its own runtime directory, the start options and no watch child", async () => {
+  const result = await started({
+    workspace: pair,
+    environment: { CLOVING_WATCH_PORT: "3663" },
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.refused, "");
+  assert.match(result.printed, /^Cloving workspace: \/.*workspace\.json\n/);
+  assert.ok(result.printed.endsWith(`  alpha: ${alpha}\n  beta: ${beta}\n`));
+  assert.deepEqual(
+    result.hosts.map((host) => host.repository),
+    [alpha, beta],
+  );
+  assert.notEqual(result.hosts[0]?.runtime, result.hosts[1]?.runtime);
+  for (const host of result.hosts) {
+    assert.ok(host.runtime.startsWith(join(root, "state/cloving/")));
+    assert.equal(host.environment["CLOVING_WATCH_PORT"], "off");
+    assert.deepEqual(host.options, ["--reset-queue"]);
+  }
+});
+
+async function alphaFails(host: WorkspaceHost): Promise<number> {
+  if (host.repository === alpha) return 3;
+  await new Promise((resolve) => {
+    host.signal.addEventListener("abort", resolve);
+  });
+  return 0;
+}
+
+await test("CLV-312 when one repository ends with an error, the supervisor stops the other repositories", async () => {
+  const result = await started({
+    workspace: pair,
+    hosted: alphaFails,
+  });
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.refused,
+    "workspace-repository-ended: alpha ended with status 3. Cloving stops the other repositories.\n",
+  );
+  assert.ok(result.hosts.every((host) => host.signal.aborted));
+});
+
+await test("CLV-312 a repository that stops with status 0 after a stop signal sends no second stop to the other repositories", async () => {
+  const result = await started({ workspace: pair });
+  assert.equal(result.status, 0);
+  assert.equal(result.hosts.length, 2);
+  assert.ok(result.hosts.every((host) => !host.signal.aborted));
+});
+
+await test("CLV-312 start takes --workspace without --repository", () => {
+  assert.deepEqual(startSelection(["--workspace", "--reset-queue"]), {
+    kind: "workspace",
+    options: ["--reset-queue"],
+  });
+  assert.deepEqual(startSelection(["--workspace", "--help"]), {
+    kind: "usage",
+  });
+  assert.deepEqual(startSelection(["--workspace", "--repository", "/a"]), {
+    kind: "refused",
+    text: "unexpected-argument: --workspace and --repository do not go together.\n",
+  });
+  assert.deepEqual(startSelection(["--repository=/a"]), {
+    kind: "repository",
+    directory: "/a",
+  });
+  assert.deepEqual(startSelection([]), {
+    kind: "repository",
+    directory: undefined,
+  });
+  assert.deepEqual(startSelection(["--repository="]), {
+    kind: "refused",
+    text: "missing-value: --repository needs a directory.\n",
+  });
+  assert.deepEqual(startSelection(["--workspace", "extra"]), {
+    kind: "refused",
+    text: "unexpected-argument: run cloving start --help for usage.\n",
+  });
+});
