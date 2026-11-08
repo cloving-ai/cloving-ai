@@ -470,7 +470,7 @@ The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1
 - `GET /api/v1/runs/{runId}/turns/{operationId}/transcript-stream` sends Server-Sent Events. Each new entry is one message with the event `entry`, the entry as its data and the position as its event ID. The header `Last-Event-ID` resumes after its position, so a lost connection loses no entry and gets no entry two times. When the turn ends, the stream sends one message with the event `end` and the data `{"nextAfter":<position>}`, and closes.
 - `GET /api/v1/stream` sends Server-Sent Events. Each message has the event `change` and the data `{"updatedAt":"<time>"}`. Read the runs again when a message arrives.
 
-Replace `<run-id>` with the ID of a run of `develop`, for example from the run list:
+Replace `<run-id>` with the ID of a run of `develop`, for example from the run list. Replace `<operation-id>` with the URL-encoded `operationId` of a turn from the run detail:
 
 ```sh
 curl http://127.0.0.1:3663/api/v1/
@@ -480,6 +480,8 @@ curl http://127.0.0.1:3663/api/v1/workflows
 curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/turns/<operation-id>/transcript?after=200'
+curl -N 'http://127.0.0.1:3663/api/v1/runs/<run-id>/turns/<operation-id>/transcript-stream'
 curl -N http://127.0.0.1:3663/api/v1/stream
 ```
 

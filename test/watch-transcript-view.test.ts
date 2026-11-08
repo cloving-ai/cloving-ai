@@ -9,7 +9,7 @@ import {
 import { watchHash, watchLocation } from "../src/cli/watch-navigation.ts";
 import type { WatchTurn } from "../src/cli/watch-render.ts";
 import type { TranscriptEntry } from "../src/turn-transcript.ts";
-import { rendered } from "./watch-dom.ts";
+import { found, rendered } from "./watch-dom.ts";
 import { entry } from "./turn-transcript-fixture.ts";
 import { sampleRun } from "./watch-sample.ts";
 
@@ -203,4 +203,65 @@ await test("CLV-329 the hash of a run detail can name a turn", () => {
     workflowId: null,
     runId: "run-1",
   });
+});
+
+function listener(value: unknown): value is (event: unknown) => void {
+  return typeof value === "function";
+}
+
+function handler(
+  props: Readonly<Record<string, unknown>> | undefined,
+  name: string,
+): (event: unknown) => void {
+  const callback = props?.[name];
+  assert.ok(listener(callback));
+  return callback;
+}
+
+await test("CLV-329 the buttons and the scroll box of a transcript call their controls", () => {
+  const calls: unknown[] = [];
+  const controls: TranscriptControls = {
+    view: () => ({
+      shown: true,
+      entries: [entry(1, { kind: "assistant", text: "a" })],
+      state: "open",
+      message: "",
+      earlier: true,
+      unseen: 2,
+    }),
+    onToggle: (target) => calls.push(["toggle", target.operationId]),
+    onScroll: (turn, box) => calls.push(["scroll", turn, box.scrollTop]),
+    onJump: (target) => calls.push(["jump", target.operationId]),
+    onEarlier: (target) => calls.push(["earlier", target.operationId]),
+  };
+  const tree = component(Transcript, {
+    runId: "run-1",
+    turn: turnOf("in work"),
+    turnId: null,
+    controls,
+  });
+  for (const button of found(tree, "button")) handler(button, "onClick")({});
+  const box = found(tree, "div").find(
+    (props) => props["class"] === "transcript-lines",
+  );
+  handler(
+    box,
+    "onScroll",
+  )({
+    currentTarget: { scrollTop: 40, clientHeight: 10, scrollHeight: 90 },
+  });
+  assert.deepEqual(calls, [
+    ["toggle", operationId],
+    ["earlier", operationId],
+    ["jump", operationId],
+    ["scroll", operationId, 40],
+  ]);
+  const plain = component(Transcript, {
+    runId: "run-1",
+    turn: turnOf("completed"),
+    turnId: null,
+    controls: undefined,
+  });
+  handler(found(plain, "button")[0], "onClick")({});
+  assert.match(rendered(plain), /class="transcript-toggle">Show</);
 });

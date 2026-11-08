@@ -47,7 +47,7 @@ async function followed(
   for (;;) {
     for (const entry of page.entries) response.write(entryMessage(entry));
     if (page.entries.length === 0 && !page.open) {
-      response.end(
+      response.write(
         `event: end\ndata: ${JSON.stringify({ nextAfter: page.nextAfter })}\n\n`,
       );
       return;
@@ -66,10 +66,8 @@ export function transcriptStreamed(
     "content-type": "text/event-stream",
     "cache-control": "no-store",
   });
-  followed(feed, exchange).then(
-    () => undefined,
-    () => {
-      exchange.response.end();
-    },
-  );
+  const ended = (): void => {
+    exchange.response.end();
+  };
+  followed(feed, exchange).then(ended, ended);
 }

@@ -304,3 +304,19 @@ await test("CLV-329 an escape sequence at the end of a text and an escape with o
   const [terminated] = read(lines(toolResult("e\u001b]0;t\u001b\\f\u0085g")));
   assert.equal(terminated?.text, "efg");
 });
+
+await test("CLV-329 a JSON line that is not an object becomes a raw notice, and an MCP call without arguments shows an empty input", () => {
+  const found = read(
+    lines("[1,2]", {
+      type: "item.started",
+      item: { type: "mcp_tool_call", server: "docs", tool: "list" },
+    }),
+  );
+  assert.deepEqual(
+    found.map((item) => [item.kind, item.summary || item.text]),
+    [
+      ["notice", "[1,2]"],
+      ["tool-call", "docs.list: {}"],
+    ],
+  );
+});

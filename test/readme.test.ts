@@ -325,7 +325,7 @@ await test("CLV-255 the README section of the read API names the document, gives
   assert.ok(section.includes(`${root}/openapi.json`));
   for (const path of Object.keys(watchApiDocument.paths)) {
     assert.ok(section.includes(`\`GET /api/v1${path}\``), path);
-    const example = `${root}${path.replace("{runId}", "<run-id>")}`;
+    const example = `${root}${path.replace("{runId}", "<run-id>").replace("{operationId}", "<operation-id>")}`;
     assert.ok(
       section
         .split("\n")

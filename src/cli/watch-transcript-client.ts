@@ -2,6 +2,7 @@ export const watchTranscriptClient = `
 const transcripts = {};
 const transcriptWindow = 2000;
 let transcriptDrawing = false;
+let transcriptRound = 0;
 function transcriptItem(target) {
   if (!Object.hasOwn(transcripts, target.operationId))
     transcripts[target.operationId] = { runId: target.runId, shown: null, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
@@ -102,9 +103,11 @@ function transcriptJumped(target) {
   draw();
 }
 function transcriptControls() {
+  transcriptRound += 1;
   return {
     view(target) {
       const item = transcriptItem(target);
+      item.round = transcriptRound;
       const shown = item.shown ?? target.wanted;
       if (shown) transcriptOpened(item, target.operationId);
       return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen };
@@ -126,6 +129,8 @@ function transcriptControls() {
   };
 }
 function transcriptsFollowed(selected) {
+  for (const item of Object.values(transcripts))
+    if (item.round !== transcriptRound) transcriptClosed(item);
   const boxes = document.querySelectorAll?.("[data-transcript]") ?? [];
   for (const box of boxes) {
     const item = transcripts[box.getAttribute("data-transcript")];

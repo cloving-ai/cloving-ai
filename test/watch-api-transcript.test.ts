@@ -186,3 +186,75 @@ await test("CLV-329 the stream route starts after the query parameter after", as
     ]);
   });
 });
+
+await test("CLV-329 the transcript route gives the documented entry fields of an odd service entry and 503 for a page without its fields", async () => {
+  const turn: Turn = { entries: [], open: true };
+  const service = transcriptService(turn);
+  const odd = {
+    position: "1",
+    kind: "other",
+    text: 4,
+    tool: "Bash",
+    omittedBytes: 1.5,
+  };
+  const answer = (request: ServiceRequest): Reply => {
+    if (request.operation !== "transcript") return service.answer(request);
+    const after = Number(request.parameters["after"]);
+    if (after === 1)
+      return {
+        kind: "result",
+        result: { entries: [], nextAfter: "1", open: true },
+      };
+    if (after === 2)
+      return { kind: "result", result: { entries: {}, open: true } };
+    return {
+      kind: "result",
+      result: { entries: [odd, null], nextAfter: 0, open: false },
+    };
+  };
+  await withWatchService(answer, async (watch) => {
+    const response = await fetch(`${watch.address}${turnPath}/transcript`);
+    assert.deepEqual(
+      await contractBody(watchApiDocument, { response, path: pagePath }),
+      {
+        entries: [
+          { ...entryAt(0), attempt: 0, kind: "notice", text: "", tool: "Bash" },
+          { ...entryAt(0), attempt: 0, kind: "notice", text: "" },
+        ],
+        nextAfter: 0,
+        open: false,
+      },
+    );
+    for (const after of [1, 2]) {
+      const refused = await fetch(
+        `${watch.address}${turnPath}/transcript?after=${String(after)}`,
+      );
+      assert.equal(refused.status, 503, String(after));
+      assert.equal(fields(await refused.json())["code"], "service-unavailable");
+    }
+  });
+});
+
+await test("CLV-329 the stream route waits while the service read fails and goes on after the position of its last entry", async () => {
+  const turn: Turn = { entries: [entryAt(1)], open: true };
+  const service = transcriptService(turn);
+  await withWatchService(service.answer, async (watch) => {
+    const stream = streamReader(watchApiDocument, {
+      response: await fetch(`${watch.address}${turnPath}/transcript-stream`),
+      path: streamPath,
+    });
+    assert.deepEqual(positions([await stream.next()]), ["id: 1"]);
+    turn.refusal = { code: "service-unavailable", detail: "down" };
+    turn.entries.push(entryAt(2));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    delete turn.refusal;
+    turn.open = false;
+    assert.deepEqual(positions([await stream.next(), await stream.next()]), [
+      "id: 2",
+      "event: end",
+    ]);
+    assert.ok(
+      service.asked.filter((asked) => asked["after"] === 1).length >= 2,
+    );
+  });
+});

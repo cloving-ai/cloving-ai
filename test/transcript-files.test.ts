@@ -73,3 +73,21 @@ await test("CLV-329 the transcript read gives nothing when the journal folder of
   withJournal(async (directory) => {
     assert.equal(await transcriptFiles(directory)(operationId), undefined);
   }));
+
+await test("CLV-329 the transcript read ignores an attempt record without an attempt number and fails when the journal folder is a file", () =>
+  withJournal(async (directory, folder) => {
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      join(folder, "attempt-1.json"),
+      JSON.stringify({ phase: "running" }),
+    );
+    assert.deepEqual(
+      (await transcriptFiles(directory)(operationId))?.attempts,
+      [],
+    );
+    await rm(folder, { recursive: true });
+    await writeFile(folder, "not a folder");
+    await assert.rejects(transcriptFiles(directory)(operationId), {
+      code: "ENOTDIR",
+    });
+  }));
