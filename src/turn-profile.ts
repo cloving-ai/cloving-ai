@@ -1,3 +1,5 @@
+import { isTurnRunner, type TurnRunner } from "./turn-runner.ts";
+
 export interface TurnProfile {
   readonly harness?: string;
   readonly env?: Readonly<Record<string, string>>;
@@ -6,19 +8,11 @@ export interface TurnProfile {
   readonly permissionMode?: string;
   readonly maxBudgetUsd?: number;
   readonly workflows?: readonly string[];
+  readonly runner?: TurnRunner;
 }
 
 export type TurnProfiles = Readonly<Record<string, TurnProfile>>;
 
-const fields = [
-  "harness",
-  "env",
-  "allowedTools",
-  "model",
-  "permissionMode",
-  "maxBudgetUsd",
-  "workflows",
-];
 const reserved = [
   "GH_TOKEN",
   "GITHUB_TOKEN",
@@ -51,21 +45,27 @@ function environment(value: unknown): boolean {
   );
 }
 
+const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
+  harness: (value) =>
+    typeof value === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(value),
+  env: environment,
+  allowedTools: texts,
+  model: text,
+  permissionMode: text,
+  maxBudgetUsd: (value) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0,
+  workflows: texts,
+  runner: isTurnRunner,
+};
+
 function validField(name: string, value: unknown): boolean {
-  if (name === "harness")
-    return typeof value === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(value);
-  if (name === "env") return environment(value);
-  if (name === "allowedTools" || name === "workflows") return texts(value);
-  if (name === "model" || name === "permissionMode") return text(value);
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+  return Object.hasOwn(validators, name) && validators[name]?.(value) === true;
 }
 
 function profile(value: unknown): value is TurnProfile {
   return (
     record(value) &&
-    Object.entries(value).every(
-      ([name, item]) => fields.includes(name) && validField(name, item),
-    )
+    Object.entries(value).every(([name, item]) => validField(name, item))
   );
 }
 
