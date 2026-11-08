@@ -1,3 +1,8 @@
+import {
+  NoteMark,
+  SteerAction,
+  type SteerControls,
+} from "./watch-steer-view.ts";
 import { scheduleStatusLine, scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
@@ -134,14 +139,18 @@ export function cardTotals(
   return `${label} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`;
 }
 
-export function Card(props: {
+interface CardProps {
   readonly card: WatchCard;
+  readonly steering?: SteerControls | undefined;
   readonly workflowId: string;
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly words?: WatchWords | undefined;
-}): Shown {
+}
+
+export function Card(props: CardProps): Shown {
   const { card, workflowId, now, words } = props;
+  const steering = card.endedAt === null ? props.steering : undefined;
   return element("article", {
     class: "card",
     children: [
@@ -177,9 +186,11 @@ export function Card(props: {
                 children: `! ${wordText(words, { key: "state.decision", text: "Decision waiting" })}`,
               })
             : null,
+          component(NoteMark, { waiting: card.notesWaiting ?? 0 }),
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
+      component(SteerAction, { runId: card.runId, steering }),
       completionMark(card, {
         workflowId,
         now: props.observationNow ?? now,
@@ -249,15 +260,18 @@ export function columnCollapsed(
   return value ?? ["Done", "Stopped"].includes(name);
 }
 
-export function Column(props: {
+interface ColumnProps {
   readonly column: WatchWorkflow["columns"][number];
   readonly addCard?: Shown;
   readonly workflowId: string;
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly steering?: SteerControls | undefined;
   readonly words?: WatchWords | undefined;
-}): Shown {
+}
+
+export function Column(props: ColumnProps): Shown {
   const { column, workflowId, now, controls, words } = props;
   const collapsed = columnCollapsed(controls?.choices ?? null, column.name);
   const name = labelWord(words, column.name);
@@ -299,6 +313,7 @@ export function Column(props: {
                   workflowId,
                   now,
                   observationNow: props.observationNow,
+                  steering: props.steering,
                   words,
                 }),
               ),
@@ -316,6 +331,7 @@ export function Board(props: {
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly steering?: SteerControls | undefined;
   readonly words?: WatchWords | undefined;
 }): Shown {
   const { workflow, now, words } = props;
@@ -342,6 +358,7 @@ export function Board(props: {
             now,
             observationNow: props.observationNow,
             controls: props.controls,
+            steering: props.steering,
             words,
             addCard:
               index === 0

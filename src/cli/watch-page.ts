@@ -18,6 +18,12 @@ import {
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
 import { RunNotes } from "./watch-notes-view.ts";
+import {
+  NoteMark,
+  SteerAction,
+  SteerForm,
+  steerable,
+} from "./watch-steer-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -221,6 +227,10 @@ const functions = [
   Card,
   HandoffLinks,
   RunNotes,
+  steerable,
+  NoteMark,
+  SteerForm,
+  SteerAction,
   Column,
   columnCollapsed,
   Board,

@@ -210,6 +210,13 @@ export const linkFields = [
   "continuedBy",
 ];
 
+function notesWaitingOf(run: WatchRun): { readonly notesWaiting?: number } {
+  const waiting = (run.notes ?? []).filter(
+    (note) => note.receipt === "waiting",
+  ).length;
+  return waiting === 0 ? {} : { notesWaiting: waiting };
+}
+
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
@@ -228,6 +235,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
     decisionWaiting: run.decisions.length > 0,
+    ...notesWaitingOf(run),
     ...pullRequestCardDetails(run),
   };
 }

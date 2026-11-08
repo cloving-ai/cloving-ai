@@ -679,7 +679,7 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has twelve tools:
+The server has thirteen tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
@@ -687,8 +687,9 @@ The server has twelve tools:
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
 - `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
+- `cloving_steer` sends a note to an active run, as `cloving steer` does. The argument `now` is optional.
 
-Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the ten tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -1153,9 +1154,44 @@ The service records the note on the new run as the event `run.noted`, in the sam
 
 The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. A turn gets the note only when its agent process starts. When the turn stops before that, for example because the daemon stopped, the next turn of the run gets the note. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
 
-`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
+`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z from continue, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
 
 The status reads the turn that got a note from the turn journal. When the retention rule moves the turn records to the archive, the status reads them in the `journal` folder of the archive. When the retention rule deletes the turn records, the status cannot find the turn that got the note. Then the line shows `receipt deleted by the retention rule`, and the JSON item adds `"receipt": "deleted"`.
+
+### Steer a run in work
+
+A person reaches a run in work at a decision gate. Between gates, a turn can work for an hour or more. When the watch page or the turn log shows that the turn goes the wrong way, send the run a note:
+
+```sh
+cloving steer <run-id> --text "Change only src/cli.ts."
+cloving steer <run-id> --text "Change only src/cli.ts." --now
+```
+
+The service removes the spaces at the start and end of the note. Then the note must have 1 to 4000 characters. The service records the note on the run as the event `run.noted` with the source `steer`. The MCP tool `cloving_steer` takes `runId`, `text` and an optional `now`, and sends the same request. With `--command-id <id>`, a lost reply can be sent again. A note is not an answer to a decision.
+
+The note reaches the run in one of two forms:
+
+- **Next turn.** Without `--now`, the next agent turn that the run starts gets the note in its section `Notes from the operator:`, as a note of `cloving run continue --note` does. The turn in work goes on with no change. The reply says `queued`.
+- **Now.** With `--now`, the worker looks for the open Claude Code or Codex turn of the run. When that turn recorded a session, the worker stops the turn as a daemon restart does. Then it resumes the same session with the next message `A person sent this note while you worked:` and the note. The resumed turn is the same turn: it keeps its round, its work tree and its budget. Its attempt record has `resumedAfter: steer`. The reply says `now` and has the operation ID of the turn.
+
+A turn takes at most three notes with `--now`. In these cases the note waits for the next turn, and the reply says `queued` with the reason:
+
+- `no-open-turn`: the run has no open agent turn, for example because it runs a command or waits for CI or a review.
+- `no-session`: the open turn recorded no session.
+- `harness-cannot-resume`: the harness of the open turn cannot resume a session.
+- `note-limit`: the open turn took three notes with `--now`.
+
+The service refuses these notes:
+
+- A blank note, or a note of more than 4000 characters, gets `invalid-note`.
+- A note for a run that completed or failed gets `run-not-active`.
+- A note for a dropped run gets `run-cancelled`.
+- A note for an unknown run gets `unknown-run`.
+- A request with a known command ID and a different run or note gets `conflicting-command`. The same request gets the stored receipt again and does not stop the turn again.
+
+`cloving status <run-id>`, the status JSON and the run detail of the watch page show each note with its time, its source and the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z from steer, got by implement/claude-turn/1: Change only src/cli.ts.`.
+
+On the watch page, with watch actions on, the card of a run in work and the run detail have a **Steer** button. The button opens a form with a note field and the check box **Send to the turn in work now**. **Send** sends the same request as `cloving steer`, and Esc closes the form. The reply shows under the button. Until a turn gets the note, the card shows `1 note waiting`.
 
 ### Rescue stuck pull requests
 

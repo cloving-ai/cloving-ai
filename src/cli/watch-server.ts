@@ -9,7 +9,7 @@ import { observedBoard } from "./watch-pr-board.ts";
 import { finishedModel, type IssueState } from "./watch-finished.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
-import { continueAction, dismissAction } from "./watch-continue.ts";
+import { routedRunAction } from "./watch-continue.ts";
 import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
 import type { PrObserver } from "./watch-pr-observer.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -207,8 +207,8 @@ async function snapshot(
 function routedAction(path: string): typeof watchAction | null {
   if (isPhoneAction(path)) return phoneAction;
   if (path === "/actions/queue") return queueAction;
-  if (path === "/actions/continue") return continueAction;
-  if (path === "/actions/dismiss") return dismissAction;
+  const run = routedRunAction(path);
+  if (run !== null) return run;
   return path === "/actions/run" ? watchAction : null;
 }
 

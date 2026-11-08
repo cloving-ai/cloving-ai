@@ -1,3 +1,8 @@
+import {
+  SteerAction,
+  steerable,
+  type SteerControls,
+} from "./watch-steer-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
@@ -155,7 +160,12 @@ export function RunTotals(props: { readonly run: WatchRun }): Shown {
   });
 }
 
-export function Run(props: Timed & { readonly copying: Copying }): Shown {
+export function Run(
+  props: Timed & {
+    readonly copying: Copying;
+    readonly steering?: SteerControls | undefined;
+  },
+): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
   const budget = effectBudgetText(run.spent, run.limit);
@@ -187,6 +197,9 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
     component(HandoffLinks, { run }),
     component(RunNotes, { notes: run.notes }),
+    steerable(run.state)
+      ? component(SteerAction, { runId: run.runId, steering: props.steering })
+      : null,
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
     component(RunTotals, { run }),
     component(Phases, { phases: run.phases, now }),
@@ -219,6 +232,7 @@ export interface PageProps {
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly steering?: SteerControls | undefined;
   readonly theme?: ThemeControls | undefined;
 }
 
@@ -262,7 +276,13 @@ export function Page(props: PageProps): Shown {
       component(BackLink, { workflowId: location.workflowId }),
       run === undefined
         ? text("meta", "This run is not available.")
-        : component(Run, { key: run.runId, run, now, copying }),
+        : component(Run, {
+            key: run.runId,
+            run,
+            now,
+            copying,
+            steering: props.steering,
+          }),
     ];
   }
   const workflow = model.workflows.find(
@@ -366,6 +386,7 @@ export function BoardPage(
           now,
           observationNow: props.observationNow,
           controls: props.columns,
+          steering: props.steering,
           cardForm: model.cardForms?.find(
             (form) => form.workflowId === workflow.workflowId,
           ),
