@@ -12,6 +12,7 @@ import {
   selection,
   methods,
   proposal,
+  promptFacts,
   proposalEffects,
   reviewIssue,
 } from "./review-day/scenarios.ts";
@@ -346,12 +347,20 @@ await test("CLV-323 review-day reads the review and improvement lists with githu
     (request) => request[0] === "effect" && request[1].method === "run-turn",
   );
   assert.ok(turn?.[0] === "effect");
-  const facts = {
-    report: { metrics: { mergeMinutes: { value: 30, mark: "outside" } } },
+  assert.deepEqual(promptFacts(turn[1].payload), {
+    report: {
+      window: null,
+      semantics: null,
+      metrics: {
+        mergeMinutes: { value: 30, mark: "outside", unit: "minutes" },
+      },
+      jobLogs: null,
+      runCosts: null,
+    },
     reviews: [reviewIssue],
     improvements: [Object.assign({}, improvementIssue, { loop: "merge" })],
-  };
-  assert.ok(turn[1].payload.includes(JSON.stringify(facts)));
+    omitted: [],
+  });
 });
 
 await test("CLV-200 every failed or invalid JSON fact blocks before analysis", async () => {

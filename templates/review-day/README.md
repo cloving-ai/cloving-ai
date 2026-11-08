@@ -67,8 +67,41 @@ removes this run's temporary worktree and branch before posting or waiting for a
 decision. Failed cleanup blocks the run. Retain `github` in capabilities, and `issues` and
 `discard` in methods for all options, including `post.result` with `next.nothing`.
 
-Analyze and critique use the same nine rules and all three facts: the `report` output
-and the two issue lists.
+Analyze and critique use the same nine rules and all three facts: the compact
+`report` output and the two issue lists.
+
+The `report` output grows with the work of the day, so the turns do not read all of
+it. Before the turns, the workflow makes a compact form of the report. The compact
+form keeps these parts:
+
+- `window` and `semantics`.
+- Each metric of `metrics`, `quality`, `ci` and `operator`, with its status, value,
+  unit, comparison value, 7-day baseline and mark. The names of the last three
+  sections start with `quality.`, `ci.` and `operator.`.
+- `count`, the number of evidence items of each metric, in place of its evidence
+  list. The baseline also has no evidence list.
+- The unit from the metric name: `minutes`, `hours`, `usd`, `share`, `score` for
+  review scores, else `count`.
+- `jobLogs` of `quality`.
+- The totals of `runCosts`: `runs`, `knownSpendUsd`, `runsWithoutCost` and
+  `mostCostly`, the five most costly runs.
+
+The turns do not read `sources`, `completedTicketCosts`, `coverage` or an evidence list.
+
+The prompt of each turn has at most 48000 bytes of UTF-8. The worker refuses a text
+above 65536 bytes. When a prompt is larger than 48000 bytes, the workflow leaves out
+the lists in this order until the prompt fits:
+
+1. The review issues.
+2. `runCosts.mostCostly`.
+3. The improvement issues.
+
+The workflow always keeps the numbers. The `omitted` field names the lists that the
+workflow left out, and the turn treats them as unknown, not as empty. The critique
+checks of the workflow always use the complete improvement list. When the prompt
+with no lists is still larger than 48000 bytes, the run ends `blocked` before that
+turn with the reason `review-input-too-large: <size> bytes, limit 48000`.
+
 Critique is a separate turn. It removes unsupported claims, lists removals,
 compares every open improvement before and after its change, and gives keep,
 reverse or continue at the check date. The workflow also removes proposals

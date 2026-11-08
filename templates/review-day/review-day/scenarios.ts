@@ -69,6 +69,10 @@ export function effects() {
   };
 }
 
+export function promptFacts(payload: string): unknown {
+  return JSON.parse(payload.split("\n\n").at(-2) ?? "null");
+}
+
 export function methods(requests: readonly ScenarioRequest[]) {
   return requests.map((request) =>
     request[0] === "effect" ? request[1].method : request[0],

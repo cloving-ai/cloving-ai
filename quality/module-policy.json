@@ -753,6 +753,7 @@
     "templates/review-day/review-day/critique.ts": "workflow",
     "templates/review-day/review-day/decision.ts": "workflow",
     "templates/review-day/review-day/facts.ts": "workflow",
+    "templates/review-day/review-day/input.ts": "workflow",
     "templates/review-day/review-day/label.ts": "workflow",
     "templates/review-day/review-day/next.ts": "workflow",
     "templates/review-day/review-day/post.ts": "workflow",
