@@ -1,7 +1,11 @@
 import type { Fields } from "../protocol.ts";
 import type { DailyNumbers, KnownSpend } from "../report-days.ts";
 import { component, element, type Shown } from "./watch-element.ts";
-import { counted, type WatchModel } from "./watch-render.ts";
+import {
+  counted,
+  type WatchModel,
+  type WatchRepository,
+} from "./watch-render.ts";
 import { wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export function dollars(value: number | null): string {
@@ -145,6 +149,42 @@ export function WorkflowTable(props: {
   });
 }
 
+export function RepositoryTable(props: {
+  readonly repositories: readonly WatchRepository[];
+}): Shown {
+  return element("table", {
+    class: "today-table",
+    children: [
+      element("thead", {
+        children: element("tr", {
+          children: ["Repository", "Done", "Spent"].map((name) =>
+            element("th", { scope: "col", children: name }),
+          ),
+        }),
+      }),
+      element("tbody", {
+        children: props.repositories.map((repository) =>
+          element("tr", {
+            key: repository.name,
+            children: [
+              element("th", { scope: "row", children: repository.name }),
+              element("td", {
+                children: String(repository.today?.completed ?? 0),
+              }),
+              element("td", {
+                children:
+                  repository.today === undefined
+                    ? "unknown"
+                    : spentText(repository.today),
+              }),
+            ],
+          }),
+        ),
+      }),
+    ],
+  });
+}
+
 export function LaneLine(props: { readonly queue: Fields | undefined }): Shown {
   const { state, busy, lanes } = props.queue ?? {};
   if (typeof busy !== "number" || typeof lanes !== "number") return null;
@@ -199,10 +239,18 @@ export function Today(props: {
       }),
       element("div", {
         class: "today-part",
-        children: [
-          element("h3", { children: "By line" }),
-          component(WorkflowTable, { workflows: today.workflows }),
-        ],
+        children:
+          props.model.repositories === undefined
+            ? [
+                element("h3", { children: "By line" }),
+                component(WorkflowTable, { workflows: today.workflows }),
+              ]
+            : [
+                element("h3", { children: "By repository" }),
+                component(RepositoryTable, {
+                  repositories: props.model.repositories,
+                }),
+              ],
       }),
       component(LaneLine, { queue }),
     ],

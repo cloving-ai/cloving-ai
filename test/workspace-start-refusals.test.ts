@@ -9,7 +9,12 @@ import {
   workspaceStart,
   type WorkspaceHost,
   type WorkspaceStart,
+  type WorkspaceWatch,
 } from "../src/cli/workspace-start.ts";
+import {
+  workspaceRecordPath,
+  writeWorkspaceRecord,
+} from "../src/cli/workspace-record.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "cloving-workspace-")));
 process.on("exit", () => {
@@ -25,6 +30,7 @@ interface Started {
   readonly printed: string;
   readonly refused: string;
   readonly hosts: readonly WorkspaceHost[];
+  readonly watches: readonly WorkspaceWatch[];
 }
 
 async function started(input: {
@@ -45,6 +51,7 @@ async function started(input: {
   }
   const output = { printed: "", refused: "" };
   const hosts: WorkspaceHost[] = [];
+  const watches: WorkspaceWatch[] = [];
   const repositories = input.repositories ?? { [alpha]: alpha, [beta]: beta };
   const status = await workspaceStart({
     options: ["--reset-queue"],
@@ -55,9 +62,14 @@ async function started(input: {
     },
     home: root,
     repositoryDirectory: (directory) => repositories[directory],
+    processId: process.pid,
     hosted: (host) => {
       hosts.push(host);
       return input.hosted?.(host) ?? Promise.resolve(0);
+    },
+    watched: (watch) => {
+      watches.push(watch);
+      return Promise.resolve(0);
     },
     print: (text) => {
       output.printed += text;
@@ -66,7 +78,7 @@ async function started(input: {
       output.refused += text;
     },
   });
-  return { status, ...output, hosts };
+  return { status, ...output, hosts, watches };
 }
 
 const pair = {
@@ -149,6 +161,61 @@ await test("CLV-312 each repository gets its own runtime directory, the start op
     assert.equal(host.environment["CLOVING_WATCH_PORT"], "off");
     assert.deepEqual(host.options, ["--reset-queue"]);
   }
+  assert.deepEqual(
+    result.watches.map((watch) => [watch.port, watch.signal.aborted]),
+    [["3663", true]],
+  );
+});
+
+await test("CLV-312 the supervisor starts one watch page on the default port and none when the port is off", async () => {
+  const shown = await started({ workspace: pair });
+  assert.deepEqual(
+    shown.watches.map((watch) => watch.port),
+    ["3663"],
+  );
+  const off = await started({
+    workspace: pair,
+    environment: { CLOVING_WATCH_PORT: "off" },
+  });
+  assert.equal(off.status, 0);
+  assert.deepEqual(off.watches, []);
+});
+
+await test("CLV-312 a workspace start refuses to start while another workspace supervisor runs", async () => {
+  const path = String(
+    workspaceRecordPath({ XDG_STATE_HOME: join(root, "state") }),
+  );
+  await writeWorkspaceRecord(path, {
+    processId: process.ppid,
+    members: [{ name: "other", repository: alpha, runtime: join(root, "run") }],
+  });
+  const result = await started({ workspace: pair });
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.refused,
+    `workspace-already-running: The workspace supervisor with process ID ${String(process.ppid)} runs. Stop it first.\n`,
+  );
+  assert.deepEqual(result.hosts, []);
+  assert.deepEqual(result.watches, []);
+  const again = await started({ workspace: pair });
+  assert.equal(again.refused, result.refused);
+  rmSync(path);
+});
+
+await test("CLV-312 a workspace start refuses a place with no runtime root for its supervisor record", async () => {
+  const result = await started({
+    workspace: { version: 1, repositories: [{ path: alpha, name: "alpha" }] },
+    environment: {
+      XDG_STATE_HOME: "",
+      CLOVING_RUNTIME_DIR: join(root, "explicit"),
+    },
+  });
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.refused,
+    "workspace-runtime-unknown: Set HOME, XDG_STATE_HOME or XDG_RUNTIME_DIR.\n",
+  );
+  assert.deepEqual(result.hosts, []);
 });
 
 async function alphaFails(host: WorkspaceHost): Promise<number> {

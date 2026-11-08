@@ -99,6 +99,9 @@ It uses the kept workflow bundle of the old run, or the current workflow with --
 
 Lists the runs, or shows one run with its reason, evidence and next action.
 With --active, lists only the runs that are not completed, failed or cancelled.
+While a workspace runs, cloving status with no run ID shows one summary line for
+each repository: the service state, the active runs and the pending decisions.
+Use --repository <name> to show the runs of one repository.
 `,
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
@@ -180,11 +183,14 @@ The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
 When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
 `,
-  watch: `Usage: cloving watch [--port <n>]
+  watch: `Usage: cloving watch [--port <n>] [--workspace]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
 the events, the work of the worker and each pending decision.
 The default port is 3663. The page is read only. Stop it with Control-C.
+With --workspace, the page reads each repository of the running workspace and
+shows one group of lines for each repository. A workspace start serves this
+page itself.
 `,
   start: `Usage: cloving start [--repository <directory> | --workspace] [--reset-queue]
 
@@ -199,8 +205,11 @@ With --workspace, one start serves each repository of the workspace file
 Each repository needs an absolute path. The optional name has 1 to 64
 letters, digits, dots, dashes or underscores; the default is the last part of
 the path. Each repository gets its own daemon, runtime directory and settings,
-as with one start, and no watch page. Control-C stops all repositories. When
-one repository stops with an error, Cloving stops the other repositories.
+as with one start, and no watch page of its own. The start serves one watch
+page for all repositories on the watch port. While the workspace runs,
+cloving status lists each repository, and --repository <name> selects one.
+Control-C stops all repositories. When one repository stops with an error,
+Cloving stops the other repositories.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.

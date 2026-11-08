@@ -264,7 +264,10 @@ export function Page(props: PageProps): Shown {
     ];
   }
   const workflow = model.workflows.find(
-    (item) => item.workflowId === location.workflowId,
+    (item) =>
+      item.workflowId === location.workflowId &&
+      (location.repository === undefined ||
+        item.repository === location.repository),
   );
   if (workflow === undefined)
     return component(FloorPage, { ...props, model, down });

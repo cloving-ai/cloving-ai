@@ -134,6 +134,11 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 0; padding: 0; color: var(--color-muted); font-size: 13px; }
 .legend li { display: inline-flex; align-items: center; gap: 8px; }
 .lines { list-style: none; margin: 0; padding: 0; }
+.repositories { list-style: none; margin: 0; padding: 0; }
+.repository { border-top: var(--shape-border) solid var(--color-line); }
+.repository:first-child { border-top: 0; }
+.repository-name { display: inline-block; margin: 12px 8px 4px 18px; font: 700 15px/1.3 var(--font-heading); }
+.repository-down { color: var(--color-muted); font-size: 12px; }
 .line { display: grid; grid-template-columns: 180px minmax(0, 1fr) 170px; border-top: var(--shape-border) solid var(--color-line); }
 .line:first-child { border-top: 0; }
 .line:nth-child(4n+1), .line-color-1 { --line-color: var(--line-1); }

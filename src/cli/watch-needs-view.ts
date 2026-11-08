@@ -5,6 +5,7 @@ import type { WatchDecision, WatchRun } from "./watch-render.ts";
 import { wordText, type WatchWords } from "./watch-theme-view.ts";
 
 export interface WatchNeed {
+  readonly repository?: string;
   readonly kind: "decision" | "stopped";
   readonly key: string;
   readonly runId: string;
@@ -81,6 +82,12 @@ export function continuableNeed(run: WatchRun): WatchNeed {
   };
 }
 
+export function needRepository(run: WatchRun): {
+  readonly repository?: string;
+} {
+  return run.repository === undefined ? {} : { repository: run.repository };
+}
+
 export function needsOf(runs: readonly WatchRun[]): WatchNeed[] {
   const waited = (need: WatchNeed): number => {
     const time = Date.parse(need.since ?? "");
@@ -89,16 +96,27 @@ export function needsOf(runs: readonly WatchRun[]): WatchNeed[] {
   const floor = runs.filter((run) => run.linked !== true);
   return [
     ...floor.flatMap((run) =>
-      run.decisions.map((decision) => decisionNeed(run, decision)),
+      run.decisions.map((decision) => ({
+        ...decisionNeed(run, decision),
+        ...needRepository(run),
+      })),
     ),
-    ...floor.filter((run) => run.state === "paused").map(stoppedNeed),
-    ...floor.filter(continuableRun).map(continuableNeed),
+    ...floor
+      .filter((run) => run.state === "paused")
+      .map((run) => ({ ...stoppedNeed(run), ...needRepository(run) })),
+    ...floor
+      .filter(continuableRun)
+      .map((run) => ({ ...continuableNeed(run), ...needRepository(run) })),
   ].toSorted((first, second) => waited(first) - waited(second));
 }
 
 export function needMeta(need: WatchNeed, now: string): string {
   const age = stepAge(need.since, now);
-  return age === "" ? need.workflowId : `${need.workflowId}, waiting ${age}`;
+  const line =
+    need.repository === undefined
+      ? need.workflowId
+      : `${need.repository}: ${need.workflowId}`;
+  return age === "" ? line : `${line}, waiting ${age}`;
 }
 
 export function ContinueAction(props: {

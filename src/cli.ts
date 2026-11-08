@@ -29,6 +29,7 @@ import {
 } from "./cli/start-arguments.ts";
 import { commandUsage } from "./cli/usage.ts";
 import { workspaceStart, type WorkspaceHost } from "./cli/workspace-start.ts";
+import { liveWorkspace, memberDirectory } from "./cli/workspace-record.ts";
 import {
   clearedSettingsNote,
   restartEnvironment,
@@ -277,8 +278,21 @@ async function start(): Promise<number> {
       options: selection.options,
       environment: process.env,
       home: homedir(),
+      processId: process.pid,
       repositoryDirectory,
       hosted,
+      watched: ({ port, signal }) =>
+        toolProcess({
+          executable: process.execPath,
+          argumentsList: [
+            import.meta.filename,
+            "watch",
+            "--workspace",
+            "--port",
+            port,
+          ],
+          signal,
+        }),
       print: (text) => process.stdout.write(text),
       refuse: (text) => process.stderr.write(text),
     });
@@ -341,10 +355,9 @@ else if (
   });
 } else {
   const invocation = parseInvocation(process.argv.slice(2));
+  const workspace = liveWorkspace(process.env);
   const repository = repositoryDirectory(
-    "repository" in invocation
-      ? (invocation.repository ?? process.cwd())
-      : process.cwd(),
+    memberDirectory(workspace, invocation.repository) ?? process.cwd(),
   );
   const settingsRepository =
     process.env["CLOVING_WATCH_REPOSITORY"] ?? repository;
@@ -354,6 +367,7 @@ else if (
       : process.env;
   await main(process.argv.slice(2), {
     repository,
+    workspace,
     environment,
     startHarness,
     doctorProbe: createProbeRunner({

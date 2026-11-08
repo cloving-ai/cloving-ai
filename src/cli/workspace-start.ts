@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { parseWorkspace, workspaceFile, type Workspace } from "../workspace.ts";
 import { runtimeDirectory } from "./runtime-directory.ts";
+import {
+  liveWorkspace,
+  removeWorkspaceRecord,
+  workspaceRecordPath,
+  writeWorkspaceRecord,
+  type WorkspaceMember,
+} from "./workspace-record.ts";
 
 export interface WorkspaceHost {
   readonly repository: string;
@@ -10,21 +17,27 @@ export interface WorkspaceHost {
   readonly signal: AbortSignal;
 }
 
+export interface WorkspaceWatch {
+  readonly port: string;
+  readonly signal: AbortSignal;
+}
+
 export interface WorkspaceStart {
   readonly options: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
   readonly home: string;
+  readonly processId: number;
   readonly repositoryDirectory: (directory: string) => string | undefined;
   readonly hosted: (host: WorkspaceHost) => Promise<number>;
+  readonly watched: (watch: WorkspaceWatch) => Promise<number>;
   readonly print: (text: string) => void;
   readonly refuse: (text: string) => void;
 }
 
-interface Member {
-  readonly name: string;
-  readonly repository: string;
-  readonly runtime: string;
-}
+type Member = WorkspaceMember;
+
+const runtimeUnknown =
+  "workspace-runtime-unknown: Set HOME, XDG_STATE_HOME or XDG_RUNTIME_DIR.";
 
 type Members =
   | { readonly kind: "members"; readonly members: readonly Member[] }
@@ -59,10 +72,7 @@ function located(
         `workspace-repository-unknown: ${name}: ${path} is not a git repository.`,
       );
     const runtime = runtimeDirectory(input.environment, repository);
-    if (runtime === undefined)
-      return refusal(
-        "workspace-runtime-unknown: Set HOME, XDG_STATE_HOME or XDG_RUNTIME_DIR.",
-      );
+    if (runtime === undefined) return refusal(runtimeUnknown);
     members.push({ name, repository, runtime });
   }
   const repeated = sharedMember(members, "repository");
@@ -123,11 +133,44 @@ async function memberStatus(input: {
   }
 }
 
+async function supervised(
+  input: WorkspaceStart,
+  members: readonly Member[],
+): Promise<number> {
+  const stopping = new AbortController();
+  const watching = new AbortController();
+  const port = input.environment["CLOVING_WATCH_PORT"] ?? "3663";
+  const watch =
+    port === "off"
+      ? Promise.resolve(0)
+      : input.watched({ port, signal: watching.signal });
+  const statuses = await Promise.all(
+    members.map((member) => memberStatus({ member, start: input, stopping })),
+  );
+  watching.abort();
+  await watch;
+  return statuses.every((status) => status === 0) ? 0 : 1;
+}
+
+function recordRefusal(input: WorkspaceStart): string | undefined {
+  if (workspaceRecordPath(input.environment) === undefined)
+    return `${runtimeUnknown}\n`;
+  const running = liveWorkspace(input.environment);
+  return running === undefined
+    ? undefined
+    : `workspace-already-running: The workspace supervisor with process ID ${String(running.processId)} runs. Stop it first.\n`;
+}
+
 export async function workspaceStart(input: WorkspaceStart): Promise<number> {
   const file = workspaceFile(input.environment, input.home);
   const found = await workspaceMembers(input, file);
   if (found.kind === "refused") {
     input.refuse(found.text);
+    return 1;
+  }
+  const refused = recordRefusal(input);
+  if (refused !== undefined) {
+    input.refuse(refused);
     return 1;
   }
   input.print(
@@ -139,11 +182,14 @@ export async function workspaceStart(input: WorkspaceStart): Promise<number> {
       "",
     ].join("\n"),
   );
-  const stopping = new AbortController();
-  const statuses = await Promise.all(
-    found.members.map((member) =>
-      memberStatus({ member, start: input, stopping }),
-    ),
-  );
-  return statuses.every((status) => status === 0) ? 0 : 1;
+  const path = String(workspaceRecordPath(input.environment));
+  await writeWorkspaceRecord(path, {
+    processId: input.processId,
+    members: found.members,
+  });
+  try {
+    return await supervised(input, found.members);
+  } finally {
+    await removeWorkspaceRecord(path, input.processId);
+  }
 }
