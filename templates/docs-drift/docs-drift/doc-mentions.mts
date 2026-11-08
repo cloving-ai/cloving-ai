@@ -81,13 +81,29 @@ function codeNames(text: string): readonly string[] {
     );
 }
 
+function insideRepository(folder: string, token: string): string | undefined {
+  const parts: string[] = [];
+  for (const part of `${folder}/${token}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part !== "..") {
+      parts.push(part);
+      continue;
+    }
+    if (parts.length === 0) return undefined;
+    parts.pop();
+  }
+  return parts.join("/");
+}
+
 export function mentionedCode(
   doc: { readonly path: string; readonly text: string },
   changed: ChangedWords,
 ): readonly string[] {
   const folder = doc.path.split("/").slice(0, -1).join("/");
   const paths = tokens(doc.text).flatMap((token) =>
-    [token, `${folder}/${token}`].filter((path) => changed.has(path)),
+    [token, insideRepository(folder, token)].filter(
+      (path): path is string => path !== undefined && changed.has(path),
+    ),
   );
   const names = codeNames(doc.text);
   const named = [...changed]
