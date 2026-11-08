@@ -82,6 +82,7 @@ function hostPorts() {
       return Promise.resolve(undefined);
     },
     workflow: { id: unused, manifest: unused, available: unused },
+    notes: { read: unused },
     requestEffect: unused,
     operation: (operationId) =>
       Promise.resolve(

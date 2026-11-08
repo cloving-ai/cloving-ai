@@ -42,7 +42,8 @@ import {
   type ServiceContext,
 } from "./replies.ts";
 import type { WorkerTotals } from "../worker-usage.ts";
-import { turnDetailsOf, usageTotals } from "./worker-totals.ts";
+import { usageTotals } from "./worker-totals.ts";
+import { turnRecordsOf } from "./run-notes.ts";
 import { commandFields } from "./command-effects.ts";
 import { decidedOf, feedbackOf } from "./decision-handler.ts";
 import { queueOverview } from "./active-tickets.ts";
@@ -305,7 +306,7 @@ export async function status(
     run: {
       ...full({ ...view, ...totals }),
       spendLimitUsd: (await pinnedSpendLimit(context, view.runId)) ?? null,
-      ...(await turnDetailsOf(context, { runId: view.runId, totals })),
+      ...(await turnRecordsOf(context, { ...view, totals })),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
       decisions: await decidedOf(context, {

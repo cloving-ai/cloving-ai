@@ -161,6 +161,13 @@ export function adapters(
     repository,
     document,
     report,
+    notes: {
+      read: async (runId) => (await given).notes.read(runId),
+      operations: async (runId) =>
+        (await (await given).operations(runId))
+          .filter((operation) => operation.capability === "claude")
+          .map((operation) => operation.operationId),
+    },
     worktrees: join(directory, "worktrees"),
     journal: join(directory, "journal"),
     log: process.stderr.write.bind(process.stderr),

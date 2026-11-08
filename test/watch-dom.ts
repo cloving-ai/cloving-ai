@@ -101,10 +101,13 @@ export class PageNode {
     this.listeners.delete(type);
   }
 
-  dispatch(type: string): unknown {
+  dispatch(
+    type: string,
+    init: Readonly<Record<string, unknown>> = {},
+  ): unknown {
     return this.listeners
       .get(type)
-      ?.call(this, { type, currentTarget: this, target: this });
+      ?.call(this, { type, currentTarget: this, target: this, ...init });
   }
 
   all(name: string): PageNode[] {

@@ -56,6 +56,7 @@ export const eventTypes = [
   "run.failed",
   "run.cancelled",
   "run.dismissed",
+  "run.noted",
   "run.observed",
   "step.dispatched",
   "effect.requested",
@@ -97,6 +98,7 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "fail-run": "run.failed",
   "cancel-run": "run.cancelled",
   "dismiss-run": "run.dismissed",
+  "note-run": "run.noted",
   "report-observation": "run.observed",
   "record-dispatch": "step.dispatched",
   "request-effect": "effect.requested",
@@ -172,6 +174,8 @@ export const textFields = [
   "commandOutput",
   "continuedFrom",
   "continueRequest",
+  "note",
+  "noteId",
 ] as const;
 
 export type NumberField = (typeof numberFields)[number];
@@ -188,6 +192,7 @@ export type Move = Exclude<
   EventType,
   | "run.created"
   | "run.dismissed"
+  | "run.noted"
   | "step.dispatched"
   | "gate.wait-registered"
   | "run.observed"

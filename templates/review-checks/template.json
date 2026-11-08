@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "review-checks",
+  "summary": "Each Monday, read the review comments of the pull requests merged in the last week, suggest at most five automatic checks for shapes that reviews found again and again, and file one cloving: check issue for each check that a person accepts.",
+  "points": []
+}

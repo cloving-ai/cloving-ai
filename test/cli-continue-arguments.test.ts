@@ -11,6 +11,7 @@ function continued(changes: Readonly<Record<string, unknown>> = {}) {
     from: null,
     bundle: "retained",
     commandId: null,
+    note: null,
     json: false,
     ...changes,
   };

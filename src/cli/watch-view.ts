@@ -1,3 +1,4 @@
+import { RunNotes } from "./watch-notes-view.ts";
 import { scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
@@ -185,6 +186,7 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
       ? null
       : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
     component(HandoffLinks, { run }),
+    component(RunNotes, { notes: run.notes }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
     component(RunTotals, { run }),
     component(Phases, { phases: run.phases, now }),
@@ -257,25 +259,34 @@ export function Page(props: PageProps): Shown {
       down,
       component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
-      component(BackLink, { workflowId: location.workflowId }),
+      component(BackLink, {
+        workflowId: location.workflowId,
+        repository: location.repository,
+      }),
       run === undefined
         ? text("meta", "This run is not available.")
         : component(Run, { key: run.runId, run, now, copying }),
     ];
   }
   const workflow = model.workflows.find(
-    (item) => item.workflowId === location.workflowId,
+    (item) =>
+      item.workflowId === location.workflowId &&
+      (location.repository === undefined ||
+        item.repository === location.repository),
   );
   if (workflow === undefined)
     return component(FloorPage, { ...props, model, down });
   return component(BoardPage, { ...props, model, workflow, down });
 }
 
-export function BackLink(props: { readonly workflowId: string | null }): Shown {
-  const { workflowId } = props;
+export function BackLink(props: {
+  readonly workflowId: string | null;
+  readonly repository?: string | undefined;
+}): Shown {
+  const { workflowId, repository } = props;
   return element("a", {
     class: "back",
-    href: watchHash({ workflowId, runId: null }),
+    href: watchHash({ workflowId, repository, runId: null }),
     children: `← Back to ${workflowId ?? "the floor"}`,
   });
 }

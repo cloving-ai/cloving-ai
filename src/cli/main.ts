@@ -11,7 +11,10 @@ import { randomUUID } from "node:crypto";
 import packageMetadata from "#package" with { type: "json" };
 import { parseInvocation, type Invocation } from "./arguments.ts";
 import { phoneCommand } from "./phone-command.ts";
-import { runtimeCommand } from "./commands.ts";
+import { runtimeCommand, type CommandEnvironment } from "./commands.ts";
+import { workspaceCommand } from "./workspace-status.ts";
+import type { RuntimeInvocation } from "./runtime-invocation.ts";
+import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
 import { mcpServer } from "./mcp-server.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
@@ -57,6 +60,7 @@ export async function main(
     ) => Promise<number | null>;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
+    readonly workspace?: WorkspaceRecord | undefined;
   } = { repository: undefined },
 ): Promise<void> {
   const { repository, environment = process.env } = context;
@@ -87,22 +91,47 @@ export async function main(
       runtimeDirectory(process.env, repository),
     );
   } else {
-    process.exitCode = await runtimeCommand(invocation, {
-      runtimeDirectory: runtimeDirectory(process.env, repository),
-      ...watchSettings({ watchPr: context.watchPr, environment, repository }),
-      client: clientCommand(process.env, repository),
-      workingDirectory: process.cwd(),
-      terminal,
-      identifier: randomUUID,
-      interrupted: () =>
-        new Promise((settle) => {
-          for (const signal of ["SIGINT", "SIGTERM"] as const)
-            process.once(signal, () => {
-              settle();
-            });
-        }),
+    process.exitCode = await serviceCommand(invocation, {
+      ...context,
+      environment,
     });
   }
+}
+
+function serviceCommand(
+  invocation: RuntimeInvocation & { readonly repository?: string },
+  context: {
+    readonly watchPr?: WatchPrSettings | undefined;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+    readonly repository: string | undefined;
+    readonly workspace?: WorkspaceRecord | undefined;
+  },
+): Promise<number> {
+  const { repository, environment } = context;
+  const commandEnvironment: CommandEnvironment = {
+    runtimeDirectory: runtimeDirectory(process.env, repository),
+    ...watchSettings({ watchPr: context.watchPr, environment, repository }),
+    client: clientCommand(process.env, repository),
+    workingDirectory: process.cwd(),
+    terminal,
+    identifier: randomUUID,
+    interrupted: () =>
+      new Promise((settle) => {
+        for (const signal of ["SIGINT", "SIGTERM"] as const)
+          process.once(signal, () => {
+            settle();
+          });
+      }),
+  };
+  return (
+    workspaceCommand(invocation, {
+      ...commandEnvironment,
+      workspace: context.workspace,
+      selected: invocation.repository,
+      repository,
+      variables: process.env,
+    }) ?? runtimeCommand(invocation, commandEnvironment)
+  );
 }
 
 function isInspection(

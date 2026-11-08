@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { operationKey } from "../src/daemon/operation-journal.ts";
 import {
+  noteReceiptsPlace,
   retentionExpiry,
   turnDetailsPlace,
 } from "../src/daemon/turn-details.ts";
@@ -104,4 +105,38 @@ await test("CLV-307 a run is past retention for a continuation only when it ende
       }),
     );
     assert.equal(await kept("done"), false);
+  }));
+
+await test("CLV-326 note receipts come from the journal folder and from the journal folder of the archive", () =>
+  withSweep(async (scene) => {
+    const started = (noteId: string) => ({
+      phase: "running",
+      attempt: 1,
+      processId: 4321,
+      notes: [noteId],
+    });
+    await scene.folder(`archive/journal/${turn}`, started("note-a"));
+    await scene.folder(`journal/${operationKey("op-2")}`, started("note-b"));
+    const operationIds = ["op-1", "op-2", "op-3"];
+    assert.deepEqual(
+      await noteReceiptsPlace(scene.settings()).read(operationIds),
+      {
+        "note-a": "op-1",
+        "note-b": "op-2",
+      },
+    );
+    const elsewhere = join(scene.root, "elsewhere");
+    await scene.folder(
+      `elsewhere/journal/${operationKey("op-3")}`,
+      started("note-c"),
+    );
+    const configured = noteReceiptsPlace(
+      scene.settings({
+        retention: { days: 30, action: "archive", archiveFolder: elsewhere },
+      }),
+    );
+    assert.deepEqual(await configured.read(operationIds), {
+      "note-b": "op-2",
+      "note-c": "op-3",
+    });
   }));
