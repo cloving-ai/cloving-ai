@@ -143,6 +143,7 @@ const actions = {
     state.prs.push(created);
     out(url(created.number));
   },
+  "pr edit": () => { state.prs.find((item) => item.number === Number(args[2])).body = option("--body"); },
   "pr comment": () => { state.triggers.push(Number(args[2])); },
   "pr close": () => { state.prs.find((item) => item.number === Number(args[2])).state = "CLOSED"; },
   "issue comment": () => {

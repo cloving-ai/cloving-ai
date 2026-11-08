@@ -403,6 +403,7 @@
     "src/daemon/github-merge.ts": "daemon",
     "src/daemon/github-methods.ts": "daemon",
     "src/daemon/github-operation.ts": "daemon",
+    "src/daemon/github-pull-open.ts": "daemon",
     "src/daemon/github-pull-tree.ts": "daemon",
     "src/daemon/github-read.ts": "daemon",
     "src/daemon/github-retry.ts": "daemon",

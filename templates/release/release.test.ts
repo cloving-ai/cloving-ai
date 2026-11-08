@@ -26,6 +26,7 @@ import {
   pullStates,
   ready,
   rejectedReview,
+  reported,
   selection,
   waitInputs,
   waits,
@@ -82,6 +83,7 @@ await test("CLV-304 release with merged pull requests, an accepted version pull 
     {
       title: "Release v1.7.0",
       body: `Set the version to 1.7.0 for the release v1.7.0.\n\n## Release notes\n\n${notes}`,
+      replaceBody: true,
     },
   ]);
   assert.deepEqual(payloads(bridge.requests, "run:push-tag"), [
@@ -291,8 +293,14 @@ await test("CLV-304 the version pull request blocks after three rounds or at onc
 
 await test("CLV-304 a rejected review with feedback starts another version turn", async () => {
   const rejected = rejectedReview();
+  const revised = "- Add the release template and its notes (#641).";
   using bridge = fakeStepBridge({
-    effects: rejected.effects,
+    effects: Object.assign(rejected.effects, {
+      "claude run-turn": [
+        reported(),
+        reported(`Set the version 1.7.0.\n\nRelease notes:\n${revised}`),
+      ],
+    }),
     commandWaits: waits(),
     decisions: rejected.decisions,
   });
@@ -302,6 +310,11 @@ await test("CLV-304 a rejected review with feedback starts another version turn"
     String(second),
     /Address review-changes, then commit the fix\.[\s\S]*\nOutput:\nFix the notes\.$/,
   );
+  assert.deepEqual(payloads(bridge.requests, "open-pr").at(1), {
+    title: "Release v1.7.0",
+    body: `Set the version to 1.7.0 for the release v1.7.0.\n\n## Release notes\n\n${revised}`,
+    replaceBody: true,
+  });
 });
 
 await test("CLV-304 the version turn lists the first-parent history, so the notes name squash and rebase merges", () => {
@@ -318,7 +331,7 @@ await test("CLV-304 the version turn lists the first-parent history, so the note
   assert.doesNotMatch(prompt, /--merges|gh pr list/);
 });
 
-await test("CLV-304 payloads reads JSON payloads and refuses a value outside the JSON type", () => {
+await test("CLV-304 payloads reads the JSON payloads of one method, booleans too", () => {
   const sent = (payload: string): ScenarioRequest => [
     "effect",
     {
@@ -331,13 +344,13 @@ await test("CLV-304 payloads reads JSON payloads and refuses a value outside the
     },
   ];
   assert.deepEqual(
-    payloads([sent("[null, 1]"), sent('{"tag": ["v1.7.0"]}')], "run:push-tag"),
-    [[null, 1], { tag: ["v1.7.0"] }],
+    payloads(
+      [sent("[null, 1]"), sent('{"tag": ["v1.7.0"]}'), sent("[true]")],
+      "run:push-tag",
+    ),
+    [[null, 1], { tag: ["v1.7.0"] }, [true]],
   );
-  assert.throws(
-    () => payloads([sent("[true]")], "run:push-tag"),
-    /invalid-payload/,
-  );
+  assert.deepEqual(payloads([sent("[true]")], "open-pr"), []);
 });
 
 await test("CLV-304 an invalid version or pull request list blocks the release before any request", async () => {

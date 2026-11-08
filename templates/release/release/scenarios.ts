@@ -139,21 +139,13 @@ export function methods(requests: readonly ScenarioRequest[]) {
   });
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "number" || typeof value === "string")
-    return true;
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return typeof value === "object" && Object.values(value).every(isJsonValue);
-}
-
 export function payloads(
   requests: readonly ScenarioRequest[],
   method: string,
-): readonly JsonValue[] {
-  return requests.flatMap((request): JsonValue[] => {
+): readonly unknown[] {
+  return requests.flatMap((request): unknown[] => {
     if (request[0] !== "effect" || request[1].method !== method) return [];
     const value: unknown = JSON.parse(request[1].payload);
-    if (!isJsonValue(value)) throw new Error("invalid-payload");
     return [value];
   });
 }

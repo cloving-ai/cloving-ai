@@ -26,6 +26,7 @@ export async function openVersionPull(request: {
       payload: JSON.stringify({
         title: `Release ${task.tag}`,
         body: pullBody(request),
+        replaceBody: true,
       }),
       units: 1,
     }),

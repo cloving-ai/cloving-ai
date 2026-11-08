@@ -34,7 +34,9 @@ duplicate number or a word that is not a number ends the run `blocked` with
    squash merges and rebase merges. A turn has no GitHub login, so it does not
    get the list from GitHub.
 3. `open-pr` pushes the branch and opens the version pull request
-   `Release v1.7.0` with the release notes in its body. The point `accept` works
+   `Release v1.7.0` with the release notes in its body. The payload sets
+   `replaceBody: true`, so a later round puts its revised notes in the body of
+   the open pull request. The point `accept` works
    as in `develop`. Then `mergeWhenGreen` runs the `beforeMerge` check, waits for
    CI and merges. A rejected review or a failed merge with output starts another
    turn with that output. The run blocks after three turns, or at once on

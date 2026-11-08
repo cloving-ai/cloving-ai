@@ -162,6 +162,36 @@ await test("CLV-063 the GitHub worker pushes the branch and opens one pull reque
     assert.equal(scene.state().prs[0]?.["body"], body);
   }));
 
+await test("CLV-304 open-pr with replaceBody puts the new body on the open pull request, and refuses a replaceBody that is not true", () =>
+  withGithub(async (scene) => {
+    const worker = scene.worker();
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    committed(tree(scene), { name: "one.ts", text: "1;\n" });
+    await scene.perform(worker, {
+      method: "open-pr",
+      payload: { title, body },
+    });
+    committed(tree(scene), { name: "two.ts", text: "2;\n" });
+    const revised = "The revised release notes.";
+    const again = await scene.perform(worker, {
+      method: "open-pr",
+      payload: { title, body: revised, replaceBody: true },
+    });
+    assert.equal(again.outcome, "completed", JSON.stringify(again));
+    assert.equal(scene.state().prs.length, 1);
+    assert.equal(scene.state().prs[0]?.["body"], revised);
+    committed(tree(scene), { name: "three.ts", text: "3;\n" });
+    const refused = await scene.perform(worker, {
+      method: "open-pr",
+      payload: { title, body, replaceBody: "yes" },
+    });
+    assert.deepEqual(
+      [refused.outcome, refused.reason],
+      ["failed", "invalid-payload"],
+    );
+    assert.equal(scene.state().prs[0]?.["body"], revised);
+  }));
+
 await test("CLV-063 the GitHub worker does not push a branch with no change, or a change that has a private text in a file or in a commit message in any case of letters", () =>
   withGithub(async (scene) => {
     const worker = scene.worker({
