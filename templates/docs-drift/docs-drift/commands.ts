@@ -30,6 +30,8 @@ export interface Scan {
 const bad = "invalid-docs-candidates";
 export const commitId = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 export const docPath = /^(?!.*\.\.)(?!\/)[\w./-]+\.md$/;
+const branchName =
+  /^(?![-/]|HEAD$|.*(?:\.\.|@\{|\/\/|[/.]$|(?:^|\/)\.|\.lock(?:\/|$)))[^\p{Cc} ~^:?*[\\]+$/u;
 
 function count(value: unknown, minimum: number): number {
   if (
@@ -89,7 +91,7 @@ export async function docsCandidates(): Promise<Scan> {
     }),
     branch: text(output["branch"], {
       reason: bad,
-      pattern: /^(?!-)(?!.*\.\.)[\w./-]+$/,
+      pattern: branchName,
       maximum: 255,
     }),
     candidates,

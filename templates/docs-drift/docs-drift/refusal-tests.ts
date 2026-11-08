@@ -71,12 +71,44 @@ const candidateRefusals: readonly (readonly [unknown, string])[] = [
   ],
   [completed(scan(one, { commit: "abc" })), "invalid-docs-candidates"],
   [completed(scan(one, { more: -1 })), "invalid-docs-candidates"],
-  [completed(scan(one, { branch: "-main" })), "invalid-docs-candidates"],
 ];
 
-for (const [result, reason] of candidateRefusals)
-  refusalTests.push({
-    name: `CLV-317 the candidate result ${JSON.stringify(result).slice(0, 90)} blocks the run with ${reason} before the turn`,
+const refusedBranches = [
+  "",
+  "-main",
+  "HEAD",
+  "/main",
+  "main/",
+  "main.",
+  "a//b",
+  "a..b",
+  "main.lock",
+  "team.lock/main",
+  ".main",
+  "team/.main",
+  "a@{1}",
+  "a b",
+  "a~1",
+  "a^1",
+  "a:b",
+  "a?",
+  "a*",
+  "a[b",
+  "a\\b",
+  "a\u0001b",
+  "a\u007fb",
+  "b".repeat(256),
+  7,
+];
+
+function candidateRefusal(refusal: {
+  readonly subject: string;
+  readonly result: unknown;
+  readonly reason: string;
+}): RefusalTest {
+  const { subject, result, reason } = refusal;
+  return {
+    name: `CLV-317 ${subject} blocks the run with ${reason} before the turn`,
     run: async () => {
       using bridge = fakeStepBridge({
         effects: Object.assign(effects(scan(one)), {
@@ -91,7 +123,26 @@ for (const [result, reason] of candidateRefusals)
       });
       assert.deepEqual(methods(bridge.requests), ["run:docs-candidates"]);
     },
-  });
+  };
+}
+
+for (const [result, reason] of candidateRefusals)
+  refusalTests.push(
+    candidateRefusal({
+      subject: `the candidate result ${JSON.stringify(result).slice(0, 90)}`,
+      result,
+      reason,
+    }),
+  );
+
+for (const branch of refusedBranches)
+  refusalTests.push(
+    candidateRefusal({
+      subject: `the branch name ${JSON.stringify(branch).slice(0, 40)}`,
+      result: completed(scan(one, { branch })),
+      reason: "invalid-docs-candidates",
+    }),
+  );
 
 const turnRefusals: readonly (readonly [unknown, string])[] = [
   [{ kind: "failed", operationId: "t", reason: "turn-failed" }, "turn-failed"],

@@ -185,6 +185,33 @@ await test("CLV-317 a run with no drift ends completed with no issue and records
   );
 });
 
+for (const branch of ["release+stable", "开发", "team/v2.0@next", "@"])
+  await test(`CLV-317 the valid branch name ${branch} reaches the audit turn`, async () => {
+    using bridge = fakeStepBridge({
+      effects: Object.assign(
+        effects(scan([candidate("README.md")], { branch })),
+        {
+          "github prepare": [
+            completed({ worktree: "tree", base: branch, startCommit: commit }),
+          ],
+        },
+      ),
+      effectLimit: 10,
+    });
+    const outcome = await docsDrift(input);
+    assert.deepEqual(methods(bridge.requests), [
+      "run:docs-candidates",
+      "prepare",
+      "run-turn",
+      "discard",
+      "run:docs-drift-record",
+    ]);
+    assert.equal(
+      outcome.kind === "handoff_requested" ? outcome.report : "",
+      "Docs audited: 1 at 0123456789ab. No drift.",
+    );
+  });
+
 await test("CLV-317 a run with no candidate ends completed with no turn and no record", async () => {
   using bridge = fakeStepBridge({
     effects: effects(scan([])),
