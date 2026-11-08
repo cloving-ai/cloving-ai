@@ -18,6 +18,7 @@ cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflo
 
 export const commandUsage: Readonly<Record<string, string>> = {
   mcp: `Usage: cloving mcp [--repository <directory>]
+       cloving mcp --workspace
        cloving mcp --connection <name> [--state-dir <directory>]
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
@@ -25,6 +26,11 @@ Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause
 cloving_resume, cloving_drop, cloving_continue and cloving_dismiss to submit runs and decisions. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
+With --workspace, one server serves each repository of the running workspace.
+It adds the read tool cloving_repositories, which lists the repositories, and
+a repository argument with the workspace names to each tool. A tool that
+changes state needs the repository argument when the workspace lists more than
+one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 --connection launches the encrypted remote bridge from the cloving-zapier integration package.
 Pair the harness first with cloving integrations pair mcp --name <name>.
@@ -184,6 +190,10 @@ The restart keeps a drain of the queue and its failure count.
 The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
 When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
+While a workspace runs, cloving restart with no --repository restarts all repositories at a common gap.
+The workspace supervisor holds the queue runs of all repositories, waits until no repository has work,
+and then restarts each repository at once. --at now does not wait for the gap.
+A workspace restart has no --update, --cancel or --within; use --repository <name> to restart one repository.
 `,
   watch: `Usage: cloving watch [--port <n>] [--workspace]
 

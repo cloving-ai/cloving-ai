@@ -8,7 +8,7 @@ import type { WorkspaceHost } from "../src/cli/workspace-start.ts";
 import { listen } from "../src/service/transport.ts";
 import { alpha, pair, root, started } from "./workspace-start-harness.ts";
 
-const permits = join(root, "state/cloving/workspace/permits.sock");
+const permits = join(root, "state/cloving/workspace/control.sock");
 
 async function served(host: WorkspaceHost, busy: number) {
   await mkdir(host.runtime, { recursive: true });

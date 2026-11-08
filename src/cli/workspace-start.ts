@@ -324,7 +324,7 @@ async function permitted(
   let permits: PermitServer;
   try {
     permits = await permitServer({
-      path: join(dirname(path), "permits.sock"),
+      path: join(dirname(path), "control.sock"),
       members: () => currentMembers(input, found.members),
       limits: found.limits,
     });

@@ -12,6 +12,10 @@ import { workspaceHold, type MemberReading } from "../workspace-hold.ts";
 import type { WorkspaceLimits } from "../workspace.ts";
 import { send } from "./client.ts";
 import type { WorkspaceMember } from "./workspace-record.ts";
+import {
+  workspaceRestart,
+  type WorkspaceRestart,
+} from "./workspace-restart.ts";
 
 export interface PermitServer {
   readonly path: string;
@@ -22,14 +26,10 @@ export interface PermitSettings {
   readonly path: string;
   readonly members: () => readonly WorkspaceMember[];
   readonly limits: WorkspaceLimits;
+  readonly gapMilliseconds?: number;
 }
 
 const readMilliseconds = 10_000;
-
-function movedFolder(error: unknown): void {
-  if (!(error instanceof Error && "code" in error && error.code === "ENOTDIR"))
-    throw error;
-}
 
 function unknownMember(member: WorkspaceMember, detail: string): MemberReading {
   return { kind: "unknown", name: member.name, detail };
@@ -77,22 +77,17 @@ function invalid(detail: string): Reply {
   return { kind: "error", error: { code: "invalid-request", detail } };
 }
 
-async function answer(
-  settings: PermitSettings,
-  input: { readonly line: string; readonly permits: number },
-): Promise<Reply> {
-  const parsed = parseRequest(input.line);
-  if (parsed.kind === "error") return parsed;
-  if (parsed.request.operation !== "permit")
-    return invalid("The workspace supervisor answers only permit requests.");
-  const { limits } = settings;
+async function permitAnswer(serving: Serving, permits: number): Promise<Reply> {
+  const { limits } = serving.settings;
+  const restarting = serving.restart.hold();
   const members =
-    limits.lanes === undefined && limits.dailySpendLimitUsd === undefined
+    restarting !== undefined ||
+    (limits.lanes === undefined && limits.dailySpendLimitUsd === undefined)
       ? []
       : await Promise.all(
-          settings.members().map((member) => reading(member, limits)),
+          serving.settings.members().map((member) => reading(member, limits)),
         );
-  const hold = workspaceHold(limits, { members, permits: input.permits });
+  const hold = restarting ?? workspaceHold(limits, { members, permits });
   return {
     kind: "result",
     result: {
@@ -106,22 +101,14 @@ async function answer(
 interface Serving {
   readonly settings: PermitSettings;
   readonly sockets: Set<net.Socket>;
+  readonly restart: WorkspaceRestart;
   permits: number;
   turn: Promise<void>;
 }
 
-function asked(
-  serving: Serving,
-  request: { readonly socket: net.Socket; readonly line: string },
-): void {
-  const { socket, line } = request;
+function permitted(serving: Serving, socket: net.Socket): void {
   serving.turn = serving.turn.then(async () => {
-    const reply = await answer(serving.settings, {
-      line,
-      permits: serving.permits,
-    }).catch((error: unknown) =>
-      invalid(error instanceof Error ? error.message : String(error)),
-    );
+    const reply = await permitAnswer(serving, serving.permits);
     if (socket.destroyed) return;
     if (reply.kind === "result" && reply.result["admitted"] === true) {
       serving.permits += 1;
@@ -131,6 +118,40 @@ function asked(
     }
     socket.write(replyLine(reply));
   });
+}
+
+function dropped(socket: net.Socket): () => void {
+  return () => {
+    socket.destroy();
+  };
+}
+
+function asked(
+  serving: Serving,
+  request: { readonly socket: net.Socket; readonly line: string },
+): void {
+  const { socket, line } = request;
+  const parsed = parseRequest(line);
+  if (parsed.kind === "error") {
+    socket.end(replyLine(parsed));
+    return;
+  }
+  const { operation, parameters } = parsed.request;
+  if (operation === "permit") {
+    permitted(serving, socket);
+    return;
+  }
+  const reply =
+    operation === "restart"
+      ? serving.restart.requested(parameters)
+      : Promise.resolve(
+          invalid(
+            "The workspace supervisor answers only permit and restart requests.",
+          ),
+        );
+  reply.then((answer) => {
+    if (!socket.destroyed) socket.end(replyLine(answer));
+  }, dropped(socket));
 }
 
 function served(serving: Serving, socket: net.Socket): void {
@@ -146,7 +167,7 @@ function served(serving: Serving, socket: net.Socket): void {
     const end = buffered.indexOf("\n");
     if (end < 0 && Buffer.byteLength(buffered) <= maximumFrameBytes) return;
     socket.off("data", reader);
-    if (end < 0) socket.destroy();
+    if (end < 0) dropped(socket)();
     else asked(serving, { socket, line: buffered.slice(0, end) });
   };
   socket.on("data", reader);
@@ -158,9 +179,15 @@ export async function permitServer(
   const address = socketAddress(settings.path);
   if (address.kind === "refused")
     throw new Error(`${address.reason}: ${address.detail}`);
+  const stopping = new AbortController();
   const serving: Serving = {
     settings,
     sockets: new Set(),
+    restart: workspaceRestart({
+      members: settings.members,
+      gapMilliseconds: settings.gapMilliseconds ?? 2000,
+      signal: stopping.signal,
+    }),
     permits: 0,
     turn: Promise.resolve(),
   };
@@ -179,6 +206,7 @@ export async function permitServer(
   return {
     path: settings.path,
     close: async () => {
+      stopping.abort();
       const closed = new Promise<void>((settle) => {
         server.close(() => {
           settle();
@@ -186,7 +214,6 @@ export async function permitServer(
       });
       for (const socket of serving.sockets) socket.destroy();
       await closed;
-      await rm(address.path, { force: true }).catch(movedFolder);
     },
   };
 }

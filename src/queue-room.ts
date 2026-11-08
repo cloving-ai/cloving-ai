@@ -157,7 +157,7 @@ export type WorkspaceHold =
       readonly text: string;
     }
   | {
-      readonly reason: "workspace-unknown";
+      readonly reason: "workspace-unknown" | "workspace-restart";
       readonly text: string;
     };
 

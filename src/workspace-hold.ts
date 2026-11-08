@@ -86,8 +86,9 @@ export function permitHoldOf(value: unknown): WorkspaceHold | undefined {
   if (fields === undefined || typeof fields["text"] !== "string")
     return undefined;
   const text = fields["text"];
-  if (fields["reason"] === "workspace-unknown")
-    return { reason: "workspace-unknown", text };
+  const reason = fields["reason"];
+  if (reason === "workspace-unknown" || reason === "workspace-restart")
+    return { reason, text };
   if (
     fields["reason"] === "workspace-lanes" &&
     numbers(fields, ["busy", "limit"])

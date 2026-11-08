@@ -83,7 +83,7 @@ await test("CLV-312 each repository gets its own runtime directory, the start op
       CLOVING_WATCH_PORT: "off",
       CLOVING_WORKSPACE_PERMITS: join(
         root,
-        "state/cloving/workspace/permits.sock",
+        "state/cloving/workspace/control.sock",
       ),
     });
     assert.deepEqual(host.options, ["--reset-queue"]);

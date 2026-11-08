@@ -17,6 +17,7 @@ import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
 import { mcpServer } from "./mcp-server.ts";
+import { workspaceMcpServer } from "./mcp-workspace.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
   commandUsage,
@@ -87,15 +88,25 @@ export async function main(
       terminal,
     });
   } else if (invocation.kind === "mcp") {
-    process.exitCode = await mcpServer(
-      runtimeDirectory(process.env, repository),
-    );
+    process.exitCode = await mcpCommand(invocation, context);
   } else {
     process.exitCode = await serviceCommand(invocation, {
       ...context,
       environment,
     });
   }
+}
+
+function mcpCommand(
+  invocation: Extract<Invocation, { readonly kind: "mcp" }>,
+  context: {
+    readonly repository: string | undefined;
+    readonly workspace?: WorkspaceRecord | undefined;
+  },
+): Promise<number> {
+  return invocation.workspace === true
+    ? workspaceMcpServer(context.workspace)
+    : mcpServer(runtimeDirectory(process.env, context.repository));
 }
 
 function serviceCommand(

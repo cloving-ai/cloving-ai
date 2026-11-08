@@ -104,15 +104,35 @@ function initialize(parameters: Fields): Fields {
   };
 }
 
+export interface McpTarget {
+  readonly tools: readonly Fields[];
+  readonly call: (
+    parameters: Fields,
+    signal: AbortSignal,
+  ) => Promise<Fields | undefined>;
+}
+
+function repositoryTarget(runtimeDirectory: string): McpTarget {
+  return {
+    tools: mcpTools,
+    call: async (parameters, signal) => {
+      const call = mcpToolCall(parameters);
+      return call === undefined
+        ? undefined
+        : callMcpTool(runtimeDirectory, { call, signal });
+    },
+  };
+}
+
 async function response(
   request: Fields,
   context: {
     readonly id: string | number;
-    readonly runtimeDirectory: string;
+    readonly target: McpTarget;
     readonly signal: AbortSignal;
   },
 ): Promise<Fields> {
-  const { id, runtimeDirectory, signal } = context;
+  const { id, target, signal } = context;
   const parameters =
     request["params"] === undefined ? {} : record(request["params"]);
   if (parameters === undefined)
@@ -121,21 +141,21 @@ async function response(
   let result: Fields;
   if (method === "initialize") result = initialize(parameters);
   else if (method === "ping") result = {};
-  else if (method === "tools/list") result = { tools: mcpTools };
+  else if (method === "tools/list") result = { tools: target.tools };
   else if (method === "tools/call") {
-    const call = mcpToolCall(parameters);
-    if (call === undefined)
+    const called = await target.call(parameters, signal);
+    if (called === undefined)
       return error(id, {
         code: -32602,
         message: "Unknown tool or invalid arguments.",
       });
-    result = await callMcpTool(runtimeDirectory, { call, signal });
+    result = called;
   } else return error(id, { code: -32601, message: "Method not found." });
   return { jsonrpc: "2.0", id, result };
 }
 
 interface Session {
-  readonly runtimeDirectory: string;
+  readonly target: McpTarget;
   readonly calls: Map<string | number, AbortController>;
   readonly pending: Set<Promise<void>>;
 }
@@ -163,7 +183,7 @@ function dispatch(message: Message, session: Session): void {
   session.calls.set(id, call);
   const pending = response(request, {
     id,
-    runtimeDirectory: session.runtimeDirectory,
+    target: session.target,
     signal: call.signal,
   })
     .then((reply) => {
@@ -185,8 +205,12 @@ export async function mcpServer(
     );
     return 2;
   }
+  return servedMcp(repositoryTarget(runtimeDirectory));
+}
+
+export async function servedMcp(target: McpTarget): Promise<number> {
   const session: Session = {
-    runtimeDirectory,
+    target,
     calls: new Map(),
     pending: new Set(),
   };

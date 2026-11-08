@@ -9,7 +9,7 @@ import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
 import { readyRefreshes } from "./ticket-source.ts";
 import { atGap, workInProgress } from "../work-gap.ts";
-import { daemonWorkReads } from "./work-reads.ts";
+import { daemonWorkReads } from "../cli/work-reads.ts";
 import { restartHold, startedQueue } from "./restart-marks.ts";
 import { queueJournal, type QueueJournal } from "./queue-journal.ts";
 import { updateHold } from "./queue-update-hold.ts";
