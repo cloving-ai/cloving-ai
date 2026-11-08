@@ -128,10 +128,12 @@ function transcriptRead(directories: readonly string[]): TranscriptRead {
       ),
     );
     return (
+      answers.find((answer) => answer.kind === "result") ??
       answers.find(
         (answer) =>
-          answer.kind !== "error" || answer.error.code !== "unknown-turn",
-      ) ?? unknownTurn
+          answer.kind === "error" && answer.error.code !== "unknown-turn",
+      ) ??
+      unknownTurn
     );
   };
 }

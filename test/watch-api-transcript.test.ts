@@ -334,6 +334,11 @@ await test("CLV-329 a workspace watch page reads the transcript from the reposit
         const found = await fetch(`${watch.address}${turnPath}/transcript`);
         assert.equal(found.status, 200);
         assert.deepEqual(fields(await found.json())["entries"], [entryAt(1)]);
+        other.turn.refusal = { code: "service-unavailable", detail: "Down." };
+        const past = await fetch(`${watch.address}${turnPath}/transcript`);
+        assert.equal(past.status, 200);
+        await past.body?.cancel();
+        other.turn.refusal = { code: "unknown-turn", detail: "No such turn." };
         owner.turn.refusal = { code: "unknown-turn", detail: "No such turn." };
         const unknown = await fetch(`${watch.address}${turnPath}/transcript`);
         assert.equal(unknown.status, 404);
