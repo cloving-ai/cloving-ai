@@ -1,4 +1,5 @@
 import type { TurnVariables } from "./turn-environment.ts";
+import type { TurnRunner } from "./turn-runner.ts";
 
 export const defaultCommand = [
   "claude",
@@ -158,13 +159,14 @@ function selectedCommand(
 
 export function turnHarness(
   settings: HarnessSettings,
-  profile: { readonly harness?: string } = {},
+  profile: { readonly harness?: string; readonly runner?: TurnRunner } = {},
 ): {
   readonly worker: string;
   readonly command: readonly string[];
   readonly shell?: string;
   readonly output?: "text";
   readonly variables: TurnVariables;
+  readonly runner?: TurnRunner;
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
@@ -174,6 +176,7 @@ export function turnHarness(
     variables: settings.turnVariables ?? [],
     ...selectedCommand(settings, name),
     ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
+    ...(profile.runner === undefined ? {} : { runner: profile.runner }),
   };
 }
 
