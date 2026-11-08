@@ -34,3 +34,9 @@ export function queueStateLines(queue: Fields): readonly string[] {
     ...(drained === undefined ? [] : [`Drained: ${drained}`]),
   ];
 }
+
+export function effectLeaseText(value: unknown): string | undefined {
+  const limits = record(value);
+  if (limits === undefined) return undefined;
+  return `Effect leases: capacity ${visible(limits["capacity"])}, ${visible(limits["queueLimit"])} for queue runs, ${visible(limits["reserved"])} reserved for other runs`;
+}

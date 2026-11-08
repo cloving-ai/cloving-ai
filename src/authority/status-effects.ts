@@ -38,6 +38,24 @@ export function uncertainEffect(
   return statuses.includes("recovering") ? recovering : undefined;
 }
 
+const leaseCauses = ["ready", "resource"];
+
+export function leaseWait(
+  effects: readonly EffectSummary[],
+): Assessment | undefined {
+  const waiting = effects.find(
+    (effect) =>
+      effect.status === "waiting" && leaseCauses.includes(effect.reason ?? ""),
+  );
+  if (waiting === undefined) return undefined;
+  return assessed("waiting-for-lease", {
+    code: "waiting-for-lease",
+    detail: `The next effect waits for a free effect lease since ${waiting.waitingSince ?? "an unknown time"}.`,
+    nextAction: null,
+    humanInputCanHelp: false,
+  });
+}
+
 function shownReason(effect: EffectSummary): string | null {
   const ready = effect.status === "waiting" && effect.reason === "ready";
   return ready ? "capacity" : effect.reason;

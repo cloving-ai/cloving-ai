@@ -164,6 +164,7 @@ const shapes: Readonly<Record<string, Shape>> = {
   },
   "grant-lease": {
     required: ["operationId", "leaseGeneration", "expiresAt", "capacity"],
+    optional: ["queueLimit"],
   },
   "expire-lease": { required: ["operationId", "leaseGeneration"] },
   "report-effect": {
@@ -350,6 +351,7 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   leaseGeneration: positive,
   sourceGeneration: positive,
   capacity: positive,
+  queueLimit: positive,
   capabilities: isCapabilityList,
   target: printable,
   transport: printable,

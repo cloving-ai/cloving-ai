@@ -175,8 +175,8 @@ await test("CLV-049 status gives capacity and resource as the reasons of the ope
       ["waiting", "capacity"],
     ]);
     assert.deepEqual(reasonOf(await view(harness, scene.runId)), [
-      "working",
-      "in-progress",
+      "waiting-for-lease",
+      "waiting-for-lease",
       null,
       false,
     ]);

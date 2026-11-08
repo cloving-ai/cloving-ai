@@ -69,7 +69,10 @@ await test("CLV-049 the effect rows have a fixed order: budgets by run, operatio
       ],
     ],
   );
-  assert.deepEqual(storedEffects({ ...rows, holding: 2 }), effects);
+  assert.deepEqual(
+    storedEffects({ ...rows, holding: 2, queueLeases: [], queueRuns: [] }),
+    effects,
+  );
 });
 
 await test("CLV-049 the opening check refuses a count of holding operations that differs from the stored rows", () => {
@@ -109,7 +112,10 @@ await test("CLV-049 the input digest of a protected effect covers the capability
 await test("CLV-049 the stored effect rows give the effect state again, and a row with an unknown status or lease state is refused", () => {
   const { effects } = applied(running).state;
   const rows = effectRows(effects, []);
-  assert.deepEqual(storedEffects({ ...rows, holding: 1 }), effects);
+  assert.deepEqual(
+    storedEffects({ ...rows, holding: 1, queueLeases: [], queueRuns: [] }),
+    effects,
+  );
   const [operation] = rows.operations;
   const [lease] = rows.leases;
   assert.ok(operation);
@@ -119,6 +125,8 @@ await test("CLV-049 the stored effect rows give the effect state again, and a ro
       storedEffects({
         ...rows,
         holding: 1,
+        queueLeases: [],
+        queueRuns: [],
         operations: [{ ...operation, status: "sent" }],
       }),
     /invalid-operation-row/,
@@ -128,6 +136,8 @@ await test("CLV-049 the stored effect rows give the effect state again, and a ro
       storedEffects({
         ...rows,
         holding: 1,
+        queueLeases: [],
+        queueRuns: [],
         leases: [{ ...lease, state: "free" }],
       }),
     /invalid-lease-row/,
@@ -137,6 +147,8 @@ await test("CLV-049 the stored effect rows give the effect state again, and a ro
       storedEffects({
         ...rows,
         holding: 1,
+        queueLeases: [],
+        queueRuns: [],
         budgets: rows.budgets.map((budget) => ({
           ...budget,
           capabilities: "{}",

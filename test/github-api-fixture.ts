@@ -118,6 +118,16 @@ const actions = {
   "run rerun": () => out(""),
   "run view": () => out(args.includes("--log-failed") ? "Failed assertion" : { jobs: [{ databaseId: 101, name: "quality_linux", steps: [{ name: "Run quality", conclusion: "failure" }] }] }),
   "api GET issues": () => {
+    if (state.issueRows) {
+      const query = new URL("https://api.github.com/" + path).searchParams;
+      const labels = query.get("labels")?.split(",") ?? [];
+      const rows = state.issueRows.filter((row) => (query.get("state") === "all" || row.state === query.get("state")) && labels.every((name) => row.labels.some((label) => label.name === name)));
+      if (query.get("sort") === "created" && query.get("direction") === "desc") rows.sort((first, second) => second.created_at.localeCompare(first.created_at));
+      const size = Number(query.get("per_page") ?? 30);
+      const page = Number(query.get("page") ?? 1);
+      out(rows.slice((page - 1) * size, page * size));
+      return;
+    }
     const pages = state.issuePages ?? [state.issues];
     if (option("--jq")) {
       const marker = JSON.parse(option("--jq").match(/contains\\((".*")\\)/)[1]);

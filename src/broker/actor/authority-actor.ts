@@ -24,6 +24,7 @@ import {
   type Outcome,
   type Present,
 } from "./delivery-results.ts";
+import type { LeaseLimits } from "../../authority/leases.ts";
 import type { PlanSettings } from "./authority-settings.ts";
 import {
   adoptionTurn,
@@ -40,6 +41,7 @@ export const persistAction = "cloving.persist";
 export interface ActorParts {
   readonly reader: Database;
   readonly effects: PlanSettings;
+  readonly leaseLimits: () => LeaseLimits;
   readonly clock: () => string;
   readonly failed: (delivery: {
     readonly operationId: string;
@@ -98,11 +100,17 @@ export function authorityActor(parts: ActorParts): AuthorityActorClass {
 
 type AuthorityInstance = InstanceType<AuthorityActorClass>;
 
+function turnEffects(parts: ActorParts): PlanSettings {
+  const { capacity, queueLimit } = parts.leaseLimits();
+  return { ...parts.effects, capacity, queueLimit };
+}
+
 async function recoverTurn(
   actor: AuthorityInstance,
   parts: ActorParts,
 ): Promise<JsonObject> {
-  const scope = { sequence: actor.sequence, capacity: parts.effects.capacity };
+  const effects = turnEffects(parts);
+  const scope = { sequence: actor.sequence, capacity: effects.capacity };
   return applyPlan(
     actor,
     planRecovery({
@@ -110,14 +118,14 @@ async function recoverTurn(
         intents: [
           ...(await recoverableIntents(connection)),
           ...(await stopRecoveries(connection, {
-            capacity: parts.effects.capacity,
-            stopLimit: parts.effects.stopLimit,
-            stopSupported: parts.effects.stopSupported,
+            capacity: effects.capacity,
+            stopLimit: effects.stopLimit,
+            stopSupported: effects.stopSupported,
           })),
         ],
         turn: await recoveryTurn(connection, scope),
       }))),
-      effects: parts.effects,
+      effects,
       recordedAt: parts.clock(),
     }),
   );
@@ -128,11 +136,12 @@ async function executeCommand(
   input: { readonly parts: ActorParts; readonly request: JsonObject },
 ): Promise<JsonObject> {
   const { parts, request } = input;
+  const effects = turnEffects(parts);
   const turn = await parts.reader.connection((connection) =>
     commandTurn(connection, {
       command: request["command"],
       sequence: actor.sequence,
-      capacity: parts.effects.capacity,
+      capacity: effects.capacity,
     }),
   );
   return applyPlan(
@@ -141,7 +150,7 @@ async function executeCommand(
       turn,
       request: turnRequest(request),
       epoch: actor.epoch,
-      effects: parts.effects,
+      effects,
     }),
   );
 }
@@ -151,11 +160,12 @@ async function settleDelivery(
   input: { readonly parts: ActorParts; readonly outcome: Outcome },
 ): Promise<JsonObject> {
   const { parts, outcome } = input;
+  const effects = turnEffects(parts);
   const found = await parts.reader.connection((connection) =>
     deliveryTurn(connection, {
       effectId: outcome.effectId,
       sequence: actor.sequence,
-      capacity: parts.effects.capacity,
+      capacity: effects.capacity,
     }),
   );
   if (
@@ -179,7 +189,7 @@ async function settleDelivery(
         attempts: failures(parts, outcome),
       },
       epoch: actor.epoch,
-      effects: parts.effects,
+      effects,
     }),
   );
 }

@@ -71,3 +71,20 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-322 the status shows the effect capacity and the reserve, a reload applies a new reserve and refuses a reserve above 8", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${limitsPrelude}
+const daemon = await launched({ queueLanes: 2, queueLimits: { lanes: 2, workingLanes: 2, reserved: 3 }, reloadCommand, loadBundle, queueMilliseconds: 60000 });
+try {
+  assert.deepEqual((await asked("status")).effectLeases, { capacity: 5, queueLimit: 2, reserved: 3 });
+  const reply = await reloaded({ lanes: 4, workingLanes: 4, reserved: 0 });
+  assert.equal(reply.status, "reloaded", JSON.stringify(reply));
+  assert.deepEqual((await asked("status")).effectLeases, { capacity: 4, queueLimit: 4, reserved: 0 });
+  assert.equal((await reloaded({ lanes: 4, workingLanes: 4, reserved: 9 })).code, "reload-failed");
+  assert.deepEqual((await asked("status")).effectLeases, { capacity: 4, queueLimit: 4, reserved: 0 });
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

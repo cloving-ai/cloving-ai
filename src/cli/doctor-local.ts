@@ -1,5 +1,6 @@
 import { access, constants, stat } from "node:fs/promises";
-import { delimiter, isAbsolute, resolve } from "node:path";
+import { basename, delimiter, isAbsolute, resolve } from "node:path";
+import { parseCommands } from "../command-settings.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import { mergeMode, mergeModeRefusal } from "../merge-mode.ts";
 import { supportedNode, supportedNodes } from "./toolchain.ts";
@@ -141,4 +142,30 @@ export function mergeModeObservation(
   } catch {
     return { result: "fail", detail: mergeModeRefusal };
   }
+}
+
+function ghCommandNames(
+  text: string | undefined,
+): readonly string[] | undefined {
+  try {
+    return Object.entries(parseCommands(text))
+      .filter(([, command]) => basename(command[0] ?? "") === "gh")
+      .map(([name]) => name)
+      .toSorted();
+  } catch {
+    return undefined;
+  }
+}
+
+export function commandLoginObservation(
+  text: string | undefined,
+): DoctorObservation {
+  const names = ghCommandNames(text);
+  if (names === undefined)
+    return { result: "fail", detail: "invalid-commands: CLOVING_COMMANDS" };
+  if (names.length === 0) return { result: "ok", detail: "No command runs gh" };
+  return {
+    result: "warn",
+    detail: `These commands run gh, but a command gets no GitHub login: ${names.join(", ")}`,
+  };
 }

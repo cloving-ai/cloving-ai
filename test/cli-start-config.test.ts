@@ -68,7 +68,7 @@ await test("CLV-205 start reads inline private profiles and reports setting sour
 
 import { spawnSync } from "node:child_process";
 
-await test("CLV-205 invalid project settings stop start before preparing the daemon", () =>
+await test("CLV-205 CLV-322 invalid project settings stop start before preparing the daemon", () =>
   withoutChildren(async () => {
     const fixture = await scene();
     await mkdir(join(fixture.repository, ".cloving"));
@@ -86,6 +86,8 @@ await test("CLV-205 invalid project settings stop start before preparing the dae
         { checks: { beforeMerge: "npm test" } },
         "invalid-setting: checks.beforeMerge",
       ],
+      [{ effects: { reserved: 9 } }, "invalid-effect-settings"],
+      [{ effects: { reserved: -1 } }, "invalid-effect-settings"],
     ] as const) {
       await writeFile(
         join(fixture.repository, ".cloving/config.json"),

@@ -1,3 +1,4 @@
+import type { LeaseLimits } from "../../authority/leases.ts";
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -62,6 +63,7 @@ export interface AuthorityOptions {
   readonly delivery?: Delivery;
   readonly timing?: AuthorityTiming;
   readonly effects?: Partial<EffectSettings>;
+  readonly leaseLimits?: () => LeaseLimits;
   readonly clock?: () => string;
   readonly instrumentation?: (event: InstrumentationEvent) => void;
   readonly log?: (line: string) => void;
@@ -348,6 +350,7 @@ export function authorityRuntime(
   const shared = { reader, effects, clock: options.clock ?? wallClock };
   const ClovingAuthority = authorityActor({
     ...shared,
+    leaseLimits: options.leaseLimits ?? (() => effects),
     failed: failureCounter(),
   });
   const runtime = registeredRuntime({

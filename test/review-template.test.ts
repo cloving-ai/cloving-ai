@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { manifest } from "./develop-template-fixture.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
 
-await test("CLV-200 review-day declares two choices, daily commands and a bounded handoff", async () => {
+await test("CLV-200 CLV-323 review-day declares two choices, the report command, github issues and a bounded handoff", async () => {
   const root = new URL("../templates/review-day/", import.meta.url);
   const document = manifest(
     JSON.parse(await readFile(new URL("template.json", root), "utf8")),
@@ -30,11 +30,7 @@ await test("CLV-200 review-day declares two choices, daily commands and a bounde
     everySeconds: 86400,
     input: {},
   });
-  assert.deepEqual(declaration.workflow.commands, [
-    "report",
-    "reviews",
-    "improvements",
-  ]);
+  assert.deepEqual(declaration.workflow.commands, ["report"]);
   assert.deepEqual(declaration.workflow.capabilities, [
     "command",
     "claude",
@@ -42,9 +38,9 @@ await test("CLV-200 review-day declares two choices, daily commands and a bounde
   ]);
   assert.deepEqual(declaration.workflow.handoffs, ["idea-to-issue"]);
   assert.deepEqual(declaration.methods, {
-    command: ["run:report", "run:reviews", "run:improvements"],
+    command: ["run:report"],
     claude: ["run-turn"],
-    github: ["create-issue", "label", "discard"],
+    github: ["issues", "create-issue", "label", "discard"],
   });
   const readme = await readFile(new URL("README.md", root), "utf8");
   for (const requirement of [
@@ -56,6 +52,10 @@ await test("CLV-200 review-day declares two choices, daily commands and a bounde
     "cloving: ready",
     "skips",
     "loop",
+    "github issues",
+    "Loop: ",
+    "too-many-improvements",
   ])
     assert.ok(readme.includes(requirement), requirement);
+  assert.doesNotMatch(readme, /"reviews"|"improvements"|gh issue list/);
 });
