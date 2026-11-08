@@ -64,9 +64,16 @@ export function changedWords(diff: string): ChangedWords {
 }
 
 function tokens(text: string): readonly string[] {
-  return (text.match(/[\w@.+/-]+/g) ?? []).map((token) =>
-    token.replace(/^\.\//, "").replace(/\.+$/, ""),
+  const spans = (text.match(/`[^`\n]+`/g) ?? []).map((span) =>
+    span.slice(1, -1),
   );
+  const links = [...text.matchAll(/\]\((?:<([^>\n]+)>|([^)\s]+))\)/g)].map(
+    (match) => match[1] ?? match[2] ?? "",
+  );
+  const words = text.match(/[\p{L}\p{N}_@.+/-]+/gu) ?? [];
+  return spans
+    .concat(links, words)
+    .map((token) => token.replace(/^\.\//, "").replace(/\.+$/, ""));
 }
 
 function codeNames(text: string): readonly string[] {

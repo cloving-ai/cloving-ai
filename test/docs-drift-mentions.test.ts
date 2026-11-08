@@ -106,6 +106,16 @@ await test("CLV-317 mentionedCode gives the changed files that a doc names by pa
     ["src/settings.ts"],
   );
   assert.deepEqual(
+    mentionedCode(
+      {
+        path: "README.md",
+        text: "Edit `src/\u8a2d\u5b9a.ts`, then [the other file](<src/x b/y.ts>).",
+      },
+      changed,
+    ),
+    ["src/x b/y.ts", "src/\u8a2d\u5b9a.ts"],
+  );
+  assert.deepEqual(
     mentionedCode({ path: "AGENTS.md", text: "Nothing `ab` here." }, changed),
     [],
   );
