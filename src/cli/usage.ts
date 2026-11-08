@@ -84,7 +84,7 @@ Reports run outcomes, throughput and ended-run costs with seven-day medians and 
 Unsupported facts and unreadable sources are unavailable.
 `,
   run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
-       cloving run continue <run-id> [--from <phase>/<operation>[/<round>]] [--bundle current] [--command-id <id>] [--json]
+       cloving run continue <run-id> [--from <phase>/<operation>[/<round>]] [--bundle current] [--note <text>] [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
 With --ticket, the daemon reads the ticket at admission. A declared ticket field receives { id, text } inside input.
@@ -94,6 +94,8 @@ Continue admits a new run for a failed run, or for a run that completed blocked.
 The new run keeps the cycle, the branch, the work tree and the pull request of the old run.
 It reuses the completed effects before the failed step, or before the first visit of the --from step.
 It uses the kept workflow bundle of the old run, or the current workflow with --bundle current.
+With --note, the first agent turn that the new run starts gets the note under "Notes from the operator:".
+A note has 1 to 4000 characters after the spaces at its start and end are removed.
 `,
   status: `Usage: cloving status [<run-id>] [--active] [--limit <n>] [--after <cursor>] [--json]
 

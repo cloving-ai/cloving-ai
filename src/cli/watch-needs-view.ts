@@ -1,4 +1,5 @@
 import { component, element, type Shown } from "./watch-element.ts";
+import { cardKey, type CardKeyEvent } from "./watch-card-view.ts";
 import { stepAge } from "./watch-floor-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchDecision, WatchRun } from "./watch-render.ts";
@@ -19,6 +20,11 @@ export interface WatchNeed {
 export interface ContinueControls {
   readonly busy: readonly string[];
   readonly messages: Readonly<Record<string, string>>;
+  readonly open: string | null;
+  readonly note: string;
+  readonly onOpen: (runId: string) => void;
+  readonly onClose: () => void;
+  readonly onNote: (text: string) => void;
   readonly onContinue: (runId: string) => void;
   readonly onDismiss: (runId: string) => void;
 }
@@ -125,14 +131,59 @@ export function ContinueAction(props: {
 }): Shown {
   const { need, continuing } = props;
   if (need.continuable !== true || continuing === undefined) return null;
+  if (continuing.open === need.runId)
+    return component(ContinueForm, { need, continuing });
   return element("button", {
     type: "button",
     class: "need-action need-continue",
     ...(continuing.busy.includes(need.runId) ? { disabled: true } : {}),
     onClick: () => {
-      continuing.onContinue(need.runId);
+      continuing.onOpen(need.runId);
     },
     children: "Continue",
+  });
+}
+
+export function ContinueForm(props: {
+  readonly need: WatchNeed;
+  readonly continuing: ContinueControls;
+}): Shown {
+  const { need, continuing } = props;
+  return element("form", {
+    class: "need-note",
+    onKeyDown: (event: CardKeyEvent) => {
+      cardKey(event, { onCancel: continuing.onClose });
+    },
+    onSubmit: (event: Event) => {
+      event.preventDefault();
+      continuing.onContinue(need.runId);
+    },
+    children: [
+      element("label", {
+        children: [
+          "Note for the next turn (optional)",
+          element("input", {
+            type: "text",
+            name: "note",
+            value: continuing.note,
+            onInput: (event: { currentTarget: { value: string } }) => {
+              continuing.onNote(event.currentTarget.value);
+            },
+          }),
+        ],
+      }),
+      element("button", {
+        type: "submit",
+        class: "need-action need-continue",
+        children: "Continue",
+      }),
+      element("button", {
+        type: "button",
+        class: "need-action",
+        onClick: continuing.onClose,
+        children: "Cancel",
+      }),
+    ],
   });
 }
 

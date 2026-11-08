@@ -136,6 +136,16 @@ export async function defaultBranch(operation: Operation): Promise<string> {
   return reference.trim().replace(/^origin[/]/, "");
 }
 
+function addedLines(diff: string): readonly string[] {
+  return diff
+    .split(/^diff --git /mu)
+    .flatMap((file) => {
+      const hunks = file.indexOf("\n@@");
+      return hunks === -1 ? [] : file.slice(hunks).split("\n");
+    })
+    .filter((line) => line.startsWith("+"));
+}
+
 export async function changeChecked(
   operation: Operation,
   place: { readonly tree: Place; readonly base: string },
@@ -145,8 +155,24 @@ export async function changeChecked(
   const range = `origin/${place.base}..HEAD`;
   if (Number((await call(["rev-list", "--count", range])).trim()) === 0)
     throw new Error("no-change");
+  const branch = `origin/${place.base}...HEAD`;
+  const diff = await call([
+    "diff",
+    "--unified=0",
+    "--no-color",
+    "--no-ext-diff",
+    branch,
+  ]);
   const change = [
-    await call(["diff", `origin/${place.base}...HEAD`]),
+    ...addedLines(diff),
+    await call([
+      "diff",
+      "--name-only",
+      "--no-renames",
+      "--diff-filter=A",
+      "-z",
+      branch,
+    ]),
     await call(["log", "--format=%B", range]),
   ].join("\n");
   const privateTexts = [homedir(), ...(operation.settings.privateTexts ?? [])];

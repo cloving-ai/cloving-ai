@@ -33,6 +33,7 @@ import type { ServiceIdentity } from "./service-identity.ts";
 import { connectionLimits, listen, reachable } from "./transport.ts";
 import { workerPort, type WorkerPort } from "./worker-port.ts";
 import { runWaitTarget } from "./run-waits.ts";
+import { runNotes, type RunNote } from "./run-notes.ts";
 import type { RunWaitTarget } from "../run-wait.ts";
 import type { CommandEffects } from "../command-settings.ts";
 import { commandWaitPort, type CommandWaitPort } from "./command-waits.ts";
@@ -104,6 +105,9 @@ export interface HostPorts {
   readonly reportEffect: WorkerPort["reportEffect"];
   readonly openGate: WorkerPort["openGate"];
   readonly registerWait: WorkerPort["registerWait"];
+  readonly notes: {
+    readonly read: (runId: string) => Promise<readonly RunNote[]>;
+  };
 }
 
 export interface ServiceOptions extends ServiceReads, ServiceIdentity {
@@ -347,6 +351,7 @@ function hostPorts(
     registerWait: worker.registerWait,
     operation: authority.effects.operation,
     operations: authority.effects.operations,
+    notes: { read: (runId) => runNotes({ authority }, runId) },
     workflow: {
       id: async (runId) => (await authority.queries.workflowIds())[runId],
       manifest: authority.queries.manifest,

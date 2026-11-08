@@ -1,5 +1,6 @@
 import { isCommandId } from "../authority/commands.ts";
 import { continuationStart } from "../authority/continuations.ts";
+import { noteLimit, noteText } from "../authority/notes.ts";
 import { chainRefusal, type RunOrigins } from "../authority/handoff-chain.ts";
 import type { AuthorityCommand } from "../authority/transitions.ts";
 import type { RunRecord } from "../broker/actor/authority-queries.ts";
@@ -30,6 +31,7 @@ interface ContinueRequest {
   readonly commandId: string;
   readonly from: string | null;
   readonly bundle: "retained" | "current";
+  readonly note: string | null;
 }
 
 interface Subject {
@@ -59,7 +61,15 @@ function continueRequest(parameters: Fields): ContinueRequest | undefined {
   if (!isIdentifier(runId) || !isCommandId(commandId)) return undefined;
   if (from !== null && typeof from !== "string") return undefined;
   if (bundle !== "retained" && bundle !== "current") return undefined;
-  return { runId, commandId, from, bundle };
+  return { runId, commandId, from, bundle, note: noteOf(parameters) ?? null };
+}
+
+function noteOf(parameters: Fields): string | undefined {
+  return noteText(parameters["note"]);
+}
+
+function noted(request: ContinueRequest): Fields {
+  return request.note === null ? {} : { note: request.note };
 }
 
 function requestDigest(request: ContinueRequest): string {
@@ -68,6 +78,7 @@ function requestDigest(request: ContinueRequest): string {
       runId: request.runId,
       from: request.from,
       bundle: request.bundle,
+      ...noted(request),
     }),
   );
 }
@@ -305,6 +316,7 @@ async function continued(
       continuedFrom: request.runId,
       reuseBefore: start.reuseBefore,
       continueRequest: requestDigest(request),
+      ...noted(request),
     },
   });
 }
@@ -337,6 +349,11 @@ export async function continueRun(
   const request = continueRequest(parameters);
   if (request === undefined)
     return invalidRequest("The continue request is not valid.");
+  if (parameters["note"] !== undefined && noteOf(parameters) === undefined)
+    return failed("invalid-note", {
+      ...identity(request),
+      detail: `A note has 1 to ${String(noteLimit)} characters after the spaces at its start and end are removed.`,
+    });
   const replayed = await replayedContinuation(context, request);
   if (replayed !== undefined) return replayed;
   const run = await context.authority.queries.run(request.runId);

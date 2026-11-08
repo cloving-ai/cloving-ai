@@ -125,6 +125,12 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .need-text { margin: 4px 0 2px; }
 .need-meta { margin: 0; color: var(--color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .need-message { margin: 4px 0 0; font-size: 13px; }
+.need-note { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.need-note label { display: grid; gap: 4px; min-width: 240px; font-size: 12px; color: var(--color-muted); }
+.need-note input { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.run-notes h3 { margin: 12px 0 4px; font-size: 14px; }
+.run-notes ul { margin: 0; padding: 0; list-style: none; }
+.note-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .need-action { flex-shrink: 0; padding: 8px 18px; border: 0; cursor: pointer; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }
 .need-action:hover { background: var(--color-line); }
 .need-action:disabled { cursor: progress; opacity: 0.6; }
