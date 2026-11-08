@@ -62,6 +62,33 @@ await test("CLV-317 a doc that says 30 where the code has 60 gives one ticket wi
   });
 });
 
+await test("CLV-317 when main moved after the scan, the ticket, the record and the report name the commit of the audited tree", async () => {
+  const moved = "fedcba9876543210fedcba9876543210fedcba98";
+  using bridge = fakeStepBridge({
+    effects: Object.assign(
+      effects(scan([candidate("README.md"), candidate("AGENTS.md")]), {
+        docs: [{ doc: "README.md", rows: [row()] }],
+      }),
+      {
+        "github prepare": [
+          completed({ worktree: "tree", base: "main", startCommit: moved }),
+        ],
+      },
+    ),
+    effectLimit: 10,
+  });
+  const outcome = await docsDrift(input);
+  assert.match(tickets(bridge.requests)[0] ?? "", /at commit `fedcba987654`/);
+  assert.deepEqual(
+    JSON.parse(payloadOf(bridge.requests, "run:docs-drift-record")),
+    { commit: moved, docs: ["AGENTS.md"] },
+  );
+  assert.equal(
+    outcome.kind === "handoff_requested" ? outcome.report : "",
+    "Docs audited: 2 at fedcba987654. Ticket runs requested: 1 (README.md). Left for a later audit: none.",
+  );
+});
+
 await test("CLV-317 a row with no path:line is dropped, and a doc with no row left gets no ticket", async () => {
   using bridge = fakeStepBridge({
     effects: effects(scan([candidate("README.md"), candidate("AGENTS.md")]), {

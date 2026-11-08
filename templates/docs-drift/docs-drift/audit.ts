@@ -1,5 +1,5 @@
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
-import type { DriftInput, Scan } from "./commands.ts";
+import { commitId, type DriftInput, type Scan } from "./commands.ts";
 import {
   completedText,
   failure,
@@ -91,12 +91,24 @@ export function auditPrompt(scan: Scan): string {
   ].join("\n\n");
 }
 
+export interface Audit {
+  readonly commit: string;
+  readonly drifts: readonly Drift[];
+}
+
+function auditedCommit(prepared: string, scan: Scan): string {
+  const reason = "invalid-prepare-result";
+  const tree = record(jsonValue(prepared, reason), reason);
+  if (tree["base"] !== scan.branch) failure("default-branch-mismatch");
+  return text(tree["startCommit"], { reason, pattern: commitId, maximum: 64 });
+}
+
 export async function auditDocs(request: {
   readonly input: DriftInput;
   readonly scan: Scan;
-}): Promise<readonly Drift[]> {
+}): Promise<Audit> {
   const target = request.input.cycleId;
-  completedText(
+  const prepared = completedText(
     await protectedEffect({
       capability: "github",
       method: "prepare",
@@ -108,6 +120,7 @@ export async function auditDocs(request: {
     "missing-prepare-result",
   );
   try {
+    const commit = auditedCommit(prepared, request.scan);
     const result = await protectedEffect({
       capability: "claude",
       method: "run-turn",
@@ -116,7 +129,10 @@ export async function auditDocs(request: {
       units: 1,
       payload: auditPrompt(request.scan),
     });
-    return driftOfResult(completedText(result, bad), request.scan);
+    return {
+      commit: commit,
+      drifts: driftOfResult(completedText(result, bad), request.scan),
+    };
   } finally {
     completedText(
       await protectedEffect({

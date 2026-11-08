@@ -34,6 +34,7 @@ await test("CLV-317 docs-candidates prints the docs that name changed code, with
     const printed = await candidates(place);
     assert.deepEqual(printed, {
       commit: newest(place),
+      branch: "main",
       candidates: [
         {
           doc: "README.md",
@@ -101,6 +102,7 @@ await test("CLV-317 after docs-drift-record, the next run lists only the code th
     });
     assert.deepEqual(await candidates(place), {
       commit: second,
+      branch: "main",
       candidates: [
         {
           doc: "templates/x/README.md",
@@ -150,6 +152,24 @@ await test("CLV-317 docs-drift-record keeps the commits of the other docs and an
         ["templates/x/README.md", null],
       ],
     );
+  }));
+
+await test("CLV-317 docs-candidates reads the code files that git quotes, also with the diff.noprefix setting", () =>
+  withDocsRepository([[]], async (place) => {
+    git(place.repository, ["config", "diff.noprefix", "true"]);
+    await pushSeed(place, {
+      "src/設定.ts": "export const seconds = 60; // queue.seconds\n",
+      'src/say "hi".ts': "export const wait = 60; // queue.seconds\n",
+    });
+    const printed = await candidates(place);
+    const listed = printed?.["candidates"];
+    assert.ok(Array.isArray(listed));
+    assert.deepEqual(record(listed[0]), {
+      doc: "README.md",
+      since: null,
+      code: ['src/say "hi".ts', "src/settings.ts", "src/設定.ts"],
+      codeCount: 3,
+    });
   }));
 
 await test("CLV-317 docs-candidates prints at most 15 docs, the docs with the most code first, and counts the others", () =>

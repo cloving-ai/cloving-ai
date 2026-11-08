@@ -3,6 +3,7 @@ import { fakeStepBridge } from "cloving/workflows/testing";
 import { docsDrift } from "../docs-drift.ts";
 import {
   candidate,
+  commit,
   completed,
   effects,
   input,
@@ -70,6 +71,7 @@ const candidateRefusals: readonly (readonly [unknown, string])[] = [
   ],
   [completed(scan(one, { commit: "abc" })), "invalid-docs-candidates"],
   [completed(scan(one, { more: -1 })), "invalid-docs-candidates"],
+  [completed(scan(one, { branch: "-main" })), "invalid-docs-candidates"],
 ];
 
 for (const [result, reason] of candidateRefusals)
@@ -179,6 +181,41 @@ refusalTests.push({
     ]);
   },
 });
+
+const prepareRefusals: readonly (readonly [unknown, string])[] = [
+  [
+    completed({ worktree: "tree", base: "master", startCommit: commit }),
+    "default-branch-mismatch",
+  ],
+  [completed({ worktree: "tree", base: "main" }), "invalid-prepare-result"],
+  [
+    completed({ worktree: "tree", base: "main", startCommit: "HEAD" }),
+    "invalid-prepare-result",
+  ],
+  [
+    { kind: "completed", operationId: "p", receipt: null, result: "x" },
+    "invalid-prepare-result",
+  ],
+];
+
+for (const [result, reason] of prepareRefusals)
+  refusalTests.push({
+    name: `CLV-317 the prepare result ${JSON.stringify(result).slice(0, 90)} blocks the run with ${reason} after the discard and before the turn`,
+    run: async () => {
+      using bridge = fakeStepBridge({
+        effects: Object.assign(effects(scan(one)), {
+          "github prepare": [result],
+        }),
+      });
+      const outcome = await docsDrift(input);
+      assert.equal(outcome.kind === "blocked" ? outcome.reason : "", reason);
+      assert.deepEqual(methods(bridge.requests), [
+        "run:docs-candidates",
+        "prepare",
+        "discard",
+      ]);
+    },
+  });
 
 refusalTests.push({
   name: "CLV-317 a prepare or discard with no result blocks the run",

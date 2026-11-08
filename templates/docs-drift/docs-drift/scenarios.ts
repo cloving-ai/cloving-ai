@@ -30,7 +30,7 @@ export function scan(
   candidates: readonly unknown[],
   fields: Readonly<Record<string, unknown>> = {},
 ) {
-  return { commit, candidates, more: 0, ...fields };
+  return { commit, branch: "main", candidates, more: 0, ...fields };
 }
 
 export function row(fields: Readonly<Record<string, unknown>> = {}) {
@@ -55,7 +55,9 @@ export function effects(
 ) {
   return {
     "command run:docs-candidates": [completed(candidates)],
-    "github prepare": [completed({ worktree: "tree", base: "main" })],
+    "github prepare": [
+      completed({ worktree: "tree", base: "main", startCommit: commit }),
+    ],
     "claude run-turn": [turn(result)],
     "github discard": [completed({ discarded: "cloving/drift-1" })],
     "command run:docs-drift-record": [completed({ recorded: 1 })],
@@ -95,11 +97,13 @@ export function methods(requests: readonly ScenarioRequest[]) {
   );
 }
 
+const self = { workflowId: "docs-drift" };
+
 export function tickets(requests: readonly ScenarioRequest[]): string[] {
   return requests.flatMap((request) => {
     if (request[0] !== "handoff") return [];
     const text = request[1].input["text"];
-    return request[1].workflowId === "docs-drift" && typeof text === "string"
+    return request[1].workflowId === self.workflowId && typeof text === "string"
       ? [text]
       : [];
   });

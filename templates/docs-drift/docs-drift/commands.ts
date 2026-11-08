@@ -22,12 +22,13 @@ export interface Candidate {
 
 export interface Scan {
   readonly commit: string;
+  readonly branch: string;
   readonly candidates: readonly Candidate[];
   readonly more: number;
 }
 
 const bad = "invalid-docs-candidates";
-const commitId = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+export const commitId = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 export const docPath = /^(?!.*\.\.)(?!\/)[\w./-]+\.md$/;
 
 function count(value: unknown, minimum: number): number {
@@ -85,6 +86,11 @@ export async function docsCandidates(): Promise<Scan> {
       reason: bad,
       pattern: commitId,
       maximum: 64,
+    }),
+    branch: text(output["branch"], {
+      reason: bad,
+      pattern: /^(?!-)(?!.*\.\.)[\w./-]+$/,
+      maximum: 255,
     }),
     candidates,
     more: count(output["more"], 0),

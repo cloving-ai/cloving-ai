@@ -73,6 +73,7 @@ await test("CLV-317 docs-candidates ignores pages and issues that have no title"
   assert.equal(result.exitCode, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     commit,
+    branch: "main",
     candidates: [
       { doc: "AGENTS.md", since: null, code: ["src/a.ts"], codeCount: 1 },
       { doc: "README.md", since: null, code: ["src/a.ts"], codeCount: 1 },

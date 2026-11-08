@@ -157,6 +157,8 @@ async function changedSince(tree: Tree, base: string): Promise<ChangedWords> {
       "--no-ext-diff",
       "--no-renames",
       "--unified=0",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
       base,
       tree.commit,
       "--",
@@ -230,7 +232,7 @@ async function scanned(system: ScanSystem): Promise<string> {
   );
   const candidates = found.slice(0, 15);
   const more = found.length - candidates.length;
-  return `${JSON.stringify({ commit, candidates, more }, null, 2)}\n`;
+  return `${JSON.stringify({ commit, branch, candidates, more }, null, 2)}\n`;
 }
 
 export async function scanOutput(system: ScanSystem): Promise<ScriptOutput> {

@@ -124,11 +124,35 @@ function copiedDeclaration(text: string, renaming: Renaming): string {
       {
         template: renaming.template,
         ...declaration,
-        workflow: { ...workflow, workflowId: renaming.id },
+        workflow: {
+          ...workflow,
+          workflowId: renaming.id,
+          ...copiedHandoffs(workflow["handoffs"], renaming),
+        },
       },
       null,
       2,
     ) + "\n"
+  );
+}
+
+function copiedHandoffs(handoffs: unknown, renaming: Renaming) {
+  if (!Array.isArray(handoffs)) return {};
+  return {
+    handoffs: handoffs.map((target: unknown) =>
+      target === renaming.template ? renaming.id : target,
+    ),
+  };
+}
+
+function selfHandoff(node: ts.Node, template: string): boolean {
+  return (
+    ts.isStringLiteral(node) &&
+    node.text === template &&
+    ts.isPropertyAssignment(node.parent) &&
+    node.parent.initializer === node &&
+    ts.isIdentifier(node.parent.name) &&
+    node.parent.name.text === "workflowId"
   );
 }
 
@@ -143,6 +167,12 @@ function renamedSource(
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node) && node.text === renaming.from)
       edits.push({ start: node.getStart(), end: node.end, text: renaming.to });
+    if (selfHandoff(node, renaming.template))
+      edits.push({
+        start: node.getStart() + 1,
+        end: node.end - 1,
+        text: renaming.id,
+      });
     if (
       ts.isStringLiteral(node) &&
       (ts.isImportDeclaration(node.parent) ||

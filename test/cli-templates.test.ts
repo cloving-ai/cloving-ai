@@ -170,6 +170,43 @@ await test("CLV-223 templates copy with an id renames the files, the workflow an
     assert.equal(tested.status, 0, tested.stdout + tested.stderr);
   }));
 
+await test("CLV-317 templates copy with an id points the handoffs of a template to itself at the copy", () =>
+  withFiles(repository, async (root) => {
+    const folder = join(root, "repo/.cloving/workflows");
+    const copies = [
+      ["docs-drift", "site-docs", "tickets.ts"],
+      ["triage-issue", "site-triage", "pass.ts"],
+      ["patrol", "site-patrol", "rescue.ts"],
+    ] as const;
+    for (const [name, id] of copies)
+      assert.equal(templates(root, ["copy", name, "--id", id]).status, 0);
+    const handoffs = async (id: string) =>
+      record(
+        record(
+          JSON.parse(
+            await readFile(join(folder, `${id}.declaration.json`), "utf8"),
+          ),
+        )?.["workflow"],
+      )?.["handoffs"];
+    assert.deepEqual(await handoffs("site-docs"), ["site-docs"]);
+    assert.deepEqual(await handoffs("site-triage"), ["site-triage"]);
+    assert.deepEqual(await handoffs("site-patrol"), [
+      "rescue-pr",
+      "answer-review",
+    ]);
+    for (const [name, id, helper] of copies)
+      assert.match(
+        await readFile(join(folder, id, helper), "utf8"),
+        name === "patrol"
+          ? /workflowId: "rescue-pr"/
+          : new RegExp(`workflowId: "${id}"`),
+      );
+    for (const id of ["site-docs", "site-triage"]) {
+      const tested = cli(root, { args: ["test", id], entry: packagedEntry });
+      assert.equal(tested.status, 0, tested.stdout + tested.stderr);
+    }
+  }));
+
 await test("CLV-223 templates commands refuse unknown templates and invalid ids", () =>
   withFiles(repository, (root) => {
     const unknown = templates(root, ["copy", "missing"]);

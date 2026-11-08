@@ -78,17 +78,19 @@ the repository. It does these steps:
 
 1. It reads the current default branch of the remote `origin` with
    `git ls-remote --symref origin HEAD` and fetches that branch. The newest
-   commit of that branch is the commit of the audit.
+   commit of that branch is the commit of the scan.
 2. It lists the files of that commit and keeps the docs of the operator list.
 3. It reads the record file. A file that does not exist is an empty record.
 4. It reads all pages of the open issues with the label `cloving: docs` through
    `gh api`. A doc whose path is a word of the title of such an issue is not a
    candidate. A pull request does not count.
 5. For each other doc, it compares the commit of the doc in the record with the
-   commit of the audit. With no record, or with a recorded commit that `git`
-   does not know, it compares the empty tree with the commit of the audit, so
-   each file counts as changed.
-6. It reads the doc from the commit of the audit and finds the code that it
+   commit of the scan. With no record, or with a recorded commit that `git`
+   does not know, it compares the empty tree with the commit of the scan, so
+   each file counts as changed. It reads the names of changed files also when
+   `git` puts them in quotes, for example a name with a character that is not
+   ASCII.
+6. It reads the doc from the commit of the scan and finds the code that it
    names.
 
 Each tracked file that is not Markdown counts as code. A doc names a changed
@@ -108,6 +110,7 @@ in the order of their paths:
 ```json
 {
   "commit": "0123456789abcdef0123456789abcdef01234567",
+  "branch": "main",
   "candidates": [
     {
       "doc": "README.md",
@@ -123,6 +126,7 @@ in the order of their paths:
 | Field       | Value                                                                    |
 | ----------- | ------------------------------------------------------------------------ |
 | `commit`    | The newest commit of the default branch.                                 |
+| `branch`    | The default branch of the remote `origin`.                               |
 | `doc`       | The path of the doc.                                                     |
 | `since`     | The recorded commit of the doc, or `null` with no known record.          |
 | `code`      | At most 50 changed code files that the doc names, in the order of paths. |
@@ -173,6 +177,17 @@ that does not match the code, it writes one row:
 The turn returns JSON of at most 48000 characters in its final summary. After
 the turn, also after a failure, the `discard` method removes the work tree.
 
+Before the turn, the workflow compares the branch of the work tree with the
+`branch` of the candidates. The `prepare` method uses the local `origin/HEAD`.
+When `origin/HEAD` names another branch, the workflow discards the work tree and
+blocks the run with `default-branch-mismatch`. To correct it, run
+`git remote set-head origin --auto` in the repository. A `prepare` result with
+no commit ID blocks the run with `invalid-prepare-result`.
+
+When main moved after the candidate scan, the turn audits the newer commit of
+the work tree. The tickets, the record and the report then name this commit,
+the commit of the audit.
+
 The turn reads files. Before you enable the schedule, add a turn profile for this
 workflow with `maxBudgetUsd` and the tools for this work, for example `Read`,
 `Glob`, `Grep` and `Bash` for `git log` and `git blame`. Change the method of the
@@ -203,7 +218,8 @@ For each doc it writes a ticket in the PRD form of the repository: `Problem`,
 `create-issue` makes one issue for each run, because its duplicate marker uses
 the target of the run. Thus the audit hands off one small `docs-drift` run for
 each ticket with the input `{"text": "<ticket>"}`. The declaration names
-`docs-drift` in `handoffs` for this. A ticket above 48000 bytes blocks the run
+`docs-drift` in `handoffs` for this. A copy with `--id <id>` names `<id>` in
+`handoffs` and in the handoff. A ticket above 48000 bytes blocks the run
 before the first handoff with `drift-ticket-too-large`.
 
 A run with a `text` does not audit. It does two steps:
@@ -224,7 +240,7 @@ start such a run with `cloving run docs-drift --input ticket.json`.
 ## The record
 
 After the handoffs, the workflow runs `docs-drift-record` with the commit of the
-audit and each audited doc with no drift. A run with no drift ends `completed`
+audited work tree and each audited doc with no drift. A run with no drift ends `completed`
 with no issue and records each candidate. The next run lists only the code that
 changed after the recorded commit of each doc.
 

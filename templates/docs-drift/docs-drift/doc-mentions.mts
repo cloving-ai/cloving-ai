@@ -14,6 +14,38 @@ function wordsOf(text: string): readonly string[] {
   });
 }
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+const controls: Readonly<Record<string, string>> = {
+  a: "\x07",
+  b: "\b",
+  t: "\t",
+  n: "\n",
+  v: "\v",
+  f: "\f",
+  r: "\r",
+};
+
+function bytesOf(part: RegExpExecArray): readonly number[] {
+  const [found, octal, escape] = part;
+  if (octal !== undefined) return [Number.parseInt(octal, 8)];
+  const text = escape === undefined ? found : (controls[escape] ?? escape);
+  return [...encoder.encode(text)];
+}
+
+function gitPath(path: string): string {
+  if (!path.startsWith('"')) return path;
+  const parts = path.slice(1, -1).matchAll(/\\([0-7]{3})|\\(.)|[^\\]+/gu);
+  return decoder.decode(
+    Uint8Array.from([...parts].flatMap((part) => bytesOf(part))),
+  );
+}
+
+function headerPath(line: string): string {
+  const pair = line.slice("diff --git ".length);
+  return gitPath(pair.slice(0, (pair.length - 1) / 2)).slice(2);
+}
+
 export function changedWords(diff: string): ChangedWords {
   const changed = new Map<string, Set<string>>();
   let words = new Set<string>();
@@ -22,8 +54,7 @@ export function changedWords(diff: string): ChangedWords {
     if (line.startsWith("diff --git ")) {
       words = new Set<string>();
       hunk = false;
-      if (line.startsWith("diff --git a/"))
-        changed.set(line.slice(line.lastIndexOf(" b/") + 3), words);
+      changed.set(headerPath(line), words);
     }
     if (line.startsWith("@@")) hunk = true;
     if (hunk && /^[+-]/.test(line))

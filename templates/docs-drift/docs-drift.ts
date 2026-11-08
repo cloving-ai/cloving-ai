@@ -12,11 +12,12 @@ import { fileTickets } from "./docs-drift/tickets.ts";
 function driftReport(
   scan: Scan,
   drifts: {
+    readonly commit: string;
     readonly filed: readonly Drift[];
     readonly left: readonly string[];
   },
 ): string {
-  const audited = `Docs audited: ${String(scan.candidates.length)} at ${scan.commit.slice(0, 12)}.`;
+  const audited = `Docs audited: ${String(scan.candidates.length)} at ${drifts.commit.slice(0, 12)}.`;
   const more =
     scan.more === 0 ? "" : ` Docs over the limit of 15: ${String(scan.more)}.`;
   if (drifts.filed.length === 0) return `${audited} No drift.${more}`;
@@ -38,11 +39,14 @@ export async function docsDrift(input: DriftInput): Promise<CycleOutcome> {
         promotionId: "docs-drift",
         report: "No doc names code that changed after its last audit.",
       };
-    const drifts = await auditDocs({ input: input, scan: scan });
-    const filed = await fileTickets({ drifts: drifts, commit: scan.commit });
-    const drifted = drifts.map((drift) => drift.doc);
+    const audit = await auditDocs({ input: input, scan: scan });
+    const filed = await fileTickets({
+      drifts: audit.drifts,
+      commit: audit.commit,
+    });
+    const drifted = audit.drifts.map((drift) => drift.doc);
     await recordAudit({
-      commit: scan.commit,
+      commit: audit.commit,
       docs: scan.candidates
         .map((item) => item.doc)
         .filter((doc) => !drifted.includes(doc)),
@@ -52,6 +56,7 @@ export async function docsDrift(input: DriftInput): Promise<CycleOutcome> {
       cycleId: input.cycleId,
       promotionId: "docs-drift",
       report: driftReport(scan, {
+        commit: audit.commit,
         filed: filed,
         left: drifted.slice(filed.length),
       }),

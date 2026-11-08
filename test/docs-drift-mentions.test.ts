@@ -30,16 +30,30 @@ const diff = [
   "@@ -1 +1 @@",
   "+maxBudgetUsd",
   "+}",
-  'diff --git "a/odd name.ts" "b/odd name.ts"',
+  'diff --git "a/src/\\350\\250\\255\\345\\256\\232.ts" "b/src/\\350\\250\\255\\345\\256\\232.ts"',
   "@@ -1 +1 @@",
   "+CLOVING_ODD",
+  'diff --git "a/src/say \\"hi\\"\\t\\\\.ts" "b/src/say \\"hi\\"\\t\\\\.ts"',
+  "@@ -1 +1 @@",
+  "+CLOVING_QUOTE",
+  "diff --git a/src/x b/y.ts b/src/x b/y.ts",
+  "@@ -1 +1 @@",
+  "+CLOVING_SPACE",
 ].join("\n");
 
 await test("CLV-317 changedWords maps each changed code file to the words of its added and removed lines", () => {
   const changed = changedWords(diff);
   assert.deepEqual(
     [...changed.keys()],
-    ["src/settings.ts", "src/old.ts", "templates/x/x/run.mts", "src/quiet.ts"],
+    [
+      "src/settings.ts",
+      "src/old.ts",
+      "templates/x/x/run.mts",
+      "src/quiet.ts",
+      "src/\u8a2d\u5b9a.ts",
+      'src/say "hi"\t\\.ts',
+      "src/x b/y.ts",
+    ],
   );
   const words = changed.get("src/settings.ts") ?? new Set();
   for (const word of [
@@ -54,6 +68,9 @@ await test("CLV-317 changedWords maps each changed code file to the words of its
   assert.ok(!words.has("src/settings.ts"));
   assert.ok(changed.get("src/old.ts")?.has("CLOVING_OLD"));
   assert.ok(!changed.get("src/quiet.ts")?.has("CLOVING_ODD"));
+  assert.ok(changed.get("src/\u8a2d\u5b9a.ts")?.has("CLOVING_ODD"));
+  assert.ok(changed.get('src/say "hi"\t\\.ts')?.has("CLOVING_QUOTE"));
+  assert.ok(changed.get("src/x b/y.ts")?.has("CLOVING_SPACE"));
 });
 
 await test("CLV-317 mentionedCode gives the changed files that a doc names by path or by a code name", () => {
