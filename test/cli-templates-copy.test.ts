@@ -263,3 +263,30 @@ await test("CLV-301 templates copy installs the ticket scripts and prints the se
       await assertCopiedNextTicket(root, String(settings[0]?.command[1]));
     },
   ));
+
+await test("CLV-316 templates copy writes the time zone of the operator into a calendar schedule and keeps an interval", () =>
+  withFiles(repository, async (root) => {
+    const schedule = async (name: string) => {
+      const copied = spawnSync(
+        process.execPath,
+        [entry, "templates", "copy", name],
+        cliOptions(root, { environment: { TZ: "America/Los_Angeles" } }),
+      );
+      assert.equal(copied.status, 0, copied.stderr);
+      const path = `repo/.cloving/workflows/${name}.declaration.json`;
+      const value: unknown = JSON.parse(
+        await readFile(join(root, path), "utf8"),
+      );
+      return record(record(value)?.["workflow"])?.["schedule"];
+    };
+    assert.deepEqual(await schedule("review-checks"), {
+      at: "07:00",
+      timeZone: "America/Los_Angeles",
+      weekdays: ["monday"],
+      input: {},
+    });
+    assert.deepEqual(await schedule("dependency-audit"), {
+      everySeconds: 86400,
+      input: {},
+    });
+  }));
