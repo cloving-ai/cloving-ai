@@ -26,9 +26,16 @@ export interface TranscriptReads {
   readonly privateTexts: readonly string[];
 }
 
+export interface NoteReceipts {
+  readonly read: (
+    operationIds: readonly string[],
+  ) => Promise<Readonly<Record<string, string>>>;
+}
+
 export interface ServiceReads {
   readonly turnTranscript?: TranscriptReads;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
+  readonly noteReceipts?: NoteReceipts;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
   readonly retentionExpired?: (runId: string) => Promise<boolean>;
   readonly githubRead?: GithubReader;
@@ -92,6 +99,7 @@ export function queryMetadata(
   | "schedule"
   | "queue"
   | "workerHarness"
+  | "noteReceipts"
   | "turnDetails"
   | "turnTranscript"
   | "retentionExpired"
@@ -108,9 +116,7 @@ export function queryMetadata(
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queue === undefined ? {} : { queue: options.queue }),
     ...spendSettings(options),
-    ...(options.workerHarness === undefined
-      ? {}
-      : { workerHarness: options.workerHarness }),
+    ...turnReads(options),
     ...(options.turnDetails === undefined
       ? {}
       : { turnDetails: options.turnDetails }),
@@ -130,6 +136,19 @@ export function queryMetadata(
     ...(options.effectLeases === undefined
       ? {}
       : { effectLeases: options.effectLeases }),
+  };
+}
+
+function turnReads(
+  options: ServiceReads,
+): Pick<ServiceReads, "workerHarness" | "noteReceipts"> {
+  return {
+    ...(options.workerHarness === undefined
+      ? {}
+      : { workerHarness: options.workerHarness }),
+    ...(options.noteReceipts === undefined
+      ? {}
+      : { noteReceipts: options.noteReceipts }),
   };
 }
 

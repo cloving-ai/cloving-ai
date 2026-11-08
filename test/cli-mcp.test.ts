@@ -74,7 +74,7 @@ const listed = [
   ]),
   [
     "cloving_continue",
-    ["runId", "from", "bundle", "commandId"],
+    ["runId", "from", "bundle", "note", "commandId"],
     ["runId", "commandId"],
   ],
   ["cloving_dismiss", ["runId", "commandId"], ["runId", "commandId"]],

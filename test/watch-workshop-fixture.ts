@@ -15,6 +15,7 @@ const today: DailyNumbers = {
   stopped: 1,
   costUsd: 25,
   unknownCostRuns: 0,
+  knownCostCompleted: 3,
   costPerCompletedRunUsd: 25 / 3,
   yesterday: { completed: 1, costUsd: 8, unknownCostRuns: 0 },
   days: [

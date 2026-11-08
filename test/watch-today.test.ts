@@ -127,6 +127,7 @@ await test("CLV-321 with completed runs of 10.00 and 5.00 USD and one run with n
   assert.equal(today.completed, 3);
   assert.equal(today.costUsd, 15);
   assert.equal(today.unknownCostRuns, 1);
+  assert.equal(today.knownCostCompleted, 2);
   assert.equal(today.costPerCompletedRunUsd, 7.5);
 });
 

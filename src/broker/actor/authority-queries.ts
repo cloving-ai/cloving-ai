@@ -46,6 +46,7 @@ export interface EventCursor {
   readonly after: number;
   readonly limit: number;
   readonly runId?: string;
+  readonly type?: string;
 }
 
 export interface Sequences {
@@ -149,14 +150,14 @@ async function eventsAfter(
   connection: SqlConnection,
   cursor: EventCursor,
 ): Promise<EventPage> {
-  const scoped = cursor.runId === undefined ? "" : " AND run_id = ?";
-  const parameters =
-    cursor.runId === undefined
-      ? [cursor.after, cursor.limit]
-      : [cursor.after, cursor.runId, cursor.limit];
+  const filters = [
+    ["run_id", cursor.runId],
+    ["type", cursor.type],
+  ].filter((filter): filter is [string, string] => filter[1] !== undefined);
+  const scoped = filters.map(([column]) => ` AND ${column} = ?`).join("");
   const rows = await connection.all(
     `SELECT sequence, type, run_id, command_id, recorded_at, payload FROM events WHERE sequence > ?${scoped} ORDER BY sequence LIMIT ?`,
-    parameters,
+    [cursor.after, ...filters.map(([, value]) => value), cursor.limit],
   );
   return {
     events: publishedEvents(rows),

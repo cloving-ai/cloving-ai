@@ -386,6 +386,8 @@ Each repository has its own default runtime directory: `<root>/cloving/<name>-<i
 
 On start, Cloving keeps the old default runtime path only when all retained workflow bundles beside it validate for this repository. It records that choice under `<state>/cloving/adopted-runtime/<name>-<id>.json`, where state is `XDG_STATE_HOME` or `~/.local/state`. Clients reuse the record. With no bundles, foreign or mixed repositories, or damaged bundles, start uses the new default and prints a note with the old path. No state moves. The directory above the runtime directory still holds the authority state, Local World data, turn records and git work trees. Set a different `CLOVING_WATCH_PORT` for a second service.
 
+`cloving start --workspace` serves several repositories from one start. It reads the workspace file `<config>/cloving/workspace.json`, the folder of the private settings and the user workflows, for example `{"version": 1, "repositories": [{"path": "/work/app", "name": "app"}, {"path": "/work/app-ios"}]}`. Each repository needs an absolute path. The optional name has 1 to 64 letters, digits, dots, dashes or underscores; the default is the last part of the path. Each repository gets its own daemon, runtime directory and settings, as with one start, and no watch page of its own, also after a restart. The start serves one watch page for all repositories on the watch port (`CLOVING_WATCH_PORT`, default 3663), after each repository has its runtime directory. When the watch page ends with an error, the start reports it and starts the page again after 1 second, at most 5 times; then the repositories keep running with no watch page, and the start ends with status 1. The approve and deny commands on the page select the repository of each decision. The floor shows one group of lines for each repository, Needs you names the repository of each item, and the Today panel shows the totals and one row for each repository. The workspace page is read only. While the workspace runs, `cloving status` lists one summary line for each repository, and `--repository <name>` selects one repository by its workspace name for each command. Control-C stops all repositories, and their runs resume after the next start. When one repository stops with an error, Cloving stops the other repositories. A workspace start refuses a path that is not a git repository, two entries for the same repository, a `CLOVING_RUNTIME_DIR` that gives two repositories one runtime directory, and a second workspace start while a workspace supervisor runs. Of two workspace starts at the same time, only one starts the repositories.
+
 `cloving watch` serves a local page on `http://127.0.0.1:3663/` (`--port` selects a different port). The page shows the runs, the events, the work of the worker as it occurs, and each pending decision with its approve and deny commands. `cloving start` starts the page too; `CLOVING_WATCH_PORT` selects its port, and the value `off` starts none.
 
 The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
@@ -1136,6 +1138,7 @@ A run can stop on a problem that a person can fix, for example a rejected push. 
 cloving run continue <run-id>
 cloving run continue <run-id> --from pull-request/github-open-pr
 cloving run continue <run-id> --from implement/claude-turn/2 --bundle current
+cloving run continue <run-id> --from implement/claude-turn --note "Merge the branch of the first run first."
 ```
 
 The command admits a new run of the same workflow with the same input. The new run keeps the cycle of the old run, so it uses the same branch, work tree and pull request. An effect of the new run whose scope (phase, operation, round and key) is the same as a completed effect of the old run gets the old result with the disposition `existing`. The worker does not do that effect again. The failed effect and all effects after it run again. GitHub label effects always run again, so the ticket labels follow the new run. With `--from <phase>/<operation>[/<round>]`, the first visit of that step and all steps after it run again.
@@ -1152,11 +1155,12 @@ The service also refuses these continuations:
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
 - A run whose ticket issue is closed gets `continuation-ticket-closed`, and a run whose pull request is merged gets `continuation-pull-request-merged`. The service reads the issue of the `GitHub issue:` line of the ticket and the pull request that the run opened with the GitHub command of the service. When a read fails, the service does not refuse. The watch page shows no **Continue** button for such a run, because **Needs you** leaves it out.
 - A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
-- A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
+- A request with a known command ID and a different run, `--from`, `--bundle` or `--note` gets `conflicting-command`. The same request gets the stored receipt again.
+- A blank note, or a note of more than 4000 characters, gets `invalid-note`.
 
 A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. The service checks the lanes and admits a continuation of a queue run one request at a time, together with the queue admissions of the same workflow. So two requests at the same time cannot both take the last free lane. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
 
-On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button opens a small form with a note field, which can stay empty. **Continue** in the form or Enter sends the same request as `cloving run continue <run-id> --note <text>`, from the failed step with the kept bundle. Esc closes the form. The reply of the service shows under the run. The run detail shows each note with its time and the turn that got it, or `waiting`. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
 To remove a stopped run from **Needs you** with no continuation, dismiss it:
 
@@ -1165,6 +1169,18 @@ cloving dismiss <run-id>
 ```
 
 The **Dismiss** button of the item sends the same command. The MCP tool `cloving_dismiss` does the same. `cloving events <run-id>` shows the dismissal as `run.dismissed`.
+
+#### Give the next turn a note
+
+When you know the cause of the stop, tell the next turn what to do differently with `--note <text>`. The MCP tool `cloving_continue` takes the same text in `note`. The service removes the spaces at the start and end of the note. Then the note must have 1 to 4000 characters.
+
+The service records the note on the new run as the event `run.noted`, in the same commit as the new run. The event has the note ID, the text, the time and the source `continue`. The note is part of the continuation request.
+
+The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. A turn gets the note only when its agent process starts. When the turn stops before that, for example because the daemon stopped, the next turn of the run gets the note. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
+
+`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
+
+The status reads the turn that got a note from the turn journal. When the retention rule moves the turn records to the archive, the status reads them in the `journal` folder of the archive. When the retention rule deletes the turn records, the status cannot find the turn that got the note. Then the line shows `receipt deleted by the retention rule`, and the JSON item adds `"receipt": "deleted"`.
 
 ### Rescue stuck pull requests
 

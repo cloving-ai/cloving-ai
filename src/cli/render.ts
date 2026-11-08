@@ -23,6 +23,7 @@ import {
   queueStateLines,
 } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
+import { noteLines } from "./note-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import { restartLines, serviceLines } from "./restart-render.ts";
 import {
@@ -270,6 +271,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
     ...turnDetailsLines(part(run, "turnDetails")),
+    ...noteLines(part(run, "notes")),
     ...shownCommandWaits(part(run, "commandWaits")).map((wait) =>
       visible(commandWaitText(wait)),
     ),

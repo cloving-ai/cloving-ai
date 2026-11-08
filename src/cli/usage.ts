@@ -84,7 +84,7 @@ Reports run outcomes, throughput and ended-run costs with seven-day medians and 
 Unsupported facts and unreadable sources are unavailable.
 `,
   run: `Usage: cloving run <workflow-id> (--prompt <text> | --ticket <id> | --next | --input <json-file>) [--command-id <id>] [--json]
-       cloving run continue <run-id> [--from <phase>/<operation>[/<round>]] [--bundle current] [--command-id <id>] [--json]
+       cloving run continue <run-id> [--from <phase>/<operation>[/<round>]] [--bundle current] [--note <text>] [--command-id <id>] [--json]
 
 Submits one run of an admitted workflow. Use exactly one input source.
 With --ticket, the daemon reads the ticket at admission. A declared ticket field receives { id, text } inside input.
@@ -94,11 +94,16 @@ Continue admits a new run for a failed run, or for a run that completed blocked.
 The new run keeps the cycle, the branch, the work tree and the pull request of the old run.
 It reuses the completed effects before the failed step, or before the first visit of the --from step.
 It uses the kept workflow bundle of the old run, or the current workflow with --bundle current.
+With --note, the first agent turn that the new run starts gets the note under "Notes from the operator:".
+A note has 1 to 4000 characters after the spaces at its start and end are removed.
 `,
   status: `Usage: cloving status [<run-id>] [--active] [--limit <n>] [--after <cursor>] [--json]
 
 Lists the runs, or shows one run with its reason, evidence and next action.
 With --active, lists only the runs that are not completed, failed or cancelled.
+While a workspace runs, cloving status with no run ID shows one summary line for
+each repository: the service state, the active runs and the pending decisions.
+Use --repository <name> to show the runs of one repository.
 `,
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
@@ -180,18 +185,33 @@ The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
 When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
 `,
-  watch: `Usage: cloving watch [--port <n>]
+  watch: `Usage: cloving watch [--port <n>] [--workspace]
 
 Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
 the events, the work of the worker and each pending decision.
 The default port is 3663. The page is read only. Stop it with Control-C.
+With --workspace, the page reads each repository of the running workspace and
+shows one group of lines for each repository. A workspace start serves this
+page itself.
 `,
-  start: `Usage: cloving start [--repository <directory>] [--reset-queue]
+  start: `Usage: cloving start [--repository <directory> | --workspace] [--reset-queue]
 
 Starts the Cloving service for one git repository, with the workflow host,
 the worker and the watch page. The default repository is the current
 directory.
 Stop it with Control-C.
+
+With --workspace, one start serves each repository of the workspace file
+<config>/cloving/workspace.json, for example
+{"version": 1, "repositories": [{"path": "/work/app", "name": "app"}]}.
+Each repository needs an absolute path. The optional name has 1 to 64
+letters, digits, dots, dashes or underscores; the default is the last part of
+the path. Each repository gets its own daemon, runtime directory and settings,
+as with one start, and no watch page of its own. The start serves one watch
+page for all repositories on the watch port. While the workspace runs,
+cloving status lists each repository, and --repository <name> selects one.
+Control-C stops all repositories. When one repository stops with an error,
+Cloving stops the other repositories.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.

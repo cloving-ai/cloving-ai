@@ -11,6 +11,7 @@ import {
   type WatchLamp,
   type WatchModel,
   type WatchReady,
+  type WatchRepository,
   type WatchStation,
   type WatchToken,
   type WatchWorkflow,
@@ -201,7 +202,13 @@ export function Line(props: {
         class: "line-name",
         children: [
           element("a", {
-            href: watchHash({ workflowId: workflow.workflowId, runId: null }),
+            href: watchHash({
+              workflowId: workflow.workflowId,
+              runId: null,
+              ...(workflow.repository === undefined
+                ? {}
+                : { repository: workflow.repository }),
+            }),
             children: workflow.workflowId,
           }),
           element("span", {
@@ -247,19 +254,63 @@ export function Floor(props: {
           component(Legend, {}),
         ],
       }),
-      model.workflows.length === 0
-        ? element("p", { class: "meta", children: "No workflows registered." })
+      model.repositories === undefined
+        ? component(Lines, { workflows: model.workflows, now, words })
         : element("ol", {
-            class: "lines",
-            children: model.workflows.map((workflow) =>
-              component(Line, {
-                key: workflow.workflowId,
-                workflow,
+            class: "repositories",
+            children: model.repositories.map((repository) =>
+              component(RepositoryLines, {
+                key: repository.name,
+                repository,
+                workflows: model.workflows.filter(
+                  (workflow) => workflow.repository === repository.name,
+                ),
                 now,
                 words,
               }),
             ),
           }),
+    ],
+  });
+}
+
+export function Lines(props: {
+  readonly workflows: readonly WatchWorkflow[];
+  readonly now: string;
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  const { workflows, now, words } = props;
+  if (workflows.length === 0)
+    return element("p", {
+      class: "meta",
+      children: "No workflows registered.",
+    });
+  return element("ol", {
+    class: "lines",
+    children: workflows.map((workflow) =>
+      component(Line, { key: workflow.workflowId, workflow, now, words }),
+    ),
+  });
+}
+
+export function RepositoryLines(props: {
+  readonly repository: WatchRepository;
+  readonly workflows: readonly WatchWorkflow[];
+  readonly now: string;
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  const { repository, workflows, now, words } = props;
+  return element("li", {
+    class: "repository",
+    children: [
+      element("h3", { class: "repository-name", children: repository.name }),
+      repository.service === "up"
+        ? null
+        : element("span", {
+            class: "repository-down",
+            children: "The service does not answer.",
+          }),
+      component(Lines, { workflows, now, words }),
     ],
   });
 }

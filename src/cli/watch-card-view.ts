@@ -37,7 +37,10 @@ export function cardSubmitKey(event: CardKeyEvent): boolean {
   );
 }
 
-export function cardKey(event: CardKeyEvent, controls: CardControls): void {
+export function cardKey(
+  event: CardKeyEvent,
+  controls: Pick<CardControls, "onCancel">,
+): void {
   if (event.defaultPrevented || event.isComposing || event.repeat) return;
   if (event.key === "Escape") {
     event.preventDefault();

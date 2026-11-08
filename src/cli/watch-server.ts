@@ -6,34 +6,31 @@ import {
 } from "./watch-actions.ts";
 import { watchApiChange, watchApiReply, type ApiRequest } from "./watch-api.ts";
 import { transcriptStreamed } from "./watch-transcript-stream.ts";
-import type { TranscriptFeed } from "./watch-api-transcript.ts";
-import {
-  githubRecords,
-  journalTurns,
-  type JournalCache,
-} from "./watch-journal.ts";
+import type {
+  TranscriptFeed,
+  TranscriptQuery,
+} from "./watch-api-transcript.ts";
 import { send } from "./client.ts";
-import { observedBoard } from "./watch-pr-board.ts";
-import { finishedModel, type IssueState } from "./watch-finished.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { continueAction, dismissAction } from "./watch-continue.ts";
-import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
-import type { PrObserver } from "./watch-pr-observer.ts";
+import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type RequestListener,
 } from "node:http";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { watchReader, type WatchReader } from "./watch-reads.ts";
-import { watchModel, type GithubRecords } from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
-import type { WatchItem, WatchModel } from "./watch-render.ts";
-import { watchStream, type WatchStream } from "./watch-stream.ts";
+import type { WatchModel } from "./watch-render.ts";
+import type { WatchStream } from "./watch-stream.ts";
+import {
+  watchSnapshots,
+  workspaceSnapshots,
+  type WatchMember,
+  type WatchSnapshots,
+} from "./watch-snapshot.ts";
 import {
   threadPoolWatch,
   type ThreadPoolSettings,
@@ -48,6 +45,7 @@ import {
   subscribed,
   type Reply,
 } from "./watch-reply.ts";
+import type { Reply as ServiceReply } from "../protocol.ts";
 import { fontReply } from "./watch-font-reply.ts";
 import {
   themeFile,
@@ -57,77 +55,55 @@ import {
 
 export const defaultWatchPort = 3663;
 
-export interface WatchSettings {
-  readonly actions?: string;
-  readonly pullRequests?: WatchPrSettings;
-  readonly themes?: WatchThemeSettings;
-  readonly runtimeDirectory: string;
-  readonly retentionDays?: number | null;
+interface ServedSettings {
+  readonly themes?: WatchThemeSettings | undefined;
+  readonly retentionDays?: number | null | undefined;
   readonly replyMilliseconds?: number;
   readonly threadPool?: ThreadPoolSettings;
   readonly port: number;
-  readonly client: string;
   readonly announce: (text: string) => void;
   readonly complain: (text: string) => void;
   readonly stopped: Promise<void>;
 }
 
-interface Watch {
-  readonly actions: WatchActions | null;
-  readonly settings: WatchSettings;
-  readonly observer: PrObserver;
-  readonly pool: ThreadPoolWatch;
-  readonly reader: WatchReader;
-  readonly streams: Map<
-    string,
-    { size: number; activity: readonly WatchItem[] }
-  >;
-  readonly github: Map<string, GithubRecords>;
+export interface WatchSettings extends ServedSettings {
+  readonly client: string;
+  readonly actions?: string;
+  readonly pullRequests?: WatchPrSettings;
+  readonly runtimeDirectory: string;
 }
 
-const unknownIssue = (): IssueState => "unknown";
+export interface WorkspaceWatchSettings extends ServedSettings {
+  readonly repositories: readonly WatchMember[];
+}
+
+type TranscriptRead = (query: TranscriptQuery) => Promise<ServiceReply>;
+
+interface Watch {
+  readonly actions: WatchActions | null;
+  readonly settings: ServedSettings;
+  readonly runtimeDirectory: string | null;
+  readonly pool: ThreadPoolWatch;
+  readonly snapshots: WatchSnapshots;
+  readonly transcript: TranscriptRead;
+}
+
+interface WatchSource {
+  readonly actions: WatchActions | null;
+  readonly runtimeDirectory: string | null;
+  readonly snapshots: WatchSnapshots;
+  readonly transcript: TranscriptRead;
+}
+
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 const pageChange = (): string => "data: change\n\n";
 const artPolicy = "default-src 'none'; style-src 'unsafe-inline'";
-function journalCache(watch: Watch): JournalCache {
-  return {
-    runtimeDirectory: watch.settings.runtimeDirectory,
-    streams: watch.streams,
-    github: watch.github,
-  };
-}
-
 async function snapshot(
   watch: Watch,
   runId: string | null,
 ): Promise<WatchModel> {
-  const updatedAt = new Date().toISOString();
-  const [read, journal, github] = await Promise.all([
-    runId === null ? watch.reader.read(updatedAt) : watch.reader.run(runId),
-    journalTurns(journalCache(watch)),
-    githubRecords(journalCache(watch)),
-  ]);
-  const model = watchModel({
-    ...read,
-    repository: watch.observer.repository ?? null,
-    home: homedir(),
-    client: watch.settings.client,
-    updatedAt,
-    turns: journal,
-    githubRecords: github,
-  });
-  const shown =
-    runId === null
-      ? observedBoard(
-          finishedModel(model, {
-            issue: watch.observer.issueState ?? unknownIssue,
-            pullRequest: watch.observer.observe,
-            retentionDays: watch.settings.retentionDays ?? null,
-          }),
-          watch.observer,
-        )
-      : model;
+  const shown = await watch.snapshots.snapshot(runId);
   return {
     ...shown,
     cardForms:
@@ -136,6 +112,27 @@ async function snapshot(
           (workflow) => workflow.workflowId === form.workflowId,
         ),
       ) ?? [],
+  };
+}
+
+const unknownTurn: ServiceReply = {
+  kind: "error",
+  error: { code: "unknown-turn", detail: "No service knows this turn." },
+};
+
+function transcriptRead(directories: readonly string[]): TranscriptRead {
+  return async (query) => {
+    const answers = await Promise.all(
+      directories.map((directory) =>
+        send(directory, { operation: "transcript", parameters: { ...query } }),
+      ),
+    );
+    return (
+      answers.find(
+        (answer) =>
+          answer.kind !== "error" || answer.error.code !== "unknown-turn",
+      ) ?? unknownTurn
+    );
   };
 }
 
@@ -158,11 +155,7 @@ function apiRequest(
     lastEventId: request.headers["last-event-id"]?.toString() ?? null,
     model: () => snapshot(watch, null),
     run: (runId) => snapshot(watch, runId),
-    transcript: (query) =>
-      send(watch.settings.runtimeDirectory, {
-        operation: "transcript",
-        parameters: { ...query },
-      }),
+    transcript: watch.transcript,
   };
 }
 
@@ -196,12 +189,7 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
       type: "text/javascript; charset=utf-8",
       body: await readFile(libraryFile, "utf8"),
     };
-  if (path === "/phone.json")
-    return {
-      status: 200,
-      type: "application/json",
-      body: await phoneRead(watch.settings.runtimeDirectory),
-    };
+  if (path === "/phone.json") return phoneReply(watch);
   if (path === "/health.json") return healthReply(watch.pool);
   if (path !== "/data.json") return notFound;
   const runId = url.searchParams.get("runId");
@@ -211,6 +199,17 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
     status: 200,
     type: "application/json",
     body: JSON.stringify(runId === null ? model : { run: model.runs[0] }),
+  };
+}
+
+async function phoneReply(watch: Watch): Promise<Reply> {
+  return {
+    status: 200,
+    type: "application/json",
+    body:
+      watch.runtimeDirectory === null
+        ? JSON.stringify({ relay: "off" })
+        : await phoneRead(watch.runtimeDirectory),
   };
 }
 
@@ -273,32 +272,23 @@ function requestHandler(watch: Watch, stream: WatchStream): RequestListener {
 }
 
 async function served(
-  settings: WatchSettings,
-  pool: ThreadPoolWatch,
+  settings: ServedSettings,
+  hosted: { readonly pool: ThreadPoolWatch; readonly source: WatchSource },
 ): Promise<number> {
-  const observer = await observerFor(settings);
+  const { pool, source } = hosted;
   const watch: Watch = {
-    actions:
-      settings.actions === "off"
-        ? null
-        : await watchActions(settings.runtimeDirectory),
+    actions: source.actions,
     settings,
-    observer,
+    runtimeDirectory: source.runtimeDirectory,
     pool,
-    reader: watchReader(settings.runtimeDirectory, observer.repository ?? null),
-    streams: new Map(),
-    github: new Map(),
+    snapshots: source.snapshots,
+    transcript: source.transcript,
   };
-  const stream = watchStream({
-    runtimeDirectory: settings.runtimeDirectory,
-    journal: join(dirname(settings.runtimeDirectory), "journal"),
-    retryMilliseconds: 1000,
-  });
+  const stream: WatchStream = source.snapshots.stream;
   const server = createServer(requestHandler(watch, stream));
   return new Promise((settle) => {
     server.once("error", (error) => {
-      observer.close();
-      stream.close();
+      source.snapshots.close();
       settings.complain(`watch-not-started: ${error.message}\n`);
       settle(1);
     });
@@ -307,8 +297,7 @@ async function served(
       settings.announce(`Watch page: http://127.0.0.1:${String(bound)}/\n`);
     });
     const closed = (): void => {
-      observer.close();
-      stream.close();
+      source.snapshots.close();
       server.close();
       server.closeAllConnections();
       settle(0);
@@ -317,7 +306,38 @@ async function served(
   });
 }
 
-export async function watchServer(settings: WatchSettings): Promise<number> {
+async function repositorySource(settings: WatchSettings): Promise<WatchSource> {
+  return {
+    actions:
+      settings.actions === "off"
+        ? null
+        : await watchActions(settings.runtimeDirectory),
+    runtimeDirectory: settings.runtimeDirectory,
+    snapshots: await watchSnapshots(settings),
+    transcript: transcriptRead([settings.runtimeDirectory]),
+  };
+}
+
+async function workspaceSource(
+  settings: WorkspaceWatchSettings,
+): Promise<WatchSource> {
+  return {
+    actions: null,
+    runtimeDirectory: null,
+    snapshots: await workspaceSnapshots({
+      ...settings,
+      members: settings.repositories,
+    }),
+    transcript: transcriptRead(
+      settings.repositories.map((member) => member.runtimeDirectory),
+    ),
+  };
+}
+
+async function guarded(
+  settings: ServedSettings,
+  source: (settings: ServedSettings) => Promise<WatchSource>,
+): Promise<number> {
   const stall = Promise.withResolvers<number>();
   const pool = threadPoolWatch({
     ...settings.threadPool,
@@ -331,8 +351,9 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
     stall.promise.then(() => undefined),
   ]);
   try {
+    const shown = { ...settings, stopped };
     return await Promise.race([
-      served({ ...settings, stopped }, pool),
+      source(shown).then((found) => served(shown, { pool, source: found })),
       stall.promise,
     ]);
   } finally {
@@ -340,11 +361,16 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
   }
 }
 
-function observerFor(settings: WatchSettings): Promise<PrObserver> {
-  if (settings.pullRequests !== undefined)
-    return watchPrObserver(settings.pullRequests);
-  return Promise.resolve({
-    observe: () => ({ status: "unavailable", failure: "configuration" }),
-    close: () => undefined,
-  });
+export function watchServer(settings: WatchSettings): Promise<number> {
+  return guarded(settings, (shown) =>
+    repositorySource({ ...settings, ...shown }),
+  );
+}
+
+export function workspaceWatchServer(
+  settings: WorkspaceWatchSettings,
+): Promise<number> {
+  return guarded(settings, (shown) =>
+    workspaceSource({ ...settings, ...shown }),
+  );
 }

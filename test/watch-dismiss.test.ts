@@ -15,6 +15,11 @@ const dismissed: string[] = [];
 const controls: ContinueControls = {
   busy: [],
   messages: {},
+  open: null,
+  note: "",
+  onOpen: () => undefined,
+  onClose: () => undefined,
+  onNote: () => undefined,
   onContinue: () => undefined,
   onDismiss: (runId) => {
     dismissed.push(runId);

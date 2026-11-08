@@ -25,6 +25,7 @@ import {
   TranscriptBody,
   TranscriptLine,
 } from "./watch-transcript-view.ts";
+import { RunNotes } from "./watch-notes-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -65,7 +66,9 @@ import {
   Legend,
   Line,
   LineEnd,
+  Lines,
   ReadyCount,
+  RepositoryLines,
   Station,
   Token,
   lampLabel,
@@ -75,6 +78,7 @@ import {
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
 import {
   ContinueAction,
+  ContinueForm,
   DismissAction,
   Need,
   NeedMessage,
@@ -84,12 +88,14 @@ import {
   decisionNeed,
   decisionText,
   needMeta,
+  needRepository,
   needsOf,
   stoppedNeed,
 } from "./watch-needs-view.ts";
 import {
   DayChart,
   LaneLine,
+  RepositoryTable,
   Today,
   TodayNumber,
   TodayNumbers,
@@ -228,6 +234,7 @@ const functions = [
   CardReview,
   Card,
   HandoffLinks,
+  RunNotes,
   Column,
   columnCollapsed,
   Board,
@@ -240,6 +247,8 @@ const functions = [
   LineEnd,
   Legend,
   Line,
+  Lines,
+  RepositoryLines,
   Floor,
   Demo,
   Tile,
@@ -249,9 +258,11 @@ const functions = [
   stoppedNeed,
   continuableRun,
   continuableNeed,
+  needRepository,
   needsOf,
   needMeta,
   ContinueAction,
+  ContinueForm,
   DismissAction,
   NeedMessage,
   Need,
@@ -263,6 +274,7 @@ const functions = [
   TodayNumbers,
   DayChart,
   WorkflowTable,
+  RepositoryTable,
   LaneLine,
   Today,
   counted,

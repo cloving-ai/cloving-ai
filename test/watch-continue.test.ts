@@ -14,6 +14,11 @@ import { withWatchService } from "./watch-service-fixture.ts";
 const controls: ContinueControls = {
   busy: [],
   messages: {},
+  open: null,
+  note: "",
+  onOpen: () => undefined,
+  onClose: () => undefined,
+  onNote: () => undefined,
   onContinue: () => undefined,
   onDismiss: () => undefined,
 };
@@ -184,6 +189,8 @@ await load();
 const button = () => app.all("button").find((node) => node.inner === "Continue");
 replies.push({ error: { code: "continuation-step-required", detail: "Name a step with --from." } }, model);
 button().dispatch("click");
+await settled();
+app.all("form")[0].dispatch("submit", { preventDefault: () => undefined });
 for (let turn = 0; turn < 5; turn++) await settled();
 console.log(JSON.stringify({ posts, requests, html: app.inner }));
 `,

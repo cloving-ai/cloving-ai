@@ -1,3 +1,4 @@
+import { notesOf } from "./watch-notes-view.ts";
 import { shownScheduled, type ShownSchedules } from "./schedule-render.ts";
 import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
@@ -306,6 +307,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     workflowId,
     ...shownScheduled(status["scheduled"]),
     ...runLinksOf(status),
+    ...notesOf(status["notes"]),
     commandWaits: shownCommandWaits(status["commandWaits"]),
     ticketId: ticketId === "" ? null : ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
