@@ -23,6 +23,7 @@ export async function privateDevelop() {
     id: "develop",
     folder,
     takenNames: new Set(),
+    timeZone: "UTC",
   });
   const config = join(fixture.root, "config");
   const id = createHash("sha256").update(fixture.repository).digest("hex");

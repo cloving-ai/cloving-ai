@@ -127,7 +127,13 @@ async function copied(
     join(packageRoot, "dist", "workflows"),
     ...folders,
   ]);
-  const result = await copyTemplate({ ...input, root, folder, takenNames });
+  const result = await copyTemplate({
+    ...input,
+    root,
+    folder,
+    takenNames,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
   const queued = (await Promise.all(folders.map(queuedIn))).flat().sort();
   if (input.json)
     process.stdout.write(

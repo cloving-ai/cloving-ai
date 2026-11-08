@@ -13,6 +13,8 @@ import {
   input,
   tickets,
 } from "../templates/dependency-audit/dependency-audit/scenarios.ts";
+import { docsDrift } from "../templates/docs-drift/docs-drift.ts";
+import * as drift from "../templates/docs-drift/docs-drift/scenarios.ts";
 import { treeOf, withGithub } from "./github-worker-fixture.ts";
 
 const examples = [
@@ -160,6 +162,28 @@ await test("CLV-318 an audit ticket for a scope with a dot passes the privacy ch
   await dependencyAudit(input);
   const [text] = tickets(bridge.requests);
   assert.match(String(text), /@sqlite\.org\/sqlite-wasm/);
+  await withGithub(async (scene) => {
+    const worker = scene.worker({ privateTexts: ["Private Organization"] });
+    await scene.perform(worker, { method: "prepare", payload: {} });
+    writeFileSync(join(treeOf(scene), "draft.md"), String(text));
+    const result = await scene.perform(worker, {
+      method: "create-issue",
+      payload: { draft: "draft.md" },
+    });
+    assert.equal(result.outcome, "completed", JSON.stringify(result));
+  });
+});
+
+await test("CLV-317 a docs drift ticket with its table passes the privacy check of create-issue", async () => {
+  using bridge = fakeStepBridge({
+    effects: drift.effects(drift.scan([drift.candidate("README.md")]), {
+      docs: [{ doc: "README.md", rows: [drift.row({ says: "A | B" })] }],
+    }),
+    effectLimit: 10,
+  });
+  await docsDrift(drift.input);
+  const [text] = drift.tickets(bridge.requests);
+  assert.match(String(text), /`src\/settings\.ts:17`/);
   await withGithub(async (scene) => {
     const worker = scene.worker({ privateTexts: ["Private Organization"] });
     await scene.perform(worker, { method: "prepare", payload: {} });
