@@ -78,23 +78,27 @@ form keeps these parts:
 - Each metric of `metrics`, `quality`, `ci` and `operator`, with its status, value,
   unit, comparison value, 7-day baseline and mark. The names of the last three
   sections start with `quality.`, `ci.` and `operator.`.
-- `count`, the number of evidence items of each metric, in place of its evidence
-  list. The baseline also has no evidence list.
+- `count`, the number of evidence items of each metric, and `evidence`, the first
+  3 evidence items of the metric. Each list in one of these items keeps its first 3
+  entries. The turns use these items as the links for a proposal. The baseline has
+  no evidence list.
 - The unit from the metric name: `minutes`, `hours`, `usd`, `share`, `score` for
   review scores, else `count`.
 - `jobLogs` of `quality`.
 - The totals of `runCosts`: `runs`, `knownSpendUsd`, `runsWithoutCost` and
   `mostCostly`, the five most costly runs.
 
-The turns do not read `sources`, `completedTicketCosts`, `coverage` or an evidence list.
+The turns do not read `sources`, `completedTicketCosts`, `coverage` or a full
+evidence list.
 
 The prompt of each turn has at most 48000 bytes of UTF-8. The worker refuses a text
 above 65536 bytes. When a prompt is larger than 48000 bytes, the workflow leaves out
 the lists in this order until the prompt fits:
 
 1. The review issues.
-2. `runCosts.mostCostly`.
-3. The improvement issues.
+2. The `evidence` items of each metric.
+3. `runCosts.mostCostly`.
+4. The improvement issues.
 
 The workflow always keeps the numbers. The `omitted` field names the lists that the
 workflow left out, and the turn treats them as unknown, not as empty. The critique

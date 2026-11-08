@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { reviewDay } from "../templates/review-day/review-day.ts";
 import { fields } from "../templates/review-day/review-day/facts.ts";
+import { turnFacts } from "../templates/review-day/review-day/input.ts";
 import {
   completed,
   effects,
@@ -66,6 +67,13 @@ function largeReport() {
 
 const costs = [4.5, null, 12, 0, 30.25, null, 7, 9];
 
+const omissions = [
+  "reviews",
+  "report.metrics.*.evidence",
+  "report.runCosts.mostCostly",
+  "improvements",
+];
+
 function keptRun(index: number) {
   return {
     runId: `run-${String(index)}`,
@@ -98,7 +106,20 @@ function compact(value: number, unit: string) {
     },
     mark: "outside",
     count: 150,
+    evidence: evidence(3),
     unit,
+  };
+}
+
+function sampled(index: number) {
+  return {
+    status: "available",
+    value: index,
+    comparisonValue: index,
+    evidence: Array.from({ length: 4 }, () => ({
+      workflowId: `workflow-${String(index).padStart(40, "0")}`,
+      runIds: evidence(2).map((item) => item.runId),
+    })),
   };
 }
 
@@ -222,10 +243,7 @@ await test("CLV-325 the turn leaves out the review list first, then the other li
   });
   for (const scenario of [
     { improvements: 2, omitted: ["reviews"] },
-    {
-      improvements: 20,
-      omitted: ["reviews", "report.runCosts.mostCostly", "improvements"],
-    },
+    { improvements: 20, omitted: omissions },
   ]) {
     using bridge = fakeStepBridge({
       effects: Object.assign(effects(), {
@@ -260,6 +278,94 @@ await test("CLV-325 the turn leaves out the review list first, then the other li
       );
     }
   }
+});
+
+await test("CLV-325 each metric keeps its first 3 evidence items, and each list in an item keeps its first 3 entries", async () => {
+  const items = Array.from({ length: 5 }, (_, index) => ({
+    issue: index,
+    runIds: evidence(10).map((item) => item.runId),
+    testNames: ["first", "second", "third", "fourth"],
+  }));
+  using bridge = fakeStepBridge({
+    effects: Object.assign(effects(), {
+      "command run:report": [
+        completed({
+          metrics: { "tickets.waiting": { value: 5, evidence: items } },
+        }),
+      ],
+    }),
+  });
+  assert.equal((await reviewDay(input)).kind, "handoff_requested");
+  for (const payload of turnPayloads(bridge.requests))
+    assert.deepEqual(
+      fields(fields(fields(promptFacts(payload))["report"])["metrics"])[
+        "tickets.waiting"
+      ],
+      {
+        value: 5,
+        count: 5,
+        unit: "count",
+        evidence: items.slice(0, 3).map((item) => ({
+          issue: item.issue,
+          runIds: item.runIds.slice(0, 3),
+          testNames: ["first", "second", "third"],
+        })),
+      },
+    );
+});
+
+await test("CLV-325 the turn leaves out the evidence samples after the review list and before the run costs", async () => {
+  const metrics = Object.fromEntries(
+    Array.from({ length: 150 }, (_, index) => [
+      `flow.lanes.workflow-${String(index)}`,
+      sampled(index),
+    ]),
+  );
+  using bridge = fakeStepBridge({
+    effects: Object.assign(effects(), {
+      "command run:report": [
+        completed({ metrics, runCosts: [{ runId: "run-1", costUsd: 3 }] }),
+      ],
+    }),
+  });
+  assert.equal((await reviewDay(input)).kind, "handoff_requested");
+  for (const payload of turnPayloads(bridge.requests)) {
+    assert.ok(Buffer.byteLength(payload) <= 48000);
+    const shown = fields(promptFacts(payload));
+    const report = fields(shown["report"]);
+    assert.deepEqual(shown["omitted"], [
+      "reviews",
+      "report.metrics.*.evidence",
+    ]);
+    assert.deepEqual(fields(report["runCosts"])["mostCostly"], [
+      { runId: "run-1", costUsd: 3 },
+    ]);
+    for (const [name, value] of Object.entries(metrics))
+      assert.deepEqual(fields(fields(report["metrics"])[name]), {
+        status: "available",
+        value: value.value,
+        comparisonValue: value.value,
+        count: 4,
+        evidence: null,
+        unit: "count",
+      });
+  }
+});
+
+await test("CLV-325 turnFacts gives typed forms that leave out one more list each", () => {
+  const forms = turnFacts({
+    report: { metrics: { "runs.completed": metric(7) } },
+    reviews: [],
+    improvements: [],
+  });
+  assert.deepEqual(
+    forms.map((form) => form.omitted),
+    [0, 1, 2, 3, 4].map((count) => omissions.slice(0, count)),
+  );
+  assert.deepEqual(
+    forms.map((form) => form.report.metrics["runs.completed"]?.["count"]),
+    [150, 150, 150, 150, 150],
+  );
 });
 
 await test("CLV-325 a report whose numbers alone pass the bound blocks before any turn and names the size", async () => {
