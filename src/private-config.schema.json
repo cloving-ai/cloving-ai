@@ -238,6 +238,52 @@
           "maxBudgetUsd": {
             "type": "number",
             "exclusiveMinimum": 0
+          },
+          "runner": {
+            "type": "object",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "const": "host" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "const": "seatbelt" },
+                  "command": {
+                    "type": "string",
+                    "pattern": "^(?!-)[^\\u0000]+$"
+                  },
+                  "network": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9*][A-Za-z0-9*.:-]*$"
+                    }
+                  }
+                },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "const": "container" },
+                  "engine": {
+                    "type": "string",
+                    "pattern": "^(?!-)[^\\u0000]+$"
+                  },
+                  "image": {
+                    "type": "string",
+                    "pattern": "^(?!-)[^\\u0000]+$"
+                  }
+                },
+                "required": ["kind", "engine", "image"],
+                "additionalProperties": false
+              }
+            ]
           }
         },
         "additionalProperties": false

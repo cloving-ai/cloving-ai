@@ -213,7 +213,8 @@ function interruptedChild(
     start.output !== "text" &&
     processId !== null &&
     end.exitCode !== 0 &&
-    end.result === undefined
+    end.result === undefined &&
+    end.reason === undefined
   );
 }
 

@@ -14,10 +14,12 @@ import { githubObservations } from "./doctor-github.ts";
 import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
+import type { TurnProfiles } from "../turn-profile.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
 import { turnEnvironmentObservation } from "./doctor-turns.ts";
+import { turnRunnerObservation } from "./doctor-runners.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandLoginObservation,
@@ -47,6 +49,7 @@ function settings(
     return {
       environment: resolved.environment,
       harness: resolved.harness,
+      profiles: resolved.profiles,
       observation: {
         result: "ok",
         detail: "Settings files are valid",
@@ -112,12 +115,9 @@ async function repositoryObservations(
     "settings-files": configured.observation,
   };
   const settingsValid = configured.observation.result === "ok";
-  observations["merge-mode"] = mergeModeObservation(
-    environment["CLOVING_MERGE_MODE"],
-  );
-  observations["turn-environment"] = turnEnvironmentObservation(environment);
-  observations["command-gh-no-login"] = commandLoginObservation(
-    environment["CLOVING_COMMANDS"],
+  Object.assign(
+    observations,
+    await settingObservations({ ...configured, repository, probe }),
   );
   observations["theme"] = settingsValid
     ? await themeObservation({ repository, environment })
@@ -161,6 +161,26 @@ async function repositoryObservations(
     { prerequisite: workflowContext.prerequisite, project, serviceEnvironment },
   );
   return { observations: { ...observations, ...dependent }, required };
+}
+
+async function settingObservations(context: {
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly profiles?: TurnProfiles;
+  readonly repository: string;
+  readonly probe: ProbeRunner;
+}): Promise<Observations> {
+  const { environment } = context;
+  return {
+    "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
+    "turn-environment": turnEnvironmentObservation(environment),
+    "command-gh-no-login": commandLoginObservation(
+      environment["CLOVING_COMMANDS"],
+    ),
+    "turn-runners": await turnRunnerObservation({
+      ...context,
+      profiles: context.profiles ?? {},
+    }),
+  };
 }
 
 async function workflowRequirements(

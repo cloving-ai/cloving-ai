@@ -20,6 +20,8 @@ export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
+import { runnerRefusal, type TurnRunner } from "../turn-runner.ts";
+import { runnerLaunch } from "./turn-runner-spawn.ts";
 import {
   githubTokens,
   passedVariables,
@@ -45,6 +47,7 @@ export interface TurnStart {
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly variables?: TurnVariables;
+  readonly runner?: TurnRunner;
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
@@ -116,6 +119,7 @@ function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
   readonly standardInput: string | undefined;
+  readonly release: () => Promise<void>;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
@@ -132,15 +136,17 @@ function spawnTurn(start: TurnStart): {
           configuration,
           ...parts,
         ];
-  const [executable = "", ...fixed] = command;
+  const environment = turnEnvironment(configuration, start);
+  const launch = runnerLaunch(start, { command, environment });
+  const [executable = "", ...fixed] = launch.command;
   try {
     const child = spawn(executable, fixed, {
       cwd: start.directory,
-      env: turnEnvironment(configuration, start),
+      env: launch.environment,
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return { child, configuration, standardInput };
+    return { child, configuration, standardInput, release: launch.release };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
@@ -320,7 +326,7 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): StartedTurn {
-  const { child, configuration, standardInput } = spawnTurn(start);
+  const { child, configuration, standardInput, release } = spawnTurn(start);
   const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
   if (start.worker === "grok") {
@@ -350,8 +356,10 @@ export function startTurn(start: TurnStart): StartedTurn {
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);
         const result = await output(exitCode);
+        const reason = runnerRefusal(start.runner, { exitCode, result });
         return {
           exitCode,
+          ...(reason === undefined ? {} : { reason }),
           result:
             result !== undefined && warnings.incomplete()
               ? { ...result, usage: usageOf(null), costUsd: null }
@@ -360,6 +368,7 @@ export function startTurn(start: TurnStart): StartedTurn {
       })
       .finally(() => {
         rmSync(configuration, { recursive: true, force: true });
+        return release();
       }),
     stop: (graceMilliseconds) => {
       signalTurn({ child, start }, "SIGTERM");
