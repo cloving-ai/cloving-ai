@@ -8,6 +8,7 @@ import {
   completed,
   effects,
   facts,
+  filed,
   input,
   issue,
   link,
@@ -40,6 +41,7 @@ await test("CLV-316 one group that passes, an accept and one handed off issue ru
   using bridge = fakeStepBridge({
     effects: effects(facts()),
     decisions: [{ decision: "answered", answer: "accept" }],
+    waits: filed([52]),
     effectLimit: 12,
   });
   assert.deepEqual(await reviewChecks(input), {
@@ -56,6 +58,7 @@ await test("CLV-316 one group that passes, an accept and one handed off issue ru
     "discard",
     "waitForDecision",
     "handoff",
+    "waitForRun",
     "run:review-checks-record",
   ]);
   const [ticket = ""] = tickets(bridge.requests);
@@ -196,6 +199,7 @@ await test("CLV-316 an accept for 2 of 3 suggestions hands off 2 issue runs and 
   using bridge = fakeStepBridge({
     effects: effects(facts(), three),
     decisions: [{ decision: "answered", answer: "Accept, reject accept" }],
+    waits: filed([52, 53]),
     effectLimit: 12,
   });
   const outcome = await reviewChecks(input);
@@ -213,6 +217,40 @@ await test("CLV-316 an accept for 2 of 3 suggestions hands off 2 issue runs and 
   );
   assert.deepEqual(recordedDecisions(bridge.requests), [
     "first-shape accept",
+    "second-shape reject",
+    "third-shape accept",
+  ]);
+});
+
+await test("CLV-316 an accept whose issue run ends with no issue is not recorded and blocks the pass", async () => {
+  const three = ["first-shape", "second-shape", "third-shape"].map((name) =>
+    suggestion({ name, rule: name }),
+  );
+  using bridge = fakeStepBridge({
+    effects: Object.assign(effects(facts(), three), {
+      "command run:review-checks-record": [completed({ recorded: 2 })],
+    }),
+    decisions: [{ decision: "answered", answer: "accept reject accept" }],
+    waits: [
+      { kind: "blocked", reason: "invalid-issue-result", promotionId: null },
+      ...filed([53]),
+    ],
+    effectLimit: 12,
+  });
+  assert.deepEqual(await reviewChecks(input), {
+    kind: "blocked",
+    cycleId: input.cycleId,
+    evidenceId: "review-checks",
+    reason: "check-issue-missing",
+  });
+  assert.deepEqual(methods(bridge.requests).slice(-5), [
+    "handoff",
+    "handoff",
+    "waitForRun",
+    "waitForRun",
+    "run:review-checks-record",
+  ]);
+  assert.deepEqual(recordedDecisions(bridge.requests), [
     "second-shape reject",
     "third-shape accept",
   ]);
@@ -241,6 +279,7 @@ await test("CLV-316 a bad answer, no answer, a bad turn result, bad facts or a b
         "decisions" in scene
           ? scene.decisions
           : [{ decision: "answered", answer: "accept" }],
+      waits: filed([52]),
       effectLimit: 12,
     });
     assert.deepEqual(await reviewChecks(input), {
@@ -285,6 +324,7 @@ await test("CLV-316 a busy week keeps the turn request within 65536 bytes with t
       suggestion({ links: [link(641, 1), link(642, 2), link(641, 3)] }),
     ]),
     decisions: [{ decision: "answered", answer: "accept" }],
+    waits: filed([52]),
     effectLimit: 12,
   });
   const outcome = await reviewChecks(input);
@@ -310,6 +350,7 @@ await test("CLV-316 the ticket has the PRD form, the check line, the scope and t
       }),
     ]),
     decisions: [{ decision: "answered", answer: "accept" }],
+    waits: filed([52]),
     effectLimit: 12,
   });
   await reviewChecks(input);

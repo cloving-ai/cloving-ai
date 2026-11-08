@@ -108,6 +108,10 @@ The script prints one JSON object:
 }
 ```
 
+Command output has at most 1048576 bytes. When the facts are larger, the
+script keeps the first comments that fit. When the facts with no comments are
+larger than the limit, the script ends with code 1.
+
 When a step fails, the script prints nothing to standard output, writes the
 cause to standard error and ends with code 1. An invalid line of the decisions
 file also stops the script. The workflow refuses facts that do not have this
@@ -197,7 +201,7 @@ hits, its command and its threads. Answer one word for each suggestion, in
 order: `accept`, `reject` or `defer`, for example `accept reject defer`. Commas
 and capital letters are permitted. Another number of words, or another word,
 blocks the run with `invalid-check-answer`. A denied or expired question blocks
-the run with `check-question-not-answered`. A blocked run records no decision,
+the run with `check-question-not-answered`. These blocks record no decision,
 so the same suggestions can come back the next week.
 
 ## The tickets
@@ -215,10 +219,17 @@ The ticket has the form of the repository: `Problem`, `Desired outcome`,
 scope, the count of hits and the command. The line `Check: <name>` names the
 check, so a later pass leaves the suggestion out while the issue is open.
 
-After the handoffs, the pass runs `review-checks-record` with all decisions. A
-rejected suggestion never comes back. A deferred suggestion comes back when a
-new thread gives more evidence. The report names the accepted, rejected and
-deferred suggestions.
+After the handoffs, the pass waits for each issue run, for at most one day. An
+accepted suggestion counts only when its issue run ends with an issue. Then the
+pass runs `review-checks-record` with the decisions. A rejected suggestion never
+comes back. A deferred suggestion comes back when a new thread gives more
+evidence. The report names the accepted, rejected and deferred suggestions.
+
+When an issue run ends with no issue, the pass records no decision for that
+suggestion, records the other decisions and blocks with `check-issue-missing`.
+A later pass can ask about that suggestion again. When an issue run
+does not end in one day, the pass blocks with `run-wait-timeout` and records no
+decision.
 
 The static effect count is 12: `review-comments`, `prepare`, the turn,
 `discard`, 5 handoffs, `review-checks-record`, `create-issue` and `label`. The

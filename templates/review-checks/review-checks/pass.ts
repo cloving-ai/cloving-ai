@@ -43,8 +43,9 @@ export async function checksPass(request: ChecksInput): Promise<CycleOutcome> {
   if (suggestions.length === 0)
     return completed(request, "No group of review threads this week.");
   const decided = await askPerson(request, suggestions);
-  await fileChecks(decided);
-  await recordDecisions(decided);
+  const filed = await fileChecks(decided);
+  await recordDecisions(filed);
+  if (filed.length !== decided.length) throw new Error("check-issue-missing");
   return completed(
     request,
     `Suggestions: ${String(decided.length)}. Accepted: ${tally(decided, "accept")}. Rejected: ${tally(decided, "reject")}. Deferred: ${tally(decided, "defer")}.`,

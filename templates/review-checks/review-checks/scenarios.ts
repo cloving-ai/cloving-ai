@@ -90,6 +90,14 @@ export function effects(
   };
 }
 
+export function filed(numbers: readonly number[]) {
+  return numbers.map((number) => ({
+    kind: "handoff_requested",
+    reason: null,
+    promotionId: `issue-${String(number)}`,
+  }));
+}
+
 export function methods(requests: readonly ScenarioRequest[]) {
   return requests.map((request) =>
     request[0] === "effect" ? request[1].method : request[0],

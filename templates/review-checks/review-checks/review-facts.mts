@@ -36,6 +36,7 @@ const usage =
 const checkIssues =
   "repos/{owner}/{repo}/issues?state=open&labels=cloving%3A%20check&per_page=100";
 const commentLimit = 200;
+const outputBytes = 1_048_576;
 const lintFileLimit = 10;
 const severities: readonly Severity[] = ["off", "warn", "error"];
 
@@ -253,16 +254,40 @@ function qualityNames(names: readonly string[]): readonly string[] {
     .sort();
 }
 
-async function facts(system: FactsSystem) {
+function utf8Bytes(text: string): number {
+  return encodeURIComponent(text).replace(/%[0-9A-F]{2}/g, "x").length;
+}
+
+function fittedComments(
+  comments: readonly ReviewComment[],
+  room: number,
+): readonly ReviewComment[] {
+  const ends = comments.reduce<readonly number[]>(
+    (sums, comment) =>
+      sums.concat((sums.at(-1) ?? 0) + utf8Bytes(JSON.stringify(comment)) + 1),
+    [],
+  );
+  return comments.slice(0, ends.filter((end) => end <= room).length);
+}
+
+async function facts(system: FactsSystem): Promise<string> {
   const comments = await reviewComments(system, await mergedPulls(system));
-  return {
+  const rest = {
     since: system.since,
-    comments,
+    comments: [],
     lintRules: await lintRules(system, comments),
     qualityChecks: qualityNames(await system.qualityChecks()),
     openTickets: await openTickets(system),
     decisions: decisionsOf(await system.decisions()),
   };
+  const room = outputBytes - 1 - utf8Bytes(JSON.stringify(rest));
+  if (room < 0)
+    throw new Error(
+      `The review facts without the comments are larger than the command output limit of ${String(outputBytes)} bytes.`,
+    );
+  return JSON.stringify(
+    Object.assign({}, rest, { comments: fittedComments(comments, room) }),
+  );
 }
 
 export async function factsOutput(system: FactsSystem): Promise<ScriptOutput> {
@@ -273,7 +298,7 @@ export async function factsOutput(system: FactsSystem): Promise<ScriptOutput> {
     return { stdout: "", stderr: `${usage}\n`, exitCode: 1 };
   try {
     return {
-      stdout: `${JSON.stringify(await facts(system))}\n`,
+      stdout: `${await facts(system)}\n`,
       stderr: "",
       exitCode: 0,
     };

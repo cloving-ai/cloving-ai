@@ -318,3 +318,38 @@ await test("CLV-316 review-comments stops on an unexpected gh or ESLint response
     });
   }
 });
+
+await test("CLV-316 review-comments keeps its output within the command output limit with the first comments that fit", async () => {
+  const wide = Array.from({ length: 200 }, (_, index) =>
+    reviewRow(index + 10, { body: "€".repeat(2000), path: "docs/notes.md" }),
+  );
+  const busy = await printed(
+    Object.assign({}, baseAnswers, {
+      [comments(641)]: [wide.slice(0, 100), wide.slice(100)],
+    }),
+  );
+  assert.equal(busy.exitCode, 0, busy.stderr);
+  assert.ok(Buffer.byteLength(busy.stdout) <= 1_048_576);
+  assert.ok(Buffer.byteLength(busy.stdout) > 1_040_000);
+  const kept = record(JSON.parse(busy.stdout))?.["comments"];
+  assert.ok(Array.isArray(kept));
+  assert.ok(kept.length > 150 && kept.length < 200);
+  assert.deepEqual(
+    kept.map((item: unknown) => record(item)?.["url"]),
+    wide.slice(0, kept.length).map((row) => row.html_url),
+  );
+  const heavy = await printed(baseAnswers, {
+    decisions: JSON.stringify({
+      name: "x",
+      shape: "s".repeat(1_048_576),
+      decision: "defer",
+      links: [],
+    }),
+  });
+  assert.deepEqual(heavy, {
+    stdout: "",
+    stderr:
+      "The review facts without the comments are larger than the command output limit of 1048576 bytes.\n",
+    exitCode: 1,
+  });
+});
