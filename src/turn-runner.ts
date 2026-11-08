@@ -20,6 +20,7 @@ export interface RunnerPlaces {
   readonly temporary: string;
   readonly settingsFile: string;
   readonly name: string;
+  readonly volume: string;
   readonly variables: readonly string[];
 }
 
@@ -115,11 +116,6 @@ function protectedGit(commonFolder: string): readonly string[] {
   });
 }
 
-function volumeName(directory: string): string {
-  const name = directory.slice(directory.lastIndexOf("/") + 1);
-  return `cloving-modules-${name.replace(/[^A-Za-z0-9_.-]/g, "-")}`;
-}
-
 function containerCommand(
   runner: ContainerRunner,
   start: { readonly command: readonly string[]; readonly places: RunnerPlaces },
@@ -137,7 +133,7 @@ function containerCommand(
     ...protectedGit(places.commonFolder),
     ...(places.attachments === undefined ? [] : mounted(places.attachments)),
     "-v",
-    `${volumeName(places.directory)}:${places.directory}/node_modules`,
+    `${places.volume}:${places.directory}/node_modules`,
     "-w",
     places.directory,
     ...[
@@ -166,7 +162,7 @@ export function runnerCommand(
 
 export function seatbeltSettings(
   runner: SeatbeltRunner,
-  places: Omit<RunnerPlaces, "settingsFile" | "name" | "variables">,
+  places: Omit<RunnerPlaces, "settingsFile" | "name" | "volume" | "variables">,
 ) {
   return {
     network: { allowedDomains: runner.network ?? [], deniedDomains: [] },
@@ -188,10 +184,10 @@ export function seatbeltSettings(
 
 export function runnerRefusal(
   runner: TurnRunner | undefined,
-  end: { readonly exitCode: number | null; readonly result: unknown },
+  end: { readonly exitCode: number | null; readonly error: string },
 ): string | undefined {
   if (runner === undefined || runner.kind === "host") return undefined;
-  return end.exitCode === 78 && end.result === undefined
+  return end.exitCode === 78 && /^runner-git-readonly$/m.test(end.error)
     ? "runner-git-readonly"
     : undefined;
 }

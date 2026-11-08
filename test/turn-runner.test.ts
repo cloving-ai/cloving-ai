@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runnerCommand, seatbeltSettings } from "../src/turn-runner.ts";
+import {
+  runnerCommand,
+  runnerRefusal,
+  seatbeltSettings,
+} from "../src/turn-runner.ts";
 import { isProfilesFile } from "../src/turn-profile.ts";
 import { resolveSettings } from "../src/project-settings.ts";
 
@@ -11,6 +15,7 @@ const places = {
   temporary: "/state/journal/key/runner/tmp",
   settingsFile: "/state/journal/key/runner/srt-settings.json",
   name: "cloving-run-1-key",
+  volume: "cloving-modules-ticket-one-0123456789abcdef",
   variables: ["CLOVING_TURN_ID", "HOME", "PATH", "ANTHROPIC_API_KEY"],
 };
 const harness = ["claude", "-p", "--output-format", "stream-json"];
@@ -46,7 +51,7 @@ await test("CLV-311 a container runner mounts the work tree and the git common f
       "-v",
       "/state/attachments/ticket-one:/state/attachments/ticket-one",
       "-v",
-      "cloving-modules-ticket-one:/state/worktrees/ticket-one/node_modules",
+      "cloving-modules-ticket-one-0123456789abcdef:/state/worktrees/ticket-one/node_modules",
       "-w",
       "/state/worktrees/ticket-one",
       "-e",
@@ -132,6 +137,28 @@ await test("CLV-311 seatbelt settings allow writes only to the work tree, the gi
       },
     },
   );
+});
+
+await test("CLV-311 a runner refusal needs exit code 78 and the refusal line on standard error", () => {
+  const runner = { kind: "container", engine: "docker", image: "x" } as const;
+  const error = "Unable to find image 'x:1' locally\nrunner-git-readonly\n";
+  assert.equal(
+    runnerRefusal(runner, { exitCode: 78, error }),
+    "runner-git-readonly",
+  );
+  assert.equal(
+    runnerRefusal({ kind: "seatbelt" }, { exitCode: 78, error }),
+    "runner-git-readonly",
+  );
+  for (const [kind, end] of [
+    [runner, { exitCode: 78, error: "codex: invalid configuration\n" }],
+    [runner, { exitCode: 78, error: "not runner-git-readonly\n" }],
+    [runner, { exitCode: 1, error }],
+    [runner, { exitCode: null, error }],
+    [{ kind: "host" }, { exitCode: 78, error }],
+    [undefined, { exitCode: 78, error }],
+  ] as const)
+    assert.equal(runnerRefusal(kind, end), undefined, JSON.stringify(end));
 });
 
 await test("CLV-311 a host runner or no runner keeps the turn command", () => {

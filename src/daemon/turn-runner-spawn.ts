@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -7,9 +8,10 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   runnerCommand,
+  runnerRefusal,
   seatbeltSettings,
   type RunnerPlaces,
   type TurnRunner,
@@ -18,6 +20,9 @@ import {
 export interface RunnerLaunch {
   readonly command: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
+  readonly refusal: (
+    error: NodeJS.ReadableStream,
+  ) => (exitCode: number | null) => string | undefined;
   readonly release: () => Promise<void>;
 }
 
@@ -36,6 +41,23 @@ export function gitCommonFolder(directory: string): string {
 function containerName(turnId: string | undefined): string {
   const name = (turnId ?? "turn").replace(/[^A-Za-z0-9_.-]/g, "-");
   return `cloving-${name}-${Date.now().toString(36)}`;
+}
+
+function volumeName(directory: string): string {
+  const name = basename(directory).replace(/[^A-Za-z0-9_.-]/g, "-");
+  const digest = createHash("sha256").update(directory).digest("hex");
+  return `cloving-modules-${name}-${digest.slice(0, 16)}`;
+}
+
+function refusalWatch(runner: TurnRunner) {
+  return (error: NodeJS.ReadableStream) => {
+    let text = "";
+    error.on("data", (chunk: Buffer | string) => {
+      if (text.length < 65_536) text += String(chunk);
+    });
+    return (exitCode: number | null) =>
+      runnerRefusal(runner, { exitCode, error: text });
+  };
 }
 
 function removedContainer(
@@ -70,6 +92,7 @@ function places(
     temporary,
     settingsFile: join(launch.folder, "srt-settings.json"),
     name: containerName(start.turnId),
+    volume: volumeName(start.directory),
     variables: Object.keys(launch.environment),
     ...(attachments === undefined ? {} : { attachments }),
   };
@@ -85,11 +108,17 @@ export function runnerLaunch(
   launch: {
     readonly command: readonly string[];
     readonly environment: NodeJS.ProcessEnv;
+    readonly serviceEnvironment: NodeJS.ProcessEnv;
   },
 ): RunnerLaunch {
   const { runner } = start;
   if (runner === undefined || runner.kind === "host")
-    return { ...launch, release: () => Promise.resolve() };
+    return {
+      command: launch.command,
+      environment: launch.environment,
+      refusal: () => () => undefined,
+      release: () => Promise.resolve(),
+    };
   const folder = mkdtempSync(join(start.folder, "runner-"));
   const placed = places(start, { folder, environment: launch.environment });
   if (runner.kind === "seatbelt")
@@ -98,18 +127,20 @@ export function runnerLaunch(
       JSON.stringify(seatbeltSettings(runner, placed)),
       { mode: 0o600 },
     );
+  const environment =
+    runner.kind === "seatbelt"
+      ? { ...launch.environment, CLAUDE_CODE_TMPDIR: placed.temporary }
+      : { ...launch.serviceEnvironment, ...launch.environment };
   return {
     command: runnerCommand(runner, { command: launch.command, places: placed }),
-    environment:
-      runner.kind === "seatbelt"
-        ? { ...launch.environment, CLAUDE_CODE_TMPDIR: placed.temporary }
-        : launch.environment,
+    environment,
+    refusal: refusalWatch(runner),
     release: async () => {
       rmSync(folder, { recursive: true, force: true });
       if (runner.kind === "container")
         await removedContainer(runner.engine, {
           name: placed.name,
-          environment: launch.environment,
+          environment,
         });
     },
   };

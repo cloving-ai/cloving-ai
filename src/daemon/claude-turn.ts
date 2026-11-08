@@ -20,8 +20,8 @@ export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 import { commandModel } from "../token-prices.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
-import { runnerRefusal, type TurnRunner } from "../turn-runner.ts";
-import { runnerLaunch } from "./turn-runner-spawn.ts";
+import type { TurnRunner } from "../turn-runner.ts";
+import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import {
   githubTokens,
   passedVariables,
@@ -119,7 +119,7 @@ function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
   readonly standardInput: string | undefined;
-  readonly release: () => Promise<void>;
+  readonly launch: RunnerLaunch;
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
@@ -137,7 +137,11 @@ function spawnTurn(start: TurnStart): {
           ...parts,
         ];
   const environment = turnEnvironment(configuration, start);
-  const launch = runnerLaunch(start, { command, environment });
+  const launch = runnerLaunch(start, {
+    command,
+    environment,
+    serviceEnvironment: process.env,
+  });
   const [executable = "", ...fixed] = launch.command;
   try {
     const child = spawn(executable, fixed, {
@@ -146,7 +150,7 @@ function spawnTurn(start: TurnStart): {
       stdio: ["pipe", "pipe", "pipe"],
       detached: start.shell !== undefined,
     });
-    return { child, configuration, standardInput, release: launch.release };
+    return { child, configuration, standardInput, launch };
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
@@ -253,7 +257,10 @@ function streamState(): Stream {
 function turnOutput(
   start: TurnStart,
   child: ChildProcessWithoutNullStreams,
-): (exitCode: number | null) => Promise<StreamResult | undefined> {
+): (
+  exitCode: number | null,
+  close: { readonly refused: boolean },
+) => Promise<StreamResult | undefined> {
   const output = activityOutput(start);
   if (start.output === "text")
     return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
@@ -285,10 +292,10 @@ function turnOutput(
     }
     received(lines);
   });
-  return async (exitCode) => {
+  return async (exitCode, close) => {
     if (adapter !== undefined) {
       written(adapter.line(stream.pending));
-      written([adapter.result(exitCode)]);
+      written(close.refused ? [] : [adapter.result(exitCode)]);
     }
     await ended(output);
     if (adapter === undefined) received([stream.pending]);
@@ -326,7 +333,8 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): StartedTurn {
-  const { child, configuration, standardInput, release } = spawnTurn(start);
+  const { child, configuration, standardInput, launch } = spawnTurn(start);
+  const refused = launch.refusal(child.stderr);
   const output = turnOutput(start, child);
   const warnings = grokUsageWarnings();
   if (start.worker === "grok") {
@@ -355,8 +363,11 @@ export function startTurn(start: TurnStart): StartedTurn {
     ended: closed
       .then(async (exitCode) => {
         timers.forEach(clearTimeout);
-        const result = await output(exitCode);
-        const reason = runnerRefusal(start.runner, { exitCode, result });
+        const reason = refused(exitCode);
+        const produced = await output(exitCode, {
+          refused: reason !== undefined,
+        });
+        const result = reason === undefined ? produced : undefined;
         return {
           exitCode,
           ...(reason === undefined ? {} : { reason }),
@@ -368,7 +379,7 @@ export function startTurn(start: TurnStart): StartedTurn {
       })
       .finally(() => {
         rmSync(configuration, { recursive: true, force: true });
-        return release();
+        return launch.release();
       }),
     stop: (graceMilliseconds) => {
       signalTurn({ child, start }, "SIGTERM");

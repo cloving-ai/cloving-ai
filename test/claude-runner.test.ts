@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   writeFileSync,
@@ -17,10 +18,12 @@ import {
   until,
   withScene,
   type Scene,
+  type WorkerOverrides,
 } from "./claude-worker-fixture.ts";
 import { fakeEngine, fakeSandbox } from "./claude-runner-fixture.ts";
 import { turnActivity, turnOf } from "../src/cli/watch-model.ts";
 import type { TurnRunner } from "../src/turn-runner.ts";
+import type { TurnProfile } from "../src/turn-profile.ts";
 import {
   gitCommonFolder,
   runnerLaunch,
@@ -30,10 +33,16 @@ const signal = new AbortController().signal;
 
 async function deliveredTurn(
   scene: Scene,
-  options: { readonly mode: string; readonly runner: TurnRunner },
+  options: {
+    readonly mode: string;
+    readonly runner: TurnRunner;
+    readonly profile?: TurnProfile;
+    readonly settings?: WorkerOverrides;
+  },
 ) {
   const worker = scene.worker(options.mode, {
-    profiles: { boxed: { runner: options.runner } },
+    ...options.settings,
+    profiles: { boxed: { ...options.profile, runner: options.runner } },
   });
   await worker.deliver(intent({ method: "run-turn:boxed" }), signal);
   await until(() => scene.reports.length === 1);
@@ -96,21 +105,50 @@ await test("CLV-311 a container turn commits in the work tree, and the commit is
     });
   }));
 
-await test("CLV-311 a container turn that cannot write to the git common folder ends with runner-git-readonly", () =>
-  withScene(async (scene) => {
-    const engine = fakeEngine(scene.directory, { access: "read-only" });
-    const report = await deliveredTurn(scene, {
-      mode: "committed",
-      runner: {
-        kind: "container",
-        engine: engine.path,
-        image: "cloving-fixture",
-      },
+const refusedHarnesses: readonly {
+  readonly name: string;
+  readonly profile?: TurnProfile;
+  readonly settings?: WorkerOverrides;
+}[] = [
+  { name: "claude" },
+  { name: "codex", profile: { harness: "codex" } },
+  {
+    name: "text",
+    settings: {
+      worker: "plain",
+      harness: { name: "plain", turn: ["plain-tool"], output: "text" },
+    },
+  },
+];
+
+await test("CLV-311 a claude, codex or text container turn that cannot write to the git common folder ends with runner-git-readonly and no harness result", async () => {
+  for (const harness of refusedHarnesses)
+    await withScene(async (scene) => {
+      const engine = fakeEngine(scene.directory, { access: "read-only" });
+      const report = await deliveredTurn(scene, {
+        ...harness,
+        mode: "committed",
+        runner: {
+          kind: "container",
+          engine: engine.path,
+          image: "cloving-fixture",
+        },
+      });
+      assert.equal(report?.outcome, "failed", harness.name);
+      assert.equal(
+        field(report, "reason"),
+        "runner-git-readonly",
+        harness.name,
+      );
+      assert.equal(scene.turns().length, 0, harness.name);
+      const folder = join(scene.journal, journalKey("operation-1"));
+      assert.equal(
+        readFileSync(join(folder, "turn.jsonl"), "utf8"),
+        "",
+        harness.name,
+      );
     });
-    assert.equal(report?.outcome, "failed");
-    assert.equal(field(report, "reason"), "runner-git-readonly");
-    assert.equal(scene.turns().length, 0);
-  }));
+});
 
 await test("CLV-311 a seatbelt turn gets a settings file with its write folders and network hosts", () =>
   withScene(async (scene) => {
@@ -181,7 +219,11 @@ await test("CLV-311 a container launch with no turn ID and no attachments has a 
         directory: scene.repository,
         folder,
       },
-      { command: ["true"], environment: { PATH: "/usr/bin:/bin" } },
+      {
+        command: ["true"],
+        environment: { PATH: "/usr/bin:/bin" },
+        serviceEnvironment: {},
+      },
     );
     const name = launch.command[launch.command.indexOf("--name") + 1] ?? "";
     assert.match(name, /^cloving-turn-[a-z0-9]+$/);
@@ -189,4 +231,67 @@ await test("CLV-311 a container launch with no turn ID and no attachments has a 
     await launch.release();
     assert.deepEqual(engine.calls(), [["rm", "-f", name]]);
     assert.deepEqual(readdirSync(folder), []);
+  }));
+
+await test("CLV-311 container launches of two repositories with the same work tree name use different node_modules volumes", () =>
+  withScene(async (scene) => {
+    const engine = fakeEngine(scene.directory, { access: "write" });
+    const volume = async (repository: string): Promise<string> => {
+      const directory = join(scene.directory, repository, "ticket-one");
+      mkdirSync(join(directory, ".git"), { recursive: true });
+      const launch = runnerLaunch(
+        {
+          runner: { kind: "container", engine: engine.path, image: "fixture" },
+          directory,
+          folder: mkdtempSync(join(scene.directory, "launch-")),
+        },
+        { command: ["true"], environment: {}, serviceEnvironment: {} },
+      );
+      await launch.release();
+      const mount = launch.command.find((part) =>
+        part.endsWith(`:${directory}/node_modules`),
+      );
+      return mount?.slice(0, mount.indexOf(":")) ?? "";
+    };
+    const first = await volume("first");
+    assert.match(first, /^cloving-modules-ticket-one-[0-9a-f]{16}$/);
+    assert.notEqual(await volume("second"), first);
+    assert.equal(await volume("first"), first);
+  }));
+
+await test("CLV-311 the container engine gets the service environment, and the container gets only the turn variables", () =>
+  withScene(async (scene) => {
+    const engine = fakeEngine(scene.directory, { access: "write" });
+    const folder = join(scene.directory, "launch");
+    mkdirSync(folder);
+    const serviceEnvironment = {
+      DOCKER_HOST: "unix:///engine.sock",
+      DOCKER_CONFIG: "/engine/config",
+      PATH: "/service/bin",
+    };
+    const environment = { PATH: "/usr/bin:/bin", ANTHROPIC_API_KEY: "key" };
+    const launched = (runner: TurnRunner) =>
+      runnerLaunch(
+        { runner, directory: scene.repository, folder },
+        { command: ["true"], environment, serviceEnvironment },
+      );
+    const contained = launched({
+      kind: "container",
+      engine: engine.path,
+      image: "fixture",
+    });
+    assert.deepEqual(contained.environment, {
+      ...serviceEnvironment,
+      ...environment,
+    });
+    const passed = contained.command.flatMap((part, index) =>
+      contained.command[index - 1] === "-e" && !part.startsWith("GIT_")
+        ? [part]
+        : [],
+    );
+    assert.deepEqual(passed, ["ANTHROPIC_API_KEY"]);
+    await contained.release();
+    const sandboxed = launched({ kind: "seatbelt" });
+    assert.equal(sandboxed.environment["DOCKER_HOST"], undefined);
+    await sandboxed.release();
   }));
