@@ -66,7 +66,7 @@ function controls(calls: string[], open: string | null): SteerControls {
     onOpen: (runId) => calls.push(`open ${runId}`),
     onClose: () => calls.push("close"),
     onNote: (text) => calls.push(`note ${text}`),
-    onNow: (now) => calls.push(`now ${String(now)}`),
+    onNow: (choice) => calls.push(`now ${String(choice.now)}`),
     onSend: (runId) => calls.push(`send ${runId}`),
   };
 }

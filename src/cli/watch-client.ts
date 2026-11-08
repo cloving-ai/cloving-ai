@@ -148,8 +148,8 @@ function steerClose() {
 function steerNote(text) {
   state.steerNote = text;
 }
-function steerNow(now) {
-  state.steerNow = now;
+function steerNow(choice) {
+  state.steerNow = choice.now;
 }
 async function steerPost(runId) {
   if (state.steerBusy.includes(runId)) return;

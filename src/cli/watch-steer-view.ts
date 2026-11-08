@@ -10,7 +10,7 @@ export interface SteerControls {
   readonly onOpen: (runId: string) => void;
   readonly onClose: () => void;
   readonly onNote: (text: string) => void;
-  readonly onNow: (now: boolean) => void;
+  readonly onNow: (choice: { readonly now: boolean }) => void;
   readonly onSend: (runId: string) => void;
 }
 
@@ -63,7 +63,7 @@ export function SteerForm(props: {
             name: "now",
             checked: steering.now,
             onChange: (event: { currentTarget: { checked: boolean } }) => {
-              steering.onNow(event.currentTarget.checked);
+              steering.onNow({ now: event.currentTarget.checked });
             },
           }),
           " Send to the turn in work now",
