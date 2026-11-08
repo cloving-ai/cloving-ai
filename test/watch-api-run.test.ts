@@ -64,6 +64,7 @@ function detailOf(shown: Fields, summary: unknown): Fields {
     turns: items(shown["turns"]).map((turn) =>
       picked(turn, [
         "key",
+        "operationId",
         "harness",
         "startedAt",
         "endedAt",
@@ -109,6 +110,13 @@ await test("CLV-255 GET api/v1/runs/{runId} gives a run of the last 7 days with 
       assert.deepEqual(run["turns"], [
         {
           key: "turn-1",
+          operationId: JSON.stringify([
+            "cloving-operation",
+            1,
+            "run-new",
+            "implement",
+            "claude-turn",
+          ]),
           harness: "claude",
           startedAt: minutesAgo(9),
           endedAt: minutesAgo(8),

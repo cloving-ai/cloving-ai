@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { watchApiPaths } from "../src/cli/watch-api.ts";
+import type { Reply, ServiceRequest } from "../src/protocol.ts";
+
 import { runStates, watchApiDocument } from "../src/cli/watch-api-document.ts";
 import { fields, withHarness } from "./service-fixture.ts";
 import {
@@ -14,6 +16,7 @@ import {
 import { foreignRequest, streamReader } from "./watch-api-fixture.ts";
 import { watching } from "./watch-fixture.ts";
 import { watchReplies, withWatchService } from "./watch-service-fixture.ts";
+const streamPath = "/runs/{runId}/turns/{operationId}/transcript-stream";
 
 await test("CLV-254 GET api/v1/openapi.json gives the OpenAPI 3.1 document of the watch read API", async () => {
   const replies = watchReplies({ runs: [] });
@@ -60,10 +63,12 @@ await test("CLV-254 the document has openapi, info and paths, each $ref resolves
     "Review",
     "Turn",
     "Event",
+    "TranscriptPage",
+    "TranscriptEntry",
     "Problem",
   ]);
   const schemas = documentSchemas(document);
-  assert.equal(schemas.length, 41);
+  assert.equal(schemas.length, 59);
   assert.deepEqual(
     schemas.flatMap((found) => schemaFailures(document, found)),
     [],
@@ -174,6 +179,14 @@ await test("CLV-254 GET api/v1 gives the version, the document path and one endp
             ["/api/v1/runs", "listRuns"],
             ["/api/v1/runs/{runId}", "getRun"],
             ["/api/v1/runs/{runId}/events", "listRunEvents"],
+            [
+              "/api/v1/runs/{runId}/turns/{operationId}/transcript",
+              "getTurnTranscript",
+            ],
+            [
+              "/api/v1/runs/{runId}/turns/{operationId}/transcript-stream",
+              "streamTurnTranscript",
+            ],
             ["/api/v1/stream", "streamChanges"],
           ].map(([endpoint, operationId]) => ({
             method: "GET",
@@ -295,11 +308,21 @@ await test("CLV-254 the server serves each path of the document, and each served
       },
     ],
   });
-  await withWatchService(replies.answer, async (watch) => {
+  const answer = (request: ServiceRequest): Reply =>
+    request.operation === "transcript"
+      ? {
+          kind: "result",
+          result: { entries: [], nextAfter: 0, open: false },
+        }
+      : replies.answer(request);
+  await withWatchService(answer, async (watch) => {
     const documented = Object.keys(watchApiDocument.paths);
     assert.deepEqual(watchApiPaths, documented);
-    for (const path of documented.filter((item) => item !== "/stream")) {
-      const served = path.replace("{runId}", "run-a");
+    const streams = ["/stream", streamPath];
+    for (const path of documented.filter((item) => !streams.includes(item))) {
+      const served = path
+        .replace("{runId}", "run-a")
+        .replace("{operationId}", "turn-a");
       const response = await fetch(`${watch.address}api/v1${served}`);
       assert.equal(response.status, 200, path);
       await contractBody(watchApiDocument, { response, path });
@@ -310,6 +333,16 @@ await test("CLV-254 the server serves each path of the document, and each served
     });
     assert.match(await stream.next(), /^event: change\ndata: \{/);
     await stream.cancel();
+    const transcript = streamReader(watchApiDocument, {
+      response: await fetch(
+        `${watch.address}api/v1/runs/run-a/turns/turn-a/transcript-stream`,
+      ),
+      path: streamPath,
+    });
+    assert.equal(
+      await transcript.next(),
+      'event: end\ndata: {"nextAfter":0}\n\n',
+    );
   });
 });
 

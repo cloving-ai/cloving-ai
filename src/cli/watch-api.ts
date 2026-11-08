@@ -1,4 +1,3 @@
-import { STATUS_CODES } from "node:http";
 import { runLimit, runStates, watchApiDocument } from "./watch-api-document.ts";
 import type {
   WatchEvent,
@@ -18,22 +17,25 @@ import {
   type ApiRunDetail,
   type RunKey,
 } from "./watch-api-run.ts";
+import {
+  problem,
+  serviceUnavailable,
+  type ApiReply,
+} from "./watch-api-problem.ts";
+import {
+  transcriptReply,
+  transcriptStreamReply,
+  type TranscriptFeed,
+  type TranscriptRequest,
+} from "./watch-api-transcript.ts";
 
-export interface ApiReply {
-  readonly status: number;
-  readonly type: string;
-  readonly body: string;
-  readonly allow?: string;
-}
-
-export interface ApiRequest {
+export interface ApiRequest extends TranscriptRequest {
   readonly method: string;
-  readonly url: URL;
   readonly model: () => Promise<WatchModel>;
   readonly run: (runId: string) => Promise<WatchModel>;
 }
 
-export type ApiAnswer = ApiReply | "stream";
+export type ApiAnswer = ApiReply | "stream" | TranscriptFeed;
 
 interface ApiIndex {
   readonly version: 1;
@@ -72,28 +74,6 @@ const base = "/api/v1";
 function found(body: ApiBody): ApiReply {
   return { status: 200, type: "application/json", body: JSON.stringify(body) };
 }
-
-function problem(
-  status: number,
-  detail: { readonly code: string; readonly detail: string },
-): ApiReply {
-  return {
-    status,
-    type: "application/problem+json",
-    body: JSON.stringify({
-      type: "about:blank",
-      title: STATUS_CODES[status],
-      status,
-      detail: detail.detail,
-      code: detail.code,
-    }),
-  };
-}
-
-const serviceUnavailable = problem(503, {
-  code: "service-unavailable",
-  detail: "The Cloving service does not answer.",
-});
 
 const unknownRun = problem(404, {
   code: "not-found",
@@ -283,6 +263,17 @@ const routes = new Map<string, Route>([
   [
     "/runs/{runId}/events",
     { parameters: new Map([["after", wholeNumber]]), reply: runEvents },
+  ],
+  [
+    "/runs/{runId}/turns/{operationId}/transcript",
+    { parameters: new Map([["after", wholeNumber]]), reply: transcriptReply },
+  ],
+  [
+    "/runs/{runId}/turns/{operationId}/transcript-stream",
+    {
+      parameters: new Map([["after", wholeNumber]]),
+      reply: transcriptStreamReply,
+    },
   ],
   [
     "/stream",
