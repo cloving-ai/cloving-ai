@@ -44,7 +44,7 @@ export async function checksPass(request: ChecksInput): Promise<CycleOutcome> {
     return completed(request, "No group of review threads this week.");
   const decided = await askPerson(request, suggestions);
   const filed = await fileChecks(decided);
-  await recordDecisions(filed);
+  if (filed.length > 0) await recordDecisions(filed);
   if (filed.length !== decided.length) throw new Error("check-issue-missing");
   return completed(
     request,

@@ -1629,6 +1629,7 @@
     "test/review-agent-sdk.test.ts": "test",
     "test/review-agent.test.ts": "test",
     "test/review-checks-facts.test.ts": "test",
+    "test/review-checks-pass.test.ts": "test",
     "test/review-checks-record.test.ts": "test",
     "test/review-checks-scripts.test.ts": "test",
     "test/review-checks-template-fixture.ts": "test",
