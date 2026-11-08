@@ -1240,6 +1240,7 @@
     "test/github-attach-fixture.ts": "test",
     "test/github-attach.test.ts": "test",
     "test/github-call-errors.test.ts": "test",
+    "test/github-change-check.test.ts": "test",
     "test/github-ci-boundaries.test.ts": "test",
     "test/github-ci-diagnostics.test.ts": "test",
     "test/github-ci-filters.test.ts": "test",
