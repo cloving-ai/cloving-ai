@@ -1393,6 +1393,7 @@
     "test/packed-reload.ts": "test",
     "test/packed-review-template.ts": "test",
     "test/packed-sleep-polling.ts": "test",
+    "test/packed-sources.ts": "test",
     "test/packed-themes.ts": "test",
     "test/packed-workflow-folders.ts": "test",
     "test/packed-workflow-testing.ts": "test",
