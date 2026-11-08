@@ -294,13 +294,20 @@ await test("CLV-063 the GitHub worker reports a failed call of the gh command an
     const refused = await scene.perform(worker, call);
     scene.plan({ scores: [], garble: "pr list" });
     const garbled = await scene.perform(worker, call);
+    scene.plan({ scores: [], fail: "none", garble: "pr create" });
+    const noAddress = await scene.perform(worker, call);
     assert.deepEqual(
-      [refused, garbled].map((report) => [report.outcome, report.reason]),
+      [refused, garbled, noAddress].map((report) => [
+        report.outcome,
+        report.reason,
+      ]),
       [
+        ["failed", "github-call-failed"],
         ["failed", "github-call-failed"],
         ["failed", "github-call-failed"],
       ],
     );
+    assert.deepEqual(scene.state().prs, []);
   }));
 
 await test("CLV-063 the GitHub worker reports a work tree that git cannot make, and a merge of a pull request that GitHub does not have, as failures", () =>
