@@ -1,33 +1,14 @@
 import { packedCommandWait } from "./packed-command-wait.ts";
-import {
-  packedReviewSources,
-  packedReviewTemplate,
-} from "./packed-review-template.ts";
+import { packedReviewTemplate } from "./packed-review-template.ts";
 import { packedDaemon, packedEnvironment } from "./packed-daemon-fixture.ts";
 import { operatorRestart } from "./operator-restart-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { packedCandidateAdmission } from "./packed-candidate-admission.ts";
-import {
-  packedDevelopTemplate,
-  packedTemplateSources,
-} from "./develop-template-fixture.ts";
+import { packedDevelopTemplate } from "./develop-template-fixture.ts";
 import { packedDoctor } from "./packed-doctor.ts";
-import { packedAnswerSources } from "./answer-review-options-fixture.ts";
-import {
-  packedAuditSources,
-  packedTicketSources,
-} from "./dependency-audit-template-fixture.ts";
-import {
-  packedPatrolSources,
-  packedRescueSources,
-} from "./rescue-template-options-fixture.ts";
 import { packedReload } from "./packed-reload.ts";
-import { packedTriageSources } from "./triage-template-fixture.ts";
-import { packedGoalSources } from "./goal-template-fixture.ts";
-import {
-  packedIdeaSources,
-  packedIdeaTemplate,
-} from "./packed-idea-template.ts";
+import { packedSources } from "./packed-sources.ts";
+import { packedIdeaTemplate } from "./packed-idea-template.ts";
 import {
   operatorFiles,
   operatorRefusals,
@@ -111,17 +92,7 @@ async function installed(root: string): Promise<string> {
   );
   assert.deepEqual(
     paths.filter((path) => /(?<!\.d)\.m?ts$/.test(path)),
-    packedAnswerSources.concat(
-      packedAuditSources,
-      packedTicketSources,
-      packedTemplateSources,
-      packedGoalSources,
-      packedIdeaSources,
-      packedPatrolSources,
-      packedRescueSources,
-      packedReviewSources,
-      packedTriageSources,
-    ),
+    packedSources,
   );
   assert.deepEqual(
     paths.filter((path) =>

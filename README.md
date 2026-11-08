@@ -1113,6 +1113,14 @@ The GitHub method `review-threads` reads all pages of threads and returns the th
 
 `patrol` also reads the open pull requests with no active run whose last run did not end `blocked` or `failed`. A pull request with an open thread and no new comment for 5 minutes gets an `answer-review` run. The GitHub method `record-answered` keeps the last comment of each open thread that a run took, so the patrol does not start a second run on the same comments. A thread that a run did not take gets the next run.
 
+### Release a version
+
+The template `release` releases a version of an npm package as a durable workflow. Copy it into your private workflow folder with `cloving templates copy release`. The input is `{"version": "1.7.0", "pullRequests": "641, 643"}`, and `pullRequests` is optional.
+
+The command wait `release-pulls` checks the listed pull requests until all are merged, for at most 7 days. A pull request that closed with no merge, or a pull request that is not merged in time, ends the run `blocked`. Then a turn sets the version in `package.json` and in the lock file, and writes the release notes from the pull requests merged since the last tag. The version pull request goes through `open-pr`, the point `accept` (as in `develop`) and `mergeWhenGreen`. The point `publish` selects **A person approves** (the default), with the decision `Publish v1.7.0?`, or **Publish after the merge**. A denied decision pushes no tag. The operator command `push-tag` pushes the tag `v1.7.0` on the merge commit. The command wait `release-status` checks the tag CI and the package registry until the version is published. A failed tag CI ends the run `blocked` with the CI output. A published version ends the run `handoff_requested` with the promotion `v1.7.0`.
+
+The workflow holds no secret and no publish credential. The CI publish job publishes the package. The README file of the template gives the input and the output of the operator commands `push-tag` and `release-status`.
+
 ### Triage new issues
 
 The template `triage-issue` gives each new issue from another person a first verdict. Copy it into your private workflow folder with `cloving templates copy triage-issue`. Its default schedule runs every 30 minutes. A pass reads the operator command `triage-candidates` from `CLOVING_COMMANDS`. The command prints a JSON array such as `[{"number": 639}]`. A candidate is an open issue without the label `cloving: triaged`, opened by an account that is not in the operator list, with no new post for 10 minutes. The template includes the reference script `triage-issue/triage-candidates.mts`, which takes the operator logins as arguments and prints at most four candidates.
