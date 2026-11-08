@@ -211,7 +211,11 @@ as with one start, and no watch page of its own. The start serves one watch
 page for all repositories on the watch port. While the workspace runs,
 cloving status lists each repository, and --repository <name> selects one.
 Control-C stops all repositories. When one repository stops with an error,
-Cloving stops the other repositories.
+Cloving stops the other repositories. The optional workspace fields lanes
+(1 to 64) and dailySpendLimitUsd (above 0) limit the queue runs of all
+repositories: a queue asks the supervisor before it starts a run, and the
+supervisor holds the run when the active queue runs fill the lanes or the
+spend of the last 24 hours is at 85 percent of the limit.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.
@@ -261,6 +265,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
+  CLOVING_WORKSPACE_PERMITS        The path of the permit socket of the workspace supervisor. A workspace start sets it for each repository; do not set it by hand. The queue asks the supervisor for a permit before each queue run.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
   CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, used by workflows for pull requests and issues. The watch board also uses it to read pull request status. The default is gh.
   CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that a workflow runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.

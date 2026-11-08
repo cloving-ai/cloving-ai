@@ -19,6 +19,7 @@ import { holdRecord, type HoldRecord } from "./queue-holds.ts";
 import { waitingRuns } from "./working-runs.ts";
 import { hostSignals } from "./host-signals.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
+import type { Permit } from "../cli/workspace-permit.ts";
 import {
   queueControlPort,
   queueStopped,
@@ -34,6 +35,7 @@ interface QueueSettings {
   readonly readyCommand?: readonly string[];
   readonly workflowId: string;
   readonly signals?: () => Promise<HostSignals>;
+  readonly permit?: () => Promise<Permit>;
 }
 
 function limitsOf(settings: QueueSettings): QueueLimits {
@@ -302,8 +304,12 @@ async function cycle(
     if (stopped()) return;
     if (!(await admissible(settings, { pending, stop, notice, update, room })))
       continue;
-    if (stopped()) return;
-    await admission(settings, { pending, holding, signal });
+    try {
+      if (stopped()) return;
+      await admission(settings, { pending, holding, signal });
+    } finally {
+      room.release();
+    }
   }
 }
 
@@ -316,6 +322,7 @@ function queueRoom(
       limits: () => limitsOf(settings),
       signals: settings.signals ?? hostSignals(),
       waiting: () => waitingRuns(settings),
+      ...(settings.permit === undefined ? {} : { permit: settings.permit }),
     },
     async (hold) => {
       parts.runtime.hold = hold;

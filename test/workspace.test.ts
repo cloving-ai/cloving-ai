@@ -22,7 +22,22 @@ await test("CLV-312 reads the repositories of a workspace file with a default na
         { name: "cloving-ai", path: "/work/cloving-ai" },
         { name: "phone.ios_2", path: "/work/apps/ios" },
       ],
+      limits: {},
     },
+  );
+});
+
+await test("CLV-312 reads the workspace lanes and the workspace daily spend limit", () => {
+  assert.deepEqual(
+    parseWorkspace(
+      JSON.stringify({
+        version: 1,
+        repositories: [{ path: "/work/app" }],
+        lanes: 2,
+        dailySpendLimitUsd: 12.5,
+      }),
+    ).limits,
+    { lanes: 2, dailySpendLimitUsd: 12.5 },
   );
 });
 
@@ -30,7 +45,21 @@ const invalidCases: readonly (readonly [unknown, string])[] = [
   ["{", "the file is not JSON"],
   [[], "the file must hold one object"],
   [{ version: 2, repositories: [] }, "version must be 1"],
-  [{ version: 1, repositories: [], lanes: 2 }, "the field lanes is not known"],
+  [{ version: 1, repositories: [], port: 2 }, "the field port is not known"],
+  ...[0, 65, 1.5, "2", null].map(
+    (lanes) =>
+      [
+        { version: 1, repositories: [{ path: "/a" }], lanes },
+        "lanes must be a whole number from 1 to 64",
+      ] as const,
+  ),
+  ...[0, -1, "5", null, [5]].map(
+    (dailySpendLimitUsd) =>
+      [
+        { version: 1, repositories: [{ path: "/a" }], dailySpendLimitUsd },
+        "dailySpendLimitUsd must be a number above 0",
+      ] as const,
+  ),
   [{ version: 1 }, "repositories must list one or more repositories"],
   [
     { version: 1, repositories: [] },

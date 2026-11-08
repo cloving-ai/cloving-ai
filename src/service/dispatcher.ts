@@ -7,6 +7,7 @@ import { queueCommand, queueRead } from "./queue-handlers.ts";
 import { failed, scheduleRequest, type ServiceContext } from "./replies.ts";
 import { restartOperation } from "./restart-handler.ts";
 import { runCommand, status } from "./run-handlers.ts";
+import { spendRead } from "./queue-spend.ts";
 import { admissionLock, submissionHandler } from "./submission-handler.ts";
 import { reloadUnavailable } from "./workflow-reload.ts";
 
@@ -29,6 +30,7 @@ export function dispatcher(
     ["run", (request) => run(request.parameters)],
     ["schedule", (request) => scheduleRequest(context, request.parameters)],
     ["queue", () => queueRead(context)],
+    ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],
