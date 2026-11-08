@@ -229,14 +229,15 @@ function started(
 }
 
 async function hosted(
-  request: Omit<WorkspaceHost, "signal" | "repository"> & {
+  request: Omit<WorkspaceHost, "signal" | "repository" | "overrides"> & {
     readonly repository: string | undefined;
+    readonly overrides?: NodeJS.ProcessEnv;
     readonly signal?: AbortSignal;
   },
 ): Promise<number> {
   const { runtime, repository, options: argumentsList, signal } = request;
   await clearedSettingsNote(dirname(runtime));
-  let environment = request.environment;
+  let environment = { ...request.environment, ...request.overrides };
   let status = await started({
     runtime,
     argumentsList,
@@ -248,10 +249,13 @@ async function hosted(
     (option) => option !== "--reset-queue",
   );
   while (status === 75 && signal?.aborted !== true) {
-    environment = await restartEnvironment(
-      dirname(currentRuntime({ repository, runtime })),
-      environment,
-    );
+    environment = {
+      ...(await restartEnvironment(
+        dirname(currentRuntime({ repository, runtime })),
+        environment,
+      )),
+      ...request.overrides,
+    };
     status = await started({
       runtime,
       argumentsList: restarting,

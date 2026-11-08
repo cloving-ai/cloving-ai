@@ -1,93 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { startSelection } from "../src/cli/start-arguments.ts";
-import {
-  workspaceStart,
-  type WorkspaceHost,
-  type WorkspaceStart,
-  type WorkspaceWatch,
-} from "../src/cli/workspace-start.ts";
+import type { WorkspaceHost } from "../src/cli/workspace-start.ts";
 import {
   workspaceRecordPath,
   writeWorkspaceRecord,
 } from "../src/cli/workspace-record.ts";
-
-const root = realpathSync(mkdtempSync(join(tmpdir(), "cloving-workspace-")));
-process.on("exit", () => {
-  rmSync(root, { recursive: true, force: true });
-});
-const alpha = join(root, "alpha");
-const beta = join(root, "beta");
-await mkdir(alpha);
-await mkdir(beta);
-
-interface Started {
-  readonly status: number;
-  readonly printed: string;
-  readonly refused: string;
-  readonly hosts: readonly WorkspaceHost[];
-  readonly watches: readonly WorkspaceWatch[];
-}
-
-async function started(input: {
-  readonly workspace: unknown;
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly repositories?: Readonly<Record<string, string>>;
-  readonly hosted?: WorkspaceStart["hosted"];
-}): Promise<Started> {
-  const configuration = mkdtempSync(join(root, "configuration-"));
-  if (input.workspace !== undefined) {
-    await mkdir(join(configuration, "cloving"));
-    await writeFile(
-      join(configuration, "cloving/workspace.json"),
-      typeof input.workspace === "string"
-        ? input.workspace
-        : JSON.stringify(input.workspace),
-    );
-  }
-  const output = { printed: "", refused: "" };
-  const hosts: WorkspaceHost[] = [];
-  const watches: WorkspaceWatch[] = [];
-  const repositories = input.repositories ?? { [alpha]: alpha, [beta]: beta };
-  const status = await workspaceStart({
-    options: ["--reset-queue"],
-    environment: {
-      XDG_CONFIG_HOME: configuration,
-      XDG_STATE_HOME: join(root, "state"),
-      ...input.environment,
-    },
-    home: root,
-    repositoryDirectory: (directory) => repositories[directory],
-    processId: process.pid,
-    hosted: (host) => {
-      hosts.push(host);
-      return input.hosted?.(host) ?? Promise.resolve(0);
-    },
-    watched: (watch) => {
-      watches.push(watch);
-      return Promise.resolve(0);
-    },
-    print: (text) => {
-      output.printed += text;
-    },
-    refuse: (text) => {
-      output.refused += text;
-    },
-  });
-  return { status, ...output, hosts, watches };
-}
-
-const pair = {
-  version: 1,
-  repositories: [
-    { path: alpha, name: "alpha" },
-    { path: beta, name: "beta" },
-  ],
-};
+import { alpha, beta, pair, root, started } from "./workspace-start-harness.ts";
 
 await test("CLV-312 a workspace start refuses a missing or invalid workspace file before it starts a daemon", async () => {
   const missing = await started({ workspace: undefined });
@@ -158,7 +79,7 @@ await test("CLV-312 each repository gets its own runtime directory, the start op
   assert.notEqual(result.hosts[0]?.runtime, result.hosts[1]?.runtime);
   for (const host of result.hosts) {
     assert.ok(host.runtime.startsWith(join(root, "state/cloving/")));
-    assert.equal(host.environment["CLOVING_WATCH_PORT"], "off");
+    assert.deepEqual(host.overrides, { CLOVING_WATCH_PORT: "off" });
     assert.deepEqual(host.options, ["--reset-queue"]);
   }
   assert.deepEqual(
@@ -200,6 +121,29 @@ await test("CLV-312 a workspace start refuses to start while another workspace s
   const again = await started({ workspace: pair });
   assert.equal(again.refused, result.refused);
   rmSync(path);
+});
+
+function heldHost(): Promise<number> {
+  return new Promise((settle) => {
+    setTimeout(() => {
+      settle(0);
+    }, 1000);
+  });
+}
+
+await test("CLV-312 of two workspace starts at the same time, only one starts its repositories", async () => {
+  const results = await Promise.all([
+    started({ workspace: pair, hosted: heldHost }),
+    started({ workspace: pair, hosted: heldHost }),
+  ]);
+  assert.deepEqual(results.map((result) => result.status).toSorted(), [0, 1]);
+  assert.deepEqual(
+    results
+      .map((result) => /^workspace-already-running: /.test(result.refused))
+      .toSorted(),
+    [false, true],
+  );
+  assert.equal(results.flatMap((result) => result.hosts).length, 2);
 });
 
 await test("CLV-312 a workspace start refuses a place with no runtime root for its supervisor record", async () => {

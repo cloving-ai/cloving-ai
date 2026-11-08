@@ -9,6 +9,7 @@ function today(numbers: {
   readonly stopped: number;
   readonly costUsd: number;
   readonly unknownCostRuns: number;
+  readonly knownCostCompleted: number;
   readonly costPerCompletedRunUsd: number | null;
   readonly days: readonly number[];
 }): DailyNumbers {
@@ -17,6 +18,7 @@ function today(numbers: {
     stopped: numbers.stopped,
     costUsd: numbers.costUsd,
     unknownCostRuns: numbers.unknownCostRuns,
+    knownCostCompleted: numbers.knownCostCompleted,
     costPerCompletedRunUsd: numbers.costPerCompletedRunUsd,
     yesterday: { completed: 1, costUsd: 0.5, unknownCostRuns: 0 },
     days: numbers.days.map((completed, index) => ({
@@ -94,6 +96,7 @@ await test("CLV-312 the workspace Today numbers add the numbers of each reposito
     stopped: 1,
     costUsd: 3,
     unknownCostRuns: 0,
+    knownCostCompleted: 2,
     costPerCompletedRunUsd: 1.5,
     days: [1, 2],
   });
@@ -102,6 +105,7 @@ await test("CLV-312 the workspace Today numbers add the numbers of each reposito
     stopped: 0,
     costUsd: 1,
     unknownCostRuns: 1,
+    knownCostCompleted: 1,
     costPerCompletedRunUsd: 1,
     days: [0, 1],
   });
@@ -114,6 +118,7 @@ await test("CLV-312 the workspace Today numbers add the numbers of each reposito
     stopped: 1,
     costUsd: 4,
     unknownCostRuns: 1,
+    knownCostCompleted: 3,
     costPerCompletedRunUsd: 4 / 3,
     yesterday: { completed: 2, costUsd: 1, unknownCostRuns: 0 },
     days: [
@@ -140,6 +145,7 @@ await test("CLV-312 the workspace Today numbers give no cost per completed run w
     stopped: 2,
     costUsd: 0,
     unknownCostRuns: 2,
+    knownCostCompleted: 0,
     costPerCompletedRunUsd: null,
     days: [0],
   });
@@ -157,12 +163,13 @@ await test("CLV-312 the workspace Today numbers give no cost per completed run w
   );
 });
 
-await test("CLV-312 a repository whose known runs cost nothing counts its completed runs for the cost per completed run", () => {
+await test("CLV-312 the workspace cost per completed run counts only the completed runs with a known cost, also in a repository whose known runs cost nothing", () => {
   const free = today({
     completed: 2,
     stopped: 0,
     costUsd: 0,
-    unknownCostRuns: 0,
+    unknownCostRuns: 1,
+    knownCostCompleted: 1,
     costPerCompletedRunUsd: 0,
     days: [2],
   });
@@ -171,6 +178,7 @@ await test("CLV-312 a repository whose known runs cost nothing counts its comple
     stopped: 0,
     costUsd: 3,
     unknownCostRuns: 0,
+    knownCostCompleted: 1,
     costPerCompletedRunUsd: 3,
     days: [1],
   });
@@ -178,5 +186,6 @@ await test("CLV-312 a repository whose known runs cost nothing counts its comple
     { name: "alpha", model: floorModel([], { today: free }) },
     { name: "beta", model: floorModel([], { today: paid }) },
   ]);
-  assert.equal(model.today?.costPerCompletedRunUsd, 1);
+  assert.equal(model.today?.costPerCompletedRunUsd, 1.5);
+  assert.equal(model.today.knownCostCompleted, 2);
 });

@@ -15,6 +15,7 @@ export interface KnownSpend {
 export interface DailyNumbers extends KnownSpend {
   readonly completed: number;
   readonly stopped: number;
+  readonly knownCostCompleted: number;
   readonly costPerCompletedRunUsd: number | null;
   readonly yesterday: KnownSpend & { readonly completed: number };
   readonly days: readonly {
@@ -65,21 +66,22 @@ function knownSpend(
   };
 }
 
-function costPerCompletedRun(
+function knownCostCompleted(
   completions: readonly DayCompletion[],
   costs: readonly ReportCost[],
-): number | null {
-  const known = reportRunCosts(
+): number {
+  return reportRunCosts(
     completions.filter((completion) => completion.outcome === "completed"),
     costs,
   ).filter((run) => run.costUsd !== null).length;
-  return known === 0 ? null : knownSpend(completions, costs).costUsd / known;
 }
 
 export function dailyNumbers(input: DailyInput): DailyNumbers {
   const today = endedIn(input.completions, input.today);
   const yesterday = endedIn(input.completions, input.yesterday);
   const completed = completedCount(today);
+  const spend = knownSpend(today, input.costs);
+  const known = knownCostCompleted(today, input.costs);
   const workflowIds = new Set([
     ...input.workflows,
     ...today.map((completion) => completion.workflowId),
@@ -89,8 +91,9 @@ export function dailyNumbers(input: DailyInput): DailyNumbers {
     stopped: today.filter((completion) =>
       stoppedOutcomes.includes(completion.outcome),
     ).length,
-    ...knownSpend(today, input.costs),
-    costPerCompletedRunUsd: costPerCompletedRun(today, input.costs),
+    ...spend,
+    knownCostCompleted: known,
+    costPerCompletedRunUsd: known === 0 ? null : spend.costUsd / known,
     yesterday: {
       completed: completedCount(yesterday),
       ...knownSpend(yesterday, input.costs),

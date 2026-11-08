@@ -33,6 +33,7 @@ function numbers(completed: number, costUsd: number): DailyNumbers {
     stopped: 0,
     costUsd,
     unknownCostRuns: 0,
+    knownCostCompleted: completed,
     costPerCompletedRunUsd: completed === 0 ? null : costUsd / completed,
     yesterday: { completed: 0, costUsd: 0, unknownCostRuns: 0 },
     days: [{ date: "2026-11-08", completed }],
@@ -103,6 +104,44 @@ await test("CLV-312 a board location can name the repository of the workflow", (
   const other = page(twoRepositories(), "#workflow=idea&repository=alpha");
   assert.match(other, /class="board-page"/);
   assert.doesNotMatch(other, /#run=draft/);
+});
+
+await test("CLV-312 a board card and the back link of its run keep the repository of the board", () => {
+  const board = page(twoRepositories(), "#workflow=idea&repository=beta");
+  assert.match(
+    board,
+    /class="card-run" href="#workflow=idea&amp;repository=beta&amp;run=draft"/,
+  );
+  const run = page(
+    twoRepositories(),
+    "#workflow=idea&repository=beta&run=draft",
+  );
+  assert.match(
+    run,
+    /<a class="back" href="#workflow=idea&amp;repository=beta">← Back to idea<\/a>/,
+  );
+});
+
+await test("CLV-312 the later-run link of a board card keeps the repository of the board", () => {
+  const model = twoRepositories();
+  const later = { text: "Ticket completed by later run", laterRunId: "later" };
+  const marked: WatchModel = {
+    ...model,
+    workflows: model.workflows.map((workflow) => ({
+      ...workflow,
+      columns: workflow.columns.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => ({
+          ...card,
+          completionMark: later,
+        })),
+      })),
+    })),
+  };
+  assert.match(
+    page(marked, "#workflow=idea&repository=beta"),
+    /class="completion-mark" href="#workflow=idea&amp;repository=beta&amp;run=later"/,
+  );
 });
 
 await test("CLV-312 Needs you names the repository of each item", () => {

@@ -10,13 +10,6 @@ function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
-function knownCostRuns(today: DailyNumbers): number {
-  const each = today.costPerCompletedRunUsd;
-  if (each === null) return 0;
-  if (each === 0) return today.completed;
-  return Math.round(today.costUsd / each);
-}
-
 function addedDays(numbers: readonly DailyNumbers[]): DailyNumbers["days"] {
   const days = new Map<string, number>();
   for (const day of numbers.flatMap((today) => today.days))
@@ -31,12 +24,13 @@ function workspaceToday(
 ): DailyNumbers | undefined {
   if (numbers.length === 0) return undefined;
   const costUsd = sum(numbers.map((today) => today.costUsd));
-  const known = sum(numbers.map(knownCostRuns));
+  const known = sum(numbers.map((today) => today.knownCostCompleted));
   return {
     completed: sum(numbers.map((today) => today.completed)),
     stopped: sum(numbers.map((today) => today.stopped)),
     costUsd,
     unknownCostRuns: sum(numbers.map((today) => today.unknownCostRuns)),
+    knownCostCompleted: known,
     costPerCompletedRunUsd: known === 0 ? null : costUsd / known,
     yesterday: {
       completed: sum(numbers.map((today) => today.yesterday.completed)),

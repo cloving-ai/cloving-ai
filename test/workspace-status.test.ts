@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,6 +10,9 @@ import {
   workspaceRecordPath,
   writeWorkspaceRecord,
 } from "../src/cli/workspace-record.ts";
+import { privateSettingsPath } from "../src/cli/project-settings.ts";
+import { shellArgument } from "../src/cli/runtime-directory.ts";
+import { watchMembers } from "../src/cli/workspace-status.ts";
 import { fields, items, waitingGate, withHarness } from "./service-fixture.ts";
 import { entry } from "./workspace-fixture.ts";
 
@@ -119,4 +122,60 @@ await test("CLV-312 the workspace status counts the active runs and the pending 
       /^ {2}alpha: service up, 1 active run, 1 pending decision$/m,
     );
   });
+});
+
+await test("CLV-312 each repository of the workspace watch page gets its own client command and the GitHub command of its own settings", async () => {
+  const alpha = join(root, "members/alpha");
+  const beta = join(root, "members/beta");
+  for (const directory of [alpha, beta])
+    await mkdir(directory, { recursive: true });
+  const variables = { XDG_CONFIG_HOME: join(root, "members/config") };
+  const settings = privateSettingsPath(variables, beta);
+  await mkdir(join(settings, ".."), { recursive: true });
+  await writeFile(
+    settings,
+    JSON.stringify({ version: 1, github: { command: ["beta-gh"] } }),
+  );
+  const members = watchMembers(
+    {
+      processId: process.pid,
+      members: [
+        { name: "alpha", repository: alpha, runtime: join(root, "a-run") },
+        { name: "beta", repository: beta, runtime: join(root, "b-run") },
+      ],
+    },
+    {
+      watchPr: {
+        repository: undefined,
+        githubCommand: JSON.stringify(["launch-gh"]),
+        execute: () => Promise.reject(new Error("no command runs")),
+      },
+      variables,
+    },
+  );
+  assert.deepEqual(
+    members.map((member) => [
+      member.name,
+      member.runtimeDirectory,
+      member.client,
+      member.pullRequests?.repository,
+      member.pullRequests?.githubCommand,
+    ]),
+    [
+      [
+        "alpha",
+        join(root, "a-run"),
+        `cloving --repository ${shellArgument(alpha)}`,
+        alpha,
+        undefined,
+      ],
+      [
+        "beta",
+        join(root, "b-run"),
+        `cloving --repository ${shellArgument(beta)}`,
+        beta,
+        JSON.stringify(["beta-gh"]),
+      ],
+    ],
+  );
 });

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import {
+  claimWorkspaceRecord,
   liveWorkspace,
   memberDirectory,
   removeWorkspaceRecord,
@@ -112,5 +113,47 @@ await test("CLV-312 the watch command accepts the workspace option", () => {
     kind: "watch",
     port: 0,
     json: false,
+  });
+});
+
+await test("CLV-312 of two supervisors that claim the record at the same time, only one gets it", async () => {
+  await withState(async (environment, path) => {
+    const claims = await Promise.all(
+      [process.pid, process.ppid].map((processId) =>
+        claimWorkspaceRecord(path, { processId, members }),
+      ),
+    );
+    const owner = liveWorkspace(environment)?.processId;
+    assert.deepEqual(claims.map((claim) => claim.kind).toSorted(), [
+      "claimed",
+      "running",
+    ]);
+    assert.deepEqual(
+      claims.flatMap((claim) =>
+        claim.kind === "running" ? [claim.processId] : [],
+      ),
+      [owner],
+    );
+  });
+});
+
+await test("CLV-312 a supervisor claims the record of a supervisor that ended, and refuses the record of a running one", async () => {
+  await withState(async (environment, path) => {
+    await writeWorkspaceRecord(path, { processId: endedProcessId(), members });
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.pid, members }),
+      { kind: "claimed" },
+    );
+    assert.equal(liveWorkspace(environment)?.processId, process.pid);
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.ppid, members }),
+      { kind: "running", processId: process.pid },
+    );
+    await writeFile(path, "{");
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.ppid, members }),
+      { kind: "claimed" },
+    );
+    assert.equal(liveWorkspace(environment)?.processId, process.ppid);
   });
 });

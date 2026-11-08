@@ -257,7 +257,10 @@ export function Page(props: PageProps): Shown {
       down,
       component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
-      component(BackLink, { workflowId: location.workflowId }),
+      component(BackLink, {
+        workflowId: location.workflowId,
+        repository: location.repository,
+      }),
       run === undefined
         ? text("meta", "This run is not available.")
         : component(Run, { key: run.runId, run, now, copying }),
@@ -274,11 +277,14 @@ export function Page(props: PageProps): Shown {
   return component(BoardPage, { ...props, model, workflow, down });
 }
 
-export function BackLink(props: { readonly workflowId: string | null }): Shown {
-  const { workflowId } = props;
+export function BackLink(props: {
+  readonly workflowId: string | null;
+  readonly repository?: string | undefined;
+}): Shown {
+  const { workflowId, repository } = props;
   return element("a", {
     class: "back",
-    href: watchHash({ workflowId, runId: null }),
+    href: watchHash({ workflowId, repository, runId: null }),
     children: `← Back to ${workflowId ?? "the floor"}`,
   });
 }

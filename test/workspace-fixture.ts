@@ -1,10 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 export const entry = resolve("src/cli.ts");
+const guard = fileURLToPath(new URL("./self-host-guard.ts", import.meta.url));
 const guideEnd = "Commands for a second terminal:";
 
 export function hostEnvironment(state: string): NodeJS.ProcessEnv {
@@ -51,12 +53,23 @@ export async function workspaceStarted(input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly guides: number;
 }) {
-  const child = spawn(process.execPath, [entry, "start", "--workspace"], {
-    cwd: input.cwd,
-    env: input.environment,
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const child = spawn(
+    process.execPath,
+    [
+      guard,
+      String(process.pid),
+      process.execPath,
+      entry,
+      "start",
+      "--workspace",
+    ],
+    {
+      cwd: input.cwd,
+      env: input.environment,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   const output = { text: "" };
   const ready = Promise.withResolvers<undefined>();
   const timer = setTimeout(() => {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../protocol.ts";
 import { runtimeRoot } from "./runtime-directory.ts";
@@ -25,10 +25,14 @@ export function workspaceRecordPath(
     : join(root, "cloving", "workspace", "supervisor.json");
 }
 
-export async function writeWorkspaceRecord(
+export type WorkspaceClaim =
+  | { readonly kind: "claimed" }
+  | { readonly kind: "running"; readonly processId: number };
+
+async function temporaryRecord(
   path: string,
   written: WorkspaceRecord,
-): Promise<void> {
+): Promise<string> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}`;
   await writeFile(
@@ -36,7 +40,72 @@ export async function writeWorkspaceRecord(
     `${JSON.stringify({ schemaVersion: 1, ...written })}\n`,
     { mode: 0o600 },
   );
-  await rename(temporary, path);
+  return temporary;
+}
+
+export async function writeWorkspaceRecord(
+  path: string,
+  written: WorkspaceRecord,
+): Promise<void> {
+  await rename(await temporaryRecord(path, written), path);
+}
+
+function linked(temporary: string, path: string): Promise<boolean> {
+  return link(temporary, path).then(
+    () => true,
+    (error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "EEXIST")
+        return false;
+      throw error;
+    },
+  );
+}
+
+function recordText(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+async function staleRemoved(
+  path: string,
+  seen: string | undefined,
+): Promise<void> {
+  const moved = `${path}.${randomUUID()}.stale`;
+  const renamed = await rename(path, moved).then(
+    () => true,
+    () => false,
+  );
+  if (!renamed) return;
+  const text = await readFile(moved, "utf8").catch(() => undefined);
+  if (text !== seen) await linked(moved, path);
+  await rm(moved, { force: true });
+}
+
+const claimAttempts = 3;
+
+export async function claimWorkspaceRecord(
+  path: string,
+  claimed: WorkspaceRecord,
+): Promise<WorkspaceClaim> {
+  const temporary = await temporaryRecord(path, claimed);
+  let processId = 0;
+  try {
+    for (let attempt = 0; attempt < claimAttempts; attempt += 1) {
+      if (await linked(temporary, path)) return { kind: "claimed" };
+      const seen = recordText(path);
+      const found = seen === undefined ? undefined : storedRecord(seen);
+      processId = found?.processId ?? processId;
+      if (found !== undefined && running(found.processId))
+        return { kind: "running", processId: found.processId };
+      await staleRemoved(path, seen);
+    }
+    return { kind: "running", processId };
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 function member(value: unknown): WorkspaceMember | undefined {
@@ -90,11 +159,8 @@ function storedRecord(text: string): WorkspaceRecord | undefined {
 }
 
 function readRecord(path: string): WorkspaceRecord | undefined {
-  try {
-    return storedRecord(readFileSync(path, "utf8"));
-  } catch {
-    return undefined;
-  }
+  const text = recordText(path);
+  return text === undefined ? undefined : storedRecord(text);
 }
 
 export function liveWorkspace(

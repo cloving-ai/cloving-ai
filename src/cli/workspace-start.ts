@@ -1,8 +1,11 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { parseWorkspace, workspaceFile, type Workspace } from "../workspace.ts";
-import { runtimeDirectory } from "./runtime-directory.ts";
+import { adoptionRecordPath, runtimeDirectory } from "./runtime-directory.ts";
 import {
-  liveWorkspace,
+  claimWorkspaceRecord,
   removeWorkspaceRecord,
   workspaceRecordPath,
   writeWorkspaceRecord,
@@ -14,12 +17,18 @@ export interface WorkspaceHost {
   readonly runtime: string;
   readonly options: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
+  readonly overrides: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
 }
 
 export interface WorkspaceWatch {
   readonly port: string;
   readonly signal: AbortSignal;
+}
+
+export interface WatchRestart {
+  readonly delayMilliseconds: number;
+  readonly limit: number;
 }
 
 export interface WorkspaceStart {
@@ -30,6 +39,7 @@ export interface WorkspaceStart {
   readonly repositoryDirectory: (directory: string) => string | undefined;
   readonly hosted: (host: WorkspaceHost) => Promise<number>;
   readonly watched: (watch: WorkspaceWatch) => Promise<number>;
+  readonly watchRestart?: WatchRestart;
   readonly print: (text: string) => void;
   readonly refuse: (text: string) => void;
 }
@@ -38,6 +48,10 @@ type Member = WorkspaceMember;
 
 const runtimeUnknown =
   "workspace-runtime-unknown: Set HOME, XDG_STATE_HOME or XDG_RUNTIME_DIR.";
+
+const watchRestart: WatchRestart = { delayMilliseconds: 1000, limit: 5 };
+
+const settleMilliseconds = 200;
 
 type Members =
   | { readonly kind: "members"; readonly members: readonly Member[] }
@@ -120,7 +134,8 @@ async function memberStatus(input: {
       repository: member.repository,
       runtime: member.runtime,
       options: start.options,
-      environment: { ...start.environment, CLOVING_WATCH_PORT: "off" },
+      environment: start.environment,
+      overrides: { CLOVING_WATCH_PORT: "off" },
       signal: stopping.signal,
     });
     if (status !== 0 && !stopping.signal.aborted)
@@ -133,32 +148,115 @@ async function memberStatus(input: {
   }
 }
 
+interface Settling {
+  readonly path: string;
+  readonly members: readonly Member[];
+  readonly ended: ReadonlySet<Member>;
+  readonly signal: AbortSignal;
+}
+
+function settled(environment: NodeJS.ProcessEnv, member: Member): boolean {
+  const adoption = adoptionRecordPath(environment, member.repository);
+  return (
+    existsSync(join(member.runtime, "control.sock")) ||
+    (adoption !== undefined && existsSync(adoption))
+  );
+}
+
+async function settledMembers(
+  input: WorkspaceStart,
+  settling: Settling,
+): Promise<boolean> {
+  const waiting = (member: Member): boolean =>
+    !settling.ended.has(member) && !settled(input.environment, member);
+  while (settling.members.some(waiting))
+    await delay(settleMilliseconds, undefined, { signal: settling.signal });
+  return !settling.signal.aborted;
+}
+
+async function watchedPage(
+  input: WorkspaceStart,
+  watch: WorkspaceWatch,
+): Promise<number> {
+  const restart = input.watchRestart ?? watchRestart;
+  for (let ended = 1; ; ended += 1) {
+    const status = await input.watched(watch);
+    if (watch.signal.aborted || status === 0) return 0;
+    if (ended > restart.limit) {
+      input.refuse(
+        `workspace-watch-stopped: The watch page ended with status ${String(status)} ${String(ended)} times. The repositories keep running with no watch page.\n`,
+      );
+      return 1;
+    }
+    input.refuse(
+      `workspace-watch-ended: The watch page ended with status ${String(status)}. Cloving starts it again.\n`,
+    );
+    await delay(restart.delayMilliseconds, undefined, { signal: watch.signal });
+  }
+}
+
+async function settledWatch(
+  input: WorkspaceStart,
+  settling: Settling,
+): Promise<number> {
+  if (!(await settledMembers(input, settling))) return 0;
+  await writeWorkspaceRecord(settling.path, {
+    processId: input.processId,
+    members: settling.members.map((member) => ({
+      ...member,
+      runtime:
+        runtimeDirectory(input.environment, member.repository) ??
+        member.runtime,
+    })),
+  });
+  const port = input.environment["CLOVING_WATCH_PORT"] ?? "3663";
+  if (port === "off") return 0;
+  return watchedPage(input, { port, signal: settling.signal });
+}
+
 async function supervised(
   input: WorkspaceStart,
-  members: readonly Member[],
+  workspace: Pick<Settling, "path" | "members">,
 ): Promise<number> {
   const stopping = new AbortController();
   const watching = new AbortController();
-  const port = input.environment["CLOVING_WATCH_PORT"] ?? "3663";
-  const watch =
-    port === "off"
-      ? Promise.resolve(0)
-      : input.watched({ port, signal: watching.signal });
+  const ended = new Set<Member>();
+  const watch = settledWatch(input, {
+    ...workspace,
+    ended,
+    signal: watching.signal,
+  }).catch((error: unknown) => {
+    if (watching.signal.aborted) return 0;
+    input.refuse(
+      `workspace-watch-failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  });
   const statuses = await Promise.all(
-    members.map((member) => memberStatus({ member, start: input, stopping })),
+    workspace.members.map((member) =>
+      memberStatus({ member, start: input, stopping }).finally(() => {
+        ended.add(member);
+      }),
+    ),
   );
   watching.abort();
-  await watch;
-  return statuses.every((status) => status === 0) ? 0 : 1;
+  const watchStatus = await watch;
+  return statuses.every((status) => status === 0) && watchStatus === 0 ? 0 : 1;
 }
 
-function recordRefusal(input: WorkspaceStart): string | undefined {
-  if (workspaceRecordPath(input.environment) === undefined)
-    return `${runtimeUnknown}\n`;
-  const running = liveWorkspace(input.environment);
-  return running === undefined
+async function claimRefusal(
+  input: WorkspaceStart,
+  members: readonly Member[],
+): Promise<string | undefined> {
+  const path = workspaceRecordPath(input.environment);
+  if (path === undefined) return `${runtimeUnknown}\n`;
+  const claim = await claimWorkspaceRecord(path, {
+    processId: input.processId,
+    members,
+  });
+  return claim.kind === "claimed"
     ? undefined
-    : `workspace-already-running: The workspace supervisor with process ID ${String(running.processId)} runs. Stop it first.\n`;
+    : `workspace-already-running: The workspace supervisor with process ID ${String(claim.processId)} runs. Stop it first.\n`;
 }
 
 export async function workspaceStart(input: WorkspaceStart): Promise<number> {
@@ -168,7 +266,7 @@ export async function workspaceStart(input: WorkspaceStart): Promise<number> {
     input.refuse(found.text);
     return 1;
   }
-  const refused = recordRefusal(input);
+  const refused = await claimRefusal(input, found.members);
   if (refused !== undefined) {
     input.refuse(refused);
     return 1;
@@ -183,12 +281,8 @@ export async function workspaceStart(input: WorkspaceStart): Promise<number> {
     ].join("\n"),
   );
   const path = String(workspaceRecordPath(input.environment));
-  await writeWorkspaceRecord(path, {
-    processId: input.processId,
-    members: found.members,
-  });
   try {
-    return await supervised(input, found.members);
+    return await supervised(input, { path, members: found.members });
   } finally {
     await removeWorkspaceRecord(path, input.processId);
   }

@@ -27,6 +27,7 @@ export interface SnapshotSettings {
 export interface WatchMember {
   readonly name: string;
   readonly runtimeDirectory: string;
+  readonly client: string;
   readonly pullRequests?: WatchPrSettings | undefined;
 }
 
@@ -219,7 +220,7 @@ async function memberRun(
 }
 
 export async function workspaceSnapshots(
-  settings: Omit<SnapshotSettings, "runtimeDirectory" | "pullRequests"> & {
+  settings: Pick<SnapshotSettings, "retentionDays"> & {
     readonly members: readonly WatchMember[];
   },
 ): Promise<WatchSnapshots> {
@@ -227,8 +228,9 @@ export async function workspaceSnapshots(
     settings.members.map(async (member) => ({
       name: member.name,
       own: await watchSnapshots({
-        ...settings,
+        retentionDays: settings.retentionDays,
         runtimeDirectory: member.runtimeDirectory,
+        client: member.client,
         pullRequests: member.pullRequests,
       }),
     })),

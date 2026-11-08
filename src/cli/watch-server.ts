@@ -54,13 +54,13 @@ interface ServedSettings {
   readonly replyMilliseconds?: number;
   readonly threadPool?: ThreadPoolSettings;
   readonly port: number;
-  readonly client: string;
   readonly announce: (text: string) => void;
   readonly complain: (text: string) => void;
   readonly stopped: Promise<void>;
 }
 
 export interface WatchSettings extends ServedSettings {
+  readonly client: string;
   readonly actions?: string;
   readonly pullRequests?: WatchPrSettings;
   readonly runtimeDirectory: string;

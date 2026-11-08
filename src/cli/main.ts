@@ -129,6 +129,7 @@ function serviceCommand(
       workspace: context.workspace,
       selected: invocation.repository,
       repository,
+      variables: process.env,
     }) ?? runtimeCommand(invocation, commandEnvironment)
   );
 }

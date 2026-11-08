@@ -3,7 +3,7 @@ import { pageTitle, type WatchModel } from "./watch-render.ts";
 export interface WatchLocation {
   readonly workflowId: string | null;
   readonly runId: string | null;
-  readonly repository?: string;
+  readonly repository?: string | undefined;
 }
 
 export function watchLocation(hash: string): WatchLocation {

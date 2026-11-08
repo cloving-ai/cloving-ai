@@ -2,6 +2,8 @@ import type { Fields, ServiceError } from "../protocol.ts";
 import { listRuns, send } from "./client.ts";
 import { failed } from "./command-output.ts";
 import type { CommandEnvironment } from "./commands.ts";
+import { settingsEnvironment } from "./project-settings.ts";
+import { clientCommand } from "./runtime-directory.ts";
 import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import type { WatchMember } from "./watch-snapshot.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
@@ -12,6 +14,7 @@ export interface WorkspaceEnvironment extends CommandEnvironment {
   readonly workspace: WorkspaceRecord | undefined;
   readonly selected: string | undefined;
   readonly repository: string | undefined;
+  readonly variables: Readonly<NodeJS.ProcessEnv>;
 }
 
 type Summary =
@@ -107,14 +110,25 @@ function summaryMembers(
   return outside ? undefined : workspace.members;
 }
 
-function watchMembers(
+export function watchMembers(
   workspace: WorkspaceRecord,
-  watchPr: WatchPrSettings | undefined,
+  settings: {
+    readonly watchPr?: WatchPrSettings | undefined;
+    readonly variables: Readonly<NodeJS.ProcessEnv>;
+  },
 ): WatchMember[] {
+  const { watchPr, variables } = settings;
   return workspace.members.map((member) => ({
     name: member.name,
     runtimeDirectory: member.runtime,
-    pullRequests: watchPr && { ...watchPr, repository: member.repository },
+    client: clientCommand(variables, member.repository),
+    pullRequests: watchPr && {
+      ...watchPr,
+      repository: member.repository,
+      githubCommand: settingsEnvironment(variables, member.repository)[
+        "CLOVING_GH_COMMAND"
+      ],
+    },
   }));
 }
 
@@ -133,11 +147,10 @@ function workspaceWatch(
       }),
     );
   return workspaceWatchServer({
-    repositories: watchMembers(environment.workspace, environment.watchPr),
+    repositories: watchMembers(environment.workspace, environment),
     themes: environment.watchThemes,
     retentionDays: environment.retentionDays,
     port: port ?? defaultWatchPort,
-    client: environment.client ?? "cloving",
     announce: environment.terminal.out,
     complain: environment.terminal.error,
     stopped: environment.interrupted(),
