@@ -37,7 +37,11 @@ async function liveTurn(harness: Harness) {
   const root = dirname(harness.runtimeDirectory);
   const service = await harness.start({
     ...scene.options,
-    turnTranscript: { read: transcriptFiles(root), privateTexts: [] },
+    turnTranscript: {
+      read: transcriptFiles(root),
+      privateTexts: [],
+      cache: new Map(),
+    },
   });
   const live = { ...scene, service };
   await requested(live, {

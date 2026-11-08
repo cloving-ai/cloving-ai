@@ -36,6 +36,7 @@ function shown(
         message: "",
         earlier: false,
         unseen: 0,
+        detached: false,
         ...view,
       };
     },
@@ -43,6 +44,7 @@ function shown(
     onScroll: () => undefined,
     onJump: () => undefined,
     onEarlier: () => undefined,
+    onRetry: () => undefined,
   };
   const html = rendered(
     component(Transcript, {
@@ -168,7 +170,7 @@ await test("CLV-329 a transcript that is not kept, a failed read, earlier entrie
   );
   assert.match(
     shown({ state: "failed", message: "The run has no agent turn." }).html,
-    /<p class="bad">The run has no agent turn\.<\/p>/,
+    /<p class="bad">The run has no agent turn\.<\/p><button type="button" class="transcript-retry">Retry<\/button>/,
   );
   assert.match(
     shown({ state: "loading" }).html,
@@ -188,6 +190,10 @@ await test("CLV-329 a transcript that is not kept, a failed read, earlier entrie
     /<button type="button" class="transcript-jump">Jump to the end · 3 new entries<\/button>/,
   );
   assert.match(shown({ unseen: 1 }).html, />Jump to the end · 1 new entry</);
+  assert.match(
+    shown({ detached: true }).html,
+    /<button type="button" class="transcript-jump">Jump to the end<\/button>/,
+  );
 });
 
 await test("CLV-329 the hash of a run detail can name a turn", () => {
@@ -228,11 +234,13 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
       message: "",
       earlier: true,
       unseen: 2,
+      detached: false,
     }),
     onToggle: (target) => calls.push(["toggle", target.operationId]),
     onScroll: (turn, box) => calls.push(["scroll", turn, box.scrollTop]),
     onJump: (target) => calls.push(["jump", target.operationId]),
     onEarlier: (target) => calls.push(["earlier", target.operationId]),
+    onRetry: (target) => calls.push(["retry", target.operationId]),
   };
   const tree = component(Transcript, {
     runId: "run-1",
@@ -264,4 +272,35 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
   });
   handler(found(plain, "button")[0], "onClick")({});
   assert.match(rendered(plain), /class="transcript-toggle">Show</);
+});
+
+await test("CLV-329 the Retry button of a failed transcript read calls its control", () => {
+  const calls: unknown[] = [];
+  const controls: TranscriptControls = {
+    view: () => ({
+      shown: true,
+      entries: [],
+      state: "failed",
+      message: "The watch tool does not answer.",
+      earlier: false,
+      unseen: 0,
+      detached: false,
+    }),
+    onToggle: () => undefined,
+    onScroll: () => undefined,
+    onJump: () => undefined,
+    onEarlier: () => undefined,
+    onRetry: (target) => calls.push(["retry", target.operationId]),
+  };
+  const failed = component(Transcript, {
+    runId: "run-1",
+    turn: turnOf("in work"),
+    turnId: null,
+    controls,
+  });
+  const retry = found(failed, "button").find(
+    (props) => props["class"] === "transcript-retry",
+  );
+  handler(retry, "onClick")({});
+  assert.deepEqual(calls, [["retry", operationId]]);
 });

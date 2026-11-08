@@ -1,5 +1,11 @@
+import { isFinal } from "../authority/operations.ts";
 import type { Fields, Reply } from "../protocol.ts";
-import { transcriptEntries, transcriptPage } from "../turn-transcript.ts";
+import {
+  emptyTranscript,
+  transcriptAppended,
+  transcriptPage,
+  type ParsedTranscript,
+} from "../turn-transcript.ts";
 import {
   failed,
   invalidRequest,
@@ -7,9 +13,10 @@ import {
   result,
   wholeNumber,
   type ServiceContext,
+  type TranscriptReads,
 } from "./replies.ts";
 
-const finished = ["completed", "failed", "stopped", "cancelled"];
+const cachedTurns = 8;
 
 interface TranscriptQuery {
   readonly runId: string;
@@ -25,6 +32,35 @@ function queryOf(parameters: Fields): TranscriptQuery | string {
     return "operationId must be the operation ID of an agent turn.";
   if (!wholeNumber(after, 0)) return "after must be a whole number.";
   return { runId, operationId, after };
+}
+
+export function remembered(
+  cache: Map<string, ParsedTranscript>,
+  turn: { readonly operationId: string; readonly parsed: ParsedTranscript },
+): void {
+  cache.delete(turn.operationId);
+  cache.set(turn.operationId, turn.parsed);
+  for (const key of cache.keys())
+    if (cache.size > cachedTurns) cache.delete(key);
+}
+
+async function parsedTurn(
+  reads: TranscriptReads,
+  turn: { readonly operationId: string; readonly open: boolean },
+): Promise<ParsedTranscript | undefined> {
+  const { operationId, open } = turn;
+  const known = reads.cache.get(operationId) ?? emptyTranscript;
+  const files = await reads.read(operationId, known.bytes);
+  reads.cache.delete(operationId);
+  if (files === undefined) return undefined;
+  if (files.size < known.bytes) return parsedTurn(reads, turn);
+  const parsed = transcriptAppended(known, {
+    ...files,
+    open,
+    privateTexts: reads.privateTexts,
+  });
+  remembered(reads.cache, { operationId, parsed });
+  return parsed;
 }
 
 export async function transcript(
@@ -48,22 +84,18 @@ export async function transcript(
       operationId,
       detail: "The run has no agent turn with this operation ID.",
     });
-  const open = !finished.includes(operation.status);
-  const files = await reads.read(operationId);
-  if (files === undefined && !open)
+  const open = !isFinal(operation);
+  const parsed = await parsedTurn(reads, { operationId, open });
+  if (parsed === undefined && !open)
     return failed("transcript-not-kept", {
       runId,
       operationId,
       detail: "The transcript of this turn is not kept.",
     });
-  const entries =
-    files === undefined
-      ? []
-      : transcriptEntries({ ...files, open, privateTexts: reads.privateTexts });
   return result("transcript", {
     runId,
     operationId,
-    ...transcriptPage(entries, { after }),
+    ...transcriptPage(parsed?.entries ?? [], { after }),
     open,
   });
 }

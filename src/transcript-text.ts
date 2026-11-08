@@ -5,6 +5,8 @@ export interface ShownText {
 
 export const transcriptTextBytes = 65_536;
 
+const summaryLimit = 200;
+
 const escapeCode = 27;
 const bellCode = 7;
 const tokenPattern = /(?:gh[pousr]_|github_pat_)\w*/gi;
@@ -113,4 +115,11 @@ export function shownText(
     maskedText(withoutControls(text), privateTexts),
     transcriptTextBytes,
   );
+}
+
+export function summaryLine(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > summaryLimit
+    ? `${line.slice(0, summaryLimit - 1)}…`
+    : line;
 }

@@ -10,6 +10,7 @@ export interface TranscriptView {
   readonly message: string;
   readonly earlier: boolean;
   readonly unseen: number;
+  readonly detached: boolean;
 }
 
 export interface TranscriptTarget {
@@ -30,6 +31,7 @@ export interface TranscriptControls {
   readonly onScroll: (operationId: string, box: TranscriptBox) => void;
   readonly onJump: (target: TranscriptTarget) => void;
   readonly onEarlier: (target: TranscriptTarget) => void;
+  readonly onRetry: (target: TranscriptTarget) => void;
 }
 
 export function CutNote(props: { readonly entry: TranscriptEntry }): Shown {
@@ -93,10 +95,28 @@ export function TranscriptLine(props: {
   });
 }
 
-function waitingText(state: TranscriptView["state"]): string {
+export function waitingText(state: TranscriptView["state"]): string {
   return state === "loading"
     ? "The transcript loads."
     : "The transcript has no entries.";
+}
+
+export function TranscriptButton(props: {
+  readonly name: string;
+  readonly label: string;
+  readonly onClick: () => void;
+}): Shown {
+  return element("button", {
+    type: "button",
+    class: props.name,
+    onClick: props.onClick,
+    children: props.label,
+  });
+}
+
+export function jumpLabel(unseen: number): string {
+  if (unseen === 0) return "Jump to the end";
+  return `Jump to the end · ${String(unseen)} new ${unseen === 1 ? "entry" : "entries"}`;
 }
 
 export function TranscriptBody(props: {
@@ -111,18 +131,16 @@ export function TranscriptBody(props: {
       children: "The transcript of this turn is not kept.",
     });
   if (view.state === "failed")
-    return element("p", { class: "bad", children: view.message });
-  const button = (shown: {
-    readonly name: string;
-    readonly label: string;
-    readonly onClick: () => void;
-  }): Shown =>
-    element("button", {
-      type: "button",
-      class: shown.name,
-      onClick: shown.onClick,
-      children: shown.label,
-    });
+    return [
+      element("p", { class: "bad", children: view.message }),
+      component(TranscriptButton, {
+        name: "transcript-retry",
+        label: "Retry",
+        onClick: () => {
+          controls.onRetry(target);
+        },
+      }),
+    ];
   const lines = element("div", {
     class: "transcript-lines",
     "data-transcript": target.operationId,
@@ -138,7 +156,7 @@ export function TranscriptBody(props: {
   });
   return [
     view.earlier
-      ? button({
+      ? component(TranscriptButton, {
           name: "transcript-earlier",
           label: "Load earlier entries",
           onClick: () => {
@@ -147,11 +165,11 @@ export function TranscriptBody(props: {
         })
       : null,
     lines,
-    view.unseen === 0
+    view.unseen === 0 && !view.detached
       ? null
-      : button({
+      : component(TranscriptButton, {
           name: "transcript-jump",
-          label: `Jump to the end · ${String(view.unseen)} new ${view.unseen === 1 ? "entry" : "entries"}`,
+          label: jumpLabel(view.unseen),
           onClick: () => {
             controls.onJump(target);
           },

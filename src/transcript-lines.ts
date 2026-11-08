@@ -13,7 +13,6 @@ type Fields = Readonly<Record<string, unknown>>;
 type Drafts = readonly TranscriptDraft[];
 type Mapping = (line: Fields) => Drafts | undefined;
 
-const summaryLimit = 200;
 const summaryFields = [
   "command",
   "file_path",
@@ -69,27 +68,20 @@ function said(kind: TranscriptKind, value: unknown): Drafts {
   return words.trim() === "" ? [] : [{ kind, text: words }];
 }
 
-function oneLine(value: string): string {
-  const line = value.replace(/\s+/g, " ").trim();
-  return line.length > summaryLimit
-    ? `${line.slice(0, summaryLimit - 1)}…`
-    : line;
-}
-
 function inputSummary(input: unknown): string {
-  if (typeof input === "string") return oneLine(input);
+  if (typeof input === "string") return input;
   const fields = record(input);
   const named = summaryFields
     .map((name) => text(fields[name]))
     .find((value) => value !== "");
-  return oneLine(named ?? JSON.stringify(input ?? {}));
+  return named ?? JSON.stringify(input ?? {});
 }
 
 function toolCall(tool: string, input: unknown): TranscriptDraft {
   return {
     kind: "tool-call",
     tool,
-    summary: `${tool}: ${inputSummary(input)}`,
+    summary: inputSummary(input),
     text:
       typeof input === "string" ? input : JSON.stringify(input ?? {}, null, 2),
   };
@@ -154,6 +146,11 @@ function retried(line: Fields): Drafts {
   );
 }
 
+function sessionStarted(line: Fields): Drafts {
+  const model = text(line["model"]);
+  return notice(joined(["Session started", model && `model ${model}`], " · "));
+}
+
 const quietEvents = [
   "thinking_tokens",
   "task_progress",
@@ -164,7 +161,7 @@ const quietEvents = [
 ];
 
 const systemEvents = new Map<string, Mapping>([
-  ["init", (line) => notice(`Session started · model ${text(line["model"])}`)],
+  ["init", sessionStarted],
   ["task_started", taskStarted],
   [
     "task_notification",
@@ -225,61 +222,6 @@ function claudeResult(line: Fields): Drafts {
   });
 }
 
-const codexStarts = new Map<string, (item: Fields) => Drafts>([
-  ["command_execution", (item) => [toolCall("shell", text(item["command"]))]],
-  [
-    "mcp_tool_call",
-    (item) => [
-      toolCall(
-        joined([item["server"], item["tool"]], "."),
-        item["arguments"] ?? {},
-      ),
-    ],
-  ],
-]);
-
-function commandFailed(item: Fields): boolean {
-  const code = item["exit_code"];
-  return (
-    item["status"] === "failed" || (typeof code === "number" && code !== 0)
-  );
-}
-
-function changedFiles(item: Fields): Drafts {
-  const paths = list(item["changes"]).map((change) =>
-    text(record(change)["path"]),
-  );
-  return [toolCall("apply_patch", { file_path: paths.join(" ") })];
-}
-
-function toolOutput(item: Fields): Drafts {
-  const failure = item["error"];
-  return [
-    {
-      kind: "tool-result",
-      text: JSON.stringify(failure ?? item["result"] ?? null, null, 2),
-      error: failure !== undefined && failure !== null,
-    },
-  ];
-}
-
-const codexEnds = new Map<string, (item: Fields) => Drafts>([
-  ["agent_message", (item) => said("assistant", item["text"])],
-  ["reasoning", (item) => said("thinking", item["text"])],
-  [
-    "command_execution",
-    (item) => [
-      {
-        kind: "tool-result",
-        text: text(item["aggregated_output"]),
-        error: commandFailed(item),
-      },
-    ],
-  ],
-  ["file_change", changedFiles],
-  ["mcp_tool_call", toolOutput],
-]);
-
 const lineTypes = new Map<string, Mapping>([
   ["assistant", (line) => messageParts(line, assistantParts)],
   ["user", (line) => messageParts(line, userParts)],
@@ -289,36 +231,6 @@ const lineTypes = new Map<string, Mapping>([
   ["tool_progress", none],
   ["command_lifecycle", none],
   ["stream_event", none],
-  ["thread.started", () => notice("Session started")],
-  ["turn.started", none],
-  [
-    "turn.completed",
-    () => turnEnd("completed", { facts: [costText(null)], error: "" }),
-  ],
-  [
-    "turn.failed",
-    (line) =>
-      turnEnd("failed", {
-        facts: [costText(null)],
-        error: text(record(line["error"])["message"]) || "error",
-      }),
-  ],
-  ["error", (line) => notice(`Error: ${text(line["message"])}`)],
-  [
-    "item.started",
-    (line) => {
-      const item = record(line["item"]);
-      return codexStarts.get(text(item["type"]))?.(item) ?? [];
-    },
-  ],
-  ["item.updated", none],
-  [
-    "item.completed",
-    (line) => {
-      const item = record(line["item"]);
-      return codexEnds.get(text(item["type"]))?.(item);
-    },
-  ],
 ]);
 
 export function lineDrafts(line: string): Drafts {

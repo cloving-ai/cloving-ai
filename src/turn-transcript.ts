@@ -3,7 +3,12 @@ import {
   type TranscriptDraft,
   type TranscriptKind,
 } from "./transcript-lines.ts";
-import { maskedText, shownText, withoutControls } from "./transcript-text.ts";
+import {
+  maskedText,
+  shownText,
+  summaryLine,
+  withoutControls,
+} from "./transcript-text.ts";
 
 export type { TranscriptKind } from "./transcript-lines.ts";
 
@@ -25,10 +30,20 @@ export interface TranscriptAttempt {
 
 export interface TranscriptFiles {
   readonly text: string;
+  readonly size: number;
   readonly attempts: readonly TranscriptAttempt[];
 }
 
-export interface TranscriptSource extends TranscriptFiles {
+export interface ParsedTranscript {
+  readonly bytes: number;
+  readonly attempt: number;
+  readonly entries: readonly TranscriptEntry[];
+}
+
+export interface TranscriptSource extends Pick<
+  TranscriptFiles,
+  "text" | "attempts"
+> {
   readonly open: boolean;
   readonly privateTexts: readonly string[];
 }
@@ -40,6 +55,12 @@ export interface TranscriptPage {
 
 export const transcriptLimits = { entries: 200, bytes: 262_144 } as const;
 
+export const emptyTranscript: ParsedTranscript = {
+  bytes: 0,
+  attempt: 1,
+  entries: [],
+};
+
 const encoder = new TextEncoder();
 
 function completeLines(
@@ -48,6 +69,12 @@ function completeLines(
   const lines = source.text.split("\n");
   const last = lines.pop() ?? "";
   return source.open || last === "" ? lines : [...lines, last];
+}
+
+function consumedText(source: Pick<TranscriptSource, "text" | "open">): string {
+  return source.open
+    ? source.text.slice(0, source.text.lastIndexOf("\n") + 1)
+    : source.text;
 }
 
 function attemptDraft(
@@ -62,6 +89,18 @@ function attemptDraft(
     kind: "notice",
     text: resumed ? `${line} (resumed after a restart)` : line,
   };
+}
+
+function summaryOf(
+  draft: TranscriptDraft,
+  privateTexts: readonly string[],
+): string {
+  if (draft.tool === undefined) return "";
+  const input = maskedText(withoutControls(draft.summary ?? ""), privateTexts);
+  return maskedText(
+    `${withoutControls(draft.tool)}: ${summaryLine(input)}`,
+    privateTexts,
+  );
 }
 
 function entryOf(
@@ -79,18 +118,18 @@ function entryOf(
     kind: draft.kind,
     text,
     tool: draft.tool ?? null,
-    summary: maskedText(
-      withoutControls(draft.summary ?? ""),
-      place.privateTexts,
-    ),
+    summary: summaryOf(draft, place.privateTexts),
     error: draft.error ?? false,
     omittedBytes,
   };
 }
 
-export function transcriptEntries(source: TranscriptSource): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  let attempt = 1;
+export function transcriptAppended(
+  parsed: ParsedTranscript,
+  source: TranscriptSource,
+): ParsedTranscript {
+  const entries = [...parsed.entries];
+  let { attempt } = parsed;
   for (const line of completeLines(source)) {
     const boundary = line.trim() === "";
     if (boundary) attempt += 1;
@@ -106,7 +145,12 @@ export function transcriptEntries(source: TranscriptSource): TranscriptEntry[] {
         }),
       );
   }
-  return entries;
+  const bytes = parsed.bytes + encoder.encode(consumedText(source)).length;
+  return { bytes, attempt, entries };
+}
+
+export function transcriptEntries(source: TranscriptSource): TranscriptEntry[] {
+  return [...transcriptAppended(emptyTranscript, source).entries];
 }
 
 export function transcriptPage(

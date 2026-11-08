@@ -15,15 +15,19 @@ import type { RunTurns, TurnDetails } from "../record-retention.ts";
 import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
 import type { EffectLeaseSource } from "../queue-room.ts";
-import type { TranscriptFiles } from "../turn-transcript.ts";
+import type { ParsedTranscript, TranscriptFiles } from "../turn-transcript.ts";
 
 export interface GithubReader {
   readonly read: (path: string) => Promise<unknown>;
 }
 
 export interface TranscriptReads {
-  readonly read: (operationId: string) => Promise<TranscriptFiles | undefined>;
+  readonly read: (
+    operationId: string,
+    from: number,
+  ) => Promise<TranscriptFiles | undefined>;
   readonly privateTexts: readonly string[];
+  readonly cache: Map<string, ParsedTranscript>;
 }
 
 export interface NoteReceipts {

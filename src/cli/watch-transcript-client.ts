@@ -21,33 +21,38 @@ function transcriptReceived(item, entry) {
   item.latest = entry.position;
   if (item.state === "loading") item.state = "open";
   if (item.detached || !item.following) item.unseen += 1;
-  if (!item.detached) {
-    item.entries.push(entry);
-    if (item.entries.length > transcriptWindow) {
-      item.entries.splice(0, item.entries.length - transcriptWindow);
-      item.earlier = true;
-    }
-  }
   transcriptRedraw();
+  if (item.detached) return;
+  item.entries.push(entry);
+  if (item.entries.length <= transcriptWindow) return;
+  item.entries.splice(0, item.entries.length - transcriptWindow);
+  item.earlier = true;
+}
+function transcriptStopped(item, problem) {
+  item.source?.close();
+  item.source = null;
+  item.state = problem.code === "transcript-not-kept" ? "not-kept" : "failed";
+  item.message = problem.detail;
 }
 async function transcriptRefused(item, operationId) {
   try {
     const reply = await fetch(transcriptPath(item, operationId, "transcript") + "?after=" + item.latest, { cache: "no-store" });
     if (reply.ok) { item.source = null; transcriptOpened(item, operationId); return; }
-    const problem = await reply.json();
-    item.state = problem.code === "transcript-not-kept" ? "not-kept" : "failed";
-    item.message = problem.detail;
+    transcriptStopped(item, await reply.json());
   } catch {
-    item.state = "failed";
-    item.message = "The watch tool does not answer.";
+    transcriptStopped(item, { code: "failed", detail: "The watch tool does not answer." });
   }
   draw();
 }
 function transcriptOpened(item, operationId) {
-  if (item.source !== null || item.state === "ended") return;
+  if (item.source !== null || (item.state !== "loading" && item.state !== "open")) return;
   const source = new EventSource(transcriptPath(item, operationId, "transcript-stream") + "?after=" + item.latest);
   item.source = source;
   source.addEventListener("entry", (event) => { transcriptReceived(item, JSON.parse(event.data)); });
+  source.addEventListener("refused", (event) => {
+    transcriptStopped(item, JSON.parse(event.data));
+    transcriptRedraw();
+  });
   source.addEventListener("end", () => {
     source.close();
     item.source = null;
@@ -91,15 +96,21 @@ function transcriptJumped(target) {
   const item = transcriptItem(target);
   item.unseen = 0;
   item.following = true;
-  if (item.detached) {
-    transcriptClosed(item);
-    item.detached = false;
-    item.entries = [];
-    item.latest = Math.max(0, item.latest - transcriptWindow);
-    item.earlier = item.latest > 0;
-    if (item.state === "ended") item.state = "open";
-    transcriptOpened(item, target.operationId);
-  }
+  if (!item.detached) { draw(); return; }
+  transcriptClosed(item);
+  item.detached = false;
+  item.entries = [];
+  item.latest = Math.max(0, item.latest - transcriptWindow);
+  item.earlier = item.latest > 0;
+  item.state = "loading";
+  transcriptOpened(item, target.operationId);
+  draw();
+}
+function transcriptRetried(target) {
+  const item = transcriptItem(target);
+  item.state = "loading";
+  item.message = "";
+  transcriptOpened(item, target.operationId);
   draw();
 }
 function transcriptControls() {
@@ -110,7 +121,7 @@ function transcriptControls() {
       item.round = transcriptRound;
       const shown = item.shown ?? target.wanted;
       if (shown) transcriptOpened(item, target.operationId);
-      return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen };
+      return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen, detached: item.detached };
     },
     onToggle(target) {
       const item = transcriptItem(target);
@@ -126,11 +137,15 @@ function transcriptControls() {
     },
     onJump: transcriptJumped,
     onEarlier: transcriptEarlier,
+    onRetry: transcriptRetried,
   };
 }
 function transcriptsFollowed(selected) {
-  for (const item of Object.values(transcripts))
-    if (item.round !== transcriptRound) transcriptClosed(item);
+  for (const [operationId, item] of Object.entries(transcripts)) {
+    if (item.round === transcriptRound) continue;
+    transcriptClosed(item);
+    delete transcripts[operationId];
+  }
   const boxes = document.querySelectorAll?.("[data-transcript]") ?? [];
   for (const box of boxes) {
     const item = transcripts[box.getAttribute("data-transcript")];
@@ -141,6 +156,7 @@ function transcriptsFollowed(selected) {
   const section = [...(document.querySelectorAll?.("[data-turn]") ?? [])].find((node) => node.getAttribute("data-turn") === turnId);
   if (section === undefined) return;
   state.turnShown = selected;
+  if (transcripts[turnId]?.shown === false) { transcripts[turnId].shown = true; transcriptRedraw(); }
   section.scrollIntoView({ block: "start" });
 }
 `;

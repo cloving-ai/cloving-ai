@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { located } from "./operation-journal.ts";
 import type { TranscriptAttempt, TranscriptFiles } from "../turn-transcript.ts";
@@ -38,10 +38,25 @@ function merged(found: readonly TranscriptAttempt[]): TranscriptAttempt[] {
     }));
 }
 
+async function streamFrom(
+  file: string,
+  from: number,
+): Promise<Pick<TranscriptFiles, "text" | "size">> {
+  const handle = await open(file, "r");
+  try {
+    const { size } = await handle.stat();
+    const buffer = Buffer.alloc(Math.max(0, size - from));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
+    return { text: buffer.subarray(0, bytesRead).toString("utf8"), size };
+  } finally {
+    await handle.close();
+  }
+}
+
 export function transcriptFiles(
   directory: string,
-): (operationId: string) => Promise<TranscriptFiles | undefined> {
-  return async (operationId) => {
+): (operationId: string, from: number) => Promise<TranscriptFiles | undefined> {
+  return async (operationId, from) => {
     const { folder } = located(join(directory, "journal"), operationId);
     const names = await readdir(folder).catch((error: unknown) => {
       if (absent(error)) return undefined;
@@ -53,9 +68,9 @@ export function transcriptFiles(
         (name) => stored(folder, name),
       ),
     );
-    const text = names.includes("turn.jsonl")
-      ? await readFile(join(folder, "turn.jsonl"), "utf8")
-      : "";
-    return { text, attempts: merged(records.flatMap(attemptOf)) };
+    const stream = names.includes("turn.jsonl")
+      ? await streamFrom(join(folder, "turn.jsonl"), from)
+      : { text: "", size: 0 };
+    return { ...stream, attempts: merged(records.flatMap(attemptOf)) };
   };
 }

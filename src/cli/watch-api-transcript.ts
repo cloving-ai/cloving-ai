@@ -28,7 +28,9 @@ export interface ApiTranscriptPage {
 export interface TranscriptFeed {
   readonly kind: "transcript-stream";
   readonly first: ApiTranscriptPage;
-  readonly read: (after: number) => Promise<ApiTranscriptPage | null>;
+  readonly read: (
+    after: number,
+  ) => Promise<ApiTranscriptPage | ApiReply | null>;
 }
 
 type PathValues = ReadonlyMap<string, string>;
@@ -143,7 +145,8 @@ export async function transcriptStreamReply(
     first,
     read: async (next) => {
       const page = await pageRead(request, queryOf(path, next));
-      return isPage(page) ? page : null;
+      if (isPage(page) || page.status < 500) return page;
+      return null;
     },
   };
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { codexStream } from "../src/daemon/codex-stream.ts";
 import {
   assistant,
   entry,
@@ -7,6 +8,9 @@ import {
   read,
   toolResult,
 } from "./turn-transcript-fixture.ts";
+
+const shape = (found: ReturnType<typeof read>) =>
+  found.map((item) => [item.kind, item.summary, item.text, item.error]);
 
 await test("CLV-329 system events of a Claude stream give notices with a short text", () => {
   const notices = read(
@@ -61,49 +65,48 @@ await test("CLV-329 a line of another harness and a line that is not JSON become
   ]);
 });
 
-await test("CLV-329 a Codex JSON stream gives assistant text, thinking, a command call, its result and the end of the turn", () => {
-  const found = read(
-    lines(
-      { type: "thread.started", thread_id: "thread-1" },
-      { type: "turn.started" },
-      {
-        type: "item.completed",
-        item: { id: "i1", type: "reasoning", text: "Look at the tests." },
+await test("CLV-329 a Codex turn gives the messages, commands, file changes and failed output that the worker keeps in its journal", () => {
+  const stream = codexStream();
+  const events = [
+    { type: "thread.started", thread_id: "thread-1" },
+    {
+      type: "item.completed",
+      item: { type: "reasoning", text: "Look at the tests." },
+    },
+    {
+      type: "item.started",
+      item: { type: "command_execution", command: "npm test" },
+    },
+    {
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        aggregated_output: "1 failed",
+        exit_code: 1,
+        status: "failed",
       },
-      {
-        type: "item.started",
-        item: { id: "i2", type: "command_execution", command: "npm test" },
-      },
-      {
-        type: "item.completed",
-        item: {
-          id: "i2",
-          type: "command_execution",
-          command: "npm test",
-          aggregated_output: "1 failed",
-          exit_code: 1,
-          status: "failed",
-        },
-      },
-      {
-        type: "item.completed",
-        item: { id: "i3", type: "agent_message", text: "One test fails." },
-      },
-      { type: "turn.completed", usage: { input_tokens: 10 } },
-    ),
-  );
-  assert.deepEqual(found, [
-    entry(1, { kind: "notice", text: "Session started" }),
-    entry(2, { kind: "thinking", text: "Look at the tests." }),
-    entry(3, {
-      kind: "tool-call",
-      tool: "shell",
-      summary: "shell: npm test",
-      text: "npm test",
-    }),
-    entry(4, { kind: "tool-result", text: "1 failed", error: true }),
-    entry(5, { kind: "assistant", text: "One test fails." }),
-    entry(6, { kind: "result", text: "Turn end: completed · cost unknown" }),
+    },
+    {
+      type: "item.completed",
+      item: { type: "file_change", changes: [{ path: "src/a.ts" }] },
+    },
+    {
+      type: "item.completed",
+      item: { type: "agent_message", text: "One test fails." },
+    },
+    { type: "turn.completed", usage: { input_tokens: 10 } },
+  ];
+  const journal = [
+    ...events.flatMap((event) => stream.line(JSON.stringify(event))),
+    stream.result(0),
+  ];
+  assert.deepEqual(shape(read(lines(...journal))), [
+    ["notice", "", "Session started", false],
+    ["tool-call", "Bash: npm test", '{\n  "command": "npm test"\n}', false],
+    ["tool-result", "", "1 failed", true],
+    ["tool-call", "Edit: src/a.ts", '{\n  "file_path": "src/a.ts"\n}', false],
+    ["assistant", "", "One test fails.", false],
+    ["result", "", "Turn end: success · cost unknown · 1 turn", false],
   ]);
 });
 
@@ -175,91 +178,6 @@ await test("CLV-329 a failed Claude result gives an error mark and its text, and
   );
 });
 
-const shape = (found: ReturnType<typeof read>) =>
-  found.map((item) => [item.kind, item.summary, item.text, item.error]);
-
-await test("CLV-329 Codex MCP tool calls give a call and a result with an error mark", () => {
-  const found = read(
-    lines(
-      { type: "item.started", item: { type: "web_search", query: "x" } },
-      {
-        type: "item.started",
-        item: {
-          type: "mcp_tool_call",
-          server: "docs",
-          tool: "search",
-          arguments: { query: "retention" },
-        },
-      },
-      { type: "item.updated", item: { type: "mcp_tool_call" } },
-      {
-        type: "item.completed",
-        item: { type: "mcp_tool_call", result: { content: "found" } },
-      },
-      {
-        type: "item.completed",
-        item: { type: "mcp_tool_call", error: { message: "refused" } },
-      },
-      { type: "item.completed", item: { type: "mcp_tool_call" } },
-    ),
-  );
-  const json = (value: unknown) => JSON.stringify(value, null, 2);
-  assert.deepEqual(shape(found), [
-    [
-      "tool-call",
-      "docs.search: retention",
-      json({ query: "retention" }),
-      false,
-    ],
-    ["tool-result", "", json({ content: "found" }), false],
-    ["tool-result", "", json({ message: "refused" }), true],
-    ["tool-result", "", "null", false],
-  ]);
-});
-
-await test("CLV-329 Codex file changes, failures and unknown items give entries", () => {
-  const unknownItem = {
-    type: "item.completed",
-    item: { type: "todo_list", items: [] },
-  };
-  const found = read(
-    lines(
-      {
-        type: "item.completed",
-        item: {
-          type: "file_change",
-          changes: [{ path: "src/a.ts" }, { path: "src/b.ts" }],
-        },
-      },
-      {
-        type: "item.completed",
-        item: {
-          type: "command_execution",
-          aggregated_output: "ok",
-          exit_code: 0,
-        },
-      },
-      unknownItem,
-      { type: "error", message: "stream lost" },
-      { type: "turn.failed", error: { message: "quota" } },
-      { type: "turn.failed" },
-    ),
-  );
-  assert.deepEqual(shape(found), [
-    [
-      "tool-call",
-      "apply_patch: src/a.ts src/b.ts",
-      JSON.stringify({ file_path: "src/a.ts src/b.ts" }, null, 2),
-      false,
-    ],
-    ["tool-result", "", "ok", false],
-    ["notice", "", JSON.stringify(unknownItem), false],
-    ["notice", "", "Error: stream lost", false],
-    ["result", "", "Turn end: failed · cost unknown\nquota", true],
-    ["result", "", "Turn end: failed · cost unknown\nerror", true],
-  ]);
-});
-
 await test("CLV-329 a long tool input gives a summary of one line with at most 200 characters, and a call without input shows an empty object", () => {
   const found = read(
     lines(
@@ -305,18 +223,8 @@ await test("CLV-329 an escape sequence at the end of a text and an escape with o
   assert.equal(terminated?.text, "efg");
 });
 
-await test("CLV-329 a JSON line that is not an object becomes a raw notice, and an MCP call without arguments shows an empty input", () => {
-  const found = read(
-    lines("[1,2]", {
-      type: "item.started",
-      item: { type: "mcp_tool_call", server: "docs", tool: "list" },
-    }),
-  );
-  assert.deepEqual(
-    found.map((item) => [item.kind, item.summary || item.text]),
-    [
-      ["notice", "[1,2]"],
-      ["tool-call", "docs.list: {}"],
-    ],
-  );
+await test("CLV-329 a JSON line that is not an object becomes a raw notice", () => {
+  assert.deepEqual(read(lines("[1,2]")), [
+    entry(1, { kind: "notice", text: "[1,2]" }),
+  ]);
 });

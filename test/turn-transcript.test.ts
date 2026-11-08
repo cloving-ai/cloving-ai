@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  emptyTranscript,
+  transcriptAppended,
   transcriptEntries,
   transcriptPage,
   type TranscriptEntry,
@@ -182,4 +184,48 @@ await test("CLV-329 a page has at most 256 KiB of entries", () => {
     0,
   );
   assert.ok(bytes <= 262_144, String(bytes));
+});
+
+await test("CLV-329 an append read parses only the text after its byte offset and gives the same entries as a full read", () => {
+  const first = lines(assistant({ type: "text", text: "Første linje." }));
+  const second = `\n${lines(assistant({ type: "text", text: "Again." }))}`;
+  const source = {
+    attempts: [{ attempt: 2, resumed: true }],
+    privateTexts: [],
+  };
+  const opened = transcriptAppended(emptyTranscript, {
+    ...source,
+    text: `${first}{"type":"assistant","mess`,
+    open: true,
+  });
+  assert.equal(opened.bytes, Buffer.byteLength(first));
+  const ended = transcriptAppended(opened, {
+    ...source,
+    text: `${second}not json`,
+    open: false,
+  });
+  const full = `${first}${second}not json`;
+  assert.equal(ended.bytes, Buffer.byteLength(full));
+  assert.equal(ended.attempt, 2);
+  assert.deepEqual(
+    ended.entries,
+    transcriptEntries({ ...source, text: full, open: false }),
+  );
+});
+
+await test("CLV-329 a summary masks a private text before the cut to 200 characters", () => {
+  const secret = "Acme-private-0123456789-0123456789-abcde";
+  const [found] = transcriptEntries({
+    text: lines(
+      assistant({
+        type: "tool_use",
+        name: "Bash",
+        input: { command: `${"a".repeat(180)}\n${secret} done` },
+      }),
+    ),
+    open: false,
+    attempts: [],
+    privateTexts: [secret],
+  });
+  assert.equal(found?.summary, `Bash: ${"a".repeat(180)} [hidden] done`);
 });

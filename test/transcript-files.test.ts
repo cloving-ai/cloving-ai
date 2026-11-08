@@ -50,8 +50,9 @@ await test("CLV-329 the transcript read gives the stream of the turn and the att
       JSON.stringify({ attempt: 3, resumedAfter: "daemon-restart" }),
     );
     await writeFile(join(folder, "attempt-4.json"), "{");
-    assert.deepEqual(await transcriptFiles(directory)(operationId), {
+    assert.deepEqual(await transcriptFiles(directory)(operationId, 0), {
       text: '{"type":"x"}\n\n{"type":"y"}\n',
+      size: 27,
       attempts: [
         { attempt: 1, resumed: false },
         { attempt: 2, resumed: true },
@@ -63,15 +64,16 @@ await test("CLV-329 the transcript read gives the stream of the turn and the att
 await test("CLV-329 the transcript read gives an empty stream before the turn writes its first line", () =>
   withJournal(async (directory, folder) => {
     await mkdir(folder, { recursive: true });
-    assert.deepEqual(await transcriptFiles(directory)(operationId), {
+    assert.deepEqual(await transcriptFiles(directory)(operationId, 0), {
       text: "",
+      size: 0,
       attempts: [],
     });
   }));
 
 await test("CLV-329 the transcript read gives nothing when the journal folder of the turn is not kept", () =>
   withJournal(async (directory) => {
-    assert.equal(await transcriptFiles(directory)(operationId), undefined);
+    assert.equal(await transcriptFiles(directory)(operationId, 0), undefined);
   }));
 
 await test("CLV-329 the transcript read ignores an attempt record without an attempt number and fails when the journal folder is a file", () =>
@@ -82,12 +84,29 @@ await test("CLV-329 the transcript read ignores an attempt record without an att
       JSON.stringify({ phase: "running" }),
     );
     assert.deepEqual(
-      (await transcriptFiles(directory)(operationId))?.attempts,
+      (await transcriptFiles(directory)(operationId, 0))?.attempts,
       [],
     );
     await rm(folder, { recursive: true });
     await writeFile(folder, "not a folder");
-    await assert.rejects(transcriptFiles(directory)(operationId), {
+    await assert.rejects(transcriptFiles(directory)(operationId, 0), {
       code: "ENOTDIR",
+    });
+  }));
+
+await test("CLV-329 the transcript read gives the stream after a byte offset and the size of the whole stream", () =>
+  withJournal(async (directory, folder) => {
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "turn.jsonl"), "één\ntwee\n");
+    const read = transcriptFiles(directory);
+    assert.deepEqual(await read(operationId, 6), {
+      text: "twee\n",
+      size: 11,
+      attempts: [],
+    });
+    assert.deepEqual(await read(operationId, 11), {
+      text: "",
+      size: 11,
+      attempts: [],
     });
   }));

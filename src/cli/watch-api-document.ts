@@ -273,7 +273,7 @@ export const watchApiDocument = {
         operationId: "streamTurnTranscript",
         tags: ["stream"],
         summary:
-          'Send the event entry with one TranscriptEntry for each entry after a position, with the position as the event ID, and the event end with the data {"nextAfter":<position>} when the turn ends. The header Last-Event-ID resumes after its position.',
+          'Send the event entry with one TranscriptEntry for each entry after a position, with the position as the event ID, and the event end with the data {"nextAfter":<position>} when the turn ends. The header Last-Event-ID resumes after its position. When the service refuses the turn after the stream opens, send the event refused with the problem as its data and close.',
         parameters: [runId, operationId, transcriptAfter],
         responses: {
           "200": {

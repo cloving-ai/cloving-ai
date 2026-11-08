@@ -209,6 +209,7 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
     turnTranscript: {
       read: transcriptFiles(settings.directory),
       privateTexts: settings.privateTexts ?? [],
+      cache: new Map(),
     },
     retentionExpired: retentionExpiry(place),
     noteReceipts: noteReceiptsPlace(place),

@@ -23,7 +23,10 @@ import {
   ToolOutput,
   Transcript,
   TranscriptBody,
+  TranscriptButton,
   TranscriptLine,
+  jumpLabel,
+  waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
@@ -300,6 +303,9 @@ const functions = [
   CutNote,
   ToolOutput,
   TranscriptLine,
+  waitingText,
+  TranscriptButton,
+  jumpLabel,
   TranscriptBody,
   Transcript,
   BannerDetail,

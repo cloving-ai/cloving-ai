@@ -3,9 +3,14 @@ import { test } from "node:test";
 import { watchApiDocument } from "../src/cli/watch-api-document.ts";
 import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
 import { contractBody } from "./watch-api-contract.ts";
-import { fields } from "./service-fixture.ts";
+import { workspaceWatchServer } from "../src/cli/watch-server.ts";
+import { fields, withHarness } from "./service-fixture.ts";
 import { streamReader } from "./watch-api-fixture.ts";
-import { watchReplies, withWatchService } from "./watch-service-fixture.ts";
+import {
+  fakeService,
+  watchReplies,
+  withWatchService,
+} from "./watch-service-fixture.ts";
 
 const operationId = JSON.stringify([
   "cloving-operation",
@@ -66,7 +71,7 @@ function transcriptService(turn: Turn) {
       },
     };
   };
-  return { asked, answer };
+  return { asked, answer, turn };
 }
 
 function positions(messages: readonly string[]): string[] {
@@ -258,3 +263,84 @@ await test("CLV-329 the stream route waits while the service read fails and goes
     );
   });
 });
+
+await test("CLV-329 the stream route sends refused with the problem and closes when the service refuses the turn after the stream opens", async () => {
+  const turn: Turn = { entries: [entryAt(1)], open: true };
+  const service = transcriptService(turn);
+  await withWatchService(service.answer, async (watch) => {
+    const stream = streamReader(watchApiDocument, {
+      response: await fetch(`${watch.address}${turnPath}/transcript-stream`),
+      path: streamPath,
+    });
+    assert.deepEqual(positions([await stream.next()]), ["id: 1"]);
+    turn.refusal = { code: "transcript-not-kept", detail: "gone" };
+    const refused = await stream.next();
+    assert.match(refused, /^event: refused\ndata: /);
+    assert.deepEqual(fields(JSON.parse(refused.split("data: ")[1] ?? "")), {
+      type: "about:blank",
+      title: "Gone",
+      status: 410,
+      detail: "The transcript of this turn is not kept.",
+      code: "transcript-not-kept",
+    });
+    assert.equal(await stream.next(), "");
+  });
+});
+
+async function workspaceServed(
+  members: readonly {
+    readonly name: string;
+    readonly runtimeDirectory: string;
+  }[],
+) {
+  const ready = Promise.withResolvers<string>();
+  const stopped = Promise.withResolvers<undefined>();
+  const finished = workspaceWatchServer({
+    repositories: members.map((member) => ({ ...member, client: "cloving" })),
+    port: 0,
+    announce: (text) => {
+      ready.resolve(/(http:\/\/127\.0\.0\.1:\d+\/)/.exec(text)?.[1] ?? "");
+    },
+    complain: () => undefined,
+    stopped: stopped.promise,
+  });
+  return {
+    address: await ready.promise,
+    stop: () => {
+      stopped.resolve(undefined);
+      return finished;
+    },
+  };
+}
+
+await test("CLV-329 a workspace watch page reads the transcript from the repository whose service knows the turn", () =>
+  withHarness(async (alpha) =>
+    withHarness(async (beta) => {
+      const other = transcriptService({
+        entries: [],
+        open: true,
+        refusal: { code: "unknown-turn", detail: "No such turn." },
+      });
+      const owner = transcriptService({ entries: [entryAt(1)], open: true });
+      const closes = [
+        await fakeService(alpha.runtimeDirectory, other.answer),
+        await fakeService(beta.runtimeDirectory, owner.answer),
+      ];
+      const watch = await workspaceServed([
+        { name: "alpha", runtimeDirectory: alpha.runtimeDirectory },
+        { name: "beta", runtimeDirectory: beta.runtimeDirectory },
+      ]);
+      try {
+        const found = await fetch(`${watch.address}${turnPath}/transcript`);
+        assert.equal(found.status, 200);
+        assert.deepEqual(fields(await found.json())["entries"], [entryAt(1)]);
+        owner.turn.refusal = { code: "unknown-turn", detail: "No such turn." };
+        const unknown = await fetch(`${watch.address}${turnPath}/transcript`);
+        assert.equal(unknown.status, 404);
+        await unknown.body?.cancel();
+      } finally {
+        assert.equal(await watch.stop(), 0);
+        for (const close of closes) await close();
+      }
+    }),
+  ));
