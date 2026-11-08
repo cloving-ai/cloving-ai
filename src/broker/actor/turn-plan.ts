@@ -4,8 +4,15 @@ import type { AuthorityCommand } from "../../authority/transitions.ts";
 import { admitted } from "../authority-admission.ts";
 import type { PlanSettings } from "./authority-settings.ts";
 import { stageable, type DeliveryIntent } from "./delivery-intents.ts";
-import { followUps } from "./effect-plan.ts";
-import { draft, merged, unchangedAt, type Row } from "./turn-draft.ts";
+import { followUps, type Step } from "./effect-plan.ts";
+import { operationDigest } from "../operation-digest.ts";
+import {
+  draft,
+  merged,
+  unchangedAt,
+  type Accepted,
+  type Row,
+} from "./turn-draft.ts";
 import { pricedCommand } from "./spend-turn.ts";
 import { refusalOf } from "./turn-refusals.ts";
 import { followUp, openAttempts, staged } from "./turn-staging.ts";
@@ -52,11 +59,9 @@ export function planCommand(given: CommandPlanning): TurnPlan {
   if (result.kind === "duplicate")
     return answer({ ...result, intents: turn.created });
   if (result.kind === "rejected") return answer(result);
-  const grants = followUps(result.state, {
-    recordedAt: request.recordedAt,
-    effects: planning.effects,
-    blocked: turn.blocked,
-  });
+  const later = laterSteps(result, planning);
+  if (later === undefined)
+    return answer({ kind: "rejected", reason: "note-not-recorded" });
   return {
     kind: "commit",
     receipt: {
@@ -77,16 +82,54 @@ export function planCommand(given: CommandPlanning): TurnPlan {
         closed: [],
         documents: referencedDocuments(request),
       }),
-      grants.map(followUp),
+      later.map(followUp),
     ),
-    stage: staged(grants.at(-1)?.result.state ?? result.state, {
+    stage: staged(later.at(-1)?.result.state ?? result.state, {
       held: turn.held,
-      results: [result, ...grants.map((step) => step.result)],
+      results: [result, ...later.map((step) => step.result)],
       closed: [],
       open: openAttempts(turn, []),
       stop: { ...planning, rows: [] },
     }),
   };
+}
+
+function laterSteps(
+  result: Accepted,
+  planning: CommandPlanning,
+): readonly Step[] | undefined {
+  const noted = notedSteps(result, planning.request);
+  if (noted === undefined) return undefined;
+  return [
+    ...noted,
+    ...followUps(noted.at(-1)?.result.state ?? result.state, {
+      recordedAt: planning.request.recordedAt,
+      effects: planning.effects,
+      blocked: planning.turn.blocked,
+    }),
+  ];
+}
+
+function notedSteps(
+  result: Accepted,
+  request: TurnRequest,
+): readonly Step[] | undefined {
+  const command = parseCommand(request.command);
+  if (command?.kind !== "admit-run" || command.note === undefined) return [];
+  const noteId = `note-${operationDigest(command.commandId).slice(0, 32)}`;
+  const noted = execute(result.state, {
+    command: {
+      kind: "note-run",
+      commandId: noteId,
+      runId: command.runId,
+      noteId,
+      note: command.note,
+      source: "continue",
+    },
+    recordedAt: request.recordedAt,
+  });
+  if (noted.kind !== "accepted") return undefined;
+  return [{ result: noted, before: result.state }];
 }
 
 const documentFields = [

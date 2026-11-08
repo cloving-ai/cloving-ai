@@ -163,6 +163,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   "run.cancelled": closed("run.cancelled"),
   "run.failed": closed("run.failed"),
   "run.dismissed": dismissed,
+  "run.noted": applied,
   "run.observed": observation,
   "gate.opened": opened,
   "gate.wait-registered": registered,

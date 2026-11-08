@@ -161,6 +161,12 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
     },
     ...gates(state, subject),
     ...effects(state, subject),
+    {
+      kind: "note-run",
+      noteId: `note-${"0".repeat(32)}`,
+      note: "generated",
+      source: "continue",
+    },
     { kind: "complete-run", expectedRevision: revision },
     { kind: "cancel-run", expectedRevision: revision },
     { kind: "fail-run", expectedRevision: revision },

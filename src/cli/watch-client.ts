@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, themeChoice: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", themeChoice: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -77,8 +77,8 @@ function dismissMessage(reply) {
   if (reply.error) return reply.error.code + ": " + reply.error.detail;
   return "The run is dismissed.";
 }
-function runRequest(runId) {
-  return { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body: JSON.stringify({ runId }) };
+function runRequest(runId, note) {
+  return { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body: JSON.stringify(note === undefined ? { runId } : { runId, note }) };
 }
 async function runPost(runId, post) {
   if (state.continueBusy.includes(runId)) return;
@@ -95,9 +95,25 @@ async function runPost(runId, post) {
   await load();
 }
 const refusedRequest = "The watch page refused the request. Refresh the page.";
+function continueOpen(runId) {
+  state.continueOpen = runId;
+  state.continueNote = "";
+  draw();
+  document.querySelector(".need-note input")?.focus();
+}
+function continueClose() {
+  state.continueOpen = null;
+  draw();
+  document.querySelector(".need-continue")?.focus();
+}
+function continueNote(text) {
+  state.continueNote = text;
+}
 function continuePost(runId) {
+  const note = state.continueNote.trim() === "" ? undefined : state.continueNote;
+  state.continueOpen = null;
   return runPost(runId, async () => {
-    const response = await fetch("actions/continue", runRequest(runId));
+    const response = await fetch("actions/continue", runRequest(runId, note));
     return response.ok ? continueMessage(await response.json()) : refusedRequest;
   });
 }
@@ -109,7 +125,7 @@ function dismissPost(runId) {
 }
 function continueControls() {
   if (actionToken === null) return undefined;
-  return { busy: state.continueBusy, messages: state.continueMessages, onContinue: continuePost, onDismiss: dismissPost };
+  return { busy: state.continueBusy, messages: state.continueMessages, open: state.continueOpen, note: state.continueNote, onOpen: continueOpen, onClose: continueClose, onNote: continueNote, onContinue: continuePost, onDismiss: dismissPost };
 }
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;

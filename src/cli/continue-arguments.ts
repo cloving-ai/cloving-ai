@@ -7,6 +7,7 @@ export interface ContinueInvocation {
   readonly from: string | null;
   readonly bundle: "retained" | "current";
   readonly commandId: string | null;
+  readonly note: string | null;
   readonly json: boolean;
 }
 
@@ -15,7 +16,7 @@ interface GivenOption {
   readonly value: string | undefined;
 }
 
-const allowed = ["from", "bundle", "command-id", "json"];
+const allowed = ["from", "bundle", "command-id", "note", "json"];
 export const stepName =
   /^[A-Za-z0-9._:-]+\/[A-Za-z0-9._:-]+(?:\/(?:0|[1-9][0-9]*))?$/;
 const invalid = "invalid-option-value";
@@ -44,7 +45,8 @@ function optionsOf(
   if (from !== null && !stepName.test(from)) return undefined;
   if (commandId !== null && !isRecordKey(commandId)) return undefined;
   const json = options.some((option) => option.name === "json");
-  return { from, bundle, commandId, json };
+  const note = valueOf(options, "note") ?? null;
+  return { from, bundle, commandId, note, json };
 }
 
 export function continueInvocation(request: {
@@ -73,6 +75,7 @@ export function continueServiceRequest(
       commandId,
       bundle: invocation.bundle,
       ...(invocation.from === null ? {} : { from: invocation.from }),
+      ...(invocation.note === null ? {} : { note: invocation.note }),
     },
   };
 }
