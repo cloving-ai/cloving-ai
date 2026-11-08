@@ -187,31 +187,31 @@ await test("CLV-329 the stream route starts after the query parameter after", as
   });
 });
 
+const odd = {
+  position: "1",
+  kind: "other",
+  text: 4,
+  tool: "Bash",
+  omittedBytes: 1.5,
+};
+
+function oddService(): (request: ServiceRequest) => Reply {
+  const service = transcriptService({ entries: [], open: true });
+  const pages = new Map<number, Fields>([
+    [0, { entries: [odd, null], nextAfter: 0, open: false }],
+    [1, { entries: [], nextAfter: "1", open: true }],
+    [2, { entries: {}, open: true }],
+  ]);
+  return (request) => {
+    const page = pages.get(Number(request.parameters["after"]));
+    return request.operation === "transcript" && page !== undefined
+      ? { kind: "result", result: page }
+      : service.answer(request);
+  };
+}
+
 await test("CLV-329 the transcript route gives the documented entry fields of an odd service entry and 503 for a page without its fields", async () => {
-  const turn: Turn = { entries: [], open: true };
-  const service = transcriptService(turn);
-  const odd = {
-    position: "1",
-    kind: "other",
-    text: 4,
-    tool: "Bash",
-    omittedBytes: 1.5,
-  };
-  const answer = (request: ServiceRequest): Reply => {
-    if (request.operation !== "transcript") return service.answer(request);
-    const after = Number(request.parameters["after"]);
-    if (after === 1)
-      return {
-        kind: "result",
-        result: { entries: [], nextAfter: "1", open: true },
-      };
-    if (after === 2)
-      return { kind: "result", result: { entries: {}, open: true } };
-    return {
-      kind: "result",
-      result: { entries: [odd, null], nextAfter: 0, open: false },
-    };
-  };
+  const answer = oddService();
   await withWatchService(answer, async (watch) => {
     const response = await fetch(`${watch.address}${turnPath}/transcript`);
     assert.deepEqual(
